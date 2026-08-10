@@ -66,9 +66,9 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-# v4 makes the receipt-consuming, deferral-materializing source finalizer an
-# explicit producer instead of a hidden mutation after the sixteenth source.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 4
+# v5 binds the six-grain structural and metadata surface consumed by stacked
+# validation into the primary-PUF and all nineteen transfer contracts.
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 5
 US_LATE_PRIMARY_PUF_STAGE = "primary_puf_qrf"
 US_LATE_SOURCE_FINALIZER_STAGE = "source_finalizer"
 US_LATE_EXTERNAL_STAGES: tuple[str, ...] = ("post_clone_input_surface",)
@@ -83,12 +83,52 @@ _CHILDCARE_OUTPUT = "spm_unit_pre_subsidy_childcare_expenses"
 _PREGNANCY_OUTPUT = "is_pregnant"
 _CLONE_ATTACHMENT_OUTPUT = "person_support_clone_index"
 _SOURCE_RECEIPT_PREFIX = "@source_receipt:"
+_STRUCTURAL_ENTITIES = (
+    "person",
+    "household",
+    "tax_unit",
+    "spm_unit",
+    "family",
+    "marital_unit",
+)
+_GROUP_ENTITIES = _STRUCTURAL_ENTITIES[1:]
+_ASSEMBLY_MANIFEST_INPUT = "@us_spine_assembly_manifest"
+_STACKED_MANIFEST_INPUT = "@us_stacked_spine_manifest"
+_PUF_ATTACHMENT_MANIFEST_INPUT = "@us_puf_clone_attachment_manifest"
+_STRING_LATE_TARGETS = frozenset({"ssn_card_type", "immigration_status_str"})
+_BOOLEAN_LATE_TARGETS = frozenset(
+    {
+        "is_incapable_of_self_care",
+        "is_pregnant",
+        "estate_income_would_be_qualified",
+        "farm_operations_income_would_be_qualified",
+        "farm_rent_income_would_be_qualified",
+        "partnership_s_corp_income_would_be_qualified",
+        "rental_income_would_be_qualified",
+        "self_employment_income_would_be_qualified",
+        "sstb_self_employment_income_would_be_qualified",
+        "business_is_sstb",
+        "attends_eligible_educational_institution_for_american_opportunity_credit",
+        "has_american_opportunity_credit_1098_t_or_exception",
+        "has_american_opportunity_credit_institution_ein",
+        "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+        "is_pursuing_credential_for_american_opportunity_credit",
+        "takes_up_medicare_if_eligible",
+        "would_claim_wic",
+    }
+)
 
 
 def _nonempty(value: object, *, label: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{label} must be a non-empty string.")
     return value
+
+
+def _late_target_value_kind(column: str) -> str:
+    if column in _BOOLEAN_LATE_TARGETS or column in _STRING_LATE_TARGETS:
+        return "non_null"
+    return "finite_numeric"
 
 
 ScopedInput = ProducerInputColumn
@@ -251,8 +291,159 @@ def _single(
     )
 
 
+def _cross_grain_validation_requirements() -> tuple[EffectiveInputRequirement, ...]:
+    """Return the physical and metadata surface read by stacked validators."""
+
+    requirements: list[EffectiveInputRequirement] = []
+    for entity in _STRUCTURAL_ENTITIES:
+        requirements.extend(
+            (
+                _single(
+                    f"validated_structure:{entity}_support_channel",
+                    entity,
+                    f"{entity}_support_channel",
+                ),
+                _single(
+                    f"validated_structure:{entity}_support_clone_index",
+                    entity,
+                    f"{entity}_support_clone_index",
+                    value_kind="finite_numeric",
+                ),
+            )
+        )
+    for entity in _GROUP_ENTITIES:
+        requirements.extend(
+            (
+                _single(
+                    f"validated_structure:person_{entity}_id",
+                    "person",
+                    f"person_{entity}_id",
+                    value_kind="finite_numeric",
+                ),
+                _single(
+                    f"validated_structure:{entity}_id",
+                    entity,
+                    f"{entity}_id",
+                    value_kind="finite_numeric",
+                ),
+            )
+        )
+    requirements.extend(
+        (
+            _single(
+                "validated_structure:person_id",
+                "person",
+                "person_id",
+                value_kind="finite_numeric",
+            ),
+            _single(
+                "validated_structure:person_spine_source_id",
+                "person",
+                "person_spine_source_id",
+                value_kind="finite_numeric",
+            ),
+            _single(
+                "validated_structure:person_source_id",
+                "person",
+                "person_source_id",
+                value_kind="finite_numeric",
+            ),
+            _single(
+                "validated_structure:household_spine_source_id",
+                "household",
+                "household_spine_source_id",
+                value_kind="finite_numeric",
+            ),
+            _single(
+                "validated_structure:household_source_id",
+                "household",
+                "household_source_id",
+                value_kind="finite_numeric",
+            ),
+            _single(
+                "validated_structure:TYPEHUGQ",
+                "household",
+                "TYPEHUGQ",
+                value_kind="finite_numeric",
+            ),
+            _single(
+                "validated_structure:resolved_household_weight",
+                "household",
+                "@resolved_weight",
+            ),
+            _single(
+                "validated_structure:assembly_manifest",
+                "frame",
+                _ASSEMBLY_MANIFEST_INPUT,
+            ),
+            _single(
+                "validated_structure:stacked_manifest",
+                "frame",
+                _STACKED_MANIFEST_INPUT,
+            ),
+            _single(
+                "validated_structure:puf_attachment_manifest",
+                "frame",
+                _PUF_ATTACHMENT_MANIFEST_INPUT,
+            ),
+        )
+    )
+    return tuple(requirements)
+
+
+_CROSS_GRAIN_VALIDATION_REQUIREMENTS = _cross_grain_validation_requirements()
+
+
+_POST_CLONE_SOURCE_WRAPPER_REQUIREMENTS = (
+    _single(
+        "source_wrapper:assembly_manifest",
+        "frame",
+        _ASSEMBLY_MANIFEST_INPUT,
+    ),
+    _single(
+        "source_wrapper:source_evidence",
+        "person",
+        "PERIDNUM",
+    ),
+    _single(
+        "source_wrapper:person_support_clone_index",
+        "person",
+        "person_support_clone_index",
+        value_kind="finite_numeric",
+    ),
+    *tuple(
+        _single(
+            f"source_wrapper:{entity}_id",
+            entity,
+            f"{entity}_id",
+            value_kind="finite_numeric",
+        )
+        for entity in _STRUCTURAL_ENTITIES
+    ),
+    *tuple(
+        _single(
+            f"source_wrapper:person_{entity}_id",
+            "person",
+            f"person_{entity}_id",
+            value_kind="finite_numeric",
+        )
+        for entity in _GROUP_ENTITIES
+    ),
+    _single(
+        "source_wrapper:resolved_household_weight",
+        "household",
+        "@resolved_weight",
+    ),
+)
+
+
 _COMMON_ROLE_AWARE_INPUTS = (
-    _single("person_id", "person", "person_id"),
+    _single(
+        "person_id",
+        "person",
+        "person_id",
+        value_kind="finite_numeric",
+    ),
     _single("resolved_person_weight", "person", "@resolved_weight"),
     _single("support_channel", "person", "person_support_channel"),
     _single(
@@ -260,6 +451,7 @@ _COMMON_ROLE_AWARE_INPUTS = (
         "person",
         "person_support_clone_index",
         optional=True,
+        value_kind="finite_numeric",
     ),
     _requirement(
         "age",
@@ -268,12 +460,22 @@ _COMMON_ROLE_AWARE_INPUTS = (
     ),
     _requirement(
         "sex",
-        (_column("person", "is_male"),),
-        (_column("person", "is_female"),),
-        (_column("person", "A_SEX"),),
+        (_column("person", "is_male", value_kind="finite_numeric"),),
+        (_column("person", "is_female", value_kind="finite_numeric"),),
+        (_column("person", "A_SEX", value_kind="finite_numeric"),),
     ),
-    _single("employer_health_coverage", "person", "has_esi"),
-    _single("person_tax_unit_link", "person", "person_tax_unit_id"),
+    _single(
+        "employer_health_coverage",
+        "person",
+        "has_esi",
+        value_kind="finite_numeric",
+    ),
+    _single(
+        "person_tax_unit_link",
+        "person",
+        "person_tax_unit_id",
+        value_kind="finite_numeric",
+    ),
     _single("tax_unit_role", "person", "tax_unit_role_input"),
     _requirement(
         "employment_income",
@@ -313,7 +515,12 @@ _COMMON_ROLE_AWARE_INPUTS = (
         ),
         (_column("person", "SS_VAL", value_kind="finite_numeric"),),
     ),
-    _single("tax_unit_id", "tax_unit", "tax_unit_id"),
+    _single(
+        "tax_unit_id",
+        "tax_unit",
+        "tax_unit_id",
+        value_kind="finite_numeric",
+    ),
     _requirement(
         "filing_status",
         (_column("tax_unit", "filing_status_input"),),
@@ -326,7 +533,13 @@ def _raw_person_requirements(
     columns: Sequence[str],
 ) -> tuple[EffectiveInputRequirement, ...]:
     return tuple(
-        _single(f"raw_person:{column}", "person", column) for column in columns
+        _single(
+            f"raw_person:{column}",
+            "person",
+            column,
+            value_kind="finite_numeric",
+        )
+        for column in columns
     )
 
 
@@ -348,6 +561,18 @@ _source_input_inventories = {
             ("source_year", "PERIDNUM", "WSAL_VAL", "SEMP_VAL", "I_ERNVAL", "I_SEVAL")
         ),
         *_COMMON_ROLE_AWARE_INPUTS,
+        _single(
+            "employment_income_last_year",
+            "person",
+            "employment_income_last_year",
+            value_kind="finite_numeric",
+        ),
+        _single(
+            "self_employment_income_last_year",
+            "person",
+            "self_employment_income_last_year",
+            value_kind="finite_numeric",
+        ),
     ),
     "with_us_medicare_take_up_input": _inventory(
         "with_us_medicare_take_up_input",
@@ -399,12 +624,16 @@ _source_input_inventories = {
         _single("person_spm_unit_link", "person", "person_spm_unit_id"),
         _single("spm_unit_id", "spm_unit", "spm_unit_id"),
         _single(
-            "housing_assistance_receipt", "spm_unit", "receives_housing_assistance"
+            "housing_assistance_receipt",
+            "spm_unit",
+            "receives_housing_assistance",
+            value_kind="finite_numeric",
         ),
         _single(
             "housing_assistance_takeup",
             "spm_unit",
             "takes_up_housing_assistance_if_eligible",
+            value_kind="finite_numeric",
         ),
         _single("spm_support_channel", "spm_unit", "spm_unit_support_channel"),
         _single(
@@ -431,27 +660,37 @@ _source_input_inventories = {
     ),
     "with_us_weeks_unemployed": _inventory(
         "with_us_weeks_unemployed",
-        _single("source_year", "person", "source_year"),
-        _single("source_identity", "person", "PERIDNUM"),
+        _single(
+            "source_year",
+            "person",
+            "source_year",
+            value_kind="finite_numeric",
+        ),
+        _single(
+            "source_identity",
+            "person",
+            "PERIDNUM",
+            value_kind="finite_numeric",
+        ),
         _requirement(
             "weeks_source_or_sidecar",
-            (_column("person", "LKWEEKS"),),
+            (_column("person", "LKWEEKS", value_kind="finite_numeric"),),
             (_column("person", "@weeks_unemployed_sidecar"),),
         ),
         _requirement(
             "age",
-            (_column("person", "age"),),
-            (_column("person", "A_AGE"),),
+            (_column("person", "age", value_kind="finite_numeric"),),
+            (_column("person", "A_AGE", value_kind="finite_numeric"),),
         ),
         _requirement(
             "sex",
-            (_column("person", "is_male"),),
-            (_column("person", "is_female"),),
-            (_column("person", "A_SEX"),),
+            (_column("person", "is_male", value_kind="finite_numeric"),),
+            (_column("person", "is_female", value_kind="finite_numeric"),),
+            (_column("person", "A_SEX", value_kind="finite_numeric"),),
         ),
         _requirement(
             "joint_filing_status",
-            (_column("person", "tax_unit_is_joint"),),
+            (_column("person", "tax_unit_is_joint", value_kind="finite_numeric"),),
             (
                 _column("person", "person_tax_unit_id"),
                 _column("tax_unit", "tax_unit_id"),
@@ -467,15 +706,21 @@ _source_input_inventories = {
             "explicit_tax_unit_roles",
             (_column("person", "tax_unit_role_input"),),
             (
-                _column("person", "is_tax_unit_head"),
-                _column("person", "is_tax_unit_spouse"),
-                _column("person", "is_tax_unit_dependent"),
+                _column("person", "is_tax_unit_head", value_kind="finite_numeric"),
+                _column("person", "is_tax_unit_spouse", value_kind="finite_numeric"),
+                _column("person", "is_tax_unit_dependent", value_kind="finite_numeric"),
             ),
         ),
         _requirement(
             "unemployment_compensation_predictor",
-            (_column("person", "unemployment_compensation"),),
-            (_column("person", "UC_VAL"),),
+            (
+                _column(
+                    "person",
+                    "unemployment_compensation",
+                    value_kind="finite_numeric",
+                ),
+            ),
+            (_column("person", "UC_VAL", value_kind="finite_numeric"),),
             optional=True,
         ),
         _single("support_channel", "person", "person_support_channel"),
@@ -521,13 +766,32 @@ _source_input_inventories = {
             value_kind="finite_numeric",
         ),
         _single("tax_unit_role", "person", "tax_unit_role_input"),
-        _single("person_tax_unit_link", "person", "person_tax_unit_id"),
-        _single("person_spm_unit_link", "person", "person_spm_unit_id"),
-        _single("person_id", "person", "person_id"),
+        _single(
+            "person_tax_unit_link",
+            "person",
+            "person_tax_unit_id",
+            value_kind="finite_numeric",
+        ),
+        _single(
+            "person_spm_unit_link",
+            "person",
+            "person_spm_unit_id",
+            value_kind="finite_numeric",
+        ),
+        _single(
+            "person_id",
+            "person",
+            "person_id",
+            value_kind="finite_numeric",
+        ),
         _requirement(
             "support_role",
             (
-                _column("person", "person_support_clone_index"),
+                _column(
+                    "person",
+                    "person_support_clone_index",
+                    value_kind="finite_numeric",
+                ),
                 _column("person", "person_support_channel"),
             ),
         ),
@@ -537,8 +801,18 @@ _source_input_inventories = {
             _CHILDCARE_OUTPUT,
             value_kind="finite_numeric",
         ),
-        _single("spm_unit_id", "spm_unit", "spm_unit_id"),
-        _single("tax_unit_id", "tax_unit", "tax_unit_id"),
+        _single(
+            "spm_unit_id",
+            "spm_unit",
+            "spm_unit_id",
+            value_kind="finite_numeric",
+        ),
+        _single(
+            "tax_unit_id",
+            "tax_unit",
+            "tax_unit_id",
+            value_kind="finite_numeric",
+        ),
         _single("resolved_person_weight", "person", "@resolved_weight"),
         _single("resolved_tax_unit_weight", "tax_unit", "@resolved_weight"),
         _single("resolved_spm_unit_weight", "spm_unit", "@resolved_weight"),
@@ -569,7 +843,12 @@ _source_input_inventories = {
             )
         ),
         *_COMMON_ROLE_AWARE_INPUTS,
-        _single("puf_taxable_ira_distribution", "person", "taxable_ira_distributions"),
+        _single(
+            "puf_taxable_ira_distribution",
+            "person",
+            "taxable_ira_distributions",
+            value_kind="finite_numeric",
+        ),
     ),
     "with_us_immigration_inputs": _inventory(
         "with_us_immigration_inputs",
@@ -630,6 +909,14 @@ _source_input_inventories = {
     ),
 }
 
+_source_input_inventories = {
+    operator: SourceInputInventory(
+        operator,
+        (*inventory.requirements, *_POST_CLONE_SOURCE_WRAPPER_REQUIREMENTS),
+    )
+    for operator, inventory in _source_input_inventories.items()
+}
+
 if set(_source_input_inventories) != set(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER):
     raise RuntimeError(
         "US late source input inventories must cover the exact post-clone "
@@ -644,6 +931,11 @@ US_LATE_SOURCE_INPUT_INVENTORIES: Mapping[str, SourceInputInventory] = MappingPr
 
 US_LATE_PRIMARY_PUF_INPUT_INVENTORY = _inventory(
     US_LATE_PRIMARY_PUF_STAGE,
+    *(
+        requirement
+        for requirement in _CROSS_GRAIN_VALIDATION_REQUIREMENTS
+        if requirement.label != "validated_structure:puf_attachment_manifest"
+    ),
     _requirement(
         "filing_status",
         (_column("tax_unit", "filing_status_input"),),
@@ -716,33 +1008,27 @@ US_LATE_PRIMARY_PUF_INPUT_INVENTORY = _inventory(
 
 def _transfer_input_inventory(group: TransferProducerGroup) -> SourceInputInventory:
     structural = [
-        _single("person_id", "person", "person_id"),
-        _single("support_channel", "person", "person_support_channel"),
-        _single("support_clone_index", "person", "person_support_clone_index"),
+        *_CROSS_GRAIN_VALIDATION_REQUIREMENTS,
         _single("resolved_person_weight", "person", "@resolved_weight"),
-        _single("target_entity_id", group.entity, f"{group.entity}_id"),
         _single("resolved_target_weight", group.entity, "@resolved_weight"),
     ]
-    if group.entity != "person":
-        structural.append(
-            _single(
-                "person_target_entity_link",
-                "person",
-                f"person_{group.entity}_id",
-            )
-        )
     return _inventory(
         group.name,
         *structural,
         _single("age", "person", "age", value_kind="finite_numeric"),
-        _single("is_female", "person", "is_female"),
+        _single(
+            "is_female",
+            "person",
+            "is_female",
+            value_kind="finite_numeric",
+        ),
         _requirement(
             "state_fips",
-            (_column("person", "state_fips"),),
+            (_column("person", "state_fips", value_kind="finite_numeric"),),
             (
-                _column("person", "person_household_id"),
-                _column("household", "household_id"),
-                _column("household", "state_fips"),
+                _column("person", "person_household_id", value_kind="finite_numeric"),
+                _column("household", "household_id", value_kind="finite_numeric"),
+                _column("household", "state_fips", value_kind="finite_numeric"),
             ),
         ),
         _single(
@@ -833,18 +1119,18 @@ def _transfer_input_inventory(group: TransferProducerGroup) -> SourceInputInvent
         ),
         _requirement(
             "optional_household_head",
-            (_column("person", "is_household_head"),),
-            (_column("person", "RELSHIPP"),),
-            (_column("person", "A_EXPRRP"),),
-            (_column("person", "A_LINENO"),),
+            (_column("person", "is_household_head", value_kind="finite_numeric"),),
+            (_column("person", "RELSHIPP", value_kind="finite_numeric"),),
+            (_column("person", "A_EXPRRP", value_kind="finite_numeric"),),
+            (_column("person", "A_LINENO", value_kind="finite_numeric"),),
             optional=True,
         ),
         _requirement(
             "optional_tenure",
             (_column("person", "tenure_type"),),
             (_column("spm_unit", "spm_unit_tenure_type"),),
-            (_column("household", "TEN"),),
-            (_column("household", "H_TENURE"),),
+            (_column("household", "TEN", value_kind="finite_numeric"),),
+            (_column("household", "H_TENURE", value_kind="finite_numeric"),),
             optional=True,
         ),
     )
@@ -942,6 +1228,19 @@ if (
         "Canonical US late transfer must contain exactly 19 bounded groups "
         "and 70 ordered targets."
     )
+_canonical_late_targets = {
+    target for group in CANONICAL_US_LATE_TRANSFER_GROUPS for target in group.targets
+}
+if (
+    len(_BOOLEAN_LATE_TARGETS) != 17
+    or len(_STRING_LATE_TARGETS) != 2
+    or not (_BOOLEAN_LATE_TARGETS | _STRING_LATE_TARGETS) <= _canonical_late_targets
+    or len(_canonical_late_targets - _BOOLEAN_LATE_TARGETS - _STRING_LATE_TARGETS) != 51
+):
+    raise RuntimeError(
+        "Canonical US late target kinds must partition 70 targets into "
+        "51 numeric, 17 boolean, and 2 string inputs."
+    )
 US_LATE_TRANSFER_INPUT_INVENTORIES: Mapping[str, SourceInputInventory] = (
     MappingProxyType(
         {
@@ -1031,13 +1330,41 @@ def _build_registry() -> dict[str, ProducerContract]:
     late_surface = pool_post_puf_transfer_target_families()
     late_keys = _target_key_rows(late_surface)
     puf_keys = _target_key_rows(pool_post_puf_puf_producer_target_families())
-    primary_outputs = tuple(
+    declared_primary_outputs = tuple(
         ProducerOutput(entity, column, _PUF_CLONE_SCOPE)
         for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
             "primary_puf_qrf"
         ].items()
         for column in columns
     ) + (ProducerOutput("person", _CLONE_ATTACHMENT_OUTPUT, _WHOLE_POOL_SCOPE),)
+    structural_outputs = tuple(
+        ProducerOutput(column.entity, column.column, _WHOLE_POOL_SCOPE)
+        for requirement in _CROSS_GRAIN_VALIDATION_REQUIREMENTS
+        for alternative in requirement.alternatives
+        for column in alternative
+        if column.entity != "frame" and column.column != "@resolved_weight"
+    ) + (
+        ProducerOutput(
+            "frame",
+            _PUF_ATTACHMENT_MANIFEST_INPUT,
+            _WHOLE_POOL_SCOPE,
+        ),
+        *(
+            ProducerOutput(entity, "@resolved_weight", _WHOLE_POOL_SCOPE)
+            for entity in _STRUCTURAL_ENTITIES
+        ),
+    )
+    primary_output_by_key: dict[tuple[str, str], ProducerOutput] = {}
+    for output in (*declared_primary_outputs, *structural_outputs):
+        key = (output.entity, output.column)
+        previous = primary_output_by_key.get(key)
+        if previous is not None and previous.coverage_scope != output.coverage_scope:
+            raise RuntimeError(
+                f"US primary-PUF output {key} has conflicting coverage "
+                f"{previous.coverage_scope!r} and {output.coverage_scope!r}."
+            )
+        primary_output_by_key[key] = output
+    primary_outputs = tuple(primary_output_by_key.values())
     primary_keys = {(output.entity, output.column) for output in primary_outputs}
     source_owner: dict[tuple[str, str], str] = {}
     for operator, outputs in CANONICAL_US_LATE_SOURCE_OUTPUTS.items():
@@ -1083,6 +1410,9 @@ def _build_registry() -> dict[str, ProducerContract]:
             _PREGNANCY_OUTPUT,
             _ASEC_SOURCE_SCOPE,
             source_producer_name("with_us_pregnancy_inputs"),
+            alternatives=(
+                (ProducerInputColumn("person", _PREGNANCY_OUTPUT, "non_null"),),
+            ),
         )
     )
     source_dependencies["with_us_adult_care_inputs"].extend(
@@ -1092,12 +1422,30 @@ def _build_registry() -> dict[str, ProducerContract]:
                 _CHILDCARE_OUTPUT,
                 _ASEC_SOURCE_SCOPE,
                 source_producer_name("with_us_childcare_inputs"),
+                alternatives=(
+                    (
+                        ProducerInputColumn(
+                            "spm_unit",
+                            _CHILDCARE_OUTPUT,
+                            "finite_numeric",
+                        ),
+                    ),
+                ),
             ),
             ProducerInput(
                 "person",
                 _SSTB_EARNED_INCOME,
                 _ASEC_SOURCE_SCOPE,
                 group_by_target[("person", _SSTB_EARNED_INCOME)].name,
+                alternatives=(
+                    (
+                        ProducerInputColumn(
+                            "person",
+                            _SSTB_EARNED_INCOME,
+                            "finite_numeric",
+                        ),
+                    ),
+                ),
             ),
         )
     )
@@ -1107,6 +1455,15 @@ def _build_registry() -> dict[str, ProducerContract]:
             _QUALIFIED_TUITION,
             _ASEC_SOURCE_SCOPE,
             group_by_target[("person", _QUALIFIED_TUITION)].name,
+            alternatives=(
+                (
+                    ProducerInputColumn(
+                        "person",
+                        _QUALIFIED_TUITION,
+                        "finite_numeric",
+                    ),
+                ),
+            ),
         )
     )
     for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER:
@@ -1198,15 +1555,55 @@ def _build_registry() -> dict[str, ProducerContract]:
                     "tax_exempt_interest_income",
                     _PUF_CLONE_SCOPE,
                     US_LATE_PRIMARY_PUF_STAGE,
+                    alternatives=(
+                        (
+                            ProducerInputColumn(
+                                "person",
+                                "tax_exempt_interest_income",
+                                "finite_numeric",
+                            ),
+                        ),
+                    ),
                 ),
                 ProducerInput(
                     "person",
                     "estate_income",
                     _PUF_CLONE_SCOPE,
                     US_LATE_PRIMARY_PUF_STAGE,
+                    alternatives=(
+                        (
+                            ProducerInputColumn(
+                                "person",
+                                "estate_income",
+                                "finite_numeric",
+                            ),
+                        ),
+                    ),
                 ),
             )
         )
+        direct_dependency_keys = {
+            (item.entity, item.column)
+            for item in inputs
+            if not item.column.startswith("@effective:")
+        }
+        for requirement in US_LATE_TRANSFER_INPUT_INVENTORIES[group.name].requirements:
+            for alternative in requirement.alternatives:
+                for item in alternative:
+                    key = (item.entity, item.column)
+                    output = primary_output_by_key.get(key)
+                    if output is None or key in direct_dependency_keys:
+                        continue
+                    inputs.append(
+                        ProducerInput(
+                            item.entity,
+                            item.column,
+                            output.coverage_scope,
+                            US_LATE_PRIMARY_PUF_STAGE,
+                            alternatives=((item,),),
+                        )
+                    )
+                    direct_dependency_keys.add(key)
         outputs: list[ProducerOutput] = []
         for target in group.targets:
             key = (group.entity, target)
@@ -1218,6 +1615,15 @@ def _build_registry() -> dict[str, ProducerContract]:
                         target,
                         _PUF_CLONE_SCOPE,
                         US_LATE_PRIMARY_PUF_STAGE,
+                        alternatives=(
+                            (
+                                ProducerInputColumn(
+                                    group.entity,
+                                    target,
+                                    _late_target_value_kind(target),
+                                ),
+                            ),
+                        ),
                     )
                 )
             owner = source_owner.get(key)
@@ -1228,6 +1634,15 @@ def _build_registry() -> dict[str, ProducerContract]:
                         target,
                         _ASEC_SOURCE_SCOPE,
                         source_producer_name(owner),
+                        alternatives=(
+                            (
+                                ProducerInputColumn(
+                                    group.entity,
+                                    target,
+                                    _late_target_value_kind(target),
+                                ),
+                            ),
+                        ),
                     )
                 )
             if key not in puf_keys and owner is None:

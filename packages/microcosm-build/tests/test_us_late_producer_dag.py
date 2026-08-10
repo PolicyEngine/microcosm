@@ -214,15 +214,21 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
         "late_transfer",
         "source_finalizer",
     }
-    assert len(registry[US_LATE_PRIMARY_PUF_STAGE].inputs) == 15
+    assert len(registry[US_LATE_PRIMARY_PUF_STAGE].inputs) == 46
     primary_outputs = registry[US_LATE_PRIMARY_PUF_STAGE].outputs
-    assert len(primary_outputs) == 66
+    assert len(primary_outputs) == 100
     assert sum(output.coverage_scope == "puf_clone" for output in primary_outputs) == 65
+    assert (
+        sum(output.coverage_scope == "whole_pool" for output in primary_outputs) == 35
+    )
     assert {
         (output.entity, output.column, output.coverage_scope)
         for output in primary_outputs
         if output.coverage_scope == "whole_pool"
-    } == {("person", "person_support_clone_index", "whole_pool")}
+    } >= {
+        ("person", "person_support_clone_index", "whole_pool"),
+        ("frame", "@us_puf_clone_attachment_manifest", "whole_pool"),
+    }
     assert all(contract.inputs for contract in registry.values())
     assert {
         name
@@ -348,7 +354,7 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
 
     assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
     receipt = us_late_producer_schedule_receipt()
-    assert receipt["schema_version"] == 4
+    assert receipt["schema_version"] == 5
     assert receipt["status"] == "derived_and_import_validated"
     assert receipt["schedule_sha256"] == reconstructed.sha256
     assert receipt["producer_count"] == 37
@@ -549,3 +555,186 @@ def test_transfer_numeric_predictor_alternatives_are_all_finite() -> None:
                 for alternative in inputs[logical_input].alternatives
                 for column in alternative
             } == {"finite_numeric"}
+
+
+def test_source_numeric_input_audit_is_fully_executable() -> None:
+    expected_finite = {
+        "with_us_prior_year_income_inputs": {
+            "source_year",
+            "WSAL_VAL",
+            "SEMP_VAL",
+            "I_ERNVAL",
+            "I_SEVAL",
+            "employment_income_last_year",
+            "self_employment_income_last_year",
+        },
+        "with_us_medicare_take_up_input": {"MCARE"},
+        "with_us_pregnancy_inputs": {"A_SEX", "A_AGE"},
+        "with_us_wic_claim_input": {
+            "age",
+            "is_female",
+            "is_pregnant",
+            "own_children_in_household",
+            "person_family_id",
+        },
+        "impute_us_housing_assistance_to_puf_support": {
+            "receives_housing_assistance",
+            "takes_up_housing_assistance_if_eligible",
+        },
+        "with_us_child_support_inputs": {"CSP_VAL", "CHSP_VAL"},
+        "with_us_disability_benefits": {
+            "DIS_VAL1",
+            "DIS_SC1",
+            "DIS_VAL2",
+            "DIS_SC2",
+        },
+        "with_us_workers_compensation": {"WC_VAL"},
+        "with_us_weeks_unemployed": {
+            "source_year",
+            "PERIDNUM",
+            "LKWEEKS",
+            "age",
+            "A_AGE",
+            "is_male",
+            "is_female",
+            "A_SEX",
+            "tax_unit_is_joint",
+            "is_tax_unit_head",
+            "is_tax_unit_spouse",
+            "is_tax_unit_dependent",
+            "unemployment_compensation",
+            "UC_VAL",
+        },
+        "with_us_childcare_inputs": {"person_spm_unit_id", "SPM_CHILDCAREXPNS"},
+        "with_us_adult_care_inputs": {
+            "PEDISDRS",
+            "is_full_time_college_student",
+            "person_id",
+            "person_support_clone_index",
+        },
+        "with_us_energy_subsidy_input": {"person_spm_unit_id", "SPM_ENGVAL"},
+        "with_us_retirement_contribution_inputs": {
+            "RETCB_VAL",
+            "WSAL_VAL",
+            "SEMP_VAL",
+        },
+        "with_us_retirement_distribution_inputs": {
+            "DST_SC1",
+            "DST_VAL1",
+            "DST_SC2",
+            "DST_VAL2",
+            "DST_SC1_YNG",
+            "DST_VAL1_YNG",
+            "DST_SC2_YNG",
+            "DST_VAL2_YNG",
+            "taxable_ira_distributions",
+        },
+        "with_us_immigration_inputs": {
+            "PRCITSHP",
+            "PEINUSYR",
+            "PENATVTY",
+            "A_AGE",
+            "A_MARITL",
+            "A_SPOUSE",
+            "A_HSCOL",
+            "WSAL_VAL",
+            "SEMP_VAL",
+            "MCARE",
+            "CAID",
+            "IHSFLG",
+            "CHAMPVA",
+            "MIL",
+            "PEN_SC1",
+            "PEN_SC2",
+            "RESNSS1",
+            "RESNSS2",
+            "SS_YN",
+            "SSI_YN",
+            "PEIO1COW",
+            "A_MJOCC",
+            "PEAFEVER",
+            "SPM_CAPHOUSESUB",
+        },
+        "with_us_education_inputs": {"ED_VAL", "qualified_tuition_expenses"},
+    }
+    assert set(expected_finite) == set(US_LATE_SOURCE_INPUT_INVENTORIES)
+    for operator, expected_columns in expected_finite.items():
+        inventory = US_LATE_SOURCE_INPUT_INVENTORIES[operator]
+        finite_columns = {
+            column.column
+            for requirement in inventory.requirements
+            for alternative in requirement.alternatives
+            for column in alternative
+            if column.value_kind == "finite_numeric"
+        }
+        assert expected_columns <= finite_columns, operator
+
+    common_role_operators = {
+        "with_us_prior_year_income_inputs",
+        "impute_us_housing_assistance_to_puf_support",
+        "with_us_child_support_inputs",
+        "with_us_disability_benefits",
+        "with_us_workers_compensation",
+        "with_us_childcare_inputs",
+        "with_us_energy_subsidy_input",
+        "with_us_retirement_contribution_inputs",
+        "with_us_retirement_distribution_inputs",
+    }
+    for operator in common_role_operators:
+        sex = next(
+            requirement
+            for requirement in US_LATE_SOURCE_INPUT_INVENTORIES[operator].requirements
+            if requirement.label == "sex"
+        )
+        assert {
+            column.value_kind
+            for alternative in sex.alternatives
+            for column in alternative
+        } == {"finite_numeric"}
+
+
+def test_late_target_dependency_kinds_partition_51_numeric_17_boolean_2_string() -> (
+    None
+):
+    string_targets = {"ssn_card_type", "immigration_status_str"}
+    boolean_targets = {
+        "is_incapable_of_self_care",
+        "is_pregnant",
+        "estate_income_would_be_qualified",
+        "farm_operations_income_would_be_qualified",
+        "farm_rent_income_would_be_qualified",
+        "partnership_s_corp_income_would_be_qualified",
+        "rental_income_would_be_qualified",
+        "self_employment_income_would_be_qualified",
+        "sstb_self_employment_income_would_be_qualified",
+        "business_is_sstb",
+        "attends_eligible_educational_institution_for_american_opportunity_credit",
+        "has_american_opportunity_credit_1098_t_or_exception",
+        "has_american_opportunity_credit_institution_ein",
+        "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+        "is_pursuing_credential_for_american_opportunity_credit",
+        "takes_up_medicare_if_eligible",
+        "would_claim_wic",
+    }
+    observed: dict[str, set[str]] = {}
+    for group in CANONICAL_US_LATE_TRANSFER_GROUPS:
+        contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[group.name]
+        for target in group.targets:
+            direct_inputs = [item for item in contract.inputs if item.column == target]
+            assert direct_inputs
+            observed[target] = {
+                column.value_kind
+                for item in direct_inputs
+                for alternative in item.alternatives
+                for column in alternative
+            }
+    numeric_targets = set(observed) - boolean_targets - string_targets
+    assert (len(numeric_targets), len(boolean_targets), len(string_targets)) == (
+        51,
+        17,
+        2,
+    )
+    assert all(observed[target] == {"finite_numeric"} for target in numeric_targets)
+    assert all(
+        observed[target] == {"non_null"} for target in boolean_targets | string_targets
+    )

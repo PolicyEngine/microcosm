@@ -3906,6 +3906,7 @@ def _validate_late_execution_row(
         for column in alternative
         if column.column.startswith("@")
         and column.column != "@resolved_weight"
+        and column.entity != "frame"
         and contract.kind in {"primary_puf", "source_finalizer"}
     }
     if set(available_inputs) != expected_available_keys:
@@ -5792,6 +5793,16 @@ def _late_input_column_readiness_rows(
 ) -> tuple[int, int]:
     """Return ``(missing_rows, invalid_values)`` for one declared column."""
 
+    if input_column.entity == "frame":
+        if not input_column.column.startswith("@"):
+            raise ValueError(
+                "Frame-level late inputs require an @ name; "
+                f"got {input_column.column!r}."
+            )
+        metadata_key = input_column.column.removeprefix("@")
+        return (
+            (0, 0) if isinstance(frame.metadata.get(metadata_key), Mapping) else (1, 0)
+        )
     table = frame.table(input_column.entity)
     scope = _late_required_scope_mask(
         frame,
@@ -5880,12 +5891,42 @@ def _assert_primary_puf_stage_complete(frame: Frame) -> None:
     contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[US_LATE_PRIMARY_PUF_STAGE]
     failures: list[str] = []
     for output in contract.outputs:
+        if output.entity == "frame":
+            metadata_key = output.column.removeprefix("@")
+            if not isinstance(frame.metadata.get(metadata_key), Mapping):
+                failures.append(
+                    f"frame.{output.column}: metadata receipt absent on "
+                    f"{output.coverage_scope}"
+                )
+            continue
         table = frame.table(output.entity)
         scope = _late_required_scope_mask(
             frame,
             entity=output.entity,
             required_scope=output.coverage_scope,
         )
+        if output.column == "@resolved_weight":
+            weights = np.asarray(
+                frame.resolve_weights(output.entity).values,
+                dtype=np.float64,
+            )
+            if weights.shape != (len(table),):
+                failures.append(
+                    f"{output.entity}.@resolved_weight: shape {weights.shape} "
+                    f"does not match {(len(table),)}"
+                )
+            else:
+                count = int(
+                    (
+                        ~np.isfinite(weights) & scope.to_numpy(dtype=bool, copy=False)
+                    ).sum()
+                )
+                if count:
+                    failures.append(
+                        f"{output.entity}.@resolved_weight: {count} invalid "
+                        f"row(s) on {output.coverage_scope}"
+                    )
+            continue
         if output.column not in table:
             failures.append(
                 f"{output.entity}.{output.column}: column absent on "

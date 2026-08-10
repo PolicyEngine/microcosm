@@ -179,6 +179,19 @@ and the complete proof rerun are closed.
   surface: 28 physical provenance columns across six grains, household weight,
   and the assembly/stacked/PUF-attachment metadata receipts. It fails on the
   currently undeclared peer-grain inputs as expected.
+- Bound that full validation surface into registry schema v5. Primary PUF now
+  declares the 28 remapped structural columns, six resolved-weight resources,
+  and attachment metadata as outputs; each transfer declares all peer-grain
+  columns, household weight, and the three exact frame manifests. A poisoned
+  family clone index and each missing manifest refuse a person-target transfer
+  before its callback, naming the input and producing stage.
+- Completed the strict numeric audit across all 16 source inventories and the
+  70 late targets. Raw CPS code/value fields, wrapper IDs, weeks/role fields,
+  adult/education inputs, and optional transfer predictors now fail on present
+  nonfinite values. Direct late-target dependencies are import-partitioned into
+  51 finite numerics, 17 domain-checked booleans, and two strings. The registry
+  remains 37 producers/70 edges with waves `(1, 17, 14, 3, 2)`; all 17 DAG
+  regressions and the targeted runtime refusals pass.
 
 ## Next
 

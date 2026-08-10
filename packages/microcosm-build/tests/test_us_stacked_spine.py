@@ -2574,18 +2574,6 @@ def _fill_late_contract_surface(
     include_outputs: bool,
 ) -> Frame:
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    protected = {
-        column
-        for entity in frame.entities
-        for column in (
-            frame.schema.entity_id_column(entity),
-            support_channel_column(entity),
-            support_clone_index_column(entity),
-        )
-    }
-    protected.update(
-        frame.schema.membership_column(entity) for entity in frame.schema.group_entities
-    )
     owners = {
         column: entity for entity, table in tables.items() for column in table.columns
     }
@@ -2614,11 +2602,13 @@ def _fill_late_contract_surface(
             owners.update((column.column, column.entity) for column in selected)
         if include_outputs:
             for output in contract.outputs:
+                if output.entity == "frame" or output.column.startswith("@"):
+                    continue
                 columns.append(ProducerInputColumn(output.entity, output.column))
                 owners[output.column] = output.entity
         for column in columns:
             table = tables[column.entity]
-            if column.column in protected and column.column in table:
+            if column.column in table:
                 table[column.column] = table[column.column].fillna(1)
             elif column.column != "person_support_clone_index":
                 table[column.column] = 1.0
@@ -2689,6 +2679,124 @@ def test_canonical_transfer_rejects_nonfinite_optional_numeric_as_invalid() -> N
         )
 
 
+def test_person_transfer_refuses_invalid_peer_grain_provenance_before_fit() -> None:
+    contract = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[
+        "transfer:person/adult_care"
+    ]
+    complete = _fill_late_contract_surface(
+        _post_puf_transfer_fixture(),
+        contracts=(contract,),
+        include_outputs=False,
+    )
+    family = complete.table("family").copy()
+    family["family_support_clone_index"] = family["family_support_clone_index"].astype(
+        float
+    )
+    family.loc[family.index[0], "family_support_clone_index"] = np.inf
+    tables = {entity: complete.table(entity) for entity in complete.entities}
+    tables["family"] = family
+    poisoned = Frame(
+        tables,
+        complete.schema,
+        {entity: complete.weights_for(entity) for entity in complete.weighted_entities},
+        complete.strata,
+        mass_log=complete.mass_log,
+        metadata=complete.metadata,
+    )
+    direct = next(
+        item
+        for item in contract.inputs
+        if item.entity == "family"
+        and item.column == "family_support_clone_index"
+        and item.producing_stage == stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
+    )
+
+    unfilled, invalid = stacked_spine_module._late_input_readiness_rows(
+        poisoned,
+        contract,
+    )
+
+    assert unfilled[direct] == 0
+    assert invalid[direct] == 1
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"(?s)transfer:person/adult_care.*"
+            r"family\.family_support_clone_index.*1 invalid.*primary_puf_qrf"
+        ),
+    ):
+        stacked_spine_module.run_producer_when_ready(
+            contract,
+            lambda: pytest.fail("peer-grain poison reached transfer fit"),
+            unfilled_rows=unfilled,
+            invalid_rows=invalid,
+            absence_receipts={},
+        )
+
+
+@pytest.mark.parametrize(
+    ("metadata_key", "producing_stage"),
+    (
+        ("us_spine_assembly_manifest", "post_clone_input_surface"),
+        ("us_stacked_spine_manifest", "post_clone_input_surface"),
+        ("us_puf_clone_attachment_manifest", "primary_puf_qrf"),
+    ),
+)
+def test_transfer_refuses_missing_validation_metadata_before_fit(
+    metadata_key: str,
+    producing_stage: str,
+) -> None:
+    contract = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[
+        "transfer:person/adult_care"
+    ]
+    complete = _fill_late_contract_surface(
+        _post_puf_transfer_fixture(),
+        contracts=(contract,),
+        include_outputs=False,
+    )
+    missing = Frame(
+        {entity: complete.table(entity) for entity in complete.entities},
+        complete.schema,
+        {entity: complete.weights_for(entity) for entity in complete.weighted_entities},
+        complete.strata,
+        mass_log=complete.mass_log,
+        metadata={
+            key: value
+            for key, value in complete.metadata.items()
+            if key != metadata_key
+        },
+    )
+    requirement = next(
+        item
+        for item in contract.inputs
+        if item.producing_stage == producing_stage
+        and any(
+            column.entity == "frame" and column.column == f"@{metadata_key}"
+            for alternative in item.alternatives
+            for column in alternative
+        )
+    )
+
+    unfilled, invalid = stacked_spine_module._late_input_readiness_rows(
+        missing,
+        contract,
+    )
+
+    assert unfilled[requirement] == 1
+    assert invalid[requirement] == 0
+    with pytest.raises(
+        ValueError,
+        match=rf"(?s)transfer:person/adult_care.*{producing_stage}",
+    ):
+        stacked_spine_module.run_producer_when_ready(
+            contract,
+            lambda: pytest.fail("missing metadata reached transfer fit"),
+            unfilled_rows=unfilled,
+            invalid_rows=invalid,
+            absence_receipts={},
+        )
+
+
 def test_real_late_executor_follows_canonical_order_and_finalizes_sources_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2709,6 +2817,20 @@ def test_real_late_executor_follows_canonical_order_and_finalizes_sources_once(
             frame,
             clone_attachment_fraction=1.0,
             clone_attachment_seed=578,
+        )
+        attached = Frame(
+            {entity: attached.table(entity) for entity in attached.entities},
+            attached.schema,
+            {
+                entity: attached.weights_for(entity)
+                for entity in attached.weighted_entities
+            },
+            attached.strata,
+            mass_log=attached.mass_log,
+            metadata={
+                **attached.metadata,
+                "us_puf_clone_attachment_manifest": {"fixture": True},
+            },
         )
         completed = _fill_late_contract_surface(
             attached,
