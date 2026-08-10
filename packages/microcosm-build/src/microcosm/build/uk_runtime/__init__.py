@@ -1,5 +1,9 @@
 """UK build helpers for Microcosm-owned local-geography artifacts."""
 
+from microcosm.build.uk_runtime.battery_bindings import (
+    UK_GATE_REGISTRY,
+    UKGateBinding,
+)
 from microcosm.build.uk_runtime.cgt_calibration import (
     UK_CGT_ANNUAL_EXEMPT_AMOUNTS,
     UK_CGT_GAINS_AMOUNT_COLUMN,
@@ -402,8 +406,10 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 
 __all__ = [
     "ARTIFACT_CLONE_INDEX_COLUMN",
+    "UKGateBinding",
     "UKRowwiseDoctrineSolve",
     "UK_CGT_ANNUAL_EXEMPT_AMOUNTS",
+    "UK_GATE_REGISTRY",
     "UK_FRAME_METADATA_KEY",
     "UK_LOCAL_MAX_WEIGHT_RATIO",
     "UK_LOCAL_SOLVE_DOCTRINE",
