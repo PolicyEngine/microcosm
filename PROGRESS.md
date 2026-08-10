@@ -163,6 +163,11 @@ and the complete proof rerun are closed.
 - Made both readiness maps exact contract surfaces: omitting a declared input
   can no longer default to a false zero, and extra inputs also fail with a
   canonical diagnostic. The focused DAG file now passes all 14 regressions.
+- The receipt-integrity audit identified the source finalizer as an undeclared
+  mutating producer: it consumes all 16 source receipts and creates three typed
+  null SCF deferral columns. Added a red registry regression requiring an
+  explicit 37th finalizer node, 16 incoming edges, and its exact three-output
+  surface; collection fails because that node is not implemented yet.
 
 ## Next
 

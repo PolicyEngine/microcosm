@@ -22,6 +22,7 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_TRANSFER_GROUPS,
     US_LATE_EXTERNAL_STAGES,
     US_LATE_PRIMARY_PUF_STAGE,
+    US_LATE_SOURCE_FINALIZER_STAGE,
     US_LATE_SOURCE_INPUT_INVENTORIES,
     source_producer_name,
     transfer_producer_name,
@@ -203,13 +204,14 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
     registry = CANONICAL_US_LATE_PRODUCER_REGISTRY
     groups = CANONICAL_US_LATE_TRANSFER_GROUPS
 
-    assert len(registry) == 36
+    assert len(registry) == 37
     assert len(groups) == 19
     assert sum(len(group.targets) for group in groups) == 70
     assert {contract.kind for contract in registry.values()} == {
         "primary_puf",
         "post_clone_source",
         "late_transfer",
+        "source_finalizer",
     }
     assert len(registry[US_LATE_PRIMARY_PUF_STAGE].inputs) == 15
     primary_outputs = registry[US_LATE_PRIMARY_PUF_STAGE].outputs
@@ -242,7 +244,7 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
 def test_canonical_us_late_registry_declares_required_cross_producer_edges() -> None:
     edges = set(CANONICAL_US_LATE_PRODUCER_SCHEDULE.edges)
 
-    assert len(edges) == 54
+    assert len(edges) == 70
     assert (
         source_producer_name("with_us_pregnancy_inputs"),
         source_producer_name("with_us_wic_claim_input"),
@@ -273,6 +275,24 @@ def test_canonical_us_late_registry_declares_required_cross_producer_edges() -> 
         for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
     }
     assert CANONICAL_US_LATE_PRODUCER_SCHEDULE.waves[0] == (US_LATE_PRIMARY_PUF_STAGE,)
+    assert CANONICAL_US_LATE_PRODUCER_SCHEDULE.waves[-1] == (
+        US_LATE_SOURCE_FINALIZER_STAGE,
+    )
+    assert {
+        producer
+        for producer, consumer in edges
+        if consumer == US_LATE_SOURCE_FINALIZER_STAGE
+    } == {
+        source_producer_name(operator)
+        for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+    }
+    assert {
+        (output.entity, output.column, output.coverage_scope)
+        for output in registry[US_LATE_SOURCE_FINALIZER_STAGE].outputs
+    } == {
+        ("person", column, "whole_pool")
+        for column in ("bank_account_assets", "bond_assets", "stock_assets")
+    }
 
 
 def test_production_adult_care_contract_refuses_missing_sstb_before_callback() -> None:
@@ -327,7 +347,7 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
     assert receipt["schema_version"] == 3
     assert receipt["status"] == "derived_and_import_validated"
     assert receipt["schedule_sha256"] == reconstructed.sha256
-    assert receipt["producer_count"] == 36
+    assert receipt["producer_count"] == 37
     assert receipt["source_producer_count"] == 16
     assert receipt["transfer_group_count"] == 19
     assert receipt["transfer_target_count"] == 70
