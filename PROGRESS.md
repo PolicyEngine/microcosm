@@ -150,6 +150,11 @@ and the complete proof rerun are closed.
   investment alternatives is finite-numeric. All 12 focused DAG tests pass;
   the contract-only change preserves 54 edges and wave sizes `(1, 17, 14, 3,
   1)` while changing the schedule/payload identity as intended.
+- Added red readiness regressions proving that a declared-absence receipt may
+  authorize missing optional cells but never nonnumeric or nonfinite values.
+  One exercises the generic fence and one poisons a canonical adult-care
+  transfer predictor; both fail because the implementation does not yet expose
+  separate missing and invalid counts.
 
 ## Next
 

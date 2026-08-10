@@ -2627,6 +2627,63 @@ def _fill_late_contract_surface(
     )
 
 
+def test_canonical_transfer_rejects_nonfinite_optional_numeric_as_invalid() -> None:
+    contract = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[
+        "transfer:person/adult_care"
+    ]
+    complete = _fill_late_contract_surface(
+        _post_puf_transfer_fixture(),
+        contracts=(contract,),
+        include_outputs=False,
+    )
+    person = complete.table("person").copy()
+    person.loc[person.index[0], "employment_income_before_lsr"] = np.inf
+    tables = {entity: complete.table(entity) for entity in complete.entities}
+    tables["person"] = person
+    poisoned = Frame(
+        tables,
+        complete.schema,
+        {entity: complete.weights_for(entity) for entity in complete.weighted_entities},
+        complete.strata,
+        mass_log=complete.mass_log,
+        metadata=complete.metadata,
+    )
+    requirement = next(
+        item
+        for item in contract.inputs
+        if item.column == "@effective:optional_employment_income"
+    )
+
+    unfilled, invalid = stacked_spine_module._late_input_readiness_rows(
+        poisoned,
+        contract,
+    )
+    absence = stacked_spine_module._late_declared_absence_receipts(
+        contract,
+        unfilled,
+        invalid_rows=invalid,
+    )
+
+    assert unfilled[requirement] == 0
+    assert invalid[requirement] == 1
+    assert requirement.tolerated_absence_receipts[0] not in absence
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"(?s)transfer:person/adult_care.*"
+            r"person\.@effective:optional_employment_income.*1 invalid.*"
+            r"post_clone_input_surface"
+        ),
+    ):
+        stacked_spine_module.run_producer_when_ready(
+            contract,
+            lambda: pytest.fail("invalid predictor reached transfer callback"),
+            unfilled_rows=unfilled,
+            invalid_rows=invalid,
+            absence_receipts=absence,
+        )
+
+
 def test_real_late_executor_follows_canonical_order_and_finalizes_sources_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

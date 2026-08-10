@@ -88,6 +88,48 @@ def test_unfilled_late_input_refuses_before_producer_runs() -> None:
     assert invoked is False
 
 
+def test_declared_absence_never_tolerates_invalid_input() -> None:
+    receipt_id = "optional_input:consumer:predictor"
+    requirement = ProducerInput(
+        entity="person",
+        column="@effective:predictor",
+        required_scope="whole_pool",
+        producing_stage="post_clone_input_surface",
+        tolerated_absence_receipts=(receipt_id,),
+    )
+    consumer = ProducerContract(
+        name="consumer",
+        kind="fixture",
+        inputs=(requirement,),
+        outputs=(),
+    )
+    forged_absence = {
+        receipt_id: {
+            "receipt_id": receipt_id,
+            "status": "declared_absence",
+            "entity": "person",
+            "column": "@effective:predictor",
+            "required_scope": "whole_pool",
+            "rows": 1,
+        }
+    }
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"(?s)consumer.*person\.@effective:predictor.*1 invalid.*"
+            r"post_clone_input_surface"
+        ),
+    ):
+        run_producer_when_ready(
+            consumer,
+            lambda: pytest.fail("invalid input reached callback"),
+            unfilled_rows={requirement: 0},
+            invalid_rows={requirement: 1},
+            absence_receipts=forged_absence,
+        )
+
+
 def test_synthetic_producer_cycle_is_rejected_with_named_cycle() -> None:
     registry = {
         "alpha": _contract("alpha", "charlie"),
