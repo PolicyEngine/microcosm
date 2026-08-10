@@ -54,6 +54,7 @@ __all__ = [
     "SourceInputInventory",
     "TransferProducerGroup",
     "US_LATE_EXTERNAL_STAGES",
+    "US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT",
     "US_LATE_PRIMARY_PUF_STAGE",
     "US_LATE_SOURCE_FINALIZER_STAGE",
     "US_LATE_PRIMARY_PUF_INPUT_INVENTORY",
@@ -64,6 +65,8 @@ __all__ = [
     "US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION",
     "US_LATE_SOURCE_INPUT_INVENTORIES",
     "US_LATE_TRANSFER_INPUT_INVENTORIES",
+    "US_LATE_TRANSFER_MODEL_CONFIG_INPUT",
+    "US_LATE_TRANSFER_TARGET_BANK_INPUT",
     "source_producer_name",
     "transfer_producer_name",
     "us_late_producer_schedule_payload",
@@ -94,9 +97,9 @@ _CHILDCARE_OUTPUT = "spm_unit_pre_subsidy_childcare_expenses"
 _PREGNANCY_OUTPUT = "is_pregnant"
 _CLONE_ATTACHMENT_OUTPUT = "person_support_clone_index"
 _SOURCE_RECEIPT_PREFIX = "@source_receipt:"
-_PRIMARY_EXECUTION_CONFIG_INPUT = "@primary_puf_execution_config"
-_TRANSFER_MODEL_CONFIG_INPUT = "@late_transfer_model_config"
-_TRANSFER_TARGET_BANK_INPUT = "@late_transfer_target_bank"
+US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT = "@primary_puf_execution_config"
+US_LATE_TRANSFER_MODEL_CONFIG_INPUT = "@late_transfer_model_config"
+US_LATE_TRANSFER_TARGET_BANK_INPUT = "@late_transfer_target_bank"
 _STRUCTURAL_ENTITIES = (
     "person",
     "household",
@@ -1020,7 +1023,7 @@ US_LATE_PRIMARY_PUF_INPUT_INVENTORY = _inventory(
     _single(
         "primary_puf_execution_config",
         "tax_unit",
-        _PRIMARY_EXECUTION_CONFIG_INPUT,
+        US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT,
     ),
 )
 
@@ -1033,12 +1036,12 @@ def _transfer_input_inventory(group: TransferProducerGroup) -> SourceInputInvent
         _single(
             "late_transfer_model_config",
             group.entity,
-            _TRANSFER_MODEL_CONFIG_INPUT,
+            US_LATE_TRANSFER_MODEL_CONFIG_INPUT,
         ),
         _single(
             "late_transfer_target_bank",
             group.entity,
-            _TRANSFER_TARGET_BANK_INPUT,
+            US_LATE_TRANSFER_TARGET_BANK_INPUT,
         ),
     ]
     return _inventory(
