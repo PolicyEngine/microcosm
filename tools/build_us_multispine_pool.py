@@ -167,6 +167,7 @@ from microcosm.build.us_runtime.stacked_spine import (
     stacked_gap_fill_producer_schedule_receipt,
     stacked_spine_authority_receipt,
     validate_stacked_late_producer_receipt,
+    validate_stacked_late_producer_transition_authority,
     validate_stacked_spine_frame,
 )
 from microcosm.build.us_runtime.support_provenance import (
@@ -219,6 +220,9 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 #    full source-input inventories, and nineteen bounded transfer groups, is
 #    bound into checkpoint identity.  Fixed source-then-transfer checkpoints
 #    are deliberately stale.
+# 5: Stacked transferred and simulated checkpoints carry and validate the
+#    independently propagated late-producer transition authority. Earlier
+#    envelopes cannot authenticate a reissued execution receipt.
 #
 # Bump this version whenever any producer above changes a stage output without
 # changing one of the explicit identity fields below. In particular, adding,
@@ -233,7 +237,7 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 # normalizes that logical view in memory. Moving between those encodings does
 # not change a producer's scalar output and therefore does not advance this
 # ledger; changing string values or the canonical logical dtype policy does.
-POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 4
+POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 5
 
 _PRIMARY_QRF_N_ESTIMATORS = 100
 _ACS_TRANSFER_N_ESTIMATORS = 100
@@ -258,10 +262,10 @@ _STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
     1.00: "f100",
 }
 _STACKED_PIPELINE = "us-stacked-pool"
-# Version 8 binds the derived late-stage producer-input DAG and replaces the
-# fixed source-completion-then-transfer execution. Earlier checkpoints must
-# rebuild rather than resume into a different producer schedule.
-_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 8
+# Version 9 additionally binds the content-authenticated late-stage execution
+# receipt and its independently propagated transition authority. Earlier
+# checkpoints must rebuild rather than resume without that immutable anchor.
+_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 9
 _STACKED_RELEASE_ID_PATTERN = re.compile(
     r"^populace-us-2024-stacked-f(?:001|010|100)-s[0-9]+-"
     r"asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
@@ -294,6 +298,7 @@ class StackedPoolBuildResult:
     terminal_gates: tuple[GateResult, GateResult]
     release_id: str
     qbi_transition_authority_sha256: str | None = None
+    late_producer_transition_authority_sha256: str | None = None
 
     @property
     def simulation_ready(self) -> bool:
@@ -1373,6 +1378,16 @@ class _PoolStageCheckpointStore:
             boundary=f"pool {stage} checkpoint write",
         )
         qbi_route = _checkpoint_qbi_route(self._base_identity)
+        if stage in {"transferred", "simulated"} and qbi_route == "stacked":
+            _validate_stacked_post_puf_stage_receipt(
+                persistent_frame,
+                checkpoint.stage_receipts,
+                boundary=f"pool {stage} durable checkpoint write",
+                transition_authority_sha256=(
+                    checkpoint.late_producer_transition_authority_sha256
+                ),
+                require_live_output=stage == "transferred",
+            )
         if stage == "simulated" and qbi_route is not None:
             _validate_qbi_stage_receipt(
                 persistent_frame,
@@ -1446,6 +1461,10 @@ class _PoolStageCheckpointStore:
             metadata["qbi_transition_authority_sha256"] = (
                 checkpoint.qbi_transition_authority_sha256
             )
+        if checkpoint.late_producer_transition_authority_sha256 is not None:
+            metadata["late_producer_transition_authority_sha256"] = (
+                checkpoint.late_producer_transition_authority_sha256
+            )
         path = self.checkpoint_path(stage)
         started_at = time.perf_counter()
         write_frame_checkpoint(path, stored_frame, metadata=metadata)
@@ -1476,6 +1495,15 @@ class _PoolStageCheckpointStore:
                         ]
                     }
                     if "qbi_transition_authority_sha256" in metadata
+                    else {}
+                ),
+                **(
+                    {
+                        "late_producer_transition_authority_sha256": metadata[
+                            "late_producer_transition_authority_sha256"
+                        ]
+                    }
+                    if "late_producer_transition_authority_sha256" in metadata
                     else {}
                 ),
             },
@@ -1729,6 +1757,7 @@ class _PoolStageCheckpointStore:
                 "frame_schema",
                 "frame_metadata",
                 "qbi_transition_authority_sha256",
+                "late_producer_transition_authority_sha256",
             ):
                 if metadata.get(key) != manifest.get(key):
                     raise ValueError(
@@ -1755,6 +1784,9 @@ class _PoolStageCheckpointStore:
             stage_receipts = metadata.get("stage_receipts")
             qbi_transition_authority_sha256 = metadata.get(
                 "qbi_transition_authority_sha256"
+            )
+            late_producer_transition_authority_sha256 = metadata.get(
+                "late_producer_transition_authority_sha256"
             )
             input_receipts = metadata.get("input_receipts")
             if not isinstance(assembly_receipt, Mapping):
@@ -1797,6 +1829,16 @@ class _PoolStageCheckpointStore:
                 persistent_frame = _without_simulation_output(frame)
 
             qbi_route = _checkpoint_qbi_route(self._base_identity)
+            if stage in {"transferred", "simulated"} and qbi_route == "stacked":
+                _validate_stacked_post_puf_stage_receipt(
+                    persistent_frame,
+                    restored_stage_receipts,
+                    boundary=f"pool {stage} durable checkpoint load",
+                    transition_authority_sha256=(
+                        late_producer_transition_authority_sha256
+                    ),
+                    require_live_output=stage == "transferred",
+                )
             if stage == "simulated" and qbi_route is not None:
                 _validate_qbi_stage_receipt(
                     persistent_frame,
@@ -1813,6 +1855,9 @@ class _PoolStageCheckpointStore:
                 stage_receipts=restored_stage_receipts,
                 simulation_frame=simulation_frame,
                 qbi_transition_authority_sha256=(qbi_transition_authority_sha256),
+                late_producer_transition_authority_sha256=(
+                    late_producer_transition_authority_sha256
+                ),
             )
             self.bind_input_receipts(input_receipts)
             self._attempts[stage] = {
@@ -2543,9 +2588,12 @@ def _stacked_tail_manifest(
 
 
 def _validate_stacked_post_puf_stage_receipt(
+    frame: Frame,
     stage_receipts: Mapping[str, Mapping[str, object]],
     *,
     boundary: str,
+    transition_authority_sha256: str | None,
+    require_live_output: bool,
 ) -> None:
     """Require the complete DAG proof and both exact compatibility aliases."""
 
@@ -2560,7 +2608,25 @@ def _validate_stacked_post_puf_stage_receipt(
             f"{boundary}: stacked transferred receipts have no late-producer "
             "DAG object."
         )
-    validate_stacked_late_producer_receipt(dag_receipt, boundary=boundary)
+    if not isinstance(transition_authority_sha256, str):
+        raise ValueError(
+            f"{boundary}: independently carried late-producer transition "
+            "authority is absent."
+        )
+    if require_live_output:
+        validate_stacked_late_producer_receipt(
+            dag_receipt,
+            boundary=boundary,
+            frame=frame,
+            expected_transition_authority_sha256=(transition_authority_sha256),
+        )
+    else:
+        validate_stacked_late_producer_transition_authority(
+            frame,
+            dag_receipt,
+            boundary=boundary,
+            expected_transition_authority_sha256=(transition_authority_sha256),
+        )
     transfer_receipt = impute.get("stacked_post_puf_transfer")
     if not isinstance(transfer_receipt, Mapping):
         raise ValueError(
@@ -2666,11 +2732,17 @@ def _emit_stacked_checkpoint(
     stage_receipts: Mapping[str, Mapping[str, object]],
     simulation_frame: Frame | None = None,
     qbi_transition_authority_sha256: str | None = None,
+    late_producer_transition_authority_sha256: str | None = None,
 ) -> None:
     if stage in {"transferred", "simulated"}:
         _validate_stacked_post_puf_stage_receipt(
+            frame,
             stage_receipts,
             boundary=f"stacked {stage} checkpoint emission",
+            transition_authority_sha256=(
+                late_producer_transition_authority_sha256
+            ),
+            require_live_output=stage == "transferred",
         )
     if stage == "simulated":
         _validate_qbi_stage_receipt(
@@ -2692,6 +2764,9 @@ def _emit_stacked_checkpoint(
             },
             simulation_frame=simulation_frame,
             qbi_transition_authority_sha256=(qbi_transition_authority_sha256),
+            late_producer_transition_authority_sha256=(
+                late_producer_transition_authority_sha256
+            ),
         )
     )
 
@@ -2737,6 +2812,7 @@ def build_stacked_pool(
         assembly_receipt = current.metadata[SPINE_ASSEMBLY_MANIFEST_KEY]
         receipts: dict[str, Mapping[str, object]] = {}
         qbi_transition_authority_sha256: str | None = None
+        late_producer_transition_authority_sha256: str | None = None
         resume_stage: str | None = None
         _emit_stacked_checkpoint(
             checkpoint,
@@ -2769,11 +2845,19 @@ def build_stacked_pool(
             name: dict(receipt) for name, receipt in resume.stage_receipts.items()
         }
         qbi_transition_authority_sha256 = resume.qbi_transition_authority_sha256
+        late_producer_transition_authority_sha256 = (
+            resume.late_producer_transition_authority_sha256
+        )
         resume_stage = resume.stage
         if resume_stage in {"transferred", "simulated"}:
             _validate_stacked_post_puf_stage_receipt(
+                current,
                 receipts,
                 boundary=f"stacked {resume_stage} checkpoint resume",
+                transition_authority_sha256=(
+                    late_producer_transition_authority_sha256
+                ),
+                require_live_output=resume_stage == "transferred",
             )
         if resume_stage == "simulated":
             _validate_qbi_stage_receipt(
@@ -2921,9 +3005,16 @@ def build_stacked_pool(
             max_targets_per_fit=DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
             target_banks=late_target_banks,
         )
+        late_producer_transition_authority_sha256 = (
+            late_stage.transition_authority_sha256
+        )
         validate_stacked_late_producer_receipt(
             late_stage.receipt,
             boundary="stacked cold-build late-producer DAG",
+            frame=late_stage.frame,
+            expected_transition_authority_sha256=(
+                late_producer_transition_authority_sha256
+            ),
         )
         puf_result = late_stage.primary_puf_result
         puf_receipt = dict(puf_result.receipt)
@@ -3023,6 +3114,9 @@ def build_stacked_pool(
             frame=current,
             assembly_receipt=assembly_receipt,
             stage_receipts=receipts,
+            late_producer_transition_authority_sha256=(
+                late_producer_transition_authority_sha256
+            ),
         )
         mark_phase("transferred")
     else:
@@ -3095,6 +3189,9 @@ def build_stacked_pool(
             stage_receipts=receipts,
             simulation_frame=simulation_frame,
             qbi_transition_authority_sha256=(qbi_transition_authority_sha256),
+            late_producer_transition_authority_sha256=(
+                late_producer_transition_authority_sha256
+            ),
         )
         mark_phase("simulated")
     else:
@@ -3135,6 +3232,9 @@ def build_stacked_pool(
         terminal_gates=(completeness, battery),
         release_id=release_id,
         qbi_transition_authority_sha256=qbi_transition_authority_sha256,
+        late_producer_transition_authority_sha256=(
+            late_producer_transition_authority_sha256
+        ),
     )
 
 
@@ -3247,8 +3347,13 @@ def _stacked_manifest_payload(
     """Build the stacked-only manifest without changing the legacy envelope."""
 
     _validate_stacked_post_puf_stage_receipt(
+        result.frame,
         result.stage_receipts,
         boundary="stacked production manifest",
+        transition_authority_sha256=(
+            result.late_producer_transition_authority_sha256
+        ),
+        require_live_output=False,
     )
     _validate_qbi_stage_receipt(
         result.frame,
@@ -3309,6 +3414,9 @@ def _stacked_manifest_payload(
             role: pin.to_manifest() for role, pin in verified_inputs.items()
         },
         "input_pins_digest": _input_pins_digest(verified_inputs),
+        "late_producer_transition_authority_sha256": (
+            result.late_producer_transition_authority_sha256
+        ),
         "asec_raw_stage_checkpoint": input_receipts.get("asec_raw_stage_checkpoint"),
         "acs_source_manifest": asdict(acs_source_manifest),
         "acs_pums_build": input_receipts.get("acs_pums_build"),
@@ -3525,8 +3633,13 @@ def _write_stacked_outputs(
     """Atomically publish the stacked input-only pool and terminal receipts."""
 
     _validate_stacked_post_puf_stage_receipt(
+        result.frame,
         result.stage_receipts,
         boundary="stacked publication entry",
+        transition_authority_sha256=(
+            result.late_producer_transition_authority_sha256
+        ),
+        require_live_output=False,
     )
     _validate_qbi_stage_receipt(
         result.frame,
