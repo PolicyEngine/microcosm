@@ -50,6 +50,16 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 _CANONICAL_UK_RELEASE_ID = re.compile(r"populace-uk-\d{4}-(?:frs|cps-transfer)-k\d+")
 _UK_JUNE_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 
+#: The one named dev-scale statistical edge receipted on a rung (#657,
+#: closed without code): sklearn's stratified split inside the SPI imputation
+#: refuses a singleton class on an unlucky small-sample composition. The
+#: computation is never altered — the rung build aborts, but with a receipt
+#: naming the edge instead of a bare traceback, and the remedy is re-rolling
+#: ``--seed``. Only this named edge is receipted; unknown exceptions crash
+#: loudly, so the receipt path can never absorb a real defect.
+_RUNG_NAMED_EDGE_SIGNATURE = "The least populated classes in y have only 1 member"
+_RUNG_ABORT_EXIT_CODE = 3
+
 
 def _rung_sample_fraction(value: str) -> float:
     """CLI rung policy (#624) over the permissive library validator."""
@@ -450,6 +460,33 @@ def main() -> int:
             sample_fraction=args.sample_fraction,
             sample_seed=args.sample_seed,
         )
+    except ValueError as error:
+        if args.sample_fraction != 1.0 and _RUNG_NAMED_EDGE_SIGNATURE in str(error):
+            receipt = {
+                "schema_version": 1,
+                "artifact_kind": "uk_rung_abort_receipt",
+                "build_kind": "uk_national_staging_dataset",
+                "release_id": str(args.release_id),
+                "sampling": {
+                    "sample_fraction": float(args.sample_fraction),
+                    "sample_seed": int(args.sample_seed),
+                    "rung_token": UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
+                },
+                "seed": int(args.seed),
+                "named_edge": "spi_split_singleton_class",
+                "stage": "hmrc_spi_income",
+                "error": str(error),
+                "disposition": "aborted_with_receipt",
+                "remedy": (
+                    "Re-roll --seed; accepted dev-scale statistical edge "
+                    "(microcosm#657, closed). The computation is never "
+                    "altered to avoid it."
+                ),
+            }
+            _write_json(args.staging_h5.with_suffix(".rung_abort.json"), receipt)
+            print(json.dumps(receipt, indent=2, sort_keys=True))
+            return _RUNG_ABORT_EXIT_CODE
+        raise
     except RuntimeError as error:
         if (
             _is_final_release_gate_failure(error)

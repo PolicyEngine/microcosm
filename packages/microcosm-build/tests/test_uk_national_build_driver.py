@@ -883,3 +883,99 @@ def test_staging_run_config_pins_the_sampling_identity(monkeypatch, tmp_path) ->
         "sample_seed": 7,
         "rung_token": "f001",
     }
+
+
+def _rung_abort_argv(tmp_path: Path, *, fraction: str) -> list[str]:
+    frs_raw_dir = tmp_path / "frs_2023_24"
+    frs_raw_dir.mkdir(exist_ok=True)
+    for name in ("adult.tab", "benefits.tab"):
+        (frs_raw_dir / name).write_bytes(b"x")
+    for name in ("base.h5", "put2223uk.tab", "hmrc.ods"):
+        (tmp_path / name).write_bytes(b"x")
+    return [
+        "build_uk_national_dataset.py",
+        "--release-id",
+        "uk-dev-rung",
+        "--calibration-diagnostics-sha256",
+        "c" * 64,
+        "--input-h5",
+        str(tmp_path / "base.h5"),
+        "--staging-h5",
+        str(tmp_path / "staging.h5"),
+        "--frs-raw-dir",
+        str(frs_raw_dir),
+        "--spi-tab",
+        str(tmp_path / "put2223uk.tab"),
+        "--hmrc-ods",
+        str(tmp_path / "hmrc.ods"),
+        "--sample-fraction",
+        fraction,
+    ]
+
+
+def _named_edge_error() -> ValueError:
+    return ValueError(
+        "The least populated classes in y have only 1 member, which is too "
+        "few. The minimum number of groups for any class cannot be less "
+        "than 2. Classes with too few members are: [0.0]"
+    )
+
+
+def _install_rung_abort_seams(builder, monkeypatch, error: Exception) -> None:
+    monkeypatch.setattr(
+        builder,
+        "verify_certified_uk_candidate",
+        lambda path: SimpleNamespace(
+            path=Path(path).resolve(),
+            filename="populace_uk_2023.h5",
+            tier="frs",
+            revision="test-revision",
+            sha256="a" * 64,
+            size_bytes=1,
+        ),
+    )
+
+    def raising_build(**_kwargs):
+        raise error
+
+    monkeypatch.setattr(builder, "build_uk_national_dataset", raising_build)
+
+
+def test_rung_named_edge_aborts_with_a_receipt(monkeypatch, tmp_path) -> None:
+    """The one named dev-scale edge (#657) receipts instead of crashing."""
+
+    builder = _load_builder_module()
+    _install_rung_abort_seams(builder, monkeypatch, _named_edge_error())
+    monkeypatch.setattr(sys, "argv", _rung_abort_argv(tmp_path, fraction="0.10"))
+
+    assert builder.main() == builder._RUNG_ABORT_EXIT_CODE
+
+    receipt = json.loads((tmp_path / "staging.rung_abort.json").read_text())
+    assert receipt["named_edge"] == "spi_split_singleton_class"
+    assert receipt["disposition"] == "aborted_with_receipt"
+    assert receipt["sampling"]["rung_token"] == "f010"
+    assert "least populated classes" in receipt["error"]
+
+
+def test_full_scale_named_edge_still_crashes(monkeypatch, tmp_path) -> None:
+    builder = _load_builder_module()
+    _install_rung_abort_seams(builder, monkeypatch, _named_edge_error())
+    monkeypatch.setattr(sys, "argv", _rung_abort_argv(tmp_path, fraction="1.0"))
+
+    with pytest.raises(ValueError, match="least populated classes"):
+        builder.main()
+    assert not (tmp_path / "staging.rung_abort.json").exists()
+
+
+def test_rung_unknown_exception_still_crashes(monkeypatch, tmp_path) -> None:
+    """Only the named edge is receipted — the path cannot absorb defects."""
+
+    builder = _load_builder_module()
+    _install_rung_abort_seams(
+        builder, monkeypatch, ValueError("some entirely different failure")
+    )
+    monkeypatch.setattr(sys, "argv", _rung_abort_argv(tmp_path, fraction="0.10"))
+
+    with pytest.raises(ValueError, match="entirely different"):
+        builder.main()
+    assert not (tmp_path / "staging.rung_abort.json").exists()
