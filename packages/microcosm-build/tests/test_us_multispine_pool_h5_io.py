@@ -431,9 +431,15 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
     }
     if stacked:
         dag = _canonical_stacked_late_dag_receipt()
+        transition_authority = (
+            stacked_spine_module._late_producer_transition_authority_receipt(dag)
+        )
         manifest.update(
             {
                 "pipeline": "us-stacked-pool",
+                "late_producer_transition_authority_sha256": (
+                    transition_authority["sha256"]
+                ),
                 "terminal_gates": agreement_gate,
                 "operator_order": [
                     "assemble_stacked_spine",
@@ -467,6 +473,8 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
 
 
 def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
+    """Build a signed fixture receipt over the live canonical contracts."""
+
     schedule = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE
     schedule_receipt = stacked_spine_module._json_ready(
         stacked_spine_module.us_late_producer_schedule_receipt()
@@ -476,46 +484,19 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
         for producer in schedule.order
         if producer.startswith("source:")
     ]
-    execution = []
-    for index, producer_name in enumerate(schedule.order):
-        contract = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[
-            producer_name
-        ]
-        available = {}
-        if producer_name == stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE:
-            for column in ("@puf_donor_tax_units", "@primary_qrf_checkpoint"):
-                key = f"tax_unit.{column}"
-                available[key] = {
-                    "receipt_id": f"available_input:{producer_name}:{key}",
-                    "status": "available",
-                    "producer": producer_name,
-                    "entity": "tax_unit",
-                    "column": column,
-                    "rows": 1,
-                }
-        execution.append(
-            {
-                "execution_index": index,
-                "producer": producer_name,
-                "kind": contract.kind,
-                "declared_inputs": [
-                    {
-                        "entity": item.entity,
-                        "column": item.column,
-                        "required_scope": item.required_scope,
-                        "producing_stage": item.producing_stage,
-                        "unfilled_rows": 0,
-                    }
-                    for item in contract.inputs
-                ],
-                "declared_absence_receipts": {},
-                "available_input_receipts": available,
-                "status": "complete",
-            }
-        )
+    source_receipts = {
+        operator: {
+            "phase": "post_clone",
+            "operator_order": [operator],
+            "cps_source_evidence": None,
+            "suboperators": [{"operator": operator}],
+        }
+        for operator in source_order
+    }
     source_completion = {
         "phase": "post_clone",
         "operator_order": source_order,
+        "cps_source_evidence": None,
         "suboperators": [
             {"operator": operator, "order_index": index}
             for index, operator in enumerate(source_order)
@@ -531,6 +512,42 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
             }
         },
     }
+    group_receipts = {
+        group.name: {
+            "producer": group.name,
+            "entity": group.entity,
+            "family": group.family,
+            "ordered_targets": list(group.targets),
+            "targets": {
+                f"{group.entity}/{group.family}/{target}": {
+                    "residual_null_rows": 0,
+                }
+                for target in group.targets
+            },
+        }
+        for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+    }
+    group_by_name = {
+        group.name: group
+        for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+    }
+    canonical_family = {
+        (entity, target): family
+        for entity, families in (
+            stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
+        )
+        for family, targets in families.items()
+        for target in targets
+    }
+    aggregate_targets = {
+        f"{group.entity}/{canonical_family[(group.entity, target)]}/{target}": (
+            group_receipts[group.name]["targets"][
+                f"{group.entity}/{group.family}/{target}"
+            ]
+        )
+        for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+        for target in group.targets
+    }
     transfer = {
         "authority": dict(stacked_spine_module.stacked_spine_authority_receipt()),
         "producer_schedule": schedule_receipt,
@@ -539,21 +556,8 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
             for producer in schedule.order
             if producer != stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
         ],
-        "groups": {
-            group.name: {
-                "producer": group.name,
-                "ordered_targets": list(group.targets),
-            }
-            for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
-        },
-        "targets": {
-            f"{entity}/{family}/{target}": {"residual_null_rows": 0}
-            for entity, families in (
-                stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
-            )
-            for family, targets in families.items()
-            for target in targets
-        },
+        "groups": group_receipts,
+        "targets": aggregate_targets,
         "completion": {
             "status": "complete",
             "group_count": 19,
@@ -561,12 +565,131 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
             "residual_null_rows": 0,
         },
     }
-    return {
+    input_frame_sha256 = "1" * 64
+    previous_sha256 = stacked_spine_module._late_execution_genesis_sha256(
+        producer_schedule_sha256=schedule_receipt["payload_sha256"],
+        input_frame_sha256=input_frame_sha256,
+    )
+    execution = []
+    for index, producer_name in enumerate(schedule.order):
+        contract = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[
+            producer_name
+        ]
+        available = {
+            f"{column.entity}.{column.column}": {
+                "receipt_id": (
+                    f"available_input:{producer_name}:{column.entity}.{column.column}"
+                ),
+                "status": "available",
+                "producer": producer_name,
+                "entity": column.entity,
+                "column": column.column,
+                "rows": 1,
+            }
+            for requirement in contract.inputs
+            for alternative in requirement.alternatives
+            for column in alternative
+            if column.column.startswith("@")
+            and column.column != "@resolved_weight"
+            and column.entity != "frame"
+            and contract.kind in {"primary_puf", "source_finalizer"}
+        }
+        if contract.kind == "source_finalizer":
+            for operator, source_receipt in source_receipts.items():
+                available[f"person.@source_receipt:{operator}"][
+                    "source_receipt_sha256"
+                ] = stacked_spine_module._canonical_sha256(source_receipt)
+        declared_inputs = []
+        for requirement in contract.inputs:
+            alternatives = [
+                [
+                    {
+                        "entity": column.entity,
+                        "column": column.column,
+                        "value_kind": column.value_kind,
+                        "required_scope": requirement.required_scope,
+                        "scope_rows": 1,
+                        "missing_rows": 0,
+                        "invalid_rows": 0,
+                        "status": "present",
+                        "content_sha256": "2" * 64,
+                    }
+                    for column in alternative
+                ]
+                for alternative in requirement.alternatives
+            ]
+            evidence = {"alternatives": alternatives}
+            evidence["sha256"] = stacked_spine_module._canonical_sha256(evidence)
+            declared_inputs.append(
+                {
+                    "entity": requirement.entity,
+                    "column": requirement.column,
+                    "required_scope": requirement.required_scope,
+                    "producing_stage": requirement.producing_stage,
+                    "unfilled_rows": 0,
+                    "invalid_rows": 0,
+                    "evidence": evidence,
+                }
+            )
+        output_surface = [
+            {
+                "entity": output.entity,
+                "column": output.column,
+                "coverage_scope": output.coverage_scope,
+                "scope_rows": 1,
+                "status": "present",
+                "content_sha256": "3" * 64,
+            }
+            for output in contract.outputs
+        ]
+        if contract.kind == "post_clone_source":
+            producer_receipt = source_receipts[producer_name.removeprefix("source:")]
+        elif contract.kind == "source_finalizer":
+            producer_receipt = source_completion
+        elif contract.kind == "late_transfer":
+            producer_receipt = group_receipts[group_by_name[producer_name].name]
+        else:
+            producer_receipt = {}
+        row = {
+            "execution_index": index,
+            "producer": producer_name,
+            "kind": contract.kind,
+            "declared_inputs": declared_inputs,
+            "declared_absence_receipts": {},
+            "available_input_receipts": available,
+            "input_surface_sha256": stacked_spine_module._canonical_sha256(
+                declared_inputs
+            ),
+            "output_surface": output_surface,
+            "output_surface_sha256": stacked_spine_module._canonical_sha256(
+                output_surface
+            ),
+            "producer_receipt": producer_receipt,
+            "producer_receipt_sha256": stacked_spine_module._canonical_sha256(
+                producer_receipt
+            ),
+            "previous_execution_sha256": previous_sha256,
+            "status": "complete",
+        }
+        row["sha256"] = stacked_spine_module._canonical_sha256(row)
+        previous_sha256 = row["sha256"]
+        execution.append(row)
+    receipt = {
+        "version": 1,
         "producer_schedule": schedule_receipt,
+        "input_frame_sha256": input_frame_sha256,
+        "output_frame_sha256": "4" * 64,
+        "execution_chain_sha256": previous_sha256,
         "execution": execution,
         "source_completion": source_completion,
         "post_puf_transfer": transfer,
     }
+    receipt["sha256"] = stacked_spine_module._canonical_sha256(receipt)
+    stacked_spine_module.validate_stacked_late_producer_receipt(
+        receipt,
+        boundary="canonical stacked H5 fixture",
+    )
+    return receipt
 
 
 def test_ready_pool_loader_preserves_importance_weights_and_nullable_inputs(
@@ -721,12 +844,19 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
     pytest.importorskip("tables")
     manifest_path = _write_ready_pool(tmp_path, stacked=True)
 
-    _, manifest, _ = load_simulation_ready_us_multispine_pool(manifest_path)
+    frame, manifest, _ = load_simulation_ready_us_multispine_pool(manifest_path)
 
     assert manifest["terminal_gates"] == manifest["agreement_gate"]
+    transition_authority = frame.metadata[
+        stacked_spine_module.US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY
+    ]
+    assert (
+        transition_authority["sha256"]
+        == manifest["late_producer_transition_authority_sha256"]
+    )
 
 
-def test_ready_stacked_pool_loader_requires_schema_five_late_dag_proof(
+def test_ready_stacked_pool_loader_requires_schema_six_late_dag_proof(
     tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")
@@ -736,6 +866,27 @@ def test_ready_stacked_pool_loader_requires_schema_five_late_dag_proof(
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     with pytest.raises(ValueError, match="has no late-producer DAG receipt"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+@pytest.mark.parametrize("authority", [None, "0" * 64])
+def test_ready_stacked_pool_loader_rejects_late_authority_mismatch(
+    tmp_path: Path,
+    authority: str | None,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if authority is None:
+        del manifest["late_producer_transition_authority_sha256"]
+    else:
+        manifest["late_producer_transition_authority_sha256"] = authority
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(
+        ValueError,
+        match="independently carried late-producer transition authority",
+    ):
         load_simulation_ready_us_multispine_pool(manifest_path)
 
 
