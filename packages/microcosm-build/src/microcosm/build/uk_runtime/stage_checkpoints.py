@@ -64,11 +64,20 @@ def _thawed(value: object) -> object:
     ``Frame.metadata`` freezes nested mappings/sequences into private
     frozen types the stage runtime's JSON normalization refuses with an
     unhelpful error; the checkpoint record wants the plain shapes.
+
+    Set members sort by ``repr`` — the same canonical order
+    ``content_identity._jsonable_metadata`` uses. A set has no JSON type,
+    so it round-trips as a sequence (re-freezing yields a tuple); the
+    shared order is what keeps the round trip content-identity-preserving
+    rather than dependent on set iteration order, which varies across
+    processes under hash randomization.
     """
 
     if hasattr(value, "items"):
         return {str(key): _thawed(item) for key, item in value.items()}
-    if isinstance(value, list | tuple | set | frozenset):
+    if isinstance(value, set | frozenset):
+        return sorted((_thawed(item) for item in value), key=repr)
+    if isinstance(value, list | tuple):
         return [_thawed(item) for item in value]
     return value
 

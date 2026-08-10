@@ -954,11 +954,13 @@ def test_checkpoint_metadata_round_trips_the_fit_weight_audit(tmp_path) -> None:
     evidence = {"stage": "hmrc_spi_income", "post_draw_identity_rows": 3}
     replay_payload = {"summary": {"status": "comparisons_passed"}, "facts": {}}
     transform.last_result = SimpleNamespace(
+        frame=_dataset(),
         imputation=SimpleNamespace(fit_weight_records=records),
         evidence=lambda: dict(evidence),
         replay_report=SimpleNamespace(to_payload=lambda: dict(replay_payload)),
     )
     metadata = transform.checkpoint_metadata()
+    assert metadata["output_content_identity"] == uk_frame_content_identity(_dataset())
 
     resumed = UKHMRCIncomeStageTransform(
         spi_tab_path=tmp_path / "put2223uk.tab",
@@ -982,3 +984,8 @@ def test_checkpoint_metadata_round_trips_the_fit_weight_audit(tmp_path) -> None:
 
     with pytest.raises(RuntimeError, match="cannot feed the weights audit"):
         resumed.resume_from_checkpoint({}, _dataset())
+
+    # The terminal stage runs the same drift check as the retained stage:
+    # a frame that does not match the recorded output identity is refused.
+    with pytest.raises(RuntimeError, match="drifted record"):
+        resumed.resume_from_checkpoint(metadata, _tampered_dataset())

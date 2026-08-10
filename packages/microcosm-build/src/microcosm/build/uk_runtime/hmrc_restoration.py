@@ -255,6 +255,9 @@ class UKHMRCIncomeStageTransform:
             ],
             "evidence": self.last_result.evidence(),
             "replay_payload": self.last_result.replay_report.to_payload(),
+            "output_content_identity": uk_frame_content_identity(
+                self.last_result.frame
+            ),
         }
 
     def resume_from_checkpoint(
@@ -262,22 +265,40 @@ class UKHMRCIncomeStageTransform:
         metadata: Mapping[str, object],
         frame: Frame,
     ) -> None:
-        """Rehydrate a completed run's evidence surface from its record."""
+        """Rehydrate a completed run's evidence surface from its record.
+
+        ``frame`` is the stage's checkpointed output; the recorded output
+        identity must match its content — the same drift check the
+        retained-leaves stage runs, and this is the terminal stage, whose
+        frame feeds the batched gates and the staging writer. The runtime's
+        checkpoint sha covers the bytes on disk; this check covers the
+        record/frame pairing.
+        """
 
         payload = metadata.get("fit_weight_records")
         evidence = metadata.get("evidence")
         replay_payload = metadata.get("replay_payload")
+        output_identity = metadata.get("output_content_identity")
         if (
             not isinstance(payload, list)
             or not all(isinstance(entry, Mapping) for entry in payload)
             or not isinstance(evidence, Mapping)
             or not isinstance(replay_payload, Mapping)
+            or not isinstance(output_identity, str)
+            or not output_identity
         ):
             raise RuntimeError(
                 "SPI restoration resume requires the checkpoint record to "
-                "carry the run's fit-weight records, family evidence, and "
-                "replay payload; a record without them cannot feed the "
-                "weights audit or the driver's stage reports."
+                "carry the run's fit-weight records, family evidence, "
+                "replay payload, and output content identity; a record "
+                "without them cannot feed the weights audit, the driver's "
+                "stage reports, or the drift check."
+            )
+        if uk_frame_content_identity(frame) != output_identity:
+            raise RuntimeError(
+                "SPI restoration checkpoint content does not match its "
+                "recorded output identity; refusing to resume from a "
+                "drifted record."
             )
         records = tuple(
             FitWeightRecord(
@@ -339,8 +360,14 @@ class UKHMRCIncomeStageTransform:
             )
         # Descent fence A, content-addressed: the frame this stage received
         # must carry the exact content the retained-leaves stage produced.
-        # Same-object is the free fast path; a rehydrated (checkpointed)
-        # frame passes by content; a substituted or tampered frame does not.
+        # Same-object is the free fast path (identity proves content); a
+        # rehydrated (checkpointed) frame passes by content; a substituted
+        # or tampered frame does not. The content check — and the
+        # absence-is-refusal branch inside _retained_content_identity — is
+        # the cross-process path's guarantee; the fast path shares the
+        # same-process in-place-mutation exposure every consumer of
+        # Frame.table has, mitigated by validate_uk_national_frame's
+        # revalidation at each seam.
         if retained.frame is not frame and _retained_content_identity(
             retained, "output_content_identity"
         ) != uk_frame_content_identity(frame):

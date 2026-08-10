@@ -87,8 +87,24 @@ def test_identity_requires_a_frame() -> None:
         uk_frame_content_identity(object())  # type: ignore[arg-type]
 
 
+def test_unidentifiable_metadata_values_are_refused() -> None:
+    """No repr() fallback: an arbitrary object must never reach the digest.
+
+    An object's default ``repr`` contains its memory address, which would
+    make the identity differ across processes in exactly the dimension the
+    fence exists to make robust. Frame construction refuses such leaves
+    already; the identity function refuses independently rather than
+    relying on another module's gate.
+    """
+
+    from microcosm.build.uk_runtime.content_identity import _jsonable_metadata
+
+    with pytest.raises(TypeError, match="cannot be content-identified"):
+        _jsonable_metadata({"leaked": object()})
+
+
 def test_identity_moves_with_strata() -> None:
-    """Strata are part of the content (the v2 digest closes the v1 gap)."""
+    """Strata are part of the digested content, like tables and weights."""
 
     import numpy as np
 

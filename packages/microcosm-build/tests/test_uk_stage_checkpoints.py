@@ -155,3 +155,52 @@ def test_nested_frame_metadata_round_trips_through_the_stage_record(
     restored = loaded.frame.metadata
     assert restored["provenance"]["tier"] == "frs"
     assert list(restored["provenance"]["sources"]) == ["frs", "spi"]
+
+
+def test_set_metadata_round_trips_with_an_unchanged_content_identity(
+    tmp_path: Path,
+) -> None:
+    """A set in frame metadata must not change the frame's content identity.
+
+    JSON has no set type, so a set rides the record as a sequence and
+    re-freezes as a tuple. The thaw sorts members with the same canonical
+    key the identity digest uses; without that shared order the round trip
+    would produce a spurious "drifted record" refusal downstream, since
+    set iteration order varies across processes under hash randomization.
+    """
+
+    import numpy as np
+
+    from microcosm.build.uk_runtime.content_identity import (
+        uk_frame_content_identity,
+    )
+    from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [1],
+                    "person_household_id": [101],
+                    "person_benunit_id": [11],
+                }
+            ),
+            "benunit": pd.DataFrame({"benunit_id": [11]}),
+            "household": pd.DataFrame(
+                {"household_id": [101], "household_weight": [10.0]}
+            ),
+        },
+        EntitySchema(group_entities=("benunit", "household")),
+        {"household": Weights(np.array([10.0], dtype=np.float64), WeightKind.DESIGN)},
+        metadata={
+            "time_period": "2023",
+            "provenance": {"sources": {"spi", "frs", "ukds"}},
+        },
+    )
+    runtime = _runtime(tmp_path)
+    runtime.complete("retain", frame, metadata=uk_stage_metadata(frame))
+
+    loaded = load_uk_stage_checkpoint(_runtime(tmp_path), "retain")
+    restored = loaded.frame.metadata["provenance"]["sources"]
+    assert list(restored) == ["frs", "spi", "ukds"]
+    assert uk_frame_content_identity(loaded.frame) == uk_frame_content_identity(frame)

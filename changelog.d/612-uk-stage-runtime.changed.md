@@ -14,4 +14,10 @@ record), and the run is pinned by a content-addressed run config (certified
 candidate digest, raw-source digests, seeds); a changed configuration is
 refused. The monolith path is untouched, and the staged build's output is
 content-identical to it. `_UKSourceFileFingerprint` is scope-reduced to the
-mid-read race guard and same-process candidate re-binding.
+mid-read race guard and same-process candidate re-binding. The US PUF
+support tool's private `_builder_code_identity` is promoted to
+`microcosm.build.code_identity.builder_code_identity`; the promoted
+function raises on a repo root that is not a real checkout where the old
+helper silently produced a hollow identity, and
+`build_us_puf_support_base.py` inherits that refusal (its run-config
+contents on a real checkout are unchanged).

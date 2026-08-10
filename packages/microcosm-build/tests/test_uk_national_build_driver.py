@@ -736,6 +736,11 @@ def test_stage_reports_survive_a_checkpoint_resumed_spi_stage(tmp_path):
         hmrc_ods_path=tmp_path / "hmrc.ods",
         certified_candidate=SimpleNamespace(),
     )
+    from microcosm.build.uk_runtime.content_identity import (
+        uk_frame_content_identity,
+    )
+
+    resumed_frame = _toy_result_frame()
     replay_payload = {"summary": {"status": "comparisons_passed"}, "facts": {}}
     hmrc.resume_from_checkpoint(
         {
@@ -744,8 +749,9 @@ def test_stage_reports_survive_a_checkpoint_resumed_spi_stage(tmp_path):
             ],
             "evidence": {"stage": "hmrc_spi_income"},
             "replay_payload": replay_payload,
+            "output_content_identity": uk_frame_content_identity(resumed_frame),
         },
-        None,
+        resumed_frame,
     )
 
     evidence_path = tmp_path / "evidence.json"

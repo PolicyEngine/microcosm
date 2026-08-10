@@ -14,6 +14,16 @@ This is deliberately not
 structural only (ids, memberships, provenance columns) and ignores payload
 values and weights — sufficient for row-order guarantees, too weak for a
 substitution fence.
+
+Two boundaries the digest declares rather than hides. Identities are
+comparable only within a pinned environment: the table bytes ride on
+``pd.util.hash_pandas_object``, which is not guaranteed stable across
+pandas versions — the UK run config pins the environment via
+``builder_code_identity``, and that pin is what makes cross-process
+comparison sound; do not reuse this as a cross-version artifact identity.
+And the digest header carries a version (``:v1``): bump it whenever the
+covered surface changes, so digests from different definitions can never
+compare equal by accident.
 """
 
 from __future__ import annotations
@@ -28,7 +38,7 @@ from microcosm.frame import Frame
 
 __all__ = ["uk_frame_content_identity"]
 
-_IDENTITY_HEADER = "populace-uk-frame-content-identity:v2"
+_IDENTITY_HEADER = "microcosm-uk-frame-content-identity:v1"
 
 
 def uk_frame_content_identity(frame: Frame) -> str:
@@ -86,22 +96,45 @@ def uk_frame_content_identity(frame: Frame) -> str:
         for record in frame.mass_log
     ]
     digest.update(b"\x00mass_log")
-    digest.update(
-        json.dumps(mass_log_payload, sort_keys=True, allow_nan=False).encode("utf-8")
-    )
+    try:
+        digest.update(
+            json.dumps(mass_log_payload, sort_keys=True, allow_nan=False).encode(
+                "utf-8"
+            )
+        )
+    except ValueError as exc:
+        raise ValueError(
+            "the frame cannot be content-identified: its mass log carries a "
+            "non-finite value."
+        ) from exc
     digest.update(b"\x00metadata")
-    digest.update(
-        json.dumps(
-            _jsonable_metadata(frame.metadata),
-            sort_keys=True,
-            allow_nan=False,
-        ).encode("utf-8")
-    )
+    try:
+        digest.update(
+            json.dumps(
+                _jsonable_metadata(frame.metadata),
+                sort_keys=True,
+                allow_nan=False,
+            ).encode("utf-8")
+        )
+    except ValueError as exc:
+        raise ValueError(
+            "the frame cannot be content-identified: its metadata carries a "
+            "non-finite value."
+        ) from exc
     return digest.hexdigest()
 
 
 def _jsonable_metadata(value: object) -> object:
-    """Coerce frozen frame metadata into a canonically serializable shape."""
+    """Coerce frozen frame metadata into a canonically serializable shape.
+
+    Set members sort by ``repr`` — the same canonical order
+    ``stage_checkpoints._thawed`` uses, so a set that rides a checkpoint
+    round trip (JSON has no set type; it returns as a sequence) keeps its
+    content identity. Anything outside the JSON-shaped vocabulary is
+    refused: digesting an arbitrary object's ``repr`` could fold a memory
+    address into the identity, making it differ across processes in exactly
+    the dimension the fence exists to make robust.
+    """
 
     if isinstance(value, dict) or hasattr(value, "items"):
         return {str(key): _jsonable_metadata(item) for key, item in value.items()}
@@ -112,4 +145,8 @@ def _jsonable_metadata(value: object) -> object:
         if isinstance(value, set | frozenset):
             return sorted(items, key=repr)
         return items
-    return repr(value)
+    raise TypeError(
+        f"frame metadata value of type {type(value).__name__} cannot be "
+        "content-identified; metadata must be composed of mappings, "
+        "sequences, sets, and scalar values."
+    )
