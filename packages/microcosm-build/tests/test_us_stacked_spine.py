@@ -2735,6 +2735,7 @@ def test_real_late_executor_follows_canonical_order_and_finalizes_sources_once(
     ) -> PoolStageOutput:
         nonlocal finalizer_calls
         finalizer_calls += 1
+        events.append(stacked_spine_module.US_LATE_SOURCE_FINALIZER_STAGE)
         source_order = list(operator_receipts)
         return PoolStageOutput(
             frame,

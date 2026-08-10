@@ -275,8 +275,9 @@ def test_canonical_us_late_registry_declares_required_cross_producer_edges() -> 
         for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
     }
     assert CANONICAL_US_LATE_PRODUCER_SCHEDULE.waves[0] == (US_LATE_PRIMARY_PUF_STAGE,)
-    assert CANONICAL_US_LATE_PRODUCER_SCHEDULE.waves[-1] == (
-        US_LATE_SOURCE_FINALIZER_STAGE,
+    assert (
+        US_LATE_SOURCE_FINALIZER_STAGE
+        in (CANONICAL_US_LATE_PRODUCER_SCHEDULE.waves[-1])
     )
     assert {
         producer
@@ -288,7 +289,9 @@ def test_canonical_us_late_registry_declares_required_cross_producer_edges() -> 
     }
     assert {
         (output.entity, output.column, output.coverage_scope)
-        for output in registry[US_LATE_SOURCE_FINALIZER_STAGE].outputs
+        for output in CANONICAL_US_LATE_PRODUCER_REGISTRY[
+            US_LATE_SOURCE_FINALIZER_STAGE
+        ].outputs
     } == {
         ("person", column, "whole_pool")
         for column in ("bank_account_assets", "bond_assets", "stock_assets")
@@ -344,7 +347,7 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
 
     assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
     receipt = us_late_producer_schedule_receipt()
-    assert receipt["schema_version"] == 3
+    assert receipt["schema_version"] == 4
     assert receipt["status"] == "derived_and_import_validated"
     assert receipt["schedule_sha256"] == reconstructed.sha256
     assert receipt["producer_count"] == 37

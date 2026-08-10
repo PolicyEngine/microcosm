@@ -33,6 +33,7 @@ from microcosm.build.us_runtime.late_producer_dag import (
     derive_producer_schedule,
 )
 from microcosm.build.us_runtime.multispine_pool import (
+    POOL_DEFERRED_TRANSFER_INPUTS,
     POOL_OPERATOR_CONTRACTS,
     POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
     pool_post_puf_puf_producer_target_families,
@@ -54,6 +55,7 @@ __all__ = [
     "TransferProducerGroup",
     "US_LATE_EXTERNAL_STAGES",
     "US_LATE_PRIMARY_PUF_STAGE",
+    "US_LATE_SOURCE_FINALIZER_STAGE",
     "US_LATE_PRIMARY_PUF_INPUT_INVENTORY",
     "US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION",
     "US_LATE_SOURCE_INPUT_INVENTORIES",
@@ -64,11 +66,11 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-# v3 closes the strict-callback input audit: compound support roles are all-of
-# requirements, and every numeric predictor rejected by a callback is marked
-# finite_numeric in the executable contract.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 3
+# v4 makes the receipt-consuming, deferral-materializing source finalizer an
+# explicit producer instead of a hidden mutation after the sixteenth source.
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 4
 US_LATE_PRIMARY_PUF_STAGE = "primary_puf_qrf"
+US_LATE_SOURCE_FINALIZER_STAGE = "source_finalizer"
 US_LATE_EXTERNAL_STAGES: tuple[str, ...] = ("post_clone_input_surface",)
 
 _ASEC_SOURCE_SCOPE = "asec_source"
@@ -80,6 +82,7 @@ _SSTB_EARNED_INCOME = "sstb_self_employment_income_before_lsr"
 _CHILDCARE_OUTPUT = "spm_unit_pre_subsidy_childcare_expenses"
 _PREGNANCY_OUTPUT = "is_pregnant"
 _CLONE_ATTACHMENT_OUTPUT = "person_support_clone_index"
+_SOURCE_RECEIPT_PREFIX = "@source_receipt:"
 
 
 def _nonempty(value: object, *, label: str) -> str:
@@ -1147,8 +1150,37 @@ def _build_registry() -> dict[str, ProducerContract]:
                     ),
                 }
             ),
-            outputs=CANONICAL_US_LATE_SOURCE_OUTPUTS[operator],
+            outputs=(
+                *CANONICAL_US_LATE_SOURCE_OUTPUTS[operator],
+                ProducerOutput(
+                    "person",
+                    f"{_SOURCE_RECEIPT_PREFIX}{operator}",
+                    "receipt",
+                ),
+            ),
         )
+
+    registry[US_LATE_SOURCE_FINALIZER_STAGE] = ProducerContract(
+        name=US_LATE_SOURCE_FINALIZER_STAGE,
+        kind="source_finalizer",
+        inputs=tuple(
+            ProducerInput(
+                "person",
+                f"{_SOURCE_RECEIPT_PREFIX}{operator}",
+                _WHOLE_POOL_SCOPE,
+                source_producer_name(operator),
+            )
+            for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+        ),
+        outputs=tuple(
+            ProducerOutput(
+                declaration["entity"],
+                column,
+                _WHOLE_POOL_SCOPE,
+            )
+            for column, declaration in POOL_DEFERRED_TRANSFER_INPUTS.items()
+        ),
+    )
 
     covered: set[tuple[str, str]] = set()
     for group in CANONICAL_US_LATE_TRANSFER_GROUPS:

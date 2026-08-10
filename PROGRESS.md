@@ -168,6 +168,13 @@ and the complete proof rerun are closed.
   null SCF deferral columns. Added a red registry regression requiring an
   explicit 37th finalizer node, 16 incoming edges, and its exact three-output
   surface; collection fails because that node is not implemented yet.
+- Implemented the source finalizer as a first-class producer. Each source now
+  emits a declared receipt output; the finalizer consumes all 16 exact receipt
+  resources before it may materialize `bank_account_assets`, `bond_assets`,
+  and `stock_assets` with their explicit deferral receipts. Removed the hidden
+  after-source callback. Registry schema v4 now has 37 producers, 70 edges,
+  and wave sizes `(1, 17, 14, 3, 2)`; all 14 DAG tests plus the real executor
+  regression pass.
 
 ## Next
 

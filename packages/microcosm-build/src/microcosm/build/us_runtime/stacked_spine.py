@@ -132,6 +132,7 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_PRODUCER_SCHEDULE,
     CANONICAL_US_LATE_TRANSFER_GROUPS,
     US_LATE_PRIMARY_PUF_STAGE,
+    US_LATE_SOURCE_FINALIZER_STAGE,
     us_late_producer_schedule_receipt,
 )
 from microcosm.frame import CONSERVE_MASS, US_SCHEMA, Frame, MassChange
@@ -3905,7 +3906,7 @@ def _validate_late_execution_row(
         for column in alternative
         if column.column.startswith("@")
         and column.column != "@resolved_weight"
-        and contract.kind == "primary_puf"
+        and contract.kind in {"primary_puf", "source_finalizer"}
     }
     if set(available_inputs) != expected_available_keys:
         raise ValueError(
@@ -6100,7 +6101,25 @@ def run_stacked_late_producer_dag(
         node_available_inputs = (
             dict(primary_resource_receipts)
             if producer_name == US_LATE_PRIMARY_PUF_STAGE
-            else {}
+            else (
+                {
+                    f"person.@source_receipt:{operator}": {
+                        "receipt_id": (
+                            f"available_input:{US_LATE_SOURCE_FINALIZER_STAGE}:"
+                            f"person.@source_receipt:{operator}"
+                        ),
+                        "status": "available",
+                        "producer": US_LATE_SOURCE_FINALIZER_STAGE,
+                        "entity": "person",
+                        "column": f"@source_receipt:{operator}",
+                        "rows": len(current.table("person")),
+                    }
+                    for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+                    if operator in source_receipts
+                }
+                if producer_name == US_LATE_SOURCE_FINALIZER_STAGE
+                else {}
+            )
         )
         unfilled_rows, invalid_rows = _late_input_readiness_rows(
             current,
@@ -6135,6 +6154,11 @@ def run_stacked_late_producer_dag(
                 result = run_multispine_post_clone_source_operator(
                     bound_frame,
                     operator,
+                )
+            elif bound_contract.kind == "source_finalizer":
+                result = finalize_multispine_source_inputs(
+                    bound_frame,
+                    operator_receipts=source_receipts,
                 )
             elif bound_contract.kind == "late_transfer":
                 result = transfer_stacked_post_puf_group(
@@ -6200,13 +6224,8 @@ def run_stacked_late_producer_dag(
         if contract.kind == "post_clone_source":
             operator = producer_name.removeprefix("source:")
             source_receipts[operator] = result.receipt
-            if len(source_receipts) == len(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER):
-                finalized = finalize_multispine_source_inputs(
-                    current,
-                    operator_receipts=source_receipts,
-                )
-                current = finalized.frame
-                source_completion_receipt = finalized.receipt
+        elif contract.kind == "source_finalizer":
+            source_completion_receipt = result.receipt
         else:
             group = group_by_name[producer_name]
             if tuple(result.receipt.get("ordered_targets", ())) != group.targets:
