@@ -3119,6 +3119,32 @@ def test_late_transfer_rejects_identityless_bank_before_dispatch() -> None:
         )
 
 
+def test_late_source_resources_bind_all_callback_controls() -> None:
+    for operator in multispine_pool_module.POOL_POST_CLONE_SOURCE_OPERATOR_ORDER:
+        producer = f"source:{operator}"
+        resources = stacked_spine_module._late_source_resource_receipts(
+            producer_name=producer
+        )
+        assert set(resources) == {"person.@post_clone_source_execution_config"}
+        binding = resources["person.@post_clone_source_execution_config"]["binding"]
+        assert binding["operator"] == operator
+        assert binding["seed"] == multispine_pool_module.POOL_RANDOM_SEED
+        assert binding["time_period"] == (
+            None
+            if operator == "impute_us_housing_assistance_to_puf_support"
+            else multispine_pool_module.POOL_TIME_PERIOD
+        )
+        assert binding["force_puf_imputation"] is (
+            True if operator == "with_us_retirement_distribution_inputs" else None
+        )
+        expected_sidecars = {}
+        if operator == "with_us_weeks_unemployed":
+            expected_sidecars = {"asec_2023_source": {"mode": "not_supplied"}}
+        if operator == "with_us_education_inputs":
+            expected_sidecars = {"asec_education_source": {"mode": "not_supplied"}}
+        assert binding["external_sidecars"] == expected_sidecars
+
+
 def _run_real_late_executor_fixture(
     monkeypatch: pytest.MonkeyPatch,
     *,

@@ -74,7 +74,9 @@ from microcosm.build.us_runtime.late_producer_dag import (
 from microcosm.build.us_runtime.multispine_pool import (
     POOL_OPERATOR_CONTRACTS,
     POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER,
+    POOL_RANDOM_SEED,
     POOL_SPINE_AGREEMENT_REGISTRY,
+    POOL_TIME_PERIOD,
     pool_post_puf_puf_producer_target_families,
     pool_post_puf_source_producer_target_families,
     pool_post_puf_transfer_target_families,
@@ -144,6 +146,7 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY,
     US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION,
     US_LATE_SOURCE_FINALIZER_STAGE,
+    US_LATE_SOURCE_EXECUTION_CONFIG_INPUT,
     US_LATE_TRANSFER_MODEL_CONFIG_INPUT,
     US_LATE_TRANSFER_TARGET_BANK_INPUT,
     us_late_producer_schedule_receipt,
@@ -4079,6 +4082,7 @@ def _late_virtual_resource_kind(column: str) -> str:
         "@puf_donor_tax_units": "puf_donor_tax_units",
         "@primary_qrf_checkpoint": "primary_qrf_checkpoint",
         US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT: "primary_puf_execution_config",
+        US_LATE_SOURCE_EXECUTION_CONFIG_INPUT: ("post_clone_source_execution_config"),
         US_LATE_TRANSFER_MODEL_CONFIG_INPUT: "late_transfer_model_config",
         US_LATE_TRANSFER_TARGET_BANK_INPUT: "late_transfer_target_bank",
     }
@@ -4290,6 +4294,54 @@ def _validate_late_resource_binding(
             binding.get("source_receipt_sha256"),
             boundary=f"{boundary} source receipt",
         )
+        return
+    if kind == "post_clone_source_execution_config":
+        require_keys(
+            {
+                *common,
+                "operator",
+                "seed",
+                "time_period",
+                "force_puf_imputation",
+                "external_sidecars",
+            }
+        )
+        expected_operator = producer.removeprefix("source:")
+        if (
+            producer != f"source:{expected_operator}"
+            or binding.get("operator") != expected_operator
+        ):
+            raise ValueError(f"{boundary}: late source execution owner changed.")
+        require_nonnegative_integer(binding.get("seed"), label="source seed")
+        if binding.get("seed") != POOL_RANDOM_SEED:
+            raise ValueError(f"{boundary}: late source seed changed.")
+        time_period = binding.get("time_period")
+        if time_period is not None:
+            require_positive_integer(time_period, label="source time_period")
+        force_puf_imputation = binding.get("force_puf_imputation")
+        expected_force = (
+            True
+            if expected_operator == "with_us_retirement_distribution_inputs"
+            else None
+        )
+        if force_puf_imputation is not expected_force:
+            raise ValueError(
+                f"{boundary}: late source force_puf_imputation switch changed."
+            )
+        expected_period = (
+            None
+            if expected_operator == "impute_us_housing_assistance_to_puf_support"
+            else POOL_TIME_PERIOD
+        )
+        if time_period != expected_period:
+            raise ValueError(f"{boundary}: late source time period changed.")
+        expected_sidecars: dict[str, dict[str, str]] = {}
+        if expected_operator == "with_us_weeks_unemployed":
+            expected_sidecars["asec_2023_source"] = {"mode": "not_supplied"}
+        if expected_operator == "with_us_education_inputs":
+            expected_sidecars["asec_education_source"] = {"mode": "not_supplied"}
+        if binding.get("external_sidecars") != expected_sidecars:
+            raise ValueError(f"{boundary}: late source sidecar mode changed.")
         return
     if kind == "late_transfer_model_config":
         require_keys(
@@ -4719,6 +4771,51 @@ def stacked_late_primary_checkpoint_input_binding(
         boundary="US stacked late primary-QRF input-binding construction",
     )
     return payload
+
+
+def _late_source_resource_receipts(
+    *,
+    producer_name: str,
+) -> dict[str, dict[str, object]]:
+    """Bind the fixed controls consumed by one post-clone source callback."""
+
+    operator = producer_name.removeprefix("source:")
+    if producer_name != f"source:{operator}":
+        raise ValueError(
+            f"US late source producer name is malformed: {producer_name!r}."
+        )
+    binding = {
+        "resource_kind": "post_clone_source_execution_config",
+        "schema_version": 1,
+        "operator": operator,
+        "seed": POOL_RANDOM_SEED,
+        "time_period": (
+            None
+            if operator == "impute_us_housing_assistance_to_puf_support"
+            else POOL_TIME_PERIOD
+        ),
+        "force_puf_imputation": (
+            True if operator == "with_us_retirement_distribution_inputs" else None
+        ),
+        "external_sidecars": (
+            {"asec_2023_source": {"mode": "not_supplied"}}
+            if operator == "with_us_weeks_unemployed"
+            else {"asec_education_source": {"mode": "not_supplied"}}
+            if operator == "with_us_education_inputs"
+            else {}
+        ),
+    }
+    return {
+        f"person.{US_LATE_SOURCE_EXECUTION_CONFIG_INPUT}": (
+            _late_available_input_receipt(
+                producer=producer_name,
+                entity="person",
+                column=US_LATE_SOURCE_EXECUTION_CONFIG_INPUT,
+                rows=1,
+                binding=binding,
+            )
+        )
+    }
 
 
 def _late_transfer_resource_receipts(
@@ -5347,14 +5444,23 @@ def _validate_late_execution_row(
             "receipts are not an object."
         )
     if contract.kind in {"primary_puf", "source_finalizer", "late_transfer"}:
-        expected_available_keys = _late_contract_available_input_keys(contract)
-        if evidenced_available_keys != expected_available_keys:
+        mandatory_available_keys = _late_contract_available_input_keys(contract)
+    elif contract.kind == "post_clone_source":
+        mandatory_available_keys = {f"person.{US_LATE_SOURCE_EXECUTION_CONFIG_INPUT}"}
+    else:
+        mandatory_available_keys = set()
+    if not mandatory_available_keys <= evidenced_available_keys:
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} virtual-input "
+            "evidence does not prove every mandatory available resource."
+        )
+    if contract.kind in {"primary_puf", "source_finalizer", "late_transfer"}:
+        if evidenced_available_keys != mandatory_available_keys:
             raise ValueError(
                 f"{boundary}: late producer {contract.name!r} virtual-input "
-                "evidence does not prove every mandatory available resource."
+                "evidence adds a noncanonical mandatory resource."
             )
-    else:
-        expected_available_keys = evidenced_available_keys
+    expected_available_keys = evidenced_available_keys
     if set(available_inputs) != expected_available_keys:
         raise ValueError(
             f"{boundary}: late producer {contract.name!r} available-input "
@@ -7910,6 +8016,10 @@ def run_stacked_late_producer_dag(
         contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[producer_name]
         if producer_name == US_LATE_PRIMARY_PUF_STAGE:
             node_available_inputs = dict(primary_resource_receipts)
+        elif contract.kind == "post_clone_source":
+            node_available_inputs = _late_source_resource_receipts(
+                producer_name=producer_name,
+            )
         elif producer_name == US_LATE_SOURCE_FINALIZER_STAGE:
             node_available_inputs = {
                 f"person.@source_receipt:{operator}": (

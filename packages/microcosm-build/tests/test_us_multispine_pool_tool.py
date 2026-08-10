@@ -1021,6 +1021,10 @@ def _canonical_late_dag_receipt(
                     n_estimators=100,
                 )
             )
+        elif contract.kind == "post_clone_source":
+            available = stacked_spine_module._late_source_resource_receipts(
+                producer_name=producer_name,
+            )
         elif contract.kind == "source_finalizer":
             available = {
                 f"person.@source_receipt:{operator}": (

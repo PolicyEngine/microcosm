@@ -57,6 +57,7 @@ __all__ = [
     "US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT",
     "US_LATE_PRIMARY_PUF_STAGE",
     "US_LATE_SOURCE_FINALIZER_STAGE",
+    "US_LATE_SOURCE_EXECUTION_CONFIG_INPUT",
     "US_LATE_PRIMARY_PUF_INPUT_INVENTORY",
     "US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION",
     "US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION",
@@ -73,18 +74,21 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-# v7 adds the primary execution configuration and every late-transfer model
+# v8 adds the fixed seed/period and operator switches consumed by every
+# post-clone source callback. v7 added the primary execution configuration and
+# every late-transfer model
 # configuration/target-bank identity to the declared external-resource surface.
 # Version 6 content-bound physical Frame inputs but left those callback inputs
 # implicit. Receipt v2 requires every virtual-resource receipt to carry an exact
 # hash-bound semantic payload.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 7
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 8
 US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 2
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID = "us_stacked_late_producer_transition"
 US_LATE_PRIMARY_PUF_STAGE = "primary_puf_qrf"
 US_LATE_SOURCE_FINALIZER_STAGE = "source_finalizer"
+US_LATE_SOURCE_EXECUTION_CONFIG_INPUT = "@post_clone_source_execution_config"
 US_LATE_EXTERNAL_STAGES: tuple[str, ...] = ("post_clone_input_surface",)
 
 _ASEC_SOURCE_SCOPE = "asec_source"
@@ -413,6 +417,11 @@ _CROSS_GRAIN_VALIDATION_REQUIREMENTS = _cross_grain_validation_requirements()
 
 _POST_CLONE_SOURCE_WRAPPER_REQUIREMENTS = (
     _single(
+        "source_wrapper:execution_config",
+        "person",
+        US_LATE_SOURCE_EXECUTION_CONFIG_INPUT,
+    ),
+    _single(
         "source_wrapper:assembly_manifest",
         "frame",
         _ASSEMBLY_MANIFEST_INPUT,
@@ -690,9 +699,8 @@ _source_input_inventories = {
             value_kind="finite_numeric",
         ),
         _requirement(
-            "weeks_source_or_sidecar",
+            "weeks_source",
             (_column("person", "LKWEEKS", value_kind="finite_numeric"),),
-            (_column("person", "@weeks_unemployed_sidecar"),),
         ),
         _requirement(
             "age",
@@ -911,9 +919,8 @@ _source_input_inventories = {
     "with_us_education_inputs": _inventory(
         "with_us_education_inputs",
         _requirement(
-            "education_source_or_sidecar",
+            "education_source",
             (_column("person", "ED_VAL", value_kind="finite_numeric"),),
-            (_column("person", "@education_assistance_sidecar"),),
         ),
         _single(
             "qualified_tuition",

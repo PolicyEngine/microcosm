@@ -2,9 +2,8 @@
 
 ## State
 
-The failure mechanism, complete late-producer/source-input inventory, and
-37-node executable DAG are implemented and independently audited on
-`tail-stratum-support-652`, based on the three preserved #652 commits. The
+The failure mechanism and late-producer/source-input inventory are implemented
+on `tail-stratum-support-652`, based on the three preserved #652 commits. The
 checkout was clean at the start and was three commits ahead of the locally
 available `origin/main` (`e9a352ca`). No fetch was performed because this task
 forbids network access. A shared-ref update outside this worktree has since made
@@ -14,14 +13,15 @@ content-bound to its declared inputs, outputs, callback receipt, and predecessor
 the top receipt is bound to entry/output frame content and independently carried
 transition authority. That authority is propagated through cold/resumed pool
 checkpoints, H5 schema 6, manifest construction, simulation, and publication.
-The operator-ordering doctrine and changelog publish the final 37-node, 70-edge,
-five-wave graph and version ledger. Every physical input and virtual runtime
-resource is now content-bound: donor bytes, resolved PUF/QRF/tail controls,
+The independent audit found additional hidden inputs in the source callbacks
+and primary-PUF wrapper. Source execution controls are now declared; the ACS
+earnings-universe materializer is the current implementation step. Every
+physical input and virtual runtime resource is content-bound: donor bytes,
+resolved PUF/QRF/tail controls,
 the routed primary-QRF bank and stale-bank sidecar, source receipts, transfer
-controls, and target-bank identities. Legacy schema-5/materializer-4 identity
-is isolated from the stacked-only DAG. Focused implementation suites are green;
-the final requested focused aggregate, exact #583 shard, eight foreground
-workspace chunks, and repository gates remain to rerun from the final tree.
+controls, and target-bank identities. The legacy-envelope compatibility audit
+also remains open. Focused suites and all final proof gates will be rerun from
+the final tree after those findings close.
 
 ## Done
 
@@ -275,9 +275,18 @@ workspace chunks, and repository gates remain to rerun from the final tree.
   payload
   `3144e82a11a4455a77541f135b06587e4cfe62cac62890e3fa026684a2dc684b`.
   Extended the existing #652 changelog fragment with the resource binding.
+- Closed the source-callback audit gap in registry schema v8: every one of the
+  16 post-clone source producers now declares a hash-bound execution config
+  covering the fixed seed, fixed/absent period, retirement force-imputation
+  switch, and explicit `not_supplied` mode for the only two optional sidecar
+  arguments. Removed unreachable sidecar alternatives from the executable
+  inventories, so every declared alternative can actually reach its kernel.
 
 ## Next
 
+- Add the ACS PUMS earnings-universe materializer as an explicit pre-primary
+  DAG producer, then close the persisted-receipt and legacy-envelope audit
+  findings.
 - Rerun the focused aggregate, exact #583 shard, eight non-overlapping
   foreground workspace chunks, and Ruff check/format-check/diff-check gates.
 - Write the final gradeable mechanism/edge/fix/proof report to the output file,

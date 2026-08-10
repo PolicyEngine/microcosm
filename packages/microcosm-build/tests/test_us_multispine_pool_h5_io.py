@@ -585,6 +585,10 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
                 seed=0,
                 n_estimators=100,
             )
+        elif contract.kind == "post_clone_source":
+            available = stacked_spine_module._late_source_resource_receipts(
+                producer_name=producer_name,
+            )
         elif contract.kind == "source_finalizer":
             available = {
                 f"person.@source_receipt:{operator}": (

@@ -424,7 +424,7 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
 
     assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
     receipt = us_late_producer_schedule_receipt()
-    assert receipt["schema_version"] == 7
+    assert receipt["schema_version"] == 8
     assert receipt["execution_receipt_contract"] == {
         "version": 2,
         "row_binding": (
@@ -460,6 +460,15 @@ def test_every_post_clone_source_has_a_nonempty_full_input_inventory() -> None:
         assert inventory.operator == operator
         assert inventory.requirements
         assert all(requirement.alternatives for requirement in inventory.requirements)
+        physical_columns = {
+            column.column
+            for requirement in inventory.requirements
+            for alternative in requirement.alternatives
+            for column in alternative
+        }
+        assert "@post_clone_source_execution_config" in physical_columns
+        assert "@weeks_unemployed_sidecar" not in physical_columns
+        assert "@education_assistance_sidecar" not in physical_columns
 
 
 def test_every_transfer_declares_predictors_and_optional_absence_receipts() -> None:
@@ -631,7 +640,7 @@ def test_source_contracts_match_strict_runtime_input_semantics() -> None:
     education_source = next(
         item
         for item in education.inputs
-        if item.column == "@effective:education_source_or_sidecar"
+        if item.column == "@effective:education_source"
     )
     ed_val = next(
         column
