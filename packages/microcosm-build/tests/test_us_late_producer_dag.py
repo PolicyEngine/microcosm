@@ -60,7 +60,7 @@ def test_unfilled_late_input_refuses_before_producer_runs() -> None:
     with pytest.raises(
         ValueError,
         match=(
-            r"with_fixture_consumer.*person\.late_input.*1 unfilled.*"
+            r"(?s)with_fixture_consumer.*person\.late_input.*1 unfilled.*"
             r"cps_projection.*transfer:person/puf_tax_itemization__batch_5"
         ),
     ):
@@ -96,9 +96,7 @@ def test_derived_schedule_is_byte_stable_under_registry_iteration_order() -> Non
         _contract("delta", "charlie"),
     )
     forward = OrderedDict((contract.name, contract) for contract in contracts)
-    reverse = OrderedDict(
-        (contract.name, contract) for contract in reversed(contracts)
-    )
+    reverse = OrderedDict((contract.name, contract) for contract in reversed(contracts))
 
     forward_schedule = derive_producer_schedule(forward)
     reverse_schedule = derive_producer_schedule(reverse)

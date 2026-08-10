@@ -36,13 +36,17 @@ checkout without rebasing, resetting, or shelving.
   and make nonfinite tuition fail closed.
 - Added red regressions for unfilled-input refusal before callback invocation,
   a deterministic named synthetic cycle, and byte-stable topology under
-  reversed registry iteration. The focused test fails at collection because
-  the deliberately specified DAG module does not yet exist.
+  reversed registry iteration. The focused test initially failed at collection
+  because the deliberately specified DAG module did not yet exist.
+- Implemented the pure producer-DAG core. It canonicalizes contracts and
+  edges, derives lexically stable Kahn waves, reports a deterministic DFS cycle
+  path, hashes canonical JSON bytes, and fences callbacks on exact filled-input
+  or declared-absence evidence. Its three doctrine regressions now pass.
 
 ## Next
 
-- Implement role-aware declared producer inputs and outputs, deterministic
-  cycle-checked topology, scoped runtime readiness checks, and DAG-derived late
-  execution without changing nulls to zeros.
+- Declare the production role-aware 16-source/19-transfer graph and drive the
+  late execution from its import-validated topology without changing nulls to
+  zeros.
 - Bind the DAG to authority/checkpoint identity, update doctrine and changelog,
   then run the required focused, #583, full-workspace, and ruff proof gates.
