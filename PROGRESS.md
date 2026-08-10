@@ -64,12 +64,33 @@ checkout without rebasing, resetting, or shelving.
   and an exact 16-receipt finalizer. The compatibility entrypoint now uses the
   same narrow API; deferred source inputs materialize only once after complete
   execution. All 54 multispine-pool tests pass.
+- Integrated primary PUF/tail, all 16 source operators, and all 19 bounded
+  transfers into one executable schedule. Clone attachment is now an explicit
+  primary-PUF output and prerequisite of every post-clone source, so the first
+  wave contains only `primary_puf_qrf`; the graph has 36 nodes, 54 edges, and
+  wave sizes `(1, 17, 14, 3, 1)`.
+- Put the primary PUF callback behind the same readiness fence as every other
+  producer. Its donor and checkpoint are carried as explicit available-input
+  receipts; optional sidecars remain counted declared absences, never zero
+  fills. Finite-numeric input kind is now contract data, so object-backed
+  `inf` or nonnumeric late inputs fail at the DAG boundary.
+- Bound the complete DAG receipt to stacked authority v8, pool and stacked
+  checkpoint materializers v4/v8, late-registry schema v2, and companion pool
+  manifest schema v5. Cold execution, checkpoint emission/resume, manifest
+  construction, publication, and schema-5 consumer loading all validate the
+  exact 36-row execution, 16-source finalization, 19 transfer groups, and
+  source/transfer aliases.
+- Added executor-level and publication regressions for the derived order,
+  single source finalization, batch-5-before-adult-care, nonfinite object
+  numerics, forged execution rows, forged derived order, and missing schema-5
+  DAG proof. The combined DAG, stacked, tool, and H5 suites pass after an
+  independent review exposed and the implementation closed the hidden
+  clone-attachment and unauthenticated-receipt gaps.
 
 ## Next
 
-- Drive source and bounded-transfer execution from the import-validated graph
-  without changing nulls to zeros, using a distinct resumable target bank for
-  every atomic transfer group.
-- Bind the DAG to authority/checkpoint identity, update ordering doctrine and
-  changelog, then run the required focused, #583, full-workspace, and Ruff
-  proof gates.
+- Publish the complete input and 54-edge inventory in the operator-ordering
+  doctrine, extend the #652 changelog fragment, and commit this integrated
+  executor/checkpoint step.
+- Run the required focused, #583-exact-495, full-workspace foreground chunks,
+  and Ruff proof gates; record exact counts and smoke/dev predictions.

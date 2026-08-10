@@ -36,10 +36,16 @@ class ProducerInputColumn:
 
     entity: str
     column: str
+    value_kind: str = "non_null"
 
     def __post_init__(self) -> None:
         _nonempty(self.entity, label="ProducerInputColumn.entity")
         _nonempty(self.column, label="ProducerInputColumn.column")
+        if self.value_kind not in {"non_null", "finite_numeric"}:
+            raise ValueError(
+                "ProducerInputColumn.value_kind must be 'non_null' or "
+                f"'finite_numeric'; got {self.value_kind!r}."
+            )
 
 
 @dataclass(frozen=True, order=True)
@@ -87,7 +93,9 @@ class ProducerInput:
         canonical_alternatives = tuple(
             sorted(
                 {tuple(sorted(set(option))) for option in alternatives},
-                key=lambda option: tuple((item.entity, item.column) for item in option),
+                key=lambda option: tuple(
+                    (item.entity, item.column, item.value_kind) for item in option
+                ),
             )
         )
         object.__setattr__(self, "alternatives", canonical_alternatives)
@@ -160,7 +168,11 @@ def _contract_payload(contract: ProducerContract) -> dict[str, object]:
                 "tolerated_absence_receipts": list(item.tolerated_absence_receipts),
                 "alternatives": [
                     [
-                        {"entity": column.entity, "column": column.column}
+                        {
+                            "entity": column.entity,
+                            "column": column.column,
+                            "value_kind": column.value_kind,
+                        }
                         for column in alternative
                     ]
                     for alternative in item.alternatives

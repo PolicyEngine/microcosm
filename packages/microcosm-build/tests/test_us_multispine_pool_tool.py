@@ -896,6 +896,144 @@ def _noncanonical_post_puf_authority_receipt() -> dict[str, object]:
     return stacked_spine_module._authority_receipt(test_authority)
 
 
+def _canonical_late_transfer_receipt(
+    pool_tool: ModuleType,
+    *,
+    authority: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    return {
+        "fixture": "post_puf_transfer",
+        "authority": dict(
+            pool_tool.stacked_spine_authority_receipt()
+            if authority is None
+            else authority
+        ),
+        "producer_schedule": pool_tool._json_ready(
+            pool_tool.us_late_producer_schedule_receipt()
+        ),
+        "producer_execution_order": [
+            producer
+            for producer in stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
+            if producer != stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
+        ],
+        "groups": {
+            group.name: {
+                "producer": group.name,
+                "ordered_targets": list(group.targets),
+            }
+            for group in pool_tool.CANONICAL_US_LATE_TRANSFER_GROUPS
+        },
+        "targets": {
+            f"{entity}/{family}/{target}": {"residual_null_rows": 0}
+            for entity, families in (
+                pool_tool.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
+            )
+            for family, targets in families.items()
+            for target in targets
+        },
+        "completion": {
+            "status": "complete",
+            "group_count": 19,
+            "target_count": 70,
+            "residual_null_rows": 0,
+        },
+    }
+
+
+def _canonical_late_dag_receipt(
+    pool_tool: ModuleType,
+    *,
+    authority: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    schedule = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE
+    source_order = [
+        producer.removeprefix("source:")
+        for producer in schedule.order
+        if producer.startswith("source:")
+    ]
+    execution = []
+    for index, producer_name in enumerate(schedule.order):
+        contract = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[
+            producer_name
+        ]
+        available = {}
+        if producer_name == stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE:
+            for column in ("@puf_donor_tax_units", "@primary_qrf_checkpoint"):
+                key = f"tax_unit.{column}"
+                available[key] = {
+                    "receipt_id": f"available_input:{producer_name}:{key}",
+                    "status": "available",
+                    "producer": producer_name,
+                    "entity": "tax_unit",
+                    "column": column,
+                    "rows": 1,
+                }
+        execution.append(
+            {
+                "execution_index": index,
+                "producer": producer_name,
+                "kind": contract.kind,
+                "declared_inputs": [
+                    {
+                        "entity": item.entity,
+                        "column": item.column,
+                        "required_scope": item.required_scope,
+                        "producing_stage": item.producing_stage,
+                        "unfilled_rows": 0,
+                    }
+                    for item in contract.inputs
+                ],
+                "declared_absence_receipts": {},
+                "available_input_receipts": available,
+                "status": "complete",
+            }
+        )
+    source_completion = {
+        "phase": "post_clone",
+        "operator_order": source_order,
+        "suboperators": [
+            {"operator": operator, "order_index": index}
+            for index, operator in enumerate(source_order)
+        ],
+        "deferred_transfer_inputs": {
+            "inputs": {
+                column: {}
+                for column in (
+                    "bank_account_assets",
+                    "bond_assets",
+                    "stock_assets",
+                )
+            }
+        },
+    }
+    return {
+        "producer_schedule": pool_tool._json_ready(
+            pool_tool.us_late_producer_schedule_receipt()
+        ),
+        "execution": execution,
+        "source_completion": source_completion,
+        "post_puf_transfer": _canonical_late_transfer_receipt(
+            pool_tool,
+            authority=authority,
+        ),
+    }
+
+
+def _canonical_late_impute_receipts(
+    pool_tool: ModuleType,
+    *,
+    authority: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    dag = _canonical_late_dag_receipt(pool_tool, authority=authority)
+    return {
+        "source_operator_chain": {
+            "late_dag_completion": dag["source_completion"],
+        },
+        "stacked_late_producer_dag": dag,
+        "stacked_post_puf_transfer": dag["post_puf_transfer"],
+    }
+
+
 def _install_stacked_entrypoint_stubs(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -1051,32 +1189,53 @@ def _install_stacked_entrypoint_stubs(
 
     monkeypatch.setattr(pool_tool, "run_stacked_puf_pass", puf_pass)
 
-    def complete(frame: Frame):
-        order.append("complete")
-        return PoolStageOutput(frame, {"fixture": "complete"})
-
-    monkeypatch.setattr(pool_tool, "complete_multispine_source_inputs", complete)
-
-    def post_puf_transfer(frame: Frame, **kwargs: object):
-        order.append("post_puf_transfer")
-        assert kwargs["target_bank"] is not None
+    def late_producer_dag(frame: Frame, **kwargs: object):
+        primary_puf_result = kwargs["primary_puf_producer"](frame)
+        order.append("late_producer_dag")
+        assert set(kwargs["primary_resource_receipts"]) == {
+            "tax_unit.@puf_donor_tax_units",
+            "tax_unit.@primary_qrf_checkpoint",
+        }
+        target_banks = kwargs["target_banks"]
+        assert isinstance(target_banks, Mapping)
+        assert set(target_banks) == {
+            group.name for group in pool_tool.CANONICAL_US_LATE_TRANSFER_GROUPS
+        }
+        schedule_sha256 = pool_tool.us_late_producer_schedule_receipt()[
+            "payload_sha256"
+        ]
+        dag_sha256 = pool_tool.us_late_producer_schedule_receipt()["schedule_sha256"]
+        for group in pool_tool.CANONICAL_US_LATE_TRANSFER_GROUPS:
+            bank = target_banks[group.name]
+            assert bank.root.parts[-3:] == (
+                "late_producer_dag",
+                group.entity,
+                group.family,
+            )
+            assert bank._identity["late_producer_dag_sha256"] == dag_sha256
+            assert bank._identity["late_producer_schedule_sha256"] == schedule_sha256
+            assert bank._identity["late_producer"] == {
+                "name": group.name,
+                "entity": group.entity,
+                "family": group.family,
+                "ordered_targets": list(group.targets),
+            }
+        dag_receipt = _canonical_late_dag_receipt(
+            pool_tool,
+            authority=post_puf_authority,
+        )
         return SimpleNamespace(
-            frame=frame,
-            receipt={
-                "fixture": "post_puf_transfer",
-                "authority": dict(
-                    pool_tool.stacked_spine_authority_receipt()
-                    if post_puf_authority is None
-                    else post_puf_authority
-                ),
-            },
+            frame=primary_puf_result.frame,
+            receipt=dag_receipt,
+            primary_puf_result=primary_puf_result,
+            source_completion_receipt=dag_receipt["source_completion"],
             transfer_result=SimpleNamespace(fit_records=()),
         )
 
     monkeypatch.setattr(
         pool_tool,
-        "transfer_stacked_post_puf_inputs",
-        post_puf_transfer,
+        "run_stacked_late_producer_dag",
+        late_producer_dag,
     )
     monkeypatch.setattr(
         pool_tool,
@@ -1255,8 +1414,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
             "prepare",
             "gap",
             "puf",
-            "complete",
-            "post_puf_transfer",
+            "late_producer_dag",
             "tail_prepare",
             "derive",
             "seed",
@@ -1281,14 +1439,17 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         manifest = json.loads(
             (tmp_path / "stacked-pool.manifest.json").read_text(encoding="utf-8")
         )
+        assert manifest["schema_version"] == 5
         assert manifest["pipeline"] == "us-stacked-pool"
+        assert manifest["stage_receipts"]["impute"][
+            "stacked_late_producer_dag"
+        ] == _canonical_late_dag_receipt(pool_tool)
         assert manifest["operator_order"] == [
             "assemble_stacked_spine",
             "prepare_multispine_source_inputs_for_clone",
             "gap_fill_stacked_spine",
             "run_stacked_puf_pass",
-            "complete_multispine_source_inputs",
-            "transfer_stacked_post_puf_inputs",
+            "run_stacked_late_producer_dag",
             "prepare_stacked_tail_derivation",
             "derive_multispine_pool_inputs",
             "seed_multispine_pool_inputs",
@@ -1325,7 +1486,7 @@ def test_stacked_entrypoint_rejects_noncanonical_post_puf_transfer_receipt(
     with pytest.raises(
         ValueError,
         match=(
-            "stacked cold-build post-PUF transfer: non-canonical stacked "
+            "stacked cold-build late-producer DAG: non-canonical stacked "
             "authority is forbidden"
         ),
     ):
@@ -1337,8 +1498,7 @@ def test_stacked_entrypoint_rejects_noncanonical_post_puf_transfer_receipt(
         "prepare",
         "gap",
         "puf",
-        "complete",
-        "post_puf_transfer",
+        "late_producer_dag",
     ]
     assert not (tmp_path / "stacked-pool.h5").exists()
     assert not (tmp_path / "stacked-pool.manifest.json").exists()
@@ -1352,9 +1512,10 @@ def test_stacked_publication_rejects_noncanonical_receipt_before_any_write(
     outputs = pool_tool._stacked_output_paths(tmp_path / "stacked-pool.h5")
     result = SimpleNamespace(
         stage_receipts={
-            "impute": {
-                "stacked_post_puf_transfer": {"authority": noncanonical},
-            }
+            "impute": _canonical_late_impute_receipts(
+                pool_tool,
+                authority=noncanonical,
+            )
         }
     )
 
@@ -1363,6 +1524,55 @@ def test_stacked_publication_rejects_noncanonical_receipt_before_any_write(
         match=(
             "stacked publication entry: non-canonical stacked authority is forbidden"
         ),
+    ):
+        pool_tool._write_stacked_outputs(
+            result,
+            outputs=outputs,
+            verified_inputs={},
+            acs_source_manifest=pool_tool.load_acs_source_manifest(),
+            input_receipts={},
+            checkpoint_provenance={},
+            sample_fraction=0.01,
+            sample_seed=578,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=579,
+        )
+
+    assert not outputs.pool_h5.exists()
+    assert not outputs.manifest.exists()
+    assert not outputs.agreement_diagnostics.exists()
+
+
+def test_late_dag_validator_rejects_forged_execution_row(
+    pool_tool: ModuleType,
+) -> None:
+    receipt = _canonical_late_dag_receipt(pool_tool)
+    receipt["execution"][1]["producer"] = "source:forged"
+
+    with pytest.raises(
+        ValueError,
+        match=r"execution row 1 is misbound",
+    ):
+        pool_tool.validate_stacked_late_producer_receipt(
+            receipt,
+            boundary="forged execution regression",
+        )
+
+
+def test_stacked_publication_rejects_forged_derived_order_before_any_write(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    impute = _canonical_late_impute_receipts(pool_tool)
+    impute["stacked_late_producer_dag"]["post_puf_transfer"][
+        "producer_execution_order"
+    ] = ["forged:wrong"]
+    outputs = pool_tool._stacked_output_paths(tmp_path / "stacked-pool.h5")
+    result = SimpleNamespace(stage_receipts={"impute": impute})
+
+    with pytest.raises(
+        ValueError,
+        match=r"execution order does not match the derived late-producer schedule",
     ):
         pool_tool._write_stacked_outputs(
             result,
@@ -1691,7 +1901,40 @@ def test_stacked_checkpoint_identity_binds_both_scale_controls_and_manifest(
         assert changed_store.load_deepest() is None
 
 
-def test_stacked_checkpoint_identity_binds_v7_semantic_contracts(
+def test_pool_checkpoint_identity_binds_late_producer_schedule(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
+
+    def identity() -> dict[str, object]:
+        return pool_tool._pool_checkpoint_base_identity(
+            verified,
+            policyengine_us_version="fixture-engine",
+        )
+
+    current = identity()
+    expected_schedule = pool_tool._json_ready(
+        pool_tool.us_late_producer_schedule_receipt()
+    )
+    assert current["pool_code"]["late_producer_schedule"] == expected_schedule
+
+    changed_schedule = copy.deepcopy(expected_schedule)
+    changed_schedule["payload_sha256"] = "0" * 64
+    monkeypatch.setattr(
+        pool_tool,
+        "us_late_producer_schedule_receipt",
+        lambda: changed_schedule,
+    )
+    changed = identity()
+
+    assert pool_tool._pool_checkpoint_identity_sha256(changed) != (
+        pool_tool._pool_checkpoint_identity_sha256(current)
+    )
+
+
+def test_stacked_checkpoint_identity_binds_v8_semantic_contracts(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1718,8 +1961,11 @@ def test_stacked_checkpoint_identity_binds_v7_semantic_contracts(
 
     current = identity()
     pool_code = current["pool_code"]
-    assert current["materializer_version"] == 7
-    assert current["stacked_authority"]["version"] == 7
+    assert current["materializer_version"] == 8
+    assert current["stacked_authority"]["version"] == 8
+    assert pool_code["late_producer_schedule"] == pool_tool._json_ready(
+        pool_tool.us_late_producer_schedule_receipt()
+    )
     assert pool_code["primary_qrf_checkpoint_schema_version"] == 6
     assert pool_code["puf_capital_gains_tail_manifest_schema_version"] == 2
     assert pool_code["puf_capital_gains_tail_support_contract"] == (
@@ -1776,6 +2022,17 @@ def test_stacked_checkpoint_identity_binds_v7_semantic_contracts(
             lambda: tail_contract,
         )
         stale_tail_contract = identity()
+    with monkeypatch.context() as changed:
+        late_schedule = pool_tool._json_ready(
+            pool_tool.us_late_producer_schedule_receipt()
+        )
+        late_schedule["payload_sha256"] = "0" * 64
+        changed.setattr(
+            pool_tool,
+            "us_late_producer_schedule_receipt",
+            lambda: late_schedule,
+        )
+        stale_late_schedule = identity()
 
     digests = {
         pool_tool._pool_checkpoint_identity_sha256(candidate)
@@ -1786,9 +2043,10 @@ def test_stacked_checkpoint_identity_binds_v7_semantic_contracts(
             stale_qbi,
             stale_tail_schema,
             stale_tail_contract,
+            stale_late_schedule,
         )
     }
-    assert len(digests) == 6
+    assert len(digests) == 7
 
     # A checkpoint produced by the current materializer with the prior QRF
     # schema is not merely identity-distinct: discovery must refuse it as stale.
@@ -1809,7 +2067,7 @@ def test_stacked_checkpoint_identity_binds_v7_semantic_contracts(
         )
     )
 
-    assert current["materializer_version"] == stale_qrf["materializer_version"] == 7
+    assert current["materializer_version"] == stale_qrf["materializer_version"] == 8
     assert stale_qrf["pool_code"]["primary_qrf_checkpoint_schema_version"] == 5
     assert (
         pool_tool._discover_stacked_checkpoint_identity(
@@ -1903,7 +2161,7 @@ def test_qbi_receipt_route_resolution_rejects_wrong_or_ambiguous_paths(
         )
 
 
-@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5, 6))
+@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5, 6, 7))
 def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -1951,7 +2209,7 @@ def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
             )
         )
 
-    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 7
+    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 8
     assert (
         pool_tool._discover_stacked_checkpoint_identity(
             checkpoint_root,
@@ -1982,9 +2240,10 @@ def test_stacked_resume_rejects_noncanonical_post_puf_transfer_receipt(
         frame=stack.frame,
         assembly_receipt=stack.frame.metadata[pool_tool.SPINE_ASSEMBLY_MANIFEST_KEY],
         stage_receipts={
-            "impute": {
-                "stacked_post_puf_transfer": {"authority": noncanonical},
-            }
+            "impute": _canonical_late_impute_receipts(
+                pool_tool,
+                authority=noncanonical,
+            )
         },
     )
 
@@ -2076,8 +2335,7 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
         "prepare",
         "gap",
         "puf",
-        "complete",
-        "post_puf_transfer",
+        "late_producer_dag",
         "tail_prepare",
         "derive",
         "seed",
@@ -2107,8 +2365,7 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
         "prepare",
         "gap",
         "puf",
-        "complete",
-        "post_puf_transfer",
+        "late_producer_dag",
         "tail_prepare",
         "derive",
         "seed",
@@ -2360,8 +2617,8 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # Rebased with the fixture golden above (explicit string-storage
         # checkpoint metadata).
         "pool_h5": "ced797ecdd44a638c2a3945f07ad612098a7095ca53a5f458699bca6d6e38b3e",
-        "agreement": "f39f0d918bf7ee01dddb5517d8830b8adb541273c5be084307be91397caca3cb",
-        "manifest": "14e6b3a409dfe2108253668a65ed32c0365b246f379ad895d8441c939adde65e",
+        "agreement": "ea28fd66c06511bafef0497e713b1db900ee121a76ccee257cea399b6cee4291",
+        "manifest": "4d3362133c1494cdc31e0cd65ccd1263352aac9a544047e2780bcecf10681cad",
     }
 
 
@@ -3459,11 +3716,11 @@ def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
     }
 
 
-def test_simulated_v3_checkpoint_accepts_both_string_encodings_without_rewrite(
+def test_simulated_v4_checkpoint_accepts_both_string_encodings_without_rewrite(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
-    """V3 authenticates both physical string encodings as one logical frame."""
+    """V4 authenticates both physical string encodings as one logical frame."""
 
     pytest.importorskip("h5py")
     checkpoint_root = tmp_path / "checkpoints"
@@ -3475,7 +3732,7 @@ def test_simulated_v3_checkpoint_accepts_both_string_encodings_without_rewrite(
     loaded = pool_tool.load_frame_checkpoint(checkpoint_path)
     canonical_v2_bytes = checkpoint_path.read_bytes()
     canonical_identity = loaded.metadata["identity"]
-    assert loaded.metadata["materializer_version"] == 3
+    assert loaded.metadata["materializer_version"] == 4
     assert any(
         column["dtype"] == str(CANONICAL_STRING_DTYPE)
         for columns in loaded.metadata["frame_schema"]["entities"].values()
@@ -3506,7 +3763,7 @@ def test_simulated_v3_checkpoint_accepts_both_string_encodings_without_rewrite(
     banked_v2_bytes = checkpoint_path.read_bytes()
     assert banked_v2_bytes != canonical_v2_bytes
     assert legacy_metadata["identity"] == canonical_identity
-    assert legacy_metadata["materializer_version"] == 3
+    assert legacy_metadata["materializer_version"] == 4
     assert any(
         column["dtype"] == "object"
         for columns in legacy_metadata["frame_schema"]["entities"].values()
@@ -3881,7 +4138,7 @@ def test_tail_support_contract_identity_mutation_rebuilds_pool_checkpoints(
     assert changed_store.load_deepest() is None
 
 
-@pytest.mark.parametrize("legacy_version", (1, 2))
+@pytest.mark.parametrize("legacy_version", (1, 2, 3))
 def test_legacy_pool_materializer_artifacts_fail_closed_with_named_receipts(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -3914,9 +4171,9 @@ def test_legacy_pool_materializer_artifacts_fail_closed_with_named_receipts(
             assert manifest["identity"]["materializer_version"] == legacy_version
     capsys.readouterr()
 
-    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 3
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 4
     current_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
-    assert current_store.base_identity["materializer_version"] == 3
+    assert current_store.base_identity["materializer_version"] == 4
     assert current_store.load_deepest() is None
 
     output = capsys.readouterr().out
@@ -4356,11 +4613,7 @@ def test_stacked_manifest_and_publication_reject_forged_qbi_receipt(
         frame=legacy.frame,
         qbi_transition_authority_sha256=(legacy.qbi_transition_authority_sha256),
         stage_receipts={
-            "impute": {
-                "stacked_post_puf_transfer": {
-                    "authority": dict(pool_tool.stacked_spine_authority_receipt())
-                }
-            },
+            "impute": _canonical_late_impute_receipts(pool_tool),
             "derive": {"pool_derivation": {"qbi_input_reconciliation": receipt}},
         },
     )

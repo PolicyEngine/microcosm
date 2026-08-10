@@ -9,6 +9,7 @@ import pandas as pd
 import pytest
 
 import microcosm.build.us_runtime.h5_io as h5_io
+import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
 from microcosm.build.frame_checkpoint import (
     load_frame_checkpoint,
     write_frame_checkpoint,
@@ -429,10 +430,33 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
         },
     }
     if stacked:
+        dag = _canonical_stacked_late_dag_receipt()
         manifest.update(
             {
                 "pipeline": "us-stacked-pool",
                 "terminal_gates": agreement_gate,
+                "operator_order": [
+                    "assemble_stacked_spine",
+                    "prepare_multispine_source_inputs_for_clone",
+                    "gap_fill_stacked_spine",
+                    "run_stacked_puf_pass",
+                    "run_stacked_late_producer_dag",
+                    "prepare_stacked_tail_derivation",
+                    "derive_multispine_pool_inputs",
+                    "seed_multispine_pool_inputs",
+                    "materialize_multispine_agreement_outputs",
+                    "stacked_completeness_gate",
+                    "by_origin_battery",
+                ],
+                "stage_receipts": {
+                    "impute": {
+                        "source_operator_chain": {
+                            "late_dag_completion": dag["source_completion"],
+                        },
+                        "stacked_late_producer_dag": dag,
+                        "stacked_post_puf_transfer": dag["post_puf_transfer"],
+                    }
+                },
             }
         )
     manifest_path.write_text(
@@ -440,6 +464,109 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
         encoding="utf-8",
     )
     return manifest_path
+
+
+def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
+    schedule = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE
+    schedule_receipt = stacked_spine_module._json_ready(
+        stacked_spine_module.us_late_producer_schedule_receipt()
+    )
+    source_order = [
+        producer.removeprefix("source:")
+        for producer in schedule.order
+        if producer.startswith("source:")
+    ]
+    execution = []
+    for index, producer_name in enumerate(schedule.order):
+        contract = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[
+            producer_name
+        ]
+        available = {}
+        if producer_name == stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE:
+            for column in ("@puf_donor_tax_units", "@primary_qrf_checkpoint"):
+                key = f"tax_unit.{column}"
+                available[key] = {
+                    "receipt_id": f"available_input:{producer_name}:{key}",
+                    "status": "available",
+                    "producer": producer_name,
+                    "entity": "tax_unit",
+                    "column": column,
+                    "rows": 1,
+                }
+        execution.append(
+            {
+                "execution_index": index,
+                "producer": producer_name,
+                "kind": contract.kind,
+                "declared_inputs": [
+                    {
+                        "entity": item.entity,
+                        "column": item.column,
+                        "required_scope": item.required_scope,
+                        "producing_stage": item.producing_stage,
+                        "unfilled_rows": 0,
+                    }
+                    for item in contract.inputs
+                ],
+                "declared_absence_receipts": {},
+                "available_input_receipts": available,
+                "status": "complete",
+            }
+        )
+    source_completion = {
+        "phase": "post_clone",
+        "operator_order": source_order,
+        "suboperators": [
+            {"operator": operator, "order_index": index}
+            for index, operator in enumerate(source_order)
+        ],
+        "deferred_transfer_inputs": {
+            "inputs": {
+                column: {}
+                for column in (
+                    "bank_account_assets",
+                    "bond_assets",
+                    "stock_assets",
+                )
+            }
+        },
+    }
+    transfer = {
+        "authority": dict(stacked_spine_module.stacked_spine_authority_receipt()),
+        "producer_schedule": schedule_receipt,
+        "producer_execution_order": [
+            producer
+            for producer in schedule.order
+            if producer != stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
+        ],
+        "groups": {
+            group.name: {
+                "producer": group.name,
+                "ordered_targets": list(group.targets),
+            }
+            for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+        },
+        "targets": {
+            f"{entity}/{family}/{target}": {"residual_null_rows": 0}
+            for entity, families in (
+                stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
+            )
+            for family, targets in families.items()
+            for target in targets
+        },
+        "completion": {
+            "status": "complete",
+            "group_count": 19,
+            "target_count": 70,
+            "residual_null_rows": 0,
+        },
+    }
+    return {
+        "producer_schedule": schedule_receipt,
+        "execution": execution,
+        "source_completion": source_completion,
+        "post_puf_transfer": transfer,
+    }
 
 
 def test_ready_pool_loader_preserves_importance_weights_and_nullable_inputs(
@@ -597,6 +724,19 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
     _, manifest, _ = load_simulation_ready_us_multispine_pool(manifest_path)
 
     assert manifest["terminal_gates"] == manifest["agreement_gate"]
+
+
+def test_ready_stacked_pool_loader_requires_schema_five_late_dag_proof(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    del manifest["stage_receipts"]["impute"]["stacked_late_producer_dag"]
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="has no late-producer DAG receipt"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
 
 
 @pytest.mark.parametrize("document", ["manifest", "diagnostics"])

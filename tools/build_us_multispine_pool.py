@@ -3,7 +3,7 @@
 
 The default production path is the stacked pipeline:
 
-``stack -> gap-fill -> PUF pass + tail -> derive -> seed -> simulate -> gates``.
+``stack -> gap-fill -> PUF pass + tail -> late DAG -> derive -> seed -> simulate -> gates``.
 
 Both survey arms use one composition-preserving ``--sample-fraction``; PUF
 donors always remain full. The terminal completeness gate plus by-origin
@@ -160,13 +160,13 @@ from microcosm.build.us_runtime.stacked_spine import (
     by_origin_battery,
     gap_fill_stacked_spine,
     prepare_stacked_tail_derivation,
+    run_stacked_late_producer_dag,
     run_stacked_puf_pass,
     stacked_completeness_gate,
     stacked_gap_fill_plan,
     stacked_gap_fill_producer_schedule_receipt,
     stacked_spine_authority_receipt,
-    transfer_stacked_post_puf_inputs,
-    validate_stacked_post_puf_transfer_receipt,
+    validate_stacked_late_producer_receipt,
     validate_stacked_spine_frame,
 )
 from microcosm.build.us_runtime.support_provenance import (
@@ -175,6 +175,10 @@ from microcosm.build.us_runtime.support_provenance import (
     validate_assembly_provenance,
 )
 from microcosm.build.us_runtime.take_up_contract import take_up_contract_identity
+from microcosm.build.us_runtime.us_late_producer_registry import (
+    CANONICAL_US_LATE_TRANSFER_GROUPS,
+    us_late_producer_schedule_receipt,
+)
 from microcosm.frame import US_SCHEMA, Frame
 
 __all__ = [
@@ -211,6 +215,10 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 # 3: The tail-manifest schema and filing-status-exact recipient-support
 #    contract are explicit identity fields.  Earlier checkpoints may have
 #    silently hard-failed a thin status and are deliberately stale.
+# 4: The declared late-stage producer-input DAG, including its derived order,
+#    full source-input inventories, and nineteen bounded transfer groups, is
+#    bound into checkpoint identity.  Fixed source-then-transfer checkpoints
+#    are deliberately stale.
 #
 # Bump this version whenever any producer above changes a stage output without
 # changing one of the explicit identity fields below. In particular, adding,
@@ -225,7 +233,7 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 # normalizes that logical view in memory. Moving between those encodings does
 # not change a producer's scalar output and therefore does not advance this
 # ledger; changing string values or the canonical logical dtype policy does.
-POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 3
+POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 4
 
 _PRIMARY_QRF_N_ESTIMATORS = 100
 _ACS_TRANSFER_N_ESTIMATORS = 100
@@ -250,10 +258,10 @@ _STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
     1.00: "f100",
 }
 _STACKED_PIPELINE = "us-stacked-pool"
-# Version 7 binds the capital-gains-tail filing-status support contract and
-# manifest schema in addition to the version-6 ACS earnings-universe,
-# whole-pool QBI, and primary-QRF identities. Earlier checkpoints must rebuild.
-_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 7
+# Version 8 binds the derived late-stage producer-input DAG and replaces the
+# fixed source-completion-then-transfer execution. Earlier checkpoints must
+# rebuild rather than resume into a different producer schedule.
+_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 8
 _STACKED_RELEASE_ID_PATTERN = re.compile(
     r"^populace-us-2024-stacked-f(?:001|010|100)-s[0-9]+-"
     r"asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
@@ -920,6 +928,7 @@ def _pool_checkpoint_base_identity(
             "post_clone_source_operator_order": list(
                 POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
             ),
+            "late_producer_schedule": _json_ready(us_late_producer_schedule_receipt()),
             "derive_operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
             "primary_qrf_target_order": list(PRIMARY_QRF_TARGET_ORDER),
             "transfer_target_families": _json_ready(pool_transfer_target_families()),
@@ -1038,8 +1047,7 @@ def _stacked_checkpoint_base_identity(
                 "prepare_multispine_source_inputs_for_clone",
                 "gap_fill_stacked_spine",
                 "run_stacked_puf_pass",
-                "complete_multispine_source_inputs",
-                "transfer_stacked_post_puf_inputs",
+                "run_stacked_late_producer_dag",
                 "prepare_stacked_tail_derivation",
                 "derive_multispine_pool_inputs",
                 "seed_multispine_pool_inputs",
@@ -1056,6 +1064,7 @@ def _stacked_checkpoint_base_identity(
             "post_clone_source_operator_order": list(
                 POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
             ),
+            "late_producer_schedule": _json_ready(us_late_producer_schedule_receipt()),
             "derive_operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
             "primary_qrf_target_order": list(PRIMARY_QRF_TARGET_ORDER),
             "primary_qrf_checkpoint_schema_version": (
@@ -2495,13 +2504,26 @@ def _stacked_direction_bank_identity(
     }
 
 
-def _stacked_post_puf_bank_identity(
+def _stacked_late_producer_bank_identity(
     checkpoint_identity: Mapping[str, object],
+    *,
+    producer_name: str,
+    entity: str,
+    family: str,
+    ordered_targets: tuple[str, ...],
 ) -> dict[str, object]:
+    schedule = us_late_producer_schedule_receipt()
     return {
         **_pool_checkpoint_stage_identity(checkpoint_identity, "transferred"),
-        "stacked_transfer_stage": "post_puf_source_completion",
-        "stacked_transfer_name": "asec_clone_1_to_missing",
+        "stacked_transfer_stage": "late_producer_dag",
+        "late_producer_dag_sha256": schedule["schedule_sha256"],
+        "late_producer_schedule_sha256": schedule["payload_sha256"],
+        "late_producer": {
+            "name": producer_name,
+            "entity": entity,
+            "family": family,
+            "ordered_targets": list(ordered_targets),
+        },
     }
 
 
@@ -2525,23 +2547,44 @@ def _validate_stacked_post_puf_stage_receipt(
     *,
     boundary: str,
 ) -> None:
-    """Require the nested late-transfer receipt to carry canonical authority."""
+    """Require the complete DAG proof and both exact compatibility aliases."""
 
     impute = stage_receipts.get("impute")
     if not isinstance(impute, Mapping):
         raise ValueError(
             f"{boundary}: stacked transferred receipts have no impute object."
         )
+    dag_receipt = impute.get("stacked_late_producer_dag")
+    if not isinstance(dag_receipt, Mapping):
+        raise ValueError(
+            f"{boundary}: stacked transferred receipts have no late-producer "
+            "DAG object."
+        )
+    validate_stacked_late_producer_receipt(dag_receipt, boundary=boundary)
     transfer_receipt = impute.get("stacked_post_puf_transfer")
     if not isinstance(transfer_receipt, Mapping):
         raise ValueError(
             f"{boundary}: stacked transferred receipts have no post-PUF "
             "transfer object."
         )
-    validate_stacked_post_puf_transfer_receipt(
-        transfer_receipt,
-        boundary=boundary,
+    if _json_ready(transfer_receipt) != _json_ready(
+        dag_receipt.get("post_puf_transfer")
+    ):
+        raise ValueError(
+            f"{boundary}: stacked post-PUF transfer alias differs from the "
+            "late-producer DAG proof."
+        )
+    source_chain = impute.get("source_operator_chain")
+    source_alias = (
+        source_chain.get("late_dag_completion")
+        if isinstance(source_chain, Mapping)
+        else None
     )
+    if _json_ready(source_alias) != _json_ready(dag_receipt.get("source_completion")):
+        raise ValueError(
+            f"{boundary}: stacked source-completion alias differs from the "
+            "late-producer DAG proof."
+        )
 
 
 def _qbi_receipt_from_stage_receipts(
@@ -2809,19 +2852,80 @@ def build_stacked_pool(
             primary_qrf_checkpoint_dir,
             current_base_identity_sha256=current_base_identity_sha256,
         )
-        puf_result = run_stacked_puf_pass(
-            gap_filled.frame,
-            puf_donor,
-            clone_attachment_fraction=clone_attachment_fraction,
-            clone_attachment_seed=clone_attachment_seed,
-            seed=POOL_RANDOM_SEED,
-            n_estimators=_PRIMARY_QRF_N_ESTIMATORS,
-            fit_records=fit_records,
-            tail_bound_diagnostics=tail_bound_diagnostics,
-            primary_qrf_checkpoint_dir=primary_qrf_checkpoint_dir,
-        )
-        mark_phase("puf_passed")
+        late_target_banks = {
+            group.name: AcsTransferTargetBankStore(
+                acs_transfer_checkpoint_dir
+                / "late_producer_dag"
+                / group.entity
+                / group.family,
+                identity=_stacked_late_producer_bank_identity(
+                    checkpoint_identity,
+                    producer_name=group.name,
+                    entity=group.entity,
+                    family=group.family,
+                    ordered_targets=group.targets,
+                ),
+            )
+            for group in CANONICAL_US_LATE_TRANSFER_GROUPS
+        }
 
+        def primary_puf_producer(primary_input: Frame):
+            produced = run_stacked_puf_pass(
+                primary_input,
+                puf_donor,
+                clone_attachment_fraction=clone_attachment_fraction,
+                clone_attachment_seed=clone_attachment_seed,
+                seed=POOL_RANDOM_SEED,
+                n_estimators=_PRIMARY_QRF_N_ESTIMATORS,
+                fit_records=fit_records,
+                tail_bound_diagnostics=tail_bound_diagnostics,
+                primary_qrf_checkpoint_dir=primary_qrf_checkpoint_dir,
+            )
+            produced_tail = produced.receipt.get("puf_capital_gains_tail_transfer")
+            if not isinstance(produced_tail, Mapping):
+                raise ValueError("Stacked PUF pass emitted no tail manifest.")
+            validate_puf_capital_gains_tail_manifest(produced_tail)
+            if not isinstance(produced.receipt.get("primary_puf_qrf"), Mapping):
+                raise ValueError("Stacked PUF pass emitted no primary-QRF receipt.")
+            mark_phase("puf_passed")
+            return produced
+
+        primary_resource_receipts = {
+            "tax_unit.@puf_donor_tax_units": {
+                "receipt_id": (
+                    "available_input:primary_puf_qrf:tax_unit.@puf_donor_tax_units"
+                ),
+                "status": "available",
+                "producer": "primary_puf_qrf",
+                "entity": "tax_unit",
+                "column": "@puf_donor_tax_units",
+                "rows": int(len(puf_donor)),
+            },
+            "tax_unit.@primary_qrf_checkpoint": {
+                "receipt_id": (
+                    "available_input:primary_puf_qrf:tax_unit.@primary_qrf_checkpoint"
+                ),
+                "status": "available",
+                "producer": "primary_puf_qrf",
+                "entity": "tax_unit",
+                "column": "@primary_qrf_checkpoint",
+                "rows": 1,
+            },
+        }
+        late_stage = run_stacked_late_producer_dag(
+            gap_filled.frame,
+            primary_puf_producer=primary_puf_producer,
+            primary_resource_receipts=primary_resource_receipts,
+            seed=POOL_RANDOM_SEED,
+            n_estimators=_ACS_TRANSFER_N_ESTIMATORS,
+            max_targets_per_fit=DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+            target_banks=late_target_banks,
+        )
+        validate_stacked_late_producer_receipt(
+            late_stage.receipt,
+            boundary="stacked cold-build late-producer DAG",
+        )
+        puf_result = late_stage.primary_puf_result
         puf_receipt = dict(puf_result.receipt)
         primary_qrf_receipt = puf_receipt.pop("primary_puf_qrf")
         if not isinstance(primary_qrf_receipt, Mapping):
@@ -2853,40 +2957,24 @@ def build_stacked_pool(
         if not isinstance(tail_manifest, Mapping):
             raise ValueError("Stacked PUF pass emitted no tail manifest.")
         validate_puf_capital_gains_tail_manifest(tail_manifest)
-
-        source_completion = complete_multispine_source_inputs(puf_result.frame)
-        completion_preservation = assert_stacked_tail_cells_preserved(
-            source_completion.frame,
-            tail_manifest,
-        )
-        post_puf_target_bank = AcsTransferTargetBankStore(
-            acs_transfer_checkpoint_dir / "post_puf_transfer",
-            identity=_stacked_post_puf_bank_identity(checkpoint_identity),
-        )
-        post_puf_transfer = transfer_stacked_post_puf_inputs(
-            source_completion.frame,
-            seed=POOL_RANDOM_SEED,
-            n_estimators=_ACS_TRANSFER_N_ESTIMATORS,
-            max_targets_per_fit=DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
-            target_bank=post_puf_target_bank,
-        )
-        validate_stacked_post_puf_transfer_receipt(
-            post_puf_transfer.receipt,
-            boundary="stacked cold-build post-PUF transfer",
-        )
-        fit_records.extend(post_puf_transfer.transfer_result.fit_records)
+        post_puf_transfer_receipt = late_stage.receipt.get("post_puf_transfer")
+        if not isinstance(post_puf_transfer_receipt, Mapping):
+            raise ValueError(
+                "Stacked late-producer DAG emitted no post-PUF transfer receipt."
+            )
+        fit_records.extend(late_stage.transfer_result.fit_records)
         weights_audit = weights_audit_gate(fit_records)
         if not weights_audit.passed:
             raise ValueError(
                 "Stacked imputation weights audit failed:\n  "
                 + "\n  ".join(weights_audit.failures)
             )
-        post_puf_preservation = assert_stacked_tail_cells_preserved(
-            post_puf_transfer.frame,
+        late_stage_preservation = assert_stacked_tail_cells_preserved(
+            late_stage.frame,
             tail_manifest,
         )
         current = canonicalize_frame_string_dtypes(
-            post_puf_transfer.frame,
+            late_stage.frame,
             boundary="stacked pool transferred checkpoint",
             in_place=True,
         )
@@ -2897,15 +2985,15 @@ def build_stacked_pool(
         receipts["impute"] = {
             "source_operator_chain": {
                 "pre_gap_fill_preparation": dict(prepared.receipt),
-                "post_primary_completion": dict(source_completion.receipt),
+                "late_dag_completion": dict(late_stage.source_completion_receipt),
             },
             "stacked_gap_fill": dict(gap_filled.receipt),
-            "stacked_post_puf_transfer": dict(post_puf_transfer.receipt),
+            "stacked_late_producer_dag": dict(late_stage.receipt),
+            "stacked_post_puf_transfer": dict(post_puf_transfer_receipt),
             "primary_puf_qrf": primary_qrf_receipt,
             "puf_capital_gains_tail_transfer": dict(tail_manifest),
             "stacked_puf_pass": puf_receipt,
-            "tail_preservation_after_source_completion": completion_preservation,
-            "tail_preservation_after_post_puf_transfer": post_puf_preservation,
+            "tail_preservation_after_late_producer_dag": late_stage_preservation,
             "acs_qrf_transfer": {
                 "target_families": {
                     "early_gap_fill": _json_ready(CANONICAL_STACKED_GAP_FILL_SURFACE),
@@ -2921,7 +3009,10 @@ def build_stacked_pool(
                         name: bank.receipt()
                         for name, bank in sorted(target_banks.items())
                     },
-                    "post_puf_transfer": post_puf_target_bank.receipt(),
+                    "late_producer_groups": {
+                        name: bank.receipt()
+                        for name, bank in sorted(late_target_banks.items())
+                    },
                 },
             },
             "weights_audit": GateReport((weights_audit,)).to_manifest(),
@@ -3186,8 +3277,7 @@ def _stacked_manifest_payload(
             "prepare_multispine_source_inputs_for_clone",
             "gap_fill_stacked_spine",
             "run_stacked_puf_pass",
-            "complete_multispine_source_inputs",
-            "transfer_stacked_post_puf_inputs",
+            "run_stacked_late_producer_dag",
             "prepare_stacked_tail_derivation",
             "derive_multispine_pool_inputs",
             "seed_multispine_pool_inputs",

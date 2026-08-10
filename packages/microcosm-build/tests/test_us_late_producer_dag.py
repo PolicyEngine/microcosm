@@ -135,7 +135,14 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
         "late_transfer",
     }
     assert len(registry[US_LATE_PRIMARY_PUF_STAGE].inputs) == 15
-    assert len(registry[US_LATE_PRIMARY_PUF_STAGE].outputs) == 65
+    primary_outputs = registry[US_LATE_PRIMARY_PUF_STAGE].outputs
+    assert len(primary_outputs) == 66
+    assert sum(output.coverage_scope == "puf_clone" for output in primary_outputs) == 65
+    assert {
+        (output.entity, output.column, output.coverage_scope)
+        for output in primary_outputs
+        if output.coverage_scope == "whole_pool"
+    } == {("person", "person_support_clone_index", "whole_pool")}
     assert all(contract.inputs for contract in registry.values())
     assert {
         name
@@ -158,7 +165,7 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
 def test_canonical_us_late_registry_declares_required_cross_producer_edges() -> None:
     edges = set(CANONICAL_US_LATE_PRODUCER_SCHEDULE.edges)
 
-    assert len(edges) == 48
+    assert len(edges) == 54
     assert (
         source_producer_name("with_us_pregnancy_inputs"),
         source_producer_name("with_us_wic_claim_input"),
@@ -180,6 +187,15 @@ def test_canonical_us_late_registry_declares_required_cross_producer_edges() -> 
         for producer, consumer in edges
         if producer == US_LATE_PRIMARY_PUF_STAGE and consumer.startswith("transfer:")
     } == {group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    assert {
+        consumer
+        for producer, consumer in edges
+        if producer == US_LATE_PRIMARY_PUF_STAGE and consumer.startswith("source:")
+    } == {
+        source_producer_name(operator)
+        for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+    }
+    assert CANONICAL_US_LATE_PRODUCER_SCHEDULE.waves[0] == (US_LATE_PRIMARY_PUF_STAGE,)
 
 
 def test_production_adult_care_contract_refuses_missing_sstb_before_callback() -> None:
@@ -230,6 +246,7 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
 
     assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
     receipt = us_late_producer_schedule_receipt()
+    assert receipt["schema_version"] == 2
     assert receipt["status"] == "derived_and_import_validated"
     assert receipt["schedule_sha256"] == reconstructed.sha256
     assert receipt["producer_count"] == 36

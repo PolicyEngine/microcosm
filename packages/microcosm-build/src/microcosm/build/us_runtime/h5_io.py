@@ -51,9 +51,10 @@ US_MULTISPINE_POOL_H5_ARTIFACT_KIND = "populace_us_multispine_input_pool"
 US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND = (
     "populace_us_multispine_agreement_diagnostics"
 )
-# 4 adds identity-bound stage-checkpoint provenance and an explicit always-fresh
-# terminal agreement receipt to the companion pool manifest.
-US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 4
+# 5 adds the import-validated late producer/input DAG receipt, its derived
+# schedule, and the exact nineteen-group completion proof to stacked pool
+# publication. Schema 4 cannot authenticate those execution semantics.
+US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 5
 _METADATA_KEY = "_populace_staging_metadata"
 _TIME_PERIOD_KEY = "_time_period"
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -227,6 +228,10 @@ def _load_authenticated_us_multispine_pool_manifest(
         raise ValueError(
             f"US multispine pool manifest {manifest_path} is not simulation-ready."
         )
+    _validate_stacked_late_dag_manifest_binding(
+        manifest,
+        manifest_path=manifest_path,
+    )
     checkpoint_provenance = _mapping(
         manifest.get("stage_checkpoints"),
         label=f"US multispine pool manifest {manifest_path}.stage_checkpoints",
@@ -348,6 +353,72 @@ def _load_authenticated_us_multispine_pool_manifest(
         publication_run_id=publication_run_id,
         manifest_sha256=manifest_sha256,
     )
+
+
+def _validate_stacked_late_dag_manifest_binding(
+    manifest: Mapping[str, object],
+    *,
+    manifest_path: Path,
+) -> None:
+    """Make schema-5 stacked consumers authenticate the published DAG proof."""
+
+    if manifest.get("pipeline") != "us-stacked-pool":
+        return
+    expected_operator_order = [
+        "assemble_stacked_spine",
+        "prepare_multispine_source_inputs_for_clone",
+        "gap_fill_stacked_spine",
+        "run_stacked_puf_pass",
+        "run_stacked_late_producer_dag",
+        "prepare_stacked_tail_derivation",
+        "derive_multispine_pool_inputs",
+        "seed_multispine_pool_inputs",
+        "materialize_multispine_agreement_outputs",
+        "stacked_completeness_gate",
+        "by_origin_battery",
+    ]
+    if manifest.get("operator_order") != expected_operator_order:
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path} does not bind the "
+            "canonical late-DAG operator order."
+        )
+    stage_receipts = manifest.get("stage_receipts")
+    impute = (
+        stage_receipts.get("impute") if isinstance(stage_receipts, Mapping) else None
+    )
+    dag = (
+        impute.get("stacked_late_producer_dag") if isinstance(impute, Mapping) else None
+    )
+    if not isinstance(dag, Mapping):
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path} has no late-producer "
+            "DAG receipt."
+        )
+    from microcosm.build.us_runtime.stacked_spine import (
+        validate_stacked_late_producer_receipt,
+    )
+
+    validate_stacked_late_producer_receipt(
+        dag,
+        boundary=f"US stacked pool manifest {manifest_path}",
+    )
+    transfer_alias = impute.get("stacked_post_puf_transfer")
+    source_chain = impute.get("source_operator_chain")
+    source_alias = (
+        source_chain.get("late_dag_completion")
+        if isinstance(source_chain, Mapping)
+        else None
+    )
+    if transfer_alias != dag.get("post_puf_transfer"):
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path} post-PUF transfer alias "
+            "differs from its late-DAG proof."
+        )
+    if source_alias != dag.get("source_completion"):
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path} source-completion alias "
+            "differs from its late-DAG proof."
+        )
 
 
 def load_simulation_ready_us_multispine_pool(

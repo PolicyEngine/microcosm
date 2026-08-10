@@ -64,7 +64,9 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 1
+# v2 binds finite-numeric readiness, primary resource receipts, and the
+# primary-PUF clone-attachment edge into the executable producer contract.
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 2
 US_LATE_PRIMARY_PUF_STAGE = "primary_puf_qrf"
 US_LATE_EXTERNAL_STAGES: tuple[str, ...] = ("post_clone_input_surface",)
 
@@ -76,6 +78,7 @@ _QUALIFIED_TUITION = "qualified_tuition_expenses"
 _SSTB_EARNED_INCOME = "sstb_self_employment_income_before_lsr"
 _CHILDCARE_OUTPUT = "spm_unit_pre_subsidy_childcare_expenses"
 _PREGNANCY_OUTPUT = "is_pregnant"
+_CLONE_ATTACHMENT_OUTPUT = "person_support_clone_index"
 
 
 def _nonempty(value: object, *, label: str) -> str:
@@ -114,7 +117,9 @@ class EffectiveInputRequirement:
         canonical = tuple(
             sorted(
                 (tuple(sorted(set(option))) for option in alternatives),
-                key=lambda option: tuple((item.entity, item.column) for item in option),
+                key=lambda option: tuple(
+                    (item.entity, item.column, item.value_kind) for item in option
+                ),
             )
         )
         if len(set(canonical)) != len(canonical):
@@ -206,8 +211,13 @@ def transfer_producer_name(entity: str, family: str) -> str:
     )
 
 
-def _column(entity: str, column: str) -> ScopedInput:
-    return ScopedInput(entity, column)
+def _column(
+    entity: str,
+    column: str,
+    *,
+    value_kind: str = "non_null",
+) -> ScopedInput:
+    return ScopedInput(entity, column, value_kind)
 
 
 def _requirement(
@@ -228,10 +238,11 @@ def _single(
     column: str,
     *,
     optional: bool = False,
+    value_kind: str = "non_null",
 ) -> EffectiveInputRequirement:
     return _requirement(
         label,
-        (_column(entity, column),),
+        (_column(entity, column, value_kind=value_kind),),
         optional=optional,
     )
 
@@ -248,8 +259,8 @@ _COMMON_ROLE_AWARE_INPUTS = (
     ),
     _requirement(
         "age",
-        (_column("person", "age"),),
-        (_column("person", "A_AGE"),),
+        (_column("person", "age", value_kind="finite_numeric"),),
+        (_column("person", "A_AGE", value_kind="finite_numeric"),),
     ),
     _requirement(
         "sex",
@@ -262,23 +273,41 @@ _COMMON_ROLE_AWARE_INPUTS = (
     _single("tax_unit_role", "person", "tax_unit_role_input"),
     _requirement(
         "employment_income",
-        (_column("person", "employment_income_before_lsr"),),
-        (_column("person", "WSAL_VAL"),),
+        (
+            _column(
+                "person",
+                "employment_income_before_lsr",
+                value_kind="finite_numeric",
+            ),
+        ),
+        (_column("person", "WSAL_VAL", value_kind="finite_numeric"),),
     ),
     _requirement(
         "self_employment_income",
-        (_column("person", "self_employment_income_before_lsr"),),
-        (_column("person", "SEMP_VAL"),),
+        (
+            _column(
+                "person",
+                "self_employment_income_before_lsr",
+                value_kind="finite_numeric",
+            ),
+        ),
+        (_column("person", "SEMP_VAL", value_kind="finite_numeric"),),
     ),
     _requirement(
         "social_security_income",
         (
-            _column("person", "social_security_retirement"),
-            _column("person", "social_security_disability"),
-            _column("person", "social_security_survivors"),
-            _column("person", "social_security_dependents"),
+            _column(
+                "person", "social_security_retirement", value_kind="finite_numeric"
+            ),
+            _column(
+                "person", "social_security_disability", value_kind="finite_numeric"
+            ),
+            _column("person", "social_security_survivors", value_kind="finite_numeric"),
+            _column(
+                "person", "social_security_dependents", value_kind="finite_numeric"
+            ),
         ),
-        (_column("person", "SS_VAL"),),
+        (_column("person", "SS_VAL", value_kind="finite_numeric"),),
     ),
     _single("tax_unit_id", "tax_unit", "tax_unit_id"),
     _requirement(
@@ -457,12 +486,25 @@ _source_input_inventories = {
     "with_us_adult_care_inputs": _inventory(
         "with_us_adult_care_inputs",
         *_raw_person_requirements(("PEDISDRS", "is_full_time_college_student")),
-        _single("age", "person", "age"),
-        _single("employment_income", "person", "employment_income_before_lsr"),
+        _single("age", "person", "age", value_kind="finite_numeric"),
         _single(
-            "self_employment_income", "person", "self_employment_income_before_lsr"
+            "employment_income",
+            "person",
+            "employment_income_before_lsr",
+            value_kind="finite_numeric",
         ),
-        _single("sstb_earned_income", "person", _SSTB_EARNED_INCOME),
+        _single(
+            "self_employment_income",
+            "person",
+            "self_employment_income_before_lsr",
+            value_kind="finite_numeric",
+        ),
+        _single(
+            "sstb_earned_income",
+            "person",
+            _SSTB_EARNED_INCOME,
+            value_kind="finite_numeric",
+        ),
         _single("tax_unit_role", "person", "tax_unit_role_input"),
         _single("person_tax_unit_link", "person", "person_tax_unit_id"),
         _single("person_spm_unit_link", "person", "person_spm_unit_id"),
@@ -472,7 +514,12 @@ _source_input_inventories = {
             (_column("person", "person_support_clone_index"),),
             (_column("person", "person_support_channel"),),
         ),
-        _single("childcare_expenses", "spm_unit", _CHILDCARE_OUTPUT),
+        _single(
+            "childcare_expenses",
+            "spm_unit",
+            _CHILDCARE_OUTPUT,
+            value_kind="finite_numeric",
+        ),
         _single("spm_unit_id", "spm_unit", "spm_unit_id"),
         _single("tax_unit_id", "tax_unit", "tax_unit_id"),
         _single("resolved_person_weight", "person", "@resolved_weight"),
@@ -555,7 +602,12 @@ _source_input_inventories = {
             (_column("person", "ED_VAL"),),
             (_column("person", "@education_assistance_sidecar"),),
         ),
-        _single("qualified_tuition", "person", _QUALIFIED_TUITION),
+        _single(
+            "qualified_tuition",
+            "person",
+            _QUALIFIED_TUITION,
+            value_kind="finite_numeric",
+        ),
         _single("person_id", "person", "person_id"),
         _single("resolved_person_weight", "person", "@resolved_weight"),
     ),
@@ -587,32 +639,53 @@ US_LATE_PRIMARY_PUF_INPUT_INVENTORY = _inventory(
             _column("tax_unit", "tax_unit_id"),
         ),
     ),
-    _single("employment_income", "person", "employment_income_before_lsr"),
+    _single(
+        "employment_income",
+        "person",
+        "employment_income_before_lsr",
+        value_kind="finite_numeric",
+    ),
     _single(
         "self_employment_income",
         "person",
         "self_employment_income_before_lsr",
+        value_kind="finite_numeric",
     ),
-    _single("taxable_interest_income", "person", "taxable_interest_income"),
+    _single(
+        "taxable_interest_income",
+        "person",
+        "taxable_interest_income",
+        value_kind="finite_numeric",
+    ),
     _requirement(
         "dividend_income",
-        (_column("person", "dividend_income"),),
+        (_column("person", "dividend_income", value_kind="finite_numeric"),),
         (
-            _column("person", "qualified_dividend_income"),
-            _column("person", "non_qualified_dividend_income"),
+            _column("person", "qualified_dividend_income", value_kind="finite_numeric"),
+            _column(
+                "person",
+                "non_qualified_dividend_income",
+                value_kind="finite_numeric",
+            ),
         ),
-        (_column("tax_unit", "dividend_income"),),
+        (_column("tax_unit", "dividend_income", value_kind="finite_numeric"),),
     ),
     _requirement(
         "short_term_capital_gains",
-        (_column("person", "short_term_capital_gains"),),
-        (_column("tax_unit", "short_term_capital_gains"),),
+        (_column("person", "short_term_capital_gains", value_kind="finite_numeric"),),
+        (_column("tax_unit", "short_term_capital_gains", value_kind="finite_numeric"),),
     ),
     _requirement(
         "long_term_capital_gains",
-        (_column("person", "long_term_capital_gains_before_response"),),
-        (_column("person", "long_term_capital_gains"),),
-        (_column("tax_unit", "long_term_capital_gains"),),
+        (
+            _column(
+                "person",
+                "long_term_capital_gains_before_response",
+                value_kind="finite_numeric",
+            ),
+        ),
+        (_column("person", "long_term_capital_gains", value_kind="finite_numeric"),),
+        (_column("tax_unit", "long_term_capital_gains", value_kind="finite_numeric"),),
     ),
     _single("person_id", "person", "person_id"),
     _single("tax_unit_id", "tax_unit", "tax_unit_id"),
@@ -644,7 +717,7 @@ def _transfer_input_inventory(group: TransferProducerGroup) -> SourceInputInvent
     return _inventory(
         group.name,
         *structural,
-        _single("age", "person", "age"),
+        _single("age", "person", "age", value_kind="finite_numeric"),
         _single("is_female", "person", "is_female"),
         _requirement(
             "state_fips",
@@ -660,12 +733,14 @@ def _transfer_input_inventory(group: TransferProducerGroup) -> SourceInputInvent
             "person",
             "employment_income_before_lsr",
             optional=True,
+            value_kind="finite_numeric",
         ),
         _single(
             "optional_self_employment_income",
             "person",
             "self_employment_income_before_lsr",
             optional=True,
+            value_kind="finite_numeric",
         ),
         _requirement(
             "optional_social_security_income",
@@ -903,7 +978,7 @@ def _build_registry() -> dict[str, ProducerContract]:
             "primary_puf_qrf"
         ].items()
         for column in columns
-    )
+    ) + (ProducerOutput("person", _CLONE_ATTACHMENT_OUTPUT, _WHOLE_POOL_SCOPE),)
     primary_keys = {(output.entity, output.column) for output in primary_outputs}
     source_owner: dict[tuple[str, str], str] = {}
     for operator, outputs in CANONICAL_US_LATE_SOURCE_OUTPUTS.items():
@@ -977,7 +1052,15 @@ def _build_registry() -> dict[str, ProducerContract]:
     )
     for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER:
         name = source_producer_name(operator)
-        direct_dependencies = list(source_dependencies[operator])
+        direct_dependencies = [
+            *source_dependencies[operator],
+            ProducerInput(
+                "person",
+                _CLONE_ATTACHMENT_OUTPUT,
+                _WHOLE_POOL_SCOPE,
+                US_LATE_PRIMARY_PUF_STAGE,
+            ),
+        ]
         direct_dependency_keys = {
             (item.entity, item.column) for item in direct_dependencies
         }
@@ -1096,7 +1179,11 @@ def _inventory_payload(inventory: SourceInputInventory) -> dict[str, object]:
                 "optional": requirement.optional,
                 "alternatives": [
                     [
-                        {"entity": item.entity, "column": item.column}
+                        {
+                            "entity": item.entity,
+                            "column": item.column,
+                            "value_kind": item.value_kind,
+                        }
                         for item in alternative
                     ]
                     for alternative in requirement.alternatives

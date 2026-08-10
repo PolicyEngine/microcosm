@@ -39,7 +39,7 @@ import json
 import math
 import pickle
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
@@ -62,6 +62,12 @@ from microcosm.build.us_runtime.acs_transfer import (
     AcsTransferTargetBank,
     TargetFamilies,
     transfer_acs_inputs,
+)
+from microcosm.build.us_runtime.late_producer_dag import (
+    ProducerContract,
+    ProducerInput,
+    ProducerInputColumn,
+    run_producer_when_ready,
 )
 from microcosm.build.us_runtime.multispine_pool import (
     POOL_OPERATOR_CONTRACTS,
@@ -121,6 +127,13 @@ from microcosm.build.us_runtime.support_provenance import (
     support_source_id_column,
     validate_assembly_provenance,
 )
+from microcosm.build.us_runtime.us_late_producer_registry import (
+    CANONICAL_US_LATE_PRODUCER_REGISTRY,
+    CANONICAL_US_LATE_PRODUCER_SCHEDULE,
+    CANONICAL_US_LATE_TRANSFER_GROUPS,
+    US_LATE_PRIMARY_PUF_STAGE,
+    us_late_producer_schedule_receipt,
+)
 from microcosm.frame import CONSERVE_MASS, US_SCHEMA, Frame, MassChange
 
 __all__ = [
@@ -145,6 +158,7 @@ __all__ = [
     "GapFillResult",
     "OriginBatterySpec",
     "StackedPufPassResult",
+    "StackedLateProducerResult",
     "StackedPostPufTransferResult",
     "StackedSpineResult",
     "assemble_stacked_spine",
@@ -152,6 +166,7 @@ __all__ = [
     "by_origin_battery",
     "gap_fill_stacked_spine",
     "run_stacked_puf_pass",
+    "run_stacked_late_producer_dag",
     "prepare_stacked_tail_derivation",
     "sample_acs_households",
     "stacked_completeness_gate",
@@ -159,6 +174,8 @@ __all__ = [
     "stacked_gap_fill_producer_schedule_receipt",
     "stacked_spine_authority_receipt",
     "transfer_stacked_post_puf_inputs",
+    "transfer_stacked_post_puf_group",
+    "validate_stacked_late_producer_receipt",
     "validate_stacked_post_puf_transfer_receipt",
     "validate_stacked_spine_frame",
 ]
@@ -1671,10 +1688,10 @@ _GAP_FILL_ASEC_TO_ACS = "asec_survey_to_acs"
 _GAP_FILL_ASEC_HOUSING_TO_ACS = "asec_housing_to_acs"
 _GAP_FILL_HOUSING_FAMILY = "housing"
 _STACKED_AUTHORITY_ID = "us_stacked_spine_authority"
-# v7 additionally binds the filing-status-exact capital-gains-tail recipient
-# support contract.  A thin stratum may be skipped only under that immutable,
-# counted contract; v1--v6 authority cannot authenticate the new semantics.
-_STACKED_AUTHORITY_VERSION = 7
+# v8 additionally binds the import-validated late producer/input DAG. Neither
+# the former fixed source-before-transfer order nor v1--v7 authority can
+# authenticate the new dependency-derived execution semantics.
+_STACKED_AUTHORITY_VERSION = 8
 _CANONICAL_AUTHORITY_FORM = "CANONICAL"
 _NONCANONICAL_AUTHORITY_FORM = "NON-CANONICAL"
 _PRE_CLONE_PREPARATION_STAGE = "prepare_multispine_source_inputs_for_clone"
@@ -1930,6 +1947,7 @@ class _StackedAuthority:
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
     support_profile: _BatterySupportProfile
     puf_capital_gains_tail_support_contract: Mapping[str, object]
+    late_producer_schedule: Mapping[str, object]
     declared_component_sha256: Mapping[str, str]
     declared_sha256: str
     declared_form: str
@@ -1987,6 +2005,15 @@ class _StackedAuthority:
             "puf_capital_gains_tail_support_contract",
             _freeze_authority_payload(self.puf_capital_gains_tail_support_contract),
         )
+        if not isinstance(self.late_producer_schedule, Mapping):
+            raise TypeError(
+                "Stacked authority late producer schedule must be a mapping."
+            )
+        object.__setattr__(
+            self,
+            "late_producer_schedule",
+            _freeze_authority_payload(self.late_producer_schedule),
+        )
         component_digests = dict(self.declared_component_sha256)
         if set(component_digests) != {
             "gap_fill_plan",
@@ -1996,6 +2023,7 @@ class _StackedAuthority:
             "joint_metric_registry",
             "support_profile",
             "puf_capital_gains_tail_support_contract",
+            "late_producer_schedule",
         }:
             raise ValueError(
                 "Stacked authority must carry every component's declared digest."
@@ -2290,6 +2318,7 @@ def _authority_component_payloads(
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str],
     support_profile: _BatterySupportProfile,
     puf_capital_gains_tail_support_contract: Mapping[str, object],
+    late_producer_schedule: Mapping[str, object],
 ) -> dict[str, object]:
     return {
         "gap_fill_plan": _plan_payload(gap_fill_plan),
@@ -2312,6 +2341,7 @@ def _authority_component_payloads(
         "puf_capital_gains_tail_support_contract": _json_ready(
             puf_capital_gains_tail_support_contract
         ),
+        "late_producer_schedule": _json_ready(late_producer_schedule),
     }
 
 
@@ -2341,6 +2371,7 @@ def _authority_live_digests(
         puf_capital_gains_tail_support_contract=(
             authority.puf_capital_gains_tail_support_contract
         ),
+        late_producer_schedule=authority.late_producer_schedule,
     )
     component_digests = {
         name: _canonical_sha256(payload) for name, payload in payloads.items()
@@ -2368,6 +2399,7 @@ def _make_stacked_authority(
     support_profile: _BatterySupportProfile,
     declared_form: str,
     puf_capital_gains_tail_support_contract: Mapping[str, object] | None = None,
+    late_producer_schedule: Mapping[str, object] | None = None,
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
     | None = None,
     declared_component_sha256: Mapping[str, str] | None = None,
@@ -2393,6 +2425,13 @@ def _make_stacked_authority(
     )
     if not isinstance(frozen_tail_support_contract, Mapping):
         raise TypeError("Capital-gains-tail support contract must be a mapping.")
+    frozen_late_producer_schedule = _freeze_authority_payload(
+        us_late_producer_schedule_receipt()
+        if late_producer_schedule is None
+        else late_producer_schedule
+    )
+    if not isinstance(frozen_late_producer_schedule, Mapping):
+        raise TypeError("Late producer schedule must be a mapping.")
     component_payloads = _authority_component_payloads(
         gap_fill_plan=frozen_plan,
         post_puf_transfer_surface=frozen_post_puf_surface,
@@ -2403,6 +2442,7 @@ def _make_stacked_authority(
         joint_metric_registry=frozen_joint_registry,
         support_profile=support_profile,
         puf_capital_gains_tail_support_contract=frozen_tail_support_contract,
+        late_producer_schedule=frozen_late_producer_schedule,
     )
     live_components = {
         name: _canonical_sha256(payload) for name, payload in component_payloads.items()
@@ -2426,6 +2466,7 @@ def _make_stacked_authority(
         joint_metric_registry=frozen_joint_registry,
         support_profile=support_profile,
         puf_capital_gains_tail_support_contract=frozen_tail_support_contract,
+        late_producer_schedule=frozen_late_producer_schedule,
         declared_component_sha256=(
             live_components
             if declared_component_sha256 is None
@@ -3069,6 +3110,7 @@ def _production_stacked_authority(
         CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
     ),
 ) -> _StackedAuthority:
+    live_late_producer_schedule = us_late_producer_schedule_receipt()
     identity = (
         _STACKED_GAP_FILL_PLAN is _canonical_plan
         and _STACKED_GAP_FILL_SURFACE is _canonical_gap_surface
@@ -3081,6 +3123,8 @@ def _production_stacked_authority(
         and _BATTERY_METRIC_REGISTRY is _canonical_registry
         and _BATTERY_JOINT_METRIC_REGISTRY is _canonical_joint_registry
         and _BATTERY_SUPPORT_PROFILE is _canonical_profile
+        and _json_ready(live_late_producer_schedule)
+        == _json_ready(_canonical_authority.late_producer_schedule)
     )
     if identity:
         return _canonical_authority
@@ -3095,6 +3139,7 @@ def _production_stacked_authority(
         metric_registry=_BATTERY_METRIC_REGISTRY,
         joint_metric_registry=_BATTERY_JOINT_METRIC_REGISTRY,
         support_profile=_BATTERY_SUPPORT_PROFILE,
+        late_producer_schedule=live_late_producer_schedule,
         declared_form=_CANONICAL_AUTHORITY_FORM,
         declared_component_sha256=_canonical_authority.declared_component_sha256,
         declared_sha256=_canonical_authority.declared_sha256,
@@ -3395,6 +3440,16 @@ def _authority_receipt(
                 "puf_capital_gains_tail_support_contract"
             ],
         },
+        "late_producer_schedule": {
+            "identity": _json_ready(authority.late_producer_schedule),
+            "sha256": live_components["late_producer_schedule"],
+            "declared_sha256": authority.declared_component_sha256[
+                "late_producer_schedule"
+            ],
+            "schedule_sha256": authority.late_producer_schedule.get("schedule_sha256"),
+            "producer_count": authority.late_producer_schedule.get("producer_count"),
+            "digest_matches_declared": component_integrity["late_producer_schedule"],
+        },
     }
     return {
         "authority_id": authority.authority_id,
@@ -3546,6 +3601,7 @@ def _authority_validation_failures(
             "puf_capital_gains_tail_support_contract",
             "PUF capital-gains-tail support contract",
         ),
+        ("late_producer_schedule", "late producer schedule"),
     ):
         component = receipt["components"][name]
         if not component["digest_matches_declared"]:
@@ -3644,7 +3700,7 @@ def validate_stacked_post_puf_transfer_receipt(
     *,
     boundary: str,
 ) -> None:
-    """Reject a late-transfer receipt unless it carries canonical authority."""
+    """Reject a late-transfer receipt unless its full DAG proof is canonical."""
 
     if not isinstance(receipt, Mapping):
         raise ValueError(f"{boundary}: stacked post-PUF transfer receipt is absent.")
@@ -3655,6 +3711,311 @@ def validate_stacked_post_puf_transfer_receipt(
             "production manifest emission is forbidden."
         )
     _validate_production_authority_receipt(authority, boundary=boundary)
+    schedule = receipt.get("producer_schedule")
+    expected_schedule = _json_ready(us_late_producer_schedule_receipt())
+    if not isinstance(schedule, Mapping) or _json_ready(schedule) != expected_schedule:
+        raise ValueError(
+            f"{boundary}: stacked post-PUF transfer receipt has no canonical "
+            "late-producer schedule; production manifest emission is forbidden."
+        )
+    expected_execution_order = [
+        producer
+        for producer in CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
+        if producer != US_LATE_PRIMARY_PUF_STAGE
+    ]
+    if receipt.get("producer_execution_order") != expected_execution_order:
+        raise ValueError(
+            f"{boundary}: stacked post-PUF transfer execution order does not "
+            "match the derived late-producer schedule; production manifest "
+            "emission is forbidden."
+        )
+    expected_groups = {group.name: group for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    groups = receipt.get("groups")
+    if not isinstance(groups, Mapping) or set(groups) != set(expected_groups):
+        raise ValueError(
+            f"{boundary}: stacked post-PUF transfer group surface is not the "
+            "canonical 19-group partition; production manifest emission is "
+            "forbidden."
+        )
+    for name, group in expected_groups.items():
+        group_receipt = groups[name]
+        if (
+            not isinstance(group_receipt, Mapping)
+            or group_receipt.get("producer") != name
+            or tuple(group_receipt.get("ordered_targets", ())) != group.targets
+        ):
+            raise ValueError(
+                f"{boundary}: stacked post-PUF transfer group {name!r} is "
+                "misbound; production manifest emission is forbidden."
+            )
+    expected_target_labels = {
+        f"{entity}/{family}/{target}"
+        for entity, families in CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
+        for family, targets in families.items()
+        for target in targets
+    }
+    targets = receipt.get("targets")
+    if not isinstance(targets, Mapping) or set(targets) != expected_target_labels:
+        raise ValueError(
+            f"{boundary}: stacked post-PUF transfer target surface is not the "
+            "canonical 70-target surface; production manifest emission is "
+            "forbidden."
+        )
+    if any(
+        not isinstance(target_receipt, Mapping)
+        or target_receipt.get("residual_null_rows") != 0
+        for target_receipt in targets.values()
+    ):
+        raise ValueError(
+            f"{boundary}: stacked post-PUF transfer target receipts do not "
+            "prove zero residual nulls; production manifest emission is forbidden."
+        )
+    completion = receipt.get("completion")
+    if completion != {
+        "status": "complete",
+        "group_count": 19,
+        "target_count": 70,
+        "residual_null_rows": 0,
+    }:
+        raise ValueError(
+            f"{boundary}: stacked post-PUF transfer completion receipt is not "
+            "canonical; production manifest emission is forbidden."
+        )
+
+
+def _validate_late_execution_row(
+    raw_row: object,
+    *,
+    contract: ProducerContract,
+    execution_index: int,
+    boundary: str,
+) -> None:
+    """Re-run one persisted readiness proof without invoking its callback."""
+
+    if not isinstance(raw_row, Mapping):
+        raise ValueError(
+            f"{boundary}: late producer execution row {execution_index} is not "
+            "an object."
+        )
+    expected_status = "complete"
+    if (
+        raw_row.get("execution_index") != execution_index
+        or raw_row.get("producer") != contract.name
+        or raw_row.get("kind") != contract.kind
+        or raw_row.get("status") != expected_status
+    ):
+        raise ValueError(
+            f"{boundary}: late producer execution row {execution_index} is "
+            f"misbound; expected producer={contract.name!r}, kind={contract.kind!r}, "
+            f"status={expected_status!r}."
+        )
+    declared_inputs = raw_row.get("declared_inputs")
+    if not isinstance(declared_inputs, list) or len(declared_inputs) != len(
+        contract.inputs
+    ):
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} does not carry its "
+            f"exact {len(contract.inputs)}-input readiness surface."
+        )
+    unfilled_rows: dict[ProducerInput, int] = {}
+    for requirement, raw_input in zip(contract.inputs, declared_inputs, strict=True):
+        if not isinstance(raw_input, Mapping):
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} has a malformed "
+                "declared-input receipt."
+            )
+        expected_input = {
+            "entity": requirement.entity,
+            "column": requirement.column,
+            "required_scope": requirement.required_scope,
+            "producing_stage": requirement.producing_stage,
+        }
+        if any(raw_input.get(key) != value for key, value in expected_input.items()):
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} input receipt "
+                f"drifted from {requirement.entity}.{requirement.column}."
+            )
+        rows = raw_input.get("unfilled_rows")
+        if isinstance(rows, bool) or not isinstance(rows, int) or rows < 0:
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} input "
+                f"{requirement.entity}.{requirement.column} has invalid "
+                f"unfilled_rows={rows!r}."
+            )
+        unfilled_rows[requirement] = rows
+
+    raw_absence = raw_row.get("declared_absence_receipts")
+    if not isinstance(raw_absence, Mapping):
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} absence receipts are "
+            "not an object."
+        )
+    expected_absence_ids = {
+        receipt_id
+        for requirement, rows in unfilled_rows.items()
+        if rows > 0
+        for receipt_id in requirement.tolerated_absence_receipts
+    }
+    if set(raw_absence) != expected_absence_ids:
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} declared-absence "
+            f"surface drifted; expected={sorted(expected_absence_ids)}, "
+            f"got={sorted(map(str, raw_absence))}."
+        )
+    for requirement, rows in unfilled_rows.items():
+        if rows <= 0:
+            continue
+        for receipt_id in requirement.tolerated_absence_receipts:
+            receipt = raw_absence.get(receipt_id)
+            expected_receipt = {
+                "receipt_id": receipt_id,
+                "status": "declared_absence",
+                "entity": requirement.entity,
+                "column": requirement.column,
+                "required_scope": requirement.required_scope,
+                "rows": rows,
+                "producer": contract.name,
+                "reason": "optional availability-pattern input",
+            }
+            if not isinstance(receipt, Mapping) or dict(receipt) != expected_receipt:
+                raise ValueError(
+                    f"{boundary}: late producer {contract.name!r} absence receipt "
+                    f"{receipt_id!r} is not canonical."
+                )
+
+    available_inputs = raw_row.get("available_input_receipts")
+    if not isinstance(available_inputs, Mapping):
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} available-input "
+            "receipts are not an object."
+        )
+    expected_available_keys = {
+        f"{column.entity}.{column.column}"
+        for requirement in contract.inputs
+        for alternative in requirement.alternatives
+        for column in alternative
+        if column.column.startswith("@")
+        and column.column != "@resolved_weight"
+        and contract.kind == "primary_puf"
+    }
+    if set(available_inputs) != expected_available_keys:
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} available-input "
+            f"surface drifted; expected={sorted(expected_available_keys)}, "
+            f"got={sorted(map(str, available_inputs))}."
+        )
+    for key, receipt in available_inputs.items():
+        entity, column = key.split(".", 1)
+        expected_receipt = {
+            "receipt_id": f"available_input:{contract.name}:{key}",
+            "status": "available",
+            "producer": contract.name,
+            "entity": entity,
+            "column": column,
+        }
+        if (
+            not isinstance(receipt, Mapping)
+            or any(
+                receipt.get(field) != value for field, value in expected_receipt.items()
+            )
+            or isinstance(receipt.get("rows"), bool)
+            or not isinstance(receipt.get("rows"), int)
+            or receipt["rows"] <= 0
+        ):
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} available-input "
+                f"receipt {key!r} is not canonical."
+            )
+
+    run_producer_when_ready(
+        contract,
+        lambda: None,
+        unfilled_rows=unfilled_rows,
+        absence_receipts=raw_absence,
+    )
+
+
+def validate_stacked_late_producer_receipt(
+    receipt: Mapping[str, object],
+    *,
+    boundary: str,
+) -> None:
+    """Authenticate the complete derived execution and source/transfer proof."""
+
+    if not isinstance(receipt, Mapping):
+        raise ValueError(f"{boundary}: stacked late-producer DAG receipt is absent.")
+    expected_schedule = _json_ready(us_late_producer_schedule_receipt())
+    schedule = receipt.get("producer_schedule")
+    if not isinstance(schedule, Mapping) or _json_ready(schedule) != expected_schedule:
+        raise ValueError(
+            f"{boundary}: stacked late-producer DAG schedule is not canonical."
+        )
+    execution = receipt.get("execution")
+    expected_order = CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
+    if not isinstance(execution, list) or len(execution) != len(expected_order):
+        raise ValueError(
+            f"{boundary}: stacked late-producer DAG must carry exactly "
+            f"{len(expected_order)} execution rows."
+        )
+    for index, producer_name in enumerate(expected_order):
+        _validate_late_execution_row(
+            execution[index],
+            contract=CANONICAL_US_LATE_PRODUCER_REGISTRY[producer_name],
+            execution_index=index,
+            boundary=boundary,
+        )
+
+    expected_source_order = [
+        producer.removeprefix("source:")
+        for producer in expected_order
+        if producer.startswith("source:")
+    ]
+    source_completion = receipt.get("source_completion")
+    if not isinstance(source_completion, Mapping):
+        raise ValueError(
+            f"{boundary}: stacked late-producer DAG source completion is absent."
+        )
+    suboperators = source_completion.get("suboperators")
+    if (
+        source_completion.get("phase") != "post_clone"
+        or source_completion.get("operator_order") != expected_source_order
+        or not isinstance(suboperators, list)
+        or len(suboperators) != len(expected_source_order)
+    ):
+        raise ValueError(
+            f"{boundary}: stacked late-producer DAG source completion does not "
+            "match the derived sixteen-source order."
+        )
+    for index, (operator, suboperator) in enumerate(
+        zip(expected_source_order, suboperators, strict=True)
+    ):
+        if (
+            not isinstance(suboperator, Mapping)
+            or suboperator.get("operator") != operator
+            or suboperator.get("order_index") != index
+        ):
+            raise ValueError(
+                f"{boundary}: stacked source completion row {index} is not "
+                f"bound to {operator!r}."
+            )
+    deferred = source_completion.get("deferred_transfer_inputs")
+    deferred_inputs = deferred.get("inputs") if isinstance(deferred, Mapping) else None
+    if not isinstance(deferred_inputs, Mapping) or set(deferred_inputs) != {
+        "bank_account_assets",
+        "bond_assets",
+        "stock_assets",
+    }:
+        raise ValueError(
+            f"{boundary}: stacked source completion lacks the exact three-input "
+            "deferred-source receipt."
+        )
+
+    transfer = receipt.get("post_puf_transfer")
+    if not isinstance(transfer, Mapping):
+        raise ValueError(
+            f"{boundary}: stacked late-producer DAG transfer proof is absent."
+        )
+    validate_stacked_post_puf_transfer_receipt(transfer, boundary=boundary)
 
 
 def _validate_test_authority(authority: _StackedAuthority, *, boundary: str) -> None:
@@ -4111,9 +4472,9 @@ if (
     or len(_canonical_early_transfer_keys) != 48
     or len(_canonical_late_transfer_keys) != 70
     or len(_canonical_late_puf_producer_keys) != 43
-    or len(_canonical_late_source_producer_keys) != 30
+    or len(_canonical_late_source_producer_keys) != 29
     or len(_canonical_late_puf_producer_keys & _canonical_late_source_producer_keys)
-    != 3
+    != 2
     or _canonical_late_puf_producer_keys | _canonical_late_source_producer_keys
     != _canonical_late_transfer_keys
     or _canonical_early_transfer_keys & _canonical_late_transfer_keys
@@ -4142,8 +4503,8 @@ if (
         "Canonical stacked authority must partition the exact 118-target "
         "transfer surface into 48 early gap-fill and 70 post-PUF targets "
         "inside an exact 131-target terminal surface and metric registry; "
-        "the late surface must be exactly covered by 43 PUF-clone and 30 "
-        "ASEC-source producer targets with their declared three-target overlap."
+        "the late surface must be exactly covered by 43 PUF-clone and 29 "
+        "ASEC-source producer targets with their declared two-target overlap."
     )
 
 
@@ -4819,6 +5180,83 @@ class StackedPostPufTransferResult:
     transfer_result: AcsTransferResult
 
 
+@dataclass(frozen=True)
+class StackedLateProducerResult:
+    """A fully executed late-producer DAG and its aggregate provenance."""
+
+    frame: Frame
+    receipt: Mapping[str, object]
+    primary_puf_result: StackedPufPassResult
+    source_completion_receipt: Mapping[str, object]
+    transfer_result: AcsTransferResult
+
+
+def _producer_role_surface_for_group(
+    group_surface: TargetFamilies,
+    producer_surface: TargetFamilies,
+) -> TargetFamilies:
+    """Project canonical producer roles onto one bounded transfer family."""
+
+    producer_targets = {
+        (entity, target)
+        for entity, families in producer_surface.items()
+        for targets in families.values()
+        for target in targets
+    }
+    return {
+        entity: {
+            family: tuple(
+                target for target in targets if (entity, target) in producer_targets
+            )
+        }
+        for entity, families in group_surface.items()
+        for family, targets in families.items()
+        if any((entity, target) in producer_targets for target in targets)
+    }
+
+
+def transfer_stacked_post_puf_group(
+    frame: Frame,
+    *,
+    group_name: str,
+    seed: int = 0,
+    n_estimators: int = 100,
+    max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    target_bank: AcsTransferTargetBank | None = None,
+) -> StackedPostPufTransferResult:
+    """Execute one canonical bounded late-transfer producer."""
+
+    groups = {group.name: group for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    if group_name not in groups:
+        raise ValueError(
+            f"Unknown canonical US late-transfer producer {group_name!r}; "
+            f"expected one of {sorted(groups)}."
+        )
+    group = groups[group_name]
+    authority = _production_stacked_authority()
+    result = _transfer_stacked_post_puf_inputs_evaluate(
+        frame,
+        authority=authority,
+        production=True,
+        seed=seed,
+        n_estimators=n_estimators,
+        max_targets_per_fit=max_targets_per_fit,
+        target_bank=target_bank,
+        target_families=group.target_families,
+    )
+    return StackedPostPufTransferResult(
+        frame=result.frame,
+        receipt={
+            **dict(result.receipt),
+            "producer": group.name,
+            "entity": group.entity,
+            "family": group.family,
+            "ordered_targets": list(group.targets),
+        },
+        transfer_result=result.transfer_result,
+    )
+
+
 def transfer_stacked_post_puf_inputs(
     frame: Frame,
     *,
@@ -4837,6 +5275,7 @@ def transfer_stacked_post_puf_inputs(
         n_estimators=n_estimators,
         max_targets_per_fit=max_targets_per_fit,
         target_bank=target_bank,
+        target_families=None,
     )
 
 
@@ -4860,6 +5299,7 @@ def _transfer_stacked_post_puf_inputs_with_test_authority(
         n_estimators=n_estimators,
         max_targets_per_fit=max_targets_per_fit,
         target_bank=target_bank,
+        target_families=None,
     )
 
 
@@ -4872,6 +5312,7 @@ def _transfer_stacked_post_puf_inputs_evaluate(
     n_estimators: int,
     max_targets_per_fit: int,
     target_bank: AcsTransferTargetBank | None,
+    target_families: TargetFamilies | None,
 ) -> StackedPostPufTransferResult:
     """Run the late transfer from the one role carrying every declared target."""
 
@@ -4895,23 +5336,39 @@ def _transfer_stacked_post_puf_inputs_evaluate(
         frame,
         boundary="stacked post-PUF transfer attachment",
     )
-    surface = authority.post_puf_transfer_surface
+    surface = (
+        authority.post_puf_transfer_surface
+        if target_families is None
+        else target_families
+    )
     if not _surface_target_keys(surface):
         raise ValueError("Stacked post-PUF transfer requires at least one target.")
+    puf_producer_surface = (
+        authority.post_puf_puf_producer_surface
+        if target_families is None
+        else _producer_role_surface_for_group(
+            surface,
+            authority.post_puf_puf_producer_surface,
+        )
+    )
+    source_producer_surface = (
+        authority.post_puf_source_producer_surface
+        if target_families is None
+        else _producer_role_surface_for_group(
+            surface,
+            authority.post_puf_source_producer_surface,
+        )
+    )
 
     pre_counts = _verify_post_puf_transfer_activation_authority(
         frame,
         target_families=surface,
-        puf_producer_families=authority.post_puf_puf_producer_surface,
-        source_producer_families=authority.post_puf_source_producer_surface,
+        puf_producer_families=puf_producer_surface,
+        source_producer_families=source_producer_surface,
     )
     donor = _post_puf_donor_projection(frame)
-    puf_producer_keys = set(
-        _surface_target_keys(authority.post_puf_puf_producer_surface)
-    )
-    source_producer_keys = set(
-        _surface_target_keys(authority.post_puf_source_producer_surface)
-    )
+    puf_producer_keys = set(_surface_target_keys(puf_producer_surface))
+    source_producer_keys = set(_surface_target_keys(source_producer_surface))
     producer_snapshot = {
         (entity, target): _post_puf_producer_snapshot(
             frame,
@@ -4937,8 +5394,8 @@ def _transfer_stacked_post_puf_inputs_evaluate(
     target_receipts = _verify_post_puf_transfer_outcome(
         transfer.frame,
         target_families=surface,
-        puf_producer_families=authority.post_puf_puf_producer_surface,
-        source_producer_families=authority.post_puf_source_producer_surface,
+        puf_producer_families=puf_producer_surface,
+        source_producer_families=source_producer_surface,
         pre_counts=pre_counts,
         producer_snapshot=producer_snapshot,
         result=transfer,
@@ -5231,6 +5688,516 @@ def _verify_post_puf_transfer_outcome(
             + "\n  ".join(failures)
         )
     return target_receipts
+
+
+def _late_required_scope_mask(
+    frame: Frame,
+    *,
+    entity: str,
+    required_scope: str,
+) -> pd.Series:
+    """Resolve one declared late-stage row scope without inferring absence."""
+
+    table = frame.table(entity)
+    if required_scope == "whole_pool":
+        return pd.Series(True, index=table.index, dtype=bool)
+    if required_scope == "asec_source":
+        return (
+            table[support_channel_column(entity)]
+            .astype(str)
+            .eq(BASE_ASEC_SUPPORT_CHANNEL)
+        )
+    if required_scope == "puf_clone":
+        return pd.to_numeric(
+            table[support_clone_index_column(entity)],
+            errors="raise",
+        ).gt(0)
+    raise ValueError(f"Unknown US late-producer scope {required_scope!r}.")
+
+
+def _late_unfilled_input_rows(
+    frame: Frame,
+    contract: ProducerContract,
+    *,
+    available_input_receipts: Mapping[str, Mapping[str, object]] | None = None,
+) -> dict[ProducerInput, int]:
+    """Count null or nonfinite cells on every graph-declared input scope."""
+
+    available = (
+        {} if available_input_receipts is None else dict(available_input_receipts)
+    )
+    unfilled: dict[ProducerInput, int] = {}
+    for requirement in contract.inputs:
+        alternative_counts = [
+            sum(
+                _late_input_column_unfilled_rows(
+                    frame,
+                    input_column=input_column,
+                    required_scope=requirement.required_scope,
+                    producer_name=contract.name,
+                    available_input_receipts=available,
+                )
+                for input_column in alternative
+            )
+            for alternative in requirement.alternatives
+        ]
+        unfilled[requirement] = min(alternative_counts)
+    return unfilled
+
+
+def _late_input_column_unfilled_rows(
+    frame: Frame,
+    *,
+    input_column: ProducerInputColumn,
+    required_scope: str,
+    producer_name: str,
+    available_input_receipts: Mapping[str, Mapping[str, object]],
+) -> int:
+    """Count one physical or resolved input without coercing its absence."""
+
+    table = frame.table(input_column.entity)
+    scope = _late_required_scope_mask(
+        frame,
+        entity=input_column.entity,
+        required_scope=required_scope,
+    )
+    if input_column.column == "@resolved_weight":
+        weights = np.asarray(
+            frame.resolve_weights(input_column.entity).values,
+            dtype=np.float64,
+        )
+        if weights.shape != (len(table),):
+            return int(scope.sum())
+        return int((~np.isfinite(weights) & scope.to_numpy(dtype=bool)).sum())
+    if input_column.column.startswith("@"):
+        receipt_key = f"{input_column.entity}.{input_column.column}"
+        receipt = available_input_receipts.get(receipt_key)
+        expected_receipt = {
+            "receipt_id": (
+                f"available_input:{producer_name}:{input_column.entity}."
+                f"{input_column.column}"
+            ),
+            "status": "available",
+            "producer": producer_name,
+            "entity": input_column.entity,
+            "column": input_column.column,
+        }
+        if (
+            isinstance(receipt, Mapping)
+            and all(
+                receipt.get(key) == value for key, value in expected_receipt.items()
+            )
+            and isinstance(receipt.get("rows"), int)
+            and not isinstance(receipt.get("rows"), bool)
+            and receipt["rows"] > 0
+        ):
+            return 0
+        return max(1, int(scope.sum()))
+    if input_column.column not in table:
+        return int(scope.sum())
+    values = table[input_column.column]
+    missing = values.isna()
+    if input_column.value_kind == "finite_numeric":
+        numeric = pd.to_numeric(values, errors="coerce").to_numpy(dtype=np.float64)
+        missing |= ~np.isfinite(numeric)
+    return int((missing & scope).sum())
+
+
+def _late_declared_absence_receipts(
+    contract: ProducerContract,
+    unfilled_rows: Mapping[ProducerInput, int],
+) -> dict[str, Mapping[str, object]]:
+    """Materialize only absences explicitly tolerated by the contract."""
+
+    receipts: dict[str, Mapping[str, object]] = {}
+    for requirement, rows in unfilled_rows.items():
+        if rows <= 0 or not requirement.tolerated_absence_receipts:
+            continue
+        for receipt_id in requirement.tolerated_absence_receipts:
+            receipts[receipt_id] = {
+                "receipt_id": receipt_id,
+                "status": "declared_absence",
+                "entity": requirement.entity,
+                "column": requirement.column,
+                "required_scope": requirement.required_scope,
+                "rows": rows,
+                "producer": contract.name,
+                "reason": "optional availability-pattern input",
+            }
+    return receipts
+
+
+def _assert_primary_puf_stage_complete(frame: Frame) -> None:
+    """Validate the already-executed root producer before DAG dispatch."""
+
+    contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[US_LATE_PRIMARY_PUF_STAGE]
+    failures: list[str] = []
+    for output in contract.outputs:
+        table = frame.table(output.entity)
+        scope = _late_required_scope_mask(
+            frame,
+            entity=output.entity,
+            required_scope=output.coverage_scope,
+        )
+        if output.column not in table:
+            failures.append(
+                f"{output.entity}.{output.column}: column absent on "
+                f"{output.coverage_scope}"
+            )
+            continue
+        values = table[output.column]
+        missing = values.isna()
+        if pd.api.types.is_numeric_dtype(values.dtype):
+            missing |= ~np.isfinite(
+                pd.to_numeric(values, errors="coerce").to_numpy(dtype=np.float64)
+            )
+        count = int((missing & scope).sum())
+        if count:
+            failures.append(
+                f"{output.entity}.{output.column}: {count} unfilled row(s) on "
+                f"{output.coverage_scope}"
+            )
+    if failures:
+        raise ValueError(
+            f"Late producer {US_LATE_PRIMARY_PUF_STAGE!r} is not complete:\n  "
+            + "\n  ".join(failures)
+        )
+
+
+def _aggregate_late_transfer_result(
+    frame: Frame,
+    *,
+    group_results: Mapping[
+        str,
+        tuple[
+            Mapping[str, object],
+            tuple[object, ...],
+            tuple[FitWeightRecord, ...],
+            tuple[str, ...],
+            str | None,
+        ],
+    ],
+    execution_order: Sequence[str],
+) -> StackedPostPufTransferResult:
+    """Bind all bounded group outcomes into the canonical 70-target receipt."""
+
+    expected_groups = tuple(group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS)
+    if set(group_results) != set(expected_groups):
+        raise ValueError(
+            "US late-transfer finalization requires every canonical group once; "
+            f"missing={sorted(set(expected_groups) - set(group_results))}, "
+            f"extra={sorted(set(group_results) - set(expected_groups))}."
+        )
+    authority = _production_stacked_authority()
+    canonical_family = {
+        (entity, target): family
+        for entity, families in authority.post_puf_transfer_surface.items()
+        for family, targets in families.items()
+        for target in targets
+    }
+    aggregate_targets: dict[str, object] = {}
+    imputed_inputs = []
+    fit_records = []
+    deferred_inputs: list[str] = []
+    resolved_channels: set[str | None] = set()
+    group_receipts: dict[str, object] = {}
+    residual_null_rows = 0
+    for group in CANONICAL_US_LATE_TRANSFER_GROUPS:
+        (
+            group_receipt,
+            group_imputed_inputs,
+            group_fit_records,
+            group_deferred_inputs,
+            resolved_donor_channel,
+        ) = group_results[group.name]
+        if group_receipt.get("producer") != group.name:
+            raise ValueError(
+                f"US late-transfer group receipt for {group.name!r} is misbound."
+            )
+        raw_targets = group_receipt.get("targets")
+        if not isinstance(raw_targets, Mapping):
+            raise ValueError(
+                f"US late-transfer group {group.name!r} has no target receipts."
+            )
+        expected_target_labels = {
+            f"{group.entity}/{group.family}/{target}" for target in group.targets
+        }
+        if set(raw_targets) != expected_target_labels:
+            raise ValueError(
+                f"US late-transfer group {group.name!r} target receipt drift; "
+                f"expected={sorted(expected_target_labels)}, "
+                f"got={sorted(raw_targets)}."
+            )
+        for target in group.targets:
+            bounded_label = f"{group.entity}/{group.family}/{target}"
+            family = canonical_family[(group.entity, target)]
+            aggregate_targets[f"{group.entity}/{family}/{target}"] = dict(
+                raw_targets[bounded_label]
+            )
+            table = frame.table(group.entity)
+            if target not in table:
+                residual_null_rows += len(table)
+            else:
+                residual_null_rows += int(table[target].isna().sum())
+        group_receipts[group.name] = dict(group_receipt)
+        imputed_inputs.extend(group_imputed_inputs)
+        fit_records.extend(group_fit_records)
+        deferred_inputs.extend(group_deferred_inputs)
+        resolved_channels.add(resolved_donor_channel)
+    if residual_null_rows:
+        raise ValueError(
+            "US late-transfer DAG finalization found "
+            f"{residual_null_rows} residual null target cell(s); zero are allowed."
+        )
+    if len(resolved_channels) != 1:
+        raise ValueError(
+            "US late-transfer groups disagree on resolved donor channel: "
+            f"{sorted(map(str, resolved_channels))}."
+        )
+    aggregate = AcsTransferResult(
+        frame=frame,
+        imputed_inputs=tuple(imputed_inputs),
+        fit_records=tuple(fit_records),
+        deferred_inputs=tuple(dict.fromkeys(deferred_inputs)),
+        resolved_donor_channel=next(iter(resolved_channels)),
+    )
+    receipt = {
+        "authority": _authority_receipt(authority),
+        "producer_schedule": dict(us_late_producer_schedule_receipt()),
+        "producer_execution_order": list(execution_order),
+        "donor_selection": "owner_projection_of_asec_origin_clone_1",
+        "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
+        "donor_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+        "recipient_selection": ("target_specific_complement_of_declared_producer_rows"),
+        "resolved_donor_channel": aggregate.resolved_donor_channel,
+        "groups": group_receipts,
+        "targets": aggregate_targets,
+        "fit_records": [
+            {"fit_name": record.fit_name, "weight_kind": record.weight_kind}
+            for record in aggregate.fit_records
+        ],
+        "completion": {
+            "status": "complete",
+            "group_count": len(expected_groups),
+            "target_count": len(aggregate_targets),
+            "residual_null_rows": 0,
+        },
+    }
+    validate_stacked_post_puf_transfer_receipt(
+        receipt,
+        boundary="US late-transfer DAG finalization",
+    )
+    return StackedPostPufTransferResult(frame, receipt, aggregate)
+
+
+def run_stacked_late_producer_dag(
+    frame: Frame,
+    *,
+    primary_puf_producer: Callable[[Frame], StackedPufPassResult],
+    primary_resource_receipts: Mapping[str, Mapping[str, object]],
+    seed: int = 0,
+    n_estimators: int = 100,
+    max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    target_banks: Mapping[str, AcsTransferTargetBank | None] | None = None,
+    absence_receipts: Mapping[str, Mapping[str, object]] | None = None,
+) -> StackedLateProducerResult:
+    """Derive and execute the complete late stage from producer contracts."""
+
+    from microcosm.build.us_runtime.multispine_pool import (
+        POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
+        finalize_multispine_source_inputs,
+        run_multispine_post_clone_source_operator,
+    )
+
+    if max_targets_per_fit != DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT:
+        raise ValueError(
+            "Canonical US late-producer groups require "
+            f"max_targets_per_fit={DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT}; "
+            f"got {max_targets_per_fit}."
+        )
+    if not callable(primary_puf_producer):
+        raise TypeError("US late-producer DAG requires a primary-PUF callback.")
+    if not isinstance(primary_resource_receipts, Mapping):
+        raise TypeError(
+            "US late-producer DAG primary resource receipts must be a mapping."
+        )
+    expected_groups = {group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    banks = {} if target_banks is None else dict(target_banks)
+    if target_banks is not None and set(banks) != expected_groups:
+        raise ValueError(
+            "US late-producer target-bank mapping must exactly cover the "
+            f"canonical groups; missing={sorted(expected_groups - set(banks))}, "
+            f"extra={sorted(set(banks) - expected_groups)}."
+        )
+    declared_absence = {} if absence_receipts is None else dict(absence_receipts)
+    current = frame
+    execution_order: list[str] = []
+    execution_receipts: list[dict[str, object]] = []
+    primary_puf_result: StackedPufPassResult | None = None
+    source_receipts: dict[str, Mapping[str, object]] = {}
+    source_completion_receipt: Mapping[str, object] | None = None
+    group_results: dict[
+        str,
+        tuple[
+            Mapping[str, object],
+            tuple[object, ...],
+            tuple[FitWeightRecord, ...],
+            tuple[str, ...],
+            str | None,
+        ],
+    ] = {}
+    group_by_name = {group.name: group for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    for schedule_index, producer_name in enumerate(
+        CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
+    ):
+        contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[producer_name]
+        node_available_inputs = (
+            dict(primary_resource_receipts)
+            if producer_name == US_LATE_PRIMARY_PUF_STAGE
+            else {}
+        )
+        unfilled_rows = _late_unfilled_input_rows(
+            current,
+            contract,
+            available_input_receipts=node_available_inputs,
+        )
+        node_absence_receipts = _late_declared_absence_receipts(
+            contract,
+            unfilled_rows,
+        )
+        for receipt_id, receipt in node_absence_receipts.items():
+            previous = declared_absence.setdefault(receipt_id, receipt)
+            if dict(previous) != dict(receipt):
+                raise ValueError(
+                    f"Late producer {producer_name!r} absence receipt "
+                    f"{receipt_id!r} conflicts with supplied evidence."
+                )
+        outcome: dict[str, object] = {}
+
+        def execute(
+            *,
+            bound_contract: ProducerContract = contract,
+            bound_producer_name: str = producer_name,
+            bound_frame: Frame = current,
+            bound_outcome: dict[str, object] = outcome,
+        ) -> None:
+            if bound_contract.kind == "primary_puf":
+                result = primary_puf_producer(bound_frame)
+            elif bound_contract.kind == "post_clone_source":
+                operator = bound_producer_name.removeprefix("source:")
+                result = run_multispine_post_clone_source_operator(
+                    bound_frame,
+                    operator,
+                )
+            elif bound_contract.kind == "late_transfer":
+                result = transfer_stacked_post_puf_group(
+                    bound_frame,
+                    group_name=bound_producer_name,
+                    seed=seed,
+                    n_estimators=n_estimators,
+                    max_targets_per_fit=max_targets_per_fit,
+                    target_bank=banks.get(bound_producer_name),
+                )
+            else:
+                raise AssertionError(
+                    f"Unhandled US late-producer kind {bound_contract.kind!r}."
+                )
+            bound_outcome["result"] = result
+
+        run_producer_when_ready(
+            contract,
+            execute,
+            unfilled_rows=unfilled_rows,
+            absence_receipts=declared_absence,
+        )
+        result = outcome["result"]
+        current = result.frame
+        execution_receipts.append(
+            {
+                "execution_index": schedule_index,
+                "producer": producer_name,
+                "kind": contract.kind,
+                "declared_inputs": [
+                    {
+                        "entity": item.entity,
+                        "column": item.column,
+                        "required_scope": item.required_scope,
+                        "producing_stage": item.producing_stage,
+                        "unfilled_rows": unfilled_rows[item],
+                    }
+                    for item in contract.inputs
+                ],
+                "declared_absence_receipts": {
+                    receipt_id: dict(receipt)
+                    for receipt_id, receipt in node_absence_receipts.items()
+                },
+                "available_input_receipts": {
+                    receipt_id: dict(receipt)
+                    for receipt_id, receipt in sorted(node_available_inputs.items())
+                },
+                "status": "complete",
+            }
+        )
+        if contract.kind == "primary_puf":
+            if not isinstance(result, StackedPufPassResult):
+                raise TypeError(
+                    "US primary-PUF producer callback must return StackedPufPassResult."
+                )
+            _assert_primary_puf_stage_complete(current)
+            primary_puf_result = result
+            continue
+
+        execution_order.append(producer_name)
+        if contract.kind == "post_clone_source":
+            operator = producer_name.removeprefix("source:")
+            source_receipts[operator] = result.receipt
+            if len(source_receipts) == len(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER):
+                finalized = finalize_multispine_source_inputs(
+                    current,
+                    operator_receipts=source_receipts,
+                )
+                current = finalized.frame
+                source_completion_receipt = finalized.receipt
+        else:
+            group = group_by_name[producer_name]
+            if tuple(result.receipt.get("ordered_targets", ())) != group.targets:
+                raise ValueError(
+                    f"Late-transfer producer {producer_name!r} changed its "
+                    "declared target order."
+                )
+            group_results[producer_name] = (
+                result.receipt,
+                result.transfer_result.imputed_inputs,
+                result.transfer_result.fit_records,
+                result.transfer_result.deferred_inputs,
+                result.transfer_result.resolved_donor_channel,
+            )
+    if source_completion_receipt is None:
+        raise AssertionError("US late-producer DAG did not finalize source inputs.")
+    if primary_puf_result is None:
+        raise AssertionError("US late-producer DAG did not execute primary PUF.")
+    aggregate = _aggregate_late_transfer_result(
+        current,
+        group_results=group_results,
+        execution_order=execution_order,
+    )
+    late_receipt = {
+        "producer_schedule": dict(us_late_producer_schedule_receipt()),
+        "execution": execution_receipts,
+        "source_completion": dict(source_completion_receipt),
+        "post_puf_transfer": dict(aggregate.receipt),
+    }
+    validate_stacked_late_producer_receipt(
+        late_receipt,
+        boundary="US late-producer DAG finalization",
+    )
+    return StackedLateProducerResult(
+        frame=aggregate.frame,
+        receipt=late_receipt,
+        primary_puf_result=primary_puf_result,
+        source_completion_receipt=source_completion_receipt,
+        transfer_result=aggregate.transfer_result,
+    )
 
 
 # ---------------------------------------------------------------------------

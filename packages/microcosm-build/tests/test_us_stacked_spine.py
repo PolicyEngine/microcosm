@@ -24,6 +24,7 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 import microcosm.build.us_runtime.acs_income_universe as universe_module
+import microcosm.build.us_runtime.multispine_pool as multispine_pool_module
 import microcosm.build.us_runtime.puf_support as puf_support_module
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
 from microcosm.build.frame_checkpoint import (
@@ -35,8 +36,15 @@ from microcosm.build.serialization_dtypes import CANONICAL_STRING_DTYPE
 from microcosm.build.us_runtime.acs_income_universe import (
     apply_acs_pums_earnings_universe_zeros,
 )
+from microcosm.build.us_runtime.acs_transfer import AcsTransferResult
 from microcosm.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankStore
+from microcosm.build.us_runtime.late_producer_dag import (
+    ProducerContract,
+    ProducerInput,
+    ProducerInputColumn,
+)
 from microcosm.build.us_runtime.multispine_pool import (
+    PoolStageOutput,
     derive_multispine_pool_inputs,
     pool_transfer_target_families,
 )
@@ -1549,8 +1557,8 @@ def test_canonical_metric_registry_covers_the_declared_131_target_split() -> Non
     assert len(gap_targets) == 48
     assert len(post_puf_targets) == 70
     assert len(puf_producer_targets) == 43
-    assert len(source_producer_targets) == 30
-    assert len(puf_producer_targets & source_producer_targets) == 3
+    assert len(source_producer_targets) == 29
+    assert len(puf_producer_targets & source_producer_targets) == 2
     assert puf_producer_targets | source_producer_targets == post_puf_targets
     assert gap_targets.isdisjoint(post_puf_targets)
     assert len(gap_targets | post_puf_targets) == 118
@@ -2469,6 +2477,303 @@ def _post_puf_transfer_fixture() -> Frame:
         attached.strata,
         mass_log=attached.mass_log,
         metadata=attached.metadata,
+    )
+
+
+def test_bounded_transfer_group_remaps_canonical_producer_roles() -> None:
+    group = next(
+        group
+        for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+        if group.family == "puf_tax_itemization__batch_2"
+    )
+
+    puf_roles = stacked_spine_module._producer_role_surface_for_group(
+        group.target_families,
+        stacked_spine_module.CANONICAL_STACKED_POST_PUF_PUF_PRODUCER_SURFACE,
+    )
+    source_roles = stacked_spine_module._producer_role_surface_for_group(
+        group.target_families,
+        stacked_spine_module.CANONICAL_STACKED_POST_PUF_SOURCE_PRODUCER_SURFACE,
+    )
+
+    assert "qualified_tuition_expenses" in puf_roles["person"][group.family]
+    assert "traditional_ira_contributions_desired" in puf_roles["person"][group.family]
+    assert source_roles == {
+        "person": {
+            group.family: ("traditional_ira_contributions_desired",),
+        }
+    }
+
+
+def test_late_readiness_rejects_object_typed_nonfinite_numeric_input() -> None:
+    frame = _post_puf_transfer_fixture()
+    person = frame.table("person").copy()
+    person["late_numeric"] = pd.Series(
+        np.resize(np.asarray([np.inf, "bad"], dtype=object), len(person)),
+        index=person.index,
+        dtype=object,
+    )
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["person"] = person
+    poisoned = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    requirement = ProducerInput(
+        "person",
+        "late_numeric",
+        "asec_source",
+        "transfer:fixture",
+        alternatives=(
+            (
+                ProducerInputColumn(
+                    "person",
+                    "late_numeric",
+                    "finite_numeric",
+                ),
+            ),
+        ),
+    )
+    contract = ProducerContract(
+        "source:fixture",
+        "post_clone_source",
+        (requirement,),
+        (),
+    )
+
+    unfilled = stacked_spine_module._late_unfilled_input_rows(poisoned, contract)
+
+    assert unfilled[requirement] == int(
+        person[support_channel_column("person")].astype(str).eq("asec").sum()
+    )
+    with pytest.raises(
+        ValueError,
+        match=r"person\.late_numeric.*transfer:fixture",
+    ):
+        stacked_spine_module.run_producer_when_ready(
+            contract,
+            lambda: pytest.fail("invalid numeric input reached callback"),
+            unfilled_rows=unfilled,
+            absence_receipts={},
+        )
+
+
+def _fill_late_contract_surface(
+    frame: Frame,
+    *,
+    contracts: tuple[ProducerContract, ...],
+    include_outputs: bool,
+) -> Frame:
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    protected = {
+        column
+        for entity in frame.entities
+        for column in (
+            frame.schema.entity_id_column(entity),
+            support_channel_column(entity),
+            support_clone_index_column(entity),
+        )
+    }
+    protected.update(
+        frame.schema.membership_column(entity) for entity in frame.schema.group_entities
+    )
+    owners = {
+        column: entity for entity, table in tables.items() for column in table.columns
+    }
+    for contract in contracts:
+        columns: list[ProducerInputColumn] = []
+        for requirement in contract.inputs:
+            selected: tuple[ProducerInputColumn, ...] = ()
+            for alternative in requirement.alternatives:
+                physical = tuple(
+                    column
+                    for column in alternative
+                    if not column.column.startswith("@")
+                )
+                if not physical and any(
+                    column.column != "@resolved_weight" for column in alternative
+                ):
+                    continue
+                if all(
+                    column.column not in owners
+                    or owners[column.column] == column.entity
+                    for column in physical
+                ):
+                    selected = physical
+                    break
+            columns.extend(selected)
+            owners.update((column.column, column.entity) for column in selected)
+        if include_outputs:
+            for output in contract.outputs:
+                columns.append(ProducerInputColumn(output.entity, output.column))
+                owners[output.column] = output.entity
+        for column in columns:
+            table = tables[column.entity]
+            if column.column in protected and column.column in table:
+                table[column.column] = table[column.column].fillna(1)
+            elif column.column != "person_support_clone_index":
+                table[column.column] = 1.0
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def test_real_late_executor_follows_canonical_order_and_finalizes_sources_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
+    schedule = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE
+    primary_contract = registry[stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE]
+    initial = _fill_late_contract_surface(
+        _stacked_gap_fixture(),
+        contracts=(primary_contract,),
+        include_outputs=False,
+    )
+    events: list[str] = []
+    finalizer_calls = 0
+
+    def primary(frame: Frame):
+        events.append(stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE)
+        attached = clone_us_frame_for_puf_support(
+            frame,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+        )
+        completed = _fill_late_contract_surface(
+            attached,
+            contracts=tuple(registry.values()),
+            include_outputs=True,
+        )
+        return stacked_spine_module.StackedPufPassResult(completed, {})
+
+    def source(frame: Frame, operator: str) -> PoolStageOutput:
+        events.append(f"source:{operator}")
+        return PoolStageOutput(
+            frame,
+            {
+                "phase": "post_clone",
+                "operator_order": [operator],
+                "suboperators": [{"operator": operator}],
+            },
+        )
+
+    def finalize(
+        frame: Frame,
+        *,
+        operator_receipts: dict[str, object],
+    ) -> PoolStageOutput:
+        nonlocal finalizer_calls
+        finalizer_calls += 1
+        source_order = list(operator_receipts)
+        return PoolStageOutput(
+            frame,
+            {
+                "phase": "post_clone",
+                "operator_order": source_order,
+                "suboperators": [
+                    {"operator": operator, "order_index": index}
+                    for index, operator in enumerate(source_order)
+                ],
+                "deferred_transfer_inputs": {
+                    "inputs": {
+                        column: {}
+                        for column in (
+                            "bank_account_assets",
+                            "bond_assets",
+                            "stock_assets",
+                        )
+                    }
+                },
+            },
+        )
+
+    def transfer(
+        frame: Frame,
+        *,
+        group_name: str,
+        **_kwargs: object,
+    ) -> stacked_spine_module.StackedPostPufTransferResult:
+        events.append(group_name)
+        group = next(
+            item
+            for item in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+            if item.name == group_name
+        )
+        transfer_result = AcsTransferResult(
+            frame=frame,
+            imputed_inputs=(),
+            fit_records=(),
+            deferred_inputs=(),
+            resolved_donor_channel="asec",
+        )
+        return stacked_spine_module.StackedPostPufTransferResult(
+            frame,
+            {
+                "producer": group.name,
+                "ordered_targets": list(group.targets),
+                "targets": {
+                    f"{group.entity}/{group.family}/{target}": {
+                        "residual_null_rows": 0,
+                    }
+                    for target in group.targets
+                },
+            },
+            transfer_result,
+        )
+
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "run_multispine_post_clone_source_operator",
+        source,
+    )
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "finalize_multispine_source_inputs",
+        finalize,
+    )
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "transfer_stacked_post_puf_group",
+        transfer,
+    )
+    resources = {
+        f"tax_unit.{column}": {
+            "receipt_id": (
+                f"available_input:{stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE}:"
+                f"tax_unit.{column}"
+            ),
+            "status": "available",
+            "producer": stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE,
+            "entity": "tax_unit",
+            "column": column,
+            "rows": 1,
+        }
+        for column in ("@puf_donor_tax_units", "@primary_qrf_checkpoint")
+    }
+
+    result = stacked_spine_module.run_stacked_late_producer_dag(
+        initial,
+        primary_puf_producer=primary,
+        primary_resource_receipts=resources,
+    )
+
+    assert tuple(events) == schedule.order
+    assert finalizer_calls == 1
+    assert events.index("transfer:person/puf_tax_itemization__batch_5") < events.index(
+        "source:with_us_adult_care_inputs"
+    )
+    stacked_spine_module.validate_stacked_late_producer_receipt(
+        result.receipt,
+        boundary="executor regression",
     )
 
 
@@ -4061,7 +4366,7 @@ def test_self_digested_partial_authority_cannot_forge_production_identity() -> N
         GateReport((result,)).to_manifest()
 
 
-@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6))
+@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6, 7))
 def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     stale_version: int,
 ) -> None:
@@ -4081,7 +4386,7 @@ def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     )
     stale_receipt = stacked_spine_module._authority_receipt(stale)
 
-    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 7
+    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 8
     assert stale_receipt["version"] == stale_version
     assert stale_receipt["integrity_valid"] is True
     assert stale_receipt["digest_matches_declared"] is True
@@ -4093,6 +4398,45 @@ def test_self_consistent_stale_stacked_authority_versions_are_rejected(
         stacked_spine_module._validate_production_authority_receipt(
             stale_receipt,
             boundary=f"stale authority v{stale_version}",
+        )
+
+
+def test_stacked_authority_binds_import_validated_late_producer_schedule() -> None:
+    receipt = stacked_spine_module.stacked_spine_authority_receipt()
+    component = receipt["components"]["late_producer_schedule"]
+
+    assert receipt["version"] == 8
+    assert component["producer_count"] == 36
+    assert component["schedule_sha256"] == (
+        stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE.sha256
+    )
+    assert component["identity"]["status"] == "derived_and_import_validated"
+    assert component["digest_matches_declared"] is True
+
+
+def test_rebound_late_producer_schedule_invalidates_production_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    live = dict(stacked_spine_module.us_late_producer_schedule_receipt())
+    live["schedule_sha256"] = "0" * 64
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "us_late_producer_schedule_receipt",
+        lambda: live,
+    )
+
+    authority = stacked_spine_module._production_stacked_authority()
+    receipt = stacked_spine_module._authority_receipt(authority)
+
+    assert receipt["canonical"] is False
+    assert (
+        receipt["components"]["late_producer_schedule"]["digest_matches_declared"]
+        is False
+    )
+    with pytest.raises(ValueError, match="non-canonical stacked authority"):
+        stacked_spine_module._validate_production_authority_receipt(
+            receipt,
+            boundary="rebound late producer schedule",
         )
 
 
@@ -4494,7 +4838,7 @@ def test_stripped_noncanonical_receipt_cannot_escape_under_a_renamed_gate(
         GateReport((stripped,)).to_manifest()
 
 
-def test_stripped_seven_component_authority_cannot_escape_under_a_renamed_gate() -> (
+def test_stripped_eight_component_authority_cannot_escape_under_a_renamed_gate() -> (
     None
 ):
     authority = stacked_spine_module.stacked_spine_authority_receipt()
@@ -4507,6 +4851,7 @@ def test_stripped_seven_component_authority_cannot_escape_under_a_renamed_gate()
         "joint_metric_registry",
         "support_profile",
         "puf_capital_gains_tail_support_contract",
+        "late_producer_schedule",
     }
     stripped = GateResult(
         name="renamed_stacked_battery",
