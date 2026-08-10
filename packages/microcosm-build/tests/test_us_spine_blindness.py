@@ -71,10 +71,12 @@ _US_RUNTIME_IMPORT_PREFIX = "microcosm.build.us_runtime"
 _SPINE_BLIND_BUILD_TOOLS = (_REPOSITORY_ROOT / "tools" / "build_us_multispine_pool.py",)
 _REQUIRED_POOL_RUNTIME_MODULES = frozenset(
     {
+        "late_producer_dag.py",
         "multispine_pool.py",
         "puf_support.py",
         "spine_agreement.py",
         "spine_assembly.py",
+        "us_late_producer_registry.py",
     }
 )
 _RETIRED_LATE_ASSEMBLY_MODULES = frozenset(
@@ -103,6 +105,8 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # by-origin battery are origin-aware by charter.
         "stacked_spine.py",
         "support_provenance.py",  # Centralized provenance compatibility.
+        # Declares provenance-scoped inputs and edges; never mutates rows.
+        "us_late_producer_registry.py",
         "warm_start_selection.py",  # Provenance reporting and recovery.
     }
 )
@@ -203,6 +207,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "immigration.py",
         "input_mass.py",
         "l0_refit_export.py",
+        "late_producer_dag.py",  # Pure contract/schedule derivation; no treatment.
         "medicaid_take_up.py",
         "misc_itemized.py",
         "nonzero_shares.py",
@@ -249,6 +254,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "take_up.py",
         "take_up_contract.py",
         "target_aging.py",
+        # Data-only late input/output registry; provenance owner above.
+        "us_late_producer_registry.py",
         "validation_input_coverage.py",
         "warm_start_selection.py",
     }
@@ -3265,8 +3272,8 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 61, (
-            f"{tool.name} must reach the pinned 61-module runtime graph; "
+        assert len(runtime_graph) == 63, (
+            f"{tool.name} must reach the pinned 63-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

@@ -10,7 +10,7 @@ available `origin/main` (`e9a352ca`). No fetch was performed because this task
 forbids network access. A shared-ref update outside this worktree has since made
 Git report the branch behind by one; the task remains on its required checkout
 without rebasing, resetting, or shelving. Focused verification is green; the
-exact #583 and foreground workspace chunks are next.
+exact #583 shard is green; the foreground workspace chunks are next.
 
 ## Done
 
@@ -109,10 +109,15 @@ exact #583 and foreground workspace chunks are next.
   changed by the finite-kind fix was the expected authority-bound legacy
   manifest digest; pool H5 and agreement bytes remained unchanged. Targeted
   Ruff check, format check, and diff check pass.
+- Ran the #583 source-spine-blindness shard in the foreground. Its first pass
+  fail-closed on the two new modules, so classified the pure scheduler as a
+  reviewed non-operator module, classified the data-only registry as a narrow
+  provenance owner, required both in the pool import graph, and moved the
+  pinned graph size from 61 to 63. The complete shard then passed exactly 495
+  tests.
 
 ## Next
 
-- Run the #583 suite and prove exactly 495 tests.
 - Run every full-workspace foreground chunk and the Ruff format/check/diff
   gates, then commit the exact proof counts.
 - Write the final gradeable mechanism/edge/fix/proof report to the requested
