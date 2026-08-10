@@ -63,7 +63,7 @@ from microcosm.build.gates import (
 )
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.source_runtime import SourceRuntimeConfig, run_source_stage
-from microcosm.build.staging import StagingTelemetry
+from microcosm.build.staging import DEFAULT_STAGING_PREFIX, StagingTelemetry
 from microcosm.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
@@ -291,6 +291,7 @@ from microcosm.frame.units import US_SCHEMA
 
 PERIOD = 2024
 REPO_ID = "policyengine/populace-us"
+STAGING_REPO_ID = "policyengine/populace-us-staging"
 DATASET_FILENAME = "populace_us_2024.h5"
 CALIBRATION_FILENAME = "populace_us_2024_calibration.npz"
 FINAL_HOUSEHOLD_WEIGHTS_FILENAME = "final_household_weights.npy"
@@ -727,6 +728,19 @@ US_DOCUMENTED_ABSENT_INPUTS = {
         "hours; defaults False (PolicyEngine/microcosm#249)."
     ),
 }
+
+
+def _env_default(name: str, default: str) -> str:
+    """Return a trimmed environment override, treating blank as unset.
+
+    ``os.environ.get(name, default)`` falls back only when the variable is
+    absent. An exported empty string otherwise silently defeats the staging
+    default. For staging, only ``--no-staging`` should turn telemetry off.
+    """
+
+    return os.environ.get(name, "").strip() or default
+
+
 US_ACA_MARKETPLACE_STAGE = "aca_marketplace_inputs"
 US_ACA_SOURCE_OUTPUT_COLUMNS = US_HEALTH_INPUT_NONCONSTANT_COLUMNS
 US_ACA_REPORTED_SUBSIDIZED_ANCHOR = (
@@ -1432,14 +1446,13 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--staging-repo-id",
-        default=os.environ.get(
-            "POPULACE_STAGING_REPO_ID", "policyengine/populace-us-staging"
-        ),
+        default=_env_default("POPULACE_STAGING_REPO_ID", STAGING_REPO_ID),
         help=(
             "Hugging Face dataset repo to upload staging telemetry to while "
             "the build runs. On by default (uploads are best-effort and never "
             "fail the build); override with POPULACE_STAGING_REPO_ID or "
-            "disable with --no-staging."
+            "disable with --no-staging. An empty POPULACE_STAGING_REPO_ID is "
+            "ignored rather than read as off."
         ),
     )
     parser.add_argument(
@@ -1468,7 +1481,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--staging-prefix",
-        default=os.environ.get("POPULACE_STAGING_PREFIX", "runs"),
+        default=_env_default("POPULACE_STAGING_PREFIX", DEFAULT_STAGING_PREFIX),
         help=(
             "Repo prefix for staging run artifacts. Defaults to "
             "POPULACE_STAGING_PREFIX or runs."
@@ -1505,6 +1518,15 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error(
             "--refit-l2-lambda requires the sparse L0+refit default dataset; "
             "--dense-default-dataset has no refit stage (use --l2-lambda)."
+        )
+    if not args.no_staging and not args.staging_dir and not args.staging_repo_id:
+        # Staging with nowhere to write is a configuration error, not a quiet
+        # skip. Turning staging off is an explicit decision, never a side
+        # effect of a blank repo id.
+        parser.error(
+            "--staging-repo-id is empty and no --staging-dir is set, so staging "
+            "telemetry would silently do nothing. Pass --no-staging to skip "
+            "staging deliberately, or --staging-dir for a local-only run."
         )
     ladder_values = (
         args.exact_k,
@@ -8012,19 +8034,54 @@ def _assert_exact_k_original_pool_alignment(
         )
 
 
+#: The staging run for the build in flight, so the entry point can mark it
+#: failed on the way out. The build body hands its telemetry object down a
+#: large call stack; a module-level handle avoids threading a second copy back
+#: up purely for the failure path.
+_ACTIVE_TELEMETRY: StagingTelemetry | None = None
+
+
+def _staging_manifest_block(telemetry: StagingTelemetry | None) -> dict[str, object]:
+    """Record what staging did and distinguish an opt-out from non-delivery.
+
+    Uploads are best-effort and self-disable after repeated failures, so a
+    configured destination is not evidence that anything reached it.
+    """
+
+    if telemetry is None:
+        return {"enabled": False, "reason": "--no-staging"}
+    return {
+        "enabled": True,
+        "run_id": telemetry.run_id,
+        "repo_id": telemetry.repo_id,
+        "uploads_succeeded": telemetry.uploads_succeeded,
+    }
+
+
 def _staging_telemetry(
     args: argparse.Namespace,
     *,
     release_root: Path,
     release_id: str,
 ) -> StagingTelemetry | None:
+    global _ACTIVE_TELEMETRY
+    # Each call establishes the current run, so a handle from a previous one
+    # can never be marked failed in place of this build's.
+    _ACTIVE_TELEMETRY = None
     if args.no_staging:
         return None
     if not args.staging_dir and not args.staging_repo_id:
-        return None
+        # The parser rejects this combination, so reaching it means a caller
+        # built the namespace directly. Returning None here would reinstate
+        # the silent skip the parser guard exists to prevent.
+        raise ValueError(
+            "staging is enabled but has no destination: staging_repo_id is "
+            "empty and staging_dir is unset. Set no_staging to skip staging, "
+            "or give a staging_dir for a local-only run."
+        )
     run_id = args.staging_run_id or release_id
     run_dir = args.staging_dir or release_root / "staging" / "runs" / run_id
-    return StagingTelemetry(
+    _ACTIVE_TELEMETRY = StagingTelemetry(
         run_id=run_id,
         candidate_release_id=release_id,
         run_dir=run_dir,
@@ -8032,6 +8089,7 @@ def _staging_telemetry(
         path_prefix=args.staging_prefix,
         upload_interval_seconds=args.staging_upload_interval_seconds,
     )
+    return _ACTIVE_TELEMETRY
 
 
 class _TerminalBatchTelemetry:
@@ -8104,6 +8162,30 @@ def _print_build_result(
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """Run the build and mark its staging run failed if it does not finish.
+
+    An uncaught build error previously left the dashboard status at ``running``
+    forever. SIGKILL remains outside the reach of an in-process handler; this
+    closes the ordinary exception and termination half of the gap.
+    """
+
+    try:
+        _main(argv)
+    except BaseException as error:
+        if _ACTIVE_TELEMETRY is not None:
+            try:
+                _ACTIVE_TELEMETRY.fail(error)
+            except Exception as telemetry_error:  # pragma: no cover - defensive
+                # A failing failure-report must not replace the real traceback.
+                print(
+                    "warning: could not record the staging run as failed: "
+                    f"{type(telemetry_error).__name__}: {telemetry_error}",
+                    file=sys.stderr,
+                )
+        raise
+
+
+def _main(argv: Sequence[str] | None = None) -> None:
     args = _parse_args(argv)
     if _git_dirty():
         raise SystemExit("Refusing to build a release from a dirty git worktree.")
@@ -11237,11 +11319,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         ledger_artifact=ledger_artifact.provenance(),
         default_dataset=default_dataset,
         medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
-        staging=(
-            {"run_id": telemetry.run_id, "repo_id": args.staging_repo_id}
-            if telemetry is not None
-            else None
-        ),
+        staging=_staging_manifest_block(telemetry),
         dataset_key=dataset_key,
         dataset_filename=dataset_filename,
         calibration_key=calibration_key,

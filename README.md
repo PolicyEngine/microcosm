@@ -43,8 +43,15 @@ progress JSON is uploaded to `policyengine/populace-us-staging` while the build
 runs (best-effort — a missing token or failed upload never fails the build), so
 every candidate shows up on the staging dashboard before it is published.
 Disable with `--no-staging`, or point elsewhere with `--staging-repo-id` /
-`POPULACE_STAGING_REPO_ID`. The build manifest records the staging run id, and
-`microcosm-publish-release` warns when publishing a release that has none:
+`POPULACE_STAGING_REPO_ID`. An *empty* `POPULACE_STAGING_REPO_ID` is ignored
+rather than read as off, and staging with no destination at all is an argparse
+error — `--no-staging` is the only way a build produces no telemetry.
+
+The build manifest records what staging did: the run id, the destination, and
+how many files actually reached it, or an explicit `enabled: false` for a
+declared opt-out. `microcosm-publish-release` **refuses** a release whose build
+meant to stage and delivered nothing (`--allow-missing-staging` overrides); a
+declared `--no-staging` build publishes without the flag:
 
 ```bash
 python tools/build_us_fiscal_refresh_release.py \
