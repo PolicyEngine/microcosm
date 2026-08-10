@@ -48,6 +48,7 @@ from microcosm.build.us_runtime.operator_boundary import (
 )
 from microcosm.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
 )
 
 __all__ = [
@@ -85,8 +86,10 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-# v12 declares every primary callback read-before-write and universe-validation
-# column and removes the unusable filing-status fallback. v11 bound the complete
+# v13 declares the primary callback's optional tax-unit pass-through reads and
+# binds its complete tail-control/runtime-asset surface. v12 declared every
+# primary callback person read-before-write and universe-validation column and
+# removed the unusable filing-status fallback. v11 bound the complete
 # packaged SourceStageSpec/default surface of every
 # source callback and the source finalizer's registry/exclusion/deferral
 # doctrine. v10 completed the ACS PUMS earnings-universe input declaration with
@@ -100,7 +103,7 @@ __all__ = [
 # cardinalities across each execution row, binds source-receipt outputs to the
 # callback receipt, and requires the primary callback to report the exact
 # resources it consumed. Receipt v2 introduced exact virtual-resource payloads.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 12
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 13
 US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 3
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
@@ -125,6 +128,7 @@ _QUALIFIED_TUITION = "qualified_tuition_expenses"
 _SSTB_EARNED_INCOME = "sstb_self_employment_income_before_lsr"
 _CHILDCARE_OUTPUT = "spm_unit_pre_subsidy_childcare_expenses"
 _PREGNANCY_OUTPUT = "is_pregnant"
+_ADULT_CARE_ROLE_INPUT = "tax_unit_role_input"
 _CLONE_ATTACHMENT_OUTPUT = "person_support_clone_index"
 _SOURCE_RECEIPT_PREFIX = "@source_receipt:"
 US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT = "@primary_puf_execution_config"
@@ -1058,6 +1062,16 @@ US_LATE_PRIMARY_PUF_INPUT_INVENTORY = _inventory(
         )
         for column in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     ),
+    *(
+        _single(
+            f"tax_unit_output_passthrough:{column}",
+            "tax_unit",
+            column,
+            optional=True,
+            value_kind="finite_numeric",
+        )
+        for column in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    ),
     _single(
         "qualified_tuition_allocation_fallback",
         "person",
@@ -1134,9 +1148,19 @@ def _transfer_input_inventory(group: TransferProducerGroup) -> SourceInputInvent
             US_LATE_TRANSFER_TARGET_BANK_INPUT,
         ),
     ]
+    post_transfer_structure: list[EffectiveInputRequirement] = []
+    if group.name == transfer_producer_name("person", "adult_care"):
+        post_transfer_structure.append(
+            _single(
+                "adult_care_tax_unit_role",
+                "person",
+                _ADULT_CARE_ROLE_INPUT,
+            )
+        )
     return _inventory(
         group.name,
         *structural,
+        *post_transfer_structure,
         _single("age", "person", "age", value_kind="finite_numeric"),
         _single(
             "is_female",

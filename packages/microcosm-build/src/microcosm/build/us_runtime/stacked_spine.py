@@ -35,6 +35,7 @@ per-arm scale factors are receipted rather than assumed.
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import math
 import os
@@ -51,6 +52,9 @@ from types import MappingProxyType
 import numpy as np
 import pandas as pd
 
+import microcosm.build.us_runtime.acs_income_universe as acs_income_universe_runtime
+import microcosm.build.us_runtime.acs_transfer as acs_transfer_runtime
+import microcosm.build.us_runtime.multispine_pool as multispine_pool_runtime
 from microcosm.build.gates import (
     FitWeightRecord,
     GateResult,
@@ -104,7 +108,7 @@ from microcosm.build.us_runtime.operator_boundary import (
     PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
 )
 from microcosm.build.us_runtime.puf_aggregate_records import (
-    load_default_puf_aggregate_disaggregation_spec,
+    PufAggregateDisaggregationSpec,
 )
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
@@ -120,10 +124,12 @@ from microcosm.build.us_runtime.puf_capital_gains_tail import (
     puf_capital_gains_tail_spec_identity,
     puf_capital_gains_tail_support_contract_identity,
     puf_capital_gains_tail_terminal_support_receipt,
+    resolve_puf_capital_gains_tail_execution_inputs,
     transfer_puf_capital_gains_tail,
     validate_puf_capital_gains_tail_manifest,
     validate_puf_capital_gains_tail_terminal_support_receipt,
 )
+from microcosm.build.us_runtime.puf_interest_components import PufE19200AgiBand
 from microcosm.build.us_runtime.puf_qrf_chain import (
     PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
     PRIMARY_QRF_MANIFEST_FILENAME,
@@ -220,6 +226,7 @@ __all__ = [
     "stacked_gap_fill_producer_schedule_receipt",
     "stacked_late_primary_checkpoint_input_binding",
     "stacked_late_primary_resource_receipts",
+    "stacked_late_producer_resource_semantics_receipt",
     "stacked_spine_authority_receipt",
     "transfer_stacked_post_puf_inputs",
     "transfer_stacked_post_puf_group",
@@ -3848,6 +3855,9 @@ _LATE_PRIMARY_QRF_INPUT_BINDING_ARTIFACT_KIND = (
     "populace_us_stacked_late_primary_qrf_input_binding"
 )
 _LATE_PRIMARY_QRF_INPUT_BINDING_FILENAME = "late-producer-input-binding.json"
+_LATE_RESOURCE_SEMANTICS_ARTIFACT_KIND = (
+    "populace_us_stacked_late_producer_resource_semantics"
+)
 _LATE_TABLE_DIGEST_CHUNK_ROWS = 65_536
 
 
@@ -4135,9 +4145,11 @@ def _late_resource_binding_schema_version(column: str) -> int:
 
     kind = _late_virtual_resource_kind(column)
     return {
-        "primary_puf_execution_config": 2,
-        "post_clone_source_execution_config": 2,
-        "late_transfer_model_config": 2,
+        "acs_pums_earnings_universe_execution_config": 2,
+        "primary_puf_execution_config": 3,
+        "post_clone_source_execution_config": 3,
+        "source_finalizer_execution_config": 2,
+        "late_transfer_model_config": 3,
     }.get(kind, 1)
 
 
@@ -4247,6 +4259,7 @@ def _validate_late_resource_binding(
         require_keys(
             {
                 *common,
+                "runtime_identity_owner",
                 "ordered_mapped_columns",
                 "person_scope_mode",
                 "contract_identity",
@@ -4264,10 +4277,16 @@ def _validate_late_resource_binding(
             )
         if (
             binding.get("contract_identity")
-            != acs_pums_earnings_universe_contract_identity()
+            != _CANONICAL_ACS_EARNINGS_UNIVERSE_CONTRACT_IDENTITY
         ):
             raise ValueError(
                 f"{boundary}: late ACS earnings-universe contract changed."
+            )
+        if binding.get("runtime_identity_owner") != (
+            "microcosm.build.us_runtime.acs_income_universe"
+        ):
+            raise ValueError(
+                f"{boundary}: late ACS earnings-universe runtime owner changed."
             )
         return
     if kind == "primary_puf_execution_config":
@@ -4404,92 +4423,25 @@ def _validate_late_resource_binding(
         )
         return
     if kind == "source_finalizer_execution_config":
-        expected = _late_source_finalizer_execution_binding()
+        expected = _late_source_finalizer_execution_binding(live_runtime=False)
         require_keys(set(expected))
         if _json_ready(binding) != _json_ready(expected):
             raise ValueError(f"{boundary}: late source-finalizer config changed.")
         return
     if kind == "post_clone_source_execution_config":
-        require_keys(
-            {
-                *common,
-                "operator",
-                "seed",
-                "time_period",
-                "force_puf_imputation",
-                "allow_existing_without_source",
-                "housing_assistance_qrf",
-                "external_sidecars",
-                "source_stage_spec",
-            }
-        )
         expected_operator = producer.removeprefix("source:")
         if (
             producer != f"source:{expected_operator}"
             or binding.get("operator") != expected_operator
         ):
             raise ValueError(f"{boundary}: late source execution owner changed.")
-        require_nonnegative_integer(binding.get("seed"), label="source seed")
-        if binding.get("seed") != POOL_RANDOM_SEED:
-            raise ValueError(f"{boundary}: late source seed changed.")
-        time_period = binding.get("time_period")
-        if time_period is not None:
-            require_positive_integer(time_period, label="source time_period")
-        force_puf_imputation = binding.get("force_puf_imputation")
-        expected_force = (
-            True
-            if expected_operator == "with_us_retirement_distribution_inputs"
-            else None
+        expected = _late_source_execution_config_binding(
+            producer,
+            live_runtime=False,
         )
-        if force_puf_imputation is not expected_force:
-            raise ValueError(
-                f"{boundary}: late source force_puf_imputation switch changed."
-            )
-        expected_period = (
-            None
-            if expected_operator == "impute_us_housing_assistance_to_puf_support"
-            else POOL_TIME_PERIOD
-        )
-        if time_period != expected_period:
-            raise ValueError(f"{boundary}: late source time period changed.")
-        expected_sidecars: dict[str, dict[str, str]] = {}
-        if expected_operator == "with_us_weeks_unemployed":
-            expected_sidecars["asec_2023_source"] = {"mode": "not_supplied"}
-        if expected_operator == "with_us_education_inputs":
-            expected_sidecars["asec_education_source"] = {"mode": "not_supplied"}
-        if binding.get("external_sidecars") != expected_sidecars:
-            raise ValueError(f"{boundary}: late source sidecar mode changed.")
-        allow_existing_operators = {
-            "with_us_child_support_inputs",
-            "with_us_disability_benefits",
-            "with_us_workers_compensation",
-            "with_us_childcare_inputs",
-            "with_us_adult_care_inputs",
-            "with_us_energy_subsidy_input",
-        }
-        expected_allow_existing = (
-            POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE
-            if expected_operator in allow_existing_operators
-            else None
-        )
-        if binding.get("allow_existing_without_source") is not expected_allow_existing:
-            raise ValueError(
-                f"{boundary}: late source existing-surface policy changed."
-            )
-        expected_housing_qrf = (
-            {
-                "n_estimators": POOL_HOUSING_ASSISTANCE_N_ESTIMATORS,
-                "max_train_samples": POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES,
-            }
-            if expected_operator == _DIRECT_HOUSING_ASSISTANCE_SOURCE_OPERATOR
-            else None
-        )
-        if binding.get("housing_assistance_qrf") != expected_housing_qrf:
-            raise ValueError(f"{boundary}: late housing-assistance QRF config changed.")
-        if binding.get("source_stage_spec") != _late_source_stage_spec_binding(
-            expected_operator
-        ):
-            raise ValueError(f"{boundary}: late source-stage spec binding changed.")
+        require_keys(set(expected))
+        if _json_ready(binding) != _json_ready(expected):
+            raise ValueError(f"{boundary}: late source execution config changed.")
         return
     if kind == "late_transfer_model_config":
         require_keys(
@@ -4506,6 +4458,7 @@ def _validate_late_resource_binding(
                 "donor_channel",
                 "donor_selection",
                 "donor_projection",
+                "transfer_execution_contract",
             }
         )
         group = next(
@@ -4547,6 +4500,13 @@ def _validate_late_resource_binding(
             raise ValueError(
                 f"{boundary}: late transfer max_targets_per_fit is noncanonical."
             )
+        if binding.get("transfer_execution_contract") != (
+            acs_transfer_runtime.acs_transfer_execution_contract_identity(
+                targets=group.targets,
+                derive_schedule_d=False,
+            )
+        ):
+            raise ValueError(f"{boundary}: late transfer execution contract changed.")
         return
     if kind == "late_transfer_target_bank":
         mode = binding.get("mode")
@@ -4813,6 +4773,8 @@ def _late_primary_execution_config_binding(
     tax_unit_outputs: Sequence[str] | None,
     fit_records_enabled: bool,
     tail_bound_diagnostics_enabled: bool,
+    capital_gains_tail_spec: PufAggregateDisaggregationSpec | None = None,
+    capital_gains_tail_agi_bands: Sequence[PufE19200AgiBand] | None = None,
 ) -> dict[str, object]:
     """Return every non-Frame control consumed by the primary callback."""
 
@@ -4832,10 +4794,13 @@ def _late_primary_execution_config_binding(
         else tax_unit_outputs,
         label="tax_unit_outputs",
     )
-    tail_inputs = puf_capital_gains_tail_execution_inputs_identity()
+    tail_inputs = puf_capital_gains_tail_execution_inputs_identity(
+        spec=capital_gains_tail_spec,
+        agi_bands=capital_gains_tail_agi_bands,
+    )
     return {
         "resource_kind": "primary_puf_execution_config",
-        "schema_version": 2,
+        "schema_version": 3,
         "clone_attachment": {
             "fraction": float(clone_attachment_fraction),
             "seed": clone_attachment_seed,
@@ -4872,7 +4837,9 @@ def _late_primary_execution_config_binding(
         "capital_gains_tail": {
             "enabled": True,
             "seed": seed,
-            "support_contract": puf_capital_gains_tail_support_contract_identity(),
+            "support_contract": puf_capital_gains_tail_support_contract_identity(
+                capital_gains_tail_agi_bands
+            ),
             "spec": tail_inputs["aggregate_disaggregation_spec"],
             "soi_e19200_agi_bands": tail_inputs["soi_e19200_agi_bands"],
             "concentration_gate": tail_inputs["concentration_gate"],
@@ -4884,6 +4851,35 @@ def _late_primary_execution_config_binding(
             ),
             "recipient_predictor_universe": "required_receipt",
         },
+    }
+
+
+def _late_puf_donor_resource_semantics_binding() -> dict[str, object]:
+    """Describe the dynamic donor binding without embedding build-specific bytes."""
+
+    return {
+        "resource_kind": "puf_donor_tax_units",
+        "schema_version": 1,
+        "runtime_identity": {
+            "codec": _LATE_TABLE_DIGEST_CODEC,
+            "fields": ["table_content_sha256", "ordered_columns", "dtypes"],
+            "normalization": "canonical_table_string_dtypes",
+        },
+        "source_input_pins": ["processed_puf", "puf_source_year"],
+    }
+
+
+def _late_primary_qrf_checkpoint_static_binding() -> dict[str, object]:
+    """Return the non-recursive primary-QRF bank semantics."""
+
+    return {
+        "resource_kind": "primary_qrf_checkpoint",
+        "schema_version": 1,
+        "mode": "identity_bound_checkpoint",
+        "checkpoint_schema_version": PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
+        "manifest_filename": PRIMARY_QRF_MANIFEST_FILENAME,
+        "target_order": list(PRIMARY_QRF_TARGET_ORDER),
+        "target_order_sha256": PRIMARY_QRF_TARGET_ORDER_SHA256,
     }
 
 
@@ -4900,6 +4896,8 @@ def stacked_late_primary_resource_receipts(
     predictors: Sequence[str] | None = None,
     person_outputs: Sequence[str] | None = None,
     tax_unit_outputs: Sequence[str] | None = None,
+    capital_gains_tail_spec: PufAggregateDisaggregationSpec | None = None,
+    capital_gains_tail_agi_bands: Sequence[PufE19200AgiBand] | None = None,
 ) -> dict[str, dict[str, object]]:
     """Bind every non-Frame input consumed by the primary PUF producer."""
 
@@ -4950,14 +4948,8 @@ def stacked_late_primary_resource_receipts(
         "dtypes": [str(dtype) for dtype in normalized_donor.dtypes],
     }
     checkpoint_binding = {
-        "resource_kind": "primary_qrf_checkpoint",
-        "schema_version": 1,
+        **_late_primary_qrf_checkpoint_static_binding(),
         "checkpoint_identity_sha256": primary_qrf_checkpoint_identity_sha256,
-        "mode": "identity_bound_checkpoint",
-        "checkpoint_schema_version": PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
-        "manifest_filename": PRIMARY_QRF_MANIFEST_FILENAME,
-        "target_order": list(PRIMARY_QRF_TARGET_ORDER),
-        "target_order_sha256": PRIMARY_QRF_TARGET_ORDER_SHA256,
     }
     config_binding = _late_primary_execution_config_binding(
         clone_attachment_fraction=clone_attachment_fraction,
@@ -4969,6 +4961,8 @@ def stacked_late_primary_resource_receipts(
         tax_unit_outputs=tax_unit_outputs,
         fit_records_enabled=fit_records_enabled,
         tail_bound_diagnostics_enabled=tail_bound_diagnostics_enabled,
+        capital_gains_tail_spec=capital_gains_tail_spec,
+        capital_gains_tail_agi_bands=capital_gains_tail_agi_bands,
     )
     return {
         "tax_unit.@puf_donor_tax_units": _late_available_input_receipt(
@@ -5082,6 +5076,72 @@ _SOURCE_MANIFEST_STAGE_BY_OPERATOR: Mapping[str, str] = MappingProxyType(
         "with_us_education_inputs": "education_inputs",
     }
 )
+_SOURCE_STAGE_SPEC_RESOLVER_BY_OPERATOR: Mapping[str, tuple[str, str]] = (
+    MappingProxyType(
+        {
+            "with_us_prior_year_income_inputs": (
+                "microcosm.build.us_runtime.prior_year_income",
+                "us_prior_year_income_stage_spec",
+            ),
+            "with_us_medicare_take_up_input": (
+                "microcosm.build.us_runtime.medicare_take_up",
+                "us_medicare_take_up_stage_spec",
+            ),
+            "with_us_pregnancy_inputs": (
+                "microcosm.build.us_runtime.pregnancy",
+                "us_pregnancy_stage_spec",
+            ),
+            "with_us_wic_claim_input": (
+                "microcosm.build.us_runtime.wic_claim",
+                "us_wic_claim_stage_spec",
+            ),
+            "with_us_child_support_inputs": (
+                "microcosm.build.us_runtime.child_support",
+                "us_child_support_stage_spec",
+            ),
+            "with_us_disability_benefits": (
+                "microcosm.build.us_runtime.disability_benefits",
+                "us_disability_benefits_stage_spec",
+            ),
+            "with_us_workers_compensation": (
+                "microcosm.build.us_runtime.workers_compensation",
+                "us_workers_compensation_stage_spec",
+            ),
+            "with_us_weeks_unemployed": (
+                "microcosm.build.us_runtime.weeks_unemployed",
+                "us_weeks_unemployed_stage_spec",
+            ),
+            "with_us_childcare_inputs": (
+                "microcosm.build.us_runtime.childcare",
+                "us_childcare_stage_spec",
+            ),
+            "with_us_adult_care_inputs": (
+                "microcosm.build.us_runtime.adult_care",
+                "us_adult_care_stage_spec",
+            ),
+            "with_us_energy_subsidy_input": (
+                "microcosm.build.us_runtime.energy_subsidy",
+                "us_energy_subsidy_stage_spec",
+            ),
+            "with_us_retirement_contribution_inputs": (
+                "microcosm.build.us_runtime.retirement_contributions",
+                "us_retirement_contributions_stage_spec",
+            ),
+            "with_us_retirement_distribution_inputs": (
+                "microcosm.build.us_runtime.retirement_distributions",
+                "us_retirement_distributions_stage_spec",
+            ),
+            "with_us_immigration_inputs": (
+                "microcosm.build.us_runtime.immigration",
+                "us_immigration_stage_spec",
+            ),
+            "with_us_education_inputs": (
+                "microcosm.build.us_runtime.education_inputs",
+                "us_education_inputs_stage_spec",
+            ),
+        }
+    )
+)
 _DIRECT_HOUSING_ASSISTANCE_SOURCE_OPERATOR = (
     "impute_us_housing_assistance_to_puf_support"
 )
@@ -5093,6 +5153,13 @@ if len(_SOURCE_MANIFEST_STAGE_BY_OPERATOR) != 15 or set(
     raise RuntimeError(
         "US late source callback-identity map must cover exactly fifteen "
         "manifest stages plus the direct housing-assistance QRF."
+    )
+if set(_SOURCE_STAGE_SPEC_RESOLVER_BY_OPERATOR) != set(
+    _SOURCE_MANIFEST_STAGE_BY_OPERATOR
+):
+    raise RuntimeError(
+        "US late source runtime-spec resolver map must cover exactly the "
+        "fifteen manifest-backed callbacks."
     )
 
 
@@ -5126,6 +5193,22 @@ def _late_source_stage_spec_binding(
             f"operator {operator!r}."
         )
     stage_spec = _json_ready(asdict(stage_map[stage_name]))
+    resolver_module, resolver_name = _SOURCE_STAGE_SPEC_RESOLVER_BY_OPERATOR[operator]
+    runtime_spec_verified = resource is None
+    if runtime_spec_verified:
+        runtime_module = importlib.import_module(resolver_module)
+        runtime_resolver = getattr(runtime_module, resolver_name, None)
+        if not callable(runtime_resolver):
+            raise RuntimeError(
+                f"US late source runtime resolver {resolver_module}.{resolver_name} "
+                "is unavailable."
+            )
+        runtime_stage_spec = _json_ready(asdict(runtime_resolver()))
+        if runtime_stage_spec != stage_spec:
+            raise ValueError(
+                f"US late source operator {operator!r} runtime SourceStageSpec "
+                "differs from the content-bound packaged manifest."
+            )
     asset_bytes = resolved_resource.read_bytes()
     return {
         "asset": "microcosm.build.us/source_stages.json",
@@ -5138,35 +5221,99 @@ def _late_source_stage_spec_binding(
         "stage_name": stage_name,
         "resolved_stage_spec": stage_spec,
         "resolved_stage_spec_sha256": _canonical_sha256(stage_spec),
+        "runtime_stage_spec_resolver": {
+            "module": resolver_module,
+            "callable": resolver_name,
+        },
+        "runtime_stage_spec_verified": runtime_spec_verified,
     }
 
 
-def _late_source_resource_receipts(
-    *,
+def _late_source_execution_config_binding(
     producer_name: str,
-) -> dict[str, dict[str, object]]:
-    """Bind the fixed controls consumed by one post-clone source callback."""
+    *,
+    live_runtime: bool = True,
+) -> dict[str, object]:
+    """Return all fixed controls consumed by one post-clone source callback."""
 
     operator = producer_name.removeprefix("source:")
     if producer_name != f"source:{operator}":
         raise ValueError(
             f"US late source producer name is malformed: {producer_name!r}."
         )
-    binding = {
+    if live_runtime:
+        seed = multispine_pool_runtime.POOL_RANDOM_SEED
+        time_period = multispine_pool_runtime.POOL_TIME_PERIOD
+        allow_existing = (
+            multispine_pool_runtime.POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE
+        )
+        housing_n_estimators = (
+            multispine_pool_runtime.POOL_HOUSING_ASSISTANCE_N_ESTIMATORS
+        )
+        housing_max_train_samples = (
+            multispine_pool_runtime.POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES
+        )
+        operator_registry = (
+            multispine_pool_runtime.POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+        )
+        phase = multispine_pool_runtime._POST_CLONE_PHASE
+        operator_contracts = multispine_pool_runtime.POOL_OPERATOR_CONTRACTS
+        output_families = (
+            multispine_pool_runtime._run_source_operator_chain.__kwdefaults__[
+                "output_families"
+            ]
+        )
+        formula_owned_outputs = multispine_pool_runtime._FORMULA_OWNED_SOURCE_OUTPUTS
+    else:
+        seed = POOL_RANDOM_SEED
+        time_period = POOL_TIME_PERIOD
+        allow_existing = POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE
+        housing_n_estimators = POOL_HOUSING_ASSISTANCE_N_ESTIMATORS
+        housing_max_train_samples = POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES
+        operator_registry = POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+        phase = POOL_POST_CLONE_SOURCE_PHASE
+        operator_contracts = POOL_OPERATOR_CONTRACTS
+        output_families = PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES
+        formula_owned_outputs = FORMULA_OWNED_SOURCE_COLUMNS
+    try:
+        operator_contract = operator_contracts[operator]
+    except KeyError as exc:
+        raise ValueError(
+            f"US late source runtime declares no operator {operator!r}."
+        ) from exc
+    family_outputs = output_families[operator_contract.family]
+    return {
         "resource_kind": "post_clone_source_execution_config",
-        "schema_version": 2,
+        "schema_version": 3,
         "operator": operator,
-        "seed": POOL_RANDOM_SEED,
+        "phase": phase,
+        "operator_registry": list(operator_registry),
+        "operator_contract": {
+            "family": operator_contract.family,
+            "phases": list(operator_contract.phases),
+            "mechanism": operator_contract.mechanism,
+            "execution_scope": operator_contract.execution_scope,
+        },
+        "declared_output_family": {
+            entity: sorted(columns)
+            for entity, columns in sorted(family_outputs.items())
+        },
+        "formula_owned_outputs_removed": {
+            entity: sorted(set(columns) & set(formula_owned_outputs.get(entity, ())))
+            for entity, columns in sorted(family_outputs.items())
+            if set(columns) & set(formula_owned_outputs.get(entity, ()))
+        },
+        "seed": seed,
         "time_period": (
             None
             if operator == "impute_us_housing_assistance_to_puf_support"
-            else POOL_TIME_PERIOD
+            else time_period
         ),
         "force_puf_imputation": (
             True if operator == "with_us_retirement_distribution_inputs" else None
         ),
         "allow_existing_without_source": (
-            POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE
+            allow_existing
             if operator
             in {
                 "with_us_child_support_inputs",
@@ -5180,8 +5327,8 @@ def _late_source_resource_receipts(
         ),
         "housing_assistance_qrf": (
             {
-                "n_estimators": POOL_HOUSING_ASSISTANCE_N_ESTIMATORS,
-                "max_train_samples": POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES,
+                "n_estimators": housing_n_estimators,
+                "max_train_samples": housing_max_train_samples,
             }
             if operator == _DIRECT_HOUSING_ASSISTANCE_SOURCE_OPERATOR
             else None
@@ -5195,6 +5342,15 @@ def _late_source_resource_receipts(
         ),
         "source_stage_spec": _late_source_stage_spec_binding(operator),
     }
+
+
+def _late_source_resource_receipts(
+    *,
+    producer_name: str,
+) -> dict[str, dict[str, object]]:
+    """Bind the fixed controls consumed by one post-clone source callback."""
+
+    binding = _late_source_execution_config_binding(producer_name)
     return {
         f"person.{US_LATE_SOURCE_EXECUTION_CONFIG_INPUT}": (
             _late_available_input_receipt(
@@ -5208,20 +5364,37 @@ def _late_source_resource_receipts(
     }
 
 
-def _late_source_finalizer_execution_binding() -> dict[str, object]:
+def _late_source_finalizer_execution_binding(
+    *,
+    live_runtime: bool = True,
+) -> dict[str, object]:
     """Bind every doctrine input consumed by the source finalizer callback."""
 
+    if live_runtime:
+        phase = multispine_pool_runtime._POST_CLONE_PHASE
+        operator_registry = (
+            multispine_pool_runtime.POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+        )
+        formula_owned_outputs = multispine_pool_runtime._FORMULA_OWNED_SOURCE_OUTPUTS
+        deferred_inputs = multispine_pool_runtime.POOL_DEFERRED_TRANSFER_INPUTS
+        deferred_status = multispine_pool_runtime.POOL_DEFERRED_TRANSFER_STATUS
+    else:
+        phase = POOL_POST_CLONE_SOURCE_PHASE
+        operator_registry = POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+        formula_owned_outputs = FORMULA_OWNED_SOURCE_COLUMNS
+        deferred_inputs = POOL_DEFERRED_TRANSFER_INPUTS
+        deferred_status = POOL_DEFERRED_TRANSFER_STATUS
     return {
         "resource_kind": "source_finalizer_execution_config",
-        "schema_version": 1,
-        "phase": POOL_POST_CLONE_SOURCE_PHASE,
-        "source_operator_registry": list(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER),
+        "schema_version": 2,
+        "phase": phase,
+        "source_operator_registry": list(operator_registry),
         "formula_owned_output_exclusions": {
             entity: sorted(columns)
-            for entity, columns in sorted(FORMULA_OWNED_SOURCE_COLUMNS.items())
+            for entity, columns in sorted(formula_owned_outputs.items())
         },
-        "deferred_transfer_inputs": _json_ready(POOL_DEFERRED_TRANSFER_INPUTS),
-        "deferred_status": POOL_DEFERRED_TRANSFER_STATUS,
+        "deferred_transfer_inputs": _json_ready(deferred_inputs),
+        "deferred_status": deferred_status,
     }
 
 
@@ -5240,6 +5413,50 @@ def _late_source_finalizer_resource_receipts() -> dict[str, dict[str, object]]:
     }
 
 
+def _assert_late_callback_consumed_bound_config(
+    *,
+    producer: str,
+    entity: str,
+    column: str,
+    available_input_receipts: Mapping[str, Mapping[str, object]],
+    actual_binding: Mapping[str, object],
+) -> None:
+    """Refuse a callback whose live runtime config differs from its DAG input."""
+
+    key = f"{entity}.{column}"
+    receipt = available_input_receipts.get(key)
+    bound = receipt.get("binding") if isinstance(receipt, Mapping) else None
+    if not isinstance(bound, Mapping) or _json_ready(bound) != _json_ready(
+        actual_binding
+    ):
+        raise ValueError(
+            f"Late producer {producer!r} consumed a runtime execution config "
+            f"that differs from its bound input {key}."
+        )
+
+
+_CANONICAL_ACS_EARNINGS_UNIVERSE_CONTRACT_IDENTITY = dict(
+    acs_pums_earnings_universe_contract_identity()
+)
+
+
+def _late_acs_earnings_universe_execution_binding() -> dict[str, object]:
+    """Return the exact rules and scope consumed by the universe producer."""
+
+    return {
+        "resource_kind": "acs_pums_earnings_universe_execution_config",
+        "schema_version": 2,
+        "runtime_identity_owner": ("microcosm.build.us_runtime.acs_income_universe"),
+        "ordered_mapped_columns": list(
+            acs_income_universe_runtime.ACS_PUMS_EARNINGS_SOURCE_COLUMNS
+        ),
+        "person_scope_mode": "whole_frame_acs_channel",
+        "contract_identity": (
+            acs_income_universe_runtime.acs_pums_earnings_universe_contract_identity()
+        ),
+    }
+
+
 def _late_acs_earnings_universe_resource_receipts() -> dict[str, dict[str, object]]:
     """Bind the exact rules and scope consumed by the universe producer."""
 
@@ -5250,14 +5467,78 @@ def _late_acs_earnings_universe_resource_receipts() -> dict[str, dict[str, objec
             entity="person",
             column=column,
             rows=1,
-            binding={
-                "resource_kind": ("acs_pums_earnings_universe_execution_config"),
-                "schema_version": 1,
-                "ordered_mapped_columns": list(ACS_PUMS_EARNINGS_SOURCE_COLUMNS),
-                "person_scope_mode": "whole_frame_acs_channel",
-                "contract_identity": (acs_pums_earnings_universe_contract_identity()),
-            },
+            binding=_late_acs_earnings_universe_execution_binding(),
         )
+    }
+
+
+def _late_transfer_model_config_binding(
+    *,
+    group_name: str,
+    entity: str,
+    family: str,
+    targets: Sequence[str],
+    seed: int,
+    n_estimators: int,
+    max_targets_per_fit: int,
+) -> dict[str, object]:
+    """Return every static model and donor-selection control for one group."""
+
+    return {
+        "resource_kind": "late_transfer_model_config",
+        "schema_version": 3,
+        "producer": group_name,
+        "entity": entity,
+        "family": family,
+        "ordered_targets": list(targets),
+        "seed": seed,
+        "n_estimators": n_estimators,
+        "max_targets_per_fit": max_targets_per_fit,
+        "donor_spine": ASEC_PUF_DONOR_SPINE,
+        "donor_channel": None,
+        "donor_selection": "all_rows_from_post_puf_asec_origin_projection",
+        "donor_projection": {
+            "support_channel": BASE_ASEC_SUPPORT_CHANNEL,
+            "support_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+        },
+        "transfer_execution_contract": (
+            acs_transfer_runtime.acs_transfer_execution_contract_identity(
+                targets=targets,
+                derive_schedule_d=False,
+            )
+        ),
+    }
+
+
+def _late_transfer_target_bank_static_binding(*, mode: str) -> dict[str, object]:
+    """Return the shared non-recursive target-bank mode binding."""
+
+    if mode not in {"ephemeral_no_checkpoint", "identity_bound_checkpoint"}:
+        raise ValueError(f"Unsupported US late target-bank mode {mode!r}.")
+    return {
+        "resource_kind": "late_transfer_target_bank",
+        "schema_version": 1,
+        "mode": mode,
+    }
+
+
+def _late_transfer_target_bank_binding(
+    *,
+    group_name: str,
+    target_bank: AcsTransferTargetBank | None,
+) -> dict[str, object]:
+    """Return one runtime target-bank binding without hiding its mode."""
+
+    if target_bank is None:
+        return _late_transfer_target_bank_static_binding(mode="ephemeral_no_checkpoint")
+    identity_sha256 = getattr(target_bank, "identity_sha256", None)
+    _validate_sha256(
+        identity_sha256,
+        boundary=f"US late transfer {group_name!r} target-bank identity",
+    )
+    return {
+        **_late_transfer_target_bank_static_binding(mode="identity_bound_checkpoint"),
+        "identity_sha256": identity_sha256,
     }
 
 
@@ -5274,42 +5555,19 @@ def _late_transfer_resource_receipts(
 ) -> dict[str, dict[str, object]]:
     """Bind model controls and durable-bank identity for one transfer node."""
 
-    model_binding = {
-        "resource_kind": "late_transfer_model_config",
-        "schema_version": 2,
-        "producer": group_name,
-        "entity": entity,
-        "family": family,
-        "ordered_targets": list(targets),
-        "seed": seed,
-        "n_estimators": n_estimators,
-        "max_targets_per_fit": max_targets_per_fit,
-        "donor_spine": ASEC_PUF_DONOR_SPINE,
-        "donor_channel": None,
-        "donor_selection": "all_rows_from_post_puf_asec_origin_projection",
-        "donor_projection": {
-            "support_channel": BASE_ASEC_SUPPORT_CHANNEL,
-            "support_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
-        },
-    }
-    if target_bank is None:
-        bank_binding: dict[str, object] = {
-            "resource_kind": "late_transfer_target_bank",
-            "schema_version": 1,
-            "mode": "ephemeral_no_checkpoint",
-        }
-    else:
-        identity_sha256 = getattr(target_bank, "identity_sha256", None)
-        _validate_sha256(
-            identity_sha256,
-            boundary=f"US late transfer {group_name!r} target-bank identity",
-        )
-        bank_binding = {
-            "resource_kind": "late_transfer_target_bank",
-            "schema_version": 1,
-            "mode": "identity_bound_checkpoint",
-            "identity_sha256": identity_sha256,
-        }
+    model_binding = _late_transfer_model_config_binding(
+        group_name=group_name,
+        entity=entity,
+        family=family,
+        targets=targets,
+        seed=seed,
+        n_estimators=n_estimators,
+        max_targets_per_fit=max_targets_per_fit,
+    )
+    bank_binding = _late_transfer_target_bank_binding(
+        group_name=group_name,
+        target_bank=target_bank,
+    )
     return {
         f"{entity}.{US_LATE_TRANSFER_MODEL_CONFIG_INPUT}": (
             _late_available_input_receipt(
@@ -5330,6 +5588,170 @@ def _late_transfer_resource_receipts(
             )
         ),
     }
+
+
+def stacked_late_producer_resource_semantics_receipt(
+    *,
+    clone_attachment_fraction: float,
+    clone_attachment_seed: int,
+    primary_seed: int,
+    primary_n_estimators: int,
+    transfer_seed: int,
+    transfer_n_estimators: int,
+    transfer_max_targets_per_fit: int,
+) -> dict[str, object]:
+    """Bind every static or derivation-mode resource in the late DAG.
+
+    Runtime table and bank digests remain dynamic. Their exact codecs and
+    derivations are bound here so the outer checkpoint identity covers the
+    complete resource doctrine without recursively embedding its own digest.
+    """
+
+    schedule_receipt = us_late_producer_schedule_receipt()
+    group_by_name = {group.name: group for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    producer_rows: list[dict[str, object]] = []
+    for producer_name in CANONICAL_US_LATE_PRODUCER_SCHEDULE.order:
+        contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[producer_name]
+        expected_keys = _late_contract_available_input_keys(contract)
+        resources: dict[str, object]
+        if contract.kind == "acs_earnings_universe":
+            resources = {
+                f"person.{US_LATE_ACS_EARNINGS_UNIVERSE_CONFIG_INPUT}": {
+                    "resolution": "static_exact",
+                    "binding": _late_acs_earnings_universe_execution_binding(),
+                }
+            }
+        elif contract.kind == "primary_puf":
+            resources = {
+                "tax_unit.@puf_donor_tax_units": {
+                    "resolution": "runtime_content_bound",
+                    "binding": _late_puf_donor_resource_semantics_binding(),
+                },
+                "tax_unit.@primary_qrf_checkpoint": {
+                    "resolution": "outer_identity_derived",
+                    "binding": _late_primary_qrf_checkpoint_static_binding(),
+                    "dynamic_field": {
+                        "name": "checkpoint_identity_sha256",
+                        "derivation": (
+                            "canonical_sha256(outer_stacked_checkpoint_base_identity)"
+                        ),
+                    },
+                },
+                f"tax_unit.{US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT}": {
+                    "resolution": "static_exact",
+                    "binding": _late_primary_execution_config_binding(
+                        clone_attachment_fraction=clone_attachment_fraction,
+                        clone_attachment_seed=clone_attachment_seed,
+                        seed=primary_seed,
+                        n_estimators=primary_n_estimators,
+                        predictors=None,
+                        person_outputs=None,
+                        tax_unit_outputs=None,
+                        fit_records_enabled=True,
+                        tail_bound_diagnostics_enabled=True,
+                    ),
+                },
+            }
+        elif contract.kind == "post_clone_source":
+            resources = {
+                f"person.{US_LATE_SOURCE_EXECUTION_CONFIG_INPUT}": {
+                    "resolution": "static_exact",
+                    "binding": _late_source_execution_config_binding(producer_name),
+                }
+            }
+        elif contract.kind == "source_finalizer":
+            resources = {
+                f"person.{US_LATE_SOURCE_FINALIZER_EXECUTION_CONFIG_INPUT}": {
+                    "resolution": "static_exact",
+                    "binding": _late_source_finalizer_execution_binding(),
+                }
+            }
+            resources.update(
+                {
+                    f"person.@source_receipt:{operator}": {
+                        "resolution": "signed_callback_receipt_derived",
+                        "binding": {
+                            "resource_kind": "source_operator_receipt",
+                            "schema_version": 1,
+                            "source_operator": operator,
+                            "dynamic_field": {
+                                "name": "source_receipt_sha256",
+                                "derivation": (
+                                    "canonical_sha256(signed_source_callback_receipt)"
+                                ),
+                            },
+                        },
+                    }
+                    for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+                }
+            )
+        elif contract.kind == "late_transfer":
+            group = group_by_name[producer_name]
+            resources = {
+                f"{group.entity}.{US_LATE_TRANSFER_MODEL_CONFIG_INPUT}": {
+                    "resolution": "static_exact",
+                    "binding": _late_transfer_model_config_binding(
+                        group_name=group.name,
+                        entity=group.entity,
+                        family=group.family,
+                        targets=group.targets,
+                        seed=transfer_seed,
+                        n_estimators=transfer_n_estimators,
+                        max_targets_per_fit=transfer_max_targets_per_fit,
+                    ),
+                },
+                f"{group.entity}.{US_LATE_TRANSFER_TARGET_BANK_INPUT}": {
+                    "resolution": "transferred_stage_identity_derived",
+                    "binding": _late_transfer_target_bank_static_binding(
+                        mode="identity_bound_checkpoint"
+                    ),
+                    "dynamic_field": {
+                        "name": "identity_sha256",
+                        "derivation": {
+                            "base": "transferred_pool_checkpoint_stage_identity",
+                            "late_producer_dag_sha256": schedule_receipt[
+                                "schedule_sha256"
+                            ],
+                            "late_producer_schedule_sha256": schedule_receipt[
+                                "payload_sha256"
+                            ],
+                            "producer": {
+                                "name": group.name,
+                                "entity": group.entity,
+                                "family": group.family,
+                                "ordered_targets": list(group.targets),
+                            },
+                        },
+                    },
+                },
+            }
+        else:  # pragma: no cover - import-validated canonical kind partition
+            raise AssertionError(f"Unhandled late producer kind {contract.kind!r}.")
+        if set(resources) != expected_keys:
+            raise RuntimeError(
+                f"US late resource semantics for {producer_name!r} do not cover "
+                f"its exact virtual surface; missing={sorted(expected_keys - set(resources))}, "
+                f"extra={sorted(set(resources) - expected_keys)}."
+            )
+        producer_rows.append(
+            {
+                "producer": producer_name,
+                "kind": contract.kind,
+                "resources": {
+                    key: _json_ready(resources[key]) for key in sorted(resources)
+                },
+            }
+        )
+    payload: dict[str, object] = {
+        "artifact_kind": _LATE_RESOURCE_SEMANTICS_ARTIFACT_KIND,
+        "schema_version": 1,
+        "producer_schedule_sha256": schedule_receipt["schedule_sha256"],
+        "producer_schedule_payload_sha256": schedule_receipt["payload_sha256"],
+        "producer_count": len(producer_rows),
+        "producers": producer_rows,
+    }
+    payload["sha256"] = _canonical_sha256(payload)
+    return payload
 
 
 def _late_frame_content_sha256(frame: Frame) -> str:
@@ -7810,6 +8232,7 @@ def transfer_stacked_post_puf_group(
     n_estimators: int = 100,
     max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     target_bank: AcsTransferTargetBank | None = None,
+    execution_contract: Mapping[str, object] | None = None,
 ) -> StackedPostPufTransferResult:
     """Execute one canonical bounded late-transfer producer."""
 
@@ -7830,6 +8253,8 @@ def transfer_stacked_post_puf_group(
         max_targets_per_fit=max_targets_per_fit,
         target_bank=target_bank,
         target_families=group.target_families,
+        derive_schedule_d=False,
+        execution_contract=execution_contract,
     )
     return StackedPostPufTransferResult(
         frame=result.frame,
@@ -7863,6 +8288,8 @@ def transfer_stacked_post_puf_inputs(
         max_targets_per_fit=max_targets_per_fit,
         target_bank=target_bank,
         target_families=None,
+        derive_schedule_d=True,
+        execution_contract=None,
     )
 
 
@@ -7887,6 +8314,8 @@ def _transfer_stacked_post_puf_inputs_with_test_authority(
         max_targets_per_fit=max_targets_per_fit,
         target_bank=target_bank,
         target_families=None,
+        derive_schedule_d=True,
+        execution_contract=None,
     )
 
 
@@ -7900,6 +8329,8 @@ def _transfer_stacked_post_puf_inputs_evaluate(
     max_targets_per_fit: int,
     target_bank: AcsTransferTargetBank | None,
     target_families: TargetFamilies | None,
+    derive_schedule_d: bool,
+    execution_contract: Mapping[str, object] | None,
 ) -> StackedPostPufTransferResult:
     """Run the late transfer from the one role carrying every declared target."""
 
@@ -7978,6 +8409,8 @@ def _transfer_stacked_post_puf_inputs_evaluate(
         n_estimators=n_estimators,
         max_targets_per_fit=max_targets_per_fit,
         target_bank=target_bank,
+        derive_schedule_d=derive_schedule_d,
+        execution_contract=execution_contract,
     )
     target_receipts = _verify_post_puf_transfer_outcome(
         transfer.frame,
@@ -8525,14 +8958,55 @@ def _assert_primary_puf_stage_complete(frame: Frame) -> None:
 
 def _materialize_stacked_acs_earnings_universe(
     frame: Frame,
+    *,
+    execution_config: Mapping[str, object] | None = None,
 ) -> AcsPumsEarningsUniverseApplication:
     """Run and bind the declared pre-primary ACS earnings-universe producer."""
 
+    resolved_config = (
+        _late_acs_earnings_universe_execution_binding()
+        if execution_config is None
+        else _json_ready(execution_config)
+    )
+    columns = resolved_config.get("ordered_mapped_columns")
+    if not isinstance(columns, list) or any(
+        not isinstance(column, str) or not column for column in columns
+    ):
+        raise ValueError("Late ACS earnings-universe execution config is malformed.")
     application = apply_acs_pums_earnings_universe_zeros(
         frame,
+        columns=tuple(columns),
         boundary="late ACS PUMS earnings-universe producer",
     )
     receipt = _json_ready(application.receipt)
+    contract = resolved_config.get("contract_identity")
+    if not isinstance(contract, Mapping) or any(
+        receipt.get(field) != contract.get(field)
+        for field in (
+            "version",
+            "source_channel",
+            "minimum_age",
+            "aggregation",
+            "produced_frame_semantics",
+        )
+    ):
+        raise ValueError(
+            "Late ACS earnings-universe application receipt differs from its "
+            "bound runtime contract."
+        )
+    receipt_rules = [
+        {
+            "rule_id": rule.get("rule_id"),
+            "source_column": rule.get("source_column"),
+            "mapped_column": rule.get("mapped_column"),
+        }
+        for rule in receipt.get("rules", {}).values()
+    ]
+    if receipt_rules != contract.get("rules"):
+        raise ValueError(
+            "Late ACS earnings-universe application rules differ from their "
+            "bound runtime contract."
+        )
     metadata_key = US_LATE_ACS_EARNINGS_UNIVERSE_RECEIPT_INPUT.removeprefix("@")
     if metadata_key in application.frame.metadata:
         raise ValueError(
@@ -8842,9 +9316,18 @@ def run_stacked_late_producer_dag(
             bound_producer_name: str = producer_name,
             bound_frame: Frame = current,
             bound_outcome: dict[str, object] = outcome,
+            bound_available_inputs: Mapping[
+                str, Mapping[str, object]
+            ] = node_available_inputs,
         ) -> None:
             if bound_contract.kind == "acs_earnings_universe":
-                result = _materialize_stacked_acs_earnings_universe(bound_frame)
+                config_receipt = bound_available_inputs[
+                    f"person.{US_LATE_ACS_EARNINGS_UNIVERSE_CONFIG_INPUT}"
+                ]
+                result = _materialize_stacked_acs_earnings_universe(
+                    bound_frame,
+                    execution_config=config_receipt["binding"],
+                )
             elif bound_contract.kind == "primary_puf":
                 result = primary_puf_producer(bound_frame)
             elif bound_contract.kind == "post_clone_source":
@@ -8859,6 +9342,14 @@ def run_stacked_late_producer_dag(
                     operator_receipts=source_receipts,
                 )
             elif bound_contract.kind == "late_transfer":
+                group = group_by_name[bound_producer_name]
+                config_receipt = bound_available_inputs[
+                    f"{group.entity}.{US_LATE_TRANSFER_MODEL_CONFIG_INPUT}"
+                ]
+                config_binding = config_receipt["binding"]
+                assert isinstance(config_binding, Mapping)
+                execution_contract = config_binding["transfer_execution_contract"]
+                assert isinstance(execution_contract, Mapping)
                 result = transfer_stacked_post_puf_group(
                     bound_frame,
                     group_name=bound_producer_name,
@@ -8866,6 +9357,7 @@ def run_stacked_late_producer_dag(
                     n_estimators=n_estimators,
                     max_targets_per_fit=max_targets_per_fit,
                     target_bank=banks.get(bound_producer_name),
+                    execution_contract=execution_contract,
                 )
             else:
                 raise AssertionError(
@@ -8881,6 +9373,57 @@ def run_stacked_late_producer_dag(
             absence_receipts=declared_absence,
         )
         result = outcome["result"]
+        if contract.kind == "acs_earnings_universe":
+            _assert_late_callback_consumed_bound_config(
+                producer=producer_name,
+                entity="person",
+                column=US_LATE_ACS_EARNINGS_UNIVERSE_CONFIG_INPUT,
+                available_input_receipts=node_available_inputs,
+                actual_binding=_late_acs_earnings_universe_execution_binding(),
+            )
+        elif contract.kind == "post_clone_source":
+            _assert_late_callback_consumed_bound_config(
+                producer=producer_name,
+                entity="person",
+                column=US_LATE_SOURCE_EXECUTION_CONFIG_INPUT,
+                available_input_receipts=node_available_inputs,
+                actual_binding=_late_source_execution_config_binding(producer_name),
+            )
+        elif contract.kind == "source_finalizer":
+            _assert_late_callback_consumed_bound_config(
+                producer=producer_name,
+                entity="person",
+                column=US_LATE_SOURCE_FINALIZER_EXECUTION_CONFIG_INPUT,
+                available_input_receipts=node_available_inputs,
+                actual_binding=_late_source_finalizer_execution_binding(),
+            )
+        elif contract.kind == "late_transfer":
+            group = group_by_name[producer_name]
+            _assert_late_callback_consumed_bound_config(
+                producer=producer_name,
+                entity=group.entity,
+                column=US_LATE_TRANSFER_MODEL_CONFIG_INPUT,
+                available_input_receipts=node_available_inputs,
+                actual_binding=_late_transfer_model_config_binding(
+                    group_name=group.name,
+                    entity=group.entity,
+                    family=group.family,
+                    targets=group.targets,
+                    seed=seed,
+                    n_estimators=n_estimators,
+                    max_targets_per_fit=max_targets_per_fit,
+                ),
+            )
+            _assert_late_callback_consumed_bound_config(
+                producer=producer_name,
+                entity=group.entity,
+                column=US_LATE_TRANSFER_TARGET_BANK_INPUT,
+                available_input_receipts=node_available_inputs,
+                actual_binding=_late_transfer_target_bank_binding(
+                    group_name=group.name,
+                    target_bank=banks.get(producer_name),
+                ),
+            )
         current = result.frame
         producer_receipt = _json_ready(result.receipt)
         if contract.kind == "primary_puf":
@@ -9130,6 +9673,7 @@ def _run_stacked_puf_pass_evaluate(
         if person_outputs is None and tax_unit_outputs is None
         else None
     )
+    tail_spec, tail_agi_bands = resolve_puf_capital_gains_tail_execution_inputs()
     validate_stacked_spine_frame(frame, boundary="stacked PUF pass entry")
     person_clone = frame.table("person")[support_clone_index_column("person")]
     if not person_clone.eq(0).all():
@@ -9223,11 +9767,21 @@ def _run_stacked_puf_pass_evaluate(
         assert isinstance(checkpoint_resource, Mapping)
         checkpoint_binding = checkpoint_resource["binding"]
         assert isinstance(checkpoint_binding, Mapping)
+        checkpoint_dir = Path(primary_qrf_checkpoint_dir)
+        bound_checkpoint_identity = str(
+            checkpoint_binding["checkpoint_identity_sha256"]
+        )
+        observed_checkpoint_identity = checkpoint_dir.resolve().name
+        if observed_checkpoint_identity != bound_checkpoint_identity:
+            raise ValueError(
+                "Stacked primary-QRF checkpoint directory identity differs "
+                "from its bound late-producer resource: "
+                f"directory={observed_checkpoint_identity!r}, "
+                f"bound={bound_checkpoint_identity!r}."
+            )
         actual_resources = stacked_late_primary_resource_receipts(
             donor_tax_units,
-            primary_qrf_checkpoint_identity_sha256=str(
-                checkpoint_binding["checkpoint_identity_sha256"]
-            ),
+            primary_qrf_checkpoint_identity_sha256=observed_checkpoint_identity,
             clone_attachment_fraction=clone_attachment_fraction,
             clone_attachment_seed=clone_attachment_seed,
             seed=seed,
@@ -9237,6 +9791,8 @@ def _run_stacked_puf_pass_evaluate(
             predictors=predictors,
             person_outputs=person_outputs,
             tax_unit_outputs=tax_unit_outputs,
+            capital_gains_tail_spec=tail_spec,
+            capital_gains_tail_agi_bands=tail_agi_bands,
         )
         if _json_ready(actual_resources) != _json_ready(bound_resources):
             raise ValueError(
@@ -9244,7 +9800,6 @@ def _run_stacked_puf_pass_evaluate(
                 "declared late-producer donor/config resources."
             )
         primary_resource_receipts_sha256 = _canonical_sha256(bound_resources)
-        checkpoint_dir = Path(primary_qrf_checkpoint_dir)
         manifest_path = checkpoint_dir / PRIMARY_QRF_MANIFEST_FILENAME
         input_binding_path = checkpoint_dir / _LATE_PRIMARY_QRF_INPUT_BINDING_FILENAME
         if manifest_path.exists():
@@ -9330,12 +9885,12 @@ def _run_stacked_puf_pass_evaluate(
     )
 
     if apply_capital_gains_tail:
-        tail_spec = load_default_puf_aggregate_disaggregation_spec()
         output, tail_receipt = transfer_puf_capital_gains_tail(
             imputed,
             donor_tax_units,
             seed=seed,
             spec=tail_spec,
+            agi_bands=tail_agi_bands,
         )
         validate_puf_capital_gains_tail_manifest(tail_receipt)
         # The tail producer creates clone role 2 before its final origin

@@ -12,6 +12,7 @@ from microcosm.build.us_runtime.acs_income_universe import (
 from microcosm.build.us_runtime.late_producer_dag import (
     ProducerContract,
     ProducerInput,
+    ProducerInputColumn,
     ProducerOutput,
     derive_producer_schedule,
     run_producer_when_ready,
@@ -21,6 +22,7 @@ from microcosm.build.us_runtime.multispine_pool import (
 )
 from microcosm.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
 )
 from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_PRODUCER_REGISTRY,
@@ -330,7 +332,7 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
         "late_transfer",
         "source_finalizer",
     }
-    assert len(registry[US_LATE_PRIMARY_PUF_STAGE].inputs) == 110
+    assert len(registry[US_LATE_PRIMARY_PUF_STAGE].inputs) == 119
     primary_outputs = registry[US_LATE_PRIMARY_PUF_STAGE].outputs
     assert len(primary_outputs) == 100
     assert sum(output.coverage_scope == "puf_clone" for output in primary_outputs) == 65
@@ -370,7 +372,7 @@ def test_primary_puf_inventory_declares_exact_read_before_write_surface() -> Non
         for requirement in US_LATE_PRIMARY_PUF_INPUT_INVENTORY.requirements
     }
 
-    assert len(requirements) == 105
+    assert len(requirements) == 114
     assert tuple(
         (item.entity, item.column, item.value_kind)
         for item in requirements["filing_status"].alternatives[0]
@@ -386,9 +388,50 @@ def test_primary_puf_inventory_declares_exact_read_before_write_surface() -> Non
         requirements[f"person_output_allocation_basis:{column}"].optional
         for column in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     )
+    tax_unit_passthrough = {
+        label.removeprefix("tax_unit_output_passthrough:")
+        for label in requirements
+        if label.startswith("tax_unit_output_passthrough:")
+    }
+    assert tax_unit_passthrough == set(PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS)
+    assert all(
+        requirements[f"tax_unit_output_passthrough:{column}"].optional
+        for column in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+    )
     assert requirements["qualified_tuition_allocation_fallback"].optional
 
     primary = CANONICAL_US_LATE_PRODUCER_REGISTRY[US_LATE_PRIMARY_PUF_STAGE]
+    contract_inputs = {item.column: item for item in primary.inputs}
+    for column in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS:
+        label = f"person_output_allocation_basis:{column}"
+        requirement = requirements[label]
+        assert tuple(
+            (item.entity, item.column, item.value_kind)
+            for item in requirement.alternatives[0]
+        ) == (("person", column, "finite_numeric"),)
+        assert contract_inputs[f"@effective:{label}"].tolerated_absence_receipts == (
+            f"optional_input:{US_LATE_PRIMARY_PUF_STAGE}:{label}",
+        )
+    for column in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS:
+        label = f"tax_unit_output_passthrough:{column}"
+        requirement = requirements[label]
+        assert tuple(
+            (item.entity, item.column, item.value_kind)
+            for item in requirement.alternatives[0]
+        ) == (("tax_unit", column, "finite_numeric"),)
+        assert contract_inputs[f"@effective:{label}"].tolerated_absence_receipts == (
+            f"optional_input:{US_LATE_PRIMARY_PUF_STAGE}:{label}",
+        )
+    fallback = requirements["qualified_tuition_allocation_fallback"]
+    assert tuple(
+        (item.entity, item.column, item.value_kind) for item in fallback.alternatives[0]
+    ) == (("person", "is_full_time_college_student", "finite_numeric"),)
+    assert contract_inputs[
+        "@effective:qualified_tuition_allocation_fallback"
+    ].tolerated_absence_receipts == (
+        f"optional_input:{US_LATE_PRIMARY_PUF_STAGE}:"
+        "qualified_tuition_allocation_fallback",
+    )
     raw_inputs = {
         item.column: item
         for item in primary.inputs
@@ -511,6 +554,47 @@ def test_production_adult_care_contract_refuses_missing_sstb_before_callback() -
     assert invoked is False
 
 
+def test_adult_care_transfer_declares_role_and_refuses_before_callback() -> None:
+    contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[
+        transfer_producer_name("person", "adult_care")
+    ]
+    role_input = next(
+        item
+        for item in contract.inputs
+        if item.column == "@effective:adult_care_tax_unit_role"
+    )
+    assert role_input.alternatives == (
+        (ProducerInputColumn("person", "tax_unit_role_input"),),
+    )
+    assert role_input.required_scope == "whole_pool"
+    assert role_input.producing_stage == US_LATE_EXTERNAL_STAGES[0]
+    invoked = False
+
+    def callback() -> None:
+        nonlocal invoked
+        invoked = True
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"(?s)transfer:person/adult_care.*"
+            r"person\.@effective:adult_care_tax_unit_role.*1 unfilled.*"
+            r"whole_pool.*post_clone_input_surface"
+        ),
+    ):
+        run_producer_when_ready(
+            contract,
+            callback,
+            unfilled_rows={
+                item: 1 if item == role_input else 0 for item in contract.inputs
+            },
+            invalid_rows={item: 0 for item in contract.inputs},
+            absence_receipts={},
+        )
+
+    assert invoked is False
+
+
 def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> None:
     reverse_registry = OrderedDict(
         reversed(tuple(CANONICAL_US_LATE_PRODUCER_REGISTRY.items()))
@@ -522,7 +606,7 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
 
     assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
     receipt = us_late_producer_schedule_receipt()
-    assert receipt["schema_version"] == 12
+    assert receipt["schema_version"] == 13
     assert receipt["execution_receipt_contract"] == {
         "version": 3,
         "row_binding": (

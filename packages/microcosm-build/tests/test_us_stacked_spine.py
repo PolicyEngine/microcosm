@@ -14,6 +14,7 @@ import inspect
 import json
 import pickle
 from collections import Counter
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
@@ -24,7 +25,9 @@ import pytest
 from pandas.testing import assert_frame_equal
 
 import microcosm.build.us_runtime.acs_income_universe as universe_module
+import microcosm.build.us_runtime.acs_transfer as acs_transfer_module
 import microcosm.build.us_runtime.multispine_pool as multispine_pool_module
+import microcosm.build.us_runtime.puf_capital_gains_tail as tail_module
 import microcosm.build.us_runtime.puf_support as puf_support_module
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
 from microcosm.build.frame_checkpoint import (
@@ -2960,6 +2963,14 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
         donor,
         **common,
     )
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "2")
+    monkeypatch.setenv("FIXTURE_UNRELATED_SECRET", "must-not-enter-identity")
+    unrelated_environment_variant = (
+        stacked_spine_module.stacked_late_primary_resource_receipts(
+            donor,
+            **common,
+        )
+    )
 
     assert set(baseline) == {
         "tax_unit.@puf_donor_tax_units",
@@ -2998,6 +3009,7 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
         "tax_unit_outputs": "canonical_default",
     }
     execution = baseline["tax_unit.@primary_puf_execution_config"]["binding"]
+    assert execution["schema_version"] == 3
     assert execution["clone_attachment"]["support_channels"] == [
         stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL,
         stacked_spine_module.PUF_TAX_DETAIL_SUPPORT_CHANNEL,
@@ -3010,13 +3022,61 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
     }
     worker = execution["qrf"]["worker_execution"]
     assert worker["module"] == "microcosm.build.us_runtime.puf_qrf_worker"
-    assert worker["argv_template"][0] == worker["interpreter"]["executable"]
-    assert worker["environment"]["bound_names"] == [
+    assert worker["argv_template"] == [
+        worker["interpreter"]["executable"],
+        "-m",
+        "microcosm.build.us_runtime.puf_qrf_worker",
+        "--checkpoint-dir",
+        "{checkpoint_dir}",
+        "--target-index",
+        "{target_index}",
+    ]
+    environment = worker["environment"]
+    assert environment["policy"] == (
+        "inherit_parent_environment_with_bound_fit_controls"
+    )
+    assert environment["overrides"] == {}
+    assert environment["bound_names"] == [
         "POPULACE_FIT_N_JOBS",
         "POPULACE_FIT_PREDICT_WORKERS",
     ]
+    assert environment["semantic_controls"] == {
+        "POPULACE_FIT_N_JOBS": {"configured": None, "resolved": -1},
+        "POPULACE_FIT_PREDICT_WORKERS": {
+            "configured": "2",
+            "resolved": 2,
+            "resolution": "environment_override",
+        },
+    }
     assert execution["capital_gains_tail"]["soi_e19200_agi_bands"]["asset_sha256"]
     assert execution["capital_gains_tail"]["concentration_gate"] == {
+        "schema_version": 2,
+        "selection_quantile": 0.995,
+        "selection_comparison": "strictly_greater_than",
+        "reference_quantile": 0.999,
+        "recipient_capital_gains_topcode": 1_999_998.0,
+        "positive_mass_five_x_target": 1_270_900_000_000.0,
+        "worsening_share_tolerance": 1e-9,
+        "ordered_recipient_agi_proxy_columns": [
+            "employment_income_before_lsr",
+            "self_employment_income_before_lsr",
+            "taxable_interest_income",
+            "qualified_dividend_income",
+            "non_qualified_dividend_income",
+            "short_term_capital_gains",
+            "long_term_capital_gains_before_response",
+        ],
+        "ordered_joint_vector_columns": [
+            "short_term_capital_gains",
+            "long_term_capital_gains_before_response",
+            "long_term_capital_gains_on_collectibles",
+            "non_sch_d_capital_gains",
+            "unrecaptured_section_1250_gain",
+        ],
+        "recipient_owned_candidate_overlap": sorted(
+            set(stacked_spine_module.PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS)
+            - set(PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS)
+        ),
         "top_k": 100,
         "max_top_share": 0.75,
         "min_nonzero_records": 500,
@@ -3033,6 +3093,110 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
             "binding_sha256"
         ]
     )
+    assert (
+        baseline["tax_unit.@primary_puf_execution_config"]["binding_sha256"]
+        == unrelated_environment_variant["tax_unit.@primary_puf_execution_config"][
+            "binding_sha256"
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "replacement"),
+    (
+        ("PUF_CAPITAL_GAINS_TAIL_QUANTILE", 0.994),
+        ("PUF_CAPITAL_GAINS_TAIL_REFERENCE_QUANTILE", 0.998),
+        ("PUF_CAPITAL_GAINS_TAIL_ASEC_CAPITAL_GAINS_TOPCODE", 2_000_000.0),
+        ("PUF_CAPITAL_GAINS_TAIL_POSITIVE_MASS_FIVE_X_TARGET", 1.0),
+        ("PUF_CAPITAL_GAINS_TAIL_WORSENING_SHARE_TOLERANCE", 2e-9),
+        ("PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_TOP_K", 101),
+        ("PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MAX_TOP_SHARE", 0.74),
+        ("PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS", 501),
+        (
+            "_RECIPIENT_AGI_PROXY_COLUMNS",
+            tuple(reversed(tail_module._RECIPIENT_AGI_PROXY_COLUMNS)),
+        ),
+        (
+            "_JOINT_VECTOR_COLUMNS",
+            tuple(reversed(tail_module._JOINT_VECTOR_COLUMNS)),
+        ),
+        ("_RECIPIENT_OWNED_CANDIDATE_OVERLAP", frozenset()),
+    ),
+)
+def test_late_primary_resource_identity_binds_every_tail_control(
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+    replacement: object,
+) -> None:
+    donor = pd.DataFrame({"fixture_donor": [1.0]})
+    common = {
+        "primary_qrf_checkpoint_identity_sha256": "a" * 64,
+        "clone_attachment_fraction": 1.0,
+        "clone_attachment_seed": 578,
+        "seed": 0,
+        "n_estimators": 100,
+        "fit_records_enabled": True,
+        "tail_bound_diagnostics_enabled": True,
+    }
+    baseline = stacked_spine_module.stacked_late_primary_resource_receipts(
+        donor,
+        **common,
+    )
+    monkeypatch.setattr(tail_module, name, replacement)
+    changed = stacked_spine_module.stacked_late_primary_resource_receipts(
+        donor,
+        **common,
+    )
+
+    assert (
+        baseline["tax_unit.@primary_puf_execution_config"]["binding_sha256"]
+        != changed["tax_unit.@primary_puf_execution_config"]["binding_sha256"]
+    )
+
+
+def test_stacked_primary_reuses_one_resolved_tail_input_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec, agi_bands = tail_module.resolve_puf_capital_gains_tail_execution_inputs()
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "resolve_puf_capital_gains_tail_execution_inputs",
+        lambda: (spec, agi_bands),
+    )
+
+    def impute(frame: Frame, *_args: object, **kwargs: object) -> Frame:
+        receipts = kwargs["predictor_universe_receipts"]
+        assert isinstance(receipts, list)
+        receipts.append({"fixture": "recipient-universe"})
+        return frame
+
+    observed: dict[str, object] = {}
+
+    def transfer(
+        _frame: Frame,
+        _donor: pd.DataFrame,
+        **kwargs: object,
+    ) -> tuple[Frame, dict[str, object]]:
+        observed.update(kwargs)
+        raise RuntimeError("tail snapshot observed")
+
+    monkeypatch.setattr(
+        stacked_spine_module, "impute_us_puf_tax_detail_support", impute
+    )
+    monkeypatch.setattr(
+        stacked_spine_module, "transfer_puf_capital_gains_tail", transfer
+    )
+
+    with pytest.raises(RuntimeError, match="tail snapshot observed"):
+        stacked_spine_module.run_stacked_puf_pass(
+            _late_primary_entry(_stacked_gap_fixture()),
+            pd.DataFrame({"fixture_donor": [1.0]}),
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+        )
+
+    assert observed["spec"] is spec
+    assert observed["agi_bands"] is agi_bands
 
 
 def test_stacked_primary_qrf_refuses_unbound_surface_and_missing_audit_sink() -> None:
@@ -3128,7 +3292,8 @@ def test_stacked_primary_qrf_refuses_stale_bound_checkpoint(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    checkpoint_dir = tmp_path / "primary-qrf"
+    checkpoint_identity = "a" * 64
+    checkpoint_dir = tmp_path / checkpoint_identity
     donor = pd.DataFrame({"fixture_donor": [1.0]})
 
     def initialize(_frame: Frame, _donor: pd.DataFrame, root: Path, **_kwargs) -> None:
@@ -3165,7 +3330,7 @@ def test_stacked_primary_qrf_refuses_stale_bound_checkpoint(
     def binding(bound_donor: pd.DataFrame) -> dict[str, object]:
         resources = stacked_spine_module.stacked_late_primary_resource_receipts(
             bound_donor,
-            primary_qrf_checkpoint_identity_sha256="a" * 64,
+            primary_qrf_checkpoint_identity_sha256=checkpoint_identity,
             clone_attachment_fraction=1.0,
             clone_attachment_seed=578,
             seed=0,
@@ -3175,6 +3340,21 @@ def test_stacked_primary_qrf_refuses_stale_bound_checkpoint(
         )
         return stacked_spine_module.stacked_late_primary_checkpoint_input_binding(
             resources
+        )
+
+    with pytest.raises(
+        ValueError,
+        match=r"checkpoint directory identity differs.*directory='b{64}'.*bound='a{64}'",
+    ):
+        stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
+            _late_primary_entry(_stacked_gap_fixture()),
+            donor,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+            fit_records=[],
+            tail_bound_diagnostics=[],
+            primary_qrf_checkpoint_dir=tmp_path / ("b" * 64),
+            primary_qrf_input_binding=binding(donor),
         )
 
     stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
@@ -3245,6 +3425,54 @@ def test_late_transfer_resources_bind_all_callback_controls() -> None:
         "support_channel": stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL,
         "support_clone_index": stacked_spine_module.PUF_TAX_DETAIL_CLONE_INDEX,
     }
+    assert model["schema_version"] == 3
+    assert model["transfer_execution_contract"] == (
+        acs_transfer_module.acs_transfer_execution_contract_identity(
+            targets=group.targets,
+            derive_schedule_d=False,
+        )
+    )
+    assert model["transfer_execution_contract"]["post_transfer_structure"][
+        "schedule_d_capital_gain_distributions"
+    ] == {
+        "enabled": False,
+        "source": "long_term_capital_gains_before_response",
+        "exclusive_with": "non_sch_d_capital_gains",
+        "output": "schedule_d_capital_gain_distributions",
+        "preserve_preexisting_nonnull": True,
+        "share_asset": None,
+    }
+
+
+def test_late_transfer_refuses_a_stale_bound_execution_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    group = next(
+        item
+        for item in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+        if item.name == "transfer:person/adult_care"
+    )
+    bound = acs_transfer_module.acs_transfer_execution_contract_identity(
+        targets=group.targets,
+        derive_schedule_d=False,
+    )
+    changed_codes = dict(acs_transfer_module._TENURE_CODES)
+    changed_codes["OWN"] = 9.0
+    monkeypatch.setattr(acs_transfer_module, "_TENURE_CODES", changed_codes)
+
+    with pytest.raises(
+        ValueError,
+        match="runtime execution contract differs from its bound input",
+    ):
+        acs_transfer_module.transfer_acs_inputs(
+            _post_puf_transfer_fixture(),
+            _post_puf_transfer_fixture(),
+            target_families=group.target_families,
+            donor_spine=stacked_spine_module.ASEC_PUF_DONOR_SPINE,
+            donor_channel=None,
+            derive_schedule_d=False,
+            execution_contract=bound,
+        )
 
 
 def test_late_source_resources_bind_all_callback_controls(tmp_path: Path) -> None:
@@ -3263,7 +3491,20 @@ def test_late_source_resources_bind_all_callback_controls(tmp_path: Path) -> Non
         )
         assert set(resources) == {"person.@post_clone_source_execution_config"}
         binding = resources["person.@post_clone_source_execution_config"]["binding"]
+        assert binding["schema_version"] == 3
         assert binding["operator"] == operator
+        assert binding["phase"] == multispine_pool_module._POST_CLONE_PHASE
+        assert binding["operator_registry"] == list(
+            multispine_pool_module.POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+        )
+        contract = multispine_pool_module.POOL_OPERATOR_CONTRACTS[operator]
+        assert binding["operator_contract"] == {
+            "family": contract.family,
+            "phases": list(contract.phases),
+            "mechanism": contract.mechanism,
+            "execution_scope": contract.execution_scope,
+        }
+        assert binding["declared_output_family"]
         assert binding["seed"] == multispine_pool_module.POOL_RANDOM_SEED
         assert binding["time_period"] == (
             None
@@ -3302,6 +3543,11 @@ def test_late_source_resources_bind_all_callback_controls(tmp_path: Path) -> Non
                 source_stage["stage_name"]
                 == (source_stage["resolved_stage_spec"]["stage"])
             )
+            assert source_stage["runtime_stage_spec_verified"] is True
+            assert set(source_stage["runtime_stage_spec_resolver"]) == {
+                "module",
+                "callable",
+            }
             assert source_stage["resolved_stage_spec_sha256"] == (
                 stacked_spine_module._canonical_sha256(
                     source_stage["resolved_stage_spec"]
@@ -3334,10 +3580,41 @@ def test_late_source_resources_bind_all_callback_controls(tmp_path: Path) -> Non
     )
 
 
+def test_source_resource_refuses_live_callback_control_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(multispine_pool_module, "POOL_RANDOM_SEED", 913)
+
+    with pytest.raises(ValueError, match="late source execution config changed"):
+        stacked_spine_module._late_source_resource_receipts(
+            producer_name="source:with_us_adult_care_inputs"
+        )
+
+
+def test_source_resource_refuses_runtime_stage_helper_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = stacked_spine_module.importlib.import_module(
+        "microcosm.build.us_runtime.adult_care"
+    )
+    stage_spec = runtime.us_adult_care_stage_spec()
+    monkeypatch.setattr(
+        runtime,
+        "us_adult_care_stage_spec",
+        lambda: replace(stage_spec, notes=f"{stage_spec.notes} drift"),
+    )
+
+    with pytest.raises(ValueError, match="runtime SourceStageSpec differs"):
+        stacked_spine_module._late_source_resource_receipts(
+            producer_name="source:with_us_adult_care_inputs"
+        )
+
+
 def test_late_source_finalizer_resources_bind_all_callback_controls() -> None:
     resources = stacked_spine_module._late_source_finalizer_resource_receipts()
     assert set(resources) == {"person.@source_finalizer_execution_config"}
     binding = resources["person.@source_finalizer_execution_config"]["binding"]
+    assert binding["schema_version"] == 2
     assert binding == stacked_spine_module._late_source_finalizer_execution_binding()
     assert binding["source_operator_registry"] == list(
         multispine_pool_module.POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
@@ -3345,6 +3622,19 @@ def test_late_source_finalizer_resources_bind_all_callback_controls() -> None:
     assert binding["deferred_transfer_inputs"] == (
         multispine_pool_module.POOL_DEFERRED_TRANSFER_INPUTS
     )
+
+
+def test_source_finalizer_resource_refuses_live_doctrine_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "POOL_DEFERRED_TRANSFER_STATUS",
+        "unreceipted_runtime_drift",
+    )
+
+    with pytest.raises(ValueError, match="late source-finalizer config changed"):
+        stacked_spine_module._late_source_finalizer_resource_receipts()
 
 
 def test_primary_refuses_missing_universe_receipt_before_callback() -> None:
@@ -3389,10 +3679,123 @@ def test_primary_refuses_missing_universe_receipt_before_callback() -> None:
         )
 
 
+def test_primary_tax_unit_passthrough_requires_finite_or_declared_absence() -> None:
+    contract = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[
+        stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
+    ]
+    initial = _fill_late_contract_surface(
+        _late_primary_entry(_stacked_gap_fixture()),
+        contracts=(contract,),
+        include_outputs=False,
+    )
+    column = stacked_spine_module.PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS[0]
+    requirement = next(
+        item
+        for item in contract.inputs
+        if item.column == f"@effective:tax_unit_output_passthrough:{column}"
+    )
+    resources = stacked_spine_module.stacked_late_primary_resource_receipts(
+        pd.DataFrame({"fixture_donor": [1.0]}),
+        primary_qrf_checkpoint_identity_sha256="a" * 64,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+        seed=0,
+        n_estimators=100,
+        fit_records_enabled=True,
+        tail_bound_diagnostics_enabled=True,
+    )
+
+    absent_tables = {
+        entity: initial.table(entity).copy() for entity in initial.entities
+    }
+    absent_tables["tax_unit"].drop(columns=column, inplace=True)
+    absent = Frame(
+        absent_tables,
+        initial.schema,
+        {entity: initial.weights_for(entity) for entity in initial.weighted_entities},
+        initial.strata,
+        mass_log=initial.mass_log,
+        metadata=initial.metadata,
+    )
+    unfilled, invalid = stacked_spine_module._late_input_readiness_rows(
+        absent,
+        contract,
+        available_input_receipts=resources,
+    )
+    absence_receipts = stacked_spine_module._late_declared_absence_receipts(
+        contract,
+        unfilled,
+        invalid_rows=invalid,
+    )
+    receipt_id = requirement.tolerated_absence_receipts[0]
+    assert unfilled[requirement] == len(absent.table("tax_unit"))
+    assert invalid[requirement] == 0
+    assert absence_receipts[receipt_id]["status"] == "declared_absence"
+    assert (
+        stacked_spine_module.run_producer_when_ready(
+            contract,
+            lambda: "ran",
+            unfilled_rows=unfilled,
+            invalid_rows=invalid,
+            absence_receipts=absence_receipts,
+        )
+        == "ran"
+    )
+
+    invalid_tables = {
+        entity: initial.table(entity).copy() for entity in initial.entities
+    }
+    invalid_tables["tax_unit"][column] = invalid_tables["tax_unit"][column].astype(
+        object
+    )
+    invalid_tables["tax_unit"].loc[invalid_tables["tax_unit"].index[0], column] = (
+        "not-numeric"
+    )
+    invalid_frame = Frame(
+        invalid_tables,
+        initial.schema,
+        {entity: initial.weights_for(entity) for entity in initial.weighted_entities},
+        initial.strata,
+        mass_log=initial.mass_log,
+        metadata=initial.metadata,
+    )
+    unfilled, invalid = stacked_spine_module._late_input_readiness_rows(
+        invalid_frame,
+        contract,
+        available_input_receipts=resources,
+    )
+    absence_receipts = stacked_spine_module._late_declared_absence_receipts(
+        contract,
+        unfilled,
+        invalid_rows=invalid,
+    )
+    assert unfilled[requirement] == 0
+    assert invalid[requirement] == 1
+    assert receipt_id not in absence_receipts
+    with pytest.raises(
+        ValueError,
+        match=(
+            rf"(?s)primary_puf_qrf.*tax_unit_output_passthrough:{column}.*"
+            r"1 invalid.*post_clone_input_surface"
+        ),
+    ):
+        stacked_spine_module.run_producer_when_ready(
+            contract,
+            lambda: pytest.fail("invalid tax-unit passthrough reached callback"),
+            unfilled_rows=unfilled,
+            invalid_rows=invalid,
+            absence_receipts=absence_receipts,
+        )
+
+
 def test_universe_resource_binds_exact_contract_and_scope() -> None:
     resources = stacked_spine_module._late_acs_earnings_universe_resource_receipts()
     receipt = resources["person.@acs_pums_earnings_universe_execution_config"]
     binding = receipt["binding"]
+    assert binding["schema_version"] == 2
+    assert binding["runtime_identity_owner"] == (
+        "microcosm.build.us_runtime.acs_income_universe"
+    )
     assert binding["ordered_mapped_columns"] == [
         "employment_income_before_lsr",
         "self_employment_income_before_lsr",
@@ -3401,6 +3804,21 @@ def test_universe_resource_binds_exact_contract_and_scope() -> None:
     assert binding["contract_identity"] == (
         stacked_spine_module.acs_pums_earnings_universe_contract_identity()
     )
+
+
+def test_universe_resource_refuses_live_contract_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    changed = deepcopy(universe_module.acs_pums_earnings_universe_contract_identity())
+    changed["minimum_age"] = 14
+    monkeypatch.setattr(
+        universe_module,
+        "acs_pums_earnings_universe_contract_identity",
+        lambda: changed,
+    )
+
+    with pytest.raises(ValueError, match="late ACS earnings-universe contract changed"):
+        stacked_spine_module._late_acs_earnings_universe_resource_receipts()
 
 
 def _late_universe_entry_fixture() -> Frame:
@@ -3541,9 +3959,14 @@ def _run_real_late_executor_fixture(
         stacked_spine_module._materialize_stacked_acs_earnings_universe
     )
 
-    def universe(frame: Frame):
+    def universe(
+        frame: Frame,
+        *,
+        execution_config: Mapping[str, object] | None = None,
+    ):
         events.append(stacked_spine_module.US_LATE_ACS_EARNINGS_UNIVERSE_STAGE)
-        return materialize_universe(frame)
+        assert execution_config is not None
+        return materialize_universe(frame, execution_config=execution_config)
 
     donor = pd.DataFrame({"fixture_donor": [1.0]})
     actual_primary_resources = (
@@ -3640,6 +4063,7 @@ def _run_real_late_executor_fixture(
         frame: Frame,
         *,
         group_name: str,
+        execution_contract: Mapping[str, object] | None = None,
         **_kwargs: object,
     ) -> stacked_spine_module.StackedPostPufTransferResult:
         events.append(group_name)
@@ -3647,6 +4071,12 @@ def _run_real_late_executor_fixture(
             item
             for item in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
             if item.name == group_name
+        )
+        assert execution_contract == (
+            acs_transfer_module.acs_transfer_execution_contract_identity(
+                targets=group.targets,
+                derive_schedule_d=False,
+            )
         )
         transfer_result = AcsTransferResult(
             frame=frame,

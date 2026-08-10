@@ -19,6 +19,7 @@ it is not an export column and cannot leak into a PolicyEngine dataset.
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import lru_cache
@@ -30,6 +31,9 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
+from microcosm.build.us_runtime.capital_gain_distributions import (
+    capital_gain_distribution_shares_asset_identity,
+)
 from microcosm.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
@@ -62,6 +66,7 @@ __all__ = [
     "AcsTransferTargetCheckpoint",
     "TargetFamilies",
     "acs_transfer_donor_requirements",
+    "acs_transfer_execution_contract_identity",
     "assert_acs_transfer_targets_are_input_leaves",
     "declared_acs_transfer_target_families",
     "default_acs_transfer_target_families",
@@ -221,6 +226,90 @@ _TENURE_CODES: Mapping[str, float] = {
 }
 _ACS_TENURE_CODES: Mapping[int, float] = {1: 1.0, 2: 2.0, 3: 3.0, 4: 0.0}
 _CPS_TENURE_CODES: Mapping[int, float] = {1: 1.0, 2: 3.0, 3: 0.0}
+
+
+def acs_transfer_execution_contract_identity(
+    *,
+    targets: Sequence[str] | None = None,
+    derive_schedule_d: bool = True,
+) -> dict[str, object]:
+    """Bind the complete runtime predictor and target-codec contract."""
+
+    requested_targets = frozenset(() if targets is None else targets)
+    schedule_d_enabled = derive_schedule_d and bool(
+        requested_targets & {_SCHEDULE_D_CGD_SOURCE, _SCHEDULE_D_CGD_EXCLUSIVE_WITH}
+    )
+    adult_care_enabled = _ADULT_CARE_EXPENSE in requested_targets
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "person_required_predictors": list(ACS_PERSON_TRANSFER_PREDICTORS),
+        "person_optional_predictors": list(ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS),
+        "group_required_predictors": list(ACS_GROUP_TRANSFER_PREDICTORS),
+        "group_optional_names": dict(sorted(_GROUP_OPTIONAL_NAMES.items())),
+        "donor_combined_components": {
+            feature: list(columns)
+            for feature, columns in sorted(_DONOR_COMBINED_COMPONENTS.items())
+        },
+        "recipient_combined_sources": dict(sorted(_RECIPIENT_COMBINED_SOURCES.items())),
+        "housing": {
+            "targets": sorted(_HOUSING_TRANSFER_TARGETS),
+            "mandatory_features": [_HEAD_FEATURE, _TENURE_FEATURE],
+            "head_source_precedence": [
+                {"source": "is_household_head", "head_codes": [True]},
+                {"source": "RELSHIPP", "head_codes": [20]},
+                {"source": "A_EXPRRP", "head_codes": [1, 2]},
+                {"source": "A_LINENO", "head_codes": [1]},
+            ],
+            "tenure_source_precedence": [
+                "tenure_type",
+                "spm_unit_tenure_type",
+                "TEN",
+                "H_TENURE",
+            ],
+        },
+        "tenure_codes": dict(sorted(_TENURE_CODES.items())),
+        "acs_tenure_codes": {
+            str(code): value for code, value in sorted(_ACS_TENURE_CODES.items())
+        },
+        "cps_tenure_codes": {
+            str(code): value for code, value in sorted(_CPS_TENURE_CODES.items())
+        },
+        "immigration_status_targets": list(_IMMIGRATION_STATUS_TARGETS),
+        "immigration_status_model_target": _IMMIGRATION_STATUS_MODEL_TARGET,
+        "discrete_numeric_targets": sorted(_DISCRETE_NUMERIC_TARGETS),
+        "post_transfer_structure": {
+            "schedule_d_capital_gain_distributions": {
+                "enabled": schedule_d_enabled,
+                "source": _SCHEDULE_D_CGD_SOURCE,
+                "exclusive_with": _SCHEDULE_D_CGD_EXCLUSIVE_WITH,
+                "output": _SCHEDULE_D_CGD_COLUMN,
+                "preserve_preexisting_nonnull": True,
+                "share_asset": (
+                    capital_gain_distribution_shares_asset_identity()
+                    if schedule_d_enabled
+                    else None
+                ),
+            },
+            "adult_care": {
+                "enabled": adult_care_enabled,
+                "flag": _ADULT_CARE_FLAG,
+                "expense": _ADULT_CARE_EXPENSE,
+                "tax_unit_role": _ADULT_CARE_ROLE,
+                "tax_unit_link": _ADULT_CARE_UNIT,
+                "mutable_rows": "newly_imputed_expense_cells_only",
+            },
+        },
+    }
+    payload["sha256"] = hashlib.sha256(
+        json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    return payload
+
 
 type TargetFamilies = Mapping[str, Mapping[str, Sequence[str]]]
 
@@ -526,6 +615,8 @@ _ADULT_CARE_UNIT = "person_tax_unit_id"
 
 def derive_acs_schedule_d_capital_gain_distributions(
     person: pd.DataFrame,
+    *,
+    share: float | None = None,
 ) -> tuple[np.ndarray, dict[str, object]]:
     """Re-derive the Schedule D CGD memo leg from transferred parents.
 
@@ -540,8 +631,17 @@ def derive_acs_schedule_d_capital_gain_distributions(
         load_capital_gain_distribution_shares,
     )
 
-    share = load_capital_gain_distribution_shares()
-    ratio = float(share.schedule_d_cgd_share_of_lt_net_gains)
+    ratio = (
+        float(
+            load_capital_gain_distribution_shares().schedule_d_cgd_share_of_lt_net_gains
+        )
+        if share is None
+        else float(share)
+    )
+    if not np.isfinite(ratio) or not 0.0 < ratio < 1.0:
+        raise ValueError(
+            "Schedule D capital-gain-distribution share must be finite in (0, 1)."
+        )
     source = pd.to_numeric(person[_SCHEDULE_D_CGD_SOURCE], errors="coerce")
     other_route = pd.to_numeric(person[_SCHEDULE_D_CGD_EXCLUSIVE_WITH], errors="coerce")
     if source.isna().any() or other_route.isna().any():
@@ -802,6 +902,8 @@ def transfer_acs_inputs(
     n_estimators: int = 100,
     max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     target_bank: AcsTransferTargetBank | None = None,
+    derive_schedule_d: bool = True,
+    execution_contract: Mapping[str, object] | None = None,
 ) -> AcsTransferResult:
     """Impute requested missing leaves from ``donor`` onto ``recipient``.
 
@@ -864,6 +966,16 @@ def transfer_acs_inputs(
     all_targets = [
         target for _entity, _family, targets in requested for target in targets
     ]
+    resolved_execution_contract = acs_transfer_execution_contract_identity(
+        targets=all_targets,
+        derive_schedule_d=derive_schedule_d,
+    )
+    if execution_contract is not None and dict(execution_contract) != (
+        resolved_execution_contract
+    ):
+        raise ValueError(
+            "ACS transfer runtime execution contract differs from its bound input."
+        )
     assert_acs_transfer_targets_are_input_leaves(all_targets)
 
     active = _missing_target_families(requested, recipient=recipient)
@@ -969,6 +1081,7 @@ def transfer_acs_inputs(
         imputed_masks=imputed_masks,
         donor_spine=donor_spine,
         resolved_channel=resolved_channel,
+        execution_contract=resolved_execution_contract,
     )
 
     tables: dict[str, pd.DataFrame] = dict(output_tables)
@@ -1005,6 +1118,7 @@ def _apply_post_transfer_structure(
     imputed_masks: Mapping[tuple[str, str], np.ndarray],
     donor_spine: str,
     resolved_channel: str | None,
+    execution_contract: Mapping[str, object],
 ) -> None:
     """Apply the deterministic post-fit steps the base's construction implies.
 
@@ -1021,6 +1135,12 @@ def _apply_post_transfer_structure(
     if person is None:
         return
 
+    post_transfer_contract = execution_contract["post_transfer_structure"]
+    assert isinstance(post_transfer_contract, Mapping)
+    schedule_d_contract = post_transfer_contract[
+        "schedule_d_capital_gain_distributions"
+    ]
+    assert isinstance(schedule_d_contract, Mapping)
     cgd_parents = {_SCHEDULE_D_CGD_SOURCE, _SCHEDULE_D_CGD_EXCLUSIVE_WITH}
     cgd_candidate = np.zeros(len(person), dtype=bool)
     for parent in cgd_parents:
@@ -1028,7 +1148,11 @@ def _apply_post_transfer_structure(
             ("person", parent),
             np.zeros(len(person), dtype=bool),
         )
-    if cgd_candidate.any() and cgd_parents <= set(person.columns):
+    if (
+        schedule_d_contract["enabled"] is True
+        and cgd_candidate.any()
+        and cgd_parents <= set(person.columns)
+    ):
         source = pd.to_numeric(person[_SCHEDULE_D_CGD_SOURCE], errors="coerce")
         other_route = pd.to_numeric(
             person[_SCHEDULE_D_CGD_EXCLUSIVE_WITH],
@@ -1052,7 +1176,12 @@ def _apply_post_transfer_structure(
             derivation: dict[str, object] = {}
         else:
             values, derivation = derive_acs_schedule_d_capital_gain_distributions(
-                person.loc[fill]
+                person.loc[fill],
+                share=float(
+                    schedule_d_contract["share_asset"][
+                        "schedule_d_cgd_share_of_lt_net_gains"
+                    ]
+                ),
             )
             derived_output.loc[fill] = values
             person[_SCHEDULE_D_CGD_COLUMN] = derived_output

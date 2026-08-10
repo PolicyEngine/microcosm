@@ -24,6 +24,7 @@ from microcosm.build.us_runtime.h5_io import (
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
     US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
     US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
+    US_STACKED_POOL_OPERATOR_ORDER,
     AuthenticatedPoolH5MismatchError,
     load_simulation_ready_us_multispine_pool,
     write_nullable_us_h5,
@@ -425,7 +426,7 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
         "stage_checkpoints": {
             "artifact_kind": "populace_us_multispine_pool_checkpoint_provenance",
             "schema_version": 1,
-            "materializer_version": 3 if not stacked else 9,
+            "materializer_version": 3 if not stacked else 5,
             "enabled": False,
             "agreement": {
                 "source": "always_fresh",
@@ -460,19 +461,7 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
                     transition_authority["sha256"]
                 ),
                 "terminal_gates": agreement_gate,
-                "operator_order": [
-                    "assemble_stacked_spine",
-                    "prepare_multispine_source_inputs_for_clone",
-                    "gap_fill_stacked_spine",
-                    "run_stacked_puf_pass",
-                    "run_stacked_late_producer_dag",
-                    "prepare_stacked_tail_derivation",
-                    "derive_multispine_pool_inputs",
-                    "seed_multispine_pool_inputs",
-                    "materialize_multispine_agreement_outputs",
-                    "stacked_completeness_gate",
-                    "by_origin_battery",
-                ],
+                "operator_order": list(US_STACKED_POOL_OPERATOR_ORDER),
                 "stage_receipts": {
                     "impute": {
                         "source_operator_chain": {
@@ -633,6 +622,9 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
                 )
                 for operator, source_receipt in source_receipts.items()
             }
+            available.update(
+                stacked_spine_module._late_source_finalizer_resource_receipts()
+            )
         elif contract.kind == "late_transfer":
             group = group_by_name[producer_name]
             available = stacked_spine_module._late_transfer_resource_receipts(
@@ -849,7 +841,7 @@ def test_ready_legacy_pool_loader_accepts_pre_653_schema_four_envelope(
     assert frame.n("household") == 3
 
 
-def test_ready_legacy_pool_loader_rejects_schema_six_envelope(
+def test_ready_legacy_pool_loader_rejects_schema_seven_envelope(
     tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")
@@ -979,7 +971,7 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
     )
 
 
-def test_ready_stacked_pool_loader_requires_schema_six_late_dag_proof(
+def test_ready_stacked_pool_loader_requires_schema_seven_late_dag_proof(
     tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")

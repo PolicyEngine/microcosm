@@ -97,6 +97,7 @@ from microcosm.build.us_runtime.h5_io import (
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
     US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
     US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
+    US_STACKED_POOL_OPERATOR_ORDER,
     load_simulation_ready_us_multispine_pool_manifest,
     write_nullable_us_h5,
 )
@@ -167,6 +168,7 @@ from microcosm.build.us_runtime.stacked_spine import (
     stacked_gap_fill_producer_schedule_receipt,
     stacked_late_primary_checkpoint_input_binding,
     stacked_late_primary_resource_receipts,
+    stacked_late_producer_resource_semantics_receipt,
     stacked_spine_authority_receipt,
     validate_stacked_late_producer_receipt,
     validate_stacked_late_producer_transition_authority,
@@ -270,10 +272,10 @@ _STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
     1.00: "f100",
 }
 _STACKED_PIPELINE = "us-stacked-pool"
-# Version 9 additionally binds the content-authenticated late-stage execution
-# receipt and its independently propagated transition authority. Earlier
-# checkpoints must rebuild rather than resume without that immutable anchor.
-_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 9
+# Version 10 additionally binds the complete late-resource semantics and the
+# corrected outer order (the primary PUF callback is nested inside the DAG).
+# Earlier checkpoints must rebuild rather than resume with stale producers.
+_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 10
 _STACKED_RELEASE_ID_PATTERN = re.compile(
     r"^populace-us-2024-stacked-f(?:001|010|100)-s[0-9]+-"
     r"asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
@@ -1079,19 +1081,7 @@ def _stacked_checkpoint_base_identity(
         },
         "stacked_authority": stacked_spine_authority_receipt(),
         "pool_code": {
-            "operator_order": [
-                "assemble_stacked_spine",
-                "prepare_multispine_source_inputs_for_clone",
-                "gap_fill_stacked_spine",
-                "run_stacked_puf_pass",
-                "run_stacked_late_producer_dag",
-                "prepare_stacked_tail_derivation",
-                "derive_multispine_pool_inputs",
-                "seed_multispine_pool_inputs",
-                "materialize_multispine_agreement_outputs",
-                "stacked_completeness_gate",
-                "by_origin_battery",
-            ],
+            "operator_order": list(US_STACKED_POOL_OPERATOR_ORDER),
             "pre_clone_source_operator_order": list(
                 POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER
             ),
@@ -1102,6 +1092,19 @@ def _stacked_checkpoint_base_identity(
                 POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
             ),
             "late_producer_schedule": _json_ready(us_late_producer_schedule_receipt()),
+            "late_producer_resource_semantics": (
+                stacked_late_producer_resource_semantics_receipt(
+                    clone_attachment_fraction=clone_attachment_fraction,
+                    clone_attachment_seed=clone_attachment_seed,
+                    primary_seed=POOL_RANDOM_SEED,
+                    primary_n_estimators=_PRIMARY_QRF_N_ESTIMATORS,
+                    transfer_seed=POOL_RANDOM_SEED,
+                    transfer_n_estimators=_ACS_TRANSFER_N_ESTIMATORS,
+                    transfer_max_targets_per_fit=(
+                        DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT
+                    ),
+                )
+            ),
             "derive_operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
             "primary_qrf_target_order": list(PRIMARY_QRF_TARGET_ORDER),
             "primary_qrf_checkpoint_schema_version": (
@@ -3412,19 +3415,7 @@ def _stacked_manifest_payload(
         "simulation_ready": result.simulation_ready,
         "publication_run_id": publication_run_id,
         "calibration_applied": False,
-        "operator_order": [
-            "assemble_stacked_spine",
-            "prepare_multispine_source_inputs_for_clone",
-            "gap_fill_stacked_spine",
-            "run_stacked_puf_pass",
-            "run_stacked_late_producer_dag",
-            "prepare_stacked_tail_derivation",
-            "derive_multispine_pool_inputs",
-            "seed_multispine_pool_inputs",
-            "materialize_multispine_agreement_outputs",
-            "stacked_completeness_gate",
-            "by_origin_battery",
-        ],
+        "operator_order": list(US_STACKED_POOL_OPERATOR_ORDER),
         "period": POOL_TIME_PERIOD,
         "random_seed": POOL_RANDOM_SEED,
         "sampling": {

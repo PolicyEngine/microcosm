@@ -2,48 +2,19 @@
 
 ## State
 
-The failure mechanism and late-producer/source-input inventory are implemented
-on `tail-stratum-support-652`, based on the three preserved #652 commits. The
-checkout was clean at the start and was three commits ahead of the locally
-available `origin/main` (`e9a352ca`). No fetch was performed because this task
-forbids network access. A shared-ref update outside this worktree has since made
-Git report the branch behind by one; the task remains on its required checkout
-without rebasing, resetting, or shelving. Every producer execution row is now
-content-bound to its declared inputs, outputs, callback receipt, and predecessor;
-the top receipt is bound to entry/output frame content and independently carried
-transition authority. That authority is propagated through cold/resumed pool
-checkpoints, H5 schema 6, manifest construction, simulation, and publication.
-The independent audit found additional hidden inputs in the source callbacks
-and primary-PUF wrapper. Source execution controls and the ACS earnings-
-universe materializer are now declared DAG nodes/resources. Every
-physical input and virtual runtime resource is content-bound: donor bytes,
-resolved PUF/QRF/tail controls,
-the routed primary-QRF bank and stale-bank sidecar, source receipts, transfer
-controls, and target-bank identities. The legacy envelope is restored to its
-pre-#653 identity and cannot be selected by stripping stacked markers. The
-operator-ordering doctrine and changelog now publish the final 38-node,
-71-edge, six-wave graph, complete inventories, schema ledger, and canonical
-hashes. A final independent review reopened the implementation after proving
-five fail-open boundaries: receipt scope cardinality, duplicate physical input
-evidence, source-receipt output binding, stripped stacked-envelope downgrade,
-and primary callback/resource coupling. It also found three undeclared ACS
-earnings-universe inputs and an out-of-scope ASEC value in the universe receipt
-hash. Seven focused regressions now reproduce all findings and fail on the
-pre-fix tree. Implementation and every proof gate remain pending; no readiness
-verdict has been issued. The exhaustive follow-up audit expanded the remaining
-identity work: the outer checkpoint/manifest order double-counts the primary
-PUF callback already nested inside the late DAG; source callbacks consume
-unbound packaged stage specs and wrapper defaults; the finalizer consumes
-unbound registry/exclusion/deferral doctrine; transfer donor selection is
-implicit; and primary/tail callbacks have unbound data, asset, worker,
-finalization, gate, and audit-sink controls. Regressions now state the initial
-callback-control contract, and implementation has begun with the source and
-finalizer surfaces. The complete primary/tail/transfer callback surface is now
-also bound and focused-green: canonical clone roles, all QRF allocation inputs,
-raw ACS earnings-authority columns, worker controls, tail bounds/spec/SOI asset,
-concentration gates, audit sinks, and transfer donor projection. Raw WAGP/SEMP
-use a required `column_present` contract so legitimate under-15 structural
-nulls remain null while a missing authority column refuses execution.
+The #653 implementation is code-complete on the required
+`tail-stratum-support-652` checkout atop the preserved #652 commits. The late
+stage is a 38-node, import-validated producer DAG with exact physical and
+virtual inputs, content-bound execution receipts, deterministic topology, and
+checkpoint-bound runtime semantics. The final audit gaps are closed: optional
+primary tax-unit reads, once-resolved tail assets/controls, source-stage helper
+identity, source/finalizer live doctrine, ACS-universe runtime ownership,
+transfer predictor/codec semantics, adult-care tax-unit role, and stale
+resource-checkpoint discovery all fail closed. Bounded transfer groups suppress
+the opportunistic Schedule-D write; the existing whole-pool derive operator
+remains its sole canonical owner. Focused regressions and targeted Ruff are
+green. Documentation, changelog/hash reconciliation, the final proof matrix,
+and final report remain.
 
 ## Done
 
@@ -410,14 +381,33 @@ nulls remain null while a missing authority column refuses execution.
   raw ACS WAGP/SEMP: structural null bytes are accepted and identity-bound,
   while an absent column on a positive ACS scope refuses before the universe
   callback.
+- Closed the outer identity gap with stacked checkpoint materializer v10 and
+  stacked manifest schema v7. The shared operator order now names the late DAG
+  once rather than double-counting the nested primary callback, and every
+  virtual-resource resolution mode is published in a signed resource-semantics
+  receipt embedded in the base checkpoint identity.
+- Bound all nine optional primary tax-unit passthrough reads, the exact
+  once-resolved tail spec/SOI bands, every tail selection/concentration control,
+  and the independently routed primary-QRF directory basename. Registry schema
+  v13 and primary resource schema v3 reject stale or mismatched inputs.
+- Added live/canonical callback attestation for all source operators, the source
+  finalizer, ACS earnings-universe materialization, and all transfer groups.
+  Runtime source-helper, seed, finalizer-doctrine, universe-contract, and
+  transfer-codec drift now refuses execution or changes checkpoint identity.
+- Declared adult-care transfer's hidden `tax_unit_role_input` and proved an
+  unfilled role refuses before callback dispatch. Bounded transfer groups now
+  disable their opportunistic Schedule-D side effect, leaving the later
+  tax-unit whole-pool derivation as the sole owner and avoiding a false output
+  scope claim.
+- Added a persisted stale-resource checkpoint regression, not merely a digest
+  comparison: discovery rejects an otherwise valid assembled checkpoint whose
+  bound source asset semantics differ from current code.
 
 ## Next
 
-- Close the remaining outer-order/checkpoint identity gap: remove the duplicate
-  published PUF step, bind the complete static late-resource semantics into the
-  base identity, bump only the outer materializer and stacked H5 schema, and
-  request another independent review.
-- Rerun the focused aggregate, exact #583 shard, eight non-overlapping
+- Reconcile the ordering doctrine, changelog, graph hashes, and exact input/
+  edge tables with registry schema v13 and resource/checkpoint schema bumps.
+- Rerun the focused aggregate, exact #583 shard, non-overlapping
   foreground workspace chunks, and Ruff check/format-check/diff-check gates.
 - Write the final gradeable mechanism/edge/fix/proof report to the output file,
   echo it to stdout, commit the final progress state, and leave the worktree

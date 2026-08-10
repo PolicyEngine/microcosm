@@ -1053,6 +1053,9 @@ def _canonical_late_dag_receipt(
                 )
                 for operator in source_order
             }
+            available.update(
+                stacked_spine_module._late_source_finalizer_resource_receipts()
+            )
         elif contract.kind == "late_transfer":
             group = next(
                 group
@@ -2322,7 +2325,7 @@ def test_legacy_checkpoint_identity_excludes_stacked_late_producer_schedule(
     assert changed == current
 
 
-def test_stacked_checkpoint_identity_binds_v9_semantic_contracts(
+def test_stacked_checkpoint_identity_binds_v10_semantic_contracts(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -2349,7 +2352,7 @@ def test_stacked_checkpoint_identity_binds_v9_semantic_contracts(
 
     current = identity()
     pool_code = current["pool_code"]
-    assert current["materializer_version"] == 9
+    assert current["materializer_version"] == 10
     assert current["stacked_authority"]["version"] == 9
     assert pool_code["operator_order"] == [
         "assemble_stacked_spine",
@@ -2366,6 +2369,26 @@ def test_stacked_checkpoint_identity_binds_v9_semantic_contracts(
     assert pool_code["late_producer_schedule"] == pool_tool._json_ready(
         pool_tool.us_late_producer_schedule_receipt()
     )
+    resource_semantics = pool_code["late_producer_resource_semantics"]
+    unsigned_resource_semantics = dict(resource_semantics)
+    resource_semantics_sha256 = unsigned_resource_semantics.pop("sha256")
+    assert resource_semantics_sha256 == stacked_spine_module._canonical_sha256(
+        unsigned_resource_semantics
+    )
+    assert resource_semantics["producer_count"] == 38
+    resource_rows = {
+        row["producer"]: row["resources"] for row in resource_semantics["producers"]
+    }
+    assert list(resource_rows) == list(
+        stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
+    )
+    for (
+        producer,
+        contract,
+    ) in stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY.items():
+        assert set(resource_rows[producer]) == (
+            stacked_spine_module._late_contract_available_input_keys(contract)
+        )
     assert pool_code["primary_qrf_checkpoint_schema_version"] == 6
     assert pool_code["puf_capital_gains_tail_manifest_schema_version"] == 2
     assert pool_code["puf_capital_gains_tail_support_contract"] == (
@@ -2433,6 +2456,26 @@ def test_stacked_checkpoint_identity_binds_v9_semantic_contracts(
             lambda: late_schedule,
         )
         stale_late_schedule = identity()
+    with monkeypatch.context() as changed:
+        source_stage_binding = stacked_spine_module._late_source_stage_spec_binding
+
+        def changed_source_stage_binding(
+            operator: str,
+            **kwargs: object,
+        ) -> dict[str, object] | None:
+            binding = source_stage_binding(operator, **kwargs)
+            if operator != "with_us_adult_care_inputs" or binding is None:
+                return binding
+            mutated = copy.deepcopy(binding)
+            mutated["asset_sha256"] = "0" * 64
+            return mutated
+
+        changed.setattr(
+            stacked_spine_module,
+            "_late_source_stage_spec_binding",
+            changed_source_stage_binding,
+        )
+        stale_source_asset = identity()
 
     digests = {
         pool_tool._pool_checkpoint_identity_sha256(candidate)
@@ -2444,9 +2487,10 @@ def test_stacked_checkpoint_identity_binds_v9_semantic_contracts(
             stale_tail_schema,
             stale_tail_contract,
             stale_late_schedule,
+            stale_source_asset,
         )
     }
-    assert len(digests) == 7
+    assert len(digests) == 8
 
     # A checkpoint produced by the current materializer with the prior QRF
     # schema is not merely identity-distinct: discovery must refuse it as stale.
@@ -2467,11 +2511,43 @@ def test_stacked_checkpoint_identity_binds_v9_semantic_contracts(
         )
     )
 
-    assert current["materializer_version"] == stale_qrf["materializer_version"] == 9
+    assert current["materializer_version"] == stale_qrf["materializer_version"] == 10
     assert stale_qrf["pool_code"]["primary_qrf_checkpoint_schema_version"] == 5
     assert (
         pool_tool._discover_stacked_checkpoint_identity(
             checkpoint_root,
+            verified_inputs=verified,
+            sample_fraction=0.10,
+            sample_seed=578,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+        )
+        is None
+    )
+    assert "checkpoint base identity is stale" in capsys.readouterr().out
+
+    # Resource semantics are equally resume-fatal: a checkpoint whose source
+    # asset/config binding differs must never be selected under current code.
+    resource_checkpoint_root = tmp_path / "mixed-resource-checkpoints"
+    stale_resource_store = pool_tool._PoolStageCheckpointStore(
+        resource_checkpoint_root,
+        base_identity=stale_source_asset,
+    )
+    stale_resource_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    stale_resource_store.write(
+        pool_tool.MultispinePoolCheckpoint(
+            stage="assembled",
+            frame=stack.frame,
+            assembly_receipt=stack.frame.metadata[
+                pool_tool.SPINE_ASSEMBLY_MANIFEST_KEY
+            ],
+            stage_receipts={},
+        )
+    )
+
+    assert (
+        pool_tool._discover_stacked_checkpoint_identity(
+            resource_checkpoint_root,
             verified_inputs=verified,
             sample_fraction=0.10,
             sample_seed=578,
@@ -2561,7 +2637,7 @@ def test_qbi_receipt_route_resolution_rejects_wrong_or_ambiguous_paths(
         )
 
 
-@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5, 6, 7, 8))
+@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5, 6, 7, 8, 9))
 def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -2609,7 +2685,7 @@ def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
             )
         )
 
-    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 9
+    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 10
     assert (
         pool_tool._discover_stacked_checkpoint_identity(
             checkpoint_root,
@@ -3005,7 +3081,7 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
     outputs = pool_tool._output_paths(output, checkpoint_root=checkpoint_root)
     manifest = pool_tool._read_json_object(outputs.manifest)
     diagnostics = pool_tool._read_json_object(outputs.agreement_diagnostics)
-    assert pool_tool.POOL_MANIFEST_SCHEMA_VERSION == 6
+    assert pool_tool.POOL_MANIFEST_SCHEMA_VERSION == 7
     assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 5
     assert manifest["schema_version"] == 4
     assert diagnostics["schema_version"] == 4

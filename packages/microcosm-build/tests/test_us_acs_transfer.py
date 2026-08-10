@@ -2071,6 +2071,31 @@ def test_schedule_d_post_transfer_fills_only_newly_imputed_rows(
     )
     assert derived.imputed_recipient_rows == 2
 
+    targets = (
+        "long_term_capital_gains_before_response",
+        "non_sch_d_capital_gains",
+    )
+    bound_contract = acs_transfer_module.acs_transfer_execution_contract_identity(
+        targets=targets,
+        derive_schedule_d=False,
+    )
+    suppressed = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={"person": {"capital_gain_details": targets}},
+        n_estimators=1,
+        derive_schedule_d=False,
+        execution_contract=bound_contract,
+    )
+    pd.testing.assert_series_equal(
+        suppressed.frame.person["schedule_d_capital_gain_distributions"],
+        cgd_before,
+    )
+    assert all(
+        item.column != "schedule_d_capital_gain_distributions"
+        for item in suppressed.imputed_inputs
+    )
+
 
 def test_adult_care_reconciliation_changes_only_imputed_expenses(
     monkeypatch: pytest.MonkeyPatch,

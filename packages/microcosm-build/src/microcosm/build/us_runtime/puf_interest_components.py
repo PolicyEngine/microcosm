@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from importlib.resources import files
 from typing import Any
@@ -167,6 +168,18 @@ def _component_identity(
     }
 
 
+def _agi_band_identity(band: PufE19200AgiBand) -> dict[str, object]:
+    """Return the ordered runtime semantics of one resolved SOI AGI band."""
+
+    return {
+        **_component_identity(band),
+        "label": band.label,
+        "lower_bound": band.lower_bound,
+        "upper_bound": band.upper_bound,
+        "home_mortgage_share": band.home_mortgage_share,
+    }
+
+
 def puf_e19200_interest_components_asset_identity(
     resource: Any | None = None,
 ) -> dict[str, object]:
@@ -182,16 +195,7 @@ def puf_e19200_interest_components_asset_identity(
         "asset": f"microcosm.build.us/{_SOURCE_ASSET}",
         "asset_sha256": hashlib.sha256(resolved_resource.read_bytes()).hexdigest(),
         "all_returns": _component_identity(all_returns),
-        "agi_bands": [
-            {
-                **_component_identity(band),
-                "label": band.label,
-                "lower_bound": band.lower_bound,
-                "upper_bound": band.upper_bound,
-                "home_mortgage_share": band.home_mortgage_share,
-            }
-            for band in bands
-        ],
+        "agi_bands": [_agi_band_identity(band) for band in bands],
     }
 
 
@@ -212,6 +216,34 @@ _HOME_MORTGAGE_SHARES = np.asarray(
     [band.home_mortgage_share for band in US_PUF_E19200_AGI_BANDS],
     dtype=np.float64,
 )
+
+
+def puf_e19200_agi_bands_runtime_identity(
+    bands: Sequence[PufE19200AgiBand] | None = None,
+) -> dict[str, object]:
+    """Bind the exact ordered SOI-band objects consumed by runtime code."""
+
+    resolved = tuple(US_PUF_E19200_AGI_BANDS if bands is None else bands)
+    if not resolved:
+        raise ValueError("PUF E19200 runtime AGI bands must be nonempty.")
+    if resolved[0].lower_bound is not None or resolved[-1].upper_bound is not None:
+        raise ValueError("PUF E19200 runtime AGI bands must cover the real line.")
+    for previous, following in zip(resolved[:-1], resolved[1:], strict=True):
+        if previous.upper_bound != following.lower_bound:
+            raise ValueError("PUF E19200 runtime AGI bands must be contiguous.")
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "agi_bands": [_agi_band_identity(band) for band in resolved],
+    }
+    payload["sha256"] = hashlib.sha256(
+        json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    return payload
 
 
 def split_us_puf_e19200_by_agi_band(

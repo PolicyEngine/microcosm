@@ -38,6 +38,7 @@ __all__ = [
     "US_MULTISPINE_POOL_H5_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION",
+    "US_STACKED_POOL_OPERATOR_ORDER",
     "load_legacy_calibrated_us_h5",
     "load_simulation_ready_us_multispine_pool",
     "load_simulation_ready_us_multispine_pool_manifest",
@@ -51,16 +52,30 @@ US_MULTISPINE_POOL_H5_ARTIFACT_KIND = "populace_us_multispine_input_pool"
 US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND = (
     "populace_us_multispine_agreement_diagnostics"
 )
-# 6 additionally binds the independently carried late-producer transition
+# 7 binds the complete late-producer resource semantics and removes the PUF
+# callback's duplicate outer-order entry; the callback is a node inside the DAG.
+# 6 additionally bound the independently carried late-producer transition
 # authority and restores its immutable Frame-metadata anchor on H5 load.
 # Schema 5 can authenticate the DAG receipt's structure, but cannot prove that
 # the published receipt is the one authorized by the generating transition.
-US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 6
+US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 7
 _LEGACY_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 4
 _METADATA_KEY = "_populace_staging_metadata"
 _TIME_PERIOD_KEY = "_time_period"
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
 _STACKED_PIPELINE = "us-stacked-pool"
+US_STACKED_POOL_OPERATOR_ORDER = (
+    "assemble_stacked_spine",
+    "prepare_multispine_source_inputs_for_clone",
+    "gap_fill_stacked_spine",
+    "run_stacked_late_producer_dag",
+    "prepare_stacked_tail_derivation",
+    "derive_multispine_pool_inputs",
+    "seed_multispine_pool_inputs",
+    "materialize_multispine_agreement_outputs",
+    "stacked_completeness_gate",
+    "by_origin_battery",
+)
 _LEGACY_POOL_OPERATOR_ORDER = (
     "assemble",
     "clone",
@@ -357,15 +372,6 @@ def _load_authenticated_us_multispine_pool_manifest(
         label="pool manifest",
         expected_sha256=expected_manifest_sha256,
     )
-    envelope = _validated_pool_manifest_envelope(
-        manifest,
-        manifest_path=manifest_path,
-    )
-    expected_schema_version = (
-        US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
-        if envelope == "stacked"
-        else _LEGACY_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
-    )
     if manifest.get("artifact_kind") != US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND:
         raise ValueError(
             f"US multispine pool manifest {manifest_path} has an unsupported "
@@ -378,6 +384,15 @@ def _load_authenticated_us_multispine_pool_manifest(
         raise ValueError(
             f"US multispine pool manifest {manifest_path} is not simulation-ready."
         )
+    envelope = _validated_pool_manifest_envelope(
+        manifest,
+        manifest_path=manifest_path,
+    )
+    expected_schema_version = (
+        US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
+        if envelope == "stacked"
+        else _LEGACY_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
+    )
     _validate_stacked_late_dag_manifest_binding(
         manifest,
         manifest_path=manifest_path,
@@ -530,24 +545,11 @@ def _validate_stacked_late_dag_manifest_binding(
     *,
     manifest_path: Path,
 ) -> None:
-    """Make schema-6 stacked consumers authenticate the published DAG proof."""
+    """Make schema-7 stacked consumers authenticate the published DAG proof."""
 
     if manifest.get("pipeline") != "us-stacked-pool":
         return
-    expected_operator_order = [
-        "assemble_stacked_spine",
-        "prepare_multispine_source_inputs_for_clone",
-        "gap_fill_stacked_spine",
-        "run_stacked_puf_pass",
-        "run_stacked_late_producer_dag",
-        "prepare_stacked_tail_derivation",
-        "derive_multispine_pool_inputs",
-        "seed_multispine_pool_inputs",
-        "materialize_multispine_agreement_outputs",
-        "stacked_completeness_gate",
-        "by_origin_battery",
-    ]
-    if manifest.get("operator_order") != expected_operator_order:
+    if manifest.get("operator_order") != list(US_STACKED_POOL_OPERATOR_ORDER):
         raise ValueError(
             f"US stacked pool manifest {manifest_path} does not bind the "
             "canonical late-DAG operator order."

@@ -154,6 +154,28 @@ def test_tail_execution_identity_binds_resolved_spec_and_soi_asset(
     soi = baseline["soi_e19200_agi_bands"]
     assert soi["asset_sha256"] != changed["asset_sha256"]
     assert soi["agi_bands"][0] != changed["agi_bands"][0]
+    assert soi["runtime_agi_bands"]["agi_bands"] == soi["agi_bands"]
+    assert len(soi["runtime_agi_bands"]["sha256"]) == 64
+
+
+def test_tail_execution_identity_rejects_runtime_soi_band_asset_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    changed_first = dataclasses.replace(
+        tail_module.US_PUF_E19200_AGI_BANDS[0],
+        label="runtime-drift",
+    )
+    monkeypatch.setattr(
+        tail_module,
+        "US_PUF_E19200_AGI_BANDS",
+        (changed_first, *tail_module.US_PUF_E19200_AGI_BANDS[1:]),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="runtime SOI AGI bands differ.*content-bound packaged asset",
+    ):
+        tail_module.puf_capital_gains_tail_execution_inputs_identity()
 
 
 def _donor() -> pd.DataFrame:
