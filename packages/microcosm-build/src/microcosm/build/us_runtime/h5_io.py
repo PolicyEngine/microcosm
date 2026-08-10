@@ -56,6 +56,7 @@ US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND = (
 # Schema 5 can authenticate the DAG receipt's structure, but cannot prove that
 # the published receipt is the one authorized by the generating transition.
 US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 6
+_LEGACY_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 5
 _METADATA_KEY = "_populace_staging_metadata"
 _TIME_PERIOD_KEY = "_time_period"
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
@@ -214,9 +215,14 @@ def _load_authenticated_us_multispine_pool_manifest(
         label="pool manifest",
         expected_sha256=expected_manifest_sha256,
     )
+    expected_schema_version = (
+        US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
+        if manifest.get("pipeline") == "us-stacked-pool"
+        else _LEGACY_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
+    )
     if (
         manifest.get("artifact_kind") != US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND
-        or manifest.get("schema_version") != US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
+        or manifest.get("schema_version") != expected_schema_version
     ):
         raise ValueError(
             f"US multispine pool manifest {manifest_path} has an unsupported "
@@ -317,8 +323,7 @@ def _load_authenticated_us_multispine_pool_manifest(
     if (
         diagnostics.get("artifact_kind")
         != US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND
-        or diagnostics.get("schema_version")
-        != US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
+        or diagnostics.get("schema_version") != expected_schema_version
         or diagnostics.get("simulation_ready") is not True
         or diagnostics.get("publication_run_id") != publication_run_id
     ):
