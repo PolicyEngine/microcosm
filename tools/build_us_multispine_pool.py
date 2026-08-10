@@ -2608,6 +2608,11 @@ def _validate_stacked_post_puf_stage_receipt(
             f"{boundary}: stacked transferred receipts have no late-producer "
             "DAG object."
         )
+    # Authenticate the canonical execution proof before consulting the
+    # independently propagated live-frame anchor. This keeps malformed DAGs
+    # attributable to their receipt defect even when their authority carrier
+    # is also absent or corrupt.
+    validate_stacked_late_producer_receipt(dag_receipt, boundary=boundary)
     if not isinstance(transition_authority_sha256, str):
         raise ValueError(
             f"{boundary}: independently carried late-producer transition "
@@ -2739,9 +2744,7 @@ def _emit_stacked_checkpoint(
             frame,
             stage_receipts,
             boundary=f"stacked {stage} checkpoint emission",
-            transition_authority_sha256=(
-                late_producer_transition_authority_sha256
-            ),
+            transition_authority_sha256=(late_producer_transition_authority_sha256),
             require_live_output=stage == "transferred",
         )
     if stage == "simulated":
@@ -2854,9 +2857,7 @@ def build_stacked_pool(
                 current,
                 receipts,
                 boundary=f"stacked {resume_stage} checkpoint resume",
-                transition_authority_sha256=(
-                    late_producer_transition_authority_sha256
-                ),
+                transition_authority_sha256=(late_producer_transition_authority_sha256),
                 require_live_output=resume_stage == "transferred",
             )
         if resume_stage == "simulated":
@@ -3350,9 +3351,7 @@ def _stacked_manifest_payload(
         result.frame,
         result.stage_receipts,
         boundary="stacked production manifest",
-        transition_authority_sha256=(
-            result.late_producer_transition_authority_sha256
-        ),
+        transition_authority_sha256=(result.late_producer_transition_authority_sha256),
         require_live_output=False,
     )
     _validate_qbi_stage_receipt(
@@ -3636,9 +3635,7 @@ def _write_stacked_outputs(
         result.frame,
         result.stage_receipts,
         boundary="stacked publication entry",
-        transition_authority_sha256=(
-            result.late_producer_transition_authority_sha256
-        ),
+        transition_authority_sha256=(result.late_producer_transition_authority_sha256),
         require_live_output=False,
     )
     _validate_qbi_stage_receipt(
