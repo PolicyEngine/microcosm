@@ -24,6 +24,19 @@ __all__ = [
 ]
 
 
+# A whole-pool producer satisfies either canonical row subset.  Subset
+# producers cannot satisfy one another or a whole-pool consumer.  ``receipt``
+# is the non-row output emitted by each source operator; availability of that
+# stage receipt satisfies the source finalizer's whole-pool readiness gate.
+# Unlisted extension scopes are deliberately exact-match only.
+_PRODUCER_SCOPE_COVERAGE: Mapping[str, frozenset[str]] = {
+    "whole_pool": frozenset({"whole_pool", "asec_source", "puf_clone"}),
+    "asec_source": frozenset({"asec_source"}),
+    "puf_clone": frozenset({"puf_clone"}),
+    "receipt": frozenset({"whole_pool"}),
+}
+
+
 def _nonempty(value: object, *, label: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{label} must be a non-empty string.")
@@ -226,6 +239,15 @@ def _named_cycle(
     raise AssertionError("A nonempty Kahn residual did not contain a cycle.")
 
 
+def _producer_scope_covers(output_scope: str, required_scope: str) -> bool:
+    """Return whether one declared output scope satisfies a consumer scope."""
+
+    covered = _PRODUCER_SCOPE_COVERAGE.get(output_scope)
+    if covered is None:
+        return output_scope == required_scope
+    return required_scope in covered
+
+
 def derive_producer_schedule(
     registry: Mapping[str, ProducerContract],
     *,
@@ -271,6 +293,7 @@ def derive_producer_schedule(
     edges: set[tuple[str, str]] = set()
     unknown: list[tuple[str, str]] = []
     missing_outputs: list[tuple[str, str, str]] = []
+    scope_mismatches: list[tuple[str, str, str, str, tuple[str, ...]]] = []
     for consumer_name in sorted(contracts):
         contract = contracts[consumer_name]
         for item in contract.inputs:
@@ -281,12 +304,35 @@ def derive_producer_schedule(
             if producer is None:
                 unknown.append((consumer_name, producer_name))
                 continue
-            if not any(
-                output.entity == item.entity and output.column == item.column
+            matching_outputs = tuple(
+                output
                 for output in producer.outputs
-            ):
+                if output.entity == item.entity and output.column == item.column
+            )
+            if not matching_outputs:
                 missing_outputs.append(
                     (consumer_name, producer_name, f"{item.entity}.{item.column}")
+                )
+                continue
+            if not any(
+                _producer_scope_covers(
+                    output.coverage_scope,
+                    item.required_scope,
+                )
+                for output in matching_outputs
+            ):
+                scope_mismatches.append(
+                    (
+                        consumer_name,
+                        producer_name,
+                        f"{item.entity}.{item.column}",
+                        item.required_scope,
+                        tuple(
+                            sorted(
+                                {output.coverage_scope for output in matching_outputs}
+                            )
+                        ),
+                    )
                 )
                 continue
             edge = (producer_name, consumer_name)
@@ -294,10 +340,11 @@ def derive_producer_schedule(
                 edges.add(edge)
                 adjacency[producer_name].add(consumer_name)
                 indegree[consumer_name] += 1
-    if unknown or missing_outputs:
+    if unknown or missing_outputs or scope_mismatches:
         raise ValueError(
             "Late producer dependency declarations are invalid; "
-            f"unknown_stages={unknown}, missing_outputs={missing_outputs}."
+            f"unknown_stages={unknown}, missing_outputs={missing_outputs}, "
+            f"scope_mismatches={scope_mismatches}."
         )
 
     remaining = set(contracts)
@@ -319,8 +366,17 @@ def derive_producer_schedule(
     order = tuple(name for wave in waves for name in wave)
     sorted_edges = tuple(sorted(edges))
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "external_stages": sorted(external),
+        "scope_coverage": {
+            "declared": {
+                output_scope: sorted(required_scopes)
+                for output_scope, required_scopes in sorted(
+                    _PRODUCER_SCOPE_COVERAGE.items()
+                )
+            },
+            "unlisted_scope_rule": "exact_match_only",
+        },
         "contracts": [_contract_payload(contracts[name]) for name in sorted(contracts)],
         "edges": [list(edge) for edge in sorted_edges],
         "waves": [list(wave) for wave in waves],
