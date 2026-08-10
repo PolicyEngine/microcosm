@@ -88,10 +88,12 @@ __all__ = [
 # v7 added the primary execution configuration and every late-transfer model
 # configuration/target-bank identity to the declared external-resource surface.
 # Version 6 content-bound physical Frame inputs but left those callback inputs
-# implicit. Receipt v2 requires every virtual-resource receipt to carry an exact
-# hash-bound semantic payload.
+# implicit. Receipt v3 reconciles repeated physical evidence and scope
+# cardinalities across each execution row, binds source-receipt outputs to the
+# callback receipt, and requires the primary callback to report the exact
+# resources it consumed. Receipt v2 introduced exact virtual-resource payloads.
 US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 10
-US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 2
+US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 3
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID = "us_stacked_late_producer_transition"
@@ -1844,8 +1846,9 @@ def us_late_producer_schedule_payload() -> dict[str, object]:
         "execution_receipt_contract": {
             "version": US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
             "row_binding": (
-                "declared_reconciled_input_and_exact_output_content_callback_"
-                "receipt_and_previous_execution_sha256"
+                "declared_globally_reconciled_input_and_scope_exact_output_"
+                "source_and_primary_callback_resource_receipt_and_previous_"
+                "execution_sha256"
             ),
             "virtual_resource_binding": (
                 "exact_kind_specific_semantic_payload_and_sha256"

@@ -356,6 +356,15 @@ verdict has been issued.
   Per-rule source-cell hashes now cover only the ACS channel actually consumed,
   so an ASEC earnings mutation changes neither declared inputs nor callback
   receipt. Three ACS-scoped identity mutations each change both identities.
+- Strengthened late receipt schema 3. One execution row now reconciles repeated
+  physical columns across logical requirements, reconciles non-row-creating
+  output cardinalities against the same input scope, and requires every
+  `@source_receipt` output digest to equal its callback receipt digest. Primary
+  PUF callbacks must report the canonical digest of the exact three resource
+  receipts gated by their DAG row; the production QRF path independently
+  reconstructs those receipts from the donor bytes and actual invocation
+  parameters before executing. All five focused executor/forgery regressions
+  are green.
 
 ## Next
 

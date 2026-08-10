@@ -5259,6 +5259,24 @@ def _bind_late_producer_transition_authority(
     return bound, str(authority["sha256"])
 
 
+def _validate_primary_callback_resource_binding(
+    producer_receipt: Mapping[str, object],
+    *,
+    available_input_receipts: Mapping[str, object],
+    boundary: str,
+) -> None:
+    """Prove the primary callback consumed the resources gated by its DAG row."""
+
+    observed = producer_receipt.get("primary_resource_receipts_sha256")
+    _validate_sha256(observed, boundary=f"{boundary} primary callback resources")
+    expected = _canonical_sha256(_json_ready(available_input_receipts))
+    if observed != expected:
+        raise ValueError(
+            f"{boundary}: primary callback receipt disagrees with its declared "
+            f"resources; expected={expected}, observed={observed}."
+        )
+
+
 def _validate_late_execution_row(
     raw_row: object,
     *,
@@ -5320,6 +5338,10 @@ def _validate_late_execution_row(
     invalid_rows: dict[ProducerInput, int] = {}
     evidenced_available_keys: set[str] = set()
     evidenced_available_sha256: dict[str, str] = {}
+    physical_input_states: dict[
+        tuple[str, str, str], tuple[int, int, str, str, str | None]
+    ] = {}
+    scope_cardinalities: dict[tuple[str, str], int] = {}
     for requirement, raw_input in zip(contract.inputs, declared_inputs, strict=True):
         if not isinstance(raw_input, Mapping):
             raise ValueError(
@@ -5534,6 +5556,51 @@ def _validate_late_execution_row(
                     ),
                 )
                 normalized_column = dict(raw_column)
+                if (
+                    declared_column.entity != "frame"
+                    and not declared_column.column.startswith("@")
+                ):
+                    physical_key = (
+                        declared_column.entity,
+                        declared_column.column,
+                        requirement.required_scope,
+                    )
+                    physical_state = (
+                        scope_rows,
+                        missing_rows,
+                        str(status),
+                        str(raw_column["content_sha256"]),
+                        str(raw_column["weight_kind"])
+                        if "weight_kind" in raw_column
+                        else None,
+                    )
+                    previous_physical_state = physical_input_states.get(physical_key)
+                    if (
+                        previous_physical_state is not None
+                        and previous_physical_state != physical_state
+                    ):
+                        raise ValueError(
+                            f"{boundary}: late producer {contract.name!r} carries "
+                            "inconsistent physical input evidence for "
+                            f"{declared_column.entity}.{declared_column.column} "
+                            f"on {requirement.required_scope}."
+                        )
+                    physical_input_states[physical_key] = physical_state
+                    scope_key = (
+                        declared_column.entity,
+                        requirement.required_scope,
+                    )
+                    previous_scope_rows = scope_cardinalities.get(scope_key)
+                    if (
+                        previous_scope_rows is not None
+                        and previous_scope_rows != scope_rows
+                    ):
+                        raise ValueError(
+                            f"{boundary}: late producer {contract.name!r} has "
+                            "inconsistent input scope cardinality for "
+                            f"{declared_column.entity}.{requirement.required_scope}."
+                        )
+                    scope_cardinalities[scope_key] = scope_rows
                 previous_state = column_states.get(declared_column)
                 current_state = (
                     missing_rows,
@@ -5729,6 +5796,20 @@ def _validate_late_execution_row(
                     f"{output.entity}.{output.column} has invalid "
                     f"scope_rows={scope_rows!r}."
                 )
+            if contract.kind != "primary_puf" and not output.column.startswith("@"):
+                scope_key = (output.entity, output.coverage_scope)
+                previous_scope_rows = scope_cardinalities.get(scope_key)
+                if (
+                    previous_scope_rows is not None
+                    and previous_scope_rows != scope_rows
+                ):
+                    raise ValueError(
+                        f"{boundary}: late producer {contract.name!r} output "
+                        "scope cardinality disagrees with its declared input "
+                        f"scope for {output.entity}.{output.coverage_scope}; "
+                        f"input={previous_scope_rows}, output={scope_rows}."
+                    )
+                scope_cardinalities[scope_key] = int(scope_rows)
         if output.column == "@resolved_weight" and (
             not isinstance(raw_output.get("weight_kind"), str)
             or not raw_output.get("weight_kind")
@@ -5767,6 +5848,20 @@ def _validate_late_execution_row(
         raise ValueError(
             f"{boundary}: late producer {contract.name!r} callback-receipt "
             "SHA-256 mismatch."
+        )
+    for raw_output in output_surface:
+        if str(raw_output["column"]).startswith("@source_receipt:") and (
+            raw_output["content_sha256"] != producer_receipt_sha256
+        ):
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} source-receipt "
+                "output digest disagrees with its callback receipt."
+            )
+    if contract.kind == "primary_puf":
+        _validate_primary_callback_resource_binding(
+            producer_receipt,
+            available_input_receipts=available_inputs,
+            boundary=f"{boundary} late producer {contract.name!r}",
         )
 
     if raw_row.get("previous_execution_sha256") != expected_previous_sha256:
@@ -8390,6 +8485,12 @@ def run_stacked_late_producer_dag(
         result = outcome["result"]
         current = result.frame
         producer_receipt = _json_ready(result.receipt)
+        if contract.kind == "primary_puf":
+            _validate_primary_callback_resource_binding(
+                producer_receipt,
+                available_input_receipts=node_available_inputs,
+                boundary=f"late producer {producer_name!r}",
+            )
         output_surface = [
             _late_output_column_evidence(
                 current,
@@ -8647,6 +8748,7 @@ def _run_stacked_puf_pass_evaluate(
         kwargs["person_outputs"] = tuple(person_outputs)
     if tax_unit_outputs is not None:
         kwargs["tax_unit_outputs"] = tuple(tax_unit_outputs)
+    primary_resource_receipts_sha256: str | None = None
     if primary_qrf_checkpoint_dir is None:
         if primary_qrf_input_binding is not None:
             raise ValueError(
@@ -8683,6 +8785,31 @@ def _run_stacked_puf_pass_evaluate(
         )
         assert isinstance(primary_qrf_input_binding, Mapping)
         normalized_input_binding = _json_ready(primary_qrf_input_binding)
+        bound_resources = normalized_input_binding["primary_resource_receipts"]
+        assert isinstance(bound_resources, Mapping)
+        checkpoint_resource = bound_resources["tax_unit.@primary_qrf_checkpoint"]
+        assert isinstance(checkpoint_resource, Mapping)
+        checkpoint_binding = checkpoint_resource["binding"]
+        assert isinstance(checkpoint_binding, Mapping)
+        actual_resources = stacked_late_primary_resource_receipts(
+            donor_tax_units,
+            primary_qrf_checkpoint_identity_sha256=str(
+                checkpoint_binding["checkpoint_identity_sha256"]
+            ),
+            clone_attachment_fraction=clone_attachment_fraction,
+            clone_attachment_seed=clone_attachment_seed,
+            seed=seed,
+            n_estimators=n_estimators,
+            predictors=predictors,
+            person_outputs=person_outputs,
+            tax_unit_outputs=tax_unit_outputs,
+        )
+        if _json_ready(actual_resources) != _json_ready(bound_resources):
+            raise ValueError(
+                "Stacked primary-QRF callback invocation disagrees with its "
+                "declared late-producer donor/config resources."
+            )
+        primary_resource_receipts_sha256 = _canonical_sha256(bound_resources)
         checkpoint_dir = Path(primary_qrf_checkpoint_dir)
         manifest_path = checkpoint_dir / PRIMARY_QRF_MANIFEST_FILENAME
         input_binding_path = checkpoint_dir / _LATE_PRIMARY_QRF_INPUT_BINDING_FILENAME
@@ -8819,23 +8946,21 @@ def _run_stacked_puf_pass_evaluate(
         origin: int((channel.eq(origin) & clone_index.eq(1)).sum())
         for origin in sorted(channel.unique())
     }
-    return StackedPufPassResult(
-        frame=output,
-        receipt={
-            "acs_earnings_universe_application": _json_ready(
-                universe_application_receipt
-            ),
-            "clone_attachment": _json_ready(attachment),
-            "doctrines": {
-                "require_complete_recipient_predictors": True,
-                "absent_cells": PUF_ABSENT_CELLS_PRESERVE_NULLS,
-            },
-            "primary_puf_qrf": primary_qrf_receipt,
-            "puf_capital_gains_tail_transfer": tail_receipt,
-            "tail_status": tail_status,
-            "recipient_person_rows_by_origin": recipients_by_origin,
+    receipt: dict[str, object] = {
+        "acs_earnings_universe_application": _json_ready(universe_application_receipt),
+        "clone_attachment": _json_ready(attachment),
+        "doctrines": {
+            "require_complete_recipient_predictors": True,
+            "absent_cells": PUF_ABSENT_CELLS_PRESERVE_NULLS,
         },
-    )
+        "primary_puf_qrf": primary_qrf_receipt,
+        "puf_capital_gains_tail_transfer": tail_receipt,
+        "tail_status": tail_status,
+        "recipient_person_rows_by_origin": recipients_by_origin,
+    }
+    if primary_resource_receipts_sha256 is not None:
+        receipt["primary_resource_receipts_sha256"] = primary_resource_receipts_sha256
+    return StackedPufPassResult(frame=output, receipt=receipt)
 
 
 def _bind_stacked_tail_origin_receipt(
