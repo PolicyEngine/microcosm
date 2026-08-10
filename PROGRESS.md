@@ -42,6 +42,11 @@ checkout without rebasing, resetting, or shelving.
   edges, derives lexically stable Kahn waves, reports a deterministic DFS cycle
   path, hashes canonical JSON bytes, and fences callbacks on exact filled-input
   or declared-absence evidence. Its three doctrine regressions now pass.
+- Made qualified tuition a strict PUF-owned education input: nonnumeric,
+  nonfinite, or negative tuition/assistance now fails; tuition is preserved
+  byte-for-byte; education owns only assistance plus five AOTC facts. The
+  source-producer surface is now 29 targets with two PUF overlaps, and 30
+  education/partition regressions pass.
 
 ## Next
 

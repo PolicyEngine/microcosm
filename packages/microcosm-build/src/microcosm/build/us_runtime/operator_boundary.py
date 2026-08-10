@@ -32,7 +32,7 @@ from microcosm.build.us_runtime.disability_benefits import (
     US_DISABILITY_BENEFITS_OUTPUT_COLUMNS,
 )
 from microcosm.build.us_runtime.education_inputs import (
-    US_EDUCATION_INPUTS_OUTPUT_COLUMNS,
+    US_EDUCATION_INPUTS_OWNED_OUTPUT_COLUMNS,
 )
 from microcosm.build.us_runtime.eligibility_inputs import (
     US_ELIGIBILITY_INPUTS_OUTPUT_COLUMNS,
@@ -332,7 +332,7 @@ PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
         "person": frozenset(US_ADULT_CARE_OUTPUT_COLUMNS),
     },
     "education_inputs": {
-        "person": frozenset(US_EDUCATION_INPUTS_OUTPUT_COLUMNS),
+        "person": frozenset(US_EDUCATION_INPUTS_OWNED_OUTPUT_COLUMNS),
     },
     "scf_wealth": {
         "person": frozenset(US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS),

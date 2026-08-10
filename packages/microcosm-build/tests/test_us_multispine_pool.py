@@ -1015,8 +1015,8 @@ def test_pool_transfer_plan_partitions_at_the_declared_producer_boundary() -> No
     assert early.isdisjoint(late)
     assert early | late == full
     assert len(puf_producers) == 43
-    assert len(source_producers) == 30
-    assert len(puf_producers & source_producers) == 3
+    assert len(source_producers) == 29
+    assert len(puf_producers & source_producers) == 2
     assert puf_producers | source_producers == late
     assert ("person", "source_operator_cps_carried", "strike_benefits") in early
     assert ("person", "model_required_boolean", "is_pregnant") in late
@@ -1035,6 +1035,11 @@ def test_pool_transfer_plan_partitions_at_the_declared_producer_boundary() -> No
         "model_required_boolean",
         "is_pregnant",
     ) in source_producers
+    assert (
+        "person",
+        "puf_tax_itemization",
+        "qualified_tuition_expenses",
+    ) not in source_producers
 
 
 def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
