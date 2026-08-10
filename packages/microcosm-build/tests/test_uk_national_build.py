@@ -500,7 +500,7 @@ def test_national_build_samples_the_loaded_frame_before_stages(
     # The stages saw the sampled frame — the rung is upstream of stage one.
     assert stage_household_counts == [receipt["realized_household_count"]]
     assert receipt["realized_household_count"] < 8
-    assert receipt["uk_policy"]["sampling_unit"] == "canonical_clone_family"
+    assert receipt["uk_policy"]["sampling_unit"] == "source_frs_family"
     # Renormalization: the staged artifact carries the full input mass.
     staged, _staged_provenance = load_uk_national_frame(staging_h5)
     assert float(staged.weights_for("household").total) == pytest.approx(8 * 2.0)
