@@ -282,6 +282,7 @@ class MultispinePoolCheckpoint:
     stage_receipts: Mapping[str, Mapping[str, object]]
     simulation_frame: Frame | None = None
     qbi_transition_authority_sha256: str | None = None
+    late_producer_transition_authority_sha256: str | None = None
 
     def __post_init__(self) -> None:
         if self.stage not in POOL_CHECKPOINT_STAGE_ORDER:
@@ -324,6 +325,18 @@ class MultispinePoolCheckpoint:
             raise TypeError(
                 "MultispinePoolCheckpoint.qbi_transition_authority_sha256 must "
                 "be a string when present."
+            )
+        if (
+            self.late_producer_transition_authority_sha256 is not None
+            and not isinstance(
+                self.late_producer_transition_authority_sha256,
+                str,
+            )
+        ):
+            raise TypeError(
+                "MultispinePoolCheckpoint."
+                "late_producer_transition_authority_sha256 must be a string "
+                "when present."
             )
 
 
