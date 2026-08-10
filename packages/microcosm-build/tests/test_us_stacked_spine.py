@@ -3591,6 +3591,32 @@ def test_source_resource_refuses_live_callback_control_drift(
         )
 
 
+def test_source_resource_binding_does_not_introspect_injected_runner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def injected_runner(*_args: object, **_kwargs: object) -> PoolStageOutput:
+        raise AssertionError("resource construction must not execute the runner")
+
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "_run_source_operator_chain",
+        injected_runner,
+    )
+    resources = stacked_spine_module._late_source_resource_receipts(
+        producer_name="source:with_us_adult_care_inputs"
+    )
+    binding = resources["person.@post_clone_source_execution_config"]["binding"]
+    family = multispine_pool_module.POOL_OPERATOR_CONTRACTS[
+        "with_us_adult_care_inputs"
+    ].family
+    assert binding["declared_output_family"] == {
+        entity: sorted(columns)
+        for entity, columns in sorted(
+            multispine_pool_module.PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[family].items()
+        )
+    }
+
+
 def test_source_resource_refuses_runtime_stage_helper_drift(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

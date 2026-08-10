@@ -5258,11 +5258,7 @@ def _late_source_execution_config_binding(
         )
         phase = multispine_pool_runtime._POST_CLONE_PHASE
         operator_contracts = multispine_pool_runtime.POOL_OPERATOR_CONTRACTS
-        output_families = (
-            multispine_pool_runtime._run_source_operator_chain.__kwdefaults__[
-                "output_families"
-            ]
-        )
+        output_families = multispine_pool_runtime.PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES
         formula_owned_outputs = multispine_pool_runtime._FORMULA_OWNED_SOURCE_OUTPUTS
     else:
         seed = POOL_RANDOM_SEED

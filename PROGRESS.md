@@ -406,6 +406,10 @@ and final report remain.
   pinned fixture engine identity, discovery now positively accepts the current
   v10 checkpoint, then rejects the stale source-resource identity and each
   legacy v1--v9 outer materializer for the intended semantic/version reason.
+- Removed callback-function introspection from source runtime identity. The
+  binding now reads the explicit module output-family contract, so legitimate
+  injected runners cannot erase `__kwdefaults__`; the full tool suite and a
+  dedicated injection regression pass.
 
 ## Next
 
