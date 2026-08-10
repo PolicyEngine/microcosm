@@ -203,8 +203,8 @@ POOL_MANIFEST_SCHEMA_VERSION = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
 # ``--legacy-two-spine`` is a byte-stable compatibility surface.  Stacked
 # publication and checkpoint-envelope versions may advance without rewriting
 # the retiring pipeline's last supported envelope.
-_LEGACY_POOL_MANIFEST_SCHEMA_VERSION = 5
-_LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 4
+_LEGACY_POOL_MANIFEST_SCHEMA_VERSION = 4
+_LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 3
 
 POOL_H5_ARTIFACT_KIND = US_MULTISPINE_POOL_H5_ARTIFACT_KIND
 """Neutral H5 artifact kind; readiness is asserted only by the manifest."""

@@ -378,7 +378,7 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
             }
         },
     }
-    schema_version = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION if stacked else 5
+    schema_version = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION if stacked else 4
     write_nullable_us_h5(
         _pool_frame_with_object_strings_on_every_entity(),
         pool_path,
@@ -397,6 +397,7 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
         diagnostics.update(
             {
                 "pipeline": "us-stacked-pool",
+                "semantic_kind": "stacked_terminal_gates",
                 "terminal_gates": agreement_gate,
             }
         )
@@ -799,7 +800,7 @@ def test_ready_pool_loader_preserves_importance_weights_and_nullable_inputs(
     )
 
 
-def test_ready_legacy_pool_loader_accepts_schema_five_envelope(
+def test_ready_legacy_pool_loader_accepts_pre_653_schema_four_envelope(
     tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")
@@ -812,9 +813,9 @@ def test_ready_legacy_pool_loader_accepts_schema_five_envelope(
         load_simulation_ready_us_multispine_pool(manifest_path)
     )
 
-    assert written_manifest["schema_version"] == 5
-    assert written_diagnostics["schema_version"] == 5
-    assert loaded_manifest["schema_version"] == 5
+    assert written_manifest["schema_version"] == 4
+    assert written_diagnostics["schema_version"] == 4
+    assert loaded_manifest["schema_version"] == 4
     assert frame.n("household") == 3
 
 
@@ -832,7 +833,7 @@ def test_ready_legacy_pool_loader_rejects_schema_six_envelope(
     manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="unsupported artifact binding"):
+    with pytest.raises(ValueError, match="ambiguous stacked envelope"):
         load_simulation_ready_us_multispine_pool(manifest_path)
 
 
@@ -961,7 +962,7 @@ def test_ready_stacked_pool_loader_requires_schema_six_late_dag_proof(
         load_simulation_ready_us_multispine_pool(manifest_path)
 
 
-def test_ready_stacked_pool_loader_rejects_schema_five_envelope(
+def test_ready_stacked_pool_loader_rejects_schema_four_envelope(
     tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")
@@ -969,13 +970,36 @@ def test_ready_stacked_pool_loader_rejects_schema_five_envelope(
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
     diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
-    manifest["schema_version"] = 5
-    diagnostics["schema_version"] = 5
+    manifest["schema_version"] = 4
+    diagnostics["schema_version"] = 4
     diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
     manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="unsupported artifact binding"):
+    with pytest.raises(ValueError, match="legacy envelope carries stacked-only"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_ready_stacked_pool_cannot_be_downgraded_to_legacy(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    diagnostics_path = Path(manifest["agreement_diagnostics"]["path"])
+    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    manifest["schema_version"] = 4
+    manifest.pop("pipeline")
+    manifest.pop("terminal_gates")
+    diagnostics["schema_version"] = 4
+    diagnostics.pop("pipeline")
+    diagnostics.pop("semantic_kind")
+    diagnostics.pop("terminal_gates")
+    diagnostics_path.write_text(json.dumps(diagnostics), encoding="utf-8")
+    manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="legacy envelope carries stacked-only"):
         load_simulation_ready_us_multispine_pool(manifest_path)
 
 

@@ -56,10 +56,88 @@ US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND = (
 # Schema 5 can authenticate the DAG receipt's structure, but cannot prove that
 # the published receipt is the one authorized by the generating transition.
 US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 6
-_LEGACY_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 5
+_LEGACY_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 4
 _METADATA_KEY = "_populace_staging_metadata"
 _TIME_PERIOD_KEY = "_time_period"
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
+_STACKED_PIPELINE = "us-stacked-pool"
+_STACKED_ONLY_MANIFEST_FIELDS = frozenset(
+    {
+        "pipeline",
+        "release_id",
+        "sampling",
+        "clone_attachment",
+        "input_pins_digest",
+        "late_producer_transition_authority_sha256",
+        "stack_manifest",
+        "terminal_gates",
+    }
+)
+_REQUIRED_STACKED_MANIFEST_FIELDS = frozenset(
+    {
+        "pipeline",
+        "operator_order",
+        "stage_receipts",
+    }
+)
+
+
+def _stacked_manifest_markers(manifest: Mapping[str, object]) -> set[str]:
+    """Return every top-level or nested field that proves stacked lineage."""
+
+    markers = set(manifest) & set(_STACKED_ONLY_MANIFEST_FIELDS)
+    operator_order = manifest.get("operator_order")
+    if isinstance(operator_order, list) and any(
+        operator
+        in {
+            "assemble_stacked_spine",
+            "run_stacked_late_producer_dag",
+            "by_origin_battery",
+        }
+        for operator in operator_order
+    ):
+        markers.add("operator_order[stacked]")
+    stage_receipts = manifest.get("stage_receipts")
+    impute = (
+        stage_receipts.get("impute") if isinstance(stage_receipts, Mapping) else None
+    )
+    if isinstance(impute, Mapping) and set(impute) & {
+        "stacked_late_producer_dag",
+        "stacked_post_puf_transfer",
+    }:
+        markers.add("stage_receipts.impute[stacked]")
+    return markers
+
+
+def _validated_pool_manifest_envelope(
+    manifest: Mapping[str, object],
+    *,
+    manifest_path: Path,
+) -> str:
+    """Classify only an unambiguous schema-bound legacy or stacked envelope."""
+
+    schema_version = manifest.get("schema_version")
+    markers = _stacked_manifest_markers(manifest)
+    if schema_version == US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION:
+        missing = _REQUIRED_STACKED_MANIFEST_FIELDS - set(manifest)
+        if manifest.get("pipeline") != _STACKED_PIPELINE or missing:
+            raise ValueError(
+                f"US multispine pool manifest {manifest_path} has an "
+                "ambiguous stacked envelope; "
+                f"missing={sorted(missing)}."
+            )
+        return "stacked"
+    if schema_version == _LEGACY_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION:
+        if markers:
+            raise ValueError(
+                f"US multispine pool manifest {manifest_path} legacy envelope "
+                f"carries stacked-only field(s) {sorted(markers)}."
+            )
+        return "legacy"
+    raise ValueError(
+        f"US multispine pool manifest {manifest_path} has an unsupported "
+        "artifact binding."
+    )
 
 
 class AuthenticatedPoolH5MismatchError(RuntimeError):
@@ -215,15 +293,16 @@ def _load_authenticated_us_multispine_pool_manifest(
         label="pool manifest",
         expected_sha256=expected_manifest_sha256,
     )
+    envelope = _validated_pool_manifest_envelope(
+        manifest,
+        manifest_path=manifest_path,
+    )
     expected_schema_version = (
         US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
-        if manifest.get("pipeline") == "us-stacked-pool"
+        if envelope == "stacked"
         else _LEGACY_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
     )
-    if (
-        manifest.get("artifact_kind") != US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND
-        or manifest.get("schema_version") != expected_schema_version
-    ):
+    if manifest.get("artifact_kind") != US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND:
         raise ValueError(
             f"US multispine pool manifest {manifest_path} has an unsupported "
             "artifact binding."
@@ -320,6 +399,27 @@ def _load_authenticated_us_multispine_pool_manifest(
         diagnostics_path,
         label="pool agreement diagnostics",
     )
+    diagnostics_stacked_fields = set(diagnostics) & {
+        "pipeline",
+        "semantic_kind",
+        "release_id",
+        "terminal_gates",
+    }
+    if envelope == "stacked":
+        if (
+            diagnostics.get("pipeline") != _STACKED_PIPELINE
+            or diagnostics.get("semantic_kind") != "stacked_terminal_gates"
+        ):
+            raise ValueError(
+                f"US multispine pool diagnostics {diagnostics_path} have an "
+                "ambiguous stacked envelope."
+            )
+    elif diagnostics_stacked_fields:
+        raise ValueError(
+            f"US multispine pool diagnostics {diagnostics_path} legacy "
+            "envelope carries stacked-only field(s) "
+            f"{sorted(diagnostics_stacked_fields)}."
+        )
     if (
         diagnostics.get("artifact_kind")
         != US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND

@@ -19,9 +19,10 @@ universe materializer are now declared DAG nodes/resources. Every
 physical input and virtual runtime resource is content-bound: donor bytes,
 resolved PUF/QRF/tail controls,
 the routed primary-QRF bank and stale-bank sidecar, source receipts, transfer
-controls, and target-bank identities. The legacy-envelope compatibility audit
-also remains open. Focused suites and all final proof gates will be rerun from
-the final tree after those findings close.
+controls, and target-bank identities. The legacy envelope is restored to its
+pre-#653 identity and cannot be selected by stripping stacked markers. Focused
+suites and all final proof gates will be rerun from the final tree after the
+documentation audit closes.
 
 ## Done
 
@@ -306,10 +307,21 @@ the final tree after those findings close.
   `070fdaac27446c7b367d24a160cb75a2df666c07135bd5d98961328b004ad303`
   and the final payload SHA is
   `525c1f47698a6a6bd54db7a3a1eb39bd2647680455770cfaa6be3ec1ef9a2994`.
+- Restored the retiring two-spine envelope to the exact pre-#653 manifest
+  schema 4 and checkpoint materializer 3. Its generated H5, diagnostics, and
+  normalized manifest hashes match preserved #652 commit `54d2dee6` exactly:
+  `ced797ecdd44a638c2a3945f07ad612098a7095ca53a5f458699bca6d6e38b3e`,
+  `f39f0d918bf7ee01dddb5517d8830b8adb541273c5be084307be91397caca3cb`,
+  and `14e6b3a409dfe2108253668a65ed32c0365b246f379ad895d8441c939adde65e`.
+  H5 loading now classifies by schema plus the complete envelope surface,
+  rejects stacked-only top-level/nested markers on the legacy route, and has a
+  regression for stripping stacked pipeline/terminal fields, lowering both
+  document schemas, and recomputing the diagnostics digest.
 
 ## Next
 
-- Close the persisted-receipt and legacy-envelope audit findings.
+- Publish the final 38-node/71-edge doctrine, inventories, version ledger, and
+  hashes; extend the changelog and reconcile stale progress wording.
 - Rerun the focused aggregate, exact #583 shard, eight non-overlapping
   foreground workspace chunks, and Ruff check/format-check/diff-check gates.
 - Write the final gradeable mechanism/edge/fix/proof report to the output file,

@@ -2285,7 +2285,7 @@ def test_legacy_checkpoint_identity_excludes_stacked_late_producer_schedule(
         verified,
         policyengine_us_version="fixture-engine",
     )
-    assert current["materializer_version"] == 4
+    assert current["materializer_version"] == 3
     assert "late_producer_schedule" not in current["pool_code"]
 
     changed_schedule = pool_tool._json_ready(
@@ -2970,7 +2970,7 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
     assert keywords["resume"] is None
     assert callable(keywords["checkpoint"])
     checkpoint_store = keywords["checkpoint"].__self__
-    assert checkpoint_store.base_identity["materializer_version"] == 4
+    assert checkpoint_store.base_identity["materializer_version"] == 3
     assert "late_producer_schedule" not in checkpoint_store.base_identity["pool_code"]
 
     outputs = pool_tool._output_paths(output, checkpoint_root=checkpoint_root)
@@ -2978,13 +2978,13 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
     diagnostics = pool_tool._read_json_object(outputs.agreement_diagnostics)
     assert pool_tool.POOL_MANIFEST_SCHEMA_VERSION == 6
     assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 5
-    assert manifest["schema_version"] == 5
-    assert diagnostics["schema_version"] == 5
-    assert manifest["stage_checkpoints"]["materializer_version"] == 4
+    assert manifest["schema_version"] == 4
+    assert diagnostics["schema_version"] == 4
+    assert manifest["stage_checkpoints"]["materializer_version"] == 3
     assert {
         receipt["materializer_version"]
         for receipt in manifest["stage_checkpoints"]["stages"].values()
-    } == {4}
+    } == {3}
     manifest_bytes = outputs.manifest.read_bytes().replace(
         str(tmp_path.resolve()).encode(),
         b"$TMP",
@@ -3003,10 +3003,10 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # Rebased with the fixture golden above (explicit string-storage
         # checkpoint metadata).
         "pool_h5": "ced797ecdd44a638c2a3945f07ad612098a7095ca53a5f458699bca6d6e38b3e",
-        "agreement": "ea28fd66c06511bafef0497e713b1db900ee121a76ccee257cea399b6cee4291",
-        # Rebased once when the retiring pipeline received a dedicated v4
-        # checkpoint identity that excludes the live stacked-only late DAG.
-        "manifest": "81217ca601f230572dfab9477e73f08be8c89ef77f171490ba0e1ce8e6b72d88",
+        "agreement": "f39f0d918bf7ee01dddb5517d8830b8adb541273c5be084307be91397caca3cb",
+        # Exact pre-#653 schema-4/materializer-3 publication bytes from
+        # preserved #652 commit 54d2dee6.
+        "manifest": "14e6b3a409dfe2108253668a65ed32c0365b246f379ad895d8441c939adde65e",
     }
 
 
