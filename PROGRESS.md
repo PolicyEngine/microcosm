@@ -1,26 +1,23 @@
-# Progress: microcosm #653
+# Progress: final QA for microcosm #652 + #653
 
 ## State
 
-The #653 implementation is code-complete on the required
-`tail-stratum-support-652` checkout atop the preserved #652 commits. The late
-stage is a 38-node, import-validated producer DAG with exact physical and
-virtual inputs, content-bound execution receipts, deterministic topology, and
-checkpoint-bound runtime semantics. The final audit gaps are closed: optional
-primary tax-unit reads, once-resolved tail assets/controls, source-stage helper
-identity, source/finalizer live doctrine, ACS-universe runtime ownership,
-transfer predictor/codec semantics, adult-care tax-unit role, and stale
-resource-checkpoint discovery all fail closed. Bounded transfer groups suppress
-the opportunistic Schedule-D write; the existing whole-pool derive operator
-remains its sole canonical owner. Focused regressions and targeted Ruff are
-green. The operator-ordering doctrine and changelog now match the live schema,
-counts, resource ledger, derived waves, and hashes. The fresh focused, #583,
-full-workspace, Ruff, format, and diff proof matrix is green. The independently
-audited final report is written to the required output path. The task is
-complete and ready for external verification.
+Defensive final QA is in progress on the requested `tail-stratum-support-652`
+checkout at `a9fc7d16`. The worktree was clean at entry. No smoke/dev build,
+network, GitHub, push, state shelving, or root-journal reporting will occur.
+Existing smoke/dev checkpoints and local implementation reports are evidence
+inputs only. The gate will independently re-derive the #652 tail table and #653
+ASEC provenance, audit declared DAG inputs against actual operator reads, run
+the requested foreground batteries, and commit only a provable defect fix.
 
 ## Done
 
+- Confirmed the clean requested branch and exact starting HEAD `a9fc7d16`.
+- Read the repository guide and mandatory PolicyEngine review workflow.
+- Compared against the locally available `origin/main`: the branch is 72
+  commits ahead and one commit behind; no fetch was attempted because this QA
+  explicitly forbids network access.
+- Confirmed the two implementation logs and full r7 report exist locally.
 - Read the repository agent guide and the applicable debugging, data-pipeline,
   and development-standard instructions.
 - Confirmed the active branch and preserved #652 commit chain:
@@ -447,5 +444,9 @@ complete and ready for external verification.
 
 ## Next
 
-- None. Echo the committed final report to stdout and hand off the clean local
-  branch for verification; do not push or run smoke/dev builds in this task.
+- Re-derive every requested numerical and provenance guarantee from the saved
+  checkpoints, then run the committed negative-path and prior-guarantee suites.
+- Run the exact focused, #583, full-workspace, lint, format, and diff batteries
+  in foreground chunks with machine-readable count receipts.
+- Fix only proven defects. Restore `PROGRESS*.md` and `FINAL_REPORT.md` exactly
+  to `origin/main` in a cleanup commit before the final verdict.
