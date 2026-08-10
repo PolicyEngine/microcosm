@@ -138,6 +138,11 @@ and the complete proof rerun are closed.
   cross-grain provenance; and schema-5 execution rows trust persisted counts
   rather than a hash-linked live transition proof. Reopened the implementation
   rather than issuing a premature ready verdict.
+- Added production-registry regressions that require adult care's clone index
+  plus channel as one all-of support-role input and require every value passed
+  to a strict numeric callback path to carry `finite_numeric` contract
+  semantics. The focused DAG suite now fails only on those deliberately red
+  assertions (the first failure masks two additional source-kind assertions).
 
 ## Next
 

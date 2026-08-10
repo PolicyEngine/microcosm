@@ -328,3 +328,77 @@ def test_production_registry_preserves_finite_numeric_input_kinds() -> None:
             if (item.entity, item.column) == (entity, column)
         )
         assert declared_column.value_kind == "finite_numeric"
+
+
+def test_source_contracts_match_strict_runtime_input_semantics() -> None:
+    adult = CANONICAL_US_LATE_PRODUCER_REGISTRY[
+        source_producer_name("with_us_adult_care_inputs")
+    ]
+    adult_inputs = {item.column: item for item in adult.inputs}
+    assert adult_inputs["@effective:support_role"].alternatives == (
+        (
+            next(
+                column
+                for alternative in adult_inputs[
+                    "@effective:support_role"
+                ].alternatives
+                for column in alternative
+                if column.column == "person_support_channel"
+            ),
+            next(
+                column
+                for alternative in adult_inputs[
+                    "@effective:support_role"
+                ].alternatives
+                for column in alternative
+                if column.column == "person_support_clone_index"
+            ),
+        ),
+    )
+    for logical_input, physical_column in (
+        ("@effective:raw_person:PEDISDRS", "PEDISDRS"),
+        (
+            "@effective:raw_person:is_full_time_college_student",
+            "is_full_time_college_student",
+        ),
+    ):
+        requirement = adult_inputs[logical_input]
+        assert {
+            column.value_kind
+            for alternative in requirement.alternatives
+            for column in alternative
+            if column.column == physical_column
+        } == {"finite_numeric"}
+
+    education = CANONICAL_US_LATE_PRODUCER_REGISTRY[
+        source_producer_name("with_us_education_inputs")
+    ]
+    education_source = next(
+        item
+        for item in education.inputs
+        if item.column == "@effective:education_source_or_sidecar"
+    )
+    ed_val = next(
+        column
+        for alternative in education_source.alternatives
+        for column in alternative
+        if column.column == "ED_VAL"
+    )
+    assert ed_val.value_kind == "finite_numeric"
+
+
+def test_transfer_numeric_predictor_alternatives_are_all_finite() -> None:
+    numeric_requirements = {
+        "@effective:optional_social_security_income",
+        "@effective:optional_retirement_income",
+        "@effective:optional_investment_income",
+    }
+    for group in CANONICAL_US_LATE_TRANSFER_GROUPS:
+        contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[group.name]
+        inputs = {item.column: item for item in contract.inputs}
+        for logical_input in numeric_requirements:
+            assert {
+                column.value_kind
+                for alternative in inputs[logical_input].alternatives
+                for column in alternative
+            } == {"finite_numeric"}
