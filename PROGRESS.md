@@ -2,13 +2,12 @@
 
 ## State
 
-Defensive final QA is in progress on the requested `tail-stratum-support-652`
-checkout at `a9fc7d16`. The worktree was clean at entry. No smoke/dev build,
-network, GitHub, push, state shelving, or root-journal reporting will occur.
-Existing smoke/dev checkpoints and local implementation reports are evidence
-inputs only. The gate will independently re-derive the #652 tail table and #653
-ASEC provenance, audit declared DAG inputs against actual operator reads, run
-the requested foreground batteries, and commit only a provable defect fix.
+Defensive final QA evidence collection is complete on the requested
+`tail-stratum-support-652` implementation HEAD `a9fc7d16`; final reporting and
+the requested root-journal cleanup remain. No smoke/dev build, network, GitHub,
+push, state shelving, or source edit occurred. The independent numerical,
+provenance, declared-input, regression, and full-workspace audits found no
+provable defect.
 
 ## Done
 
@@ -441,12 +440,33 @@ the requested foreground batteries, and commit only a provable defect fix.
   `/private/tmp/microcosm-653-final-report.md`. An independent read-only audit
   recomputed its graph and test arithmetic and found no factual, count, hash,
   edge-completeness, or proof-total error.
+- Re-derived #652 from both saved checkpoints. At 1%, `JOINT` is short 6,042
+  and `SEPARATE` is short 353 while `SINGLE` and `HEAD_OF_HOUSEHOLD` attach;
+  at 10% every donor-bearing status is adequate. Full-scale usable counts are
+  32,305 / 46,466 / 1,247 / 6,264 / 564, so the per-status fix is analytically
+  a no-op at full scale. All 36 focused tail/support checks, including the
+  byte-fidelity regressions, passed.
+- Re-derived the #653 failure from the saved dev checkpoint: the 43,260
+  nonfinite SSTB cells are exactly ASEC-origin native clone-0 people, not ACS.
+  The current 38-producer / 71-edge schedule places PUF batch 5 in wave 3 and
+  adult care in wave 4. A callback-aware one-level AST audit found zero
+  undeclared configured reads and enumerated 212 producer-named tolerated-
+  absence receipts.
+- Fresh offline foreground testing passed the exact 676-case focused suite and
+  the exact 495-case #583 shard. The eight unique full-workspace chunks
+  collected 5,974 tests with zero failures/errors: initial offline accounting
+  was 5,905 passed / 69 skipped; two cache-provisioned pyarrow rechecks passed,
+  giving latest per-test accounting of 5,907 passed / 67 skipped. The sole
+  remaining variance from r7's 5,908 / 66 is the intentionally offline live-HF
+  test; its US release chain was independently resolved coherently with a
+  strict `local_files_only=True` downloader, while the UK metadata was absent
+  from cache.
+- Re-ran `ruff check .`, changed-file format checking, and diff checking: all
+  pass. The changelog accurately covers both #652 and #653. No source defect
+  fix was warranted.
 
 ## Next
 
-- Re-derive every requested numerical and provenance guarantee from the saved
-  checkpoints, then run the committed negative-path and prior-guarantee suites.
-- Run the exact focused, #583, full-workspace, lint, format, and diff batteries
-  in foreground chunks with machine-readable count receipts.
-- Fix only proven defects. Restore `PROGRESS*.md` and `FINAL_REPORT.md` exactly
-  to `origin/main` in a cleanup commit before the final verdict.
+- Write the final evidence report to the output file.
+- Restore `PROGRESS*.md` and `FINAL_REPORT.md` exactly to `origin/main` in the
+  requested cleanup commit, then rerun final static and clean-tree checks.
