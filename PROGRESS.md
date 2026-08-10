@@ -199,6 +199,13 @@ rerun are closed.
   top-level DAG receipt, and rejection of both a fully rehashed forged receipt
   and a changed late output cell. All three fail on the deliberately absent
   content-binding API.
+- Signed the full late transition: each execution row now hashes every
+  declared alternative's scoped content, every declared output, the exact
+  callback receipt, and its predecessor; the top receipt binds entry/output
+  frame digests, the chain terminus, source finalization, and all nineteen
+  transfer groups. The output Frame carries an immutable authority object and
+  the executor returns its independently transportable SHA-256. The three red
+  authority/content-drift regressions now pass.
 
 ## Next
 

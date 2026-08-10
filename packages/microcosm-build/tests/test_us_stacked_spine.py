@@ -2801,7 +2801,6 @@ def _run_real_late_executor_fixture(
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[stacked_spine_module.StackedLateProducerResult, tuple[str, ...], int]:
     registry = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
-    schedule = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE
     primary_contract = registry[stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE]
     initial = _fill_late_contract_surface(
         _stacked_gap_fixture(),
@@ -2965,9 +2964,12 @@ def test_real_late_executor_follows_canonical_order_and_finalizes_sources_once(
     assert events.index("transfer:person/puf_tax_itemization__batch_5") < events.index(
         "source:with_us_adult_care_inputs"
     )
-    assert result.transition_authority_sha256 == result.frame.metadata[
-        stacked_spine_module.US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY
-    ]["sha256"]
+    assert (
+        result.transition_authority_sha256
+        == result.frame.metadata[
+            stacked_spine_module.US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY
+        ]["sha256"]
+    )
     stacked_spine_module.validate_stacked_late_producer_receipt(
         result.receipt,
         boundary="executor regression",
@@ -2982,10 +2984,20 @@ def test_late_receipt_rejects_internally_consistent_forgery_against_authority(
     result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
     forged = deepcopy(dict(result.receipt))
     forged["input_frame_sha256"] = "0" * 64
+    previous = stacked_spine_module._late_execution_genesis_sha256(
+        producer_schedule_sha256=forged["producer_schedule"]["payload_sha256"],
+        input_frame_sha256=forged["input_frame_sha256"],
+    )
+    for row in forged["execution"]:
+        row["previous_execution_sha256"] = previous
+        row.pop("sha256")
+        row["sha256"] = stacked_spine_module._canonical_sha256(row)
+        previous = row["sha256"]
+    forged["execution_chain_sha256"] = previous
     forged.pop("sha256")
     forged["sha256"] = stacked_spine_module._canonical_sha256(forged)
-    forged_authority = (
-        stacked_spine_module._late_producer_transition_authority_receipt(forged)
+    forged_authority = stacked_spine_module._late_producer_transition_authority_receipt(
+        forged
     )
     forged_frame = Frame(
         {entity: result.frame.table(entity) for entity in result.frame.entities},
@@ -3012,9 +3024,7 @@ def test_late_receipt_rejects_internally_consistent_forgery_against_authority(
             forged,
             boundary="forged executor regression",
             frame=forged_frame,
-            expected_transition_authority_sha256=(
-                result.transition_authority_sha256
-            ),
+            expected_transition_authority_sha256=(result.transition_authority_sha256),
         )
 
 
@@ -3044,9 +3054,7 @@ def test_late_receipt_rejects_live_output_content_drift(
             result.receipt,
             boundary="drifted executor regression",
             frame=drifted,
-            expected_transition_authority_sha256=(
-                result.transition_authority_sha256
-            ),
+            expected_transition_authority_sha256=(result.transition_authority_sha256),
         )
 
 
@@ -4679,7 +4687,7 @@ def test_stacked_authority_binds_import_validated_late_producer_schedule() -> No
     component = receipt["components"]["late_producer_schedule"]
 
     assert receipt["version"] == 8
-    assert component["producer_count"] == 36
+    assert component["producer_count"] == 37
     assert component["schedule_sha256"] == (
         stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE.sha256
     )

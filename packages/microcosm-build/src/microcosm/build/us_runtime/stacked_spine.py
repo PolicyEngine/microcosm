@@ -67,6 +67,7 @@ from microcosm.build.us_runtime.late_producer_dag import (
     ProducerContract,
     ProducerInput,
     ProducerInputColumn,
+    ProducerOutput,
     run_producer_when_ready,
 )
 from microcosm.build.us_runtime.multispine_pool import (
@@ -153,6 +154,7 @@ __all__ = [
     "STACKED_PILOT_ACS_SAMPLE_FRACTION",
     "STACKED_PILOT_ACS_SAMPLE_SEED",
     "STACKED_SPINE_MANIFEST_KEY",
+    "US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY",
     "AbsenceProof",
     "GapFillAbsenceRule",
     "GapFillDirection",
@@ -177,6 +179,7 @@ __all__ = [
     "transfer_stacked_post_puf_inputs",
     "transfer_stacked_post_puf_group",
     "validate_stacked_late_producer_receipt",
+    "validate_stacked_late_producer_transition_authority",
     "validate_stacked_post_puf_transfer_receipt",
     "validate_stacked_spine_frame",
 ]
@@ -1672,6 +1675,17 @@ def _json_ready(value: object) -> dict[str, object]:
             return {str(key): thaw(nested) for key, nested in item.items()}
         if isinstance(item, (list, tuple)):
             return [thaw(nested) for nested in item]
+        if isinstance(item, (set, frozenset)):
+            values = [thaw(nested) for nested in item]
+            return sorted(
+                values,
+                key=lambda nested: json.dumps(
+                    nested,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                ),
+            )
         if isinstance(item, np.generic):
             return item.item()
         return item
@@ -1695,6 +1709,10 @@ _STACKED_AUTHORITY_ID = "us_stacked_spine_authority"
 _STACKED_AUTHORITY_VERSION = 8
 _CANONICAL_AUTHORITY_FORM = "CANONICAL"
 _NONCANONICAL_AUTHORITY_FORM = "NON-CANONICAL"
+US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
+_US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 1
+_US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
+_US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID = "us_stacked_late_producer_transition"
 _PRE_CLONE_PREPARATION_STAGE = "prepare_multispine_source_inputs_for_clone"
 _POST_GAP_FILL_STAGE = "after_gap_fill_stacked_spine"
 _ACS_GQ_RENT_ABSENCE_RULE_ID = "acs_native_group_quarters_without_housing_unit"
@@ -3784,19 +3802,395 @@ def validate_stacked_post_puf_transfer_receipt(
         )
 
 
+def _late_table_values_sha256(
+    table: pd.DataFrame,
+    *,
+    normalize_strings: bool = False,
+) -> str:
+    """Hash one ordered table with its index, columns, and physical dtypes."""
+
+    values = (
+        canonicalize_table_string_dtypes(
+            table,
+            boundary="late-producer content digest",
+            table_name="declared_surface",
+        )
+        if normalize_strings
+        else table
+    )
+    header = {
+        "columns": [str(column) for column in values.columns],
+        "dtypes": [str(values[column].dtype) for column in values.columns],
+        "index_type": type(values.index).__name__,
+        "index_dtype": str(values.index.dtype),
+        "index_names": [
+            None if name is None else str(name) for name in values.index.names
+        ],
+    }
+    digest = hashlib.sha256(
+        json.dumps(header, sort_keys=True, separators=(",", ":")).encode()
+    )
+    digest.update(
+        pd.util.hash_pandas_object(values, index=True).to_numpy(dtype="<u8").tobytes()
+    )
+    return digest.hexdigest()
+
+
+def _late_frame_content_sha256(frame: Frame) -> str:
+    """Hash a live frame while excluding the self-referential authority key."""
+
+    metadata = {
+        key: value
+        for key, value in frame.metadata.items()
+        if key != US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY
+    }
+    table_receipts = {
+        name: _late_table_values_sha256(
+            frame.table(name),
+            normalize_strings=True,
+        )
+        for name in frame.entities
+    }
+    link_receipts = {
+        name: _late_table_values_sha256(
+            frame.link(name),
+            normalize_strings=True,
+        )
+        for name in frame.links
+    }
+    weight_receipts = {}
+    for entity in frame.weighted_entities:
+        weights = frame.weights_for(entity)
+        digest = hashlib.sha256(weights.values.astype("<f8", copy=False).tobytes())
+        weight_receipts[entity] = {
+            "kind": weights.kind.value,
+            "rows": len(weights.values),
+            "sha256": digest.hexdigest(),
+        }
+    payload = {
+        "version": 1,
+        "entities": list(frame.entities),
+        "links": list(frame.links),
+        "tables": table_receipts,
+        "link_tables": link_receipts,
+        "weights": weight_receipts,
+        "strata_sha256": _late_table_values_sha256(
+            frame.strata.rename("stratum").to_frame(),
+            normalize_strings=True,
+        ),
+        "mass_log": [
+            {
+                "entity": record.entity,
+                "old_total": record.old_total,
+                "new_total": record.new_total,
+                "declared_factor": record.declared_factor,
+                "reason": record.reason,
+            }
+            for record in frame.mass_log
+        ],
+        "metadata": _json_ready(metadata),
+    }
+    return _canonical_sha256(payload)
+
+
+def _late_input_column_evidence(
+    frame: Frame,
+    *,
+    input_column: ProducerInputColumn,
+    required_scope: str,
+    producer_name: str,
+    available_input_receipts: Mapping[str, Mapping[str, object]],
+) -> dict[str, object]:
+    """Bind one declared physical or virtual input to its live content."""
+
+    missing_rows, invalid_rows = _late_input_column_readiness_rows(
+        frame,
+        input_column=input_column,
+        required_scope=required_scope,
+        producer_name=producer_name,
+        available_input_receipts=available_input_receipts,
+    )
+    payload: dict[str, object] = {
+        "entity": input_column.entity,
+        "column": input_column.column,
+        "value_kind": input_column.value_kind,
+        "missing_rows": missing_rows,
+        "invalid_rows": invalid_rows,
+    }
+    if input_column.entity == "frame":
+        metadata_key = input_column.column.removeprefix("@")
+        value = frame.metadata.get(metadata_key)
+        payload.update(
+            {
+                "required_scope": required_scope,
+                "scope_rows": 1,
+                "status": "present" if isinstance(value, Mapping) else "absent",
+                "content_sha256": _canonical_sha256(
+                    _json_ready(value)
+                    if isinstance(value, Mapping)
+                    else {"absent": True}
+                ),
+            }
+        )
+        return payload
+    table = frame.table(input_column.entity)
+    scope = _late_required_scope_mask(
+        frame,
+        entity=input_column.entity,
+        required_scope=required_scope,
+    )
+    payload.update(
+        {
+            "required_scope": required_scope,
+            "scope_rows": int(scope.sum()),
+        }
+    )
+    if input_column.column == "@resolved_weight":
+        weights = frame.resolve_weights(input_column.entity)
+        scoped = pd.DataFrame(
+            {"resolved_weight": weights.values[scope.to_numpy(dtype=bool)]},
+            index=table.index[scope],
+        )
+        payload.update(
+            {
+                "status": "present",
+                "weight_kind": weights.kind.value,
+                "content_sha256": _late_table_values_sha256(scoped),
+            }
+        )
+        return payload
+    if input_column.column.startswith("@"):
+        receipt_key = f"{input_column.entity}.{input_column.column}"
+        receipt = available_input_receipts.get(receipt_key)
+        payload.update(
+            {
+                "status": "present" if isinstance(receipt, Mapping) else "absent",
+                "content_sha256": _canonical_sha256(
+                    _json_ready(receipt)
+                    if isinstance(receipt, Mapping)
+                    else {"absent": True}
+                ),
+            }
+        )
+        return payload
+    if input_column.column not in table:
+        payload.update(
+            {
+                "status": "absent",
+                "content_sha256": _canonical_sha256({"absent": True}),
+            }
+        )
+        return payload
+    values = table.loc[scope, [input_column.column]]
+    payload.update(
+        {
+            "status": "present",
+            "content_sha256": _late_table_values_sha256(values),
+        }
+    )
+    return payload
+
+
+def _late_declared_input_evidence(
+    frame: Frame,
+    contract: ProducerContract,
+    *,
+    available_input_receipts: Mapping[str, Mapping[str, object]],
+    unfilled_rows: Mapping[ProducerInput, int],
+    invalid_rows: Mapping[ProducerInput, int],
+) -> list[dict[str, object]]:
+    """Build the exact, content-bound readiness surface for one producer."""
+
+    result: list[dict[str, object]] = []
+    for requirement in contract.inputs:
+        evidence = {
+            "alternatives": [
+                [
+                    _late_input_column_evidence(
+                        frame,
+                        input_column=column,
+                        required_scope=requirement.required_scope,
+                        producer_name=contract.name,
+                        available_input_receipts=available_input_receipts,
+                    )
+                    for column in alternative
+                ]
+                for alternative in requirement.alternatives
+            ]
+        }
+        evidence["sha256"] = _canonical_sha256(evidence)
+        result.append(
+            {
+                "entity": requirement.entity,
+                "column": requirement.column,
+                "required_scope": requirement.required_scope,
+                "producing_stage": requirement.producing_stage,
+                "unfilled_rows": unfilled_rows[requirement],
+                "invalid_rows": invalid_rows[requirement],
+                "evidence": evidence,
+            }
+        )
+    return result
+
+
+def _late_output_column_evidence(
+    frame: Frame,
+    *,
+    output: ProducerOutput,
+    producer_receipt: Mapping[str, object],
+) -> dict[str, object]:
+    """Bind one declared producer output to its post-callback content."""
+
+    payload: dict[str, object] = {
+        "entity": output.entity,
+        "column": output.column,
+        "coverage_scope": output.coverage_scope,
+    }
+    if output.entity == "frame":
+        value = frame.metadata.get(output.column.removeprefix("@"))
+        payload.update(
+            {
+                "status": "present" if isinstance(value, Mapping) else "absent",
+                "content_sha256": _canonical_sha256(
+                    _json_ready(value)
+                    if isinstance(value, Mapping)
+                    else {"absent": True}
+                ),
+            }
+        )
+        return payload
+    table = frame.table(output.entity)
+    if output.column.startswith("@source_receipt:"):
+        payload.update(
+            {
+                "scope_rows": len(table),
+                "status": "present",
+                "content_sha256": _canonical_sha256(_json_ready(producer_receipt)),
+            }
+        )
+        return payload
+    scope = _late_required_scope_mask(
+        frame,
+        entity=output.entity,
+        required_scope=output.coverage_scope,
+    )
+    payload["scope_rows"] = int(scope.sum())
+    if output.column == "@resolved_weight":
+        weights = frame.resolve_weights(output.entity)
+        scoped = pd.DataFrame(
+            {"resolved_weight": weights.values[scope.to_numpy(dtype=bool)]},
+            index=table.index[scope],
+        )
+        payload.update(
+            {
+                "status": "present",
+                "weight_kind": weights.kind.value,
+                "content_sha256": _late_table_values_sha256(scoped),
+            }
+        )
+    elif output.column not in table:
+        payload.update(
+            {
+                "status": "absent",
+                "content_sha256": _canonical_sha256({"absent": True}),
+            }
+        )
+    else:
+        payload.update(
+            {
+                "status": "present",
+                "content_sha256": _late_table_values_sha256(
+                    table.loc[scope, [output.column]]
+                ),
+            }
+        )
+    return payload
+
+
+def _late_producer_transition_authority_receipt(
+    receipt: Mapping[str, object],
+) -> dict[str, object]:
+    """Derive the immutable live-frame anchor for one signed DAG receipt."""
+
+    schedule = receipt["producer_schedule"]
+    assert isinstance(schedule, Mapping)
+    authority: dict[str, object] = {
+        "authority_id": _US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID,
+        "version": _US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION,
+        "receipt_sha256": receipt["sha256"],
+        "producer_schedule_sha256": schedule["payload_sha256"],
+        "input_frame_sha256": receipt["input_frame_sha256"],
+        "output_frame_sha256": receipt["output_frame_sha256"],
+        "execution_chain_sha256": receipt["execution_chain_sha256"],
+    }
+    authority["sha256"] = _canonical_sha256(authority)
+    return authority
+
+
+def _bind_late_producer_transition_authority(
+    frame: Frame,
+    receipt: Mapping[str, object],
+) -> tuple[Frame, str]:
+    """Bind a generated DAG transition into immutable Frame metadata."""
+
+    if US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY in frame.metadata:
+        raise ValueError(
+            "US late-producer transition authority is already bound; refusing "
+            "to overwrite the immutable generation anchor."
+        )
+    authority = _late_producer_transition_authority_receipt(receipt)
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables.update({link: frame.link(link).copy() for link in frame.links})
+    bound = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata={
+            **frame.metadata,
+            US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY: authority,
+        },
+    )
+    return bound, str(authority["sha256"])
+
+
 def _validate_late_execution_row(
     raw_row: object,
     *,
     contract: ProducerContract,
     execution_index: int,
+    expected_previous_sha256: str,
     boundary: str,
-) -> None:
+) -> str:
     """Re-run one persisted readiness proof without invoking its callback."""
 
     if not isinstance(raw_row, Mapping):
         raise ValueError(
             f"{boundary}: late producer execution row {execution_index} is not "
             "an object."
+        )
+    expected_keys = {
+        "execution_index",
+        "producer",
+        "kind",
+        "declared_inputs",
+        "declared_absence_receipts",
+        "available_input_receipts",
+        "input_surface_sha256",
+        "output_surface",
+        "output_surface_sha256",
+        "producer_receipt",
+        "producer_receipt_sha256",
+        "previous_execution_sha256",
+        "status",
+        "sha256",
+    }
+    if set(raw_row) != expected_keys:
+        raise ValueError(
+            f"{boundary}: late producer execution row {execution_index} schema "
+            f"drifted; missing={sorted(expected_keys - set(raw_row))}, "
+            f"extra={sorted(set(raw_row) - expected_keys)}."
         )
     expected_status = "complete"
     if (
@@ -3832,6 +4226,17 @@ def _validate_late_execution_row(
             "required_scope": requirement.required_scope,
             "producing_stage": requirement.producing_stage,
         }
+        expected_input_keys = {
+            *expected_input,
+            "unfilled_rows",
+            "invalid_rows",
+            "evidence",
+        }
+        if set(raw_input) != expected_input_keys:
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} input receipt "
+                f"schema drifted from {requirement.entity}.{requirement.column}."
+            )
         if any(raw_input.get(key) != value for key, value in expected_input.items()):
             raise ValueError(
                 f"{boundary}: late producer {contract.name!r} input receipt "
@@ -3853,6 +4258,86 @@ def _validate_late_execution_row(
                 f"invalid_rows={invalid!r}."
             )
         invalid_rows[requirement] = invalid
+        evidence = raw_input.get("evidence")
+        if not isinstance(evidence, Mapping) or set(evidence) != {
+            "alternatives",
+            "sha256",
+        }:
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} input "
+                f"{requirement.entity}.{requirement.column} has malformed "
+                "content evidence."
+            )
+        evidence_unsigned = dict(evidence)
+        evidence_sha256 = evidence_unsigned.pop("sha256")
+        _validate_sha256(
+            evidence_sha256,
+            boundary=(f"{boundary} late producer {contract.name!r} input evidence"),
+        )
+        if evidence_sha256 != _canonical_sha256(evidence_unsigned):
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} input "
+                f"{requirement.entity}.{requirement.column} evidence SHA-256 "
+                "mismatch."
+            )
+        alternatives = evidence.get("alternatives")
+        if not isinstance(alternatives, list) or len(alternatives) != len(
+            requirement.alternatives
+        ):
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} input "
+                f"{requirement.entity}.{requirement.column} evidence changed "
+                "its alternative surface."
+            )
+        for declared_alternative, raw_alternative in zip(
+            requirement.alternatives,
+            alternatives,
+            strict=True,
+        ):
+            if not isinstance(raw_alternative, list) or len(raw_alternative) != len(
+                declared_alternative
+            ):
+                raise ValueError(
+                    f"{boundary}: late producer {contract.name!r} input "
+                    f"{requirement.entity}.{requirement.column} evidence changed "
+                    "one physical alternative."
+                )
+            for declared_column, raw_column in zip(
+                declared_alternative,
+                raw_alternative,
+                strict=True,
+            ):
+                if not isinstance(raw_column, Mapping) or any(
+                    raw_column.get(field) != value
+                    for field, value in {
+                        "entity": declared_column.entity,
+                        "column": declared_column.column,
+                        "value_kind": declared_column.value_kind,
+                        "required_scope": requirement.required_scope,
+                    }.items()
+                ):
+                    raise ValueError(
+                        f"{boundary}: late producer {contract.name!r} input "
+                        f"{requirement.entity}.{requirement.column} evidence "
+                        "is misbound to its physical columns."
+                    )
+                for count_field in ("scope_rows", "missing_rows", "invalid_rows"):
+                    count = raw_column.get(count_field)
+                    if (
+                        isinstance(count, bool)
+                        or not isinstance(count, int)
+                        or count < 0
+                    ):
+                        raise ValueError(
+                            f"{boundary}: late producer {contract.name!r} "
+                            f"input evidence has invalid {count_field}={count!r}."
+                        )
+                _validate_sha256(
+                    raw_column.get("content_sha256"),
+                    boundary=(
+                        f"{boundary} late producer {contract.name!r} input content"
+                    ),
+                )
 
     raw_absence = raw_row.get("declared_absence_receipts")
     if not isinstance(raw_absence, Mapping):
@@ -3938,6 +4423,76 @@ def _validate_late_execution_row(
                 f"receipt {key!r} is not canonical."
             )
 
+    input_surface_sha256 = raw_row.get("input_surface_sha256")
+    _validate_sha256(
+        input_surface_sha256,
+        boundary=f"{boundary} late producer {contract.name!r} input surface",
+    )
+    if input_surface_sha256 != _canonical_sha256(declared_inputs):
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} input-surface "
+            "SHA-256 mismatch."
+        )
+
+    output_surface = raw_row.get("output_surface")
+    if not isinstance(output_surface, list) or len(output_surface) != len(
+        contract.outputs
+    ):
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} does not carry its "
+            f"exact {len(contract.outputs)}-output content surface."
+        )
+    for output, raw_output in zip(contract.outputs, output_surface, strict=True):
+        if not isinstance(raw_output, Mapping) or any(
+            raw_output.get(field) != value
+            for field, value in {
+                "entity": output.entity,
+                "column": output.column,
+                "coverage_scope": output.coverage_scope,
+            }.items()
+        ):
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} output evidence "
+                f"drifted from {output.entity}.{output.column}."
+            )
+        _validate_sha256(
+            raw_output.get("content_sha256"),
+            boundary=f"{boundary} late producer {contract.name!r} output content",
+        )
+    output_surface_sha256 = raw_row.get("output_surface_sha256")
+    _validate_sha256(
+        output_surface_sha256,
+        boundary=f"{boundary} late producer {contract.name!r} output surface",
+    )
+    if output_surface_sha256 != _canonical_sha256(output_surface):
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} output-surface "
+            "SHA-256 mismatch."
+        )
+
+    producer_receipt = raw_row.get("producer_receipt")
+    if not isinstance(producer_receipt, Mapping):
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} callback receipt is "
+            "not an object."
+        )
+    producer_receipt_sha256 = raw_row.get("producer_receipt_sha256")
+    _validate_sha256(
+        producer_receipt_sha256,
+        boundary=f"{boundary} late producer {contract.name!r} callback receipt",
+    )
+    if producer_receipt_sha256 != _canonical_sha256(producer_receipt):
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} callback-receipt "
+            "SHA-256 mismatch."
+        )
+
+    if raw_row.get("previous_execution_sha256") != expected_previous_sha256:
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} execution chain does "
+            "not name the preceding digest."
+        )
+
     run_producer_when_ready(
         contract,
         lambda: None,
@@ -3945,22 +4500,139 @@ def _validate_late_execution_row(
         invalid_rows=invalid_rows,
         absence_receipts=raw_absence,
     )
+    unsigned = dict(raw_row)
+    observed_sha256 = unsigned.pop("sha256")
+    _validate_sha256(
+        observed_sha256,
+        boundary=f"{boundary} late producer {contract.name!r} execution row",
+    )
+    if observed_sha256 != _canonical_sha256(unsigned):
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} execution-row "
+            "SHA-256 mismatch."
+        )
+    return str(observed_sha256)
+
+
+def _late_execution_genesis_sha256(
+    *,
+    producer_schedule_sha256: object,
+    input_frame_sha256: object,
+) -> str:
+    return _canonical_sha256(
+        {
+            "receipt_schema_version": _US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
+            "producer_schedule_sha256": producer_schedule_sha256,
+            "input_frame_sha256": input_frame_sha256,
+        }
+    )
+
+
+def _validate_late_transition_authority(
+    frame: Frame,
+    receipt: Mapping[str, object],
+    *,
+    boundary: str,
+    expected_transition_authority_sha256: str,
+    require_live_output: bool,
+) -> None:
+    """Authenticate the immutable frame anchor and independent digest carrier."""
+
+    _validate_sha256(
+        expected_transition_authority_sha256,
+        boundary=f"{boundary} independently carried late-producer authority",
+    )
+    authority = frame.metadata.get(US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY)
+    if not isinstance(authority, Mapping):
+        raise ValueError(
+            f"{boundary}: late-producer transition authority is absent from "
+            "live frame metadata."
+        )
+    expected_authority = _late_producer_transition_authority_receipt(receipt)
+    if dict(authority) != expected_authority:
+        raise ValueError(
+            f"{boundary}: late-producer receipt is not bound to the immutable "
+            "live transition authority."
+        )
+    if authority.get("sha256") != expected_transition_authority_sha256:
+        raise ValueError(
+            f"{boundary}: late-producer receipt differs from the independently "
+            "carried late-producer transition authority."
+        )
+    if require_live_output:
+        live_output_sha256 = _late_frame_content_sha256(frame)
+        if receipt.get("output_frame_sha256") != live_output_sha256:
+            raise ValueError(
+                f"{boundary}: late-producer output digest does not match the "
+                "live frame."
+            )
+
+
+def validate_stacked_late_producer_transition_authority(
+    frame: Frame,
+    receipt: Mapping[str, object],
+    *,
+    boundary: str,
+    expected_transition_authority_sha256: str,
+) -> None:
+    """Validate the anchor after declared downstream operators have run."""
+
+    validate_stacked_late_producer_receipt(receipt, boundary=boundary)
+    _validate_late_transition_authority(
+        frame,
+        receipt,
+        boundary=boundary,
+        expected_transition_authority_sha256=(expected_transition_authority_sha256),
+        require_live_output=False,
+    )
 
 
 def validate_stacked_late_producer_receipt(
     receipt: Mapping[str, object],
     *,
     boundary: str,
+    frame: Frame | None = None,
+    expected_transition_authority_sha256: str | None = None,
 ) -> None:
     """Authenticate the complete derived execution and source/transfer proof."""
 
     if not isinstance(receipt, Mapping):
         raise ValueError(f"{boundary}: stacked late-producer DAG receipt is absent.")
+    expected_keys = {
+        "version",
+        "producer_schedule",
+        "input_frame_sha256",
+        "output_frame_sha256",
+        "execution_chain_sha256",
+        "execution",
+        "source_completion",
+        "post_puf_transfer",
+        "sha256",
+    }
+    if set(receipt) != expected_keys:
+        raise ValueError(
+            f"{boundary}: stacked late-producer DAG receipt schema drifted; "
+            f"missing={sorted(expected_keys - set(receipt))}, "
+            f"extra={sorted(set(receipt) - expected_keys)}."
+        )
+    if receipt.get("version") != _US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION:
+        raise ValueError(
+            f"{boundary}: stacked late-producer DAG receipt version changed."
+        )
     expected_schedule = _json_ready(us_late_producer_schedule_receipt())
     schedule = receipt.get("producer_schedule")
     if not isinstance(schedule, Mapping) or _json_ready(schedule) != expected_schedule:
         raise ValueError(
             f"{boundary}: stacked late-producer DAG schedule is not canonical."
+        )
+    for digest_field in (
+        "input_frame_sha256",
+        "output_frame_sha256",
+        "execution_chain_sha256",
+        "sha256",
+    ):
+        _validate_sha256(
+            receipt.get(digest_field), boundary=f"{boundary} {digest_field}"
         )
     execution = receipt.get("execution")
     expected_order = CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
@@ -3969,12 +4641,26 @@ def validate_stacked_late_producer_receipt(
             f"{boundary}: stacked late-producer DAG must carry exactly "
             f"{len(expected_order)} execution rows."
         )
+    previous_sha256 = _late_execution_genesis_sha256(
+        producer_schedule_sha256=schedule["payload_sha256"],
+        input_frame_sha256=receipt["input_frame_sha256"],
+    )
+    execution_by_name: dict[str, Mapping[str, object]] = {}
     for index, producer_name in enumerate(expected_order):
-        _validate_late_execution_row(
-            execution[index],
+        raw_row = execution[index]
+        previous_sha256 = _validate_late_execution_row(
+            raw_row,
             contract=CANONICAL_US_LATE_PRODUCER_REGISTRY[producer_name],
             execution_index=index,
+            expected_previous_sha256=previous_sha256,
             boundary=boundary,
+        )
+        assert isinstance(raw_row, Mapping)
+        execution_by_name[producer_name] = raw_row
+    if receipt.get("execution_chain_sha256") != previous_sha256:
+        raise ValueError(
+            f"{boundary}: stacked late-producer execution-chain terminus "
+            "does not match its final row."
         )
 
     expected_source_order = [
@@ -4022,12 +4708,128 @@ def validate_stacked_late_producer_receipt(
             "deferred-source receipt."
         )
 
+    normalized_suboperators: list[dict[str, object]] = []
+    source_evidence: list[object] = []
+    for index, operator in enumerate(expected_source_order):
+        source_row = execution_by_name[f"source:{operator}"]
+        source_receipt = source_row.get("producer_receipt")
+        if not isinstance(source_receipt, Mapping):
+            raise ValueError(
+                f"{boundary}: source producer {operator!r} has no callback receipt."
+            )
+        source_suboperators = source_receipt.get("suboperators")
+        if (
+            source_receipt.get("phase") != "post_clone"
+            or source_receipt.get("operator_order") != [operator]
+            or not isinstance(source_suboperators, list)
+            or len(source_suboperators) != 1
+            or not isinstance(source_suboperators[0], Mapping)
+            or source_suboperators[0].get("operator") != operator
+        ):
+            raise ValueError(
+                f"{boundary}: source producer {operator!r} callback receipt is "
+                "not the canonical single-operator proof."
+            )
+        normalized = dict(source_suboperators[0])
+        normalized["order_index"] = index
+        normalized_suboperators.append(normalized)
+        source_evidence.append(source_receipt.get("cps_source_evidence"))
+    if suboperators != normalized_suboperators:
+        raise ValueError(
+            f"{boundary}: stacked source completion is not reconstructed from "
+            "the sixteen producer receipts."
+        )
+    if source_evidence and any(
+        evidence != source_evidence[0] for evidence in source_evidence[1:]
+    ):
+        raise ValueError(
+            f"{boundary}: stacked source producer receipts disagree on CPS "
+            "source evidence."
+        )
+    if source_completion.get("cps_source_evidence") != (
+        source_evidence[0] if source_evidence else None
+    ):
+        raise ValueError(
+            f"{boundary}: stacked source completion CPS evidence is not bound "
+            "to its producer receipts."
+        )
+    finalizer_row = execution_by_name[US_LATE_SOURCE_FINALIZER_STAGE]
+    finalizer_inputs = finalizer_row.get("available_input_receipts")
+    assert isinstance(finalizer_inputs, Mapping)
+    for operator in expected_source_order:
+        key = f"person.@source_receipt:{operator}"
+        source_receipt = execution_by_name[f"source:{operator}"]["producer_receipt"]
+        input_receipt = finalizer_inputs.get(key)
+        if not isinstance(input_receipt, Mapping) or input_receipt.get(
+            "source_receipt_sha256"
+        ) != _canonical_sha256(source_receipt):
+            raise ValueError(
+                f"{boundary}: source finalizer input {key!r} is not bound to "
+                "its producer receipt."
+            )
+    if _json_ready(finalizer_row["producer_receipt"]) != _json_ready(source_completion):
+        raise ValueError(
+            f"{boundary}: source-finalizer execution receipt differs from the "
+            "aggregate source completion proof."
+        )
+
     transfer = receipt.get("post_puf_transfer")
     if not isinstance(transfer, Mapping):
         raise ValueError(
             f"{boundary}: stacked late-producer DAG transfer proof is absent."
         )
     validate_stacked_post_puf_transfer_receipt(transfer, boundary=boundary)
+    groups = transfer["groups"]
+    assert isinstance(groups, Mapping)
+    canonical_family = {
+        (entity, target): family
+        for entity, families in CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
+        for family, targets in families.items()
+        for target in targets
+    }
+    reconstructed_targets: dict[str, object] = {}
+    for group in CANONICAL_US_LATE_TRANSFER_GROUPS:
+        row_receipt = execution_by_name[group.name]["producer_receipt"]
+        if _json_ready(row_receipt) != _json_ready(groups[group.name]):
+            raise ValueError(
+                f"{boundary}: transfer execution receipt for {group.name!r} "
+                "differs from its aggregate group proof."
+            )
+        assert isinstance(row_receipt, Mapping)
+        group_targets = row_receipt.get("targets")
+        assert isinstance(group_targets, Mapping)
+        for target in group.targets:
+            bounded_label = f"{group.entity}/{group.family}/{target}"
+            aggregate_label = (
+                f"{group.entity}/{canonical_family[(group.entity, target)]}/{target}"
+            )
+            reconstructed_targets[aggregate_label] = group_targets[bounded_label]
+    if _json_ready(transfer["targets"]) != _json_ready(reconstructed_targets):
+        raise ValueError(
+            f"{boundary}: aggregate late-transfer targets are not reconstructed "
+            "from the nineteen producer receipts."
+        )
+
+    unsigned = dict(receipt)
+    observed_sha256 = unsigned.pop("sha256")
+    if observed_sha256 != _canonical_sha256(unsigned):
+        raise ValueError(
+            f"{boundary}: stacked late-producer DAG receipt SHA-256 mismatch."
+        )
+    if (frame is None) != (expected_transition_authority_sha256 is None):
+        raise ValueError(
+            f"{boundary}: live frame and independently carried late-producer "
+            "authority must be supplied together."
+        )
+    if frame is not None:
+        assert expected_transition_authority_sha256 is not None
+        _validate_late_transition_authority(
+            frame,
+            receipt,
+            boundary=boundary,
+            expected_transition_authority_sha256=(expected_transition_authority_sha256),
+            require_live_output=True,
+        )
 
 
 def _validate_test_authority(authority: _StackedAuthority, *, boundary: str) -> None:
@@ -5201,6 +6003,7 @@ class StackedLateProducerResult:
     primary_puf_result: StackedPufPassResult
     source_completion_receipt: Mapping[str, object]
     transfer_result: AcsTransferResult
+    transition_authority_sha256: str
 
 
 def _producer_role_surface_for_group(
@@ -6109,6 +6912,11 @@ def run_stacked_late_producer_dag(
         raise TypeError(
             "US late-producer DAG primary resource receipts must be a mapping."
         )
+    if US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY in frame.metadata:
+        raise ValueError(
+            "US late-producer DAG entry already carries a transition authority; "
+            "refusing to execute the transition twice."
+        )
     expected_groups = {group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
     banks = {} if target_banks is None else dict(target_banks)
     if target_banks is not None and set(banks) != expected_groups:
@@ -6119,6 +6927,12 @@ def run_stacked_late_producer_dag(
         )
     declared_absence = {} if absence_receipts is None else dict(absence_receipts)
     current = frame
+    input_frame_sha256 = _late_frame_content_sha256(frame)
+    schedule_receipt = _json_ready(us_late_producer_schedule_receipt())
+    previous_execution_sha256 = _late_execution_genesis_sha256(
+        producer_schedule_sha256=schedule_receipt["payload_sha256"],
+        input_frame_sha256=input_frame_sha256,
+    )
     execution_order: list[str] = []
     execution_receipts: list[dict[str, object]] = []
     primary_puf_result: StackedPufPassResult | None = None
@@ -6154,6 +6968,9 @@ def run_stacked_late_producer_dag(
                         "entity": "person",
                         "column": f"@source_receipt:{operator}",
                         "rows": len(current.table("person")),
+                        "source_receipt_sha256": _canonical_sha256(
+                            _json_ready(source_receipts[operator])
+                        ),
                     }
                     for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
                     if operator in source_receipts
@@ -6179,6 +6996,13 @@ def run_stacked_late_producer_dag(
                     f"Late producer {producer_name!r} absence receipt "
                     f"{receipt_id!r} conflicts with supplied evidence."
                 )
+        declared_input_evidence = _late_declared_input_evidence(
+            current,
+            contract,
+            available_input_receipts=node_available_inputs,
+            unfilled_rows=unfilled_rows,
+            invalid_rows=invalid_rows,
+        )
         outcome: dict[str, object] = {}
 
         def execute(
@@ -6225,33 +7049,39 @@ def run_stacked_late_producer_dag(
         )
         result = outcome["result"]
         current = result.frame
-        execution_receipts.append(
-            {
-                "execution_index": schedule_index,
-                "producer": producer_name,
-                "kind": contract.kind,
-                "declared_inputs": [
-                    {
-                        "entity": item.entity,
-                        "column": item.column,
-                        "required_scope": item.required_scope,
-                        "producing_stage": item.producing_stage,
-                        "unfilled_rows": unfilled_rows[item],
-                        "invalid_rows": invalid_rows[item],
-                    }
-                    for item in contract.inputs
-                ],
-                "declared_absence_receipts": {
-                    receipt_id: dict(receipt)
-                    for receipt_id, receipt in node_absence_receipts.items()
-                },
-                "available_input_receipts": {
-                    receipt_id: dict(receipt)
-                    for receipt_id, receipt in sorted(node_available_inputs.items())
-                },
-                "status": "complete",
-            }
-        )
+        producer_receipt = _json_ready(result.receipt)
+        output_surface = [
+            _late_output_column_evidence(
+                current,
+                output=output,
+                producer_receipt=producer_receipt,
+            )
+            for output in contract.outputs
+        ]
+        execution_row: dict[str, object] = {
+            "execution_index": schedule_index,
+            "producer": producer_name,
+            "kind": contract.kind,
+            "declared_inputs": declared_input_evidence,
+            "declared_absence_receipts": {
+                receipt_id: dict(receipt)
+                for receipt_id, receipt in node_absence_receipts.items()
+            },
+            "available_input_receipts": {
+                receipt_id: dict(receipt)
+                for receipt_id, receipt in sorted(node_available_inputs.items())
+            },
+            "input_surface_sha256": _canonical_sha256(declared_input_evidence),
+            "output_surface": output_surface,
+            "output_surface_sha256": _canonical_sha256(output_surface),
+            "producer_receipt": producer_receipt,
+            "producer_receipt_sha256": _canonical_sha256(producer_receipt),
+            "previous_execution_sha256": previous_execution_sha256,
+            "status": "complete",
+        }
+        execution_row["sha256"] = _canonical_sha256(execution_row)
+        previous_execution_sha256 = str(execution_row["sha256"])
+        execution_receipts.append(execution_row)
         if contract.kind == "primary_puf":
             if not isinstance(result, StackedPufPassResult):
                 raise TypeError(
@@ -6290,22 +7120,37 @@ def run_stacked_late_producer_dag(
         group_results=group_results,
         execution_order=execution_order,
     )
-    late_receipt = {
-        "producer_schedule": dict(us_late_producer_schedule_receipt()),
+    late_receipt: dict[str, object] = {
+        "version": _US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
+        "producer_schedule": schedule_receipt,
+        "input_frame_sha256": input_frame_sha256,
+        "output_frame_sha256": _late_frame_content_sha256(aggregate.frame),
+        "execution_chain_sha256": previous_execution_sha256,
         "execution": execution_receipts,
-        "source_completion": dict(source_completion_receipt),
-        "post_puf_transfer": dict(aggregate.receipt),
+        "source_completion": _json_ready(source_completion_receipt),
+        "post_puf_transfer": _json_ready(aggregate.receipt),
     }
+    late_receipt["sha256"] = _canonical_sha256(late_receipt)
     validate_stacked_late_producer_receipt(
         late_receipt,
         boundary="US late-producer DAG finalization",
     )
+    authorized_frame, transition_authority_sha256 = (
+        _bind_late_producer_transition_authority(aggregate.frame, late_receipt)
+    )
+    validate_stacked_late_producer_receipt(
+        late_receipt,
+        boundary="US late-producer DAG live-output finalization",
+        frame=authorized_frame,
+        expected_transition_authority_sha256=transition_authority_sha256,
+    )
     return StackedLateProducerResult(
-        frame=aggregate.frame,
+        frame=authorized_frame,
         receipt=late_receipt,
         primary_puf_result=primary_puf_result,
         source_completion_receipt=source_completion_receipt,
         transfer_result=aggregate.transfer_result,
+        transition_authority_sha256=transition_authority_sha256,
     )
 
 
