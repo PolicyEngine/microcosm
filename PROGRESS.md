@@ -9,15 +9,15 @@ checkout was clean at the start and was three commits ahead of the locally
 available `origin/main` (`e9a352ca`). No fetch was performed because this task
 forbids network access. A shared-ref update outside this worktree has since made
 Git report the branch behind by one; the task remains on its required checkout
-without rebasing, resetting, or shelving. Focused verification is green; the
-exact #583 shard and every foreground workspace chunk were green, but final
-independent review found additional doctrine gaps. Implementation is reopened:
-optional absence no longer excuses invalid numerics, every transfer's
-cross-grain validation inputs is declared, and source finalization is an
-explicit producer. Persisted readiness/source/transfer proofs still need
-content binding to the live frame and independent authority propagation. Final
-report assembly is paused until that last integrity gap and the complete proof
-rerun are closed.
+without rebasing, resetting, or shelving. Every producer execution row is now
+content-bound to its declared inputs, outputs, callback receipt, and predecessor;
+the top receipt is bound to entry/output frame content and independently carried
+transition authority. That authority is propagated through cold/resumed pool
+checkpoints, H5 schema 6, manifest construction, simulation, and publication.
+The operator-ordering doctrine and changelog publish the final 37-node, 70-edge,
+five-wave graph and version ledger. Focused implementation suites are green;
+the final requested focused aggregate, exact #583 shard, eight foreground
+workspace chunks, and repository gates remain to rerun from the final tree.
 
 ## Done
 
@@ -217,16 +217,36 @@ rerun are closed.
   delta, all 70 dependency edges, the five derived waves, content-binding
   rules, version ledger, and canonical schedule/payload hashes. Extended the
   existing #652 changelog fragment so both fixes ship together.
+- Propagated the independently carried late transition authority through the
+  outer pool checkpoint dataclass, cold and resumed execution, transferred H5
+  metadata/sidecar identity, stacked results, manifest construction, simulated
+  stages, and both publication paths. The exact transferred frame is validated
+  against the top DAG output digest; later declared mutations retain and
+  validate the immutable transition anchor.
+- Bumped the outer stacked checkpoint materializer to v9, the shared pool stage
+  checkpoint materializer to v5, and the companion H5 manifest to schema v6.
+  Schema-6 loads restore the signed transition authority into Frame metadata
+  and reject a missing, stale, mismatched, or forged independently carried
+  digest.
+- Rebuilt the tool's synthetic late-DAG fixture as a structurally signed
+  37-row receipt with exact input/output evidence, callback receipts, source
+  finalizer resources, transfer reconstruction, execution hash chain, top
+  receipt SHA, and live-frame authority binding. The full tool suite passes
+  147 tests; the multispine runtime suite passes 54; the H5 suite passes 21
+  with one optional-dependency skip.
+- Re-read the saved 10% evidence without running a build: the assembled
+  checkpoint has exactly 385,992 clone-0 people split into 342,732 ACS and
+  43,260 ASEC rows; the authenticated QRF recipient bank has 209,854 ACS and
+  23,146 ASEC clone-1 tax units; target checkpoint 051 is the SSTB input and
+  hashes to `2c11f221fb965fe75e1fbc4abf29715d6022fd3f296909d87ec9119ff679a820`.
+  The failing adult-care projection is ASEC-scoped, so its 43,260 invalid cells
+  are the ASEC clone-0 recipients, not ACS-origin rows.
 
 ## Next
 
-- Add red production-level regressions for forged or stale transition receipts,
-  bind each producer row to its declared input/output content and the full DAG
-  receipt to the live frame, then propagate an independent authority digest
-  through checkpoints, manifests, publication, and H5 loading.
-- Update the operator-ordering doctrine and changelog for the final 37-node,
-  70-edge registry and new schema identities.
-- Rerun focused, exact #583, all foreground chunks, and Ruff/diff gates after
-  the final fixes.
-- Write the final gradeable mechanism/edge/fix/proof report to the requested
-  output file and stdout, commit it, and leave the worktree clean.
+- Resolve any actionable finding from the final read-only independent review.
+- Rerun the focused aggregate, exact #583 shard, eight non-overlapping
+  foreground workspace chunks, and Ruff check/format-check/diff-check gates.
+- Write the final gradeable mechanism/edge/fix/proof report to the output file,
+  echo it to stdout, commit the final progress state, and leave the worktree
+  clean.
