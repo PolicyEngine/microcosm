@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import uuid
 from itertools import combinations
 from pathlib import Path
@@ -27,6 +28,10 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_time_period,
 )
+from microcosm.build.uk_runtime.national_sampling import (
+    UK_SAMPLE_RUNG_TOKENS,
+    UK_SAMPLE_SEED_DEFAULT,
+)
 from microcosm.build.uk_runtime.weighted_integrity import (
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
@@ -35,6 +40,31 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     load_uk_input_mass_reference,
     load_uk_reviewed_exclusion_register,
 )
+
+#: Canonical UK release ids (and the grandfathered June id) name shippable
+#: artifacts; a sampled rung build must never carry one. Mirrors the
+#: microcosm-data contract's release-identity check without importing the
+#: data shard into the build tool. The durable coupling is the gate
+#: battery's ``release_candidate`` flag; this fence holds until the #611
+#: consumer half wires it.
+_CANONICAL_UK_RELEASE_ID = re.compile(r"populace-uk-\d{4}-(?:frs|cps-transfer)-k\d+")
+_UK_JUNE_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
+
+
+def _rung_sample_fraction(value: str) -> float:
+    """CLI rung policy (#624) over the permissive library validator."""
+
+    try:
+        fraction = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            f"sample fraction must be a number; got {value!r}."
+        ) from error
+    if fraction not in UK_SAMPLE_RUNG_TOKENS:
+        raise argparse.ArgumentTypeError(
+            "sample fraction must be one of 0.01, 0.10, or 1.0 (the #624 rungs)."
+        )
+    return fraction
 
 
 def _parse_args() -> argparse.Namespace:
@@ -129,6 +159,27 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--qrf-estimators", type=int, default=100)
     parser.add_argument(
+        "--sample-fraction",
+        type=_rung_sample_fraction,
+        default=1.0,
+        help=(
+            "Scale-ladder rung (#627): 0.01 smoke, 0.10 dev, or 1.0 full. "
+            "Below 1.0 the loaded compact is sampled at clone-family grain, "
+            "renormalized to full household mass, and refused a canonical "
+            "release id — rung artifacts are receipts, never releases."
+        ),
+    )
+    parser.add_argument(
+        "--sample-seed",
+        type=int,
+        default=UK_SAMPLE_SEED_DEFAULT,
+        help=(
+            "Whole-clone-family survey sampling seed (default: "
+            f"{UK_SAMPLE_SEED_DEFAULT}). Separate from --seed so dev-scale "
+            "sweeps vary one draw at a time."
+        ),
+    )
+    parser.add_argument(
         "--checkpoint-dir",
         type=Path,
         help=(
@@ -211,7 +262,19 @@ def _parse_args() -> argparse.Namespace:
             "entries fail the gate; dormant entries are reported."
         ),
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.sample_seed < 0:
+        parser.error("sample seed must be a non-negative integer.")
+    if args.sample_fraction != 1.0 and (
+        _CANONICAL_UK_RELEASE_ID.fullmatch(args.release_id)
+        or args.release_id == _UK_JUNE_RELEASE_ID
+    ):
+        parser.error(
+            "a sampled build (--sample-fraction below 1.0) must not carry a "
+            "canonical release id; rung artifacts are structurally "
+            "non-releasable (#627)."
+        )
+    return args
 
 
 def _weighted_integrity_arguments(args: argparse.Namespace) -> dict[str, object]:
@@ -377,6 +440,8 @@ def main() -> int:
             **gate_path_argument,
             **weighted_integrity_arguments,
             **checkpoint_arguments,
+            sample_fraction=args.sample_fraction,
+            sample_seed=args.sample_seed,
         )
     except RuntimeError as error:
         if (
@@ -423,11 +488,18 @@ def main() -> int:
         family_evidence=hmrc_transform.last_result.evidence(),
         seed=args.seed,
         qrf_estimators=args.qrf_estimators,
+        sample_fraction=args.sample_fraction,
+        sample_seed=args.sample_seed,
     )
     _write_json(build_record_path, build_record)
     payload = {
         "schema_version": 4,
         "build_kind": "uk_national_staging_dataset",
+        "sampling": {
+            "sample_fraction": float(args.sample_fraction),
+            "sample_seed": int(args.sample_seed),
+            "rung_token": UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
+        },
         "stages": list(result.stage_names),
         "terminal_gates": result.terminal_gates.to_manifest(),
         "input_coverage": {
@@ -477,6 +549,15 @@ def _staging_run_config(
         "calibration_diagnostics_sha256": str(args.calibration_diagnostics_sha256),
         "seed": int(args.seed),
         "qrf_estimators": int(args.qrf_estimators),
+        "sampling": {
+            # Pinned as a string: run-config equality is exact over canonical
+            # JSON, and float normalization across serializers is exactly the
+            # ambiguity a run identity must not carry. Two rungs pointed at
+            # one checkpoint directory refuse instead of cross-resuming.
+            "sample_fraction": str(float(args.sample_fraction)),
+            "sample_seed": int(args.sample_seed),
+            "rung_token": UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
+        },
         "certified_candidate": {
             "sha256": str(candidate.sha256),
             "size_bytes": int(candidate.size_bytes),
@@ -523,6 +604,8 @@ def _aggregate_build_record(
     family_evidence: dict[str, object],
     seed: int,
     qrf_estimators: int,
+    sample_fraction: float = 1.0,
+    sample_seed: int = UK_SAMPLE_SEED_DEFAULT,
 ) -> dict[str, object]:
     """Return commit-safe aggregate evidence for one successful staging build."""
 
@@ -562,7 +645,13 @@ def _aggregate_build_record(
         "parameters": {
             "seed": int(seed),
             "qrf_estimators": int(qrf_estimators),
+            "sample_fraction": float(sample_fraction),
+            "sample_seed": int(sample_seed),
+            "rung_token": UK_SAMPLE_RUNG_TOKENS[sample_fraction],
         },
+        "sampling": (
+            None if result.sampling_receipt is None else dict(result.sampling_receipt)
+        ),
         "dataset": {
             "time_period": uk_time_period(result.frame),
             "entity_rows": {

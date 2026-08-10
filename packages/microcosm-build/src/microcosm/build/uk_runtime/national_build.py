@@ -21,6 +21,10 @@ import pandas as pd
 
 import microcosm.build.uk_runtime.national_frame as _national_frame
 import microcosm.build.uk_runtime.release_input_coverage as _release_input_coverage
+from microcosm.build.frame_sampling import (
+    validate_sample_fraction,
+    validate_sample_seed,
+)
 from microcosm.build.gates import GateReport, GateResult
 from microcosm.build.uk_runtime.national_frame import (
     UKStagingProvenance,
@@ -28,6 +32,10 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     uk_time_period,
     validate_uk_national_frame,
+)
+from microcosm.build.uk_runtime.national_sampling import (
+    UK_SAMPLE_SEED_DEFAULT,
+    sample_uk_national_frame,
 )
 from microcosm.build.uk_runtime.release_input_coverage import (
     PolicyEngineUKCoverageEngine,
@@ -144,6 +152,8 @@ class UKNationalBuildResult:
     stage_names: tuple[str, ...]
     terminal_gates: GateReport
     terminal_gate_path: Path
+    #: The #627 rung receipt; ``None`` on a full-scale (fraction 1.0) build.
+    sampling_receipt: Mapping[str, object] | None = None
 
     @property
     def input_coverage(self) -> GateResult:
@@ -323,6 +333,8 @@ def build_uk_national_dataset(
     input_coverage_path: str | Path | None = None,
     checkpoint_dir: str | Path | None = None,
     run_config: Mapping[str, object] | None = None,
+    sample_fraction: float = 1.0,
+    sample_seed: int = UK_SAMPLE_SEED_DEFAULT,
 ) -> UKNationalBuildResult:
     """Run ordered national stages, hard-gate the result, and stage an H5.
 
@@ -335,6 +347,16 @@ def build_uk_national_dataset(
     configuration is refused by the runtime, and an unpinned resume is
     exactly the drift hazard checkpoints exist to prevent, so a checkpointed
     build without a ``run_config`` is refused here.
+
+    ``sample_fraction`` below 1.0 is the #627 scale ladder: the loaded frame
+    is sampled at clone-family grain (see
+    :func:`~microcosm.build.uk_runtime.national_sampling.sample_uk_national_frame`)
+    before provenance binding, so the certified-candidate fence attests the
+    frame the stages actually consume. At 1.0 the sampler is never invoked —
+    full-scale builds are structurally byte-invariant to it. A checkpointed
+    sampled run must carry the fraction and seed inside ``run_config`` (the
+    driver does); otherwise two rungs pointed at one checkpoint directory
+    would silently resume across each other.
     """
 
     requested_input_path = Path(input_h5).expanduser()
@@ -387,7 +409,16 @@ def build_uk_national_dataset(
             "a checkpointed UK national build requires run_config: the "
             "content-addressed run identity is what makes a resume safe."
         )
+    validate_sample_fraction(sample_fraction, label="UK sample")
+    validate_sample_seed(sample_seed, label="UK sample")
     frame, provenance = load_uk_national_frame(requested_input_path)
+    sampling_receipt: Mapping[str, object] | None = None
+    if sample_fraction != 1.0:
+        # Sample before provenance binding: the fence attests the sampled
+        # frame, and the stages never learn a rung existed.
+        frame, sampling_receipt = sample_uk_national_frame(
+            frame, fraction=sample_fraction, seed=sample_seed
+        )
     # Stages whose fences bind the loaded bytes (the SPI stage's
     # certified-candidate check) receive the load provenance and the loaded
     # frame explicitly — provenance travels beside the frame, never inside
@@ -449,6 +480,7 @@ def build_uk_national_dataset(
         stage_names=tuple(stage.name for stage in materialized_stages),
         terminal_gates=terminal_gates,
         terminal_gate_path=diagnostic_path,
+        sampling_receipt=sampling_receipt,
     )
 
 
@@ -637,7 +669,9 @@ def _mass_log_from_stored(value: object) -> tuple[MassChangeRecord, ...]:
                 )
             )
         except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError("Stored UK microcosm mass-log entry is malformed.") from exc
+            raise ValueError(
+                "Stored UK microcosm mass-log entry is malformed."
+            ) from exc
     return tuple(records)
 
 

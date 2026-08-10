@@ -155,6 +155,7 @@ def test_national_build_driver_uses_standalone_national_seam(
             ),
             terminal_gates=_terminal_gates(input_coverage),
             input_coverage=input_coverage,
+            sampling_receipt=None,
         )
 
     monkeypatch.setattr(builder, "build_uk_national_dataset", fake_build)
@@ -775,3 +776,110 @@ def test_stage_reports_survive_a_checkpoint_resumed_spi_stage(tmp_path):
     evidence = json.loads(evidence_path.read_text())
     assert evidence["family"] == {"stage": "hmrc_spi_income"}
     assert builder._replay_summary(hmrc.last_result) == replay_payload["summary"]
+
+
+def test_national_driver_rejects_non_rung_sample_fractions(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
+            "--input-h5",
+            "base.h5",
+            "--staging-h5",
+            "staging.h5",
+            "--frs-raw-dir",
+            "frs_2023_24",
+            "--spi-tab",
+            "put2223uk.tab",
+            "--hmrc-ods",
+            "hmrc.ods",
+            "--sample-fraction",
+            "0.2",
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        builder._parse_args()
+
+
+def test_national_driver_refuses_canonical_release_ids_for_rung_builds(
+    monkeypatch, capsys
+) -> None:
+    builder = _load_builder_module()
+    # _IDENTITY_CLI_ARGUMENTS carries the canonical populace-uk-...-k id; a
+    # sampled rung build must refuse it — rung artifacts are receipts, never
+    # releases (#627).
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
+            "--input-h5",
+            "base.h5",
+            "--staging-h5",
+            "staging.h5",
+            "--frs-raw-dir",
+            "frs_2023_24",
+            "--spi-tab",
+            "put2223uk.tab",
+            "--hmrc-ods",
+            "hmrc.ods",
+            "--sample-fraction",
+            "0.01",
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        builder._parse_args()
+    assert "non-releasable" in capsys.readouterr().err
+
+
+def test_staging_run_config_pins_the_sampling_identity(monkeypatch, tmp_path) -> None:
+    builder = _load_builder_module()
+    for name in ("adult.tab", "benefits.tab", "put2223uk.tab", "hmrc.ods"):
+        (tmp_path / name).write_bytes(b"x")
+    import microcosm.build.code_identity as code_identity_module
+
+    monkeypatch.setattr(
+        code_identity_module,
+        "builder_code_identity",
+        lambda *args, **kwargs: {"stub": True},
+    )
+    args = SimpleNamespace(
+        release_id="uk-dev-rung",
+        calibration_diagnostics_sha256="c" * 64,
+        seed=42,
+        qrf_estimators=100,
+        sample_fraction=0.01,
+        sample_seed=7,
+    )
+    retained = SimpleNamespace(
+        adult_tab_path=tmp_path / "adult.tab",
+        benefits_tab_path=tmp_path / "benefits.tab",
+    )
+    hmrc = SimpleNamespace(
+        spi_tab_path=tmp_path / "put2223uk.tab",
+        hmrc_ods_path=tmp_path / "hmrc.ods",
+    )
+    candidate = SimpleNamespace(sha256="a" * 64, size_bytes=3)
+
+    config = builder._staging_run_config(
+        args,
+        candidate=candidate,
+        retained_leaves_transform=retained,
+        hmrc_transform=hmrc,
+    )
+
+    # The fraction is a string on purpose: run-config equality is exact over
+    # canonical JSON, and float normalization is exactly the ambiguity a run
+    # identity must not carry. Two rungs on one checkpoint directory refuse
+    # instead of cross-resuming.
+    assert config["sampling"] == {
+        "sample_fraction": "0.01",
+        "sample_seed": 7,
+        "rung_token": "f001",
+    }
