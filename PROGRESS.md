@@ -402,6 +402,10 @@ and final report remain.
 - Added a persisted stale-resource checkpoint regression, not merely a digest
   comparison: discovery rejects an otherwise valid assembled checkpoint whose
   bound source asset semantics differ from current code.
+- Removed an engine-version confound from the resume regressions. Under one
+  pinned fixture engine identity, discovery now positively accepts the current
+  v10 checkpoint, then rejects the stale source-resource identity and each
+  legacy v1--v9 outer materializer for the intended semantic/version reason.
 
 ## Next
 

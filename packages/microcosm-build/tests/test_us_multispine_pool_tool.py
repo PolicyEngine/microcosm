@@ -2331,6 +2331,11 @@ def test_stacked_checkpoint_identity_binds_v10_semantic_contracts(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    monkeypatch.setattr(
+        pool_tool,
+        "_policyengine_us_version",
+        lambda: "fixture-engine",
+    )
     verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
     stack = pool_tool.assemble_stacked_spine(
         _many_household_source_frame(),
@@ -2492,6 +2497,36 @@ def test_stacked_checkpoint_identity_binds_v10_semantic_contracts(
     }
     assert len(digests) == 8
 
+    # Positive control: discovery accepts the exact current semantic identity
+    # under the same fixture engine version used to construct it.
+    current_checkpoint_root = tmp_path / "current-semantic-checkpoints"
+    current_store = pool_tool._PoolStageCheckpointStore(
+        current_checkpoint_root,
+        base_identity=current,
+    )
+    current_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+    current_store.write(
+        pool_tool.MultispinePoolCheckpoint(
+            stage="assembled",
+            frame=stack.frame,
+            assembly_receipt=stack.frame.metadata[
+                pool_tool.SPINE_ASSEMBLY_MANIFEST_KEY
+            ],
+            stage_receipts={},
+        )
+    )
+    assert (
+        pool_tool._discover_stacked_checkpoint_identity(
+            current_checkpoint_root,
+            verified_inputs=verified,
+            sample_fraction=0.10,
+            sample_seed=578,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+        )
+        == current
+    )
+
     # A checkpoint produced by the current materializer with the prior QRF
     # schema is not merely identity-distinct: discovery must refuse it as stale.
     checkpoint_root = tmp_path / "mixed-qrf-version-checkpoints"
@@ -2645,6 +2680,11 @@ def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
     capsys: pytest.CaptureFixture[str],
     legacy_version: int,
 ) -> None:
+    monkeypatch.setattr(
+        pool_tool,
+        "_policyengine_us_version",
+        lambda: "fixture-engine",
+    )
     verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
     stack = pool_tool.assemble_stacked_spine(
         _many_household_source_frame(),
