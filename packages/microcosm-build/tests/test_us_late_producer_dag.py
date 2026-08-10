@@ -181,6 +181,76 @@ def test_synthetic_producer_cycle_is_rejected_with_named_cycle() -> None:
         derive_producer_schedule(registry)
 
 
+def _scoped_dependency_registry(
+    *,
+    output_scope: str,
+    required_scope: str,
+) -> dict[str, ProducerContract]:
+    return {
+        "producer": ProducerContract(
+            "producer",
+            "fixture",
+            (),
+            (ProducerOutput("person", "shared", output_scope),),
+        ),
+        "consumer": ProducerContract(
+            "consumer",
+            "fixture",
+            (
+                ProducerInput(
+                    "person",
+                    "shared",
+                    required_scope,
+                    "producer",
+                ),
+            ),
+            (),
+        ),
+    }
+
+
+def test_schedule_rejects_producer_output_with_insufficient_scope() -> None:
+    registry = _scoped_dependency_registry(
+        output_scope="asec_source",
+        required_scope="whole_pool",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"(?s)scope_mismatches=.*consumer.*producer.*person\.shared.*"
+            r"whole_pool.*asec_source"
+        ),
+    ):
+        derive_producer_schedule(registry)
+
+
+@pytest.mark.parametrize(
+    ("output_scope", "required_scope"),
+    (
+        ("whole_pool", "whole_pool"),
+        ("whole_pool", "asec_source"),
+        ("whole_pool", "puf_clone"),
+        ("asec_source", "asec_source"),
+        ("puf_clone", "puf_clone"),
+        ("receipt", "whole_pool"),
+    ),
+)
+def test_schedule_accepts_declared_scope_coverage(
+    output_scope: str,
+    required_scope: str,
+) -> None:
+    schedule = derive_producer_schedule(
+        _scoped_dependency_registry(
+            output_scope=output_scope,
+            required_scope=required_scope,
+        )
+    )
+
+    assert schedule.edges == (("producer", "consumer"),)
+    assert schedule.waves == (("producer",), ("consumer",))
+
+
 def test_derived_schedule_is_byte_stable_under_registry_iteration_order() -> None:
     contracts = (
         _contract("alpha"),
