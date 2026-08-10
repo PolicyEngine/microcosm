@@ -576,49 +576,83 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
         contract = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[
             producer_name
         ]
-        available = {
-            f"{column.entity}.{column.column}": {
-                "receipt_id": (
-                    f"available_input:{producer_name}:{column.entity}.{column.column}"
-                ),
-                "status": "available",
-                "producer": producer_name,
-                "entity": column.entity,
-                "column": column.column,
-                "rows": 1,
+        if contract.kind == "primary_puf":
+            available = stacked_spine_module.stacked_late_primary_resource_receipts(
+                pd.DataFrame({"fixture_donor": [1.0]}),
+                primary_qrf_checkpoint_identity_sha256="5" * 64,
+                clone_attachment_fraction=1.0,
+                clone_attachment_seed=578,
+                seed=0,
+                n_estimators=100,
+            )
+        elif contract.kind == "source_finalizer":
+            available = {
+                f"person.@source_receipt:{operator}": (
+                    stacked_spine_module._late_available_input_receipt(
+                        producer=producer_name,
+                        entity="person",
+                        column=f"@source_receipt:{operator}",
+                        rows=1,
+                        binding={
+                            "resource_kind": "source_operator_receipt",
+                            "schema_version": 1,
+                            "source_operator": operator,
+                            "source_receipt_sha256": (
+                                stacked_spine_module._canonical_sha256(source_receipt)
+                            ),
+                        },
+                    )
+                )
+                for operator, source_receipt in source_receipts.items()
             }
-            for requirement in contract.inputs
-            for alternative in requirement.alternatives
-            for column in alternative
-            if column.column.startswith("@")
-            and column.column != "@resolved_weight"
-            and column.entity != "frame"
-            and contract.kind in {"primary_puf", "source_finalizer"}
-        }
-        if contract.kind == "source_finalizer":
-            for operator, source_receipt in source_receipts.items():
-                available[f"person.@source_receipt:{operator}"][
-                    "source_receipt_sha256"
-                ] = stacked_spine_module._canonical_sha256(source_receipt)
+        elif contract.kind == "late_transfer":
+            group = group_by_name[producer_name]
+            available = stacked_spine_module._late_transfer_resource_receipts(
+                group_name=group.name,
+                entity=group.entity,
+                family=group.family,
+                targets=group.targets,
+                seed=0,
+                n_estimators=100,
+                max_targets_per_fit=(
+                    stacked_spine_module.DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT
+                ),
+                target_bank=None,
+            )
+        else:
+            available = {}
         declared_inputs = []
         for requirement in contract.inputs:
-            alternatives = [
-                [
-                    {
-                        "entity": column.entity,
-                        "column": column.column,
-                        "value_kind": column.value_kind,
-                        "required_scope": requirement.required_scope,
-                        "scope_rows": 1,
-                        "missing_rows": 0,
-                        "invalid_rows": 0,
-                        "status": "present",
-                        "content_sha256": "2" * 64,
-                    }
-                    for column in alternative
-                ]
-                for alternative in requirement.alternatives
-            ]
+            alternatives = []
+            for alternative in requirement.alternatives:
+                physical_evidence = []
+                for column in alternative:
+                    is_virtual = (
+                        column.column.startswith("@")
+                        and column.column != "@resolved_weight"
+                        and column.entity != "frame"
+                    )
+                    key = f"{column.entity}.{column.column}"
+                    resource_receipt = available.get(key) if is_virtual else None
+                    present = not is_virtual or resource_receipt is not None
+                    physical_evidence.append(
+                        {
+                            "entity": column.entity,
+                            "column": column.column,
+                            "value_kind": column.value_kind,
+                            "required_scope": requirement.required_scope,
+                            "scope_rows": 1,
+                            "missing_rows": 0 if present else 1,
+                            "invalid_rows": 0,
+                            "status": "present" if present else "absent",
+                            "content_sha256": (
+                                stacked_spine_module._canonical_sha256(resource_receipt)
+                                if resource_receipt is not None
+                                else "2" * 64
+                            ),
+                        }
+                    )
+                alternatives.append(physical_evidence)
             evidence = {"alternatives": alternatives}
             evidence["sha256"] = stacked_spine_module._canonical_sha256(evidence)
             declared_inputs.append(
