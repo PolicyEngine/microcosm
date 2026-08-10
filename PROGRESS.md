@@ -15,8 +15,9 @@ the opportunistic Schedule-D write; the existing whole-pool derive operator
 remains its sole canonical owner. Focused regressions and targeted Ruff are
 green. The operator-ordering doctrine and changelog now match the live schema,
 counts, resource ledger, derived waves, and hashes. The fresh focused, #583,
-full-workspace, Ruff, format, and diff proof matrix is green. Only the final
-report remains.
+full-workspace, Ruff, format, and diff proof matrix is green. The independently
+audited final report is written to the required output path. The task is
+complete and ready for external verification.
 
 ## Done
 
@@ -438,9 +439,13 @@ report remains.
   format audit names 29 pre-existing files and has zero overlap with this
   branch's changed-file set. Both `git diff --check 54d2dee6..HEAD` and the
   live-worktree `git diff --check` pass.
+- Wrote the complete mechanism, input-inventory, 71-edge, fix, proof, and
+  next-build prediction report to
+  `/private/tmp/microcosm-653-final-report.md`. An independent read-only audit
+  recomputed its graph and test arithmetic and found no factual, count, hash,
+  edge-completeness, or proof-total error.
 
 ## Next
 
-- Write the final gradeable mechanism/edge/fix/proof report to the output file,
-  echo it to stdout, commit the final progress state, and leave the worktree
-  clean.
+- None. Echo the committed final report to stdout and hand off the clean local
+  branch for verification; do not push or run smoke/dev builds in this task.
