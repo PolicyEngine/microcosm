@@ -214,7 +214,7 @@ are allowed only when named by the ACS native-input receipt.
    use version 9, while the pool stage checkpoint materializer uses version 5.
    The outer base identity binds primary-QRF version 6, the ACS universe and
    QBI reconciliation contracts, the tail schema and support contract, and
-   late-producer registry schema version 6. The companion pool manifest uses
+   late-producer registry schema version 7. The companion pool manifest uses
    schema version 6.
    Older outer authority or materializer payloads are stale; primary-QRF
    version 6 remains current.
@@ -349,7 +349,7 @@ means that only the named, counted absence receipt may replace that optional
 input. `@weight` is the Frame-resolved entity weight and `@sidecar` or `@bank`
 is an authenticated resource receipt, not a physical column.
 
-The primary PUF producer has 46 logical requirements: the following 15-input
+The primary PUF producer has 47 logical requirements: the following 16-input
 QRF/tail kernel bundle `Q`, plus the 31-item validation bundle `V0` below.
 `V0` is the common 32-item late-transfer validation bundle `V` with only the
 post-PUF clone-attachment manifest removed, because primary PUF creates that
@@ -376,6 +376,7 @@ p.person_support_clone_index
 tu.@weight
 tu.@puf_donor_tax_units
 tu.@primary_qrf_checkpoint
+tu.@primary_puf_execution_config
 ```
 
 ```text
@@ -397,6 +398,18 @@ weight, and two metadata receipts. Primary PUF declares the same structural
 surface, all six resolved-weight resources, 65 PUF/tail columns, and the clone
 attachment manifest as outputs, so downstream dependencies are ownership
 edges rather than incidental observations.
+
+The three primary virtual resources are semantic, not row-count assertions.
+The donor receipt hashes canonical typed scalar content, ordered columns, and
+dtypes. The checkpoint receipt binds the outer routed identity, cache mode,
+primary-QRF schema, manifest name, and exact target order. The execution-config
+receipt resolves and hashes the actual predictor/output sequences, clone
+fraction/seed, QRF seed/estimator count, strict-recipient and null-preserving
+doctrines, enabled tail/support contract, and enabled audit sinks. The same
+three receipts form an exact SHA-bound sidecar beside the primary-QRF manifest;
+resume refuses a missing or different sidecar, including a same-row-count
+donor with changed bytes. This closes stale-bank reuse under a newly claimed
+outer route.
 
 Every one of the 16 source producers consumes the following 15-requirement
 wrapper bundle `W`. It is added to the operator-specific kernel inventory in
@@ -483,11 +496,12 @@ V = support channel + F(clone index) on p, h, tu, s, family, marital_unit
   + frame.@us_puf_clone_attachment_manifest
 ```
 
-For a transfer whose target entity is `E`, the complete 12-requirement model
+For a transfer whose target entity is `E`, the complete 14-requirement model
 and weight bundle `T(E)` is:
 
 ```text
 T(E) = F(p.age) + p.is_female + p.@weight + E.@weight
+     + E.@late_transfer_model_config + E.@late_transfer_target_bank
      + [F(p.state_fips)
         | (F(p.person_household_id) + F(h.household_id) + F(h.state_fips))]
      + F(p.employment_income_before_lsr) ?R
@@ -519,6 +533,15 @@ both scopes; that is the two-target PUF/source overlap. Thus the table is the
 complete per-node input delta over `T(E)`, as well as the exact 70-target
 partition. Transfer rows abbreviate the registry's leading `transfer:`; source
 names in these tables abbreviate the leading `source:`.
+
+For every transfer, `@late_transfer_model_config` binds that node's name,
+entity, family, ordered targets, seed, estimator count, and canonical maximum
+targets per fit. `@late_transfer_target_bank` binds either the durable bank's
+validated identity SHA-256 or the explicit `ephemeral_no_checkpoint` mode; a
+non-null bank without an identity is rejected before dispatch. Each virtual
+receipt has an exact kind-specific inner schema and its own SHA-256, and its
+execution-row input evidence must hash the identical receipt. The source
+finalizer applies the same rule to each of its sixteen source-receipt inputs.
 
 | Transfer producer | Targets | PUF target inputs | Source target inputs |
 |---|---|---|---|
@@ -617,14 +640,15 @@ The lexically canonical waves have sizes `(1, 17, 14, 3, 2)`:
    retirement-distribution, weeks-unemployed, workers'-compensation, and
    SPM-energy transfers.
 4. Education; adult-care transfer; WIC transfer.
-5. Education transfer and `source_finalizer`.
+5. `source_finalizer` and education transfer.
 
-Registry schema version 6 binds the canonical input declarations, outputs,
-edges, waves, content-hashed execution-row schema, and immutable transition
-authority. The schedule SHA-256 is
-`d6235a2e97596c321c33196065c2ce00850cc259969ab59fbabf7616a137c6ce`;
+Registry schema version 7 and execution-receipt schema version 2 bind the
+canonical input declarations, outputs, edges, waves, exact kind-specific
+virtual-resource bindings, content-hashed execution-row schema, and immutable
+transition authority. The schedule SHA-256 is
+`250ef9f0a4fed5ca69672db9e39c51fa3d987d3d4cc2a0850f4c446eb955c52a`;
 the full payload SHA-256 is
-`387798c5fe18f35bef6e34bd3f5782f7e2efcceff3bfe1e73e99678ca17274f5`.
+`3144e82a11a4455a77541f135b06587e4cfe62cac62890e3fa026684a2dc684b`.
 Reversing registry iteration produces those same bytes.
 
 ### Downstream hard-completeness audit
@@ -643,7 +667,7 @@ and valid. Neither receipt authorizes an upstream null.
 | PUF raw predictor sources | Every filing-status, count, and income component is observed in its declared source universe. Raw WAGP/SEMP authority is present and agrees with mapped leaves; a cross-grain source collision is rejected. A null on any eligible member fails before coercion. | Structure supplies status/count; ACS-native or ASEC-carried earnings supply earnings; early transfer supplies interest, dividends, and gains. | No. ACS under-15 WAGP/SEMP blanks are an exact source-universe state, not transfer starvation; all other source nulls fail. |
 | PUF tax-unit features | Every clone-1 recipient has a finite feature vector. Post-aggregation NaN, `+inf`, and `-inf` are counted by named predictor and rejected before fitting; none is coerced or snapped to zero. | Universe-aware person sums plus tax-unit structural inputs. | No. Eligible member values must be complete; the only special case is an all-child unit whose numeric-zero predictor is explicitly owned and counted by the named universe-zero rule. |
 | Primary QRF banks and chain | Donor/recipient banks are immutable; target order and RNG prefix are contiguous; all targets complete; live recipient identity, source-universe receipt, and feature digest match before finalization. | The processed full PUF donor and strict recipient checkpoint initialized above. | No. Mutation or missing receipt invalidates the bank; it cannot resume under legacy semantics. |
-| Outer pool checkpoint identity and resume | Primary-QRF schema v6, tail-manifest schema v2, late-registry schema v6, stacked checkpoint/authority v9, pool checkpoint materializer v5, pool manifest schema v6, and the ACS-universe, QBI-mutation, tail-support, and content-bound late-DAG identities must match exactly before any cached stage is discovered. | Fresh input pins, live stack receipt, scale controls, code identity, and all semantic contract identities. | No. An older outer materializer or authority payload is stale; a self-consistent old receipt cannot reopen a checkpoint. Primary-QRF v6 remains current. |
+| Outer pool checkpoint identity and resume | Primary-QRF schema v6, tail-manifest schema v2, late-registry schema v7/receipt schema v2, stacked checkpoint/authority v9, pool checkpoint materializer v5, pool manifest schema v6, and the ACS-universe, QBI-mutation, tail-support, and content-bound late-DAG identities must match exactly before any cached stage is discovered. | Fresh input pins, live stack receipt, scale controls, code identity, and all semantic contract identities. | No. An older outer materializer or authority payload is stale; a self-consistent old receipt cannot reopen a checkpoint. Primary-QRF v6 remains current. |
 | Clone-2 capital-gains tail | Each filing status requires as many eligible recipient households as selected q99.5 donors. Eligibility requires unique single-tax-unit PUF-detail lineage and half-weight capacity for the global maximum assigned donor weight. An adequate status assigns every selected donor once; a thin status skips as a whole with a named, counted `insufficient_support` receipt. | Completed clone-1 QRF output and full PUF tail donors. At 1%, `SINGLE` and `HEAD_OF_HOUSEHOLD` attach, `JOINT` and `SEPARATE` skip, and zero-requirement `SURVIVING_SPOUSE` is `not_applicable`. | No widening or partial attachment is permitted. All 22 AGI bands provide nearest-first fallback only inside a status. Universe-aware PUF recipients remain eligible, including explicitly receipted empty-universe tax units. |
 | Late producer DAG | Before any callback, all declared inputs are filled on their required scopes or carry an input-specific counted absence receipt; numeric inputs are finite. The exact derived order, readiness rows, once-only source finalizer, and bounded transfer receipts must validate. | Primary PUF/tail, 16 source producers, and 19 bounded transfer groups execute in five derived waves. | No. The refusing producer names the unfilled input and its declared producing stage. A cycle fails at import with its path. |
 | Late transfer completion | Every declared PUF-clone or ASEC source-producer cell is nonnull; all complementary recipients are filled; the allowed count for both unmodeled and residual rows is zero. | Forty-three PUF and 29 source targets, with two overlaps, supply the 70-target late surface. | No. A missing producer or recipient value is terminal at this boundary. |

@@ -3,7 +3,7 @@
 ## State
 
 The failure mechanism, complete late-producer/source-input inventory, and
-37-node executable DAG are implemented on
+37-node executable DAG are implemented and independently audited on
 `tail-stratum-support-652`, based on the three preserved #652 commits. The
 checkout was clean at the start and was three commits ahead of the locally
 available `origin/main` (`e9a352ca`). No fetch was performed because this task
@@ -15,7 +15,11 @@ the top receipt is bound to entry/output frame content and independently carried
 transition authority. That authority is propagated through cold/resumed pool
 checkpoints, H5 schema 6, manifest construction, simulation, and publication.
 The operator-ordering doctrine and changelog publish the final 37-node, 70-edge,
-five-wave graph and version ledger. Focused implementation suites are green;
+five-wave graph and version ledger. Every physical input and virtual runtime
+resource is now content-bound: donor bytes, resolved PUF/QRF/tail controls,
+the routed primary-QRF bank and stale-bank sidecar, source receipts, transfer
+controls, and target-bank identities. Legacy schema-5/materializer-4 identity
+is isolated from the stacked-only DAG. Focused implementation suites are green;
 the final requested focused aggregate, exact #583 shard, eight foreground
 workspace chunks, and repository gates remain to rerun from the final tree.
 
@@ -241,10 +245,39 @@ workspace chunks, and repository gates remain to rerun from the final tree.
   hashes to `2c11f221fb965fe75e1fbc4abf29715d6022fd3f296909d87ec9119ff679a820`.
   The failing adult-care projection is ASEC-scoped, so its 43,260 invalid cells
   are the ASEC clone-0 recipients, not ACS-origin rows.
+- Completed the final resource-identity audit and moved the registry to schema
+  v7/receipt v2. The primary producer now declares 47 requirements, including
+  its execution config; each transfer declares 46, including exact model
+  config and target-bank resources. Kind-specific validators reject a shallow
+  or internally rehashed incomplete binding, forged missing mandatory virtual
+  evidence, evidence/receipt digest disagreement, and an identityless bank.
+- Replaced the pandas 64-bit hash intermediate with domain-separated SHA-256
+  over canonical scalar bytes, dtype, null bitmap, index, columns, and order.
+  Fixed vectors cover null payloads, object scalar domains, serialization
+  normalization, dtype/order drift, and a 250,000-by-four benchmark completed
+  in 0.049 seconds.
+- Bound the live PUF donor content, resolved default predictor/output lists,
+  clone/QRF/tail controls, doctrines, and audit sinks into the primary
+  execution row. The primary-QRF cache now writes and validates an exact
+  late-resource sidecar, so a same-row donor mutation cannot reuse a stale
+  internally valid bank. Transfer rows bind seed/fit controls and either the
+  bank identity SHA or explicit ephemeral mode; changing bank or primary
+  config changes transition authority.
+- Isolated the retiring lineage at manifest schema 5 and checkpoint
+  materializer 4 with a dedicated identity that omits the live stacked DAG.
+  Its agreement golden remains byte-exact; its manifest golden changed once to
+  the stable separated identity. Stacked publication remains schema 6 and
+  materializer 5.
+- Updated the ordering doctrine with the 47-input primary bundle, 14-input
+  transfer model bundle, exact resource semantics, registry/receipt versions,
+  and canonical hashes: schedule
+  `250ef9f0a4fed5ca69672db9e39c51fa3d987d3d4cc2a0850f4c446eb955c52a`,
+  payload
+  `3144e82a11a4455a77541f135b06587e4cfe62cac62890e3fa026684a2dc684b`.
+  Extended the existing #652 changelog fragment with the resource binding.
 
 ## Next
 
-- Resolve any actionable finding from the final read-only independent review.
 - Rerun the focused aggregate, exact #583 shard, eight non-overlapping
   foreground workspace chunks, and Ruff check/format-check/diff-check gates.
 - Write the final gradeable mechanism/edge/fix/proof report to the output file,
