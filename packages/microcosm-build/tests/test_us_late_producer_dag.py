@@ -284,7 +284,7 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
         "late_transfer",
         "source_finalizer",
     }
-    assert len(registry[US_LATE_PRIMARY_PUF_STAGE].inputs) == 46
+    assert len(registry[US_LATE_PRIMARY_PUF_STAGE].inputs) == 47
     primary_outputs = registry[US_LATE_PRIMARY_PUF_STAGE].outputs
     assert len(primary_outputs) == 100
     assert sum(output.coverage_scope == "puf_clone" for output in primary_outputs) == 65
@@ -424,9 +424,9 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
 
     assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
     receipt = us_late_producer_schedule_receipt()
-    assert receipt["schema_version"] == 6
+    assert receipt["schema_version"] == 7
     assert receipt["execution_receipt_contract"] == {
-        "version": 1,
+        "version": 2,
         "row_binding": (
             "declared_input_and_output_content_callback_receipt_and_"
             "previous_execution_sha256"
@@ -462,6 +462,18 @@ def test_every_post_clone_source_has_a_nonempty_full_input_inventory() -> None:
 
 
 def test_every_transfer_declares_predictors_and_optional_absence_receipts() -> None:
+    primary_inputs = {
+        item.column
+        for item in CANONICAL_US_LATE_PRODUCER_REGISTRY[
+            US_LATE_PRIMARY_PUF_STAGE
+        ].inputs
+    }
+    assert {
+        "@effective:puf_donor",
+        "@effective:primary_qrf_bank",
+        "@effective:primary_puf_execution_config",
+    } <= primary_inputs
+
     for group in CANONICAL_US_LATE_TRANSFER_GROUPS:
         contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[group.name]
         effective_inputs = {
@@ -474,6 +486,8 @@ def test_every_transfer_declares_predictors_and_optional_absence_receipts() -> N
             "@effective:resolved_person_weight",
             "@effective:resolved_target_weight",
             "@effective:optional_investment_income",
+            "@effective:late_transfer_model_config",
+            "@effective:late_transfer_target_bank",
         } <= set(effective_inputs)
         assert effective_inputs[
             "@effective:optional_investment_income"
