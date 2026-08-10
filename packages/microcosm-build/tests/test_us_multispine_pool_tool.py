@@ -1709,7 +1709,6 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
             "assemble_stacked_spine",
             "prepare_multispine_source_inputs_for_clone",
             "gap_fill_stacked_spine",
-            "run_stacked_puf_pass",
             "run_stacked_late_producer_dag",
             "prepare_stacked_tail_derivation",
             "derive_multispine_pool_inputs",
@@ -2334,6 +2333,18 @@ def test_stacked_checkpoint_identity_binds_v9_semantic_contracts(
     pool_code = current["pool_code"]
     assert current["materializer_version"] == 9
     assert current["stacked_authority"]["version"] == 9
+    assert pool_code["operator_order"] == [
+        "assemble_stacked_spine",
+        "prepare_multispine_source_inputs_for_clone",
+        "gap_fill_stacked_spine",
+        "run_stacked_late_producer_dag",
+        "prepare_stacked_tail_derivation",
+        "derive_multispine_pool_inputs",
+        "seed_multispine_pool_inputs",
+        "materialize_multispine_agreement_outputs",
+        "stacked_completeness_gate",
+        "by_origin_battery",
+    ]
     assert pool_code["late_producer_schedule"] == pool_tool._json_ready(
         pool_tool.us_late_producer_schedule_receipt()
     )

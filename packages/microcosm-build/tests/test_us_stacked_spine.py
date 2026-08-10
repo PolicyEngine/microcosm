@@ -2986,6 +2986,14 @@ def test_late_primary_resources_bind_donor_content_and_execution_config() -> Non
         "person_outputs": "canonical_default",
         "tax_unit_outputs": "canonical_default",
     }
+    execution = baseline["tax_unit.@primary_puf_execution_config"]["binding"]
+    assert execution["clone_attachment"]["support_channels"] == [
+        stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL,
+        stacked_spine_module.PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    ]
+    assert execution["capital_gains_tail"]["spec"] == (
+        stacked_spine_module.puf_capital_gains_tail_spec_identity()
+    )
 
 
 def test_late_primary_resource_rejects_shallow_receipt_before_callback() -> None:
@@ -3122,7 +3130,36 @@ def test_late_transfer_rejects_identityless_bank_before_dispatch() -> None:
         )
 
 
+def test_late_transfer_resources_bind_all_callback_controls() -> None:
+    group = stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS[0]
+    resources = stacked_spine_module._late_transfer_resource_receipts(
+        group_name=group.name,
+        entity=group.entity,
+        family=group.family,
+        targets=group.targets,
+        seed=0,
+        n_estimators=100,
+        max_targets_per_fit=(
+            stacked_spine_module.DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT
+        ),
+        target_bank=None,
+    )
+    model = resources[f"{group.entity}.@late_transfer_model_config"]["binding"]
+
+    assert model["donor_spine"] == stacked_spine_module.ASEC_PUF_DONOR_SPINE
+    assert model["donor_channel"] is None
+    assert model["donor_selection"] == ("all_rows_from_post_puf_asec_origin_projection")
+
+
 def test_late_source_resources_bind_all_callback_controls() -> None:
+    allow_existing_operators = {
+        "with_us_child_support_inputs",
+        "with_us_disability_benefits",
+        "with_us_workers_compensation",
+        "with_us_childcare_inputs",
+        "with_us_adult_care_inputs",
+        "with_us_energy_subsidy_input",
+    }
     for operator in multispine_pool_module.POOL_POST_CLONE_SOURCE_OPERATOR_ORDER:
         producer = f"source:{operator}"
         resources = stacked_spine_module._late_source_resource_receipts(
@@ -3146,6 +3183,21 @@ def test_late_source_resources_bind_all_callback_controls() -> None:
         if operator == "with_us_education_inputs":
             expected_sidecars = {"asec_education_source": {"mode": "not_supplied"}}
         assert binding["external_sidecars"] == expected_sidecars
+        assert binding["allow_existing_without_source"] is (
+            multispine_pool_module.POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE
+            if operator in allow_existing_operators
+            else None
+        )
+        assert binding["housing_assistance_qrf"] == (
+            {
+                "n_estimators": multispine_pool_module.POOL_HOUSING_ASSISTANCE_N_ESTIMATORS,
+                "max_train_samples": (
+                    multispine_pool_module.POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES
+                ),
+            }
+            if operator == "impute_us_housing_assistance_to_puf_support"
+            else None
+        )
 
 
 def test_primary_refuses_missing_universe_receipt_before_callback() -> None:

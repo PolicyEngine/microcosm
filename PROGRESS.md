@@ -30,7 +30,13 @@ and primary callback/resource coupling. It also found three undeclared ACS
 earnings-universe inputs and an out-of-scope ASEC value in the universe receipt
 hash. Seven focused regressions now reproduce all findings and fail on the
 pre-fix tree. Implementation and every proof gate remain pending; no readiness
-verdict has been issued.
+verdict has been issued. The follow-up audit found four final identity gaps:
+the outer checkpoint/manifest order double-counts the primary PUF callback
+already nested inside the late DAG; housing and six source wrappers consume
+unbound defaults; the transfer wrapper consumes unbound donor-selection
+defaults; and clone attachment plus capital-gains-tail spec defaults are not
+bound. Regressions now state the complete callback-control contract before the
+implementation is changed.
 
 ## Done
 
