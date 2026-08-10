@@ -4647,7 +4647,7 @@ def test_self_digested_partial_authority_cannot_forge_production_identity() -> N
         GateReport((result,)).to_manifest()
 
 
-@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6, 7))
+@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6, 7, 8))
 def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     stale_version: int,
 ) -> None:
@@ -4667,7 +4667,7 @@ def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     )
     stale_receipt = stacked_spine_module._authority_receipt(stale)
 
-    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 8
+    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 9
     assert stale_receipt["version"] == stale_version
     assert stale_receipt["integrity_valid"] is True
     assert stale_receipt["digest_matches_declared"] is True
@@ -4686,7 +4686,7 @@ def test_stacked_authority_binds_import_validated_late_producer_schedule() -> No
     receipt = stacked_spine_module.stacked_spine_authority_receipt()
     component = receipt["components"]["late_producer_schedule"]
 
-    assert receipt["version"] == 8
+    assert receipt["version"] == 9
     assert component["producer_count"] == 37
     assert component["schedule_sha256"] == (
         stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE.sha256

@@ -354,7 +354,24 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
 
     assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
     receipt = us_late_producer_schedule_receipt()
-    assert receipt["schema_version"] == 5
+    assert receipt["schema_version"] == 6
+    assert receipt["execution_receipt_contract"] == {
+        "version": 1,
+        "row_binding": (
+            "declared_input_and_output_content_callback_receipt_and_"
+            "previous_execution_sha256"
+        ),
+        "top_binding": (
+            "entry_and_output_frame_sha256_execution_chain_source_"
+            "completion_and_nineteen_transfer_groups"
+        ),
+        "transition_authority": {
+            "authority_id": "us_stacked_late_producer_transition",
+            "metadata_key": "us_late_producer_transition_authority",
+            "version": 1,
+            "independent_digest_required": True,
+        },
+    }
     assert receipt["status"] == "derived_and_import_validated"
     assert receipt["schedule_sha256"] == reconstructed.sha256
     assert receipt["producer_count"] == 37

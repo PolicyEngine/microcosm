@@ -57,7 +57,11 @@ __all__ = [
     "US_LATE_PRIMARY_PUF_STAGE",
     "US_LATE_SOURCE_FINALIZER_STAGE",
     "US_LATE_PRIMARY_PUF_INPUT_INVENTORY",
+    "US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION",
     "US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION",
+    "US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID",
+    "US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY",
+    "US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION",
     "US_LATE_SOURCE_INPUT_INVENTORIES",
     "US_LATE_TRANSFER_INPUT_INVENTORIES",
     "source_producer_name",
@@ -66,9 +70,14 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-# v5 binds the six-grain structural and metadata surface consumed by stacked
-# validation into the primary-PUF and all nineteen transfer contracts.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 5
+# v6 binds the content-hashed execution-row, chain, top-level receipt, and
+# immutable Frame-metadata transition-authority schemas. Version 5 named the
+# complete producer/input graph but did not authenticate its live transition.
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 6
+US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 1
+US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
+US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
+US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID = "us_stacked_late_producer_transition"
 US_LATE_PRIMARY_PUF_STAGE = "primary_puf_qrf"
 US_LATE_SOURCE_FINALIZER_STAGE = "source_finalizer"
 US_LATE_EXTERNAL_STAGES: tuple[str, ...] = ("post_clone_input_surface",)
@@ -1703,6 +1712,23 @@ def us_late_producer_schedule_payload() -> dict[str, object]:
     schedule = CANONICAL_US_LATE_PRODUCER_SCHEDULE
     return {
         "schema_version": US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION,
+        "execution_receipt_contract": {
+            "version": US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
+            "row_binding": (
+                "declared_input_and_output_content_callback_receipt_and_"
+                "previous_execution_sha256"
+            ),
+            "top_binding": (
+                "entry_and_output_frame_sha256_execution_chain_source_"
+                "completion_and_nineteen_transfer_groups"
+            ),
+            "transition_authority": {
+                "authority_id": US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID,
+                "metadata_key": US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY,
+                "version": US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION,
+                "independent_digest_required": True,
+            },
+        },
         "schedule_sha256": schedule.sha256,
         "external_stages": list(US_LATE_EXTERNAL_STAGES),
         "order": list(schedule.order),

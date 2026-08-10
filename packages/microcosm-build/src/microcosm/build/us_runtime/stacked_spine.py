@@ -133,6 +133,10 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_PRODUCER_SCHEDULE,
     CANONICAL_US_LATE_TRANSFER_GROUPS,
     US_LATE_PRIMARY_PUF_STAGE,
+    US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
+    US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID,
+    US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY,
+    US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION,
     US_LATE_SOURCE_FINALIZER_STAGE,
     us_late_producer_schedule_receipt,
 )
@@ -1703,16 +1707,12 @@ _GAP_FILL_ASEC_TO_ACS = "asec_survey_to_acs"
 _GAP_FILL_ASEC_HOUSING_TO_ACS = "asec_housing_to_acs"
 _GAP_FILL_HOUSING_FAMILY = "housing"
 _STACKED_AUTHORITY_ID = "us_stacked_spine_authority"
-# v8 additionally binds the import-validated late producer/input DAG. Neither
-# the former fixed source-before-transfer order nor v1--v7 authority can
-# authenticate the new dependency-derived execution semantics.
-_STACKED_AUTHORITY_VERSION = 8
+# v9 binds the content-hashed execution/transition-authority schema in addition
+# to the import-validated producer/input DAG. Version 8 named the graph but did
+# not authenticate its live input/output transition.
+_STACKED_AUTHORITY_VERSION = 9
 _CANONICAL_AUTHORITY_FORM = "CANONICAL"
 _NONCANONICAL_AUTHORITY_FORM = "NON-CANONICAL"
-US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
-_US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 1
-_US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
-_US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID = "us_stacked_late_producer_transition"
 _PRE_CLONE_PREPARATION_STAGE = "prepare_multispine_source_inputs_for_clone"
 _POST_GAP_FILL_STAGE = "after_gap_fill_stacked_spine"
 _ACS_GQ_RENT_ABSENCE_RULE_ID = "acs_native_group_quarters_without_housing_unit"
@@ -4115,8 +4115,8 @@ def _late_producer_transition_authority_receipt(
     schedule = receipt["producer_schedule"]
     assert isinstance(schedule, Mapping)
     authority: dict[str, object] = {
-        "authority_id": _US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID,
-        "version": _US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION,
+        "authority_id": US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID,
+        "version": US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION,
         "receipt_sha256": receipt["sha256"],
         "producer_schedule_sha256": schedule["payload_sha256"],
         "input_frame_sha256": receipt["input_frame_sha256"],
@@ -4521,7 +4521,7 @@ def _late_execution_genesis_sha256(
 ) -> str:
     return _canonical_sha256(
         {
-            "receipt_schema_version": _US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
+            "receipt_schema_version": US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
             "producer_schedule_sha256": producer_schedule_sha256,
             "input_frame_sha256": input_frame_sha256,
         }
@@ -4615,7 +4615,7 @@ def validate_stacked_late_producer_receipt(
             f"missing={sorted(expected_keys - set(receipt))}, "
             f"extra={sorted(set(receipt) - expected_keys)}."
         )
-    if receipt.get("version") != _US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION:
+    if receipt.get("version") != US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION:
         raise ValueError(
             f"{boundary}: stacked late-producer DAG receipt version changed."
         )
@@ -7121,7 +7121,7 @@ def run_stacked_late_producer_dag(
         execution_order=execution_order,
     )
     late_receipt: dict[str, object] = {
-        "version": _US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
+        "version": US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
         "producer_schedule": schedule_receipt,
         "input_frame_sha256": input_frame_sha256,
         "output_frame_sha256": _late_frame_content_sha256(aggregate.frame),

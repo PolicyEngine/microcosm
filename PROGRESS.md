@@ -206,6 +206,10 @@ rerun are closed.
   transfer groups. The output Frame carries an immutable authority object and
   the executor returns its independently transportable SHA-256. The three red
   authority/content-drift regressions now pass.
+- Bound that receipt doctrine into registry schema v6 and stacked authority
+  v9. The canonical schedule payload now names the row, top-level, and
+  immutable transition-authority contracts, so old identities cannot silently
+  accept the stronger receipt semantics.
 
 ## Next
 
