@@ -698,3 +698,80 @@ def test_national_driver_rejects_unreviewed_release_overrides(
 
     with pytest.raises(SystemExit):
         builder._parse_args()
+
+
+def test_stage_reports_survive_a_checkpoint_resumed_spi_stage(tmp_path):
+    """The adversarial-review blocker: a resumed run must still write sidecars.
+
+    A checkpoint-resumed SPI transform carries the rehydrated evidence
+    surface instead of a live report object; the driver's stage reports
+    must consume it, and the resumed replay sidecar must be byte-identical
+    to what the payload serializes to.
+    """
+
+    import json
+    from types import SimpleNamespace
+
+    builder = _load_builder_module()
+    from microcosm.build.uk_runtime.frs_hmrc_leaves import (
+        UKFRSHMRCRetainedLeavesStageTransform,
+        _ResumedRetainedLeaves,
+    )
+    from microcosm.build.uk_runtime.hmrc_restoration import (
+        UKHMRCIncomeStageTransform,
+    )
+
+    retained = UKFRSHMRCRetainedLeavesStageTransform(
+        adult_tab_path=tmp_path / "adult.tab",
+        benefits_tab_path=tmp_path / "benefits.tab",
+    )
+    retained.last_result = _ResumedRetainedLeaves(
+        frame=None,
+        evidence_payload={"stage": "frs_hmrc_retained_leaves"},
+        input_content_identity="a" * 64,
+        output_content_identity="b" * 64,
+    )
+    hmrc = UKHMRCIncomeStageTransform(
+        spi_tab_path=tmp_path / "put2223uk.tab",
+        hmrc_ods_path=tmp_path / "hmrc.ods",
+        certified_candidate=SimpleNamespace(),
+    )
+    from microcosm.build.uk_runtime.content_identity import (
+        uk_frame_content_identity,
+    )
+
+    resumed_frame = _toy_result_frame()
+    replay_payload = {"summary": {"status": "comparisons_passed"}, "facts": {}}
+    hmrc.resume_from_checkpoint(
+        {
+            "fit_weight_records": [
+                {"fit_name": "uk_spi_fill_qrf", "weight_kind": "design"}
+            ],
+            "evidence": {"stage": "hmrc_spi_income"},
+            "replay_payload": replay_payload,
+            "output_content_identity": uk_frame_content_identity(resumed_frame),
+        },
+        resumed_frame,
+    )
+
+    evidence_path = tmp_path / "evidence.json"
+    replay_path = tmp_path / "replay.json"
+    builder._write_stage_reports(
+        evidence_path=evidence_path,
+        replay_path=replay_path,
+        candidate=SimpleNamespace(
+            path=tmp_path / "candidate.h5",
+            filename="candidate.h5",
+            tier="frs",
+            revision="r",
+            sha256="c" * 64,
+            size_bytes=1,
+        ),
+        retained_leaves_transform=retained,
+        hmrc_transform=hmrc,
+    )
+    written = json.loads(replay_path.read_text())
+    assert written == replay_payload
+    evidence = json.loads(evidence_path.read_text())
+    assert evidence["family"] == {"stage": "hmrc_spi_income"}
+    assert builder._replay_summary(hmrc.last_result) == replay_payload["summary"]

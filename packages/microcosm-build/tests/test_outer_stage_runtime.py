@@ -312,3 +312,38 @@ def test_clone_expansion_asserts_doubling_order_channel_and_source_ids() -> None
             wrong_source_id,
             channels=("asec", "puf"),
         )
+
+
+def test_load_restores_frame_metadata_from_the_stage_record(tmp_path: Path) -> None:
+    """``frame_metadata_key`` restores caller-bound frame metadata at load.
+
+    Checkpoints do not serialize frame metadata; the stage record carries it
+    under a caller-chosen key. Naming a key the record does not carry as a
+    mapping fails closed, and the default load path stays metadata-free.
+    """
+
+    source = _source_frame()
+    frame = Frame(
+        {entity: source.table(entity) for entity in source.entities},
+        source.schema,
+        {"household": source.weights_for("household")},
+        source.strata,
+        mass_log=source.mass_log,
+        metadata={"time_period": "2023"},
+    )
+    runtime = StageRuntime(tmp_path, _pipeline())
+    runtime.complete(
+        "source",
+        frame,
+        metadata={"bound_frame_metadata": dict(frame.metadata)},
+    )
+
+    resumed = StageRuntime(tmp_path, _pipeline())
+    restored = resumed.load("source", frame_metadata_key="bound_frame_metadata")
+    assert dict(restored.frame.metadata) == {"time_period": "2023"}
+
+    bare = resumed.load("source")
+    assert dict(bare.frame.metadata) == {}
+
+    with pytest.raises(ValueError, match="no mapping under"):
+        resumed.load("source", frame_metadata_key="missing_key")

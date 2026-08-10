@@ -17,7 +17,6 @@ import subprocess
 import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
-from importlib import metadata as importlib_metadata
 from pathlib import Path
 
 import numpy as np
@@ -732,41 +731,20 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
 def _builder_code_identity() -> dict[str, object]:
     """Fingerprint executable sources and dependency versions for safe resume."""
 
-    root = Path(__file__).resolve().parents[1]
-    candidates = [Path(__file__).resolve(), root / "pyproject.toml", root / "uv.lock"]
-    for source_root in sorted((root / "packages").glob("*/src")):
-        candidates.extend(
-            path
-            for path in source_root.rglob("*")
-            if path.is_file()
-            and path.suffix in {".json", ".py", ".toml", ".yaml", ".yml"}
-        )
-    digest = hashlib.sha256()
-    for source_path in sorted(set(candidates)):
-        relative = source_path.relative_to(root).as_posix().encode("utf-8")
-        content = source_path.read_bytes()
-        digest.update(len(relative).to_bytes(8, "little"))
-        digest.update(relative)
-        digest.update(len(content).to_bytes(8, "little"))
-        digest.update(content)
-    dependency_versions: dict[str, str | None] = {}
-    for distribution in (
-        "h5py",
-        "numpy",
-        "pandas",
-        "policyengine-us",
-        "quantile-forest",
-        "scikit-learn",
-    ):
-        try:
-            dependency_versions[distribution] = importlib_metadata.version(distribution)
-        except importlib_metadata.PackageNotFoundError:
-            dependency_versions[distribution] = None
-    return {
-        "dependency_versions": dependency_versions,
-        "python": sys.version,
-        "source_sha256": digest.hexdigest(),
-    }
+    from microcosm.build.code_identity import builder_code_identity
+
+    return builder_code_identity(
+        Path(__file__).resolve().parents[1],
+        tool_path=Path(__file__).resolve(),
+        distributions=(
+            "h5py",
+            "numpy",
+            "pandas",
+            "policyengine-us",
+            "quantile-forest",
+            "scikit-learn",
+        ),
+    )
 
 
 class _EquivalenceBoundaryObserver:
