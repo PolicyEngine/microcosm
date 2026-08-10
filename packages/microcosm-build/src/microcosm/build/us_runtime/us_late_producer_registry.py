@@ -70,11 +70,13 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-# v6 binds the content-hashed execution-row, chain, top-level receipt, and
-# immutable Frame-metadata transition-authority schemas. Version 5 named the
-# complete producer/input graph but did not authenticate its live transition.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 6
-US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 1
+# v7 adds the primary execution configuration and every late-transfer model
+# configuration/target-bank identity to the declared external-resource surface.
+# Version 6 content-bound physical Frame inputs but left those callback inputs
+# implicit. Receipt v2 requires every virtual-resource receipt to carry an exact
+# hash-bound semantic payload.
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 7
+US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 2
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID = "us_stacked_late_producer_transition"
@@ -92,6 +94,9 @@ _CHILDCARE_OUTPUT = "spm_unit_pre_subsidy_childcare_expenses"
 _PREGNANCY_OUTPUT = "is_pregnant"
 _CLONE_ATTACHMENT_OUTPUT = "person_support_clone_index"
 _SOURCE_RECEIPT_PREFIX = "@source_receipt:"
+_PRIMARY_EXECUTION_CONFIG_INPUT = "@primary_puf_execution_config"
+_TRANSFER_MODEL_CONFIG_INPUT = "@late_transfer_model_config"
+_TRANSFER_TARGET_BANK_INPUT = "@late_transfer_target_bank"
 _STRUCTURAL_ENTITIES = (
     "person",
     "household",
@@ -1012,6 +1017,11 @@ US_LATE_PRIMARY_PUF_INPUT_INVENTORY = _inventory(
     _single("resolved_tax_unit_weight", "tax_unit", "@resolved_weight"),
     _single("puf_donor", "tax_unit", "@puf_donor_tax_units"),
     _single("primary_qrf_bank", "tax_unit", "@primary_qrf_checkpoint"),
+    _single(
+        "primary_puf_execution_config",
+        "tax_unit",
+        _PRIMARY_EXECUTION_CONFIG_INPUT,
+    ),
 )
 
 
@@ -1020,6 +1030,16 @@ def _transfer_input_inventory(group: TransferProducerGroup) -> SourceInputInvent
         *_CROSS_GRAIN_VALIDATION_REQUIREMENTS,
         _single("resolved_person_weight", "person", "@resolved_weight"),
         _single("resolved_target_weight", group.entity, "@resolved_weight"),
+        _single(
+            "late_transfer_model_config",
+            group.entity,
+            _TRANSFER_MODEL_CONFIG_INPUT,
+        ),
+        _single(
+            "late_transfer_target_bank",
+            group.entity,
+            _TRANSFER_TARGET_BANK_INPUT,
+        ),
     ]
     return _inventory(
         group.name,
