@@ -541,13 +541,13 @@ def test_acs_earnings_universe_declares_every_receipt_affecting_input() -> None:
         for requirement in inventory.requirements
         if requirement.label == "stable_person_lineage"
     )
-    assert [
-        [(column.entity, column.column) for column in alternative]
+    assert {
+        tuple((column.entity, column.column) for column in alternative)
         for alternative in lineage.alternatives
-    ] == [
-        [("person", "person_source_id")],
-        [("person", "person_id")],
-    ]
+    } == {
+        (("person", "person_source_id"),),
+        (("person", "person_id"),),
+    }
 
 
 def test_every_transfer_declares_predictors_and_optional_absence_receipts() -> None:

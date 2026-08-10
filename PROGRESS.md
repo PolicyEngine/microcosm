@@ -350,10 +350,17 @@ verdict has been issued.
   than ten requirements; and ASEC earnings values outside the ACS operator
   scope alter its callback receipt without altering the declared input surface.
   The targeted red run produced exactly seven expected failures.
+- Completed the ACS earnings-universe scope correction in registry schema 10.
+  Its inventory now declares 10 requirements by adding the tax-unit link,
+  finite clone role, and stable `person_source_id | person_id` lineage fallback.
+  Per-rule source-cell hashes now cover only the ACS channel actually consumed,
+  so an ASEC earnings mutation changes neither declared inputs nor callback
+  receipt. Three ACS-scoped identity mutations each change both identities.
 
 ## Next
 
-- Close all seven red regressions, bump and publish the changed DAG/receipt
+- Close the remaining receipt, legacy-envelope, primary-callback, and outer
+  order regressions; bump and publish the changed DAG/receipt
   bindings, and request another independent review.
 - Rerun the focused aggregate, exact #583 shard, eight non-overlapping
   foreground workspace chunks, and Ruff check/format-check/diff-check gates.

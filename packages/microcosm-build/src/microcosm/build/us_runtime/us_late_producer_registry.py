@@ -81,15 +81,16 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-# v9 splits the ACS PUMS earnings-universe materializer into a declared
-# pre-primary producer. v8 added the fixed seed/period and operator switches
-# consumed by every post-clone source callback. v7 added the primary execution configuration and
-# every late-transfer model
+# v10 completes the ACS PUMS earnings-universe input declaration with its
+# tax-unit link, clone role, and stable lineage fallback. v9 split that
+# materializer into a declared pre-primary producer. v8 added the fixed
+# seed/period and operator switches consumed by every post-clone source callback.
+# v7 added the primary execution configuration and every late-transfer model
 # configuration/target-bank identity to the declared external-resource surface.
 # Version 6 content-bound physical Frame inputs but left those callback inputs
 # implicit. Receipt v2 requires every virtual-resource receipt to carry an exact
 # hash-bound semantic payload.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 9
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 10
 US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 2
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
@@ -1053,6 +1054,18 @@ US_LATE_ACS_EARNINGS_UNIVERSE_INPUT_INVENTORY = _inventory(
     US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
     _single("age", "person", "age", value_kind="finite_numeric"),
     _single("support_channel", "person", "person_support_channel"),
+    _single("person_tax_unit_link", "person", "person_tax_unit_id"),
+    _single(
+        "support_clone_index",
+        "person",
+        "person_support_clone_index",
+        value_kind="finite_numeric",
+    ),
+    _requirement(
+        "stable_person_lineage",
+        (_column("person", "person_source_id"),),
+        (_column("person", "person_id"),),
+    ),
     *(
         _single(
             f"raw_source:{source}",

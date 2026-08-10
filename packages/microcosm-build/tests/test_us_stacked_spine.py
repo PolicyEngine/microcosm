@@ -3202,13 +3202,7 @@ def test_universe_resource_binds_exact_contract_and_scope() -> None:
     )
 
 
-def _run_real_late_executor_fixture(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    bank_identity_sha256: str | None = None,
-    bound_clone_attachment_seed: int = 578,
-    asec_earnings_delta: float = 0.0,
-) -> tuple[stacked_spine_module.StackedLateProducerResult, tuple[str, ...], int]:
+def _late_universe_entry_fixture() -> Frame:
     registry = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
     primary_contract = registry[stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE]
     initial = _fill_late_contract_surface(
@@ -3230,6 +3224,19 @@ def _run_real_late_executor_fixture(
             "self_employment_income_before_lsr",
         ],
     ] = np.nan
+    return initial
+
+
+def _run_real_late_executor_fixture(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    bank_identity_sha256: str | None = None,
+    bound_clone_attachment_seed: int = 578,
+    asec_earnings_delta: float = 0.0,
+) -> tuple[stacked_spine_module.StackedLateProducerResult, tuple[str, ...], int]:
+    registry = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
+    initial = _late_universe_entry_fixture()
+    initial_person = initial.table("person")
     if asec_earnings_delta:
         asec_row = initial_person.index[
             initial_person[support_channel_column("person")].eq("asec")
@@ -3527,6 +3534,68 @@ def test_universe_receipt_excludes_out_of_scope_asec_earnings_values(
         baseline_row["producer_receipt_sha256"]
         == changed_row["producer_receipt_sha256"]
     )
+
+
+@pytest.mark.parametrize(
+    "column",
+    (
+        "person_tax_unit_id",
+        "person_support_clone_index",
+        "person_source_id",
+    ),
+)
+def test_universe_receipt_affecting_acs_identity_changes_input_surface(
+    column: str,
+) -> None:
+    contract = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[
+        stacked_spine_module.US_LATE_ACS_EARNINGS_UNIVERSE_STAGE
+    ]
+    resources = stacked_spine_module._late_acs_earnings_universe_resource_receipts()
+
+    def identities(frame: Frame) -> tuple[str, str]:
+        unfilled, invalid = stacked_spine_module._late_input_readiness_rows(
+            frame,
+            contract,
+            available_input_receipts=resources,
+        )
+        evidence = stacked_spine_module._late_declared_input_evidence(
+            frame,
+            contract,
+            available_input_receipts=resources,
+            unfilled_rows=unfilled,
+            invalid_rows=invalid,
+        )
+        application = stacked_spine_module._materialize_stacked_acs_earnings_universe(
+            frame
+        )
+        return (
+            stacked_spine_module._canonical_sha256(evidence),
+            stacked_spine_module._canonical_sha256(application.receipt),
+        )
+
+    baseline = _late_universe_entry_fixture()
+    changed = _late_universe_entry_fixture()
+    person = changed.table("person")
+    structural_row = person.index[
+        person[support_channel_column("person")].eq("acs") & person["age"].lt(15)
+    ][0]
+    if column == "person_tax_unit_id":
+        previous_id = int(person.loc[structural_row, column])
+        replacement_id = previous_id - 1
+        person.loc[person[column].eq(previous_id), column] = replacement_id
+        tax_unit = changed.table("tax_unit")
+        tax_unit.loc[tax_unit["tax_unit_id"].eq(previous_id), "tax_unit_id"] = (
+            replacement_id
+        )
+    else:
+        person.loc[structural_row, column] = (
+            int(person.loc[structural_row, column]) + 10_000
+        )
+
+    baseline_input, baseline_receipt = identities(baseline)
+    changed_input, changed_receipt = identities(changed)
+    assert changed_input != baseline_input
+    assert changed_receipt != baseline_receipt
 
 
 def test_late_receipt_rejects_internally_consistent_forgery_against_authority(

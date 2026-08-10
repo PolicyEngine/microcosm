@@ -324,7 +324,7 @@ def resolve_acs_pums_earnings_universe(
                     person,
                     column=column,
                     raw_source_column=source_column,
-                    scope=scope,
+                    scope=acs_scope,
                 )
                 if raw_source_present
                 else None
