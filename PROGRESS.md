@@ -194,6 +194,11 @@ rerun are closed.
   51 finite numerics, 17 domain-checked booleans, and two strings. The registry
   remains 37 producers/70 edges with waves `(1, 17, 14, 3, 2)`; all 17 DAG
   regressions and the targeted runtime refusals pass.
+- Added executor-level red regressions requiring an immutable live-frame
+  transition authority, an independently carried authority digest, a signed
+  top-level DAG receipt, and rejection of both a fully rehashed forged receipt
+  and a changed late output cell. All three fail on the deliberately absent
+  content-binding API.
 
 ## Next
 

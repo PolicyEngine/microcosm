@@ -2797,9 +2797,9 @@ def test_transfer_refuses_missing_validation_metadata_before_fit(
         )
 
 
-def test_real_late_executor_follows_canonical_order_and_finalizes_sources_once(
+def _run_real_late_executor_fixture(
     monkeypatch: pytest.MonkeyPatch,
-) -> None:
+) -> tuple[stacked_spine_module.StackedLateProducerResult, tuple[str, ...], int]:
     registry = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY
     schedule = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE
     primary_contract = registry[stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE]
@@ -2951,15 +2951,103 @@ def test_real_late_executor_follows_canonical_order_and_finalizes_sources_once(
         primary_resource_receipts=resources,
     )
 
-    assert tuple(events) == schedule.order
+    return result, tuple(events), finalizer_calls
+
+
+def test_real_late_executor_follows_canonical_order_and_finalizes_sources_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, events, finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    schedule = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE
+
+    assert events == schedule.order
     assert finalizer_calls == 1
     assert events.index("transfer:person/puf_tax_itemization__batch_5") < events.index(
         "source:with_us_adult_care_inputs"
     )
+    assert result.transition_authority_sha256 == result.frame.metadata[
+        stacked_spine_module.US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY
+    ]["sha256"]
     stacked_spine_module.validate_stacked_late_producer_receipt(
         result.receipt,
         boundary="executor regression",
+        frame=result.frame,
+        expected_transition_authority_sha256=result.transition_authority_sha256,
     )
+
+
+def test_late_receipt_rejects_internally_consistent_forgery_against_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    forged = deepcopy(dict(result.receipt))
+    forged["input_frame_sha256"] = "0" * 64
+    forged.pop("sha256")
+    forged["sha256"] = stacked_spine_module._canonical_sha256(forged)
+    forged_authority = (
+        stacked_spine_module._late_producer_transition_authority_receipt(forged)
+    )
+    forged_frame = Frame(
+        {entity: result.frame.table(entity) for entity in result.frame.entities},
+        result.frame.schema,
+        {
+            entity: result.frame.weights_for(entity)
+            for entity in result.frame.weighted_entities
+        },
+        result.frame.strata,
+        mass_log=result.frame.mass_log,
+        metadata={
+            **result.frame.metadata,
+            stacked_spine_module.US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY: (
+                forged_authority
+            ),
+        },
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="independently carried late-producer transition authority",
+    ):
+        stacked_spine_module.validate_stacked_late_producer_receipt(
+            forged,
+            boundary="forged executor regression",
+            frame=forged_frame,
+            expected_transition_authority_sha256=(
+                result.transition_authority_sha256
+            ),
+        )
+
+
+def test_late_receipt_rejects_live_output_content_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    tables = {entity: result.frame.table(entity) for entity in result.frame.entities}
+    person = tables["person"].copy()
+    target = "sstb_self_employment_income_before_lsr"
+    person.loc[person.index[0], target] = float(person.loc[person.index[0], target]) + 1
+    tables["person"] = person
+    drifted = Frame(
+        tables,
+        result.frame.schema,
+        {
+            entity: result.frame.weights_for(entity)
+            for entity in result.frame.weighted_entities
+        },
+        result.frame.strata,
+        mass_log=result.frame.mass_log,
+        metadata=result.frame.metadata,
+    )
+
+    with pytest.raises(ValueError, match="output digest does not match the live frame"):
+        stacked_spine_module.validate_stacked_late_producer_receipt(
+            result.receipt,
+            boundary="drifted executor regression",
+            frame=drifted,
+            expected_transition_authority_sha256=(
+                result.transition_authority_sha256
+            ),
+        )
 
 
 def test_post_puf_transfer_preserves_complete_asec_source_producers() -> None:
