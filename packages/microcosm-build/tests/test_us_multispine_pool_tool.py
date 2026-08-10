@@ -843,7 +843,7 @@ def _assert_publication_tombstone(
             "publication_run_id": publication_run_id,
         },
         "publication_run_id": publication_run_id,
-        "schema_version": pool_tool.POOL_MANIFEST_SCHEMA_VERSION,
+        "schema_version": pool_tool._LEGACY_POOL_MANIFEST_SCHEMA_VERSION,
         "simulation_ready": False,
         "status": "publication_in_progress",
     }
@@ -2187,6 +2187,36 @@ def test_pool_checkpoint_identity_binds_late_producer_schedule(
     )
 
 
+def test_legacy_checkpoint_identity_excludes_stacked_late_producer_schedule(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
+    current = pool_tool._legacy_pool_checkpoint_base_identity(
+        verified,
+        policyengine_us_version="fixture-engine",
+    )
+    assert current["materializer_version"] == 4
+    assert "late_producer_schedule" not in current["pool_code"]
+
+    changed_schedule = pool_tool._json_ready(
+        pool_tool.us_late_producer_schedule_receipt()
+    )
+    changed_schedule["payload_sha256"] = "0" * 64
+    monkeypatch.setattr(
+        pool_tool,
+        "us_late_producer_schedule_receipt",
+        lambda: changed_schedule,
+    )
+    changed = pool_tool._legacy_pool_checkpoint_base_identity(
+        verified,
+        policyengine_us_version="fixture-engine",
+    )
+
+    assert changed == current
+
+
 def test_stacked_checkpoint_identity_binds_v9_semantic_contracts(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -2851,8 +2881,22 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
     assert keywords["source_native_inputs"] == {"acs": loaded.acs_native_inputs}
     assert keywords["resume"] is None
     assert callable(keywords["checkpoint"])
+    checkpoint_store = keywords["checkpoint"].__self__
+    assert checkpoint_store.base_identity["materializer_version"] == 4
+    assert "late_producer_schedule" not in checkpoint_store.base_identity["pool_code"]
 
     outputs = pool_tool._output_paths(output, checkpoint_root=checkpoint_root)
+    manifest = pool_tool._read_json_object(outputs.manifest)
+    diagnostics = pool_tool._read_json_object(outputs.agreement_diagnostics)
+    assert pool_tool.POOL_MANIFEST_SCHEMA_VERSION == 6
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 5
+    assert manifest["schema_version"] == 5
+    assert diagnostics["schema_version"] == 5
+    assert manifest["stage_checkpoints"]["materializer_version"] == 4
+    assert {
+        receipt["materializer_version"]
+        for receipt in manifest["stage_checkpoints"]["stages"].values()
+    } == {4}
     manifest_bytes = outputs.manifest.read_bytes().replace(
         str(tmp_path.resolve()).encode(),
         b"$TMP",
@@ -2872,7 +2916,9 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # checkpoint metadata).
         "pool_h5": "ced797ecdd44a638c2a3945f07ad612098a7095ca53a5f458699bca6d6e38b3e",
         "agreement": "ea28fd66c06511bafef0497e713b1db900ee121a76ccee257cea399b6cee4291",
-        "manifest": "055e0dfa43ba02f05f3629da9fea44d6e96dd5d86006ce7fdbe90cb40ccbcf53",
+        # Rebased once when the retiring pipeline received a dedicated v4
+        # checkpoint identity that excludes the live stacked-only late DAG.
+        "manifest": "81217ca601f230572dfab9477e73f08be8c89ef77f171490ba0e1ce8e6b72d88",
     }
 
 

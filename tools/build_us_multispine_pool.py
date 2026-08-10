@@ -198,6 +198,12 @@ __all__ = [
 POOL_MANIFEST_SCHEMA_VERSION = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
 """Schema version for the companion pool build manifest."""
 
+# ``--legacy-two-spine`` is a byte-stable compatibility surface.  Stacked
+# publication and checkpoint-envelope versions may advance without rewriting
+# the retiring pipeline's last supported envelope.
+_LEGACY_POOL_MANIFEST_SCHEMA_VERSION = 5
+_LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 4
+
 POOL_H5_ARTIFACT_KIND = US_MULTISPINE_POOL_H5_ARTIFACT_KIND
 """Neutral H5 artifact kind; readiness is asserted only by the manifest."""
 
@@ -903,13 +909,20 @@ def _pool_checkpoint_base_identity(
     verified_inputs: Mapping[str, _VerifiedInput],
     *,
     policyengine_us_version: str | None = None,
+    materializer_version: int | None = None,
 ) -> dict[str, object]:
     """Return every input and semantic surface that determines cached stages."""
+
+    resolved_materializer_version = (
+        POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION
+        if materializer_version is None
+        else materializer_version
+    )
 
     return {
         "artifact_kind": "populace_us_multispine_pool_checkpoint_identity",
         "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
-        "materializer_version": POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
+        "materializer_version": resolved_materializer_version,
         "period": POOL_TIME_PERIOD,
         "seed": POOL_RANDOM_SEED,
         "policyengine_us_version": (
@@ -952,6 +965,23 @@ def _pool_checkpoint_base_identity(
             "simulation_household_batch_size": (POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE),
         },
     }
+
+
+def _legacy_pool_checkpoint_base_identity(
+    verified_inputs: Mapping[str, _VerifiedInput],
+    *,
+    policyengine_us_version: str | None = None,
+) -> dict[str, object]:
+    """Return the retiring pipeline identity without stacked-only DAG state."""
+
+    identity = _pool_checkpoint_base_identity(
+        verified_inputs,
+        policyengine_us_version=policyengine_us_version,
+        materializer_version=_LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
+    )
+    pool_code = dict(identity["pool_code"])
+    del pool_code["late_producer_schedule"]
+    return {**identity, "pool_code": pool_code}
 
 
 def _stacked_rung(sample_fraction: float) -> str:
@@ -1281,6 +1311,7 @@ class _PoolStageCheckpointStore:
         root: Path,
         *,
         base_identity: Mapping[str, object],
+        materializer_version: int | None = None,
     ) -> None:
         self.root = Path(root)
         if self.root.exists() and not self.root.is_dir():
@@ -1290,7 +1321,21 @@ class _PoolStageCheckpointStore:
         normalized_identity = _json_ready(base_identity)
         if not isinstance(normalized_identity, dict):  # pragma: no cover
             raise TypeError("Pool checkpoint base identity must be an object.")
+        resolved_materializer_version = (
+            POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION
+            if materializer_version is None
+            else materializer_version
+        )
+        if (
+            isinstance(resolved_materializer_version, bool)
+            or not isinstance(resolved_materializer_version, int)
+            or resolved_materializer_version < 1
+        ):
+            raise ValueError(
+                "Pool checkpoint materializer_version must be a positive integer."
+            )
         self._base_identity = normalized_identity
+        self._materializer_version = resolved_materializer_version
         self._input_receipts: dict[str, object] | None = None
         self._resumed_from: str | None = None
         self._attempts: dict[str, dict[str, object]] = {
@@ -1437,7 +1482,7 @@ class _PoolStageCheckpointStore:
         metadata = {
             "artifact_kind": _POOL_STAGE_CHECKPOINT_ARTIFACT_KIND,
             "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
-            "materializer_version": POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
+            "materializer_version": self._materializer_version,
             "stage": stage,
             "identity": identity,
             "identity_sha256": identity_sha256,
@@ -1476,7 +1521,7 @@ class _PoolStageCheckpointStore:
             {
                 "artifact_kind": _POOL_STAGE_CHECKPOINT_MANIFEST_ARTIFACT_KIND,
                 "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
-                "materializer_version": POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
+                "materializer_version": self._materializer_version,
                 "stage": stage,
                 "identity": identity,
                 "identity_sha256": identity_sha256,
@@ -1518,9 +1563,7 @@ class _PoolStageCheckpointStore:
                 {
                     "artifact_kind": _POOL_STAGE_CHECKPOINT_RECEIPTS_ARTIFACT_KIND,
                     "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
-                    "materializer_version": (
-                        POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION
-                    ),
+                    "materializer_version": self._materializer_version,
                     "stage": stage,
                     "identity_sha256": identity_sha256,
                     "checkpoint": {
@@ -1587,7 +1630,7 @@ class _PoolStageCheckpointStore:
                 ),
                 "identity_sha256": _pool_checkpoint_identity_sha256(identity),
                 "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
-                "materializer_version": (POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION),
+                "materializer_version": self._materializer_version,
                 "path": str(self.checkpoint_path(artifact_stage).resolve()),
                 "manifest_path": str(
                     self.checkpoint_manifest_path(artifact_stage).resolve()
@@ -1624,7 +1667,7 @@ class _PoolStageCheckpointStore:
         return {
             "artifact_kind": "populace_us_multispine_pool_checkpoint_provenance",
             "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
-            "materializer_version": POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
+            "materializer_version": self._materializer_version,
             "root": str(self.root.resolve()),
             "base_identity_sha256": self.base_identity_sha256,
             "deepest_resumed_stage": self._resumed_from,
@@ -1678,8 +1721,7 @@ class _PoolStageCheckpointStore:
                 != _POOL_STAGE_CHECKPOINT_MANIFEST_ARTIFACT_KIND
                 or manifest.get("schema_version")
                 != POOL_STAGE_CHECKPOINT_SCHEMA_VERSION
-                or manifest.get("materializer_version")
-                != POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION
+                or manifest.get("materializer_version") != self._materializer_version
                 or manifest.get("stage") != stage
             ):
                 raise ValueError(
@@ -1751,6 +1793,7 @@ class _PoolStageCheckpointStore:
                 stage=stage,
                 expected_identity=expected_identity,
                 expected_identity_sha256=expected_identity_sha256,
+                expected_materializer_version=self._materializer_version,
             )
             for key in (
                 "row_counts",
@@ -1916,8 +1959,7 @@ class _PoolStageCheckpointStore:
                 payload.get("artifact_kind")
                 != _POOL_STAGE_CHECKPOINT_RECEIPTS_ARTIFACT_KIND
                 or payload.get("schema_version") != POOL_STAGE_CHECKPOINT_SCHEMA_VERSION
-                or payload.get("materializer_version")
-                != POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION
+                or payload.get("materializer_version") != self._materializer_version
                 or payload.get("stage") != stage
                 or payload.get("identity_sha256") != expected_identity_sha256
             ):
@@ -2006,12 +2048,12 @@ def _validate_checkpoint_metadata(
     stage: str,
     expected_identity: Mapping[str, object],
     expected_identity_sha256: str,
+    expected_materializer_version: int,
 ) -> None:
     if (
         metadata.get("artifact_kind") != _POOL_STAGE_CHECKPOINT_ARTIFACT_KIND
         or metadata.get("schema_version") != POOL_STAGE_CHECKPOINT_SCHEMA_VERSION
-        or metadata.get("materializer_version")
-        != POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION
+        or metadata.get("materializer_version") != expected_materializer_version
         or metadata.get("stage") != stage
     ):
         raise ValueError(f"{stage} checkpoint metadata has an unsupported binding")
@@ -3266,7 +3308,7 @@ def _manifest_payload(
         raise ValueError("Pool input receipts have no PUF donor object.")
     return {
         "artifact_kind": "populace_us_multispine_pool_manifest",
-        "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
+        "schema_version": _LEGACY_POOL_MANIFEST_SCHEMA_VERSION,
         "status": status,
         "simulation_ready": result.simulation_ready,
         "publication_run_id": publication_run_id,
@@ -3506,7 +3548,7 @@ def _publication_tombstone(
 ) -> dict[str, object]:
     return {
         "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
-        "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
+        "schema_version": _LEGACY_POOL_MANIFEST_SCHEMA_VERSION,
         "status": "publication_in_progress",
         "simulation_ready": False,
         "publication_run_id": publication_run_id,
@@ -3559,7 +3601,9 @@ def _write_outputs(
         checkpoint_provenance = {
             "artifact_kind": ("populace_us_multispine_pool_checkpoint_provenance"),
             "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
-            "materializer_version": POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
+            "materializer_version": (
+                _LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION
+            ),
             "enabled": False,
             "agreement": {
                 "source": "always_fresh",
@@ -3585,7 +3629,7 @@ def _write_outputs(
     )
     diagnostics = {
         "artifact_kind": US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
-        "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
+        "schema_version": _LEGACY_POOL_MANIFEST_SCHEMA_VERSION,
         "simulation_ready": result.simulation_ready,
         "publication_run_id": publication_run_id,
         "agreement_gate": _agreement_payload(result),
@@ -3802,7 +3846,8 @@ def _main_legacy(args: argparse.Namespace) -> int:
     verified_inputs, acs_source_manifest = _verify_inputs(args, outputs)
     checkpoint_store = _PoolStageCheckpointStore(
         outputs.checkpoint_root,
-        base_identity=_pool_checkpoint_base_identity(verified_inputs),
+        base_identity=_legacy_pool_checkpoint_base_identity(verified_inputs),
+        materializer_version=_LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
     )
     outputs = _with_checkpoint_identity(
         outputs,
@@ -4182,6 +4227,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
             checkpoint_store = _PoolStageCheckpointStore(
                 outputs.checkpoint_root,
                 base_identity=checkpoint_identity,
+                materializer_version=POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
             )
             outputs = _with_checkpoint_identity(
                 outputs,
@@ -4256,6 +4302,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
             checkpoint_store = _PoolStageCheckpointStore(
                 outputs.checkpoint_root,
                 base_identity=checkpoint_identity,
+                materializer_version=POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
             )
             outputs = _with_checkpoint_identity(
                 outputs,
