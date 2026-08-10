@@ -441,11 +441,11 @@ def _rowwise_target_set(problem: UKRowwiseLocalMatrix) -> TargetSet:
         code: (assigned == code).astype(np.float64) for code in problem.area_codes
     }
 
-    def _measure(values: np.ndarray):
-        def measure(frame: Frame) -> np.ndarray:
+    def _constant_vector(values: np.ndarray):
+        def vector(frame: Frame) -> np.ndarray:
             return values
 
-        return measure
+        return vector
 
     targets = []
     for row in problem.target_frame.itertuples(index=False):
@@ -453,9 +453,9 @@ def _rowwise_target_set(problem: UKRowwiseLocalMatrix) -> TargetSet:
             Target(
                 name=f"{row.area_type}/{row.area_code}/{row.metric}",
                 entity="household",
-                measure=_measure(metric_columns[str(row.metric)]),
+                measure=_constant_vector(metric_columns[str(row.metric)]),
                 value=float(row.value),
-                filter=_measure(area_masks[str(row.area_code)]),
+                filter=_constant_vector(area_masks[str(row.area_code)]),
                 source="uk_rowwise_local_surface",
                 metadata={
                     "area_type": str(row.area_type),
@@ -502,11 +502,31 @@ def solve_uk_rowwise_weights_under_doctrine(
     household = frame.table("household")
     frame_ids = tuple(household["household_id"].tolist())
     if frame_ids != problem.household_ids:
-        raise ValueError(
+        prefix = (
             "doctrine solve requires the frame's household rows to match the "
-            "problem's households exactly (same ids, same order); got "
-            f"{len(frame_ids)} frame rows vs {problem.n_households} problem "
-            "households."
+            "problem's households exactly (same ids, same order); "
+        )
+        if len(frame_ids) != problem.n_households:
+            raise ValueError(
+                prefix + f"got {len(frame_ids)} frame rows vs "
+                f"{problem.n_households} problem households."
+            )
+        mismatch = next(
+            index
+            for index, (frame_id, problem_id) in enumerate(
+                zip(frame_ids, problem.household_ids, strict=True)
+            )
+            if frame_id != problem_id
+        )
+        shape = (
+            "the same households arrive in a different order"
+            if set(frame_ids) == set(problem.household_ids)
+            else "the id sets differ"
+        )
+        raise ValueError(
+            prefix + f"{shape}; first mismatch at row {mismatch} "
+            f"(frame id {frame_ids[mismatch]!r} vs problem id "
+            f"{problem.household_ids[mismatch]!r})."
         )
     base = np.asarray(frame.weights_for("household").values, dtype=np.float64)
     if (base == 0).any():
@@ -516,9 +536,10 @@ def solve_uk_rowwise_weights_under_doctrine(
             "revive them upstream with a recorded mass change."
         )
 
+    target_set = _rowwise_target_set(problem)
     result = calibrate(
         frame,
-        _rowwise_target_set(problem),
+        target_set,
         weight_entity="household",
         epochs=epochs,
         learning_rate=learning_rate,
@@ -545,6 +566,23 @@ def solve_uk_rowwise_weights_under_doctrine(
             "compiled diagnostics do not cover the declared target surface: "
             f"{len(result.diagnostics)} rows vs {len(problem.target_frame)}."
         )
+    # The evidence tables consume diagnostics positionally, and diagnostics
+    # order is documented only as "aligned to the compiled problem rows" —
+    # not as declaration order. Assert the alignment by name (target values
+    # legitimately repeat on a local surface, so value equality alone could
+    # pass a reordering by coincidence).
+    for index, (diagnostic, target) in enumerate(
+        zip(result.diagnostics, target_set.targets, strict=True)
+    ):
+        if diagnostic.name != target.row_name:
+            raise ValueError(
+                "compiled diagnostics are not aligned with the declared "
+                f"target surface: row {index} reports {diagnostic.name!r} "
+                f"where the surface declares {target.row_name!r}. The "
+                "evidence tables consume diagnostics positionally; a "
+                "reordered front-door result must be refused, never "
+                "misattributed."
+            )
 
     targets_vec = problem.targets
     initial_estimates = np.asarray(
@@ -559,7 +597,9 @@ def solve_uk_rowwise_weights_under_doctrine(
         [diagnostic.target for diagnostic in result.diagnostics],
         dtype=np.float64,
     )
-    if not np.allclose(compiled_targets, targets_vec, rtol=0, atol=0):
+    # Exact equality, stated plainly; a NaN on either side also refuses
+    # (array_equal never treats NaN as equal to anything).
+    if not np.array_equal(compiled_targets, targets_vec):
         raise ValueError(
             "compiled target values disagree with the declared surface; the "
             "declarative expression and the hand-assembled matrix must "
@@ -599,10 +639,14 @@ def solve_uk_rowwise_weights_under_doctrine(
         )
     )
 
-    # The kernel product carries the CALIBRATED transition and the mass
-    # record; the UK carrier additionally persists the weight column, so the
-    # finished frame is hard-constructed with the refreshed column and the
-    # kernel's own mass log (nothing appended here).
+    # The UK carrier persists the weight column, and the kernel product is
+    # immutable with no table-refresh operation, so the finished frame is
+    # *rebuilt* through the canonical assembler from the kernel product's
+    # tables, mass log, and period. A rebuild can silently drop kernel
+    # surfaces the assembler does not carry, so the guards below refuse to
+    # ship if the kernel product held strata or metadata the rebuilt frame
+    # lost (both trivially equal today; the guard is the boundary marker
+    # for the day they are not).
     calibrated_household = result.frame.table("household").copy()
     calibrated_household["household_weight"] = np.asarray(
         result.weights, dtype=np.float64
@@ -616,6 +660,18 @@ def solve_uk_rowwise_weights_under_doctrine(
         mass_log=result.frame.mass_log,
     )
     validate_uk_national_frame(finished)
+    if not result.frame.strata.equals(finished.strata):
+        raise ValueError(
+            "the calibrated frame carries strata the rebuilt UK national "
+            "frame would drop; extend uk_national_frame to carry them "
+            "before shipping a strata-bearing local solve."
+        )
+    if dict(result.frame.metadata) != dict(finished.metadata):
+        raise ValueError(
+            "the calibrated frame carries metadata beyond the UK time "
+            "period; the rebuild would drop it, so the solve refuses "
+            "instead."
+        )
     return UKRowwiseDoctrineSolve(
         frame=finished,
         weights=np.asarray(result.weights, dtype=np.float64),

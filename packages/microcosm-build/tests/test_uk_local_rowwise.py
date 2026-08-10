@@ -261,6 +261,39 @@ def test_rowwise_solve_refuses_dead_rows_and_misaligned_frames() -> None:
             epochs=1,
         )
 
+    # The same households in a different order are refused with the ordering
+    # named, not a useless equal-counts message (and never realigned).
+    reordered = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2, 3],
+                "person_household_id": [101, 102, 103],
+                "person_benunit_id": [11, 12, 13],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [11, 12, 13]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [101, 102, 103],
+                "household_weight": [1.0, 1.0, 1.0],
+            }
+        ),
+        time_period="2023",
+        weight_kind=WeightKind.IMPORTANCE,
+    )
+    reordered_problem = build_uk_rowwise_local_matrix(
+        _metrics().reindex([102, 101, 103]),
+        _assigned().reindex([102, 101, 103]),
+        _targets(),
+    )
+    with pytest.raises(ValueError, match="different order.*row 0.*101.*102"):
+        solve_uk_rowwise_weights_under_doctrine(
+            reordered,
+            reordered_problem,
+            bound_families=["census_households/constituency"],
+            epochs=1,
+        )
+
     # A frame whose household rows do not match the problem's households
     # cannot express the declared surface and is refused, not realigned.
     misaligned = uk_national_frame(
@@ -343,3 +376,35 @@ def test_doctrine_solve_forwards_declared_bounds_to_the_front_door(
     assert forwarded["mass"] == "free"
     assert forwarded["seed"] == 3
     assert "census_households/constituency" in forwarded["mass_reason"]
+
+
+def test_doctrine_solve_refuses_reordered_diagnostics(monkeypatch) -> None:
+    """A front-door result whose diagnostics are reordered is refused by name.
+
+    The evidence tables consume diagnostics positionally, and target values
+    legitimately repeat on a local surface, so value equality alone could
+    pass a reordering by coincidence; the solve asserts per-row name
+    alignment against the declared surface instead.
+    """
+
+    import dataclasses
+
+    import microcosm.build.uk_runtime.local_rowwise as local_rowwise
+
+    problem = build_uk_rowwise_local_matrix(_metrics(), _assigned(), _targets())
+    real_calibrate = local_rowwise.calibrate
+
+    def reordering(frame, targets, **kwargs):
+        result = real_calibrate(frame, targets, **kwargs)
+        return dataclasses.replace(
+            result, diagnostics=tuple(reversed(result.diagnostics))
+        )
+
+    monkeypatch.setattr(local_rowwise, "calibrate", reordering)
+    with pytest.raises(ValueError, match="not aligned.*row 0"):
+        solve_uk_rowwise_weights_under_doctrine(
+            _clone_frame(),
+            problem,
+            bound_families=["census_households/constituency"],
+            epochs=1,
+        )
