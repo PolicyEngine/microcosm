@@ -37,8 +37,10 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import pickle
 import struct
+import sys
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
@@ -64,6 +66,7 @@ from microcosm.build.us_runtime.acs_income_universe import (
     resolve_acs_pums_earnings_universe,
 )
 from microcosm.build.us_runtime.acs_transfer import (
+    ASEC_PUF_DONOR_SPINE,
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     AcsTransferResult,
     AcsTransferTargetBank,
@@ -79,10 +82,12 @@ from microcosm.build.us_runtime.late_producer_dag import (
 )
 from microcosm.build.us_runtime.multispine_pool import (
     POOL_DEFERRED_TRANSFER_INPUTS,
+    POOL_DEFERRED_TRANSFER_STATUS,
     POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES,
     POOL_HOUSING_ASSISTANCE_N_ESTIMATORS,
     POOL_OPERATOR_CONTRACTS,
     POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
+    POOL_POST_CLONE_SOURCE_PHASE,
     POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER,
     POOL_RANDOM_SEED,
     POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE,
@@ -98,6 +103,9 @@ from microcosm.build.us_runtime.operator_boundary import (
     FORMULA_OWNED_SOURCE_COLUMNS,
     PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
 )
+from microcosm.build.us_runtime.puf_aggregate_records import (
+    load_default_puf_aggregate_disaggregation_spec,
+)
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
     PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN,
@@ -108,6 +116,8 @@ from microcosm.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL,
     PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
     PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN,
+    puf_capital_gains_tail_execution_inputs_identity,
+    puf_capital_gains_tail_spec_identity,
     puf_capital_gains_tail_support_contract_identity,
     puf_capital_gains_tail_terminal_support_receipt,
     transfer_puf_capital_gains_tail,
@@ -130,10 +140,12 @@ from microcosm.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     US_PUF_SUPPORT_FIT_NAME,
     bind_puf_clone_attachment_tail_descendant,
     clone_us_frame_for_puf_support,
     impute_us_puf_tax_detail_support,
+    puf_tax_detail_tail_bound_quantiles_identity,
     validate_puf_clone_attachment,
 )
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
@@ -4123,7 +4135,9 @@ def _late_resource_binding_schema_version(column: str) -> int:
 
     kind = _late_virtual_resource_kind(column)
     return {
+        "primary_puf_execution_config": 2,
         "post_clone_source_execution_config": 2,
+        "late_transfer_model_config": 2,
     }.get(kind, 1)
 
 
@@ -4272,7 +4286,12 @@ def _validate_late_resource_binding(
         doctrines = binding.get("doctrines")
         tail = binding.get("capital_gains_tail")
         audit_sinks = binding.get("audit_sinks")
-        if not isinstance(clone, Mapping) or set(clone) != {"fraction", "seed"}:
+        if not isinstance(clone, Mapping) or set(clone) != {
+            "fraction",
+            "seed",
+            "support_channels",
+            "puf_clone_index",
+        }:
             raise ValueError(f"{boundary}: late clone-attachment config is malformed.")
         fraction = clone.get("fraction")
         if (
@@ -4283,6 +4302,15 @@ def _validate_late_resource_binding(
         ):
             raise ValueError(f"{boundary}: late clone-attachment fraction is invalid.")
         require_nonnegative_integer(clone.get("seed"), label="clone seed")
+        if (
+            clone.get("support_channels")
+            != [
+                BASE_ASEC_SUPPORT_CHANNEL,
+                PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+            ]
+            or clone.get("puf_clone_index") != PUF_TAX_DETAIL_CLONE_INDEX
+        ):
+            raise ValueError(f"{boundary}: late clone support roles changed.")
         qrf_keys = {
             "seed",
             "n_estimators",
@@ -4290,6 +4318,8 @@ def _validate_late_resource_binding(
             "person_outputs",
             "tax_unit_outputs",
             "invocation_mode",
+            "tail_bound_quantiles",
+            "worker_execution",
         }
         if not isinstance(qrf, Mapping) or set(qrf) != qrf_keys:
             raise ValueError(f"{boundary}: late primary-QRF config is malformed.")
@@ -4322,6 +4352,14 @@ def _validate_late_resource_binding(
                 raise ValueError(
                     f"{boundary}: late primary-QRF {field} binding is invalid."
                 )
+        if qrf.get("tail_bound_quantiles") != (
+            puf_tax_detail_tail_bound_quantiles_identity()
+        ):
+            raise ValueError(f"{boundary}: late primary-QRF tail bounds changed.")
+        if qrf.get("worker_execution") != (
+            _late_primary_qrf_worker_execution_binding()
+        ):
+            raise ValueError(f"{boundary}: late primary-QRF worker binding changed.")
         if doctrines != {
             "require_complete_recipient_predictors": True,
             "absent_cells": PUF_ABSENT_CELLS_PRESERVE_NULLS,
@@ -4330,9 +4368,18 @@ def _validate_late_resource_binding(
         if audit_sinks != {
             "fit_records": "enabled",
             "tail_bound_diagnostics": "enabled",
+            "recipient_predictor_universe": "required_receipt",
         }:
             raise ValueError(f"{boundary}: late primary-PUF audit sinks changed.")
-        expected_tail_keys = {"enabled", "seed", "support_contract"}
+        tail_inputs = puf_capital_gains_tail_execution_inputs_identity()
+        expected_tail_keys = {
+            "enabled",
+            "seed",
+            "support_contract",
+            "spec",
+            "soi_e19200_agi_bands",
+            "concentration_gate",
+        }
         if (
             not isinstance(tail, Mapping)
             or set(tail) != expected_tail_keys
@@ -4340,6 +4387,9 @@ def _validate_late_resource_binding(
             or tail.get("seed") != qrf.get("seed")
             or tail.get("support_contract")
             != puf_capital_gains_tail_support_contract_identity()
+            or tail.get("spec") != puf_capital_gains_tail_spec_identity()
+            or tail.get("soi_e19200_agi_bands") != tail_inputs["soi_e19200_agi_bands"]
+            or tail.get("concentration_gate") != tail_inputs["concentration_gate"]
         ):
             raise ValueError(f"{boundary}: late capital-gains-tail config changed.")
         return
@@ -4452,6 +4502,10 @@ def _validate_late_resource_binding(
                 "seed",
                 "n_estimators",
                 "max_targets_per_fit",
+                "donor_spine",
+                "donor_channel",
+                "donor_selection",
+                "donor_projection",
             }
         )
         group = next(
@@ -4469,6 +4523,13 @@ def _validate_late_resource_binding(
                 "entity": group.entity,
                 "family": group.family,
                 "ordered_targets": list(group.targets),
+                "donor_spine": ASEC_PUF_DONOR_SPINE,
+                "donor_channel": None,
+                "donor_selection": ("all_rows_from_post_puf_asec_origin_projection"),
+                "donor_projection": {
+                    "support_channel": BASE_ASEC_SUPPORT_CHANNEL,
+                    "support_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+                },
             }.items()
         ):
             raise ValueError(f"{boundary}: late transfer model owner/targets changed.")
@@ -4659,6 +4720,173 @@ def _late_string_sequence(
     return list(values)
 
 
+_PRIMARY_QRF_WORKER_MODULE = "microcosm.build.us_runtime.puf_qrf_worker"
+_PRIMARY_QRF_SEMANTIC_ENVIRONMENT_NAMES = (
+    "POPULACE_FIT_N_JOBS",
+    "POPULACE_FIT_PREDICT_WORKERS",
+)
+
+
+def _late_primary_qrf_worker_execution_binding() -> dict[str, object]:
+    """Bind the interpreter and reviewed inherited environment controls."""
+
+    fit_jobs_raw = os.environ.get("POPULACE_FIT_N_JOBS")
+    if fit_jobs_raw is None:
+        fit_jobs = -1
+    else:
+        try:
+            fit_jobs = int(fit_jobs_raw)
+        except ValueError as exc:
+            raise ValueError(
+                "POPULACE_FIT_N_JOBS must be a positive integer for the "
+                "primary-QRF worker binding."
+            ) from exc
+        if fit_jobs < 1 or str(fit_jobs) != fit_jobs_raw:
+            raise ValueError(
+                "POPULACE_FIT_N_JOBS must be a canonical positive integer for "
+                "the primary-QRF worker binding."
+            )
+    predict_workers_raw = os.environ.get("POPULACE_FIT_PREDICT_WORKERS")
+    if predict_workers_raw is None or not predict_workers_raw.strip():
+        predict_workers = os.cpu_count() or 1
+        predict_workers_source = "os_cpu_count_fallback"
+    else:
+        try:
+            predict_workers = int(predict_workers_raw)
+        except ValueError as exc:
+            raise ValueError(
+                "POPULACE_FIT_PREDICT_WORKERS must be a positive integer for "
+                "the primary-QRF worker binding."
+            ) from exc
+        if predict_workers < 1:
+            raise ValueError(
+                "POPULACE_FIT_PREDICT_WORKERS must be positive for the "
+                "primary-QRF worker binding."
+            )
+        predict_workers_source = "environment_override"
+    executable = Path(sys.executable)
+    return {
+        "module": _PRIMARY_QRF_WORKER_MODULE,
+        "argv_template": [
+            str(executable),
+            "-m",
+            _PRIMARY_QRF_WORKER_MODULE,
+            "--checkpoint-dir",
+            "{checkpoint_dir}",
+            "--target-index",
+            "{target_index}",
+        ],
+        "interpreter": {
+            "executable": str(executable),
+            "resolved_executable": str(executable.resolve()),
+            "implementation": sys.implementation.name,
+            "cache_tag": sys.implementation.cache_tag,
+            "version": list(sys.version_info[:3]),
+        },
+        "environment": {
+            "policy": "inherit_parent_environment_with_bound_fit_controls",
+            "overrides": {},
+            "semantic_controls": {
+                "POPULACE_FIT_N_JOBS": {
+                    "configured": fit_jobs_raw,
+                    "resolved": fit_jobs,
+                },
+                "POPULACE_FIT_PREDICT_WORKERS": {
+                    "configured": predict_workers_raw,
+                    "resolved": predict_workers,
+                    "resolution": predict_workers_source,
+                },
+            },
+            "bound_names": list(_PRIMARY_QRF_SEMANTIC_ENVIRONMENT_NAMES),
+        },
+    }
+
+
+def _late_primary_execution_config_binding(
+    *,
+    clone_attachment_fraction: float,
+    clone_attachment_seed: int,
+    seed: int,
+    n_estimators: int,
+    predictors: Sequence[str] | None,
+    person_outputs: Sequence[str] | None,
+    tax_unit_outputs: Sequence[str] | None,
+    fit_records_enabled: bool,
+    tail_bound_diagnostics_enabled: bool,
+) -> dict[str, object]:
+    """Return every non-Frame control consumed by the primary callback."""
+
+    resolved_predictors = _late_string_sequence(
+        PUF_TAX_DETAIL_DEFAULT_PREDICTORS if predictors is None else predictors,
+        label="predictors",
+    )
+    resolved_person_outputs = _late_string_sequence(
+        PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+        if person_outputs is None
+        else person_outputs,
+        label="person_outputs",
+    )
+    resolved_tax_unit_outputs = _late_string_sequence(
+        PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+        if tax_unit_outputs is None
+        else tax_unit_outputs,
+        label="tax_unit_outputs",
+    )
+    tail_inputs = puf_capital_gains_tail_execution_inputs_identity()
+    return {
+        "resource_kind": "primary_puf_execution_config",
+        "schema_version": 2,
+        "clone_attachment": {
+            "fraction": float(clone_attachment_fraction),
+            "seed": clone_attachment_seed,
+            "support_channels": [
+                BASE_ASEC_SUPPORT_CHANNEL,
+                PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+            ],
+            "puf_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+        },
+        "qrf": {
+            "seed": seed,
+            "n_estimators": n_estimators,
+            "predictors": resolved_predictors,
+            "person_outputs": resolved_person_outputs,
+            "tax_unit_outputs": resolved_tax_unit_outputs,
+            "invocation_mode": {
+                "predictors": (
+                    "canonical_default" if predictors is None else "explicit"
+                ),
+                "person_outputs": (
+                    "canonical_default" if person_outputs is None else "explicit"
+                ),
+                "tax_unit_outputs": (
+                    "canonical_default" if tax_unit_outputs is None else "explicit"
+                ),
+            },
+            "tail_bound_quantiles": (puf_tax_detail_tail_bound_quantiles_identity()),
+            "worker_execution": _late_primary_qrf_worker_execution_binding(),
+        },
+        "doctrines": {
+            "require_complete_recipient_predictors": True,
+            "absent_cells": PUF_ABSENT_CELLS_PRESERVE_NULLS,
+        },
+        "capital_gains_tail": {
+            "enabled": True,
+            "seed": seed,
+            "support_contract": puf_capital_gains_tail_support_contract_identity(),
+            "spec": tail_inputs["aggregate_disaggregation_spec"],
+            "soi_e19200_agi_bands": tail_inputs["soi_e19200_agi_bands"],
+            "concentration_gate": tail_inputs["concentration_gate"],
+        },
+        "audit_sinks": {
+            "fit_records": "enabled" if fit_records_enabled else "disabled",
+            "tail_bound_diagnostics": (
+                "enabled" if tail_bound_diagnostics_enabled else "disabled"
+            ),
+            "recipient_predictor_universe": "required_receipt",
+        },
+    }
+
+
 def stacked_late_primary_resource_receipts(
     donor_tax_units: pd.DataFrame,
     *,
@@ -4667,6 +4895,8 @@ def stacked_late_primary_resource_receipts(
     clone_attachment_seed: int,
     seed: int,
     n_estimators: int,
+    fit_records_enabled: bool,
+    tail_bound_diagnostics_enabled: bool,
     predictors: Sequence[str] | None = None,
     person_outputs: Sequence[str] | None = None,
     tax_unit_outputs: Sequence[str] | None = None,
@@ -4701,22 +4931,10 @@ def stacked_late_primary_resource_receipts(
         or n_estimators <= 0
     ):
         raise ValueError("US late primary-PUF n_estimators must be positive.")
-    resolved_predictors = _late_string_sequence(
-        PUF_TAX_DETAIL_DEFAULT_PREDICTORS if predictors is None else predictors,
-        label="predictors",
-    )
-    resolved_person_outputs = _late_string_sequence(
-        PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
-        if person_outputs is None
-        else person_outputs,
-        label="person_outputs",
-    )
-    resolved_tax_unit_outputs = _late_string_sequence(
-        PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
-        if tax_unit_outputs is None
-        else tax_unit_outputs,
-        label="tax_unit_outputs",
-    )
+    if not isinstance(fit_records_enabled, bool) or not isinstance(
+        tail_bound_diagnostics_enabled, bool
+    ):
+        raise TypeError("US late primary-PUF audit-sink modes must be booleans.")
     normalized_donor = canonicalize_table_string_dtypes(
         donor_tax_units,
         boundary="late primary-PUF donor resource binding",
@@ -4741,45 +4959,17 @@ def stacked_late_primary_resource_receipts(
         "target_order": list(PRIMARY_QRF_TARGET_ORDER),
         "target_order_sha256": PRIMARY_QRF_TARGET_ORDER_SHA256,
     }
-    config_binding = {
-        "resource_kind": "primary_puf_execution_config",
-        "schema_version": 1,
-        "clone_attachment": {
-            "fraction": float(clone_attachment_fraction),
-            "seed": clone_attachment_seed,
-        },
-        "qrf": {
-            "seed": seed,
-            "n_estimators": n_estimators,
-            "predictors": resolved_predictors,
-            "person_outputs": resolved_person_outputs,
-            "tax_unit_outputs": resolved_tax_unit_outputs,
-            "invocation_mode": {
-                "predictors": (
-                    "canonical_default" if predictors is None else "explicit"
-                ),
-                "person_outputs": (
-                    "canonical_default" if person_outputs is None else "explicit"
-                ),
-                "tax_unit_outputs": (
-                    "canonical_default" if tax_unit_outputs is None else "explicit"
-                ),
-            },
-        },
-        "doctrines": {
-            "require_complete_recipient_predictors": True,
-            "absent_cells": PUF_ABSENT_CELLS_PRESERVE_NULLS,
-        },
-        "capital_gains_tail": {
-            "enabled": True,
-            "seed": seed,
-            "support_contract": puf_capital_gains_tail_support_contract_identity(),
-        },
-        "audit_sinks": {
-            "fit_records": "enabled",
-            "tail_bound_diagnostics": "enabled",
-        },
-    }
+    config_binding = _late_primary_execution_config_binding(
+        clone_attachment_fraction=clone_attachment_fraction,
+        clone_attachment_seed=clone_attachment_seed,
+        seed=seed,
+        n_estimators=n_estimators,
+        predictors=predictors,
+        person_outputs=person_outputs,
+        tax_unit_outputs=tax_unit_outputs,
+        fit_records_enabled=fit_records_enabled,
+        tail_bound_diagnostics_enabled=tail_bound_diagnostics_enabled,
+    )
     return {
         "tax_unit.@puf_donor_tax_units": _late_available_input_receipt(
             producer=US_LATE_PRIMARY_PUF_STAGE,
@@ -4895,6 +5085,15 @@ _SOURCE_MANIFEST_STAGE_BY_OPERATOR: Mapping[str, str] = MappingProxyType(
 _DIRECT_HOUSING_ASSISTANCE_SOURCE_OPERATOR = (
     "impute_us_housing_assistance_to_puf_support"
 )
+if len(_SOURCE_MANIFEST_STAGE_BY_OPERATOR) != 15 or set(
+    _SOURCE_MANIFEST_STAGE_BY_OPERATOR
+) | {_DIRECT_HOUSING_ASSISTANCE_SOURCE_OPERATOR} != set(
+    POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+):
+    raise RuntimeError(
+        "US late source callback-identity map must cover exactly fifteen "
+        "manifest stages plus the direct housing-assistance QRF."
+    )
 
 
 def _late_source_stage_spec_binding(
@@ -5015,14 +5214,14 @@ def _late_source_finalizer_execution_binding() -> dict[str, object]:
     return {
         "resource_kind": "source_finalizer_execution_config",
         "schema_version": 1,
-        "phase": "post_clone",
+        "phase": POOL_POST_CLONE_SOURCE_PHASE,
         "source_operator_registry": list(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER),
         "formula_owned_output_exclusions": {
             entity: sorted(columns)
             for entity, columns in sorted(FORMULA_OWNED_SOURCE_COLUMNS.items())
         },
         "deferred_transfer_inputs": _json_ready(POOL_DEFERRED_TRANSFER_INPUTS),
-        "deferred_status": "deferred_pending_source_donor",
+        "deferred_status": POOL_DEFERRED_TRANSFER_STATUS,
     }
 
 
@@ -5077,7 +5276,7 @@ def _late_transfer_resource_receipts(
 
     model_binding = {
         "resource_kind": "late_transfer_model_config",
-        "schema_version": 1,
+        "schema_version": 2,
         "producer": group_name,
         "entity": entity,
         "family": family,
@@ -5085,6 +5284,13 @@ def _late_transfer_resource_receipts(
         "seed": seed,
         "n_estimators": n_estimators,
         "max_targets_per_fit": max_targets_per_fit,
+        "donor_spine": ASEC_PUF_DONOR_SPINE,
+        "donor_channel": None,
+        "donor_selection": "all_rows_from_post_puf_asec_origin_projection",
+        "donor_projection": {
+            "support_channel": BASE_ASEC_SUPPORT_CHANNEL,
+            "support_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+        },
     }
     if target_bank is None:
         bank_binding: dict[str, object] = {
@@ -7766,6 +7972,7 @@ def _transfer_stacked_post_puf_inputs_evaluate(
         frame,
         donor,
         target_families=surface,
+        donor_spine=ASEC_PUF_DONOR_SPINE,
         donor_channel=None,
         seed=seed,
         n_estimators=n_estimators,
@@ -8206,6 +8413,8 @@ def _late_input_column_readiness_rows(
     if input_column.column not in table:
         return int(scope.sum()), 0
     values = table[input_column.column]
+    if input_column.value_kind == "column_present":
+        return 0, 0
     missing = values.isna()
     invalid = pd.Series(False, index=values.index, dtype=bool)
     if input_column.value_kind == "finite_numeric":
@@ -8889,6 +9098,38 @@ def _run_stacked_puf_pass_evaluate(
 ) -> StackedPufPassResult:
     """Internal evaluator with one explicit fixture-only tail seam."""
 
+    if primary_qrf_input_binding is not None:
+        noncanonical = {
+            "predictors": predictors,
+            "person_outputs": person_outputs,
+            "tax_unit_outputs": tax_unit_outputs,
+        }
+        explicit = sorted(
+            name for name, value in noncanonical.items() if value is not None
+        )
+        if explicit:
+            raise ValueError(
+                "Stacked production primary QRF requires the import-declared "
+                f"canonical predictor/output surface; explicit={explicit}."
+            )
+        missing_sinks = [
+            name
+            for name, value in {
+                "fit_records": fit_records,
+                "tail_bound_diagnostics": tail_bound_diagnostics,
+            }.items()
+            if value is None
+        ]
+        if missing_sinks:
+            raise ValueError(
+                "Stacked production primary QRF requires its declared audit "
+                f"sink(s): {missing_sinks}."
+            )
+    canonical_tail_bounds = (
+        puf_tax_detail_tail_bound_quantiles_identity()
+        if person_outputs is None and tax_unit_outputs is None
+        else None
+    )
     validate_stacked_spine_frame(frame, boundary="stacked PUF pass entry")
     person_clone = frame.table("person")[support_clone_index_column("person")]
     if not person_clone.eq(0).all():
@@ -8920,6 +9161,7 @@ def _run_stacked_puf_pass_evaluate(
         )
     cloned = clone_us_frame_for_puf_support(
         frame,
+        channels=(BASE_ASEC_SUPPORT_CHANNEL, PUF_TAX_DETAIL_SUPPORT_CHANNEL),
         clone_attachment_fraction=clone_attachment_fraction,
         clone_attachment_seed=clone_attachment_seed,
     )
@@ -8952,6 +9194,7 @@ def _run_stacked_puf_pass_evaluate(
             n_estimators=n_estimators,
             fit_records=fit_records,
             tail_bound_diagnostics=tail_bound_diagnostics,
+            tail_bound_quantiles=canonical_tail_bounds,
             predictor_universe_receipts=predictor_universe_receipts,
             require_complete_recipient_predictors=True,
             absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
@@ -8989,6 +9232,8 @@ def _run_stacked_puf_pass_evaluate(
             clone_attachment_seed=clone_attachment_seed,
             seed=seed,
             n_estimators=n_estimators,
+            fit_records_enabled=fit_records is not None,
+            tail_bound_diagnostics_enabled=(tail_bound_diagnostics is not None),
             predictors=predictors,
             person_outputs=person_outputs,
             tax_unit_outputs=tax_unit_outputs,
@@ -9059,11 +9304,12 @@ def _run_stacked_puf_pass_evaluate(
         predictor_universe_receipt = (
             primary_puf_qrf_recipient_predictor_universe_receipt(checkpoint_dir)
         )
-        run_primary_puf_qrf_chain(checkpoint_dir)
+        run_primary_puf_qrf_chain(checkpoint_dir, environment={})
         imputed, weight_kind = finalize_primary_puf_qrf_chain(
             cloned,
             checkpoint_dir,
             tail_bound_diagnostics=tail_bound_diagnostics,
+            tail_bound_quantiles=canonical_tail_bounds,
         )
         if fit_records is not None:
             fit_records.append(FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, weight_kind))
@@ -9084,10 +9330,12 @@ def _run_stacked_puf_pass_evaluate(
     )
 
     if apply_capital_gains_tail:
+        tail_spec = load_default_puf_aggregate_disaggregation_spec()
         output, tail_receipt = transfer_puf_capital_gains_tail(
             imputed,
             donor_tax_units,
             seed=seed,
+            spec=tail_spec,
         )
         validate_puf_capital_gains_tail_manifest(tail_receipt)
         # The tail producer creates clone role 2 before its final origin

@@ -77,6 +77,7 @@ __all__ = [
     "impute_us_puf_tax_detail_support",
     "puf_tax_detail_clone_mask",
     "puf_recipient_predictor_universe_receipt",
+    "puf_tax_detail_tail_bound_quantiles_identity",
     "puf_tax_unit_donor_from_arrays",
     "prepare_us_puf_tax_detail_chain_inputs",
     "resolve_formula_owned_outputs",
@@ -307,6 +308,13 @@ _PUF_TAX_DETAIL_SPARSE_PERSON_OUTPUTS = frozenset(
 _PUF_TAX_DETAIL_TAIL_BOUND_QUANTILES: dict[str, float] = {
     "non_sch_d_capital_gains": 0.999
 }
+
+
+def puf_tax_detail_tail_bound_quantiles_identity() -> dict[str, float]:
+    """Return the exact canonical QRF-finalization tail-bound map."""
+
+    return dict(sorted(_PUF_TAX_DETAIL_TAIL_BOUND_QUANTILES.items()))
+
 
 # ASEC directly measures recipient alimony. The PUF QRF therefore sparsifies
 # only the cloned PUF half for this leaf; pruning the ASEC half would discard
@@ -1565,6 +1573,7 @@ def impute_us_puf_tax_detail_support(
     fit_records: list[FitWeightRecord] | None = None,
     raw_predictions_callback: Callable[[pd.DataFrame], None] | None = None,
     tail_bound_diagnostics: list[dict[str, object]] | None = None,
+    tail_bound_quantiles: Mapping[str, float] | None = None,
     predictor_universe_receipts: list[dict[str, object]] | None = None,
     require_complete_recipient_predictors: bool = False,
     absent_cells: str = PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
@@ -1692,6 +1701,7 @@ def impute_us_puf_tax_detail_support(
         person_outputs=person_outputs,
         tax_unit_outputs=tax_unit_outputs,
         tail_bound_diagnostics=tail_bound_diagnostics,
+        tail_bound_quantiles=tail_bound_quantiles,
         absent_cells=absent_cells,
     )
 

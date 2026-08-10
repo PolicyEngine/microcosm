@@ -55,10 +55,14 @@ class ProducerInputColumn:
     def __post_init__(self) -> None:
         _nonempty(self.entity, label="ProducerInputColumn.entity")
         _nonempty(self.column, label="ProducerInputColumn.column")
-        if self.value_kind not in {"non_null", "finite_numeric"}:
+        if self.value_kind not in {
+            "column_present",
+            "non_null",
+            "finite_numeric",
+        }:
             raise ValueError(
-                "ProducerInputColumn.value_kind must be 'non_null' or "
-                f"'finite_numeric'; got {self.value_kind!r}."
+                "ProducerInputColumn.value_kind must be 'column_present', "
+                f"'non_null', or 'finite_numeric'; got {self.value_kind!r}."
             )
 
 

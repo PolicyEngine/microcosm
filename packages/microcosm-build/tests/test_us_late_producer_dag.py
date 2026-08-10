@@ -6,6 +6,9 @@ from collections import OrderedDict
 
 import pytest
 
+from microcosm.build.us_runtime.acs_income_universe import (
+    ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
+)
 from microcosm.build.us_runtime.late_producer_dag import (
     ProducerContract,
     ProducerInput,
@@ -16,6 +19,9 @@ from microcosm.build.us_runtime.late_producer_dag import (
 from microcosm.build.us_runtime.multispine_pool import (
     POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
 )
+from microcosm.build.us_runtime.puf_support import (
+    PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+)
 from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_PRODUCER_REGISTRY,
     CANONICAL_US_LATE_PRODUCER_SCHEDULE,
@@ -23,6 +29,7 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     US_LATE_ACS_EARNINGS_UNIVERSE_INPUT_INVENTORY,
     US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
     US_LATE_EXTERNAL_STAGES,
+    US_LATE_PRIMARY_PUF_INPUT_INVENTORY,
     US_LATE_PRIMARY_PUF_STAGE,
     US_LATE_SOURCE_FINALIZER_STAGE,
     US_LATE_SOURCE_INPUT_INVENTORIES,
@@ -323,7 +330,7 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
         "late_transfer",
         "source_finalizer",
     }
-    assert len(registry[US_LATE_PRIMARY_PUF_STAGE].inputs) == 50
+    assert len(registry[US_LATE_PRIMARY_PUF_STAGE].inputs) == 110
     primary_outputs = registry[US_LATE_PRIMARY_PUF_STAGE].outputs
     assert len(primary_outputs) == 100
     assert sum(output.coverage_scope == "puf_clone" for output in primary_outputs) == 65
@@ -355,6 +362,44 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
             (output.entity, output.column)
             for output in CANONICAL_US_LATE_PRODUCER_REGISTRY[group.name].outputs
         } == {(group.entity, target) for target in group.targets}
+
+
+def test_primary_puf_inventory_declares_exact_read_before_write_surface() -> None:
+    requirements = {
+        requirement.label: requirement
+        for requirement in US_LATE_PRIMARY_PUF_INPUT_INVENTORY.requirements
+    }
+
+    assert len(requirements) == 105
+    assert tuple(
+        (item.entity, item.column, item.value_kind)
+        for item in requirements["filing_status"].alternatives[0]
+    ) == (("tax_unit", "filing_status_input", "non_null"),)
+    assert requirements["age"].alternatives[0][0].value_kind == "finite_numeric"
+    allocation_basis = {
+        label.removeprefix("person_output_allocation_basis:")
+        for label in requirements
+        if label.startswith("person_output_allocation_basis:")
+    }
+    assert allocation_basis == set(PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS)
+    assert all(
+        requirements[f"person_output_allocation_basis:{column}"].optional
+        for column in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    )
+    assert requirements["qualified_tuition_allocation_fallback"].optional
+
+    primary = CANONICAL_US_LATE_PRODUCER_REGISTRY[US_LATE_PRIMARY_PUF_STAGE]
+    raw_inputs = {
+        item.column: item
+        for item in primary.inputs
+        if item.column in set(ACS_PUMS_EARNINGS_SOURCE_COLUMNS.values())
+    }
+    assert set(raw_inputs) == set(ACS_PUMS_EARNINGS_SOURCE_COLUMNS.values())
+    for declared in raw_inputs.values():
+        assert declared.required_scope == "acs_source"
+        assert declared.producing_stage == US_LATE_EXTERNAL_STAGES[0]
+        assert declared.tolerated_absence_receipts == ()
+        assert declared.alternatives[0][0].value_kind == "column_present"
 
 
 def test_canonical_us_late_registry_declares_required_cross_producer_edges() -> None:
@@ -477,12 +522,12 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
 
     assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
     receipt = us_late_producer_schedule_receipt()
-    assert receipt["schema_version"] == 9
+    assert receipt["schema_version"] == 12
     assert receipt["execution_receipt_contract"] == {
-        "version": 2,
+        "version": 3,
         "row_binding": (
-            "declared_reconciled_input_and_exact_output_content_callback_"
-            "receipt_and_previous_execution_sha256"
+            "declared_globally_reconciled_input_and_scope_exact_output_source_"
+            "and_primary_callback_resource_receipt_and_previous_execution_sha256"
         ),
         "virtual_resource_binding": ("exact_kind_specific_semantic_payload_and_sha256"),
         "top_binding": (
@@ -543,6 +588,17 @@ def test_acs_earnings_universe_declares_every_receipt_affecting_input() -> None:
         "mapped_earnings:self_employment_income_before_lsr",
         "execution_config",
     }
+    by_label = {
+        requirement.label: requirement for requirement in inventory.requirements
+    }
+    assert not by_label["raw_source:WAGP"].optional
+    assert not by_label["raw_source:SEMP"].optional
+    assert {
+        by_label[label].alternatives[0][0].value_kind
+        for label in ("raw_source:WAGP", "raw_source:SEMP")
+    } == {"column_present"}
+    assert by_label["mapped_earnings:employment_income_before_lsr"].optional
+    assert by_label["mapped_earnings:self_employment_income_before_lsr"].optional
     lineage = next(
         requirement
         for requirement in inventory.requirements

@@ -116,11 +116,13 @@ __all__ = [
     "POOL_HOUSING_ASSISTANCE_N_ESTIMATORS",
     "POOL_DERIVE_OPERATOR_ORDER",
     "POOL_DEFERRED_TRANSFER_INPUTS",
+    "POOL_DEFERRED_TRANSFER_STATUS",
     "POOL_OPERATOR_CONTRACTS",
     "POOL_OPERATOR_ORDER",
     "POOL_RANDOM_SEED",
     "POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE",
     "POOL_POST_CLONE_SOURCE_OPERATOR_ORDER",
+    "POOL_POST_CLONE_SOURCE_PHASE",
     "POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER",
     "POOL_SOURCE_OPERATOR_CONTRACTS",
     "POOL_SOURCE_OPERATOR_ORDER",
@@ -387,6 +389,7 @@ class SourceOperatorContract:
 
 _PRE_CLONE_PHASE = "pre_clone"
 _POST_CLONE_PHASE = "post_clone"
+POOL_POST_CLONE_SOURCE_PHASE = _POST_CLONE_PHASE
 _CPS_SOURCE_EXECUTION_SCOPE = "cps_source"
 _WHOLE_POOL_EXECUTION_SCOPE = "whole_pool"
 
@@ -566,6 +569,7 @@ POOL_DEFERRED_TRANSFER_INPUTS: Mapping[str, Mapping[str, str]] = {
         "stock_assets",
     )
 }
+POOL_DEFERRED_TRANSFER_STATUS = "deferred_pending_source_donor"
 """Pool-stage-only deferrals for source inputs whose donors are out of scope.
 
 These remain hard release requirements and remain in the legacy ACS transfer
@@ -857,11 +861,11 @@ def materialize_pool_deferred_transfer_inputs(frame: Frame) -> PoolStageOutput:
         tables[entity][column] = pd.Series(
             np.nan,
             index=tables[entity].index,
-            dtype=np.float64,
+            dtype=declaration["physical_dtype"],
         )
         receipts[column] = {
             **declaration,
-            "status": "deferred_pending_source_donor",
+            "status": POOL_DEFERRED_TRANSFER_STATUS,
             "rows": int(len(tables[entity])),
             "null_rows": int(len(tables[entity])),
         }

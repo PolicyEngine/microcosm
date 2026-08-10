@@ -1023,6 +1023,8 @@ def _canonical_late_dag_receipt(
                     clone_attachment_seed=578,
                     seed=0,
                     n_estimators=100,
+                    fit_records_enabled=True,
+                    tail_bound_diagnostics_enabled=True,
                 )
             )
         elif contract.kind == "post_clone_source":
@@ -1123,7 +1125,12 @@ def _canonical_late_dag_receipt(
         if contract.kind == "acs_earnings_universe":
             producer_receipt = {"fixture": "acs_earnings_universe"}
         elif contract.kind == "primary_puf":
-            producer_receipt: Mapping[str, object] = {"fixture": "primary_puf"}
+            producer_receipt: Mapping[str, object] = {
+                "fixture": "primary_puf",
+                "primary_resource_receipts_sha256": (
+                    stacked_spine_module._canonical_sha256(available)
+                ),
+            }
         elif contract.kind == "post_clone_source":
             producer_receipt = source_receipts[producer_name.removeprefix("source:")]
         elif contract.kind == "source_finalizer":
@@ -1136,7 +1143,11 @@ def _canonical_late_dag_receipt(
                 "column": output.column,
                 "coverage_scope": output.coverage_scope,
                 "status": "present",
-                "content_sha256": "b" * 64,
+                "content_sha256": (
+                    stacked_spine_module._canonical_sha256(producer_receipt)
+                    if output.column.startswith("@source_receipt:")
+                    else "b" * 64
+                ),
                 **({} if output.entity == "frame" else {"scope_rows": 1}),
                 **(
                     {"weight_kind": "household_weight"}
@@ -1386,6 +1397,11 @@ def _install_stacked_entrypoint_stubs(
                 },
                 "puf_capital_gains_tail_transfer": {"fixture": "tail"},
                 "tail_status": "applied",
+                "primary_resource_receipts_sha256": (
+                    stacked_spine_module._canonical_sha256(
+                        primary_binding["primary_resource_receipts"]
+                    )
+                ),
             },
         )
 
@@ -1409,6 +1425,8 @@ def _install_stacked_entrypoint_stubs(
         assert primary_config["clone_attachment"] == {
             "fraction": 1.0,
             "seed": 579,
+            "support_channels": ["asec", "puf_tax_detail"],
+            "puf_clone_index": 1,
         }
         assert primary_config["qrf"]["seed"] == pool_tool.POOL_RANDOM_SEED
         assert (

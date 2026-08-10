@@ -38,7 +38,12 @@ unbound registry/exclusion/deferral doctrine; transfer donor selection is
 implicit; and primary/tail callbacks have unbound data, asset, worker,
 finalization, gate, and audit-sink controls. Regressions now state the initial
 callback-control contract, and implementation has begun with the source and
-finalizer surfaces.
+finalizer surfaces. The complete primary/tail/transfer callback surface is now
+also bound and focused-green: canonical clone roles, all QRF allocation inputs,
+raw ACS earnings-authority columns, worker controls, tail bounds/spec/SOI asset,
+concentration gates, audit sinks, and transfer donor projection. Raw WAGP/SEMP
+use a required `column_present` contract so legitimate under-15 structural
+nulls remain null while a missing authority column refuses execution.
 
 ## Done
 
@@ -389,12 +394,29 @@ finalizer surfaces.
   phase, exact source registry, formula-owned exclusions, full deferred-input
   declarations, and deferred status. Source resource schema 2 and focused
   callback/executor regressions are green.
+- Bound the remaining primary/tail and transfer runtime surface in registry
+  schema 12 and resource schema 2. The primary contract now declares 105
+  effective inventory requirements plus mapped/universe/raw dependencies (110
+  executable inputs): canonical filing status and age, every person-output
+  allocation basis, tuition fallback, exact clone roles, worker/interpreter and
+  reviewed fit-environment controls, explicit QRF tail bounds, the resolved
+  aggregate-disaggregation spec, raw-hashed and resolved SOI E19200 bands,
+  concentration controls, and required audit sinks. Production refuses custom
+  predictor/output surfaces or missing sinks. Every transfer binds and passes
+  the exact ASEC-PUF donor spine, null donor channel, and clone-1 ASEC
+  projection. The four focused DAG/stacked/pool/tail files pass together.
+- Made deferred-input `physical_dtype` executable rather than descriptive and
+  added a float32 regression. Added non-optional `column_present` readiness for
+  raw ACS WAGP/SEMP: structural null bytes are accepted and identity-bound,
+  while an absent column on a positive ACS scope refuses before the universe
+  callback.
 
 ## Next
 
-- Close the remaining primary/tail, transfer, and outer-order identity gaps;
-  bump and publish the resulting bindings, and request another independent
-  review.
+- Close the remaining outer-order/checkpoint identity gap: remove the duplicate
+  published PUF step, bind the complete static late-resource semantics into the
+  base identity, bump only the outer materializer and stacked H5 schema, and
+  request another independent review.
 - Rerun the focused aggregate, exact #583 shard, eight non-overlapping
   foreground workspace chunks, and Ruff check/format-check/diff-check gates.
 - Write the final gradeable mechanism/edge/fix/proof report to the output file,

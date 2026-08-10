@@ -606,6 +606,8 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
                 clone_attachment_seed=578,
                 seed=0,
                 n_estimators=100,
+                fit_records_enabled=True,
+                tail_bound_diagnostics_enabled=True,
             )
         elif contract.kind == "post_clone_source":
             available = stacked_spine_module._late_source_resource_receipts(

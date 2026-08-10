@@ -46,6 +46,9 @@ from microcosm.build.us_runtime.operator_boundary import (
     FORMULA_OWNED_SOURCE_COLUMNS,
     PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
 )
+from microcosm.build.us_runtime.puf_support import (
+    PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+)
 
 __all__ = [
     "CANONICAL_US_LATE_PRODUCER_REGISTRY",
@@ -82,7 +85,9 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-# v11 binds the complete packaged SourceStageSpec/default surface of every
+# v12 declares every primary callback read-before-write and universe-validation
+# column and removes the unusable filing-status fallback. v11 bound the complete
+# packaged SourceStageSpec/default surface of every
 # source callback and the source finalizer's registry/exclusion/deferral
 # doctrine. v10 completed the ACS PUMS earnings-universe input declaration with
 # its tax-unit link, clone role, and stable lineage fallback. v9 split that
@@ -95,7 +100,7 @@ __all__ = [
 # cardinalities across each execution row, binds source-receipt outputs to the
 # callback receipt, and requires the primary callback to report the exact
 # resources it consumed. Receipt v2 introduced exact virtual-resource payloads.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 11
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 12
 US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 3
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
@@ -981,11 +986,8 @@ US_LATE_PRIMARY_PUF_INPUT_INVENTORY = _inventory(
         for requirement in _CROSS_GRAIN_VALIDATION_REQUIREMENTS
         if requirement.label != "validated_structure:puf_attachment_manifest"
     ),
-    _requirement(
-        "filing_status",
-        (_column("tax_unit", "filing_status_input"),),
-        (_column("tax_unit", "filing_status"),),
-    ),
+    _single("filing_status", "tax_unit", "filing_status_input"),
+    _single("age", "person", "age", value_kind="finite_numeric"),
     _requirement(
         "tax_unit_person_count",
         (
@@ -1046,6 +1048,23 @@ US_LATE_PRIMARY_PUF_INPUT_INVENTORY = _inventory(
     _single("support_channel", "person", "person_support_channel"),
     _single("support_clone_index", "person", "person_support_clone_index"),
     _single("resolved_tax_unit_weight", "tax_unit", "@resolved_weight"),
+    *(
+        _single(
+            f"person_output_allocation_basis:{column}",
+            "person",
+            column,
+            optional=True,
+            value_kind="finite_numeric",
+        )
+        for column in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    ),
+    _single(
+        "qualified_tuition_allocation_fallback",
+        "person",
+        "is_full_time_college_student",
+        optional=True,
+        value_kind="finite_numeric",
+    ),
     _single("puf_donor", "tax_unit", "@puf_donor_tax_units"),
     _single("primary_qrf_bank", "tax_unit", "@primary_qrf_checkpoint"),
     _single(
@@ -1077,8 +1096,7 @@ US_LATE_ACS_EARNINGS_UNIVERSE_INPUT_INVENTORY = _inventory(
             f"raw_source:{source}",
             "person",
             source,
-            optional=True,
-            value_kind="finite_numeric",
+            value_kind="column_present",
         )
         for source in ACS_PUMS_EARNINGS_SOURCE_COLUMNS.values()
     ),
@@ -1537,6 +1555,24 @@ def _build_registry() -> dict[str, ProducerContract]:
                 US_LATE_ACS_EARNINGS_UNIVERSE_RECEIPT_INPUT,
                 _WHOLE_POOL_SCOPE,
                 US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
+            ),
+            *(
+                ProducerInput(
+                    "person",
+                    raw_source,
+                    _ACS_SOURCE_SCOPE,
+                    US_LATE_EXTERNAL_STAGES[0],
+                    alternatives=(
+                        (
+                            ProducerInputColumn(
+                                "person",
+                                raw_source,
+                                "column_present",
+                            ),
+                        ),
+                    ),
+                )
+                for raw_source in ACS_PUMS_EARNINGS_SOURCE_COLUMNS.values()
             ),
         ),
         outputs=primary_outputs,

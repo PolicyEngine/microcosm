@@ -15,6 +15,7 @@ import pandas as pd
 import pytest
 
 import microcosm.build.us_runtime.puf_capital_gains_tail as tail_module
+import microcosm.build.us_runtime.puf_interest_components as interest_module
 from microcosm.build.us_runtime.capital_gain_distributions import (
     load_capital_gain_distribution_shares,
 )
@@ -127,6 +128,32 @@ def _expanded_recipient_frame() -> Frame:
         pd.Series(["a", "b", "c", "d"], name="stratum"),
     )
     return clone_us_frame_for_puf_support(base)
+
+
+def test_tail_execution_identity_binds_resolved_spec_and_soi_asset(
+    tmp_path: Path,
+) -> None:
+    baseline = tail_module.puf_capital_gains_tail_execution_inputs_identity()
+    buckets = baseline["aggregate_disaggregation_spec"]["buckets"]
+    assert [bucket["recid"] for bucket in buckets] == sorted(
+        bucket["recid"] for bucket in buckets
+    )
+
+    source = interest_module.files("microcosm.build.us").joinpath(
+        interest_module._SOURCE_ASSET
+    )
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    payload["agi_bands"][0]["total_interest_paid_amount"] += 1
+    payload["agi_bands"][0]["investment_interest_amount"] += 1
+    changed_asset = tmp_path / interest_module._SOURCE_ASSET
+    changed_asset.write_text(json.dumps(payload), encoding="utf-8")
+    changed = interest_module.puf_e19200_interest_components_asset_identity(
+        changed_asset
+    )
+
+    soi = baseline["soi_e19200_agi_bands"]
+    assert soi["asset_sha256"] != changed["asset_sha256"]
+    assert soi["agi_bands"][0] != changed["agi_bands"][0]
 
 
 def _donor() -> pd.DataFrame:

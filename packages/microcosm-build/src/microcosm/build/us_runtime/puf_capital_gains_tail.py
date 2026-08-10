@@ -20,6 +20,7 @@ from microcosm.build.us_runtime.puf_aggregate_records import (
 )
 from microcosm.build.us_runtime.puf_interest_components import (
     US_PUF_E19200_AGI_BANDS,
+    puf_e19200_interest_components_asset_identity,
 )
 from microcosm.build.us_runtime.puf_support import (
     PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN,
@@ -41,6 +42,9 @@ __all__ = [
     "PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN",
     "PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN",
     "PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION",
+    "PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MAX_TOP_SHARE",
+    "PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS",
+    "PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_TOP_K",
     "PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS",
     "PUF_CAPITAL_GAINS_TAIL_POSITIVE_MASS_FIVE_X_TARGET",
     "PUF_CAPITAL_GAINS_TAIL_QUANTILE",
@@ -51,6 +55,9 @@ __all__ = [
     "PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN",
     "assert_puf_capital_gains_tail_survives_selection",
     "puf_capital_gains_tail_concentration_gate",
+    "puf_capital_gains_tail_concentration_controls_identity",
+    "puf_capital_gains_tail_execution_inputs_identity",
+    "puf_capital_gains_tail_spec_identity",
     "puf_capital_gains_tail_support_contract_identity",
     "puf_capital_gains_tail_terminal_support_receipt",
     "select_puf_capital_gains_tail_donors",
@@ -65,6 +72,9 @@ PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL = PUF_TAX_DETAIL_SUPPORT_CHANNEL
 PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION = 2
 PUF_CAPITAL_GAINS_TAIL_SUPPORT_CONTRACT_VERSION = 1
 PUF_CAPITAL_GAINS_TAIL_POSITIVE_MASS_FIVE_X_TARGET = 1_270_900_000_000.0
+PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_TOP_K = 100
+PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MAX_TOP_SHARE = 0.75
+PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS = 500
 
 # microcosm#567 diagnostic geometry: recipient predictors are bounded by the
 # $1,999,998 ASEC capital-gains topcode. Weighted q99.5 of positive donor
@@ -167,6 +177,59 @@ def puf_capital_gains_tail_support_contract_identity() -> dict[str, object]:
             "nearest_band_first_then_all_agi_bands_within_filing_status"
         ),
         "agi_band_count": len(US_PUF_E19200_AGI_BANDS),
+    }
+
+
+def puf_capital_gains_tail_spec_identity(
+    spec: PufAggregateDisaggregationSpec | None = None,
+) -> dict[str, object]:
+    """Return the exact resolved aggregate-disaggregation input to tail selection."""
+
+    resolved = spec or load_default_puf_aggregate_disaggregation_spec()
+    resolved.validate()
+    return {
+        "enabled": resolved.enabled,
+        "forbes_top_tail": resolved.forbes_top_tail,
+        "source": resolved.source,
+        "aggregate_recids": list(resolved.aggregate_recids),
+        "synthetic_recid_start": resolved.synthetic_recid_start,
+        "screened_fields": list(resolved.screened_fields),
+        "synthetic_tail_support_eligible": (resolved.synthetic_tail_support_eligible),
+        "buckets": [
+            {
+                "recid": recid,
+                "description": bucket.description,
+                "agi_lower": bucket.agi_lower,
+                "agi_upper": bucket.agi_upper,
+                "synthetic_agi_upper": bucket.synthetic_agi_upper,
+            }
+            for recid, bucket in sorted(resolved.buckets.items())
+        ],
+    }
+
+
+def puf_capital_gains_tail_concentration_controls_identity() -> dict[str, object]:
+    """Return the explicit selected-tail and produced-frame gate controls."""
+
+    return {
+        "top_k": PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_TOP_K,
+        "max_top_share": PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MAX_TOP_SHARE,
+        "min_nonzero_records": (
+            PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS
+        ),
+        "reviewed_exclusions": {},
+    }
+
+
+def puf_capital_gains_tail_execution_inputs_identity() -> dict[str, object]:
+    """Bind the data assets and controls read by the tail callback."""
+
+    return {
+        "aggregate_disaggregation_spec": puf_capital_gains_tail_spec_identity(),
+        "soi_e19200_agi_bands": (puf_e19200_interest_components_asset_identity()),
+        "concentration_gate": (
+            puf_capital_gains_tail_concentration_controls_identity()
+        ),
     }
 
 
@@ -326,6 +389,10 @@ def puf_capital_gains_tail_concentration_gate(
     return tail_concentration_gate(
         values,
         {column: resolved_weights for column in values},
+        top_k=PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_TOP_K,
+        max_top_share=PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MAX_TOP_SHARE,
+        min_nonzero_records=(PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS),
+        reviewed_exclusions={},
     )
 
 
@@ -432,7 +499,7 @@ def _raw_top_share_receipts(
     values_by_column: Mapping[str, np.ndarray],
     weights: np.ndarray,
     *,
-    top_k: int = 100,
+    top_k: int = PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_TOP_K,
 ) -> dict[str, dict[str, object]]:
     """Measure every column's weighted top-share raw — no thin-column skip.
 
@@ -1806,6 +1873,10 @@ def _frame_capital_gains_concentration_gate(frame: Frame) -> GateResult:
     return tail_concentration_gate(
         values,
         {column: weights for column in values},
+        top_k=PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_TOP_K,
+        max_top_share=PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MAX_TOP_SHARE,
+        min_nonzero_records=(PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS),
+        reviewed_exclusions={},
     )
 
 

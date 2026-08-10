@@ -3027,6 +3027,8 @@ def build_stacked_pool(
             clone_attachment_seed=clone_attachment_seed,
             seed=POOL_RANDOM_SEED,
             n_estimators=_PRIMARY_QRF_N_ESTIMATORS,
+            fit_records_enabled=True,
+            tail_bound_diagnostics_enabled=True,
         )
         primary_qrf_input_binding = stacked_late_primary_checkpoint_input_binding(
             primary_resource_receipts

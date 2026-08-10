@@ -2986,6 +2986,31 @@ def test_pool_asset_deferrals_are_typed_null_receipted_and_fail_when_stale() -> 
         materialize_pool_deferred_transfer_inputs(result.frame)
 
 
+def test_pool_asset_deferrals_materialize_the_declared_physical_dtype(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    declarations = {
+        column: {**declaration, "physical_dtype": "float32"}
+        for column, declaration in POOL_DEFERRED_TRANSFER_INPUTS.items()
+    }
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "POOL_DEFERRED_TRANSFER_INPUTS",
+        declarations,
+    )
+
+    result = materialize_pool_deferred_transfer_inputs(
+        _assembled_cloned_with_partial_take_up()
+    )
+
+    person = result.frame.table("person")
+    assert all(person[column].dtype == np.dtype("float32") for column in declarations)
+    assert all(
+        receipt["physical_dtype"] == "float32"
+        for receipt in result.receipt["inputs"].values()
+    )
+
+
 def test_pool_seed_stage_preserves_inputs_and_receipts_disclosed_defaults() -> None:
     frame = _assembled_cloned_with_partial_take_up()
     before_person = frame.table("person")

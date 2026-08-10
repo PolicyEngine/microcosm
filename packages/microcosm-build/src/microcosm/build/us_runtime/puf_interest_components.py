@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from importlib.resources import files
@@ -95,11 +96,18 @@ def _band(raw: dict[str, Any]) -> PufE19200AgiBand:
     )
 
 
-def _load_source_asset() -> tuple[
+def _load_source_asset(
+    resource: Any | None = None,
+) -> tuple[
     PufE19200InterestComponents,
     tuple[PufE19200AgiBand, ...],
 ]:
-    payload = json.loads(files("microcosm.build.us").joinpath(_SOURCE_ASSET).read_text())
+    resolved_resource = (
+        files("microcosm.build.us").joinpath(_SOURCE_ASSET)
+        if resource is None
+        else resource
+    )
+    payload = json.loads(resolved_resource.read_text(encoding="utf-8"))
     source = payload.get("source", {})
     if (
         source.get("tax_year") != 2015
@@ -140,6 +148,51 @@ def _load_source_asset() -> tuple[
                 "component identity beyond $1,000 source rounding."
             )
     return all_returns, bands
+
+
+def _component_identity(
+    row: PufE19200InterestComponents,
+) -> dict[str, object]:
+    return {
+        "source_row": row.source_row,
+        "total_interest_paid_amount": row.total_interest_paid_amount,
+        "home_mortgage_interest_amount": row.home_mortgage_interest_amount,
+        "deductible_points_amount": row.deductible_points_amount,
+        "qualified_mortgage_insurance_premiums_amount": (
+            row.qualified_mortgage_insurance_premiums_amount
+        ),
+        "investment_interest_amount": row.investment_interest_amount,
+        "non_mortgage_interest_amount": row.non_mortgage_interest_amount,
+        "source_cells": row.source_cells,
+    }
+
+
+def puf_e19200_interest_components_asset_identity(
+    resource: Any | None = None,
+) -> dict[str, object]:
+    """Bind the exact SOI asset bytes and resolved ordered AGI-band semantics."""
+
+    resolved_resource = (
+        files("microcosm.build.us").joinpath(_SOURCE_ASSET)
+        if resource is None
+        else resource
+    )
+    all_returns, bands = _load_source_asset(resolved_resource)
+    return {
+        "asset": f"microcosm.build.us/{_SOURCE_ASSET}",
+        "asset_sha256": hashlib.sha256(resolved_resource.read_bytes()).hexdigest(),
+        "all_returns": _component_identity(all_returns),
+        "agi_bands": [
+            {
+                **_component_identity(band),
+                "label": band.label,
+                "lower_bound": band.lower_bound,
+                "upper_bound": band.upper_bound,
+                "home_mortgage_share": band.home_mortgage_share,
+            }
+            for band in bands
+        ],
+    }
 
 
 (
@@ -216,5 +269,6 @@ __all__ = [
     "PufE19200InterestComponents",
     "US_PUF_E19200_AGI_BANDS",
     "US_PUF_E19200_ALL_RETURNS_COMPONENTS",
+    "puf_e19200_interest_components_asset_identity",
     "split_us_puf_e19200_by_agi_band",
 ]
