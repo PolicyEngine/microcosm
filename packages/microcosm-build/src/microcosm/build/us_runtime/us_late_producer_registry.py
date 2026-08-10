@@ -64,9 +64,10 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-# v2 binds finite-numeric readiness, primary resource receipts, and the
-# primary-PUF clone-attachment edge into the executable producer contract.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 2
+# v3 closes the strict-callback input audit: compound support roles are all-of
+# requirements, and every numeric predictor rejected by a callback is marked
+# finite_numeric in the executable contract.
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 3
 US_LATE_PRIMARY_PUF_STAGE = "primary_puf_qrf"
 US_LATE_EXTERNAL_STAGES: tuple[str, ...] = ("post_clone_input_surface",)
 
@@ -485,7 +486,18 @@ _source_input_inventories = {
     ),
     "with_us_adult_care_inputs": _inventory(
         "with_us_adult_care_inputs",
-        *_raw_person_requirements(("PEDISDRS", "is_full_time_college_student")),
+        _single(
+            "raw_person:PEDISDRS",
+            "person",
+            "PEDISDRS",
+            value_kind="finite_numeric",
+        ),
+        _single(
+            "raw_person:is_full_time_college_student",
+            "person",
+            "is_full_time_college_student",
+            value_kind="finite_numeric",
+        ),
         _single("age", "person", "age", value_kind="finite_numeric"),
         _single(
             "employment_income",
@@ -511,8 +523,10 @@ _source_input_inventories = {
         _single("person_id", "person", "person_id"),
         _requirement(
             "support_role",
-            (_column("person", "person_support_clone_index"),),
-            (_column("person", "person_support_channel"),),
+            (
+                _column("person", "person_support_clone_index"),
+                _column("person", "person_support_channel"),
+            ),
         ),
         _single(
             "childcare_expenses",
@@ -599,7 +613,7 @@ _source_input_inventories = {
         "with_us_education_inputs",
         _requirement(
             "education_source_or_sidecar",
-            (_column("person", "ED_VAL"),),
+            (_column("person", "ED_VAL", value_kind="finite_numeric"),),
             (_column("person", "@education_assistance_sidecar"),),
         ),
         _single(
@@ -745,35 +759,73 @@ def _transfer_input_inventory(group: TransferProducerGroup) -> SourceInputInvent
         _requirement(
             "optional_social_security_income",
             (
-                _column("person", "social_security_retirement"),
-                _column("person", "social_security_disability"),
-                _column("person", "social_security_dependents"),
-                _column("person", "social_security_survivors"),
+                _column(
+                    "person", "social_security_retirement", value_kind="finite_numeric"
+                ),
+                _column(
+                    "person", "social_security_disability", value_kind="finite_numeric"
+                ),
+                _column(
+                    "person", "social_security_dependents", value_kind="finite_numeric"
+                ),
+                _column(
+                    "person", "social_security_survivors", value_kind="finite_numeric"
+                ),
             ),
-            (_column("person", "acs_social_security_income"),),
+            (
+                _column(
+                    "person", "acs_social_security_income", value_kind="finite_numeric"
+                ),
+            ),
             optional=True,
         ),
         _requirement(
             "optional_retirement_income",
             (
-                _column("person", "taxable_private_pension_income"),
-                _column("person", "tax_exempt_private_pension_income"),
-                _column("person", "taxable_ira_distributions"),
+                _column(
+                    "person",
+                    "taxable_private_pension_income",
+                    value_kind="finite_numeric",
+                ),
+                _column(
+                    "person",
+                    "tax_exempt_private_pension_income",
+                    value_kind="finite_numeric",
+                ),
+                _column(
+                    "person", "taxable_ira_distributions", value_kind="finite_numeric"
+                ),
             ),
-            (_column("person", "acs_retirement_income"),),
+            (_column("person", "acs_retirement_income", value_kind="finite_numeric"),),
             optional=True,
         ),
         _requirement(
             "optional_investment_income",
             (
-                _column("person", "taxable_interest_income"),
-                _column("person", "tax_exempt_interest_income"),
-                _column("person", "qualified_dividend_income"),
-                _column("person", "non_qualified_dividend_income"),
-                _column("person", "rental_income"),
-                _column("person", "estate_income"),
+                _column(
+                    "person", "taxable_interest_income", value_kind="finite_numeric"
+                ),
+                _column(
+                    "person", "tax_exempt_interest_income", value_kind="finite_numeric"
+                ),
+                _column(
+                    "person", "qualified_dividend_income", value_kind="finite_numeric"
+                ),
+                _column(
+                    "person",
+                    "non_qualified_dividend_income",
+                    value_kind="finite_numeric",
+                ),
+                _column("person", "rental_income", value_kind="finite_numeric"),
+                _column("person", "estate_income", value_kind="finite_numeric"),
             ),
-            (_column("person", "acs_interest_dividend_rental_income"),),
+            (
+                _column(
+                    "person",
+                    "acs_interest_dividend_rental_income",
+                    value_kind="finite_numeric",
+                ),
+            ),
             optional=True,
         ),
         _requirement(

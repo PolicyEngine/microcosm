@@ -246,7 +246,7 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
 
     assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
     receipt = us_late_producer_schedule_receipt()
-    assert receipt["schema_version"] == 2
+    assert receipt["schema_version"] == 3
     assert receipt["status"] == "derived_and_import_validated"
     assert receipt["schedule_sha256"] == reconstructed.sha256
     assert receipt["producer_count"] == 36
@@ -339,17 +339,13 @@ def test_source_contracts_match_strict_runtime_input_semantics() -> None:
         (
             next(
                 column
-                for alternative in adult_inputs[
-                    "@effective:support_role"
-                ].alternatives
+                for alternative in adult_inputs["@effective:support_role"].alternatives
                 for column in alternative
                 if column.column == "person_support_channel"
             ),
             next(
                 column
-                for alternative in adult_inputs[
-                    "@effective:support_role"
-                ].alternatives
+                for alternative in adult_inputs["@effective:support_role"].alternatives
                 for column in alternative
                 if column.column == "person_support_clone_index"
             ),

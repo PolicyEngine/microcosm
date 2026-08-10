@@ -143,6 +143,13 @@ and the complete proof rerun are closed.
   to a strict numeric callback path to carry `finite_numeric` contract
   semantics. The focused DAG suite now fails only on those deliberately red
   assertions (the first failure masks two additional source-kind assertions).
+- Corrected those registry contracts and bumped the late-registry schema to
+  v3: adult care now requires clone index and channel together; `PEDISDRS`,
+  full-time-college status, and raw `ED_VAL` are finite-numeric; and every
+  component or ACS aggregate in the transfer social-security, retirement, and
+  investment alternatives is finite-numeric. All 12 focused DAG tests pass;
+  the contract-only change preserves 54 edges and wave sizes `(1, 17, 14, 3,
+  1)` while changing the schedule/payload identity as intended.
 
 ## Next
 
