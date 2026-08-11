@@ -2,11 +2,11 @@
 
 ## State
 
-The smoke-r5 mechanism is fixed and covered by focused regressions. `TYPEHUGQ`
-now uses `acs_source` on both the input and the primary structural output;
-ASEC rows remain absent with no synthesized value or tolerated-absence receipt.
-The complete declared raw-input audit has no cross-origin whole-pool reads.
-The remaining work is the requested full proof matrix and independent review.
+The smoke-r5 mechanism is fixed and the requested proof matrix is green.
+`TYPEHUGQ` now uses `acs_source` on both the input and the primary structural
+output; ASEC rows remain absent with no synthesized value or tolerated-absence
+receipt. The complete declared raw-input audit has no cross-origin whole-pool
+reads. Only the independent review and final report remain.
 
 ## Done
 
@@ -45,13 +45,22 @@ The remaining work is the requested full proof matrix and independent review.
   receipt or fill while one missing ACS value refuses before its callback.
 - Updated the operator-ordering schema pins and the changelog.
 - Passed the focused suite: 31 tests, zero failures/skips/errors.
+- Preserved #583 at exactly 495 passed, with zero skips/failures/errors.
+- Partitioned all 225 workspace test files into eight foreground chunks with
+  zero duplicates, omissions, or extras. Exact aggregate: 5,909 passed, 68
+  skipped, zero failures/errors (5,977 collected). Per-chunk pass/skip counts:
+  711/2, 562/21, 779/4, 1,029/2, 773/2, 765/1, 495/0, and 795/36.
+- Resolved one collection-only environment gap without network or repository
+  mutation by exposing the locked cached `pyarrow==25.0.0` archive to chunks
+  that import it; the complete affected chunk was rerun and passed.
+- Passed repository-wide `ruff check .`, scoped `ruff format --check` for all
+  four changed Python files, and `git diff --check 27b07c73..HEAD`. The
+  repository-wide formatter baseline still names 29 unrelated pre-existing
+  files; none is part of this round.
 
 ## Next
 
-- Commit the regression, documentation, changelog, and progress update.
-- Run #583 at exactly 495 tests, then the full workspace in foreground,
-  non-overlapping chunks with exact aggregate counts.
-- Run formatting, lint, and diff checks; obtain an independent read-only
-  review and address any actionable findings.
-- Commit final proof state and report the gradeable smoke-r6 prediction to
-  stdout.
+- Complete the independent read-only review and address any actionable
+  findings.
+- Commit final proof/review state and report the gradeable smoke-r6 prediction
+  to stdout.
