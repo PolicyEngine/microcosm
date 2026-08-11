@@ -490,6 +490,14 @@ _PERSON_OUTPUT_DISTRIBUTION_BASIS: Mapping[str, tuple[str, ...]] = {
         "estate_income",
     ),
 }
+_PERSON_OUTPUT_BOOLEAN_INCIDENCE_DISTRIBUTION_BASES = frozenset(
+    {
+        ("qualified_tuition_expenses", "is_full_time_college_student"),
+        ("sstb_self_employment_income_before_lsr", "business_is_sstb"),
+        ("sstb_unadjusted_basis_qualified_property", "business_is_sstb"),
+        ("sstb_w2_wages_from_qualified_business", "business_is_sstb"),
+    }
+)
 _PUF_EARNINGS_UNIVERSE_PERSON_OUTPUTS = frozenset(
     {
         *ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
@@ -2032,6 +2040,7 @@ def finalize_us_puf_tax_detail_predictions(
                 column=column,
                 totals=totals,
                 nonnegative=column in _PUF_TAX_DETAIL_NONNEGATIVE_OUTPUTS,
+                allow_legacy_numeric_boolean_basis=not preserve_nulls,
                 fallback_basis_columns=_PERSON_OUTPUT_DISTRIBUTION_BASIS.get(
                     column, ()
                 ),
@@ -3350,21 +3359,109 @@ def _puf_earnings_allocation_mask(
     return person_puf_mask & age.ge(ACS_PUMS_EARNINGS_MINIMUM_AGE)
 
 
-def _nonnegative_allocation_basis_values(values: pd.Series) -> np.ndarray:
+def _nonnegative_allocation_basis_values(
+    values: pd.Series,
+    *,
+    output_column: str,
+    basis_column: str,
+    allow_legacy_numeric_boolean: bool = False,
+) -> np.ndarray:
     """Return temporary numeric weights without changing a basis column's dtype.
 
-    Some QBI monetary outputs are distributed using a canonical boolean
-    incidence column such as ``business_is_sstb``.  Nullable booleans cannot
-    accept a floating fill value, so map that declared incidence semantics to
-    0/1 only in the transient allocation vector.  The stored column remains a
-    physical boolean and is still checked as such by the late-output guard.
+    PUF person outputs can be distributed using canonical boolean incidence,
+    including ``is_full_time_college_student`` for tuition and
+    ``business_is_sstb`` for QBI amounts. Nullable booleans cannot accept a
+    floating fill value, so map that declared incidence semantics to 0/1 only
+    in the transient allocation vector. The stored column remains a physical
+    boolean and is still checked as such by the late-output guard.
     """
 
-    if pd.api.types.is_bool_dtype(values.dtype):
-        numeric = values.astype("Float64")
+    observed = values.dropna()
+    observed_boolean = observed.map(lambda value: isinstance(value, (bool, np.bool_)))
+    physical_boolean = bool(
+        pd.api.types.is_bool_dtype(values.dtype)
+        or (len(observed) and observed_boolean.all())
+    )
+    contains_physical_boolean = bool(
+        pd.api.types.is_bool_dtype(values.dtype) or observed_boolean.any()
+    )
+    expects_boolean_incidence = (
+        output_column,
+        basis_column,
+    ) in _PERSON_OUTPUT_BOOLEAN_INCIDENCE_DISTRIBUTION_BASES
+    if expects_boolean_incidence and physical_boolean:
+        numeric = pd.Series(
+            pd.array(values, dtype="boolean").astype("Float64"),
+            index=values.index,
+        )
     else:
-        numeric = pd.to_numeric(values, errors="coerce")
-    return numeric.fillna(0.0).clip(lower=0.0).to_numpy(dtype=np.float64)
+        if expects_boolean_incidence and not allow_legacy_numeric_boolean:
+            offending_types = sorted(
+                {
+                    f"{type(value).__module__}.{type(value).__qualname__}"
+                    for value in observed
+                }
+            )
+            raise TypeError(
+                f"PUF output {output_column!r} allocation basis "
+                f"{basis_column!r} declares boolean_incidence and must "
+                "contain only physical booleans; got "
+                f"dtype {values.dtype!s} with observed value types "
+                f"{offending_types}."
+            )
+        if not expects_boolean_incidence and contains_physical_boolean:
+            raise TypeError(
+                f"PUF output {output_column!r} allocation basis "
+                f"{basis_column!r} declares monetary_sign_separated and "
+                "cannot contain physical booleans."
+            )
+        invalid = observed.map(
+            lambda value: (
+                isinstance(value, (bool, np.bool_))
+                or not isinstance(
+                    value,
+                    (int, float, np.integer, np.floating),
+                )
+            )
+        )
+        if invalid.any():
+            offending_types = sorted(
+                {
+                    f"{type(value).__module__}.{type(value).__qualname__}"
+                    for value in observed.loc[invalid]
+                }
+            )
+            raise TypeError(
+                f"PUF output {output_column!r} allocation basis "
+                f"{basis_column!r} declares monetary_sign_separated and must "
+                f"contain only real numeric values; got dtype {values.dtype!s} with "
+                f"offending value types {offending_types}."
+            )
+        nonfinite = observed.map(lambda value: not np.isfinite(float(value)))
+        if nonfinite.any():
+            raise ValueError(
+                f"PUF output {output_column!r} allocation basis "
+                f"{basis_column!r} contains {int(nonfinite.sum())} "
+                "nonfinite observed value(s)."
+            )
+        numeric = pd.Series(
+            pd.array(values, dtype="Float64"),
+            index=values.index,
+        )
+        if expects_boolean_incidence:
+            outside_boolean_support = ~numeric.dropna().isin([0.0, 1.0])
+            if outside_boolean_support.any():
+                raise ValueError(
+                    f"PUF output {output_column!r} legacy allocation basis "
+                    f"{basis_column!r} declares boolean_incidence but contains "
+                    f"{int(outside_boolean_support.sum())} numeric value(s) "
+                    "outside exact {0, 1} support."
+                )
+    return np.clip(
+        numeric.to_numpy(dtype=np.float64, na_value=0.0),
+        0.0,
+        None,
+    )
 
 
 def _write_person_tax_unit_boolean_counts(
@@ -3393,7 +3490,11 @@ def _write_person_tax_unit_boolean_counts(
     for basis_column in fallback_basis_columns:
         if basis_column not in person.columns:
             continue
-        score += _nonnegative_allocation_basis_values(person.loc[mask, basis_column])
+        score += _nonnegative_allocation_basis_values(
+            person.loc[mask, basis_column],
+            output_column=column,
+            basis_column=basis_column,
+        )
 
     placement = pd.DataFrame(
         {
@@ -3438,6 +3539,7 @@ def _write_person_tax_unit_totals(
     column: str,
     totals: pd.Series,
     nonnegative: bool,
+    allow_legacy_numeric_boolean_basis: bool = False,
     fallback_basis_columns: tuple[str, ...] = (),
 ) -> None:
     row_ids = person.loc[mask, "person_tax_unit_id"]
@@ -3461,7 +3563,10 @@ def _write_person_tax_unit_totals(
             if basis_column not in person.columns:
                 continue
             fallback += _nonnegative_allocation_basis_values(
-                person.loc[mask, basis_column]
+                person.loc[mask, basis_column],
+                output_column=column,
+                basis_column=basis_column,
+                allow_legacy_numeric_boolean=allow_legacy_numeric_boolean_basis,
             )
         fallback_sum = (
             pd.Series(fallback, index=row_ids.index)

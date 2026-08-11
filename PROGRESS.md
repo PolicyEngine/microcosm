@@ -96,12 +96,21 @@ and focused-green; only its full rerun and static checks remain.
   562/21, 773/2, 768/1, 495/0, and 795/36 passed/skipped, with no failures or
   errors. Chunk 6 includes three new stacked-spine cases relative to the prior
   baseline; chunk 7 independently repeats the exact 495-test #583 proof.
-- Chunk 4 exposed one downstream consequence across four tests: monetary QBI
-  outputs legitimately use canonical `business_is_sstb` incidence as an
-  allocation basis, but the generic numeric path attempted to fill a nullable
-  boolean with floating `0.0`. Added an explicit transient boolean-to-0/1
-  allocation vector while leaving the stored column boolean, and applied the
-  same helper to both allocation directions.
+- Chunk 4 exposed one downstream consequence across four tests. The first
+  trigger is monetary `qualified_tuition_expenses`, whose allocation basis is
+  canonical boolean `is_full_time_college_student`; three later QBI amounts
+  similarly use `business_is_sstb`. The generic numeric path attempted to fill
+  nullable boolean incidence with floating `0.0`.
+- Declared the exact four monetary-output/boolean-basis pairs and verified both
+  sides against the canonical metric registry. The shared allocator now maps
+  boolean incidence to a transient 0/1 vector without changing stored dtype;
+  it rejects numeric 0/1, mixed, textual, and nonfinite family drift. Only the
+  explicitly selected retiring legacy policy accepts numeric incidence, and
+  then only exact finite `{0, 1}` support.
+- Added direct tuition and QBI placement regressions proving the flagged person
+  receives each monetary total and the basis remains `BooleanDtype`. Applied
+  the same strict normalizer to both allocation directions; its focused five
+  tests pass.
 - Updated the existing multispine producer test to require that object-backed
   assembled `is_female` values become nullable booleans before production
   transfer. All four formerly failing chunk-4 tests now pass in a focused run.

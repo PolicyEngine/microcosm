@@ -21,6 +21,7 @@ from microcosm.build.us_runtime import housing_inputs as housing_inputs_module
 from microcosm.build.us_runtime import multispine_pool as multispine_pool_module
 from microcosm.build.us_runtime import prior_year_income as prior_year_income_module
 from microcosm.build.us_runtime import puf_support as puf_support_module
+from microcosm.build.us_runtime import stacked_spine as stacked_spine_module
 from microcosm.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
@@ -2056,6 +2057,177 @@ def test_source_output_merge_materializes_boolean_without_numeric_coercion() -> 
             outputs,
             operator_name="fixture_boolean",
         )
+
+
+def test_puf_allocation_basis_maps_boolean_incidence_explicitly() -> None:
+    declared_boolean_bases = (
+        puf_support_module._PERSON_OUTPUT_BOOLEAN_INCIDENCE_DISTRIBUTION_BASES
+    )
+    assert declared_boolean_bases == {
+        ("qualified_tuition_expenses", "is_full_time_college_student"),
+        ("sstb_self_employment_income_before_lsr", "business_is_sstb"),
+        ("sstb_unadjusted_basis_qualified_property", "business_is_sstb"),
+        ("sstb_w2_wages_from_qualified_business", "business_is_sstb"),
+    }
+    metric_by_column = {
+        (entity, column): metric
+        for (
+            entity,
+            _family,
+            column,
+            _clone_index,
+        ), metric in stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY.items()
+    }
+    for output_column, basis_column in declared_boolean_bases:
+        assert metric_by_column[("person", output_column)] == (
+            "monetary_sign_separated"
+        )
+        assert metric_by_column[("person", basis_column)] == "boolean_incidence"
+
+    boolean_basis = pd.Series([True, False, pd.NA], dtype="boolean")
+    np.testing.assert_array_equal(
+        puf_support_module._nonnegative_allocation_basis_values(
+            boolean_basis,
+            output_column="qualified_tuition_expenses",
+            basis_column="is_full_time_college_student",
+        ),
+        np.asarray([1.0, 0.0, 0.0]),
+    )
+    object_boolean_basis = pd.Series(
+        [np.bool_(True), None, False],
+        dtype=object,
+    )
+    np.testing.assert_array_equal(
+        puf_support_module._nonnegative_allocation_basis_values(
+            object_boolean_basis,
+            output_column="sstb_w2_wages_from_qualified_business",
+            basis_column="business_is_sstb",
+        ),
+        np.asarray([1.0, 0.0, 0.0]),
+    )
+    np.testing.assert_array_equal(
+        puf_support_module._nonnegative_allocation_basis_values(
+            pd.Series([2.5, -1.0, pd.NA], dtype="Float64"),
+            output_column="qualified_tuition_expenses",
+            basis_column="fixture_amount",
+        ),
+        np.asarray([2.5, 0.0, 0.0]),
+    )
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"qualified_tuition_expenses.*fixture_amount.*"
+            r"monetary_sign_separated.*real numeric values.*builtins\.str"
+        ),
+    ):
+        puf_support_module._nonnegative_allocation_basis_values(
+            pd.Series(["1.0"], dtype=object),
+            output_column="qualified_tuition_expenses",
+            basis_column="fixture_amount",
+        )
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"qualified_tuition_expenses.*fixture_amount.*"
+            r"monetary_sign_separated.*physical booleans"
+        ),
+    ):
+        puf_support_module._nonnegative_allocation_basis_values(
+            pd.Series([True, 1.0], dtype=object),
+            output_column="qualified_tuition_expenses",
+            basis_column="fixture_amount",
+        )
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"qualified_tuition_expenses.*is_full_time_college_student.*"
+            r"boolean_incidence.*physical booleans.*float64"
+        ),
+    ):
+        puf_support_module._nonnegative_allocation_basis_values(
+            pd.Series([0.0, 1.0], dtype=np.float64),
+            output_column="qualified_tuition_expenses",
+            basis_column="is_full_time_college_student",
+        )
+    np.testing.assert_array_equal(
+        puf_support_module._nonnegative_allocation_basis_values(
+            pd.Series([0.0, 1.0, np.nan], dtype=np.float64),
+            output_column="qualified_tuition_expenses",
+            basis_column="is_full_time_college_student",
+            allow_legacy_numeric_boolean=True,
+        ),
+        np.asarray([0.0, 1.0, 0.0]),
+    )
+    with pytest.raises(
+        ValueError,
+        match=r"legacy allocation basis.*boolean_incidence.*outside exact \{0, 1\}",
+    ):
+        puf_support_module._nonnegative_allocation_basis_values(
+            pd.Series([2.0], dtype=np.float64),
+            output_column="qualified_tuition_expenses",
+            basis_column="is_full_time_college_student",
+            allow_legacy_numeric_boolean=True,
+        )
+    with pytest.raises(
+        ValueError,
+        match=r"qualified_tuition_expenses.*fixture_amount.*1 nonfinite",
+    ):
+        puf_support_module._nonnegative_allocation_basis_values(
+            pd.Series([np.inf], dtype=np.float64),
+            output_column="qualified_tuition_expenses",
+            basis_column="fixture_amount",
+        )
+
+    person = pd.DataFrame(
+        {
+            "person_tax_unit_id": [10, 10, 20, 20],
+            "qualified_tuition_expenses": [np.nan, np.nan, np.nan, np.nan],
+            "is_full_time_college_student": pd.Series(
+                [False, True, pd.NA, False],
+                dtype="boolean",
+            ),
+        }
+    )
+    student_basis = person["is_full_time_college_student"].copy()
+    puf_support_module._write_person_tax_unit_totals(
+        person,
+        mask=pd.Series(True, index=person.index),
+        column="qualified_tuition_expenses",
+        totals=pd.Series({10: 100.0, 20: 50.0}),
+        nonnegative=True,
+        fallback_basis_columns=("is_full_time_college_student",),
+    )
+    np.testing.assert_array_equal(
+        person["qualified_tuition_expenses"].to_numpy(),
+        np.asarray([0.0, 100.0, 50.0, 0.0]),
+    )
+    pd.testing.assert_series_equal(
+        person["is_full_time_college_student"],
+        student_basis,
+    )
+
+    qbi_person = pd.DataFrame(
+        {
+            "person_tax_unit_id": [30, 30],
+            "sstb_w2_wages_from_qualified_business": [np.nan, np.nan],
+            "business_is_sstb": pd.Series([False, True], dtype="boolean"),
+        }
+    )
+    qbi_basis = qbi_person["business_is_sstb"].copy()
+    puf_support_module._write_person_tax_unit_totals(
+        qbi_person,
+        mask=pd.Series(True, index=qbi_person.index),
+        column="sstb_w2_wages_from_qualified_business",
+        totals=pd.Series({30: 60.0}),
+        nonnegative=True,
+        fallback_basis_columns=("business_is_sstb",),
+    )
+    np.testing.assert_array_equal(
+        qbi_person["sstb_w2_wages_from_qualified_business"].to_numpy(),
+        np.asarray([0.0, 60.0]),
+    )
+    pd.testing.assert_series_equal(qbi_person["business_is_sstb"], qbi_basis)
 
 
 def _single_post_clone_source_receipt(operator: str) -> dict[str, object]:
