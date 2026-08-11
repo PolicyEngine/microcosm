@@ -18,7 +18,10 @@ evidence, and states the one chartered delta positively (the legacy report
 omits unevidenced gates; the battery records named `evidence_absent` gaps
 that block release candidates only). Gate-entry validation is now
 closed-world — an unknown `gates.json` key is refused rather than silently
-dropped outside the policy hash. The contract itself is documented with a
+dropped outside the policy hash — and the same rule holds inside
+`parameters`: every binding declares the parameter vocabulary it can route
+(`parameter_keys`), and `validate_gate_parameters` refuses any declared
+key outside it when the battery is armed, before a single gate runs. The contract itself is documented with a
 runnable worked example: `docs/gate-battery-contract.md` plus
 `test_gate_battery_contract_example.py`, closing with the onboarding
 checklist of every input a new country supplies. The national build still

@@ -59,6 +59,21 @@ because a silently dropped key (a typo'd `parameters`) would run the gate
 on defaults while the declared intent vanished from the policy hash — an
 unattested threshold.
 
+The same rule holds one level down, inside `parameters`. Every binding
+declares its parameter vocabulary (`parameter_keys` — the set of keys it
+can route into the gate), and `validate_gate_parameters` checks every
+declared entry against it when the battery is armed, before any gate
+runs. A key outside the vocabulary is refused with the entry named: left
+alone it would sit inside `policy_sha256` while governing nothing. A
+binding that declares no vocabulary accepts no parameters.
+
+Reviewed registers appear in `parameters` in one of two forms, by one
+rule: a register that an existing runtime loader owns — with its own
+schema, validation, and rot mechanics — is a separate package resource
+named by a `*_resource` parameter; a plain reviewed list or mapping with
+no loader of its own lives inline, where editing it moves the policy
+hash directly.
+
 Country packages are spec-only. The package tests reject any JSON key
 that looks executable (tokens like `function`, `module`, `handler`, at
 any nesting depth including inside `parameters`) and any string value
@@ -118,8 +133,9 @@ The UK registry
 reference implementation of a country registry. Its bindings adapt the
 `Frame` onto the evidence surface the UK gate modules read, construct
 reviewed policy objects from the frozen declared parameters, hold
-runtime-supplied references to the spec-declared pins, pass undeclared
-parameters through so an unknown key fails closed, and re-mint exactly
+runtime-supplied references to the spec-declared pins, declare the
+parameter vocabulary each evaluator can route (so a stray key is refused
+at arm time, not discovered mid-battery), and re-mint exactly
 two UK-flavored result names onto the shared vocabulary. Every verdict
 is computed by the existing UK gate functions — a binding adapts
 evidence; it never re-implements a comparison. The differential test

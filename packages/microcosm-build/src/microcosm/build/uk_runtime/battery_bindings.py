@@ -120,6 +120,11 @@ class UKGateBinding:
             Declared parameters it does not consume pass through to the
             gate call, so an unknown parameter raises and fails closed —
             the same discipline as the battery's ``FunctionBinding``.
+        parameter_keys: The spec parameter keys the evaluator can route —
+            checked against every declared entry before any gate runs
+            (``validate_gate_parameters``), so a typo'd parameter is
+            refused at arm time instead of surfacing as a mid-battery
+            evaluator error. Fail-closed empty by default.
         artifact_keys: Context artifact keys the gate needs; missing keys
             resolve to ``evidence_absent`` before evaluation.
         needs_frame: Whether the gate reads the phase frame.
@@ -136,6 +141,7 @@ class UKGateBinding:
 
     name: str
     evaluator: Callable[[EvidenceContext, Mapping[str, Any]], GateResult]
+    parameter_keys: frozenset[str] = frozenset()
     artifact_keys: frozenset[str] = frozenset()
     needs_frame: bool = True
     frame_predicate: Callable[[Mapping[str, Any]], bool] | None = None
@@ -218,9 +224,7 @@ def _stage_names_evidence(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> object:
     return {
-        "stage_names": [
-            str(name) for name in context.artifacts["build_stage_names"]
-        ]
+        "stage_names": [str(name) for name in context.artifacts["build_stage_names"]]
     }
 
 
@@ -357,9 +361,7 @@ def _input_mass_reference_evidence(
 ) -> object:
     reference = context.artifacts["input_mass_reference"]
     return {
-        "reference_evidence_sha256": _input_mass_reference_evidence_sha256(
-            reference
-        )
+        "reference_evidence_sha256": _input_mass_reference_evidence_sha256(reference)
     }
 
 
@@ -403,12 +405,14 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     "weights_audit": UKGateBinding(
         name="weights_audit",
         evaluator=_evaluate_weights_audit,
+        parameter_keys=frozenset({"allowed_unweighted"}),
         artifact_keys=frozenset({"fit_weight_records"}),
         needs_frame=False,
     ),
     "release_input_coverage": UKGateBinding(
         name="release_input_coverage",
         evaluator=_evaluate_release_input_coverage,
+        parameter_keys=frozenset({"check"}),
         artifact_keys=frozenset({"coverage_engine"}),
         frame_predicate=_coverage_requires_frame,
         legacy_name="uk_release_input_coverage",
@@ -423,22 +427,27 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     "degenerate_release_surface": UKGateBinding(
         name="degenerate_release_surface",
         evaluator=_evaluate_degenerate_release_surface,
+        parameter_keys=frozenset({"reviewed_exclusions"}),
     ),
     "zero_weight_strata": UKGateBinding(
         name="zero_weight_strata",
         evaluator=_evaluate_zero_weight_strata,
+        parameter_keys=frozenset({"declarations"}),
     ),
     "weight_ess": UKGateBinding(
         name="weight_ess",
         evaluator=_evaluate_weight_ess,
+        parameter_keys=frozenset({"minimum_ess_fraction"}),
     ),
     "weight_ratio": UKGateBinding(
         name="weight_ratio",
         evaluator=_evaluate_weight_ratio,
+        parameter_keys=frozenset({"maximum_max_to_median_ratio"}),
     ),
     "export_surface": UKGateBinding(
         name="export_surface",
         evaluator=_evaluate_export_surface,
+        parameter_keys=frozenset({"allowed_extra_columns", "reviewed_exclusions"}),
         artifact_keys=frozenset({"parity_evidence"}),
         needs_frame=False,
     ),
@@ -451,18 +460,28 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     "target_fit": UKGateBinding(
         name="target_fit",
         evaluator=_evaluate_target_fit,
+        parameter_keys=frozenset({"max_abs_relative_error", "reviewed_exclusions"}),
         artifact_keys=frozenset({"parity_evidence"}),
         needs_frame=False,
     ),
     "input_mass_parity": UKGateBinding(
         name="input_mass_parity",
         evaluator=_evaluate_input_mass_parity,
+        parameter_keys=frozenset(
+            {
+                "reference_sha256",
+                "reference_identity",
+                "reviewed_exclusions_resource",
+                "candidate_name",
+            }
+        ),
         artifact_keys=frozenset({"input_mass_reference", "input_mass_policy"}),
         evidence=_input_mass_reference_evidence,
     ),
     "tail_concentration": UKGateBinding(
         name="tail_concentration",
         evaluator=_evaluate_tail_concentration,
+        parameter_keys=frozenset({"reviewed_exclusions_resource"}),
         artifact_keys=frozenset({"qrf_tail_policy"}),
         legacy_name="qrf_tail_concentration",
     ),

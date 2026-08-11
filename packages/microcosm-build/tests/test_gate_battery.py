@@ -27,6 +27,7 @@ from microcosm.build.gate_battery import (
     GateStatus,
     evaluate_phase,
     gate_signing_key_env,
+    validate_gate_parameters,
 )
 from microcosm.build.trace import compute_composition_fingerprint
 
@@ -281,6 +282,88 @@ class TestFailClosed:
         (outcome,) = report.outcomes
         assert outcome.status is GateStatus.FAILED
         assert "could not be attested" in outcome.result.failures[0]
+
+
+class TestParameterVocabulary:
+    def test_arming_refuses_a_parameter_outside_the_binding_vocabulary(self, tmp_path):
+        manifest = _manifest(
+            [
+                _entry(
+                    "t",
+                    gate="input_mass_parity",
+                    parameters={"relative_tolerence": 0.5},  # typo'd on purpose
+                )
+            ],
+            ["terminal"],
+        )
+        with pytest.raises(ValueError, match=r"'t'.*relative_tolerence"):
+            GateBatteryRun(
+                manifest,
+                release_id="xx-test-build",
+                report_path=tmp_path / "terminal_gates.json",
+                release_candidate=True,
+            )
+        with pytest.raises(ValueError, match=r"'t'.*relative_tolerence"):
+            evaluate_phase(manifest, "terminal", EvidenceContext())
+
+    def test_an_unbound_gate_keeps_its_named_gap_whatever_it_declares(self):
+        manifest = _manifest(
+            [
+                _entry(
+                    "t",
+                    gate="macro_realism",
+                    parameters={"bands": {"gdp": [0.9, 1.1]}},
+                )
+            ],
+            ["terminal"],
+        )
+        report = evaluate_phase(manifest, "terminal", EvidenceContext())
+        (outcome,) = report.outcomes
+        assert outcome.status is GateStatus.EVIDENCE_ABSENT
+
+    def test_a_binding_without_a_vocabulary_accepts_no_parameters(self):
+        class VocabularylessBinding:
+            name = "support"
+
+            def required_artifacts(self, parameters):
+                return frozenset()
+
+            def requires_frame(self, parameters):
+                return False
+
+            def evaluate(self, context, parameters):
+                return GateResult(name="support", passed=True)
+
+            def evidence_payload(self, context, parameters):
+                return None
+
+        manifest = _manifest(
+            [_entry("t", gate="support", parameters={"anything": 1})],
+            ["terminal"],
+        )
+        with pytest.raises(ValueError, match=r"'t'.*anything"):
+            evaluate_phase(
+                manifest,
+                "terminal",
+                EvidenceContext(),
+                registry={"support": VocabularylessBinding()},
+            )
+
+    def test_the_validator_is_callable_standalone(self):
+        # Consumers arming a battery by hand can pre-validate a spec against
+        # a registry without constructing a run.
+        manifest = _manifest(
+            [
+                _entry(
+                    "t",
+                    gate="input_mass_parity",
+                    parameters={"relative_tolerence": 0.5},
+                )
+            ],
+            ["terminal"],
+        )
+        with pytest.raises(ValueError, match=r"'t'.*relative_tolerence"):
+            validate_gate_parameters(manifest, DEFAULT_REGISTRY)
 
 
 class TestEvidenceAbsence:

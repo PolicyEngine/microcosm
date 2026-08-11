@@ -24,6 +24,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build import load_country_spec
+from microcosm.build.country_spec import GatesManifest
 from microcosm.build.gate_battery import (
     BlockingMode,
     EvidenceContext,
@@ -33,6 +34,7 @@ from microcosm.build.gate_battery import (
     _evaluate_gate,
     evaluate_phase,
     gate_signing_key_env,
+    validate_gate_parameters,
 )
 from microcosm.build.gates import FitWeightRecord, GateResult
 from microcosm.build.uk_runtime.battery_bindings import (
@@ -136,9 +138,7 @@ def _reference() -> UKInputMassReference:
 
 
 def _input_mass_policy() -> UKInputMassParityPolicy:
-    return UKInputMassParityPolicy(
-        relative_tolerance=0.5, minimum_reference_total=0.0
-    )
+    return UKInputMassParityPolicy(relative_tolerance=0.5, minimum_reference_total=0.0)
 
 
 def _qrf_policy() -> UKQRFTailConcentrationPolicy:
@@ -158,6 +158,7 @@ def _fixture_coverage_registry():
         "release_input_coverage": UKGateBinding(
             name="release_input_coverage",
             evaluator=lambda context, parameters: _coverage(),
+            parameter_keys=frozenset({"check"}),
             legacy_name="uk_release_input_coverage",
             needs_frame=False,
         ),
@@ -224,9 +225,9 @@ def _assert_identical_verdicts(legacy, battery) -> None:
         for outcome in battery.outcomes
         if outcome.status in (GateStatus.PASSED, GateStatus.FAILED)
     ]
-    assert [
-        LEGACY_NAMES.get(o.entry.gate, o.entry.gate) for o in evaluated
-    ] == [result.name for result in legacy.results]
+    assert [LEGACY_NAMES.get(o.entry.gate, o.entry.gate) for o in evaluated] == [
+        result.name for result in legacy.results
+    ]
     for outcome in evaluated:
         legacy_result = legacy_by_name[
             LEGACY_NAMES.get(outcome.entry.gate, outcome.entry.gate)
@@ -274,9 +275,9 @@ class TestUKCompatibility:
         report = run.report_payload()
 
         assert set(report["gates"]) == {entry.id for entry in uk_gates.gates}
-        assert {
-            gate["status"] for gate in report["gates"].values()
-        } == {"evidence_absent"}
+        assert {gate["status"] for gate in report["gates"].values()} == {
+            "evidence_absent"
+        }
         assert report["shippable"] is False
         with pytest.raises(GateBatteryBlockedError):
             run.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
@@ -286,9 +287,7 @@ class TestUKCompatibility:
             uk_gates, "terminal", EvidenceContext(), registry=UK_GATE_REGISTRY
         )
         reasons = {o.entry.id: o.reason for o in phase.outcomes}
-        assert reasons["uk_weights_audit"] == (
-            "missing evidence: fit_weight_records"
-        )
+        assert reasons["uk_weights_audit"] == ("missing evidence: fit_weight_records")
         assert reasons["uk_input_mass_parity"] == (
             "missing evidence: frame, input_mass_policy, input_mass_reference"
         )
@@ -305,9 +304,7 @@ class TestDifferentialAgainstLegacyBattery:
         _assert_identical_verdicts(legacy, battery)
         by_id = {o.entry.id: o for o in battery.outcomes}
         passed = [
-            entry_id
-            for entry_id, o in by_id.items()
-            if o.status is GateStatus.PASSED
+            entry_id for entry_id, o in by_id.items() if o.status is GateStatus.PASSED
         ]
         assert len(passed) == 10
         # The armed QRF gate fails identically on both sides: the tiny
@@ -329,9 +326,7 @@ class TestDifferentialAgainstLegacyBattery:
         _assert_identical_verdicts(legacy, battery)
         audit = {o.entry.id: o for o in battery.outcomes}["uk_weights_audit"]
         assert audit.status is GateStatus.FAILED
-        assert "an absent audit is not a passing audit" in (
-            audit.result.failures[0]
-        )
+        assert "an absent audit is not a passing audit" in (audit.result.failures[0])
 
     def test_seeded_defects_fail_identically(self) -> None:
         blown = _tables(weights=[1.0, 1.0, 1.0, 1.0e9])
@@ -346,11 +341,7 @@ class TestDifferentialAgainstLegacyBattery:
         )
 
         _assert_identical_verdicts(legacy, battery)
-        failed = {
-            o.entry.id
-            for o in battery.outcomes
-            if o.status is GateStatus.FAILED
-        }
+        failed = {o.entry.id for o in battery.outcomes if o.status is GateStatus.FAILED}
         assert {
             "uk_weight_ratio",
             "uk_weights_audit",
@@ -400,8 +391,7 @@ class TestUnevidencedArms:
 
         assert battery.blocking_outcomes(release_candidate=False) == ()
         blocked = {
-            o.entry.id
-            for o in battery.blocking_outcomes(release_candidate=True)
+            o.entry.id for o in battery.blocking_outcomes(release_candidate=True)
         }
         assert blocked == set(absent)
 
@@ -411,9 +401,7 @@ class TestUnevidencedArms:
         # blocks release candidates. Same shipping decision, different
         # taxonomy — asserted so the A2 review can lean on it.
         person, benunit, household = _tables()
-        dataset = SimpleNamespace(
-            person=person, benunit=benunit, household=household
-        )
+        dataset = SimpleNamespace(person=person, benunit=benunit, household=household)
         legacy = uk_terminal_gate_report(
             dataset,
             object(),
@@ -502,9 +490,7 @@ class TestPreflightBindings:
             EvidenceContext(
                 artifacts={
                     "coverage_engine": None,
-                    "build_stage_names": tuple(
-                        sorted(manifest.required_build_stages)
-                    ),
+                    "build_stage_names": tuple(sorted(manifest.required_build_stages)),
                 }
             ),
             registry=UK_GATE_REGISTRY,
@@ -533,6 +519,49 @@ class TestPreflightBindings:
         assert "omits required release family stage(s)" in stages.result.failures[0]
 
 
+class TestParameterVocabulary:
+    def test_every_declared_uk_parameter_is_inside_its_binding_vocabulary(
+        self, uk_gates
+    ) -> None:
+        # The whole shipped spec arms against the shipped registry: a
+        # parameter either routes into its gate or the battery refuses to
+        # start. Guards the vocabulary against drifting behind gates.json.
+        validate_gate_parameters(uk_gates, UK_GATE_REGISTRY)
+
+    def test_a_stray_preflight_parameter_is_refused_at_arm_time(self) -> None:
+        # The preflight coverage evaluator reads `check` selectively rather
+        # than splatting, so before vocabulary validation an extra key here
+        # was the one place a declared parameter could ship inside
+        # policy_sha256 while governing nothing.
+        manifest = GatesManifest.from_mapping(
+            {
+                "version": 1,
+                "country": "uk",
+                "policy": "test battery",
+                "phases": ["preflight"],
+                "gates": [
+                    {
+                        "id": "uk_manifest_current",
+                        "gate": "release_input_coverage",
+                        "phase": "preflight",
+                        "criticality": "release_blocking",
+                        "parameters": {
+                            "check": "manifest_current",
+                            "cheks": "manifest_current",  # typo'd on purpose
+                        },
+                    }
+                ],
+            }
+        )
+        with pytest.raises(ValueError, match=r"'uk_manifest_current'.*cheks"):
+            evaluate_phase(
+                manifest,
+                "preflight",
+                EvidenceContext(artifacts={"coverage_engine": None}),
+                registry=UK_GATE_REGISTRY,
+            )
+
+
 class TestBindingUnits:
     def test_only_the_declared_legacy_name_is_reminted(self) -> None:
         binding = UKGateBinding(
@@ -559,9 +588,7 @@ class TestBindingUnits:
         assert checked.passed is False
         assert checked.details["returned_gate"] == "weight_ess"
 
-    def test_frozen_spec_parameters_construct_reviewed_strata(
-        self, uk_gates
-    ) -> None:
+    def test_frozen_spec_parameters_construct_reviewed_strata(self, uk_gates) -> None:
         # The declared parameters arrive frozen (mappings as proxies, lists
         # as tuples); the binding must build the reviewed declarations from
         # exactly that shape.
@@ -571,9 +598,7 @@ class TestBindingUnits:
         )
         entry = {e.id: e for e in uk_gates.gates}["uk_zero_weight_strata"]
         binding = UK_GATE_REGISTRY["zero_weight_strata"]
-        result = binding.evaluate(
-            EvidenceContext(frame=frame), entry.parameters
-        )
+        result = binding.evaluate(EvidenceContext(frame=frame), entry.parameters)
         assert result.passed is True
 
     def test_unknown_declaration_key_fails_closed(self, uk_gates) -> None:
