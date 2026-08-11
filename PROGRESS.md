@@ -8,14 +8,11 @@ nullable booleans, and the shared source-output merge preserves twelve
 physical-boolean callback outputs as nullable booleans instead of widening
 CPS-only alignments to `object`. A registry-driven guard now rejects every
 late callback output whose physical dtype disagrees with its declared metric
-family before the DAG records the producer. The 40-test focused proof and the
-exact 495-test PR #583 spine-blindness proof both pass with zero skips,
-failures, or errors. The full-workspace chunk matrix is in progress. Its first
-chunk-3 pass exposed one stale adult-care assertion that required the former
-`object` widening; the test now requires nullable boolean storage and passes
-in isolation. The corrected chunk 3 and chunks 1, 2, 5, 6, 7, and 8 are
-green. Chunk 4 exposed a downstream allocation-basis assumption, now fixed
-and focused-green; only its full rerun and static checks remain.
+family before the DAG records the producer. Local proof is complete on the
+final implementation: focused 45/45, exact PR #583 495/495, and all 225
+workspace test files at 5,914 passed plus 68 skipped with zero failures or
+errors. Repository-wide ruff, scoped format, and range-diff checks pass. No
+build was run; the only next step is the external 1% smoke-r7 certification.
 
 ## Done
 
@@ -114,9 +111,32 @@ and focused-green; only its full rerun and static checks remain.
 - Updated the existing multispine producer test to require that object-backed
   assembled `is_female` values become nullable booleans before production
   transfer. All four formerly failing chunk-4 tests now pass in a focused run.
+- Re-ran the expanded focused proof on the final implementation: 45 passed, 0
+  skipped, 0 failed, and 0 errors.
+- Re-ran PR #583 on the final implementation: exactly 495 passed, 0 skipped, 0
+  failed, and 0 errors.
+- Re-ran every one of the 225 workspace test files on the final implementation
+  in exact chunks of 32, 32, 32, 32, 32, 29, 1, and 35 files. Exact
+  passed/skipped counts were 711/2, 562/21, 779/4, 1,031/2, 773/2, 768/1,
+  495/0, and 795/36: aggregate 5,914 passed and 68 skipped, with zero failures
+  or errors among 5,982 collected cases.
+- Passed repository-wide `ruff check .`, `ruff format --check` over all nine
+  Python files changed since `14de14ce`, and `git diff --check
+  14de14ce..HEAD`. The worktree was clean before this progress update.
+- Gradeable smoke-r7 prediction: the first batch-4 merge for
+  `farm_rent_income_would_be_qualified` will assign boolean predictions into a
+  nullable-boolean incumbent instead of `float64`. All eight primary QBI flags
+  and all twelve source-produced flags will remain physical booleans; the nine
+  formerly object-widened source flags will use `BooleanDtype`. The registry
+  guard should accept all 20 unique late boolean targets and all 163
+  registered late-write occurrences. Smoke r7 should complete all 38
+  late-producer DAG nodes and reach at least phase `transferred`; absent an
+  unrelated later defect, it should continue through `derived`, `seeded`,
+  `simulated`, `terminal_gates`, `terminal_receipt_written`, and
+  `publication_completed`.
 
 ## Next
 
-- Rerun corrected chunk 4, then run ruff, format, and diff checks.
-- Commit the full proof receipts and clean-worktree handoff state.
-- Record a gradeable smoke-r7 prediction and final verdict.
+- Run the external 1% smoke-r7 certification using the committed train tip.
+- Confirm the logbook row includes `transferred` (minimum prediction) and does
+  not contain a post-PUF dtype-family assignment error.
