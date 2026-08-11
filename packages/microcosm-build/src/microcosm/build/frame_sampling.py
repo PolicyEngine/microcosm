@@ -102,8 +102,6 @@ def _aligned_int_array(
             f"{source_name} {label} must be one-dimensional with one entry "
             f"per household row ({length}); got shape {array.shape}."
         )
-    if pd.isna(array).any():
-        raise ValueError(f"{source_name} {label} must not contain missing values.")
     return array
 
 
@@ -141,7 +139,11 @@ def sample_frame_households(
             within a unit.  When absent, one implicit stratum covers every
             unit and the RNG stream matches the unstratified draw exactly.
         forced_unit_ids: Units always included in the selection, receipted,
-            added after the draw so the RNG stream is unaffected.
+            added after the draw so the RNG stream is unaffected.  Forced
+            units are identity pins, not a sample: the floors-to-zero refusal
+            deliberately counts only the proportional draw, so a fraction
+            whose draw floors to zero fails closed even when forced retention
+            alone would realize a non-empty frame.
         unit_noun: Noun used in the floors-to-zero refusal.
         floor_context: Requirement owner named in the floors-to-zero refusal.
 
@@ -325,10 +327,18 @@ def sample_frame_households(
         realized_units_by_group: dict[str, int] = {key: 0 for key in group_keys}
         for unit in selected_units.tolist():
             realized_units_by_group[stratum_of_unit[unit]] += 1
+        added_beyond_draw_by_group: dict[str, int] = {key: 0 for key in group_keys}
+        for unit in force_added.tolist():
+            added_beyond_draw_by_group[stratum_of_unit[unit]] += 1
+        # realized = requested + added_beyond_draw, per group: forced
+        # retention can push a stratum past its floor request, so the
+        # receipt shows the arithmetic instead of leaving the excess to be
+        # reconciled against the global forced_unit_inclusions block.
         receipt["strata"] = {
             str(key): {
                 "eligible_units": int(len(groups[key])),
                 "requested_units": requested_by_group[key],
+                "added_beyond_draw": added_beyond_draw_by_group[key],
                 "realized_units": realized_units_by_group[key],
             }
             for key in group_keys
@@ -355,6 +365,11 @@ def normalize_sampled_household_mass(
     if not np.isfinite(sampled_mass) or sampled_mass <= 0.0:
         raise ValueError(
             f"{source_name} sampled household mass must be positive and finite."
+        )
+    if not np.isfinite(target_mass) or float(target_mass) <= 0.0:
+        raise ValueError(
+            f"{source_name} target household mass must be positive and "
+            f"finite; got {target_mass!r}."
         )
     factor = float(target_mass / sampled_mass)
     normalized_weights = weights.with_values(weights.values * factor, weights.kind)

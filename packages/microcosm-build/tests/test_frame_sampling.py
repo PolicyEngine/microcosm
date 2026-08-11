@@ -178,9 +178,11 @@ def test_strata_draw_is_proportional_per_group() -> None:
     strata_block = receipt["strata"]
     assert strata_block["base"]["eligible_units"] == 6
     assert strata_block["base"]["requested_units"] == 3
+    assert strata_block["base"]["added_beyond_draw"] == 0
     assert strata_block["base"]["realized_units"] == 3
     assert strata_block["spi"]["eligible_units"] == 4
     assert strata_block["spi"]["requested_units"] == 2
+    assert strata_block["spi"]["added_beyond_draw"] == 0
     assert strata_block["spi"]["realized_units"] == 2
     assert receipt["sampling_unit"]["realized_unit_count"] == 5
 
@@ -246,6 +248,34 @@ def test_forced_units_are_added_after_the_draw() -> None:
     )
 
 
+def test_strata_receipt_shows_the_forced_retention_arithmetic() -> None:
+    """Forced units can push a stratum past its floor request; the receipt
+    carries the per-group excess so realized = requested + added_beyond_draw
+    reads directly instead of needing reconciliation against the global
+    forced_unit_inclusions block."""
+
+    frame, units, strata = _clone_family_frame()
+    _, receipt = sample_frame_households(
+        frame,
+        fraction=0.3,
+        seed=11,
+        source_name="UK",
+        unit_ids=units,
+        unit_strata=strata,
+        forced_unit_ids=(101, 110),
+    )
+    strata_block = receipt["strata"]
+    for group in strata_block.values():
+        assert (
+            group["realized_units"]
+            == group["requested_units"] + group["added_beyond_draw"]
+        )
+    assert (
+        sum(group["added_beyond_draw"] for group in strata_block.values())
+        == (receipt["forced_unit_inclusions"]["added_beyond_draw_count"])
+    )
+
+
 def test_forced_unit_absent_from_inventory_fails_closed() -> None:
     frame, units, _ = _clone_family_frame()
     with pytest.raises(ValueError, match="absent from the unit inventory"):
@@ -274,6 +304,16 @@ def test_normalize_sampled_household_mass_restores_full_mass() -> None:
     record = normalized.mass_log[-1]
     assert record.entity == "household"
     assert "composition-preserving" in record.reason
+
+
+def test_normalize_rejects_a_degenerate_target_mass() -> None:
+    frame = _uk_shaped_frame(list(range(101, 141)))
+    sampled, _ = sample_frame_households(frame, fraction=0.5, seed=3, source_name="UK")
+    for bad_target in (float("nan"), float("inf"), 0.0, -10.0):
+        with pytest.raises(ValueError, match="target household mass"):
+            normalize_sampled_household_mass(
+                sampled, target_mass=bad_target, source_name="UK"
+            )
 
 
 def test_sample_fraction_and_seed_validation() -> None:

@@ -108,6 +108,19 @@ def _int_column(values: pd.Series, *, label: str) -> np.ndarray:
     return values.to_numpy(dtype=np.int64)
 
 
+def _str_column(values: pd.Series, *, label: str) -> np.ndarray:
+    if values.isna().any():
+        raise ValueError(f"UK sample: {label} contains missing values.")
+    array = values.to_numpy(dtype=object)
+    if not all(isinstance(value, str) and value for value in array):
+        raise ValueError(
+            f"UK sample: {label} must contain non-empty strings; numeric "
+            "codes are refused because equal codes of different dtypes "
+            "(1 vs 1.0) would silently split one stratum into two."
+        )
+    return array
+
+
 def uk_source_family_units(
     frame: Frame,
 ) -> tuple[np.ndarray, tuple[int, ...], int]:
@@ -304,13 +317,11 @@ def sample_uk_national_frame(
     household = frame.table("household")
     units, forced, multiplier = uk_source_family_units(frame)
     household_ids = _int_column(household["household_id"], label="household_id")
-    region_values = household[_REGION_COLUMN]
-    if region_values.isna().any():
-        raise ValueError(f"UK sample: {_REGION_COLUMN} contains missing values.")
+    region_values = _str_column(household[_REGION_COLUMN], label=_REGION_COLUMN)
     region_by_household = dict(
         zip(
             household_ids.tolist(),
-            region_values.to_numpy().tolist(),
+            region_values.tolist(),
             strict=True,
         )
     )
@@ -340,10 +351,23 @@ def sample_uk_national_frame(
         )
         # The typed weights are authoritative; refresh the exported column in
         # place so its position — and therefore the staging payload's column
-        # order — is preserved.
+        # order — is preserved. The assignment relies on Frame.table returning
+        # the stored table, so verify it took rather than trust the invariant
+        # from two modules away (validate_uk_national_frame would also catch
+        # a stale column, but the failure should name its cause here).
         sampled.table("household")["household_weight"] = sampled.weights_for(
             "household"
         ).values
+        refreshed = sampled.table("household")["household_weight"].to_numpy(
+            dtype="float64"
+        )
+        if not np.array_equal(refreshed, sampled.weights_for("household").values):
+            raise ValueError(
+                "UK sample: the in-place household_weight refresh did not "
+                "persist; Frame.table stopped returning live table "
+                "references, so the exported column would keep its "
+                "pre-normalization values."
+            )
         receipt["normalization_factor"] = factor
         receipt["normalized_household_mass"] = float(
             sampled.weights_for("household").total
