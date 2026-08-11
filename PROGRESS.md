@@ -13,7 +13,9 @@ exact 495-test PR #583 spine-blindness proof both pass with zero skips,
 failures, or errors. The full-workspace chunk matrix is in progress. Its first
 chunk-3 pass exposed one stale adult-care assertion that required the former
 `object` widening; the test now requires nullable boolean storage and passes
-in isolation. Chunk 3 will be rerun in full.
+in isolation. The corrected chunk 3 and chunks 1, 2, 5, 6, 7, and 8 are
+green. Chunk 4 exposed a downstream allocation-basis assumption, now fixed
+and focused-green; only its full rerun and static checks remain.
 
 ## Done
 
@@ -88,10 +90,24 @@ in isolation. Chunk 3 will be rerun in full.
   coverage: it asserted that a CPS-only physical boolean widened to `object`.
   Updated it to require `BooleanDtype`, matching the canonical family and the
   shared-merge regression, and passed the corrected test in isolation.
+- Passed corrected chunk 3: 779 passed and 4 skipped, with no failures or
+  errors.
+- Passed full-workspace chunks 1, 2, 5, 6, 7, and 8 respectively at 711/2,
+  562/21, 773/2, 768/1, 495/0, and 795/36 passed/skipped, with no failures or
+  errors. Chunk 6 includes three new stacked-spine cases relative to the prior
+  baseline; chunk 7 independently repeats the exact 495-test #583 proof.
+- Chunk 4 exposed one downstream consequence across four tests: monetary QBI
+  outputs legitimately use canonical `business_is_sstb` incidence as an
+  allocation basis, but the generic numeric path attempted to fill a nullable
+  boolean with floating `0.0`. Added an explicit transient boolean-to-0/1
+  allocation vector while leaving the stored column boolean, and applied the
+  same helper to both allocation directions.
+- Updated the existing multispine producer test to require that object-backed
+  assembled `is_female` values become nullable booleans before production
+  transfer. All four formerly failing chunk-4 tests now pass in a focused run.
 
 ## Next
 
-- Run all 225 workspace test files in eight exact-count chunks, followed by
-  rerunning corrected chunk 3, followed by ruff, format, and diff checks.
+- Rerun corrected chunk 4, then run ruff, format, and diff checks.
 - Commit the full proof receipts and clean-worktree handoff state.
 - Record a gradeable smoke-r7 prediction and final verdict.

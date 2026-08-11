@@ -1656,7 +1656,7 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
     assert sum(calls[name] for name in POOL_SOURCE_OPERATOR_ORDER) == 22
 
 
-def test_object_backed_is_female_reaches_production_transfer_fit(
+def test_object_backed_is_female_becomes_nullable_before_production_transfer_fit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: Counter[str] = Counter()
@@ -1675,7 +1675,7 @@ def test_object_backed_is_female_reaches_production_transfer_fit(
     assert all(isinstance(value, (bool, np.bool_)) for value in assembled.dropna())
     for stage in (stages["prepared"], produced):
         is_female = stage.person["is_female"]
-        assert pd.api.types.is_object_dtype(is_female.dtype)
+        assert is_female.dtype == pd.BooleanDtype()
         assert not is_female.isna().any()
         assert all(isinstance(value, (bool, np.bool_)) for value in is_female)
 
@@ -1685,7 +1685,7 @@ def test_object_backed_is_female_reaches_production_transfer_fit(
     )
     assert role == "puf_tax_detail"
     assert len(donor.person) == 6
-    assert pd.api.types.is_object_dtype(donor.person["is_female"].dtype)
+    assert donor.person["is_female"].dtype == pd.BooleanDtype()
 
     monkeypatch.setattr(
         acs_transfer_module,

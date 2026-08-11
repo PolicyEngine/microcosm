@@ -3350,6 +3350,23 @@ def _puf_earnings_allocation_mask(
     return person_puf_mask & age.ge(ACS_PUMS_EARNINGS_MINIMUM_AGE)
 
 
+def _nonnegative_allocation_basis_values(values: pd.Series) -> np.ndarray:
+    """Return temporary numeric weights without changing a basis column's dtype.
+
+    Some QBI monetary outputs are distributed using a canonical boolean
+    incidence column such as ``business_is_sstb``.  Nullable booleans cannot
+    accept a floating fill value, so map that declared incidence semantics to
+    0/1 only in the transient allocation vector.  The stored column remains a
+    physical boolean and is still checked as such by the late-output guard.
+    """
+
+    if pd.api.types.is_bool_dtype(values.dtype):
+        numeric = values.astype("Float64")
+    else:
+        numeric = pd.to_numeric(values, errors="coerce")
+    return numeric.fillna(0.0).clip(lower=0.0).to_numpy(dtype=np.float64)
+
+
 def _write_person_tax_unit_boolean_counts(
     person: pd.DataFrame,
     *,
@@ -3376,12 +3393,7 @@ def _write_person_tax_unit_boolean_counts(
     for basis_column in fallback_basis_columns:
         if basis_column not in person.columns:
             continue
-        score += (
-            pd.to_numeric(person.loc[mask, basis_column], errors="coerce")
-            .fillna(0.0)
-            .clip(lower=0.0)
-            .to_numpy(dtype=np.float64)
-        )
+        score += _nonnegative_allocation_basis_values(person.loc[mask, basis_column])
 
     placement = pd.DataFrame(
         {
@@ -3448,11 +3460,8 @@ def _write_person_tax_unit_totals(
         for basis_column in fallback_basis_columns:
             if basis_column not in person.columns:
                 continue
-            fallback += (
-                pd.to_numeric(person.loc[mask, basis_column], errors="coerce")
-                .fillna(0.0)
-                .clip(lower=0.0)
-                .to_numpy(dtype=np.float64)
+            fallback += _nonnegative_allocation_basis_values(
+                person.loc[mask, basis_column]
             )
         fallback_sum = (
             pd.Series(fallback, index=row_ids.index)
