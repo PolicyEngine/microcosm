@@ -234,9 +234,16 @@ class GateBinding(Protocol):
     is the country-agnostic adapter that knows what evidence the comparison
     needs, where in the :class:`EvidenceContext` it lives, and how declared
     spec parameters map onto gate keyword arguments.
+
+    ``parameter_keys`` is the binding's declared parameter vocabulary: the
+    complete set of spec ``parameters`` keys it can route into the gate.
+    :func:`validate_gate_parameters` refuses any declared key outside it
+    before a single gate runs, so a typo'd or speculative parameter cannot
+    sit inside ``policy_sha256`` while governing nothing.
     """
 
     name: str
+    parameter_keys: frozenset[str]
 
     def required_artifacts(self, parameters: Mapping[str, Any]) -> frozenset[str]:
         """Artifact keys the gate needs, checked before evaluation."""
@@ -273,6 +280,9 @@ class FunctionBinding:
         name: The allowlisted gate name.
         gate: The pure gate function returning a
             :class:`~microcosm.build.gates.GateResult` whose ``name`` matches.
+        parameter_keys: The spec parameter keys this binding routes — the
+            gate function's declarable keyword surface. Fail-closed empty by
+            default: a binding that declares nothing accepts no parameters.
         artifact_arguments: Gate keyword argument -> context artifact key.
         frame_argument: Gate keyword argument receiving the phase frame, or
             ``None`` for frameless gates.
@@ -282,6 +292,7 @@ class FunctionBinding:
 
     name: str
     gate: Callable[..., GateResult]
+    parameter_keys: frozenset[str] = frozenset()
     artifact_arguments: Mapping[str, str] = field(default_factory=dict)
     frame_argument: str | None = None
     evidence: Callable[[EvidenceContext, Mapping[str, Any]], object] | None = None
@@ -332,11 +343,21 @@ DEFAULT_REGISTRY: Mapping[str, GateBinding] = {
     "weights_audit": FunctionBinding(
         name="weights_audit",
         gate=weights_audit_gate,
+        parameter_keys=frozenset({"allowed_unweighted"}),
         artifact_arguments={"fit_records": "fit_weight_records"},
     ),
     "input_mass_parity": FunctionBinding(
         name="input_mass_parity",
         gate=input_mass_parity_gate,
+        parameter_keys=frozenset(
+            {
+                "candidate_name",
+                "reference_name",
+                "relative_tolerance",
+                "minimum_reference_total",
+                "reviewed_exclusions",
+            }
+        ),
         artifact_arguments={
             "candidate_totals": "candidate_input_mass_totals",
             "reference_totals": "reference_input_mass_totals",
@@ -346,6 +367,14 @@ DEFAULT_REGISTRY: Mapping[str, GateBinding] = {
     "tail_concentration": FunctionBinding(
         name="tail_concentration",
         gate=tail_concentration_gate,
+        parameter_keys=frozenset(
+            {
+                "top_k",
+                "max_top_share",
+                "min_nonzero_records",
+                "reviewed_exclusions",
+            }
+        ),
         artifact_arguments={
             "column_values": "tail_concentration_values",
             "column_weights": "tail_concentration_weights",
@@ -597,6 +626,43 @@ def _resolve_entry(
     )
 
 
+def validate_gate_parameters(
+    gates: GatesManifest,
+    registry: Mapping[str, GateBinding],
+) -> None:
+    """Refuse declared parameters outside their binding's vocabulary.
+
+    The entry-level schema check (``GateSelectionSpec.from_mapping``) closes
+    the world one level up; this closes it inside ``parameters``, where the
+    same argument applies: a key the binding cannot route would ship inside
+    ``policy_sha256`` while governing nothing — declared intent with no
+    effect on the verdict. Runs over the whole manifest so a typo in any
+    phase surfaces before the first gate does.
+
+    Entries whose gate has no binding are skipped: they resolve to
+    ``evidence_absent`` and run nothing, so their parameters govern nothing
+    *visibly*. A binding that does not declare ``parameter_keys`` accepts no
+    parameters — fail closed, never fail open.
+
+    Raises:
+        ValueError: Naming the first offending entry and its unknown keys.
+    """
+
+    for entry in gates.gates:
+        binding = registry.get(entry.gate)
+        if binding is None:
+            continue
+        allowed = getattr(binding, "parameter_keys", frozenset())
+        unknown = sorted(set(entry.parameters) - set(allowed))
+        if unknown:
+            raise ValueError(
+                f"gate entry {entry.id!r} declares parameters {unknown} that "
+                f"the {entry.gate!r} binding does not route; vocabulary: "
+                f"{sorted(allowed)}. A silently ignored parameter would sit "
+                "inside policy_sha256 while governing nothing."
+            )
+
+
 def evaluate_phase(
     gates: GatesManifest,
     phase: str,
@@ -612,14 +678,17 @@ def evaluate_phase(
     persistence, via :class:`GateBatteryRun`.
 
     Raises:
-        ValueError: If ``phase`` is not in the manifest's declared order —
-            a configuration error, not a gate verdict.
+        ValueError: If ``phase`` is not in the manifest's declared order, or
+            if any entry declares parameters outside its binding's
+            vocabulary (:func:`validate_gate_parameters`) — configuration
+            errors, not gate verdicts.
     """
 
     if phase not in gates.phases:
         raise ValueError(
             f"phase {phase!r} is not in the declared order {list(gates.phases)}."
         )
+    validate_gate_parameters(gates, registry)
     outcomes = tuple(
         _resolve_entry(entry, context, registry)
         for entry in gates.gates
@@ -693,6 +762,7 @@ class GateBatteryRun:
     ) -> None:
         if not isinstance(release_id, str) or not release_id.strip():
             raise ValueError("release_id must be a non-empty string.")
+        validate_gate_parameters(gates, registry)
         self._gates = gates
         self._release_id = release_id
         self._report_path = Path(report_path)

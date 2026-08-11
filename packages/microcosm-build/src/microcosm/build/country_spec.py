@@ -102,6 +102,15 @@ ALLOWED_GATE_FUNCTIONS = frozenset(
 
 ALLOWED_GATE_CRITICALITIES = frozenset({"release_blocking", "diagnostic"})
 
+#: The complete key vocabulary of one ``gates.json`` gate entry. Entries are
+#: validated closed-world: an unknown key is refused rather than ignored,
+#: because a silently dropped key (a typo'd ``parameters``, a speculative
+#: extension) would run the gate on defaults while the declared intent
+#: vanished from ``policy_sha256`` — an unattested threshold.
+_GATE_ENTRY_KEYS = frozenset(
+    {"id", "gate", "phase", "criticality", "parameters", "not_applicable", "notes"}
+)
+
 #: Build phases a gate selection may bind to — the shared vocabulary that
 #: keeps gate reports comparable across countries. The *order* phases run in
 #: is country data (the ``phases`` header of ``gates.json``), never a global
@@ -411,6 +420,19 @@ class GateSelectionSpec:
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> GateSelectionSpec:
         raw = _require_mapping(raw, context="gates.json gate entry")
+        unknown = sorted(set(raw) - _GATE_ENTRY_KEYS)
+        if unknown:
+            label = raw.get("id")
+            entry_context = (
+                f"gates.json gate entry {label!r}"
+                if isinstance(label, str) and label
+                else "gates.json gate entry"
+            )
+            raise ValueError(
+                f"{entry_context} has unknown keys "
+                f"{unknown}; allowed: {sorted(_GATE_ENTRY_KEYS)}. A silently "
+                "dropped key would ship outside the policy hash."
+            )
         gate_id = _require_non_empty_string(
             raw.get("id"), field_name="id", context="gates.json gate entry"
         )

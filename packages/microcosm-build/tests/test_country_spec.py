@@ -21,6 +21,7 @@ from microcosm.build import (
     load_country_spec,
 )
 from microcosm.build.trace import canonical_json_bytes
+from microcosm.build.uk_runtime import terminal_gates, weighted_integrity
 
 GOLDEN = Path(__file__).parent / "golden" / "be_country_spec.json"
 
@@ -239,6 +240,7 @@ class TestExistingPackagesGeneralize:
             "degenerate_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
             "efrs_parity_reference.json",
+            "gates.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
@@ -247,6 +249,118 @@ class TestExistingPackagesGeneralize:
             "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
             "uk_local_target_census.json",
+        )
+
+
+class TestUKGatesManifest:
+    """The UK battery declared as data (microcosm#611 increment 1).
+
+    Every threshold in ``uk/gates.json`` is pinned against the module
+    constant the legacy battery still runs on, so spec and code cannot
+    drift apart during the migration window (the constants retire when
+    the national build swaps onto the battery executor).
+    """
+
+    @pytest.fixture(scope="class")
+    def manifest(self):
+        return load_country_spec("uk").gates
+
+    def test_declares_the_two_uk_phases_in_order(self, manifest) -> None:
+        assert manifest is not None
+        assert manifest.phases == ("preflight", "terminal")
+
+    def test_declares_the_full_june_battery(self, manifest) -> None:
+        assert [gate.id for gate in manifest.gates] == [
+            "uk_release_input_coverage_manifest_current",
+            "uk_release_family_build_stages",
+            "uk_release_input_coverage",
+            "uk_degenerate_release_surface",
+            "uk_zero_weight_strata",
+            "uk_weight_ess",
+            "uk_weight_ratio",
+            "uk_weights_audit",
+            "uk_export_surface",
+            "uk_target_surface",
+            "uk_target_fit",
+            "uk_input_mass_parity",
+            "uk_qrf_tail_concentration",
+        ]
+        # Legacy behaviour: every evaluated failure raises, so every
+        # declared entry blocks release.
+        assert all(g.criticality == "release_blocking" for g in manifest.gates)
+        assert all(g.not_applicable is None for g in manifest.gates)
+
+    def test_gate_names_are_country_neutral(self, manifest) -> None:
+        by_id = {gate.id: gate.gate for gate in manifest.gates}
+        # The two legacy names the bindings re-mint to the shared vocabulary.
+        assert by_id["uk_release_input_coverage"] == "release_input_coverage"
+        assert by_id["uk_qrf_tail_concentration"] == "tail_concentration"
+        assert not any(name.startswith("uk_") for name in by_id.values())
+
+    def test_thresholds_match_the_legacy_module_constants(self, manifest) -> None:
+        params = {gate.id: gate.parameters for gate in manifest.gates}
+        assert (
+            params["uk_weight_ess"]["minimum_ess_fraction"]
+            == terminal_gates.UK_MIN_ESS_FRACTION
+        )
+        assert (
+            params["uk_weight_ratio"]["maximum_max_to_median_ratio"]
+            == terminal_gates.UK_MAX_TO_MEDIAN_WEIGHT_RATIO
+        )
+        assert (
+            params["uk_target_fit"]["max_abs_relative_error"]
+            == terminal_gates.UK_MAX_TARGET_ABS_RELATIVE_ERROR
+        )
+
+    def test_zero_weight_declarations_match_the_june_strata(self, manifest) -> None:
+        params = {gate.id: gate.parameters for gate in manifest.gates}
+        declared = params["uk_zero_weight_strata"]["declarations"]
+        strata = terminal_gates.UK_DEFAULT_ZERO_WEIGHT_STRATA
+        assert len(declared) == len(strata)
+        for entry, stratum in zip(declared, strata, strict=True):
+            assert entry["name"] == stratum.name
+            assert dict(entry["selector"]) == stratum.selector
+            assert entry["maximum_zero_weight_rows"] == (
+                stratum.maximum_zero_weight_rows
+            )
+            assert entry["reason"] == stratum.reason
+
+    def test_export_surface_registers_match_the_reviewed_constants(
+        self, manifest
+    ) -> None:
+        params = {gate.id: gate.parameters for gate in manifest.gates}
+        export = params["uk_export_surface"]
+        assert (
+            export["allowed_extra_columns"]
+            == terminal_gates.UK_ALLOWED_EXTRA_EXPORT_COLUMNS
+        )
+        assert (
+            dict(export["reviewed_exclusions"])
+            == terminal_gates.UK_REVIEWED_EXPORT_EXCLUSIONS
+        )
+
+    def test_input_mass_reference_is_a_declared_pinned_input(
+        self, manifest
+    ) -> None:
+        # The microcosm#327 rule: a parity gate's reference and exclusion
+        # register are declared per-country inputs, never implicit code.
+        params = {gate.id: gate.parameters for gate in manifest.gates}
+        input_mass = params["uk_input_mass_parity"]
+        assert (
+            input_mass["reference_sha256"]
+            == weighted_integrity.UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256
+        )
+        assert dict(input_mass["reference_identity"]) == dict(
+            weighted_integrity._UK_INPUT_MASS_REFERENCE_IDENTITY
+        )
+        assert (
+            input_mass["reviewed_exclusions_resource"]
+            == weighted_integrity.UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE
+        )
+        qrf = params["uk_qrf_tail_concentration"]
+        assert (
+            qrf["reviewed_exclusions_resource"]
+            == weighted_integrity.UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE
         )
 
 
@@ -319,6 +433,15 @@ class TestRefusals:
         files["gates.json"]["phases"] = ["terminal", "terminal"]
         package_dir = _write_package(tmp_path, files)
         with pytest.raises(ValueError, match="duplicate phase"):
+            load_country_spec(package_dir)
+
+    def test_unknown_gate_entry_key_is_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["gates.json"]["gates"][0]["paramters"] = {"within": 0.1}
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(
+            ValueError, match=r"gate entry 'fit' has unknown keys \['paramters'\]"
+        ):
             load_country_spec(package_dir)
 
     def test_not_applicable_with_parameters_is_refused(self, tmp_path) -> None:

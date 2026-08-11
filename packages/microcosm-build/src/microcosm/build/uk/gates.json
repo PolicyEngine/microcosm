@@ -1,0 +1,210 @@
+{
+  "version": 1,
+  "country": "uk",
+  "policy": "The certified June UK national battery declared as data (microcosm#611): the two build preflights plus the eleven-gate terminal battery, thresholds carried as entry parameters at their exact certified values with no discretionary headroom. The input-mass and QRF-tail entries stay runtime-armed pending the microcosm#630 adjudication, whose receipted values land here as parameter edits. A delivered-take-up gate is deferred until the shared gate vocabulary grows a take-up name; every gate the UK runs today is declared below.",
+  "phases": [
+    "preflight",
+    "terminal"
+  ],
+  "gates": [
+    {
+      "id": "uk_release_input_coverage_manifest_current",
+      "gate": "release_input_coverage",
+      "phase": "preflight",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "manifest_current"
+      },
+      "notes": "Frameless preflight mirror of the US cheap preflight: the committed coverage manifest must match the engine's current variable surface, aborting before source stages on graph or reference drift."
+    },
+    {
+      "id": "uk_release_family_build_stages",
+      "gate": "source_coverage",
+      "phase": "preflight",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "notes": "Frameless preflight over the materialized stage names: every family the coverage manifest marks required_at_build must have its build stage scheduled before any stage runs."
+    },
+    {
+      "id": "uk_release_input_coverage",
+      "gate": "release_input_coverage",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "notes": "The release input-coverage contract over the built frame: required columns present and populated per the committed manifest resource in this package."
+    },
+    {
+      "id": "uk_degenerate_release_surface",
+      "gate": "degenerate_release_surface",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "reviewed_exclusions_resource": "degenerate_reviewed_exclusions.json"
+      },
+      "notes": "No constant non-structural columns on any entity table. Reviewed exclusions come from the committed schema-2 register (the microcosm#630 source-year adjudication landed there via microcosm#658, approval receipt with expiry included); the battery runs the same policy of record the terminal report resolves."
+    },
+    {
+      "id": "uk_zero_weight_strata",
+      "gate": "zero_weight_strata",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "declarations": [
+          {
+            "name": "june_spi_synthetic_base",
+            "selector": {
+              "household_is_capital_gains_clone": false,
+              "household_is_spi_synthetic": true
+            },
+            "maximum_zero_weight_rows": 100000,
+            "reason": "The certified June FRS-derived artifact ships 100,000 zero-weight SPI-synthetic non-capital-gains rows."
+          },
+          {
+            "name": "june_spi_synthetic_capital_gains",
+            "selector": {
+              "household_is_capital_gains_clone": true,
+              "household_is_spi_synthetic": true
+            },
+            "maximum_zero_weight_rows": 100000,
+            "reason": "The certified June FRS-derived artifact ships 100,000 zero-weight SPI-synthetic capital-gains-clone rows."
+          }
+        ]
+      },
+      "notes": "Zero household weight is legal only inside the two reviewed June SPI-synthetic strata, each capped at its shipped size."
+    },
+    {
+      "id": "uk_weight_ess",
+      "gate": "weight_ess",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "minimum_ess_fraction": 0.01
+      },
+      "notes": "Effective sample size of the positive household weights must stay above one percent of the positive-weight count (microcosm#609)."
+    },
+    {
+      "id": "uk_weight_ratio",
+      "gate": "weight_ratio",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "maximum_max_to_median_ratio": 1151.2542195939373
+      },
+      "notes": "Exact certified June measurement (max positive weight over positive median), an acceptance fence with no discretionary headroom. The microcosm#630 receipted full-scale re-baseline replaces this number as a reviewed parameter edit, never a loosen-to-pass."
+    },
+    {
+      "id": "uk_weights_audit",
+      "gate": "weights_audit",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "notes": "Every fit-produced weight column carries a completed audit record. Armed by the SPI income stage; an absent audit is not a passing audit."
+    },
+    {
+      "id": "uk_export_surface",
+      "gate": "export_surface",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "allowed_extra_columns": [
+          "benunit.child_benefit_opts_out",
+          "household.bus_fare_spending",
+          "household.bus_subsidy_spending",
+          "household.clone_index",
+          "household.constituency_code_oa",
+          "household.consumer_debt",
+          "household.electricity_consumption",
+          "household.gas_consumption",
+          "household.has_fuel_consumption",
+          "household.household_is_capital_gains_clone",
+          "household.household_is_spi_synthetic",
+          "household.la_code_oa",
+          "household.lsoa_code",
+          "household.mortgage_debt",
+          "household.msoa_code",
+          "household.num_vehicles",
+          "household.oa_code",
+          "household.property_purchased",
+          "household.rail_usage",
+          "household.region_code_oa",
+          "person.aa_category",
+          "person.age_started_or_accepted_current_education_or_training",
+          "person.attends_private_school_random_draw",
+          "person.charitable_investment_gifts",
+          "person.dla_m_category",
+          "person.dla_sc_category",
+          "person.esa_health_condition_proxy",
+          "person.esa_support_group_proxy",
+          "person.employment_sector",
+          "person.gift_aid",
+          "person.higher_earner_tie_break",
+          "person.highest_education",
+          "person.is_before_universal_credit_qualifying_young_person_terminal_date",
+          "person.is_in_non_advanced_education",
+          "person.is_parent",
+          "person.legacy_jobseeker_proxy",
+          "person.pension_contributions_via_salary_sacrifice",
+          "person.pip_dl_category",
+          "person.pip_m_category",
+          "person.receives_benefits_in_own_right",
+          "person.salary_sacrifice_asked",
+          "person.salary_sacrifice_reported",
+          "person.sic_industry_division",
+          "person.student_loan_balance",
+          "person.student_loan_plan",
+          "person.would_claim_marriage_allowance",
+          "person.would_claim_scp"
+        ],
+        "reviewed_exclusions": {
+          "person.incapacity_benefit_reported": "The enhanced FRS stores this legacy reported-benefit input as an all-zero layer; the candidate must drop dead zero layers."
+        }
+      },
+      "notes": "Reviewed candidate-only fields from the June UK prototype (source provenance or genuine additional model inputs, not incumbent-surface losses) plus the one reviewed reference-side exclusion. The two hard-required columns that may never be waived stay a code-level guard, per the microcosm#327 rule that a parity comparison's registers are declared inputs. During the migration window the runtime merges the exclusion register with the legacy constant and the spec-pin tests hold the two equal; the register becomes solely load-bearing when the constant retires."
+    },
+    {
+      "id": "uk_target_surface",
+      "gate": "target_surface",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "notes": "Candidate and incumbent calibration target surfaces must agree exactly; the gate takes no tunable parameters."
+    },
+    {
+      "id": "uk_target_fit",
+      "gate": "target_fit",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "max_abs_relative_error": 0.25
+      },
+      "notes": "Every calibration target within twenty-five percent absolute relative error, the certified June acceptance bound."
+    },
+    {
+      "id": "uk_input_mass_parity",
+      "gate": "input_mass_parity",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "reference_sha256": "11b22dd439a188e32cec5d2be157dd6b65f415d4317cd304c17f5349522a3914",
+        "reference_identity": {
+          "filename": "enhanced_frs_2023_24.h5",
+          "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
+          "sha256": "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
+          "vintage": "2023_24"
+        },
+        "reviewed_exclusions_resource": "input_mass_reviewed_exclusions.json"
+      },
+      "notes": "Weighted input-mass parity against the frozen 131-column enhanced-FRS reference. The reference is a declared input pinned by identity and canonical digest (the totals stay uncommitted under the UKDS licence); numeric tolerances stay runtime-armed pending microcosm#630 and land here when adjudicated. Reviewed exclusions live in the named register resource of this package."
+    },
+    {
+      "id": "uk_qrf_tail_concentration",
+      "gate": "tail_concentration",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "reviewed_exclusions_resource": "qrf_tail_reviewed_exclusions.json"
+      },
+      "notes": "Weighted tail-concentration audit of the QRF-imputed output columns derived from the HMRC source manifest. Thresholds stay runtime-armed pending microcosm#630 and land here when adjudicated. Reviewed exclusions live in the named register resource of this package."
+    }
+  ]
+}
