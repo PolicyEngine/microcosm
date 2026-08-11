@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 
 import pytest
 
+import microcosm.build.us_runtime.acs_pums as acs_pums_module
+import microcosm.build.us_runtime.acs_transfer as acs_transfer_module
 from microcosm.build.us_runtime.acs_income_universe import (
     ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
 )
@@ -337,8 +339,16 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
     assert len(primary_outputs) == 100
     assert sum(output.coverage_scope == "puf_clone" for output in primary_outputs) == 65
     assert (
-        sum(output.coverage_scope == "whole_pool" for output in primary_outputs) == 35
+        sum(output.coverage_scope == "whole_pool" for output in primary_outputs) == 34
     )
+    assert sum(output.coverage_scope == "acs_source" for output in primary_outputs) == 1
+    assert {
+        (output.entity, output.column, output.coverage_scope)
+        for output in primary_outputs
+        if output.coverage_scope == "acs_source"
+    } == {
+        ("household", "TYPEHUGQ", "acs_source"),
+    }
     assert {
         (output.entity, output.column, output.coverage_scope)
         for output in primary_outputs
@@ -432,6 +442,11 @@ def test_primary_puf_inventory_declares_exact_read_before_write_surface() -> Non
         f"optional_input:{US_LATE_PRIMARY_PUF_STAGE}:"
         "qualified_tuition_allocation_fallback",
     )
+    typehugq = requirements["validated_structure:TYPEHUGQ"]
+    assert typehugq.required_scope == "acs_source"
+    declared_typehugq = contract_inputs["@effective:validated_structure:TYPEHUGQ"]
+    assert declared_typehugq.required_scope == "acs_source"
+    assert declared_typehugq.tolerated_absence_receipts == ()
     raw_inputs = {
         item.column: item
         for item in primary.inputs
@@ -606,7 +621,7 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
 
     assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
     receipt = us_late_producer_schedule_receipt()
-    assert receipt["schema_version"] == 13
+    assert receipt["schema_version"] == 14
     assert receipt["execution_receipt_contract"] == {
         "version": 3,
         "row_binding": (
@@ -779,6 +794,122 @@ def test_every_transfer_declares_complete_cross_grain_validation_surface() -> No
             (entity, f"{entity}_support_clone_index", "finite_numeric")
             for entity in entities
         }
+
+
+def test_every_origin_exclusive_raw_input_has_its_native_scope() -> None:
+    acs_raw_inputs = {
+        *(("household", column) for column in acs_pums_module._HOUSEHOLD_FRAME_COLUMNS),
+        *(("person", column) for column in acs_pums_module._PERSON_REQUIRED),
+    }
+    asec_person_raw_columns = {
+        "A_HSCOL",
+        "A_MJOCC",
+        "CAID",
+        "CHAMPVA",
+        "CHSP_VAL",
+        "CSP_VAL",
+        "DIS_SC1",
+        "DIS_SC2",
+        "DIS_VAL1",
+        "DIS_VAL2",
+        "DST_SC1",
+        "DST_SC2",
+        "DST_SC3",
+        "DST_SC4",
+        "DST_VAL1",
+        "DST_VAL2",
+        "DST_VAL3",
+        "DST_VAL4",
+        "ED_VAL",
+        "IHSFLG",
+        "I_ERNVAL",
+        "I_SEVAL",
+        "LKWEEKS",
+        "MCARE",
+        "MIL",
+        "PEAFEVER",
+        "PEDISDRS",
+        "PEINUSYR",
+        "PEIO1COW",
+        "PENATVTY",
+        "PEN_SC1",
+        "PEN_SC2",
+        "PERIDNUM",
+        "PRCITSHP",
+        "RESNSS1",
+        "RESNSS2",
+        "RETCB_VAL",
+        "SPM_CAPHOUSESUB",
+        "SPM_CHILDCAREXPNS",
+        "SPM_ENGVAL",
+        "SSI_YN",
+        "SS_YN",
+        "UC_VAL",
+        "WC_VAL",
+    }
+    required_scope = {
+        **{key: "acs_source" for key in acs_raw_inputs},
+        **{("person", column): "asec_source" for column in asec_person_raw_columns},
+        ("household", "H_TENURE"): "asec_source",
+    }
+    expected_counts = {
+        ("household", "TYPEHUGQ"): 39,
+        ("person", "MCARE"): 2,
+        ("person", "PERIDNUM"): 18,
+        ("person", "SEMP"): 2,
+        ("person", "WAGP"): 2,
+        **{
+            ("person", column): 1
+            for column in asec_person_raw_columns
+            if column
+            not in {
+                "DST_SC3",
+                "DST_SC4",
+                "DST_VAL3",
+                "DST_VAL4",
+                "MCARE",
+                "PERIDNUM",
+            }
+        },
+    }
+
+    observed: Counter[tuple[str, str, str]] = Counter()
+    receipts: dict[tuple[str, str], set[str]] = {}
+    for contract in CANONICAL_US_LATE_PRODUCER_REGISTRY.values():
+        for requirement in contract.inputs:
+            for alternative in requirement.alternatives:
+                for column in alternative:
+                    key = (column.entity, column.column)
+                    if key not in required_scope:
+                        continue
+                    observed[
+                        (column.entity, column.column, requirement.required_scope)
+                    ] += 1
+                    receipts.setdefault(key, set()).update(
+                        requirement.tolerated_absence_receipts
+                    )
+
+    assert observed == Counter(
+        {(*key, required_scope[key]): count for key, count in expected_counts.items()}
+    )
+    assert sum(observed.values()) == 101
+    assert sum(count for key, count in observed.items() if key[2] == "acs_source") == 43
+    assert (
+        sum(count for key, count in observed.items() if key[2] == "asec_source") == 58
+    )
+    assert receipts[("household", "TYPEHUGQ")] == set()
+
+    execution_identity = acs_transfer_module.acs_transfer_execution_contract_identity()
+    assert execution_identity["schema_version"] == 2
+    assert execution_identity["housing"]["head_source_precedence"] == [
+        {"source": "is_household_head", "head_codes": [True]},
+        {"source": "A_EXPRRP", "head_codes": [1, 2]},
+        {"source": "A_LINENO", "head_codes": [1]},
+    ]
+    assert execution_identity["housing"]["tenure_source_precedence"] == [
+        "tenure_type",
+        "spm_unit_tenure_type",
+    ]
 
 
 def test_production_registry_preserves_finite_numeric_input_kinds() -> None:

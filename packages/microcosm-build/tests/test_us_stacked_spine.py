@@ -2573,6 +2573,129 @@ def test_late_readiness_rejects_object_typed_nonfinite_numeric_input() -> None:
         )
 
 
+def _typehugq_cross_origin_readiness_fixture() -> tuple[
+    Frame,
+    ProducerContract,
+    ProducerInput,
+]:
+    asec_household_count = 1_688
+    asec = _source_frame(
+        household_ids=list(range(1, asec_household_count + 1)),
+        weights=[1.0] * asec_household_count,
+        extra_person_columns={"asec_detail_income": 40.0},
+        stratum="asec_2024",
+    )
+    frame = assemble_stacked_spine(
+        asec,
+        _acs_source(),
+        acs_sample_fraction=1.0,
+        acs_sample_seed=578,
+    ).frame
+    primary = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[
+        stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
+    ]
+    requirement = next(
+        item
+        for item in primary.inputs
+        if item.column == "@effective:validated_structure:TYPEHUGQ"
+    )
+    contract = replace(primary, inputs=(requirement,), outputs=())
+    return frame, contract, requirement
+
+
+def test_typehugq_accepts_exact_1688_asec_structural_null_rows() -> None:
+    frame, contract, requirement = _typehugq_cross_origin_readiness_fixture()
+    household = frame.table("household")
+    support_channel = household[support_channel_column("household")].astype(str)
+    asec_rows = support_channel.eq("asec")
+    acs_rows = support_channel.eq("acs")
+
+    assert int(asec_rows.sum()) == 1_688
+    assert int(acs_rows.sum()) == 10
+    assert int(household.loc[asec_rows, "TYPEHUGQ"].isna().sum()) == 1_688
+    assert int(household.loc[acs_rows, "TYPEHUGQ"].isna().sum()) == 0
+    assert requirement.required_scope == "acs_source"
+    assert requirement.tolerated_absence_receipts == ()
+
+    unfilled, invalid = stacked_spine_module._late_input_readiness_rows(
+        frame,
+        contract,
+    )
+    absence = stacked_spine_module._late_declared_absence_receipts(
+        contract,
+        unfilled,
+        invalid_rows=invalid,
+    )
+
+    assert unfilled == {requirement: 0}
+    assert invalid == {requirement: 0}
+    assert absence == {}
+    assert (
+        stacked_spine_module.run_producer_when_ready(
+            contract,
+            lambda: "ran",
+            unfilled_rows=unfilled,
+            invalid_rows=invalid,
+            absence_receipts=absence,
+        )
+        == "ran"
+    )
+
+
+def test_typehugq_still_refuses_one_missing_acs_row() -> None:
+    frame, contract, requirement = _typehugq_cross_origin_readiness_fixture()
+    household = frame.table("household").copy()
+    support_channel = household[support_channel_column("household")].astype(str)
+    acs_row = household.index[support_channel.eq("acs")][0]
+    household.loc[acs_row, "TYPEHUGQ"] = np.nan
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables["household"] = household
+    missing = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+    unfilled, invalid = stacked_spine_module._late_input_readiness_rows(
+        missing,
+        contract,
+    )
+    absence = stacked_spine_module._late_declared_absence_receipts(
+        contract,
+        unfilled,
+        invalid_rows=invalid,
+    )
+    invoked = False
+
+    def callback() -> None:
+        nonlocal invoked
+        invoked = True
+
+    assert unfilled == {requirement: 1}
+    assert invalid == {requirement: 0}
+    assert absence == {}
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"(?s)primary_puf_qrf.*"
+            r"household\.@effective:validated_structure:TYPEHUGQ.*"
+            r"1 unfilled.*acs_source.*post_clone_input_surface.*"
+            r"tolerated absence receipts=\[\]"
+        ),
+    ):
+        stacked_spine_module.run_producer_when_ready(
+            contract,
+            callback,
+            unfilled_rows=unfilled,
+            invalid_rows=invalid,
+            absence_receipts=absence,
+        )
+    assert invoked is False
+
+
 def _fill_late_contract_surface(
     frame: Frame,
     *,

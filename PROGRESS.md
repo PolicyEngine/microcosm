@@ -2,11 +2,11 @@
 
 ## State
 
-The smoke-r5 mechanism is adjudicated: `TYPEHUGQ` is an ACS-only structural
-input consumed solely by ACS group-quarters validation and its GQ-rent
-lineage. The declaration must use `acs_source` on both the input and the
-primary structural output; ASEC rows must remain absent and need no synthesized
-value or tolerated-absence receipt. Implementation and regressions are next.
+The smoke-r5 mechanism is fixed and covered by focused regressions. `TYPEHUGQ`
+now uses `acs_source` on both the input and the primary structural output;
+ASEC rows remain absent with no synthesized value or tolerated-absence receipt.
+The complete declared raw-input audit has no cross-origin whole-pool reads.
+The remaining work is the requested full proof matrix and independent review.
 
 ## Done
 
@@ -33,15 +33,25 @@ value or tolerated-absence receipt. Implementation and regressions are next.
 - Chose origin scoping over an absence receipt. The primary structural output
   must carry the same ACS scope so post-callback completeness and all 19
   downstream transfer dependencies remain consistent.
+- Added the per-requirement scope override, serialized it into late-registry
+  identity schema v14, and scoped all 39 physical `TYPEHUGQ` contract
+  occurrences to ACS rows.
+- Retired the latent whole-pool raw fallbacks `RELSHIPP`, `TEN`, and
+  `H_TENURE`; transfer execution identity schema v2 now binds only the
+  canonical dual-origin head and tenure predictors.
+- Enforced an enumerated raw-origin audit over 101 physical occurrences:
+  43 ACS-scoped and 58 ASEC-scoped, with no whole-pool occurrence.
+- Added regressions proving exactly 1,688 ASEC `TYPEHUGQ` nulls pass without a
+  receipt or fill while one missing ACS value refuses before its callback.
+- Updated the operator-ordering schema pins and the changelog.
+- Passed the focused suite: 31 tests, zero failures/skips/errors.
 
 ## Next
 
-- Complete the exhaustive origin-specific raw-input inventory, including the
-  already-scoped ACS earnings and ASEC source-operator surfaces.
-- Add a per-requirement scope override to the inventory declaration, bump its
-  schema identity, and bind `TYPEHUGQ` input/output coverage to `acs_source`.
-- Add the exact 1,688-row regression, ACS-side fail-closed regression, and an
-  exhaustive cross-origin raw-input audit.
-- Run the requested focused, #583, full-workspace, formatting, lint, and diff
-  checks; obtain an independent read-only review; report the smoke-r6
-  prediction to stdout.
+- Commit the regression, documentation, changelog, and progress update.
+- Run #583 at exactly 495 tests, then the full workspace in foreground,
+  non-overlapping chunks with exact aggregate counts.
+- Run formatting, lint, and diff checks; obtain an independent read-only
+  review and address any actionable findings.
+- Commit final proof state and report the gradeable smoke-r6 prediction to
+  stdout.
