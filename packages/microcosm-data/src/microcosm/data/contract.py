@@ -14,6 +14,20 @@ directory against the contract and raises :class:`ReleaseContractError`
 naming **every** failure at once (a publisher should see the full repair
 list, not play whack-a-mole one failure per run). Publishing code calls it
 before any byte reaches the Hub.
+
+Two publication tiers share this module (microcosm#506). The **certified**
+tier is :func:`validate_release_dir`, unchanged. The **evidence** tier is
+:func:`validate_evidence_release_dir`, a sibling — not a relaxation — for
+the best-available artifact when terminal gates failed: the same required
+files, the same shape and provenance checks, plus a mandatory non-empty
+``known_failures`` block carrying every recorded gate failure verbatim with
+an owner issue. The tiers are structurally mutually exclusive: an evidence
+manifest declares :data:`EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION`, which
+the certified contract rejects, and a certified manifest carries no
+``known_failures``, which the evidence contract requires. (Distinct from
+the UK terminal-gate *evidence receipts* checked below: those attest how a
+certified verdict was reached; the evidence *tier* publishes an artifact
+whose verdicts failed.)
 """
 
 from __future__ import annotations
@@ -43,6 +57,8 @@ from microcosm.data.us_critical_targets import (
 )
 
 __all__ = [
+    "EVIDENCE_RELEASE_ID_SEGMENT",
+    "EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION",
     "LOCAL_AREA_REQUIRED_RELEASE_FILES",
     "NATIONAL_DEFAULT_DATASET_ROLE",
     "NON_DEFAULT_LOCAL_AREA_DATASET_ROLE",
@@ -52,6 +68,7 @@ __all__ = [
     "ReleaseContractError",
     "release_dataset_role",
     "required_release_files",
+    "validate_evidence_release_dir",
     "validate_release_dir",
 ]
 
@@ -59,6 +76,18 @@ __all__ = [
 #: schema, and keep :func:`validate_release_dir` rejecting drift loudly — the
 #: unversioned 1abddeb-era manifest is exactly the silence this guards against.
 RELEASE_MANIFEST_SCHEMA_VERSION = 1
+
+#: The release-manifest schema marker for EVIDENCE-tier releases
+#: (microcosm#506). Deliberately a distinct value, not a superset flag on the
+#: certified schema: the certified contract rejects any manifest carrying it,
+#: so an evidence artifact can never be mistaken for (or promoted as) a
+#: certified one, no matter which gates happened to fail.
+EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION = "1-evidence"
+
+#: Evidence release ids must carry this segment (e.g.
+#: ``populace-us-2024-evidence-<sha>-<date>``) so the tier is visible in the
+#: artifact name itself — in Hub tags, download paths, and logs.
+EVIDENCE_RELEASE_ID_SEGMENT = "-evidence-"
 
 #: Files a release directory must contain to count as published. A release
 #: missing any of these is invisible to :func:`validate_release_dir`-respecting
@@ -624,7 +653,11 @@ def _check_uk_terminal_build_manifest(
 
 
 def _check_release_manifest(
-    manifest: Mapping, release_id: str, failures: list[str]
+    manifest: Mapping,
+    release_id: str,
+    failures: list[str],
+    *,
+    expected_schema_version: object = RELEASE_MANIFEST_SCHEMA_VERSION,
 ) -> None:
     schema_version = manifest.get("schema_version")
     if schema_version is None:
@@ -632,11 +665,11 @@ def _check_release_manifest(
             "release_manifest.json has no 'schema_version'; unversioned "
             "manifests (the 1abddeb-era shape) are not publishable."
         )
-    elif schema_version != RELEASE_MANIFEST_SCHEMA_VERSION:
+    elif schema_version != expected_schema_version:
         failures.append(
             f"release_manifest.json 'schema_version' is {schema_version!r}; "
             f"this library publishes version "
-            f"{RELEASE_MANIFEST_SCHEMA_VERSION}."
+            f"{expected_schema_version!r}."
         )
     build = manifest.get("build")
     if not isinstance(build, Mapping) or not build.get("build_id"):
@@ -2679,7 +2712,10 @@ def _is_congressional_district_layout_target(target: Mapping) -> bool:
 
 
 def _check_source_coverage_diagnostics(
-    diagnostics: Mapping, failures: list[str]
+    diagnostics: Mapping,
+    failures: list[str],
+    *,
+    require_gate_passed: bool = True,
 ) -> None:
     schema_version = diagnostics.get("schema_version")
     if schema_version is None:
@@ -2728,7 +2764,7 @@ def _check_source_coverage_diagnostics(
                 f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} gate.name must be "
                 "'us_source_coverage'."
             )
-        if gate.get("passed") is not True:
+        if require_gate_passed and gate.get("passed") is not True:
             failures.append(
                 f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} gate.passed must be true."
             )
@@ -2737,7 +2773,7 @@ def _check_source_coverage_diagnostics(
             failures.append(
                 f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} gate.failures must be a list."
             )
-        elif gate_failures:
+        elif gate_failures and require_gate_passed:
             failures.append(
                 f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} gate.failures must be empty."
             )
@@ -3314,6 +3350,197 @@ def validate_release_dir(release_dir: Path | str) -> None:
         if diagnostics is not None:
             source_coverage_diagnostics = diagnostics
             _check_source_coverage_diagnostics(diagnostics, failures)
+
+    _check_us_fiscal_source_consistency(
+        calibration_diagnostics, source_coverage_diagnostics, failures
+    )
+
+    if failures:
+        raise ReleaseContractError(release_dir, failures)
+
+
+#: Owner refs in ``known_failures`` must point at a tracked issue — a
+#: ``#NNN`` shorthand (optionally repo-qualified) or a GitHub issue/PR URL.
+#: A name or a prose excuse is not an owner: the evidence tier ships a
+#: failure only when somewhere is accountable for fixing it.
+_ISSUE_REF_RE = re.compile(r"#\d+|github\.com/\S+/(?:issues|pull)/\d+")
+
+
+def _check_evidence_release_manifest(manifest: Mapping, failures: list[str]) -> None:
+    """Evidence-only manifest requirements: the tier marker and the honest
+    non-empty ``known_failures`` record."""
+    if manifest.get("tier") != "evidence":
+        failures.append(
+            "release_manifest.json 'tier' must be 'evidence' for an "
+            "evidence-tier release."
+        )
+    known_failures = manifest.get("known_failures")
+    if not isinstance(known_failures, list) or not known_failures:
+        failures.append(
+            "release_manifest.json must declare a non-empty 'known_failures' "
+            "list; the evidence tier exists to carry recorded gate failures "
+            "honestly, never to hide them (an all-green artifact belongs on "
+            "the certified path)."
+        )
+        return
+    for index, entry in enumerate(known_failures):
+        owner_prefix = f"release_manifest.json known_failures[{index}]"
+        if not isinstance(entry, Mapping):
+            failures.append(
+                f"{owner_prefix} must be an object with 'failure' and 'owner'."
+            )
+            continue
+        failure_text = entry.get("failure")
+        if not isinstance(failure_text, str) or not failure_text.strip():
+            failures.append(
+                f"{owner_prefix}.failure must be the recorded gate-failure "
+                "string, verbatim and non-empty."
+            )
+        owner = entry.get("owner")
+        if not isinstance(owner, str) or not _ISSUE_REF_RE.search(owner):
+            failures.append(
+                f"{owner_prefix}.owner must carry an issue reference "
+                "(e.g. 'PolicyEngine/microcosm#487' or an issue URL)."
+            )
+
+
+def validate_evidence_release_dir(release_dir: Path | str) -> None:
+    """Check a local EVIDENCE-tier release directory against its contract.
+
+    The sibling of :func:`validate_release_dir` for the best-available
+    artifact when terminal gates failed (microcosm#506): the same required
+    files and the same shape, provenance, and cross-manifest checks, with the
+    gate *verdict* requirements replaced by a recording requirement — the
+    release manifest must carry a non-empty ``known_failures`` block naming
+    every recorded gate failure verbatim, each with an owner issue.
+
+    This is a different output contract, not a bypass of the certified one:
+
+    - the release manifest must declare
+      :data:`EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION` and ``tier:
+      "evidence"``, which the certified contract structurally rejects;
+    - the release id must carry the :data:`EVIDENCE_RELEASE_ID_SEGMENT`, so
+      the tier is visible in every tag and download path;
+    - critical-target fit and gate-passed requirements are not enforced —
+      their failures are exactly what ``known_failures`` records — but
+      everything that makes the artifact *auditable* (required files, build
+      provenance with a clean git commit, artifact hashes, cross-manifest
+      agreement) is enforced unchanged.
+
+    Scope (microcosm#506, "dense first"): the tier exists for the US
+    national artifact. Non-default local-area releases and UK exact-k
+    releases are refused outright — each has its own certification lane
+    (microcosm#398, microcosm#611) and no evidence-tier semantics have been
+    adjudicated for them.
+
+    Args:
+        release_dir: The local ``releases/<build_id>`` directory about to be
+            published at the evidence tier.
+
+    Raises:
+        ReleaseContractError: Naming every violation found.
+    """
+    release_dir = Path(release_dir)
+    release_id = release_dir.name
+    failures: list[str] = []
+
+    if not release_dir.is_dir():
+        raise ReleaseContractError(release_dir, [f"{release_dir} is not a directory."])
+
+    if EVIDENCE_RELEASE_ID_SEGMENT not in release_id:
+        failures.append(
+            f"evidence release ids must carry the "
+            f"{EVIDENCE_RELEASE_ID_SEGMENT!r} segment; {release_id!r} does "
+            "not name its tier."
+        )
+
+    if _is_uk_exact_k_release_id(release_id):
+        raise ReleaseContractError(
+            release_dir,
+            [
+                "UK exact-k releases have no evidence-tier contract; the "
+                "gate-battery lane (microcosm#611) owns their verdicts and "
+                "microcosm#506 scoped the evidence tier to the US national "
+                "artifact."
+            ],
+        )
+
+    manifest_probe_path = release_dir / "release_manifest.json"
+    if manifest_probe_path.is_file():
+        try:
+            manifest_probe = json.loads(manifest_probe_path.read_text())
+        except (OSError, ValueError):
+            manifest_probe = None
+        if isinstance(manifest_probe, Mapping) and "dataset_role" in manifest_probe:
+            declared_role = manifest_probe["dataset_role"]
+            if declared_role != NATIONAL_DEFAULT_DATASET_ROLE:
+                raise ReleaseContractError(
+                    release_dir,
+                    [
+                        "the evidence tier supports only "
+                        f"{NATIONAL_DEFAULT_DATASET_ROLE!r} releases "
+                        f"(microcosm#506); dataset_role {declared_role!r} "
+                        "has its own contract and no evidence-tier "
+                        "semantics."
+                    ],
+                )
+
+    build_manifest: Mapping | None = None
+    release_manifest: Mapping | None = None
+    calibration_diagnostics: Mapping | None = None
+    source_coverage_diagnostics: Mapping | None = None
+
+    for filename in required_release_files(release_id):
+        if not (release_dir / filename).is_file():
+            failures.append(f"required file {filename!r} is missing.")
+
+    build_manifest_path = release_dir / "build_manifest.json"
+    if build_manifest_path.is_file():
+        manifest = _load_json(build_manifest_path, failures)
+        if manifest is not None:
+            build_manifest = manifest
+            _check_build_manifest(manifest, release_id, failures)
+
+    release_manifest_path = release_dir / "release_manifest.json"
+    if release_manifest_path.is_file():
+        manifest = _load_json(release_manifest_path, failures)
+        if manifest is not None:
+            release_manifest = manifest
+            _check_release_manifest(
+                manifest,
+                release_id,
+                failures,
+                expected_schema_version=EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
+            )
+            _check_evidence_release_manifest(manifest, failures)
+
+    calibration_diagnostics_path = release_dir / "calibration_diagnostics.json"
+    if calibration_diagnostics_path.is_file():
+        diagnostics = _load_json(calibration_diagnostics_path, failures)
+        if diagnostics is not None:
+            calibration_diagnostics = diagnostics
+            _check_calibration_diagnostics(diagnostics, failures)
+            # No _check_us_critical_target_fit here: critical-fit breaches are
+            # the evidence tier's known_failures, not contract violations.
+
+    _check_cross_manifest_consistency(
+        build_manifest,
+        release_manifest,
+        calibration_diagnostics,
+        failures,
+    )
+    _check_local_artifact_hashes(release_dir, release_manifest, failures)
+
+    source_coverage_path = release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE
+    if release_id.startswith("populace-us-") and source_coverage_path.is_file():
+        diagnostics = _load_json(source_coverage_path, failures)
+        if diagnostics is not None:
+            source_coverage_diagnostics = diagnostics
+            _check_source_coverage_diagnostics(
+                diagnostics,
+                failures,
+                require_gate_passed=False,
+            )
 
     _check_us_fiscal_source_consistency(
         calibration_diagnostics, source_coverage_diagnostics, failures

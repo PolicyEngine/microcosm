@@ -17,10 +17,13 @@ from pathlib import Path
 import pytest
 
 from microcosm.data import (
+    EVIDENCE_RELEASE_ID_SEGMENT,
+    EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
     RELEASE_MANIFEST_SCHEMA_VERSION,
     US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
     ReleaseContractError,
     required_release_files,
+    validate_evidence_release_dir,
     validate_release_dir,
 )
 
@@ -3449,3 +3452,367 @@ def test_exact_k_uk_terminal_rejects_invalid_qrf_observable_values(
     failures = "\n".join(excinfo.value.failures)
     assert match in failures
     assert "attestation.signature does not authenticate" not in failures
+
+
+# ---------------------------------------------------------------------------
+# Evidence-tier release contract (microcosm#506)
+# ---------------------------------------------------------------------------
+#
+# The evidence contract is a SIBLING of the certified one, not a relaxation:
+# same required files, plus a mandatory non-empty known_failures block naming
+# every recorded gate failure verbatim with an owner issue. The two tiers must
+# never be confusable — an evidence manifest fails certified validation
+# structurally (distinct schema marker), and a certified manifest fails
+# evidence validation (no tier, no known_failures).
+
+EVIDENCE_RELEASE_ID = "populace-us-2024-evidence-9f1260b-20260611"
+
+
+def _known_failures() -> list[dict]:
+    return [
+        {
+            "failure": (
+                "SOI Table 1.4 national dollar fit failed: target "
+                "'irs_soi.ty2023.table_1_4.all.capital_gain_distributions_amount"
+                "@2024' has relative_error=-0.302, exceeding 0.25."
+            ),
+            "owner": "PolicyEngine/microcosm#487",
+        },
+        {
+            "failure": (
+                "QRF tail concentration failed: 7 sparse QRF-imputed columns "
+                "concentrate past the top-k weighted-mass share bound."
+            ),
+            "owner": "PolicyEngine/microcosm#481",
+        },
+    ]
+
+
+def _evidence_release_manifest(
+    *,
+    diagnostics_sha: str,
+    source_coverage_sha: str,
+    known_failures: list[dict] | None = None,
+) -> dict:
+    manifest = _release_manifest(
+        EVIDENCE_RELEASE_ID,
+        diagnostics_sha=diagnostics_sha,
+        source_coverage_sha=source_coverage_sha,
+    )
+    manifest["schema_version"] = EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION
+    manifest["tier"] = "evidence"
+    manifest["known_failures"] = (
+        _known_failures() if known_failures is None else known_failures
+    )
+    return manifest
+
+
+@pytest.fixture
+def evidence_release_dir(tmp_path: Path) -> Path:
+    """A complete, evidence-contract-valid release directory."""
+    directory = tmp_path / "releases" / EVIDENCE_RELEASE_ID
+    directory.mkdir(parents=True)
+    (directory / "build_manifest.json").write_text(
+        json.dumps(_build_manifest(EVIDENCE_RELEASE_ID))
+    )
+    (directory / "calibration_diagnostics.json").write_text(
+        json.dumps(_calibration_diagnostics())
+    )
+    (directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(
+        json.dumps(_source_coverage_diagnostics())
+    )
+    (directory / "release_manifest.json").write_text(
+        json.dumps(
+            _evidence_release_manifest(
+                diagnostics_sha=_sha256(directory / "calibration_diagnostics.json"),
+                source_coverage_sha=_sha256(
+                    directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE
+                ),
+            )
+        )
+    )
+    return directory
+
+
+def _rewrite_evidence_manifest(evidence_release_dir: Path, mutate) -> None:
+    manifest_path = evidence_release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    mutate(manifest)
+    manifest_path.write_text(json.dumps(manifest))
+
+
+def test_a_complete_evidence_release_passes(evidence_release_dir: Path) -> None:
+    validate_evidence_release_dir(evidence_release_dir)
+
+
+def test_evidence_release_fails_the_certified_contract(
+    evidence_release_dir: Path,
+) -> None:
+    """The structural guarantee: whatever gates failed, an evidence manifest
+    can never certify — its schema marker alone refuses the certified tier."""
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(evidence_release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert f"'schema_version' is {EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION!r}" in (
+        failures
+    )
+
+
+def test_certified_release_fails_the_evidence_contract(release_dir: Path) -> None:
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "known_failures" in failures
+    assert "tier" in failures
+    assert EVIDENCE_RELEASE_ID_SEGMENT in failures
+
+
+def test_evidence_release_requires_the_id_segment(tmp_path: Path) -> None:
+    """An evidence-shaped manifest under a certified-shaped id is refused: the
+    tier must be visible in the release id itself."""
+    directory = tmp_path / "releases" / RELEASE_ID
+    directory.mkdir(parents=True)
+    (directory / "build_manifest.json").write_text(json.dumps(_build_manifest()))
+    (directory / "calibration_diagnostics.json").write_text(
+        json.dumps(_calibration_diagnostics())
+    )
+    (directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(
+        json.dumps(_source_coverage_diagnostics())
+    )
+    manifest = _release_manifest(
+        diagnostics_sha=_sha256(directory / "calibration_diagnostics.json"),
+        source_coverage_sha=_sha256(directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE),
+    )
+    manifest["schema_version"] = EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION
+    manifest["tier"] = "evidence"
+    manifest["known_failures"] = _known_failures()
+    (directory / "release_manifest.json").write_text(json.dumps(manifest))
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(directory)
+    failures = "\n".join(excinfo.value.failures)
+    assert EVIDENCE_RELEASE_ID_SEGMENT in failures
+
+
+def test_evidence_release_refuses_uk_exact_k_ids(tmp_path: Path) -> None:
+    """UK exact-k verdicts belong to the gate-battery lane (microcosm#611);
+    the evidence tier is scoped to the US national artifact."""
+    directory = tmp_path / "releases" / "populace-uk-2023-evidence-frs-k535080"
+    directory.mkdir(parents=True)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(directory)
+    assert "no evidence-tier contract" in "\n".join(excinfo.value.failures)
+
+
+def test_evidence_release_refuses_non_default_roles(
+    evidence_release_dir: Path,
+) -> None:
+    """Local-area releases have their own contract (microcosm#398) and no
+    adjudicated evidence-tier semantics."""
+    _rewrite_evidence_manifest(
+        evidence_release_dir,
+        lambda manifest: manifest.update(dataset_role="non_default_local_area"),
+    )
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(evidence_release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "evidence tier supports only" in failures
+
+
+def test_evidence_release_rejects_empty_known_failures(
+    evidence_release_dir: Path,
+) -> None:
+    """The tier exists to carry failures honestly; an empty block is invalid."""
+    _rewrite_evidence_manifest(
+        evidence_release_dir,
+        lambda manifest: manifest.update(known_failures=[]),
+    )
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(evidence_release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "non-empty 'known_failures'" in failures
+
+
+def test_evidence_release_rejects_missing_known_failures(
+    evidence_release_dir: Path,
+) -> None:
+    def _drop(manifest: dict) -> None:
+        del manifest["known_failures"]
+
+    _rewrite_evidence_manifest(evidence_release_dir, _drop)
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(evidence_release_dir)
+    assert "non-empty 'known_failures'" in "\n".join(excinfo.value.failures)
+
+
+def test_evidence_known_failures_require_verbatim_failure_text(
+    evidence_release_dir: Path,
+) -> None:
+    _rewrite_evidence_manifest(
+        evidence_release_dir,
+        lambda manifest: manifest.update(
+            known_failures=[{"failure": "", "owner": "PolicyEngine/microcosm#487"}]
+        ),
+    )
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(evidence_release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "known_failures[0].failure" in failures
+
+
+def test_evidence_known_failures_require_an_owner_issue_ref(
+    evidence_release_dir: Path,
+) -> None:
+    _rewrite_evidence_manifest(
+        evidence_release_dir,
+        lambda manifest: manifest.update(
+            known_failures=[
+                {"failure": "QRF tail concentration failed: ...", "owner": "Max"}
+            ]
+        ),
+    )
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(evidence_release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "known_failures[0].owner" in failures
+    assert "issue reference" in failures
+
+
+def test_evidence_known_failures_accept_issue_url_owners(
+    evidence_release_dir: Path,
+) -> None:
+    _rewrite_evidence_manifest(
+        evidence_release_dir,
+        lambda manifest: manifest.update(
+            known_failures=[
+                {
+                    "failure": "QRF tail concentration failed: ...",
+                    "owner": "https://github.com/PolicyEngine/microcosm/issues/481",
+                }
+            ]
+        ),
+    )
+    validate_evidence_release_dir(evidence_release_dir)
+
+
+def test_evidence_release_requires_the_evidence_tier_field(
+    evidence_release_dir: Path,
+) -> None:
+    def _drop(manifest: dict) -> None:
+        del manifest["tier"]
+
+    _rewrite_evidence_manifest(evidence_release_dir, _drop)
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(evidence_release_dir)
+    assert "'tier'" in "\n".join(excinfo.value.failures)
+
+
+def test_evidence_release_rejects_certified_schema_version(
+    evidence_release_dir: Path,
+) -> None:
+    _rewrite_evidence_manifest(
+        evidence_release_dir,
+        lambda manifest: manifest.update(
+            schema_version=RELEASE_MANIFEST_SCHEMA_VERSION
+        ),
+    )
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(evidence_release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert f"{EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION!r}" in failures
+
+
+def test_evidence_release_tolerates_critical_target_breaches(
+    evidence_release_dir: Path,
+) -> None:
+    """The tier's point: the Build N medical-class breach ships as evidence,
+    carried in known_failures, instead of blocking the artifact."""
+    diagnostics = _calibration_diagnostics()
+    target = next(
+        row
+        for row in diagnostics["targets"]
+        if row["name"] == "irs_soi.ty2022.historic_table_2.us.all."
+        "medical_dental_expense_amount@2024"
+    )
+    target["final_estimate"] = target["target"] * 1.21
+    target["relative_error"] = 0.21
+    _write_json_and_refresh_manifest_hash(
+        evidence_release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    validate_evidence_release_dir(evidence_release_dir)
+
+    with pytest.raises(ReleaseContractError):
+        validate_release_dir(evidence_release_dir)
+
+
+def test_evidence_release_tolerates_failed_source_coverage_gate(
+    evidence_release_dir: Path,
+) -> None:
+    payload = _source_coverage_diagnostics()
+    payload["gate"] = {
+        "name": "us_source_coverage",
+        "passed": False,
+        "failures": ["social_security_ssi/ssa-ssi-table-7b1-2024 missing"],
+    }
+    _write_json_and_refresh_manifest_hash(
+        evidence_release_dir,
+        filename=US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
+        artifact_key="us_source_coverage",
+        payload=payload,
+    )
+
+    validate_evidence_release_dir(evidence_release_dir)
+
+
+def test_evidence_release_still_enforces_required_files(
+    evidence_release_dir: Path,
+) -> None:
+    (evidence_release_dir / "calibration_diagnostics.json").unlink()
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(evidence_release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "required file 'calibration_diagnostics.json' is missing." in failures
+
+
+def test_evidence_release_still_enforces_artifact_hashes(
+    evidence_release_dir: Path,
+) -> None:
+    (evidence_release_dir / "calibration_diagnostics.json").write_text(
+        json.dumps(_calibration_diagnostics() | {"options": {"epochs": 121}})
+    )
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(evidence_release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "declares sha256" in failures
+
+
+def test_evidence_release_still_enforces_build_id_match(
+    evidence_release_dir: Path,
+) -> None:
+    build_manifest = _build_manifest(EVIDENCE_RELEASE_ID)
+    build_manifest["build_id"] = "populace-us-2024-evidence-other-20260611"
+    (evidence_release_dir / "build_manifest.json").write_text(
+        json.dumps(build_manifest)
+    )
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(evidence_release_dir)
+    assert "the directory name IS the" in "\n".join(excinfo.value.failures)
+
+
+def test_evidence_release_still_enforces_dirty_git_refusal(
+    evidence_release_dir: Path,
+) -> None:
+    """Evidence tier relaxes gate verdicts, never provenance."""
+    build_manifest = _build_manifest(EVIDENCE_RELEASE_ID)
+    build_manifest["code"]["git_dirty"] = True
+    (evidence_release_dir / "build_manifest.json").write_text(
+        json.dumps(build_manifest)
+    )
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(evidence_release_dir)
+    assert "'code.git_dirty' must be false" in "\n".join(excinfo.value.failures)
