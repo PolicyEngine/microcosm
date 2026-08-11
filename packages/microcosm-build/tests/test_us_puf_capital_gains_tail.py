@@ -409,6 +409,12 @@ def test_tail_transfer_splits_weights_and_copies_joint_vectors(
     tmp_path: Path,
 ) -> None:
     frame = _expanded_recipient_frame()
+    person = frame.table("person").copy()
+    clone_index = person[support_clone_index_column("person")]
+    qbi_flag = pd.Series(pd.NA, index=person.index, dtype="boolean")
+    qbi_flag.loc[clone_index.eq(1)] = [True, False, True, False]
+    person["business_is_sstb"] = qbi_flag
+    frame = _replace_entity_table(frame, "person", person)
     donor = _donor()
     before_household_weights = frame.weights_for("household")
     before_employment_mass = float(
@@ -503,6 +509,25 @@ def test_tail_transfer_splits_weights_and_copies_joint_vectors(
     person = transferred.table("person")
     tax_unit = transferred.table("tax_unit")
     household = transferred.table("household")
+    transferred_clone_index = person[support_clone_index_column("person")]
+    transferred_flag = person["business_is_sstb"]
+    assert pd.api.types.is_bool_dtype(transferred_flag.dtype)
+    assert transferred_flag.loc[transferred_clone_index.eq(0)].isna().all()
+    assert transferred_flag.loc[transferred_clone_index.eq(1)].notna().all()
+    source_id_column = support_source_id_column("person")
+    detail_flag_by_source = pd.Series(
+        transferred_flag.loc[transferred_clone_index.eq(1)].array,
+        index=person.loc[transferred_clone_index.eq(1), source_id_column],
+    )
+    tail_flag = transferred_flag.loc[transferred_clone_index.eq(2)]
+    expected_tail_flag = person.loc[
+        transferred_clone_index.eq(2), source_id_column
+    ].map(detail_flag_by_source)
+    pd.testing.assert_series_equal(
+        tail_flag.reset_index(drop=True),
+        expected_tail_flag.reset_index(drop=True),
+        check_names=False,
+    )
     for record in manifest["records"]:
         tail_tax_unit_id = record["tail_tax_unit_id"]
         tail_household_id = record["tail_household_id"]

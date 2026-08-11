@@ -703,10 +703,7 @@ def test_finalize_preserve_nulls_materializes_registry_boolean_outputs() -> None
         index=tax_unit.index[detail_tax_units],
     )
     donor = pd.DataFrame(
-        {
-            column: np.asarray([0.0, 1.0], dtype=np.float64)
-            for column in boolean_outputs
-        }
+        {column: np.asarray([0.0, 1.0], dtype=np.float64) for column in boolean_outputs}
         | {"weight": np.ones(2, dtype=np.float64)}
     )
 
@@ -726,6 +723,38 @@ def test_finalize_preserve_nulls_materializes_registry_boolean_outputs() -> None
         assert pd.api.types.is_bool_dtype(values.dtype), (column, values.dtype)
         assert values.loc[~detail_people].isna().all()
         assert values.loc[detail_people].notna().all()
+
+
+def test_finalize_preserve_nulls_rejects_numeric_boolean_materialization() -> None:
+    cloned = _cloned_stacked_fixture()
+    column = US_QBI_BOOLEAN_OUTPUT_COLUMNS[0]
+    person = cloned.table("person")
+    person[column] = np.zeros(len(person), dtype=np.float64)
+    tax_unit = cloned.table("tax_unit")
+    detail_tax_units = tax_unit[support_clone_index_column("tax_unit")].eq(1)
+    predictions = pd.DataFrame(
+        {column: np.ones(int(detail_tax_units.sum()), dtype=np.float64)},
+        index=tax_unit.index[detail_tax_units],
+    )
+    donor = pd.DataFrame(
+        {column: np.asarray([0.0, 1.0]), "weight": np.ones(2, dtype=np.float64)}
+    )
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            rf"PUF boolean output {column!r} must contain only physical boolean "
+            r"values.*dtype float64.*builtins\.float"
+        ),
+    ):
+        finalize_us_puf_tax_detail_predictions(
+            cloned,
+            donor,
+            predictions,
+            person_outputs=(column,),
+            tax_unit_outputs=(),
+            absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+        )
 
 
 def test_finalize_legacy_zero_fill_reproduces_the_audited_defect() -> None:
@@ -1620,6 +1649,74 @@ def test_canonical_metric_registry_covers_the_declared_131_target_split() -> Non
         "bond_assets",
         "stock_assets",
     } & {target for _entity, _family, target, _clone in surface_targets}
+
+
+def test_registry_drives_every_late_callback_dtype_family_check() -> None:
+    registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+    by_column = {
+        (entity, column): metric
+        for (entity, _family, column, _clone_index), metric in registry.items()
+    }
+    assert len(by_column) == len(registry) == 131
+
+    representative = {
+        "monetary_sign_separated": pd.Series([1.0, pd.NA], dtype="Float64"),
+        "boolean_incidence": pd.Series([True, pd.NA], dtype="boolean"),
+        "categorical_tvd": pd.Series([1, pd.NA], dtype="Int64"),
+    }
+    wrong = {
+        "monetary_sign_separated": pd.Series([True], dtype=bool),
+        "boolean_incidence": pd.Series([1.0], dtype=np.float64),
+        "categorical_tvd": pd.Series([True], dtype=bool),
+    }
+    for metric in registry.values():
+        assert stacked_spine_module._late_output_matches_metric_family(
+            representative[metric],
+            metric,
+        )
+        assert not stacked_spine_module._late_output_matches_metric_family(
+            wrong[metric],
+            metric,
+        )
+    assert stacked_spine_module._late_output_matches_metric_family(
+        pd.Series(["NON_CITIZEN", pd.NA], dtype="string"),
+        "categorical_tvd",
+    )
+    assert stacked_spine_module._late_output_matches_metric_family(
+        pd.Series(pd.Categorical(["A", "B"])),
+        "categorical_tvd",
+    )
+    assert not stacked_spine_module._late_output_matches_metric_family(
+        pd.Series([True], dtype=object),
+        "boolean_incidence",
+    )
+
+    registered_occurrences = [
+        (contract.name, output.entity, output.column, by_column[key])
+        for contract in (
+            stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY.values()
+        )
+        for output in contract.outputs
+        if (key := (output.entity, output.column)) in by_column
+    ]
+    assert len(registered_occurrences) == 163
+    assert Counter(
+        metric for _producer, _entity, _column, metric in registered_occurrences
+    ) == {
+        "monetary_sign_separated": 120,
+        "boolean_incidence": 37,
+        "categorical_tvd": 6,
+    }
+    unique_late_targets = {
+        (entity, column): metric
+        for _producer, entity, column, metric in registered_occurrences
+    }
+    assert len(unique_late_targets) == 90
+    assert Counter(unique_late_targets.values()) == {
+        "monetary_sign_separated": 67,
+        "boolean_incidence": 20,
+        "categorical_tvd": 3,
+    }
 
 
 def test_explicit_test_seams_reject_the_canonical_authority() -> None:
@@ -2749,6 +2846,15 @@ def _fill_late_contract_surface(
     include_outputs: bool,
 ) -> Frame:
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    metric_by_column = {
+        (entity, column): metric
+        for (
+            entity,
+            _family,
+            column,
+            _clone_index,
+        ), metric in stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY.items()
+    }
     owners = {
         column: entity for entity, table in tables.items() for column in table.columns
     }
@@ -2783,7 +2889,16 @@ def _fill_late_contract_surface(
                 owners[output.column] = output.entity
         for column in columns:
             table = tables[column.entity]
-            if column.column in table:
+            if (
+                metric_by_column.get((column.entity, column.column))
+                == "boolean_incidence"
+            ):
+                table[column.column] = pd.Series(
+                    True,
+                    index=table.index,
+                    dtype="boolean",
+                )
+            elif column.column in table:
                 table[column.column] = table[column.column].fillna(1)
             elif column.column != "person_support_clone_index":
                 table[column.column] = 1.0

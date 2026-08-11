@@ -1732,7 +1732,50 @@ def _merge_source_operator_outputs(
                 f"align one-to-one with the {entity!r} pool."
             )
         for column in sorted(columns):
-            aligned = source_by_id[column].reindex(target_ids)
+            source_values = source_by_id[column]
+            aligned = source_values.reindex(target_ids)
+            source_is_boolean = _is_physical_boolean_series(source_values)
+            if source_is_boolean:
+                positions = np.flatnonzero(eligible.to_numpy())
+                aligned_boolean = pd.Series(
+                    pd.array(aligned, dtype="boolean"),
+                    index=target.index,
+                    name=column,
+                )
+                if column not in target:
+                    target[column] = aligned_boolean
+                    continue
+                incumbent = target[column]
+                invalid_incumbent = incumbent.dropna().map(
+                    lambda value: not isinstance(value, (bool, np.bool_))
+                )
+                if invalid_incumbent.any():
+                    offending_types = sorted(
+                        {
+                            f"{type(value).__module__}.{type(value).__qualname__}"
+                            for value in incumbent.dropna().loc[invalid_incumbent]
+                        }
+                    )
+                    raise TypeError(
+                        f"Multispine source operator {operator_name!r} emitted "
+                        f"physical booleans for {entity}.{column}, but the pool "
+                        "materialized observed non-boolean values with "
+                        f"dtype {incumbent.dtype!s}: {offending_types}."
+                    )
+                merged_boolean = pd.Series(
+                    pd.array(incumbent, dtype="boolean"),
+                    index=target.index,
+                    name=column,
+                )
+                merged_boolean.iloc[positions] = aligned_boolean.iloc[positions].array
+                target[column] = merged_boolean
+                continue
+            if column in target and pd.api.types.is_bool_dtype(target[column].dtype):
+                raise TypeError(
+                    f"Multispine source operator {operator_name!r} emitted "
+                    f"non-boolean values for boolean-materialized "
+                    f"{entity}.{column}; source dtype={source_values.dtype!s}."
+                )
             if column not in target:
                 target[column] = aligned.to_numpy()
             else:
@@ -1751,6 +1794,18 @@ def _merge_source_operator_outputs(
         metadata=pool.metadata,
     )
     return merged, merged_rows
+
+
+def _is_physical_boolean_series(values: pd.Series) -> bool:
+    """Recognize boolean values without treating numeric 0/1 as booleans."""
+
+    if pd.api.types.is_bool_dtype(values.dtype):
+        return True
+    observed = values.dropna()
+    return bool(
+        len(observed)
+        and observed.map(lambda value: isinstance(value, (bool, np.bool_))).all()
+    )
 
 
 def _frame_row_counts(frame: Frame) -> dict[str, int]:

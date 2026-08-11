@@ -1999,6 +1999,65 @@ def test_single_post_clone_source_entrypoint_rejects_unknown_operator_before_run
         )
 
 
+def test_source_output_merge_materializes_boolean_without_numeric_coercion() -> None:
+    pool = _source_frame()
+    operated = pool.select(np.asarray([True, False]))
+    operated_person = operated.table("person").copy()
+    operated_person["fixture_flag"] = pd.Series(
+        [True],
+        index=operated_person.index,
+        dtype=bool,
+    )
+    operated = _replace_person(operated, operated_person)
+    outputs = {"person": frozenset({"fixture_flag"})}
+
+    merged, rows = multispine_pool_module._merge_source_operator_outputs(
+        pool,
+        operated,
+        outputs,
+        operator_name="fixture_boolean",
+    )
+
+    flag = merged.table("person")["fixture_flag"]
+    assert rows == {"person": 1}
+    assert pd.api.types.is_bool_dtype(flag.dtype)
+    assert flag.tolist() == [True, pd.NA]
+
+    incumbent_person = pool.table("person").copy()
+    incumbent_person["fixture_flag"] = pd.Series(
+        [pd.NA, False],
+        index=incumbent_person.index,
+        dtype=object,
+    )
+    incumbent = _replace_person(pool, incumbent_person)
+    preserved, _rows = multispine_pool_module._merge_source_operator_outputs(
+        incumbent,
+        operated,
+        outputs,
+        operator_name="fixture_boolean",
+    )
+    preserved_flag = preserved.table("person")["fixture_flag"]
+    assert pd.api.types.is_bool_dtype(preserved_flag.dtype)
+    assert preserved_flag.tolist() == [True, False]
+
+    numeric_person = pool.table("person").copy()
+    numeric_person["fixture_flag"] = np.asarray([np.nan, 0.0])
+    numeric = _replace_person(pool, numeric_person)
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"fixture_boolean.*physical booleans for person\.fixture_flag.*"
+            r"observed non-boolean values.*float64.*builtins\.float"
+        ),
+    ):
+        multispine_pool_module._merge_source_operator_outputs(
+            numeric,
+            operated,
+            outputs,
+            operator_name="fixture_boolean",
+        )
+
+
 def _single_post_clone_source_receipt(operator: str) -> dict[str, object]:
     return {
         "phase": "post_clone",

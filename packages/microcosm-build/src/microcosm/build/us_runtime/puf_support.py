@@ -1993,11 +1993,14 @@ def finalize_us_puf_tax_detail_predictions(
             person_puf_mask=person_puf_mask,
         )
     for column in person_outputs:
-        _ensure_float_output_column(
-            tables["person"],
-            column,
-            preserve_nulls=preserve_nulls,
-        )
+        if column in _PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS and preserve_nulls:
+            _ensure_boolean_output_column(tables["person"], column)
+        else:
+            _ensure_float_output_column(
+                tables["person"],
+                column,
+                preserve_nulls=preserve_nulls,
+            )
         allocation_mask = person_puf_mask
         if column in _PUF_EARNINGS_UNIVERSE_PERSON_OUTPUTS:
             if earnings_eligible_mask is None:  # pragma: no cover - loop invariant
@@ -2017,6 +2020,7 @@ def finalize_us_puf_tax_detail_predictions(
                 mask=allocation_mask,
                 column=column,
                 totals=totals,
+                preserve_boolean_dtype=preserve_nulls,
                 fallback_basis_columns=_PERSON_OUTPUT_DISTRIBUTION_BASIS.get(
                     column, ()
                 ),
@@ -3247,6 +3251,39 @@ def _ensure_float_output_column(
     )
 
 
+def _ensure_boolean_output_column(table: pd.DataFrame, column: str) -> None:
+    """Materialize one null-preserving logical boolean without numeric coercion."""
+
+    if column not in table.columns:
+        table[column] = pd.Series(
+            pd.array([pd.NA] * len(table), dtype="boolean"),
+            index=table.index,
+        )
+        return
+
+    values = table[column]
+    observed = values.dropna()
+    invalid = observed.map(lambda value: not isinstance(value, (bool, np.bool_)))
+    if invalid.any():
+        offending_types = sorted(
+            {
+                f"{type(value).__module__}.{type(value).__qualname__}"
+                for value in observed.loc[invalid]
+            }
+        )
+        raise TypeError(
+            f"PUF boolean output {column!r} must contain only physical boolean "
+            "values before null-preserving materialization; got "
+            f"dtype {values.dtype!s} with offending value types "
+            f"{offending_types}."
+        )
+    table[column] = pd.Series(
+        pd.array(values, dtype="boolean"),
+        index=table.index,
+        name=column,
+    )
+
+
 def _snap_to_observed_values(
     values: Sequence[Any],
     observed: Sequence[Any],
@@ -3319,6 +3356,7 @@ def _write_person_tax_unit_boolean_counts(
     mask: pd.Series,
     column: str,
     totals: pd.Series,
+    preserve_boolean_dtype: bool = False,
     fallback_basis_columns: tuple[str, ...] = (),
 ) -> None:
     """Place a predicted number of true people within each tax unit.
@@ -3375,7 +3413,10 @@ def _write_person_tax_unit_boolean_counts(
     )
     placement["selected"] = placement["rank"].to_numpy() < desired
     selected = placement["selected"].reindex(row_ids.index).fillna(False)
-    person.loc[mask, column] = selected.to_numpy(dtype=np.float64)
+    selected_values = selected.to_numpy(dtype=bool)
+    if not preserve_boolean_dtype:
+        selected_values = selected_values.astype(np.float64)
+    person.loc[mask, column] = selected_values
 
 
 def _write_person_tax_unit_totals(

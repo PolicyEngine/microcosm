@@ -2780,11 +2780,12 @@ def _target_encoding(series: pd.Series, *, target: str) -> _TargetEncoding:
         )
 
     if target_dtype == "bool" or semantic_boolean:
-        # Primary PUF finalization deliberately stores its QBI boolean-count
-        # outputs in physical float columns before they become ACS-transfer
-        # donors (including through the supported legacy HDF path). Keep that
-        # numeric-dtype 0/1 compatibility explicit; object-backed 0/1 values
-        # are rejected above rather than coerced through metadata.
+        # Retiring primary-PUF and HDF artifacts can carry boolean targets in
+        # the audited physical numeric 0/1 representation. Keep that legacy
+        # compatibility explicit; the canonical stacked late path now
+        # materializes booleans physically and validates every callback output.
+        # Object-backed 0/1 values remain rejected rather than being coerced
+        # through metadata.
         values = pd.Series(
             _as_float_array(series),
             index=series.index,

@@ -2,13 +2,14 @@
 
 ## State
 
-The smoke-r6 mechanism is adjudicated. The first target in late-transfer group
-`person/puf_tax_itemization__batch_4`,
-`farm_rent_income_would_be_qualified`, is canonically `boolean_incidence` and
-its transfer prediction is correctly boolean. Primary-PUF finalization wrongly
-materializes its target Series as `float64`; pandas then refuses the boolean
-merge. The owning-layer regression is RED as expected; no implementation
-change has been made yet.
+The smoke-r6 mechanism is fixed at both affected materialization seams.
+Primary-PUF finalization now preserves all eight canonical QBI outputs as
+nullable booleans, and the shared source-output merge preserves twelve
+physical-boolean callback outputs as nullable booleans instead of widening
+CPS-only alignments to `object`. A registry-driven guard now rejects every
+late callback output whose physical dtype disagrees with its declared metric
+family before the DAG records the producer. The focused 11-test mechanism
+suite passes after formatting; the complete proof matrix remains to run.
 
 ## Done
 
@@ -51,12 +52,33 @@ change has been made yet.
 - Ran the new test against the unfixed implementation and captured the
   expected RED result: the first output,
   `estate_income_would_be_qualified`, is `float64` rather than boolean.
+- Audited all 163 registered late-write occurrences, representing 90 unique
+  targets: 120 monetary, 37 boolean, and 6 categorical occurrences; 67
+  monetary, 20 boolean, and 3 categorical unique targets.
+- Found the same mismatch class in the shared source-output merge. Nine of
+  twelve source-produced booleans had no incumbent column and therefore
+  widened to `object` when aligned across non-source rows; three existing
+  gap-fill booleans happened to retain boolean storage.
+- Fixed primary-PUF boolean materialization at its owning layer. Existing
+  observed non-booleans, including numeric 0/1 values, are rejected rather
+  than silently coerced. The retiring legacy zero-fill path and its protocol-5
+  byte pin remain unchanged.
+- Fixed the shared source merge to preserve physical booleans as pandas
+  nullable booleans across unowned rows. Numeric incumbents and non-boolean
+  callback values targeting boolean-materialized columns fail closed.
+- Added a registry-authoritative late callback guard. It checks all registered
+  callback outputs before receipts are recorded and permits the physical
+  representations required by the 79/48/4 metric families.
+- Extended tail-transfer coverage to prove nullable QBI booleans survive the
+  per-stratum tail clone copy without rewriting clone-0 absence.
+- Passed the post-format focused mechanism suite: 11 passed, with only two
+  pre-existing DataFrame-fragmentation warnings. No build was run.
 
 ## Next
 
-- Complete the all-late-write audit and extend the registry-driven regression
-  to the shared post-callback seam for the full 131-target authority.
-- Fix primary-PUF boolean materialization at its owning layer, with explicit
-  validation rather than a permissive or silent coercion.
-- Run the focused and complete requested proof matrix.
+- Commit the coherent implementation, registry audit, tail preservation test,
+  progress update, and changelog entry.
+- Run the complete focused suite and the exact PR #583 495-test proof.
+- Run all 225 workspace test files in eight exact-count chunks, followed by
+  ruff, format, and diff checks.
 - Record a gradeable smoke-r7 prediction and final verdict.

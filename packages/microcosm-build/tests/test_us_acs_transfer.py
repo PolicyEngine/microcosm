@@ -1236,10 +1236,10 @@ def test_engine_boolean_metadata_restores_primary_qrf_float_h5_donor(
         PolicyEngineUSVariableMetadataIndex()
     except ImportError:
         pytest.skip("requires the policyengine-us [us] extra")
-    # Primary PUF finalization physically stores QBI boolean-count outputs as
-    # floats; the supported legacy ACS builder can then load them from HDF as
-    # its transfer donor. Pin that real producer/HDF representation rather
-    # than using an unrelated model-required boolean.
+    # Retiring primary-PUF artifacts physically stored QBI boolean-count
+    # outputs as floats, and the supported legacy ACS builder can still load
+    # them from HDF as its transfer donor. Pin that compatibility representation
+    # rather than using an unrelated model-required boolean.
     source = tmp_path / "legacy-boolean-donor.h5"
     pd.DataFrame({"business_is_sstb": [1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]}).to_hdf(
         source, key="person", format="fixed"

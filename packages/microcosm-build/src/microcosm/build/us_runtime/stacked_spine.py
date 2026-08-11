@@ -5947,6 +5947,88 @@ def _late_declared_input_evidence(
     return result
 
 
+def _late_scalar_is_hashable(value: object) -> bool:
+    try:
+        hash(value)
+    except TypeError:
+        return False
+    return True
+
+
+def _late_output_matches_metric_family(values: pd.Series, metric: str) -> bool:
+    """Return whether one late output's physical dtype matches its registry family."""
+
+    is_boolean = pd.api.types.is_bool_dtype(values.dtype)
+    is_real_numeric = bool(
+        pd.api.types.is_numeric_dtype(values.dtype)
+        and not is_boolean
+        and not pd.api.types.is_complex_dtype(values.dtype)
+    )
+    if metric == "boolean_incidence":
+        return bool(is_boolean)
+    if metric in {"monetary_sign_separated", "rare_incidence"}:
+        return is_real_numeric
+    if metric != "categorical_tvd":
+        return False
+    if is_boolean or pd.api.types.is_complex_dtype(values.dtype):
+        return False
+    if is_real_numeric or isinstance(values.dtype, pd.CategoricalDtype):
+        return True
+    if pd.api.types.is_object_dtype(values.dtype):
+        inferred = pd.api.types.infer_dtype(values, skipna=True)
+        return inferred != "boolean" and all(
+            _late_scalar_is_hashable(value) for value in values.dropna()
+        )
+    return bool(pd.api.types.is_string_dtype(values.dtype))
+
+
+def _validate_late_callback_output_metric_families(
+    frame: Frame,
+    contract: ProducerContract,
+    *,
+    metric_registry: Mapping[
+        tuple[str, str, str, int], str
+    ] = _CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR,
+) -> None:
+    """Fail closed when a callback materializes a registered output incorrectly."""
+
+    declared_by_column: dict[tuple[str, str], list[tuple[str, str]]] = {}
+    for (entity, family, column, clone_index), metric in metric_registry.items():
+        if clone_index != 0:
+            continue
+        declared_by_column.setdefault((entity, column), []).append((family, metric))
+
+    failures: list[str] = []
+    for output in contract.outputs:
+        if output.entity == "frame" or output.column.startswith("@"):
+            continue
+        declarations = declared_by_column.get((output.entity, output.column), ())
+        if not declarations:
+            continue
+        metrics = {metric for _family, metric in declarations}
+        if len(metrics) != 1:
+            raise RuntimeError(
+                "The origin-battery metric registry gives conflicting dtype "
+                f"families to {output.entity}.{output.column}: {declarations}."
+            )
+        table = frame.table(output.entity)
+        if output.column not in table:
+            continue
+        metric = next(iter(metrics))
+        values = table[output.column]
+        if not _late_output_matches_metric_family(values, metric):
+            families = sorted(family for family, _metric in declarations)
+            failures.append(
+                f"{output.entity}.{output.column}: registry families {families} "
+                f"declare {metric!r}, callback dtype is {str(values.dtype)!r}"
+            )
+    if failures:
+        raise TypeError(
+            f"Late producer {contract.name!r} output dtype-family validation "
+            "failed:\n  " + "\n  ".join(failures)
+        )
+
+
 def _late_output_column_evidence(
     frame: Frame,
     *,
@@ -9421,6 +9503,7 @@ def run_stacked_late_producer_dag(
                 ),
             )
         current = result.frame
+        _validate_late_callback_output_metric_families(current, contract)
         producer_receipt = _json_ready(result.receipt)
         if contract.kind == "primary_puf":
             _validate_primary_callback_resource_binding(
