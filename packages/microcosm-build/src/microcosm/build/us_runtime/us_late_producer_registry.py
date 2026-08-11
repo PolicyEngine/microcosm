@@ -86,7 +86,9 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-# v13 declares the primary callback's optional tax-unit pass-through reads and
+# v14 scopes origin-exclusive raw requirements independently of their inventory
+# defaults and retires whole-pool RELSHIPP/TEN/H_TENURE transfer fallbacks. v13
+# declares the primary callback's optional tax-unit pass-through reads and
 # binds its complete tail-control/runtime-asset surface. v12 declared every
 # primary callback person read-before-write and universe-validation column and
 # removed the unusable filing-status fallback. v11 bound the complete
@@ -103,7 +105,7 @@ __all__ = [
 # cardinalities across each execution row, binds source-receipt outputs to the
 # callback receipt, and requires the primary callback to report the exact
 # resources it consumed. Receipt v2 introduced exact virtual-resource payloads.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 13
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 14
 US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 3
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
@@ -192,6 +194,7 @@ class EffectiveInputRequirement:
     label: str
     alternatives: tuple[tuple[ScopedInput, ...], ...]
     optional: bool = False
+    required_scope: str | None = None
 
     def __post_init__(self) -> None:
         _nonempty(self.label, label="EffectiveInputRequirement.label")
@@ -220,6 +223,11 @@ class EffectiveInputRequirement:
         if len(set(canonical)) != len(canonical):
             raise ValueError(f"Effective input {self.label!r} repeats an alternative.")
         object.__setattr__(self, "alternatives", canonical)
+        if self.required_scope is not None:
+            _nonempty(
+                self.required_scope,
+                label=f"Effective input {self.label!r} required_scope",
+            )
 
 
 @dataclass(frozen=True)
@@ -319,11 +327,13 @@ def _requirement(
     label: str,
     *alternatives: Sequence[ScopedInput],
     optional: bool = False,
+    required_scope: str | None = None,
 ) -> EffectiveInputRequirement:
     return EffectiveInputRequirement(
-        label,
-        tuple(tuple(option) for option in alternatives),
-        optional,
+        label=label,
+        alternatives=tuple(tuple(option) for option in alternatives),
+        optional=optional,
+        required_scope=required_scope,
     )
 
 
@@ -334,11 +344,13 @@ def _single(
     *,
     optional: bool = False,
     value_kind: str = "non_null",
+    required_scope: str | None = None,
 ) -> EffectiveInputRequirement:
     return _requirement(
         label,
         (_column(entity, column, value_kind=value_kind),),
         optional=optional,
+        required_scope=required_scope,
     )
 
 
@@ -416,6 +428,7 @@ def _cross_grain_validation_requirements() -> tuple[EffectiveInputRequirement, .
                 "household",
                 "TYPEHUGQ",
                 value_kind="finite_numeric",
+                required_scope=_ACS_SOURCE_SCOPE,
             ),
             _single(
                 "validated_structure:resolved_household_weight",
@@ -1266,7 +1279,6 @@ def _transfer_input_inventory(group: TransferProducerGroup) -> SourceInputInvent
         _requirement(
             "optional_household_head",
             (_column("person", "is_household_head", value_kind="finite_numeric"),),
-            (_column("person", "RELSHIPP", value_kind="finite_numeric"),),
             (_column("person", "A_EXPRRP", value_kind="finite_numeric"),),
             (_column("person", "A_LINENO", value_kind="finite_numeric"),),
             optional=True,
@@ -1275,8 +1287,6 @@ def _transfer_input_inventory(group: TransferProducerGroup) -> SourceInputInvent
             "optional_tenure",
             (_column("person", "tenure_type"),),
             (_column("spm_unit", "spm_unit_tenure_type"),),
-            (_column("household", "TEN", value_kind="finite_numeric"),),
-            (_column("household", "H_TENURE", value_kind="finite_numeric"),),
             optional=True,
         ),
     )
@@ -1447,11 +1457,12 @@ def _inventory_contract_inputs(
     for requirement in inventory.requirements:
         first = requirement.alternatives[0][0]
         absence_id = f"optional_input:{node_name}:{requirement.label}"
+        resolved_scope = requirement.required_scope or required_scope
         inputs.append(
             ProducerInput(
                 entity=first.entity,
                 column=f"@effective:{requirement.label}",
-                required_scope=required_scope,
+                required_scope=resolved_scope,
                 producing_stage=US_LATE_EXTERNAL_STAGES[0],
                 tolerated_absence_receipts=(absence_id,)
                 if requirement.optional
@@ -1484,7 +1495,11 @@ def _build_registry() -> dict[str, ProducerContract]:
         for column in columns
     ) + (ProducerOutput("person", _CLONE_ATTACHMENT_OUTPUT, _WHOLE_POOL_SCOPE),)
     structural_outputs = tuple(
-        ProducerOutput(column.entity, column.column, _WHOLE_POOL_SCOPE)
+        ProducerOutput(
+            column.entity,
+            column.column,
+            requirement.required_scope or _WHOLE_POOL_SCOPE,
+        )
         for requirement in _CROSS_GRAIN_VALIDATION_REQUIREMENTS
         for alternative in requirement.alternatives
         for column in alternative
@@ -1892,6 +1907,7 @@ def _inventory_payload(inventory: SourceInputInventory) -> dict[str, object]:
             {
                 "label": requirement.label,
                 "optional": requirement.optional,
+                "required_scope": requirement.required_scope,
                 "alternatives": [
                     [
                         {

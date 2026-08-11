@@ -224,8 +224,6 @@ _TENURE_CODES: Mapping[str, float] = {
     "RENTED": 3.0,
     "RENTER": 3.0,
 }
-_ACS_TENURE_CODES: Mapping[int, float] = {1: 1.0, 2: 2.0, 3: 3.0, 4: 0.0}
-_CPS_TENURE_CODES: Mapping[int, float] = {1: 1.0, 2: 3.0, 3: 0.0}
 
 
 def acs_transfer_execution_contract_identity(
@@ -241,7 +239,7 @@ def acs_transfer_execution_contract_identity(
     )
     adult_care_enabled = _ADULT_CARE_EXPENSE in requested_targets
     payload: dict[str, object] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "person_required_predictors": list(ACS_PERSON_TRANSFER_PREDICTORS),
         "person_optional_predictors": list(ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS),
         "group_required_predictors": list(ACS_GROUP_TRANSFER_PREDICTORS),
@@ -256,24 +254,15 @@ def acs_transfer_execution_contract_identity(
             "mandatory_features": [_HEAD_FEATURE, _TENURE_FEATURE],
             "head_source_precedence": [
                 {"source": "is_household_head", "head_codes": [True]},
-                {"source": "RELSHIPP", "head_codes": [20]},
                 {"source": "A_EXPRRP", "head_codes": [1, 2]},
                 {"source": "A_LINENO", "head_codes": [1]},
             ],
             "tenure_source_precedence": [
                 "tenure_type",
                 "spm_unit_tenure_type",
-                "TEN",
-                "H_TENURE",
             ],
         },
         "tenure_codes": dict(sorted(_TENURE_CODES.items())),
-        "acs_tenure_codes": {
-            str(code): value for code, value in sorted(_ACS_TENURE_CODES.items())
-        },
-        "cps_tenure_codes": {
-            str(code): value for code, value in sorted(_CPS_TENURE_CODES.items())
-        },
         "immigration_status_targets": list(_IMMIGRATION_STATUS_TARGETS),
         "immigration_status_model_target": _IMMIGRATION_STATUS_MODEL_TARGET,
         "discrete_numeric_targets": sorted(_DISCRETE_NUMERIC_TARGETS),
@@ -804,7 +793,6 @@ def acs_transfer_donor_requirements(
             source
             for source in (
                 "is_household_head",
-                "RELSHIPP",
                 "A_EXPRRP",
                 "A_LINENO",
             )
@@ -825,8 +813,6 @@ def acs_transfer_donor_requirements(
             for source in (
                 "tenure_type",
                 "spm_unit_tenure_type",
-                "TEN",
-                "H_TENURE",
             )
             if (owner := _column_owner_or_none(donor, source)) is not None
         ),
@@ -1990,7 +1976,6 @@ def _person_head_feature(frame: Frame) -> pd.Series | None:
         return direct.rename(_HEAD_FEATURE)
 
     for source, head_codes in (
-        ("RELSHIPP", {20}),
         ("A_EXPRRP", {1, 2}),
         ("A_LINENO", {1}),
     ):
@@ -2031,30 +2016,6 @@ def _person_tenure_feature(frame: Frame) -> pd.Series | None:
             )
         return pd.Series(mapped, index=frame.person.index, name=_TENURE_FEATURE)
 
-    for source, codes in (
-        ("TEN", _ACS_TENURE_CODES),
-        ("H_TENURE", _CPS_TENURE_CODES),
-    ):
-        values = _column_broadcast_to_person(frame, source)
-        if values is None:
-            continue
-        raw = _numeric_source(values, context=f"tenure predictor {source}")
-        mapped = np.full(len(raw), np.nan, dtype=np.float64)
-        invalid: list[float] = []
-        for position, value in enumerate(raw):
-            if np.isnan(value):
-                continue
-            code = int(value)
-            if value != code or code not in codes:
-                invalid.append(float(value))
-                continue
-            mapped[position] = codes[code]
-        if invalid:
-            raise ValueError(
-                f"ACS transfer tenure predictor {source!r} contains unsupported "
-                f"code(s): {invalid[:5]}."
-            )
-        return pd.Series(mapped, index=frame.person.index, name=_TENURE_FEATURE)
     return None
 
 
