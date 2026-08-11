@@ -339,9 +339,7 @@ class TestUKGatesManifest:
             == terminal_gates.UK_REVIEWED_EXPORT_EXCLUSIONS
         )
 
-    def test_input_mass_reference_is_a_declared_pinned_input(
-        self, manifest
-    ) -> None:
+    def test_input_mass_reference_is_a_declared_pinned_input(self, manifest) -> None:
         # The microcosm#327 rule: a parity gate's reference and exclusion
         # register are declared per-country inputs, never implicit code.
         params = {gate.id: gate.parameters for gate in manifest.gates}
@@ -361,6 +359,11 @@ class TestUKGatesManifest:
         assert (
             qrf["reviewed_exclusions_resource"]
             == weighted_integrity.UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE
+        )
+        degenerate = params["uk_degenerate_release_surface"]
+        assert (
+            degenerate["reviewed_exclusions_resource"]
+            == weighted_integrity.UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE
         )
 
 

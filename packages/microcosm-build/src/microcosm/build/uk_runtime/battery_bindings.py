@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
+from datetime import date, datetime
 from typing import Any
 
 import pandas as pd
@@ -67,7 +68,9 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
     UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
+    UKReviewedExclusion,
     _input_mass_reference_evidence_sha256,
+    coerce_reviewed_exclusions,
     uk_dataset_input_mass_totals,
     uk_input_mass_parity_gate,
     uk_qrf_tail_concentration_columns,
@@ -230,6 +233,45 @@ def _stage_names_evidence(
     }
 
 
+def _exclusion_clock(context: EvidenceContext) -> date:
+    """The one expiry clock every exclusion-consuming gate shares.
+
+    Exclusion receipts carry approval and expiry dates, and the release
+    contract requires every gate in one report to evaluate them on the same
+    date. A per-gate default could straddle midnight, so the clock is a
+    required artifact and anything but a plain ``date`` is refused.
+    """
+
+    clock = context.artifacts["exclusions_evaluated_on"]
+    if isinstance(clock, datetime) or not isinstance(clock, date):
+        raise ValueError(
+            "exclusions_evaluated_on must be a datetime.date, got "
+            f"{type(clock).__name__}; expiry must be evaluated on one "
+            "shared clock."
+        )
+    return clock
+
+
+def _resolve_degenerate_exclusions(
+    context: EvidenceContext,
+) -> tuple[Mapping[str, UKReviewedExclusion], str]:
+    """The exclusion records the degenerate gate runs, and their source.
+
+    The committed register is the reviewed policy of record (#630/#610);
+    a supplied ``reviewed_degenerate_exclusions`` artifact is the loud
+    review-time override — the evidence hook digests whichever resolved,
+    so an overridden run self-describes in the signed report.
+    """
+
+    override = context.artifacts.get("reviewed_degenerate_exclusions")
+    if override is None:
+        return uk_default_degenerate_reviewed_exclusions(), "committed"
+    return (
+        coerce_reviewed_exclusions(override, label="UK degenerate-surface policy"),
+        "override",
+    )
+
+
 def _evaluate_degenerate_release_surface(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -240,14 +282,25 @@ def _evaluate_degenerate_release_surface(
             f"uk/gates.json names exclusion register {register!r} but the "
             f"runtime loads {UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE!r}."
         )
-    # The committed register is the reviewed policy of record (#630/#610):
-    # the battery must run the same exclusions the legacy terminal report
-    # resolves for None, or the two paths diverge on dormant/expired state.
+    resolved, _source = _resolve_degenerate_exclusions(context)
     return uk_degenerate_release_surface_gate(
         _uk_gate_surface(context.frame),
-        reviewed_exclusions=uk_default_degenerate_reviewed_exclusions(),
+        reviewed_exclusions=resolved,
+        now=_exclusion_clock(context),
         **kwargs,
     )
+
+
+def _degenerate_exclusions_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    resolved, source = _resolve_degenerate_exclusions(context)
+    return {
+        "exclusions_register": source,
+        "reviewed_exclusions": {
+            name: record.policy_payload() for name, record in sorted(resolved.items())
+        },
+    }
 
 
 def _evaluate_zero_weight_strata(
@@ -366,6 +419,7 @@ def _evaluate_input_mass_parity(
         uk_dataset_input_mass_totals(_uk_gate_surface(context.frame)),
         context.artifacts["input_mass_reference"],
         policy=context.artifacts["input_mass_policy"],
+        now=_exclusion_clock(context),
         **kwargs,
     )
 
@@ -397,6 +451,7 @@ def _evaluate_tail_concentration(
         weights,
         policy=context.artifacts["qrf_tail_policy"],
         surface=surface,
+        now=_exclusion_clock(context),
         **kwargs,
     )
 
@@ -442,6 +497,8 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         name="degenerate_release_surface",
         evaluator=_evaluate_degenerate_release_surface,
         parameter_keys=frozenset({"reviewed_exclusions_resource"}),
+        artifact_keys=frozenset({"exclusions_evaluated_on"}),
+        evidence=_degenerate_exclusions_evidence,
     ),
     "zero_weight_strata": UKGateBinding(
         name="zero_weight_strata",
@@ -489,14 +546,16 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "candidate_name",
             }
         ),
-        artifact_keys=frozenset({"input_mass_reference", "input_mass_policy"}),
+        artifact_keys=frozenset(
+            {"input_mass_reference", "input_mass_policy", "exclusions_evaluated_on"}
+        ),
         evidence=_input_mass_reference_evidence,
     ),
     "tail_concentration": UKGateBinding(
         name="tail_concentration",
         evaluator=_evaluate_tail_concentration,
         parameter_keys=frozenset({"reviewed_exclusions_resource"}),
-        artifact_keys=frozenset({"qrf_tail_policy"}),
+        artifact_keys=frozenset({"qrf_tail_policy", "exclusions_evaluated_on"}),
         legacy_name="qrf_tail_concentration",
     ),
 }
