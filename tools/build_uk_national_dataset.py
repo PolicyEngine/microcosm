@@ -33,7 +33,11 @@ from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_SEED_DEFAULT,
 )
 from microcosm.build.uk_runtime.release_identity import UK_RELEASE_TIERS
+from microcosm.build.uk_runtime.terminal_gates import (
+    uk_default_degenerate_reviewed_exclusions,
+)
 from microcosm.build.uk_runtime.weighted_integrity import (
+    UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
@@ -281,6 +285,17 @@ def _parse_args() -> argparse.Namespace:
             "entries fail the gate; dormant entries are reported."
         ),
     )
+    parser.add_argument(
+        "--degenerate-exclusions",
+        type=Path,
+        help=(
+            "Reviewed degenerate-release-surface exclusion register "
+            f"overriding the committed {UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE} "
+            "(#630). Stale entries fail the gate; dormant entries are "
+            "reported. The gate is always armed; the override changes the "
+            "run's policy digest away from the certified pin."
+        ),
+    )
     args = parser.parse_args()
     if args.sample_seed < 0:
         parser.error("sample seed must be a non-negative integer.")
@@ -409,11 +424,24 @@ def main() -> int:
         input_mass_reference_path=args.input_mass_reference_json,
         input_mass_exclusions_path=args.input_mass_exclusions,
         qrf_tail_exclusions_path=args.qrf_tail_exclusions,
+        degenerate_exclusions_path=args.degenerate_exclusions,
         rung_abort_path=rung_abort_path,
     )
     # Read-only gate inputs are materialized before any sidecar unlink so a
-    # path collision cannot consume a just-deleted file.
+    # path collision cannot consume a just-deleted file — and so a typo'd
+    # register path dies here, before it can destroy a prior build's
+    # sidecars. The default register is preflighted for the same reason: a
+    # corrupted committed register must not surface hours later at
+    # terminal-gate time.
     weighted_integrity_arguments = _weighted_integrity_arguments(args)
+    reviewed_degenerate_exclusions = (
+        uk_default_degenerate_reviewed_exclusions()
+        if args.degenerate_exclusions is None
+        else load_uk_reviewed_exclusion_register(
+            args.degenerate_exclusions,
+            resource=UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
+        )
+    )
     candidate = verify_certified_uk_candidate(args.input_h5)
     evidence_path.unlink(missing_ok=True)
     replay_path.unlink(missing_ok=True)
@@ -459,6 +487,7 @@ def main() -> int:
             staging_h5=args.staging_h5,
             release_id=args.release_id,
             calibration_diagnostics_sha256=args.calibration_diagnostics_sha256,
+            reviewed_degenerate_exclusions=reviewed_degenerate_exclusions,
             stages=(
                 UKNationalStage(
                     name="frs_hmrc_retained_leaves",
@@ -549,6 +578,7 @@ def main() -> int:
         qrf_estimators=args.qrf_estimators,
         sample_fraction=args.sample_fraction,
         sample_seed=args.sample_seed,
+        degenerate_exclusions_override=args.degenerate_exclusions is not None,
     )
     _write_json(build_record_path, build_record)
     payload = {
@@ -665,6 +695,7 @@ def _aggregate_build_record(
     qrf_estimators: int,
     sample_fraction: float = 1.0,
     sample_seed: int = UK_SAMPLE_SEED_DEFAULT,
+    degenerate_exclusions_override: bool = False,
 ) -> dict[str, object]:
     """Return commit-safe aggregate evidence for one successful staging build."""
 
@@ -707,6 +738,13 @@ def _aggregate_build_record(
             "sample_fraction": float(sample_fraction),
             "sample_seed": int(sample_seed),
             "rung_token": UK_SAMPLE_RUNG_TOKENS[sample_fraction],
+            # The attested policy digest is content-addressed, so a
+            # content-identical --degenerate-exclusions override would be
+            # invisible there; the record keeps the provenance honest
+            # without a path (this record is path-free by contract).
+            "degenerate_exclusions_register": (
+                "override" if degenerate_exclusions_override else "committed"
+            ),
         },
         "sampling": (
             None if result.sampling_receipt is None else dict(result.sampling_receipt)
@@ -856,6 +894,7 @@ def _validate_distinct_paths(
     input_mass_reference_path: Path | None,
     input_mass_exclusions_path: Path | None,
     qrf_tail_exclusions_path: Path | None,
+    degenerate_exclusions_path: Path | None,
     rung_abort_path: Path,
 ) -> None:
     paths = {
@@ -877,6 +916,7 @@ def _validate_distinct_paths(
             "--input-mass-reference-json": input_mass_reference_path,
             "--input-mass-exclusions": input_mass_exclusions_path,
             "--qrf-tail-exclusions": qrf_tail_exclusions_path,
+            "--degenerate-exclusions": degenerate_exclusions_path,
         }.items()
         if path is not None
     )

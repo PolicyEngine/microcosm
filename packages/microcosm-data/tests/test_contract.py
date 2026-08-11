@@ -32,7 +32,13 @@ UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
 UK_TERMINAL_GATE_PRODUCER = (
     "microcosm.build.uk_runtime.terminal_gates.uk_terminal_gate_report"
 )
+# The current reviewed policy digest (with the #630 source_year degenerate
+# exclusion in the committed register); the legacy digest is what the
+# grandfathered June release attests.
 UK_TERMINAL_GATE_POLICY_SHA256 = (
+    "ae93bd10a02362a523eb077bcbd32b362cef31f0447acbc40537df696e30c757"
+)
+UK_TERMINAL_GATE_POLICY_SHA256_LEGACY = (
     "74c9cd474d76e2b8d4ca5b298c19fc6348ac1a90746594afc8a81283a0398b68"
 )
 UK_TERMINAL_GATE_SIGNATURE_ALGORITHM = "hmac-sha256"
@@ -601,6 +607,9 @@ def _terminal_gate_details(name: str) -> dict:
             "reviewed_exclusions": {},
             "stale_exclusions": [],
             "dormant_exclusions": [],
+            "expired_exclusions": [],
+            "premature_exclusions": [],
+            "exclusions_evaluated_on": "2026-08-11",
         }
     if name == "zero_weight_strata":
         return {
@@ -671,6 +680,9 @@ def _terminal_gate_details(name: str) -> dict:
             "unused_reviewed_exclusions": [],
             "stale_exclusions": [],
             "dormant_exclusions": [],
+            "expired_exclusions": [],
+            "premature_exclusions": [],
+            "exclusions_evaluated_on": "2026-08-11",
             "reference_identity": dict(UK_INPUT_MASS_REFERENCE_IDENTITY),
         }
     if name == "qrf_tail_concentration":
@@ -685,6 +697,9 @@ def _terminal_gate_details(name: str) -> dict:
             "reviewed_exclusions": {},
             "stale_exclusions": [],
             "dormant_exclusions": [],
+            "expired_exclusions": [],
+            "premature_exclusions": [],
+            "exclusions_evaluated_on": "2026-08-11",
             "surface": {
                 "declared_qrf_outputs": 1,
                 "checked_columns": ["self_employment_income"],
@@ -2168,6 +2183,24 @@ def test_exact_k_uk_terminal_report_rejects_non_aggregator_producer(
         validate_release_dir(directory)
 
 
+def test_uk_terminal_policy_pins_are_in_lockstep_with_the_contract() -> None:
+    """Both reviewed digests — current and grandfathered — match the
+    contract module's private literals, so a typo in either constant is
+    detectable even while the legacy branch stays defensively unreachable
+    (the June id is not an exact-k id, so its report is never checked)."""
+
+    from microcosm.data import contract as contract_module
+
+    assert (
+        contract_module._UK_TERMINAL_GATE_POLICY_SHA256
+        == UK_TERMINAL_GATE_POLICY_SHA256
+    )
+    assert (
+        contract_module._UK_TERMINAL_GATE_POLICY_SHA256_LEGACY
+        == UK_TERMINAL_GATE_POLICY_SHA256_LEGACY
+    )
+
+
 def test_exact_k_uk_terminal_report_rejects_uncertified_policy(
     tmp_path: Path,
 ) -> None:
@@ -3329,6 +3362,45 @@ def test_exact_k_uk_terminal_rejects_boolean_qrf_carrier_count(
     failures = "\n".join(excinfo.value.failures)
     assert "details.carrier_counts values" in failures
     assert "attestation.signature does not authenticate" not in failures
+
+
+def test_exact_k_uk_terminal_rejects_mixed_exclusion_evaluation_dates(
+    tmp_path: Path,
+) -> None:
+    """One report evaluates every register on one date; a hand-composed
+    collection mixing evaluation dates is not the aggregator's output
+    (adversarial-review finding: expiry enforcement was otherwise
+    invisible to the contract)."""
+
+    directory, payload = _resignable_qrf_release(tmp_path)
+    degenerate = payload["gates"]["degenerate_release_surface"]["details"]
+    degenerate["exclusions_evaluated_on"] = "2020-01-01"
+    _write_resigned_qrf_release(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+    failures = "\n".join(excinfo.value.failures)
+    assert "share one details.exclusions_evaluated_on" in failures
+
+
+def test_exact_k_uk_terminal_requires_the_exclusion_receipt_fields(
+    tmp_path: Path,
+) -> None:
+    """A key-signed report cannot simply omit expired_exclusions to dodge
+    the empty-list expectation: the fields are part of the required detail
+    schema (adversarial-review finding — the checks previously defaulted
+    absent fields to empty)."""
+
+    directory, payload = _resignable_qrf_release(tmp_path)
+    degenerate = payload["gates"]["degenerate_release_surface"]["details"]
+    del degenerate["expired_exclusions"]
+    _write_resigned_qrf_release(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+    failures = "\n".join(excinfo.value.failures)
+    assert "honest aggregator detail schema" in failures
+    assert "expired_exclusions" in failures
 
 
 def test_exact_k_uk_terminal_accepts_high_qrf_share_with_live_exclusion(

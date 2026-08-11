@@ -18,7 +18,6 @@ from microcosm.build.gates import FitWeightRecord, GateReport, GateResult
 from microcosm.build.uk_runtime.terminal_gates import (
     UK_DEFAULT_ZERO_WEIGHT_STRATA,
     UK_MAX_TO_MEDIAN_WEIGHT_RATIO,
-    UK_TERMINAL_GATE_POLICY_SHA256,
     UK_TERMINAL_GATE_PRODUCER,
     UK_TERMINAL_GATE_SIGNATURE_ALGORITHM,
     UK_TERMINAL_GATE_SIGNING_KEY_ENV,
@@ -27,16 +26,32 @@ from microcosm.build.uk_runtime.terminal_gates import (
     UKQRFTailConcentrationPolicy,
     UKReleaseParityEvidence,
     UKZeroWeightStratumDeclaration,
+    uk_default_degenerate_reviewed_exclusions,
     uk_degenerate_release_surface_gate,
     uk_export_surface_gate,
     uk_target_fit_gate,
     uk_target_surface_gate,
+    uk_terminal_gate_policy_sha256,
     uk_terminal_gate_report,
     uk_weight_ratio_gate,
     write_uk_terminal_gate_report,
 )
 
 TEST_UK_TERMINAL_GATE_SIGNING_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+
+
+def _entry(reason: str, *, expires_on: str = "2027-02-10") -> dict[str, str]:
+    """A valid schema-2 approval receipt around the fixture's reason."""
+
+    return {
+        "reason": reason,
+        "approved_by": "test-reviewer",
+        "adjudication": "microcosm#610",
+        "approved_on": "2026-08-10",
+        "expires_on": expires_on,
+    }
+
+
 TEST_UK_RELEASE_ID = "populace-uk-2023-frs-k535080"
 TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256 = "c" * 64
 
@@ -147,18 +162,19 @@ def test_reviewed_degenerate_exclusion_is_recorded_and_stale_entries_fail() -> N
     reason = "Fixture intentionally broadcasts this reviewed input."
     live = uk_degenerate_release_surface_gate(
         _dataset(signal=7.0),
-        reviewed_exclusions={"person.employment_income": reason},
+        reviewed_exclusions={"person.employment_income": _entry(reason)},
     )
     stale = uk_degenerate_release_surface_gate(
         _dataset(),
-        reviewed_exclusions={"person.employment_income": reason},
+        reviewed_exclusions={"person.employment_income": _entry(reason)},
     )
 
     assert live.passed
-    assert (
-        live.details["reviewed_exclusions"]["person.employment_income"]["reason"]
-        == reason
-    )
+    recorded = live.details["reviewed_exclusions"]["person.employment_income"]
+    assert recorded["reason"] == reason
+    assert recorded["approved_by"] == "test-reviewer"
+    assert recorded["adjudication"] == "microcosm#610"
+    assert recorded["expires_on"] == "2027-02-10"
     assert not stale.passed
     assert stale.details["stale_exclusions"] == ["person.employment_income"]
 
@@ -601,7 +617,7 @@ def test_stale_weighted_integrity_exclusions_fail_the_armed_battery() -> None:
         input_mass_reference=_input_mass_reference(),
         input_mass_policy=_input_mass_policy(
             reviewed_exclusions={
-                "person.employment_income": "Seeded stale entry.",
+                "person.employment_income": _entry("Seeded stale entry."),
             }
         ),
     )
@@ -630,7 +646,7 @@ def test_terminal_report_writer_round_trips_strict_atomic_json(tmp_path) -> None
         attestation["calibration_diagnostics_sha256"]
         == TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256
     )
-    assert attestation["policy_sha256"] != UK_TERMINAL_GATE_POLICY_SHA256
+    assert attestation["policy_sha256"] != uk_terminal_gate_policy_sha256()
     assert attestation["evaluated_gates"] == [
         "uk_release_input_coverage",
         "degenerate_release_surface",
@@ -758,7 +774,7 @@ def test_private_constructor_cannot_mint_sol_raw_parity_trio() -> None:
             results,
             release_id=TEST_UK_RELEASE_ID,
             calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
-            policy_sha256=UK_TERMINAL_GATE_POLICY_SHA256,
+            policy_sha256=uk_terminal_gate_policy_sha256(),
             evidence_sha256={
                 "release_dataset": "a" * 64,
                 "release_parity": "b" * 64,
@@ -789,7 +805,7 @@ def test_private_constructor_cannot_drop_evidenced_weighted_integrity_gates() ->
             trimmed_results,
             release_id=TEST_UK_RELEASE_ID,
             calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
-            policy_sha256=UK_TERMINAL_GATE_POLICY_SHA256,
+            policy_sha256=uk_terminal_gate_policy_sha256(),
             evidence_sha256=dict(healthy.evidence_sha256),
             attestation={},
             _signing_error=None,
@@ -852,12 +868,15 @@ def test_production_terminal_report_pins_policy_and_evidence_membership(
     )
     payload = json.loads(output.read_text(encoding="utf-8"))
 
-    # Increment 4 (#609) extended the sealed policy payload with the unarmed
-    # weighted-integrity slots, so the frozen digest moved with it.
-    assert UK_TERMINAL_GATE_POLICY_SHA256 == (
-        "74c9cd474d76e2b8d4ca5b298c19fc6348ac1a90746594afc8a81283a0398b68"
+    # The #630 source_year reviewed exclusion entered the committed register
+    # and #610's schema 2 sealed its full approval receipt (approver,
+    # adjudication, dates), so the frozen digest moved — the intended
+    # tripwire; the pre-#630 digest stays pinned in microcosm-data for the
+    # grandfathered June release.
+    assert uk_terminal_gate_policy_sha256() == (
+        "ae93bd10a02362a523eb077bcbd32b362cef31f0447acbc40537df696e30c757"
     )
-    assert payload["attestation"]["policy_sha256"] == (UK_TERMINAL_GATE_POLICY_SHA256)
+    assert payload["attestation"]["policy_sha256"] == (uk_terminal_gate_policy_sha256())
     assert payload["attestation"]["evaluated_gates"] == [
         "uk_release_input_coverage",
         "degenerate_release_surface",
@@ -899,3 +918,204 @@ def test_production_terminal_report_pins_policy_and_evidence_membership(
     assert payload["attestation"]["evidence_sha256"]["release_dataset"] == (
         hashlib.sha256(encoded).hexdigest()
     )
+
+
+def test_committed_degenerate_register_is_the_policy_of_record() -> None:
+    """None resolves to the committed #630 register; the digest seals it.
+
+    The register asserts the structural approval receipt only — never the
+    reason prose, which must stay freely editable (any edit still moves the
+    frozen digest, so rewording is visible without a prose pin here).
+    """
+
+    register = uk_default_degenerate_reviewed_exclusions()
+    assert set(register) == {"household.source_year"}
+    record = register["household.source_year"]
+    assert record.adjudication == "microcosm#630"
+    assert record.approved_by == "juaristi22"
+    assert record.approved_on == "2026-08-10"
+    assert record.expires_on == "2027-02-10"
+    assert record.reason.strip()
+
+
+def test_policy_of_record_is_immutable_and_loaded_once() -> None:
+    """The default register cannot drift from the already-computed digest.
+
+    A mutable module-level mapping would let any caller (or a sloppy test)
+    change the policy of record for the rest of the process while the frozen
+    digest kept attesting the committed one — the exact failure the digest
+    exists to prevent. The accessor returns one cached read-only mapping, and
+    loading is lazy so a broken committed register surfaces as this call's
+    ValueError rather than an ImportError at module import.
+    """
+
+    register = uk_default_degenerate_reviewed_exclusions()
+    assert register is uk_default_degenerate_reviewed_exclusions()
+    with pytest.raises(TypeError):
+        register["household.source_year"] = None  # type: ignore[index]
+    with pytest.raises(AttributeError):
+        register.pop  # noqa: B018 - MappingProxyType exposes no mutators
+    assert uk_terminal_gate_policy_sha256() == uk_terminal_gate_policy_sha256()
+
+
+def test_expired_degenerate_exclusion_fails_with_renewal_context() -> None:
+    """Honored through expires_on; strictly after, the combined message names
+    the approver, the adjudication, and the lapse date."""
+
+    from datetime import date
+
+    entry = _entry("Fixture broadcast, admitted.")
+    honored = uk_degenerate_release_surface_gate(
+        _dataset(signal=7.0),
+        reviewed_exclusions={"person.employment_income": entry},
+        now=date(2027, 2, 10),
+    )
+    expired = uk_degenerate_release_surface_gate(
+        _dataset(signal=7.0),
+        reviewed_exclusions={"person.employment_income": entry},
+        now=date(2027, 2, 11),
+    )
+
+    assert honored.passed
+    assert honored.details["expired_exclusions"] == []
+    assert not expired.passed
+    assert expired.details["expired_exclusions"] == ["person.employment_income"]
+    assert expired.details["exclusions_evaluated_on"] == "2027-02-11"
+    assert (
+        "its reviewed exclusion expired 2027-02-10 (approved_by test-reviewer, "
+        "microcosm#610) — renew the adjudication or remove the entry."
+        in expired.failures[0]
+    )
+    # Expired-but-still-degenerate is not stale: the column carries no signal.
+    assert expired.details["stale_exclusions"] == []
+
+
+def test_out_of_force_exclusions_fail_at_every_column_state() -> None:
+    """The register cannot rot silently just because its column moved.
+
+    Adversarial-review finding (three independent lenses): an expired entry
+    whose column was absent (dormant) or had regained signal produced no
+    failure — the build went green and the published report was only
+    rejected downstream by the contract's expired_exclusions expectation.
+    Out-of-force entries now fail the gate at every column state, with
+    receipt context rather than the stale "remove them" message.
+    """
+
+    from datetime import date
+
+    after_expiry = date(2027, 2, 11)
+    dormant = uk_degenerate_release_surface_gate(
+        _dataset(signal=7.0),
+        reviewed_exclusions={
+            "person.employment_income": _entry("Fixture broadcast, admitted."),
+            "person.ghost_column": _entry("Column since dropped."),
+        },
+        now=after_expiry,
+    )
+    assert not dormant.passed
+    assert dormant.details["dormant_exclusions"] == ["person.ghost_column"]
+    assert sorted(dormant.details["expired_exclusions"]) == [
+        "person.employment_income",
+        "person.ghost_column",
+    ]
+    combined = [f for f in dormant.failures if "person.ghost_column" in f]
+    assert len(combined) == 1
+    assert "renew the adjudication or remove the entries" in combined[0]
+
+    regained = uk_degenerate_release_surface_gate(
+        _dataset(),  # employment_income varies: the column carries signal now
+        reviewed_exclusions={
+            "person.employment_income": _entry("Fixture broadcast, admitted.")
+        },
+        now=after_expiry,
+    )
+    assert not regained.passed
+    assert regained.details["expired_exclusions"] == ["person.employment_income"]
+    # Receipt context wins over the stale message for out-of-force entries.
+    assert regained.details["stale_exclusions"] == []
+    assert len(regained.failures) == 1
+    assert "renew the adjudication" in regained.failures[0]
+
+
+def test_premature_degenerate_exclusion_never_suppresses() -> None:
+    """A receipt whose approved_on is still in the future is not an
+    approval: it must not suppress today (adversarial-review finding — a
+    typo'd future year would have silently suppressed for years)."""
+
+    from datetime import date
+
+    before_approval = date(2026, 8, 9)
+    live = uk_degenerate_release_surface_gate(
+        _dataset(signal=7.0),
+        reviewed_exclusions={
+            "person.employment_income": _entry("Fixture broadcast, admitted.")
+        },
+        now=before_approval,
+    )
+    assert not live.passed
+    assert live.details["premature_exclusions"] == ["person.employment_income"]
+    assert live.details["reviewed_exclusions"] == {}
+    assert "takes force 2026-08-10" in live.failures[0]
+    assert "correct the receipt's approved_on" in live.failures[0]
+
+    dormant = uk_degenerate_release_surface_gate(
+        _dataset(),
+        reviewed_exclusions={"person.ghost_column": _entry("Not yet approved.")},
+        now=before_approval,
+    )
+    assert not dormant.passed
+    assert dormant.details["premature_exclusions"] == ["person.ghost_column"]
+    assert "not yet in force" in dormant.failures[0]
+
+
+def test_exclusion_clocks_reject_datetimes() -> None:
+    """datetime is a date subclass; letting one through would compare
+    timestamps against dates or leak a timestamp into
+    exclusions_evaluated_on (adversarial-review finding)."""
+
+    from datetime import UTC, datetime
+
+    with pytest.raises(TypeError, match="must be a datetime.date"):
+        uk_degenerate_release_surface_gate(
+            _dataset(), reviewed_exclusions={}, now=datetime.now(UTC)
+        )
+    with pytest.raises(TypeError, match="must be a datetime.date"):
+        _report(now=datetime.now(UTC))
+
+
+def test_report_seals_the_register_snapshot_it_ran_under() -> None:
+    """The gate and the attested policy digest must observe one register.
+
+    Adversarial-review finding: the mapping was read once at gate time and
+    again at digest time, with caller-controlled evaluators running in
+    between — a mutation there produced an attestation describing a policy
+    the gate never ran under. The report now coerces and freezes the
+    mapping once at entry, before any evaluator runs.
+    """
+
+    mutable = {"person.employment_income": _entry("Fixture broadcast, admitted.")}
+    baseline = _report(
+        _dataset(signal=7.0),
+        reviewed_degenerate_exclusions=dict(mutable),
+    )
+
+    def mutating_coverage():
+        mutable.clear()
+        return _coverage()
+
+    with patch(
+        "microcosm.build.uk_runtime.weighted_integrity._validate_input_mass_reference",
+        return_value=None,
+    ):
+        mutated = uk_terminal_gate_report(
+            _dataset(signal=7.0),
+            object(),
+            release_id=TEST_UK_RELEASE_ID,
+            calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
+            input_coverage_evaluator=mutating_coverage,
+            reviewed_degenerate_exclusions=mutable,
+        )
+    assert mutated.attestation["policy_sha256"] == baseline.attestation["policy_sha256"]
+    degenerate = _gates(mutated)["degenerate_release_surface"]
+    assert degenerate["passed"] is True
+    assert "person.employment_income" in degenerate["details"]["reviewed_exclusions"]

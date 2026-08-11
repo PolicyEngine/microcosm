@@ -109,6 +109,7 @@ import json
 import math
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 from importlib.resources import files
 from pathlib import Path
 from types import MappingProxyType
@@ -124,6 +125,7 @@ from microcosm.build.gates import (
 )
 
 __all__ = [
+    "UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE",
     "UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE",
     "UK_INPUT_MASS_PARITY_GATE_NAME",
     "UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256",
@@ -132,6 +134,9 @@ __all__ = [
     "UKInputMassParityPolicy",
     "UKInputMassReference",
     "UKQRFTailConcentrationPolicy",
+    "UKReviewedExclusion",
+    "coerce_reviewed_exclusions",
+    "exclusion_evaluation_date",
     "load_uk_input_mass_reference",
     "load_uk_reviewed_exclusion_register",
     "uk_dataset_input_mass_totals",
@@ -144,6 +149,7 @@ UK_INPUT_MASS_PARITY_GATE_NAME = "input_mass_parity"
 UK_QRF_TAIL_CONCENTRATION_GATE_NAME = "qrf_tail_concentration"
 UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE = "input_mass_reviewed_exclusions.json"
 UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE = "qrf_tail_reviewed_exclusions.json"
+UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE = "degenerate_reviewed_exclusions.json"
 
 # Canonical sha256 of {"reference": {"identity": ..., "totals": ...}} for
 # the 131-column weighted input surface emitted from the pinned enhanced-FRS
@@ -162,9 +168,6 @@ _UK_INPUT_MASS_REFERENCE_IDENTITY = MappingProxyType(
     }
 )
 
-# TODO(PR #610 review): María to define approval identity, receipt metadata,
-# and expiry semantics before the column -> reason exclusion schema changes.
-
 # Mirrors terminal_gates._STRUCTURAL_COLUMNS for the national table layout;
 # ids and the weight vector are plumbing, not input mass.
 _UK_ENTITY_STRUCTURAL_COLUMNS: Mapping[str, frozenset[str]] = {
@@ -174,45 +177,243 @@ _UK_ENTITY_STRUCTURAL_COLUMNS: Mapping[str, frozenset[str]] = {
 }
 
 
-def _reviewed_reason_mapping(values: object, *, label: str) -> dict[str, str]:
+_REVIEWED_EXCLUSION_FIELDS = frozenset(
+    {"reason", "approved_by", "adjudication", "approved_on", "expires_on"}
+)
+
+
+@dataclass(frozen=True)
+class UKReviewedExclusion:
+    """One admitted exclusion and its complete approval receipt (#610).
+
+    The schema is exclusion-generic: every register entry — whichever gate
+    it belongs to — records the reasoning, who approved it, the adjudication
+    it descends from, when it was approved, and when it expires. The whole
+    record is sealed into the policy digest, so editing an approver or
+    extending an expiry moves the pinned literal. The in-force window is
+    enforced at gate evaluation (never at load — the policy of record stays
+    loadable on its expiry date): an entry suppresses from ``approved_on``
+    through ``expires_on`` and outside that window the gate fails with an
+    explicit correct-or-renew message, so neither a typo'd future approval
+    nor a lapsed one can suppress anything silently.
+    """
+
+    reason: str
+    approved_by: str
+    adjudication: str
+    approved_on: str
+    expires_on: str
+
+    def __post_init__(self) -> None:
+        for name in ("reason", "approved_by", "adjudication"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"UK reviewed exclusion {name} must be a non-empty string."
+                )
+            if value != value.strip():
+                raise ValueError(
+                    f"UK reviewed exclusion {name} must not carry surrounding "
+                    f"whitespace (the raw value is sealed into the policy "
+                    f"digest); got {value!r}."
+                )
+        parsed: dict[str, date] = {}
+        for name in ("approved_on", "expires_on"):
+            value = getattr(self, name)
+            try:
+                parsed[name] = date.fromisoformat(value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"UK reviewed exclusion {name} must be an ISO date "
+                    f"(YYYY-MM-DD), got {value!r}."
+                ) from exc
+            # fromisoformat also accepts compact (20270210) and week-date
+            # forms; the receipt pins the canonical rendering because the
+            # raw string is sealed into the policy digest — two spellings
+            # of one date must not produce two digests.
+            if parsed[name].isoformat() != value:
+                raise ValueError(
+                    f"UK reviewed exclusion {name} must be an ISO date "
+                    f"(YYYY-MM-DD), got {value!r}."
+                )
+        if parsed["expires_on"] <= parsed["approved_on"]:
+            raise ValueError(
+                "UK reviewed exclusion expires_on must be after approved_on; "
+                f"got approved_on={self.approved_on!r}, "
+                f"expires_on={self.expires_on!r}."
+            )
+
+    def expired(self, now: date) -> bool:
+        """Honored through ``expires_on``; expired strictly after it."""
+
+        return now > date.fromisoformat(self.expires_on)
+
+    def premature(self, now: date) -> bool:
+        """In force from ``approved_on``; premature strictly before it."""
+
+        return now < date.fromisoformat(self.approved_on)
+
+    def policy_payload(self) -> dict[str, str]:
+        """The complete record, sealed into the policy digest."""
+
+        return {
+            "reason": self.reason,
+            "approved_by": self.approved_by,
+            "adjudication": self.adjudication,
+            "approved_on": self.approved_on,
+            "expires_on": self.expires_on,
+        }
+
+
+def coerce_reviewed_exclusions(
+    values: object, *, label: str
+) -> dict[str, UKReviewedExclusion]:
+    """Validate a schema-2 exclusion mapping into typed records.
+
+    Accepts ``None`` (no exclusions), already-typed records, or the raw
+    register entry mappings. Raw entries are fully validated here;
+    already-typed records pass through on ``isinstance`` because the frozen
+    dataclass validated their fields at construction — so a register cannot
+    bypass the discipline by construction order.
+    """
+
     if values is None:
         return {}
     if not isinstance(values, Mapping):
         raise TypeError(f"{label} reviewed exclusions must be a mapping.")
-    if any(
-        not isinstance(name, str) or not isinstance(reason, str)
-        for name, reason in values.items()
-    ):
-        raise TypeError(
-            f"{label} reviewed exclusion names and reasons must be strings."
-        )
-    normalized = dict(values)
     invalid_names = sorted(
-        repr(name) for name in normalized if not name.strip() or name != name.strip()
+        repr(name)
+        for name in values
+        if not isinstance(name, str) or not name.strip() or name != name.strip()
     )
     if invalid_names:
         raise ValueError(
             f"{label} reviewed exclusions need non-empty, trimmed column names: "
             f"{invalid_names}."
         )
-    missing = sorted(name for name, reason in normalized.items() if not reason.strip())
-    if missing:
-        raise ValueError(f"{label} reviewed exclusions need reasons: {missing}.")
-    return dict(sorted(normalized.items()))
+    records: dict[str, UKReviewedExclusion] = {}
+    for name, entry in values.items():
+        if isinstance(entry, UKReviewedExclusion):
+            records[name] = entry
+            continue
+        if not isinstance(entry, Mapping):
+            raise TypeError(
+                f"{label} reviewed exclusion {name!r} must be an object with "
+                f"fields {sorted(_REVIEWED_EXCLUSION_FIELDS)} (schema 2); "
+                f"got {type(entry).__name__}."
+            )
+        if set(entry) != _REVIEWED_EXCLUSION_FIELDS:
+            raise ValueError(
+                f"{label} reviewed exclusion {name!r} fields must be exactly "
+                f"{sorted(_REVIEWED_EXCLUSION_FIELDS)}, got {sorted(entry)}."
+            )
+        try:
+            records[name] = UKReviewedExclusion(
+                **{
+                    field_name: entry[field_name]
+                    for field_name in sorted(_REVIEWED_EXCLUSION_FIELDS)
+                }
+            )
+        except ValueError as exc:
+            raise ValueError(f"{label}: exclusion {name!r}: {exc}") from exc
+    return dict(sorted(records.items()))
+
+
+def exclusion_evaluation_date(now: date | None) -> date:
+    """Resolve the injected exclusion clock, refusing datetimes.
+
+    ``datetime`` is a ``date`` subclass, so without this guard a caller
+    passing one would compare timestamps against dates (a ``TypeError`` deep
+    inside a gate when exclusions exist, or a silently timestamp-shaped
+    ``exclusions_evaluated_on`` detail when none do).
+    """
+
+    if now is None:
+        return datetime.now(UTC).date()
+    if isinstance(now, datetime) or not isinstance(now, date):
+        raise TypeError(
+            f"exclusion evaluation date must be a datetime.date, got "
+            f"{type(now).__name__}."
+        )
+    return now
+
+
+def _reviewed_exclusion_reasons(
+    records: Mapping[str, UKReviewedExclusion],
+    *,
+    now: date,
+) -> tuple[dict[str, str], list[str], list[str]]:
+    """Project records to the shared gates' flat reasons, in-force only.
+
+    Returns the in-force ``{column: reason}`` projection plus the sorted
+    expired and premature names. Out-of-force entries are withheld so the
+    underlying failure fires; the UK wrappers append the receipt context
+    beside it.
+    """
+
+    projected: dict[str, str] = {}
+    expired: list[str] = []
+    premature: list[str] = []
+    for name, record in records.items():
+        if record.expired(now):
+            expired.append(name)
+        elif record.premature(now):
+            premature.append(name)
+        else:
+            projected[name] = record.reason
+    return projected, sorted(expired), sorted(premature)
+
+
+def _expired_exclusion_failure(
+    records: Mapping[str, UKReviewedExclusion],
+    expired: list[str],
+    *,
+    family: str,
+) -> str:
+    described = "; ".join(
+        f"{name} expired {records[name].expires_on} "
+        f"(approved_by {records[name].approved_by}, "
+        f"{records[name].adjudication})"
+        for name in expired
+    )
+    return (
+        f"Reviewed {family} exclusions expired — renew the adjudication or "
+        f"remove the entries: {described}."
+    )
+
+
+def _premature_exclusion_failure(
+    records: Mapping[str, UKReviewedExclusion],
+    premature: list[str],
+    *,
+    family: str,
+) -> str:
+    described = "; ".join(
+        f"{name} takes force {records[name].approved_on} "
+        f"(approved_by {records[name].approved_by}, "
+        f"{records[name].adjudication})"
+        for name in premature
+    )
+    return (
+        f"Reviewed {family} exclusions are not yet in force — correct the "
+        f"receipt's approved_on or wait for it: {described}."
+    )
 
 
 def load_uk_reviewed_exclusion_register(
     source: str | Path | None,
     *,
     resource: str,
-) -> dict[str, str]:
-    """Load one committed reviewed-exclusion register.
+) -> dict[str, UKReviewedExclusion]:
+    """Load one committed reviewed-exclusion register (schema 2, #610).
 
     ``source`` overrides the committed default (``resource``, a JSON file
     under ``microcosm.build.uk``). The register schema is
-    ``{"schema_version": 1, "description": ..., "exclusions": {column:
-    reason}}``; every reason must be non-empty, which the gates re-validate
-    so a register cannot bypass the discipline by construction order.
+    ``{"schema_version": 2, "description": ..., "exclusions": {column:
+    {reason, approved_by, adjudication, approved_on, expires_on}}}`` — every
+    entry is a complete approval receipt, re-validated by the gates so a
+    register cannot bypass the discipline by construction order. Expiry is
+    enforced at gate evaluation, never here.
     """
 
     if source is None:
@@ -254,10 +455,11 @@ def load_uk_reviewed_exclusion_register(
         )
     if (
         type(payload.get("schema_version")) is not int
-        or payload.get("schema_version") != 1
+        or payload.get("schema_version") != 2
     ):
         raise ValueError(
-            f"{label}: exclusion register schema_version must be 1, got "
+            f"{label}: exclusion register schema_version must be 2 (the #610 "
+            "approval-receipt schema), got "
             f"{payload.get('schema_version')!r}."
         )
     description = payload.get("description")
@@ -270,7 +472,7 @@ def load_uk_reviewed_exclusion_register(
         raise ValueError(
             f"{label}: exclusion register must carry an 'exclusions' object."
         )
-    return _reviewed_reason_mapping(exclusions, label=label)
+    return coerce_reviewed_exclusions(exclusions, label=label)
 
 
 def load_uk_input_mass_reference(source: str | Path) -> UKInputMassReference:
@@ -416,7 +618,7 @@ class UKInputMassParityPolicy:
 
     relative_tolerance: float
     minimum_reference_total: float
-    reviewed_exclusions: Mapping[str, str] = field(default_factory=dict)
+    reviewed_exclusions: Mapping[str, UKReviewedExclusion] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         tolerance = float(self.relative_tolerance)
@@ -437,7 +639,7 @@ class UKInputMassParityPolicy:
             self,
             "reviewed_exclusions",
             MappingProxyType(
-                _reviewed_reason_mapping(
+                coerce_reviewed_exclusions(
                     self.reviewed_exclusions, label="UK input-mass"
                 )
             ),
@@ -447,7 +649,10 @@ class UKInputMassParityPolicy:
         return {
             "relative_tolerance": self.relative_tolerance,
             "minimum_reference_total": self.minimum_reference_total,
-            "reviewed_exclusions": dict(self.reviewed_exclusions),
+            "reviewed_exclusions": {
+                name: record.policy_payload()
+                for name, record in sorted(self.reviewed_exclusions.items())
+            },
         }
 
 
@@ -465,7 +670,7 @@ class UKQRFTailConcentrationPolicy:
     top_k: int
     max_top_share: float
     min_nonzero_records: int
-    reviewed_exclusions: Mapping[str, str] = field(default_factory=dict)
+    reviewed_exclusions: Mapping[str, UKReviewedExclusion] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if isinstance(self.top_k, bool) or not isinstance(self.top_k, int):
@@ -501,7 +706,9 @@ class UKQRFTailConcentrationPolicy:
             self,
             "reviewed_exclusions",
             MappingProxyType(
-                _reviewed_reason_mapping(self.reviewed_exclusions, label="UK QRF tail")
+                coerce_reviewed_exclusions(
+                    self.reviewed_exclusions, label="UK QRF tail"
+                )
             ),
         )
 
@@ -510,7 +717,10 @@ class UKQRFTailConcentrationPolicy:
             "top_k": self.top_k,
             "max_top_share": self.max_top_share,
             "min_nonzero_records": self.min_nonzero_records,
-            "reviewed_exclusions": dict(self.reviewed_exclusions),
+            "reviewed_exclusions": {
+                name: record.policy_payload()
+                for name, record in sorted(self.reviewed_exclusions.items())
+            },
         }
 
 
@@ -643,6 +853,7 @@ def uk_input_mass_parity_gate(
     *,
     policy: UKInputMassParityPolicy,
     candidate_name: str = "uk_release_candidate",
+    now: date | None = None,
 ) -> GateResult:
     """Require persisted UK input mass to survive against a frozen reference.
 
@@ -661,7 +872,11 @@ def uk_input_mass_parity_gate(
     if not isinstance(policy, UKInputMassParityPolicy):
         raise TypeError("policy must be UKInputMassParityPolicy.")
     _validate_input_mass_reference(reference)
-    exclusions = dict(policy.reviewed_exclusions)
+    evaluated_on = exclusion_evaluation_date(now)
+    records = dict(policy.reviewed_exclusions)
+    exclusions, expired, premature = _reviewed_exclusion_reasons(
+        records, now=evaluated_on
+    )
     base = input_mass_parity_gate(
         candidate_totals,
         reference.totals,
@@ -700,6 +915,14 @@ def uk_input_mass_parity_gate(
             "Stale reviewed input-mass exclusions — the column is within "
             f"tolerance now, remove the exclusion: {stale}."
         )
+    if expired:
+        failures.append(
+            _expired_exclusion_failure(records, expired, family="input-mass")
+        )
+    if premature:
+        failures.append(
+            _premature_exclusion_failure(records, premature, family="input-mass")
+        )
     return GateResult(
         name=UK_INPUT_MASS_PARITY_GATE_NAME,
         passed=not failures,
@@ -708,6 +931,9 @@ def uk_input_mass_parity_gate(
             **dict(base.details),
             "stale_exclusions": stale,
             "dormant_exclusions": dormant,
+            "expired_exclusions": expired,
+            "premature_exclusions": premature,
+            "exclusions_evaluated_on": evaluated_on.isoformat(),
             "reference_identity": reference.identity,
         },
     )
@@ -784,6 +1010,7 @@ def uk_qrf_tail_concentration_gate(
     *,
     policy: UKQRFTailConcentrationPolicy,
     surface: Mapping[str, object] | None = None,
+    now: date | None = None,
 ) -> GateResult:
     """No declared UK QRF output hides its mass in a handful of records.
 
@@ -795,16 +1022,30 @@ def uk_qrf_tail_concentration_gate(
 
     if not isinstance(policy, UKQRFTailConcentrationPolicy):
         raise TypeError("policy must be UKQRFTailConcentrationPolicy.")
+    evaluated_on = exclusion_evaluation_date(now)
+    records = dict(policy.reviewed_exclusions)
+    projected, expired, premature = _reviewed_exclusion_reasons(
+        records, now=evaluated_on
+    )
     base = tail_concentration_gate(
         column_values,
         column_weights,
         top_k=policy.top_k,
         max_top_share=policy.max_top_share,
         min_nonzero_records=policy.min_nonzero_records,
-        reviewed_exclusions=dict(policy.reviewed_exclusions),
+        reviewed_exclusions=projected,
     )
     details = dict(base.details)
+    details["expired_exclusions"] = expired
+    details["premature_exclusions"] = premature
+    details["exclusions_evaluated_on"] = evaluated_on.isoformat()
     failures = list(base.failures)
+    if expired:
+        failures.append(_expired_exclusion_failure(records, expired, family="QRF-tail"))
+    if premature:
+        failures.append(
+            _premature_exclusion_failure(records, premature, family="QRF-tail")
+        )
     if surface is not None:
         details["surface"] = dict(surface)
         failures.extend(

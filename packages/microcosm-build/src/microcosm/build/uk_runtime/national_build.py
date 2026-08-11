@@ -47,6 +47,7 @@ from microcosm.build.uk_runtime.terminal_gates import (
     UKInputMassReference,
     UKQRFTailConcentrationPolicy,
     UKReleaseParityEvidence,
+    UKReviewedExclusion,
     uk_terminal_gate_report,
     write_uk_terminal_gate_report,
 )
@@ -329,6 +330,7 @@ def build_uk_national_dataset(
     input_mass_reference: UKInputMassReference | None = None,
     input_mass_policy: UKInputMassParityPolicy | None = None,
     qrf_tail_policy: UKQRFTailConcentrationPolicy | None = None,
+    reviewed_degenerate_exclusions: Mapping[str, UKReviewedExclusion] | None = None,
     terminal_gate_path: str | Path | None = None,
     input_coverage_path: str | Path | None = None,
     checkpoint_dir: str | Path | None = None,
@@ -467,6 +469,7 @@ def build_uk_national_dataset(
         input_mass_reference=input_mass_reference,
         input_mass_policy=input_mass_policy,
         qrf_tail_policy=qrf_tail_policy,
+        reviewed_degenerate_exclusions=reviewed_degenerate_exclusions,
     )
     write_uk_terminal_gate_report(terminal_gates, diagnostic_path)
     if legacy_input_coverage_output:
