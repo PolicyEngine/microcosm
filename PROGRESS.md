@@ -10,7 +10,10 @@ CPS-only alignments to `object`. A registry-driven guard now rejects every
 late callback output whose physical dtype disagrees with its declared metric
 family before the DAG records the producer. The 40-test focused proof and the
 exact 495-test PR #583 spine-blindness proof both pass with zero skips,
-failures, or errors. The full-workspace chunk matrix remains to run.
+failures, or errors. The full-workspace chunk matrix is in progress. Its first
+chunk-3 pass exposed one stale adult-care assertion that required the former
+`object` widening; the test now requires nullable boolean storage and passes
+in isolation. Chunk 3 will be rerun in full.
 
 ## Done
 
@@ -79,10 +82,16 @@ failures, or errors. The full-workspace chunk matrix remains to run.
   registry, legacy, executor, QBI, source-merge, and tail-clone regressions.
 - Passed the exact PR #583 spine-blindness proof: 495 passed, 0 skipped, 0
   failed, and 0 errors.
+- Partitioned all 225 workspace test files exactly once into chunks of 32, 32,
+  32, 32, 32, 29, 1, and 35 files.
+- The first chunk-3 run found one stale integration expectation in adult-care
+  coverage: it asserted that a CPS-only physical boolean widened to `object`.
+  Updated it to require `BooleanDtype`, matching the canonical family and the
+  shared-merge regression, and passed the corrected test in isolation.
 
 ## Next
 
 - Run all 225 workspace test files in eight exact-count chunks, followed by
-  ruff, format, and diff checks.
+  rerunning corrected chunk 3, followed by ruff, format, and diff checks.
 - Commit the full proof receipts and clean-worktree handoff state.
 - Record a gradeable smoke-r7 prediction and final verdict.

@@ -259,8 +259,7 @@ def test_real_pool_chain_exposes_nullable_boolean_to_auto_transfer_donor(
     assert set(fit_person["person_support_clone_index"]) == {1}
 
     flag = fit_person[_FLAG]
-    assert flag.dtype == object
-    assert pd.api.types.infer_dtype(flag, skipna=True) == "boolean"
+    assert flag.dtype == pd.BooleanDtype()
     source_channel = fit_person["person_support_channel"]
     assert flag.loc[source_channel.eq("asec")].notna().all()
     assert flag.loc[source_channel.eq("acs")].isna().all()
