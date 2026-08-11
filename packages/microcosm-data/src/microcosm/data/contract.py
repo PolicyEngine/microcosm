@@ -952,7 +952,9 @@ def _check_release_manifest_package(
     )
     if expected_names is not None and name not in expected_names:
         rendered = " or ".join(repr(n) for n in expected_names)
-        failures.append(f"release_manifest.json '{field}.name' must be {rendered}.")
+        failures.append(
+            f"release_manifest.json '{field}.name' must be {rendered}."
+        )
     elif not name:
         failures.append(f"release_manifest.json '{field}.name' is required.")
     version = package.get("version")

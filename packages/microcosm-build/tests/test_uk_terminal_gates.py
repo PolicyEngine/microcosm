@@ -18,7 +18,6 @@ from microcosm.build.gates import FitWeightRecord, GateReport, GateResult
 from microcosm.build.uk_runtime.terminal_gates import (
     UK_DEFAULT_ZERO_WEIGHT_STRATA,
     UK_MAX_TO_MEDIAN_WEIGHT_RATIO,
-    UK_TERMINAL_GATE_POLICY_SHA256,
     UK_TERMINAL_GATE_PRODUCER,
     UK_TERMINAL_GATE_SIGNATURE_ALGORITHM,
     UK_TERMINAL_GATE_SIGNING_KEY_ENV,
@@ -27,10 +26,12 @@ from microcosm.build.uk_runtime.terminal_gates import (
     UKQRFTailConcentrationPolicy,
     UKReleaseParityEvidence,
     UKZeroWeightStratumDeclaration,
+    uk_default_degenerate_reviewed_exclusions,
     uk_degenerate_release_surface_gate,
     uk_export_surface_gate,
     uk_target_fit_gate,
     uk_target_surface_gate,
+    uk_terminal_gate_policy_sha256,
     uk_terminal_gate_report,
     uk_weight_ratio_gate,
     write_uk_terminal_gate_report,
@@ -645,7 +646,7 @@ def test_terminal_report_writer_round_trips_strict_atomic_json(tmp_path) -> None
         attestation["calibration_diagnostics_sha256"]
         == TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256
     )
-    assert attestation["policy_sha256"] != UK_TERMINAL_GATE_POLICY_SHA256
+    assert attestation["policy_sha256"] != uk_terminal_gate_policy_sha256()
     assert attestation["evaluated_gates"] == [
         "uk_release_input_coverage",
         "degenerate_release_surface",
@@ -773,7 +774,7 @@ def test_private_constructor_cannot_mint_sol_raw_parity_trio() -> None:
             results,
             release_id=TEST_UK_RELEASE_ID,
             calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
-            policy_sha256=UK_TERMINAL_GATE_POLICY_SHA256,
+            policy_sha256=uk_terminal_gate_policy_sha256(),
             evidence_sha256={
                 "release_dataset": "a" * 64,
                 "release_parity": "b" * 64,
@@ -804,7 +805,7 @@ def test_private_constructor_cannot_drop_evidenced_weighted_integrity_gates() ->
             trimmed_results,
             release_id=TEST_UK_RELEASE_ID,
             calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
-            policy_sha256=UK_TERMINAL_GATE_POLICY_SHA256,
+            policy_sha256=uk_terminal_gate_policy_sha256(),
             evidence_sha256=dict(healthy.evidence_sha256),
             attestation={},
             _signing_error=None,
@@ -872,10 +873,10 @@ def test_production_terminal_report_pins_policy_and_evidence_membership(
     # adjudication, dates), so the frozen digest moved — the intended
     # tripwire; the pre-#630 digest stays pinned in microcosm-data for the
     # grandfathered June release.
-    assert UK_TERMINAL_GATE_POLICY_SHA256 == (
+    assert uk_terminal_gate_policy_sha256() == (
         "ae93bd10a02362a523eb077bcbd32b362cef31f0447acbc40537df696e30c757"
     )
-    assert payload["attestation"]["policy_sha256"] == (UK_TERMINAL_GATE_POLICY_SHA256)
+    assert payload["attestation"]["policy_sha256"] == (uk_terminal_gate_policy_sha256())
     assert payload["attestation"]["evaluated_gates"] == [
         "uk_release_input_coverage",
         "degenerate_release_surface",
@@ -920,19 +921,41 @@ def test_production_terminal_report_pins_policy_and_evidence_membership(
 
 
 def test_committed_degenerate_register_is_the_policy_of_record() -> None:
-    """None resolves to the committed #630 register; the digest seals it."""
+    """None resolves to the committed #630 register; the digest seals it.
 
-    from microcosm.build.uk_runtime.terminal_gates import (
-        UK_DEFAULT_DEGENERATE_REVIEWED_EXCLUSIONS,
-    )
+    The register asserts the structural approval receipt only — never the
+    reason prose, which must stay freely editable (any edit still moves the
+    frozen digest, so rewording is visible without a prose pin here).
+    """
 
-    assert set(UK_DEFAULT_DEGENERATE_REVIEWED_EXCLUSIONS) == {"household.source_year"}
-    record = UK_DEFAULT_DEGENERATE_REVIEWED_EXCLUSIONS["household.source_year"]
+    register = uk_default_degenerate_reviewed_exclusions()
+    assert set(register) == {"household.source_year"}
+    record = register["household.source_year"]
     assert record.adjudication == "microcosm#630"
     assert record.approved_by == "juaristi22"
+    assert record.approved_on == "2026-08-10"
     assert record.expires_on == "2027-02-10"
-    assert "schema symmetry" in record.reason
-    assert "derivable" in record.reason
+    assert record.reason.strip()
+
+
+def test_policy_of_record_is_immutable_and_loaded_once() -> None:
+    """The default register cannot drift from the already-computed digest.
+
+    A mutable module-level mapping would let any caller (or a sloppy test)
+    change the policy of record for the rest of the process while the frozen
+    digest kept attesting the committed one — the exact failure the digest
+    exists to prevent. The accessor returns one cached read-only mapping, and
+    loading is lazy so a broken committed register surfaces as this call's
+    ValueError rather than an ImportError at module import.
+    """
+
+    register = uk_default_degenerate_reviewed_exclusions()
+    assert register is uk_default_degenerate_reviewed_exclusions()
+    with pytest.raises(TypeError):
+        register["household.source_year"] = None  # type: ignore[index]
+    with pytest.raises(AttributeError):
+        register.pop  # noqa: B018 - MappingProxyType exposes no mutators
+    assert uk_terminal_gate_policy_sha256() == uk_terminal_gate_policy_sha256()
 
 
 def test_expired_degenerate_exclusion_fails_with_renewal_context() -> None:

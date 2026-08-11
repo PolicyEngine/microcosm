@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import functools
 import hashlib
 import hmac
 import json
@@ -68,7 +69,6 @@ __all__ = [
     "UK_MAX_TO_MEDIAN_WEIGHT_RATIO",
     "UK_MIN_ESS_FRACTION",
     "UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION",
-    "UK_TERMINAL_GATE_POLICY_SHA256",
     "UK_TERMINAL_GATE_PRODUCER",
     "UK_TERMINAL_GATE_SIGNATURE_ALGORITHM",
     "UK_TERMINAL_GATE_SIGNING_KEY_ENV",
@@ -80,12 +80,14 @@ __all__ = [
     "UKQRFTailConcentrationPolicy",
     "UKReleaseParityEvidence",
     "UKZeroWeightStratumDeclaration",
+    "uk_default_degenerate_reviewed_exclusions",
     "uk_degenerate_release_surface_gate",
     "uk_export_surface_gate",
     "uk_input_mass_parity_gate",
     "uk_qrf_tail_concentration_gate",
     "uk_target_fit_gate",
     "uk_target_surface_gate",
+    "uk_terminal_gate_policy_sha256",
     "uk_terminal_gate_report",
     "uk_weight_ess_gate",
     "uk_weight_ratio_gate",
@@ -432,27 +434,46 @@ def _terminal_gate_policy_payload(
     }
 
 
-#: The committed degenerate-release-surface exclusion register (#630) is the
-#: reviewed policy of record: a ``None`` argument to
-#: :func:`uk_terminal_gate_report` resolves to it, and the frozen policy
-#: digest below is computed over it, so deleting or editing an entry moves
-#: the pinned literal (the intended tripwire). Pass ``{}`` explicitly to run
-#: with no exclusions.
-UK_DEFAULT_DEGENERATE_REVIEWED_EXCLUSIONS: dict[str, str] = (
-    load_uk_reviewed_exclusion_register(
-        None, resource=UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE
-    )
-)
+@functools.cache
+def uk_default_degenerate_reviewed_exclusions() -> Mapping[str, UKReviewedExclusion]:
+    """The committed degenerate-surface register (#630) — the policy of record.
 
-UK_TERMINAL_GATE_POLICY_SHA256 = _canonical_sha256(
-    _terminal_gate_policy_payload(
-        builtin_coverage_evaluator=True,
-        reviewed_degenerate_exclusions=UK_DEFAULT_DEGENERATE_REVIEWED_EXCLUSIONS,
-        zero_weight_declarations=UK_DEFAULT_ZERO_WEIGHT_STRATA,
-        minimum_ess_fraction=UK_MIN_ESS_FRACTION,
-        maximum_max_to_median_ratio=UK_MAX_TO_MEDIAN_WEIGHT_RATIO,
+    A ``None`` argument to :func:`uk_terminal_gate_report` resolves to this
+    register, and the frozen policy digest is computed over it, so deleting
+    or editing an entry moves the pinned literal (the intended tripwire).
+    Pass ``{}`` explicitly to run with no exclusions.
+
+    Loaded lazily so importing this module never reads the filesystem — a
+    missing or malformed committed register surfaces as this call's clear
+    ``ValueError``, not an ``ImportError`` — cached so every caller seals
+    the same load, and wrapped read-only so the policy of record cannot be
+    mutated out from under the already-computed digest.
+    """
+
+    return MappingProxyType(
+        load_uk_reviewed_exclusion_register(
+            None, resource=UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE
+        )
     )
-)
+
+
+@functools.cache
+def uk_terminal_gate_policy_sha256() -> str:
+    """Frozen digest of the default terminal-gate policy, exclusions sealed.
+
+    Derived from the committed register, so it shares the lazy accessor's
+    contract: no import-time file I/O, one cached value per process.
+    """
+
+    return _canonical_sha256(
+        _terminal_gate_policy_payload(
+            builtin_coverage_evaluator=True,
+            reviewed_degenerate_exclusions=uk_default_degenerate_reviewed_exclusions(),
+            zero_weight_declarations=UK_DEFAULT_ZERO_WEIGHT_STRATA,
+            minimum_ess_fraction=UK_MIN_ESS_FRACTION,
+            maximum_max_to_median_ratio=UK_MAX_TO_MEDIAN_WEIGHT_RATIO,
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -1389,7 +1410,7 @@ def uk_terminal_gate_report(
     # None resolves to the committed register — the reviewed policy of
     # record (#630); an explicit {} runs with no exclusions.
     if reviewed_degenerate_exclusions is None:
-        reviewed_degenerate_exclusions = UK_DEFAULT_DEGENERATE_REVIEWED_EXCLUSIONS
+        reviewed_degenerate_exclusions = uk_default_degenerate_reviewed_exclusions()
     exclusion_evaluation_date = now or datetime.now(UTC).date()
     fit_stage_present = fit_weight_records is not None or require_fit_weight_records
     materialized_fit_records: tuple[object, ...] | None = None
