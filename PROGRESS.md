@@ -7,7 +7,8 @@ The smoke-r6 mechanism is adjudicated. The first target in late-transfer group
 `farm_rent_income_would_be_qualified`, is canonically `boolean_incidence` and
 its transfer prediction is correctly boolean. Primary-PUF finalization wrongly
 materializes its target Series as `float64`; pandas then refuses the boolean
-merge. No implementation change has been made yet.
+merge. The owning-layer regression is RED as expected; no implementation
+change has been made yet.
 
 ## Done
 
@@ -43,11 +44,18 @@ merge. No implementation change has been made yet.
 - Confirmed the canonical metric registry declares the target
   `boolean_incidence` and retains the exact authority split: 79 monetary, 48
   boolean, and 4 categorical targets.
+- Added a registry-derived primary-PUF materialization regression covering all
+  eight canonical QBI boolean outputs under the stacked preserve-nulls
+  doctrine. It proves non-owned cells remain null and requires a boolean
+  physical dtype on every output.
+- Ran the new test against the unfixed implementation and captured the
+  expected RED result: the first output,
+  `estate_income_would_be_qualified`, is `float64` rather than boolean.
 
 ## Next
 
-- Complete the all-late-write audit and add a failing registry-driven
-  regression that covers the full 131-target dtype-family authority.
+- Complete the all-late-write audit and extend the registry-driven regression
+  to the shared post-callback seam for the full 131-target authority.
 - Fix primary-PUF boolean materialization at its owning layer, with explicit
   validation rather than a permissive or silent coercion.
 - Run the focused and complete requested proof matrix.

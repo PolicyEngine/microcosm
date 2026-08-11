@@ -682,6 +682,52 @@ def test_finalize_preserve_nulls_keeps_unowned_cells_null() -> None:
     )
 
 
+def test_finalize_preserve_nulls_materializes_registry_boolean_outputs() -> None:
+    cloned = _cloned_stacked_fixture()
+    registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+    boolean_outputs = tuple(
+        column
+        for column in puf_support_module.PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+        if registry.get(("person", "puf_tax_itemization", column, 0))
+        == "boolean_incidence"
+    )
+    assert set(boolean_outputs) == set(US_QBI_BOOLEAN_OUTPUT_COLUMNS)
+
+    tax_unit = cloned.table("tax_unit")
+    detail_tax_units = tax_unit[support_clone_index_column("tax_unit")].eq(1)
+    predictions = pd.DataFrame(
+        {
+            column: np.ones(int(detail_tax_units.sum()), dtype=np.float64)
+            for column in boolean_outputs
+        },
+        index=tax_unit.index[detail_tax_units],
+    )
+    donor = pd.DataFrame(
+        {
+            column: np.asarray([0.0, 1.0], dtype=np.float64)
+            for column in boolean_outputs
+        }
+        | {"weight": np.ones(2, dtype=np.float64)}
+    )
+
+    finalized = finalize_us_puf_tax_detail_predictions(
+        cloned,
+        donor,
+        predictions,
+        person_outputs=boolean_outputs,
+        tax_unit_outputs=(),
+        absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
+    )
+
+    person = finalized.table("person")
+    detail_people = person[support_clone_index_column("person")].eq(1)
+    for column in boolean_outputs:
+        values = person[column]
+        assert pd.api.types.is_bool_dtype(values.dtype), (column, values.dtype)
+        assert values.loc[~detail_people].isna().all()
+        assert values.loc[detail_people].notna().all()
+
+
 def test_finalize_legacy_zero_fill_reproduces_the_audited_defect() -> None:
     """Pin the run-7 boundary: legacy finalization reads absence as zero."""
 
