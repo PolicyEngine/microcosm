@@ -91,6 +91,12 @@ def _aligned_int_array(
     source_name: str,
 ) -> np.ndarray:
     array = np.asarray(values.to_numpy() if isinstance(values, pd.Series) else values)
+    if not np.issubdtype(array.dtype, np.integer):
+        raise ValueError(
+            f"{source_name} {label} must be integer-typed; got dtype "
+            f"{array.dtype}. Fractional ids would silently collide in the "
+            "selection digest."
+        )
     if array.ndim != 1 or len(array) != length:
         raise ValueError(
             f"{source_name} {label} must be one-dimensional with one entry "
@@ -161,6 +167,8 @@ def sample_frame_households(
     household_ids = household["household_id"].to_numpy()
     eligible_households = int(len(household_ids))
     incoming_mass = float(frame.weights_for("household").total)
+    person_entity = frame.schema.person_entity
+    household_membership = frame.schema.membership_column("household")
 
     if unit_ids is None:
         unit_of_household = household_ids
@@ -269,7 +277,7 @@ def sample_frame_households(
             member_mask = np.isin(unit_of_household, selected_units)
             selected_household_ids = np.sort(household_ids[member_mask])
         person_mask = (
-            frame.table("person")["person_household_id"]
+            frame.table(person_entity)[household_membership]
             .isin(selected_household_ids)
             .to_numpy()
         )
@@ -287,9 +295,14 @@ def sample_frame_households(
         "seed": int(seed),
         "eligible_household_count": eligible_households,
     }
-    if unit_ids is None:
-        # Units are households, so the per-group floor is a household request
-        # — the promoted US receipt field, kept in its promoted position.
+    if unit_ids is None and unit_strata is None:
+        # Units are households and there is one implicit stratum, so the
+        # global floor is a household request — the promoted US receipt
+        # field, kept in its promoted position. With strata the per-group
+        # floors need not sum to floor(fraction * eligible), so emitting the
+        # field would contradict the declared exact-count rule
+        # (adversarial-review finding); the unit block carries the honest
+        # counts instead.
         receipt["requested_household_count"] = requested_units
     receipt.update(
         {
@@ -300,7 +313,7 @@ def sample_frame_households(
             "sampled_household_mass": float(sampled.weights_for("household").total),
         }
     )
-    if unit_ids is not None:
+    if unit_ids is not None or unit_strata is not None:
         receipt["sampling_unit"] = {
             "noun": unit_noun,
             "eligible_unit_count": eligible_units,

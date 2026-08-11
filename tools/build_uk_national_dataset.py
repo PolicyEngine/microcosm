@@ -32,6 +32,7 @@ from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_RUNG_TOKENS,
     UK_SAMPLE_SEED_DEFAULT,
 )
+from microcosm.build.uk_runtime.release_identity import UK_RELEASE_TIERS
 from microcosm.build.uk_runtime.weighted_integrity import (
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
@@ -47,7 +48,15 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 #: data shard into the build tool. The durable coupling is the gate
 #: battery's ``release_candidate`` flag; this fence holds until the #611
 #: consumer half wires it.
-_CANONICAL_UK_RELEASE_ID = re.compile(r"populace-uk-\d{4}-(?:frs|cps-transfer)-k\d+")
+# Year and count widths mirror the microcosm-data contract's release-identity
+# regex ([1-9][0-9]*), and the tier alternation is built from the build
+# shard's ratified UK_RELEASE_TIERS so a newly ratified tier is fenced
+# automatically (adversarial-review finding).
+_CANONICAL_UK_RELEASE_ID = re.compile(
+    r"populace-uk-[1-9][0-9]*-(?:"
+    + "|".join(sorted(re.escape(tier) for tier in UK_RELEASE_TIERS))
+    + r")-k[1-9][0-9]*"
+)
 _UK_JUNE_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 
 #: The one named dev-scale statistical edge receipted on a rung (#657,
@@ -376,6 +385,7 @@ def main() -> int:
     build_record_path = args.build_record_json or args.staging_h5.with_suffix(
         ".build.json"
     )
+    rung_abort_path = args.staging_h5.with_suffix(".rung_abort.json")
     retained_leaves_transform = (
         UKFRSHMRCRetainedLeavesStageTransform.from_raw_frs_directory(
             args.frs_raw_dir,
@@ -399,6 +409,7 @@ def main() -> int:
         input_mass_reference_path=args.input_mass_reference_json,
         input_mass_exclusions_path=args.input_mass_exclusions,
         qrf_tail_exclusions_path=args.qrf_tail_exclusions,
+        rung_abort_path=rung_abort_path,
     )
     # Read-only gate inputs are materialized before any sidecar unlink so a
     # path collision cannot consume a just-deleted file.
@@ -407,6 +418,10 @@ def main() -> int:
     evidence_path.unlink(missing_ok=True)
     replay_path.unlink(missing_ok=True)
     build_record_path.unlink(missing_ok=True)
+    # A prior rung abort must never sit beside a fresh build's artifacts
+    # (adversarial-review finding: a stale receipt contradicted a later
+    # successful run at the same staging path).
+    rung_abort_path.unlink(missing_ok=True)
     hmrc_transform = UKHMRCIncomeStageTransform(
         spi_tab_path=args.spi_tab,
         hmrc_ods_path=args.hmrc_ods,
@@ -483,7 +498,7 @@ def main() -> int:
                     "altered to avoid it."
                 ),
             }
-            _write_json(args.staging_h5.with_suffix(".rung_abort.json"), receipt)
+            _write_json(rung_abort_path, receipt)
             print(json.dumps(receipt, indent=2, sort_keys=True))
             return _RUNG_ABORT_EXIT_CODE
         raise
@@ -841,6 +856,7 @@ def _validate_distinct_paths(
     input_mass_reference_path: Path | None,
     input_mass_exclusions_path: Path | None,
     qrf_tail_exclusions_path: Path | None,
+    rung_abort_path: Path,
 ) -> None:
     paths = {
         "--input-h5": input_h5.resolve(),
@@ -853,6 +869,7 @@ def _validate_distinct_paths(
         "--terminal-gates-json/--input-coverage-json": terminal_gate_path.resolve(),
         "--hmrc-evidence-json": evidence_path.resolve(),
         "--hmrc-replay-json": replay_path.resolve(),
+        "rung-abort receipt (derived from --staging-h5)": rung_abort_path.resolve(),
     }
     paths.update(
         (label, path.resolve())

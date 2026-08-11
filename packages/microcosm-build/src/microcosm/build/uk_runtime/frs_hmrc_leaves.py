@@ -401,6 +401,12 @@ def retain_uk_frs_hmrc_leaves(
             f"from the certified candidate base: {unknown_source_ids[:5]}."
         )
     source_people_outside_candidate = len(unknown_source_ids)
+    # Signal-row evidence stays a fact about the SOURCE at every rung:
+    # structural_zero must never be asserted from a sampled-away surface
+    # (adversarial-review finding). The rung also cannot distinguish a
+    # compact genuinely missing raw people from sampling loss — that check
+    # remains the full-scale fence's, which stays strict.
+    full_source_leaves = source_leaves
     if unknown_source_ids:
         # A rung sample deliberately drops most source families; restrict the
         # raw surface to the surviving canonicals and receipt the count.
@@ -437,7 +443,7 @@ def retain_uk_frs_hmrc_leaves(
         source_leaves=source_leaves,
     )
     source_signal_rows = {
-        column: int((source_leaves[column] > 0.0).sum())
+        column: int((full_source_leaves[column] > 0.0).sum())
         for column in FRS_HMRC_RETAINED_LEAF_COLUMNS
     }
     structural_zero_columns = tuple(

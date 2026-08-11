@@ -411,6 +411,16 @@ def build_uk_national_dataset(
         )
     validate_sample_fraction(sample_fraction, label="UK sample")
     validate_sample_seed(sample_seed, label="UK sample")
+    if (
+        checkpoint_dir is not None
+        and sample_fraction != 1.0
+        and "sampling" not in run_config
+    ):
+        raise ValueError(
+            "a checkpointed rung build requires the sampling identity inside "
+            "run_config: two rungs pointed at one checkpoint directory must "
+            "refuse, never cross-resume."
+        )
     frame, provenance = load_uk_national_frame(requested_input_path)
     sampling_receipt: Mapping[str, object] | None = None
     if sample_fraction != 1.0:

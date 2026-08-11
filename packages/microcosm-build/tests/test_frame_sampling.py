@@ -285,3 +285,29 @@ def test_sample_fraction_and_seed_validation() -> None:
     for bad_seed in (-1, 1.5, True, "7"):
         with pytest.raises(ValueError, match="seed must be a non-negative integer"):
             validate_sample_seed(bad_seed)
+
+
+def test_unit_ids_must_be_integer_typed() -> None:
+    frame, _units, _strata = _clone_family_frame()
+    fractional = np.linspace(1.0, 20.0, 20)
+    with pytest.raises(ValueError, match="must be integer-typed"):
+        sample_frame_households(
+            frame, fraction=0.5, seed=1, source_name="UK", unit_ids=fractional
+        )
+
+
+def test_strata_only_receipt_uses_the_unit_block_not_the_household_request() -> None:
+    """Per-stratum floors need not sum to floor(fraction * eligible), so a
+    strata-only call must not emit requested_household_count under the
+    declared exact-count rule (adversarial-review finding)."""
+
+    frame = _uk_shaped_frame(list(range(101, 141)))
+    strata = np.asarray(
+        ["a" if value < 121 else "b" for value in range(101, 141)], dtype=object
+    )
+    _, receipt = sample_frame_households(
+        frame, fraction=0.5, seed=1, source_name="UK", unit_strata=strata
+    )
+    assert "requested_household_count" not in receipt
+    assert receipt["sampling_unit"]["eligible_unit_count"] == 40
+    assert receipt["strata"]["a"]["eligible_units"] == 20

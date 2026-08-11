@@ -396,6 +396,13 @@ def test_sampled_rung_receipts_the_dropped_raw_surface(tmp_path: Path) -> None:
     pd.testing.assert_frame_equal(
         result.frame.table("person"), strict.frame.table("person")
     )
+    # Signal-row evidence remains a fact about the SOURCE: the extra raw
+    # person's pay carrier is counted even though the rung dropped the row,
+    # so structural_zero can never be asserted from a sampled-away surface.
+    assert (
+        result.source_signal_rows[FRS_HMRC_PAY_COLUMN]
+        == strict.source_signal_rows[FRS_HMRC_PAY_COLUMN] + 1
+    )
 
 
 def test_candidate_clone_identity_mismatch_fails_closed(tmp_path: Path) -> None:

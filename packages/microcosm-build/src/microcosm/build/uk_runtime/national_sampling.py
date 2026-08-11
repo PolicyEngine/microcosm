@@ -122,7 +122,9 @@ def uk_source_family_units(
     ``household_id - clone_index*multiplier - spi*spi_offset - cg*cg_offset``
 
     which must land on an existing canonical raw FRS household.  Fails closed
-    on any row the stage fence would refuse later, surfaced before any draw.
+    before any draw on household-level rows the stage fence would refuse;
+    person-level lineage defects are outside this pre-check and surface at
+    stage one, where the fence stays strict.
 
     Returns:
         The per-household-row family keys, the forced family keys (the

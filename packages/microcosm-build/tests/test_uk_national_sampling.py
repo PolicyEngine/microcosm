@@ -35,7 +35,9 @@ def _source_family_frame(
 ) -> Frame:
     """Build the two-layer synthetic compact the sampler's arithmetic expects.
 
-    Raw canonical households get one person each (``household_id * 100 + 1``);
+    Raw canonical households get one person each (``household_id * 1000 + 1``,
+    satisfying the stage fence's ``person // 1000 == household`` invariant so
+    these frames are fence-valid, not just sampler-valid);
     SPI/CG derivatives are constructed with the fence's max-derived offsets
     (``max(canonical raw id) + 1`` / ``max(canonical pre-CG id) + 1``); every
     canonical row then gets one geography clone at ``+ clone_multiplier``.
@@ -46,7 +48,7 @@ def _source_family_frame(
         rows.append(
             {
                 "household_id": int(family["id"]),
-                "person_id": int(family["id"]) * 100 + 1,
+                "person_id": int(family["id"]) * 1000 + 1,
                 "region": family["region"],
                 "spi": False,
                 "cg": False,
@@ -55,7 +57,7 @@ def _source_family_frame(
         )
     raw_by_id = {row["household_id"]: row for row in rows}
     spi_household_offset = max(int(f["id"]) for f in _RAW) + 1
-    spi_person_offset = max(int(f["id"]) * 100 + 1 for f in _RAW) + 1
+    spi_person_offset = max(int(f["id"]) * 1000 + 1 for f in _RAW) + 1
     for source_id in spi_of:
         source = raw_by_id[source_id]
         rows.append(
@@ -265,3 +267,30 @@ def test_full_fraction_is_a_structural_no_op() -> None:
     assert sampled is frame
     assert "normalization_factor" not in receipt
     assert receipt["uk_policy"]["spi_replacement_quota_checked"] is True
+
+
+def test_sampled_frames_pass_the_real_stage_fence() -> None:
+    """The sampler's arithmetic is proven against the fence itself.
+
+    The first credentialed rung run died because the sampler and
+    ``_resolve_candidate_lineage`` disagreed; this test closes the coverage
+    hole the adversarial review found by running the REAL fence over sampled
+    frames: every draw must resolve with the full frame's exact multiplier
+    and person-level SPI/CG offsets.
+    """
+
+    from microcosm.build.uk_runtime.frs_hmrc_leaves import (
+        _resolve_candidate_lineage,
+    )
+
+    frame = _source_family_frame()
+    full = _resolve_candidate_lineage(frame)
+    for seed in (0, 3, 11, 42):
+        sampled, _receipt = sample_uk_national_frame(frame, fraction=0.5, seed=seed)
+        lineage = _resolve_candidate_lineage(sampled)
+        assert lineage.clone_id_multiplier == full.clone_id_multiplier
+        assert lineage.spi_person_id_offset == full.spi_person_id_offset
+        assert (
+            lineage.capital_gains_person_id_offset
+            == full.capital_gains_person_id_offset
+        )
