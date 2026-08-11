@@ -8,8 +8,9 @@ nullable booleans, and the shared source-output merge preserves twelve
 physical-boolean callback outputs as nullable booleans instead of widening
 CPS-only alignments to `object`. A registry-driven guard now rejects every
 late callback output whose physical dtype disagrees with its declared metric
-family before the DAG records the producer. The focused 11-test mechanism
-suite passes after formatting; the complete proof matrix remains to run.
+family before the DAG records the producer. The 40-test focused proof and the
+exact 495-test PR #583 spine-blindness proof both pass with zero skips,
+failures, or errors. The full-workspace chunk matrix remains to run.
 
 ## Done
 
@@ -73,12 +74,15 @@ suite passes after formatting; the complete proof matrix remains to run.
   per-stratum tail clone copy without rewriting clone-0 absence.
 - Passed the post-format focused mechanism suite: 11 passed, with only two
   pre-existing DataFrame-fragmentation warnings. No build was run.
+- Passed the complete focused proof: 40 passed, 0 skipped, 0 failed, and 0
+  errors. This includes all 29 late-producer DAG tests plus the 11 owning-seam,
+  registry, legacy, executor, QBI, source-merge, and tail-clone regressions.
+- Passed the exact PR #583 spine-blindness proof: 495 passed, 0 skipped, 0
+  failed, and 0 errors.
 
 ## Next
 
-- Commit the coherent implementation, registry audit, tail preservation test,
-  progress update, and changelog entry.
-- Run the complete focused suite and the exact PR #583 495-test proof.
 - Run all 225 workspace test files in eight exact-count chunks, followed by
   ruff, format, and diff checks.
+- Commit the full proof receipts and clean-worktree handoff state.
 - Record a gradeable smoke-r7 prediction and final verdict.
