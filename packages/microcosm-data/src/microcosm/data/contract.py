@@ -211,6 +211,9 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "reviewed_exclusions",
             "stale_exclusions",
             "dormant_exclusions",
+            "expired_exclusions",
+            "premature_exclusions",
+            "exclusions_evaluated_on",
         }
     ),
     "zero_weight_strata": frozenset(
@@ -275,6 +278,9 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "unused_reviewed_exclusions",
             "stale_exclusions",
             "dormant_exclusions",
+            "expired_exclusions",
+            "premature_exclusions",
+            "exclusions_evaluated_on",
             "reference_identity",
         }
     ),
@@ -290,6 +296,9 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "reviewed_exclusions",
             "stale_exclusions",
             "dormant_exclusions",
+            "expired_exclusions",
+            "premature_exclusions",
+            "exclusions_evaluated_on",
             "surface",
         }
     ),
@@ -1224,16 +1233,37 @@ def _check_uk_terminal_gate_observables(
             ("all_zero_columns", []),
             ("constant_columns", []),
             ("stale_exclusions", []),
-            # Schema-2 exclusions (#610): an expired approval must never ride
-            # a published report. Absent fields (reports predating schema 2)
-            # default to their own empty value so the check stays total.
+            # Schema-2 exclusions (#610): an out-of-force approval must
+            # never ride a published report. Presence is enforced by the
+            # required detail schema above, so the checks read strictly.
             ("expired_exclusions", []),
+            ("premature_exclusions", []),
         ):
-            if degenerate.get(field, empty) != empty:
+            if degenerate.get(field) != empty:
                 failures.append(
                     f"{_UK_TERMINAL_GATE_REPORT_FILE} passing degenerate-surface "
                     f"gate requires details.{field} to be {empty!r}."
                 )
+
+    # One report evaluates every exclusion register on one date (the
+    # aggregator threads a single clock). A hand-composed collection mixing
+    # evaluation dates is not the aggregator's output.
+    evaluation_dates = {
+        name: details["exclusions_evaluated_on"]
+        for name in (
+            "degenerate_release_surface",
+            "input_mass_parity",
+            "qrf_tail_concentration",
+        )
+        if (details := _uk_terminal_gate_details(gates, name)) is not None
+        and "exclusions_evaluated_on" in details
+    }
+    if len(set(evaluation_dates.values())) > 1:
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} exclusion-consuming gates must "
+            "share one details.exclusions_evaluated_on date; got "
+            f"{dict(sorted(evaluation_dates.items()))}."
+        )
 
     diagnostic_weights: Mapping | None = None
     if calibration_diagnostics is not None:
@@ -1350,10 +1380,15 @@ def _check_uk_terminal_gate_observables(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} passing input-mass parity "
                 "requires details.stale_exclusions to be an empty list."
             )
-        if input_mass.get("expired_exclusions", []) != []:
+        if input_mass.get("expired_exclusions") != []:
             failures.append(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} passing input-mass parity "
                 "requires details.expired_exclusions to be an empty list."
+            )
+        if input_mass.get("premature_exclusions") != []:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing input-mass parity "
+                "requires details.premature_exclusions to be an empty list."
             )
 
     qrf_tail = _uk_terminal_gate_details(gates, "qrf_tail_concentration")
@@ -1481,10 +1516,15 @@ def _check_uk_terminal_gate_observables(
                     "requires columns above details.max_top_share to match "
                     "details.reviewed_exclusions exactly."
                 )
-        if qrf_tail.get("expired_exclusions", []) != []:
+        if qrf_tail.get("expired_exclusions") != []:
             failures.append(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
                 "requires details.expired_exclusions to be an empty list."
+            )
+        if qrf_tail.get("premature_exclusions") != []:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                "requires details.premature_exclusions to be an empty list."
             )
         surface = qrf_tail.get("surface")
         if not isinstance(surface, Mapping):

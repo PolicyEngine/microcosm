@@ -27,6 +27,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UKInputMassParityPolicy,
     UKInputMassReference,
     UKQRFTailConcentrationPolicy,
+    UKReviewedExclusion,
     load_uk_input_mass_reference,
     load_uk_reviewed_exclusion_register,
     uk_dataset_input_mass_totals,
@@ -791,6 +792,7 @@ def test_uk_input_mass_gate_is_the_shared_gate_plus_recorded_identity() -> None:
         "stale_exclusions",
         "dormant_exclusions",
         "expired_exclusions",
+        "premature_exclusions",
         "exclusions_evaluated_on",
         "reference_identity",
     }
@@ -837,6 +839,7 @@ def test_uk_tail_gate_is_the_shared_gate_under_the_uk_name() -> None:
     } == shared_details
     assert set(ported.details) - set(shared_details) == {
         "expired_exclusions",
+        "premature_exclusions",
         "exclusions_evaluated_on",
     }
 
@@ -907,3 +910,63 @@ def test_expired_exclusion_stops_suppressing_and_names_its_receipt() -> None:
         and "microcosm#610" in failure
         for failure in expired.failures
     )
+
+
+def test_premature_exclusion_never_suppresses_and_names_its_receipt() -> None:
+    """A receipt approved in the future is not yet an approval: before its
+    approved_on the entry must not suppress (adversarial-review finding — a
+    typo'd future year would have silently suppressed for years)."""
+
+    from datetime import date
+
+    reason = "Seeded reviewed loss for the fixture."
+    reference = _reference({"person.employment_income": 10.0})
+    policy = _policy(
+        minimum_reference_total=1.0,
+        reviewed_exclusions={"person.employment_income": _entry(reason)},
+    )
+    candidate = {"person.employment_income": 0.0}
+
+    premature = _synthetic_input_mass_gate(
+        candidate, reference, policy=policy, now=date(2026, 8, 9)
+    )
+    in_force = _synthetic_input_mass_gate(
+        candidate, reference, policy=policy, now=date(2026, 8, 10)
+    )
+
+    assert in_force.passed
+    assert in_force.details["premature_exclusions"] == []
+    assert not premature.passed
+    assert premature.details["premature_exclusions"] == ["person.employment_income"]
+    # The underlying zero-mass failure fires (no suppression) AND the
+    # receipt-context failure names the effective date.
+    assert any(
+        "not yet in force" in failure and "takes force 2026-08-10" in failure
+        for failure in premature.failures
+    )
+    assert len(premature.failures) >= 2
+
+
+def test_receipt_dates_must_be_canonical_and_fields_trimmed() -> None:
+    """fromisoformat also accepts compact and week-date forms, and padded
+    strings pass a bare non-empty check — but the raw values are sealed
+    into the policy digest, so two spellings of one receipt must not mint
+    two digests (adversarial-review finding, verified on Python 3.13)."""
+
+    for compact in ("20270210", "2027-W06-3"):
+        with pytest.raises(ValueError, match="must be an ISO date"):
+            UKReviewedExclusion(
+                reason="r",
+                approved_by="a",
+                adjudication="microcosm#610",
+                approved_on="2026-08-10",
+                expires_on=compact,
+            )
+    with pytest.raises(ValueError, match="surrounding whitespace"):
+        UKReviewedExclusion(
+            reason="r",
+            approved_by=" padded ",
+            adjudication="microcosm#610",
+            approved_on="2026-08-10",
+            expires_on="2027-02-10",
+        )

@@ -33,6 +33,9 @@ from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_SEED_DEFAULT,
 )
 from microcosm.build.uk_runtime.release_identity import UK_RELEASE_TIERS
+from microcosm.build.uk_runtime.terminal_gates import (
+    uk_default_degenerate_reviewed_exclusions,
+)
 from microcosm.build.uk_runtime.weighted_integrity import (
     UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
@@ -425,8 +428,20 @@ def main() -> int:
         rung_abort_path=rung_abort_path,
     )
     # Read-only gate inputs are materialized before any sidecar unlink so a
-    # path collision cannot consume a just-deleted file.
+    # path collision cannot consume a just-deleted file — and so a typo'd
+    # register path dies here, before it can destroy a prior build's
+    # sidecars. The default register is preflighted for the same reason: a
+    # corrupted committed register must not surface hours later at
+    # terminal-gate time.
     weighted_integrity_arguments = _weighted_integrity_arguments(args)
+    reviewed_degenerate_exclusions = (
+        uk_default_degenerate_reviewed_exclusions()
+        if args.degenerate_exclusions is None
+        else load_uk_reviewed_exclusion_register(
+            args.degenerate_exclusions,
+            resource=UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
+        )
+    )
     candidate = verify_certified_uk_candidate(args.input_h5)
     evidence_path.unlink(missing_ok=True)
     replay_path.unlink(missing_ok=True)
@@ -467,14 +482,6 @@ def main() -> int:
                     hmrc_transform=hmrc_transform,
                 ),
             }
-        reviewed_degenerate_exclusions = (
-            None
-            if args.degenerate_exclusions is None
-            else load_uk_reviewed_exclusion_register(
-                args.degenerate_exclusions,
-                resource=UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
-            )
-        )
         result = build_uk_national_dataset(
             input_h5=args.input_h5,
             staging_h5=args.staging_h5,
@@ -571,6 +578,7 @@ def main() -> int:
         qrf_estimators=args.qrf_estimators,
         sample_fraction=args.sample_fraction,
         sample_seed=args.sample_seed,
+        degenerate_exclusions_override=args.degenerate_exclusions is not None,
     )
     _write_json(build_record_path, build_record)
     payload = {
@@ -687,6 +695,7 @@ def _aggregate_build_record(
     qrf_estimators: int,
     sample_fraction: float = 1.0,
     sample_seed: int = UK_SAMPLE_SEED_DEFAULT,
+    degenerate_exclusions_override: bool = False,
 ) -> dict[str, object]:
     """Return commit-safe aggregate evidence for one successful staging build."""
 
@@ -729,6 +738,13 @@ def _aggregate_build_record(
             "sample_fraction": float(sample_fraction),
             "sample_seed": int(sample_seed),
             "rung_token": UK_SAMPLE_RUNG_TOKENS[sample_fraction],
+            # The attested policy digest is content-addressed, so a
+            # content-identical --degenerate-exclusions override would be
+            # invisible there; the record keeps the provenance honest
+            # without a path (this record is path-free by contract).
+            "degenerate_exclusions_register": (
+                "override" if degenerate_exclusions_override else "committed"
+            ),
         },
         "sampling": (
             None if result.sampling_receipt is None else dict(result.sampling_receipt)

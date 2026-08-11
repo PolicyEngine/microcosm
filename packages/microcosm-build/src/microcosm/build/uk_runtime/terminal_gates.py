@@ -52,7 +52,10 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UKInputMassReference,
     UKQRFTailConcentrationPolicy,
     UKReviewedExclusion,
+    _expired_exclusion_failure,
+    _premature_exclusion_failure,
     coerce_reviewed_exclusions,
+    exclusion_evaluation_date,
     load_uk_reviewed_exclusion_register,
     uk_dataset_input_mass_totals,
     uk_input_mass_parity_gate,
@@ -918,11 +921,13 @@ def uk_degenerate_release_surface_gate(
     """Reject every all-null, all-zero, or constant nonstructural column.
 
     ``reviewed_exclusions`` are schema-2 approval records (#610); an entry
-    is honored through its ``expires_on`` and stops suppressing after it,
-    failing with a renew-or-remove message instead.
+    suppresses from its ``approved_on`` through its ``expires_on``, and any
+    out-of-force entry fails the gate with correct-or-renew context — even
+    when its column is absent or carries signal, so the register cannot rot
+    silently at any column state (matching the input-mass and QRF wrappers).
     """
 
-    evaluated_on = now or datetime.now(UTC).date()
+    evaluated_on = exclusion_evaluation_date(now)
     exclusions = coerce_reviewed_exclusions(
         reviewed_exclusions, label="UK degenerate-surface"
     )
@@ -945,7 +950,11 @@ def uk_degenerate_release_surface_gate(
             kind, value = finding
             detail = {"kind": kind, "value": value}
             record = exclusions.get(name)
-            if record is not None and not record.expired(evaluated_on):
+            if (
+                record is not None
+                and not record.expired(evaluated_on)
+                and not record.premature(evaluated_on)
+            ):
                 excluded[name] = {
                     **detail,
                     "reason": record.reason,
@@ -959,12 +968,19 @@ def uk_degenerate_release_surface_gate(
                 f"{name}: persisted release column is {kind.replace('_', '-')}"
                 + (f" at {value!r}" if kind == "constant" else "")
             )
-            if record is not None:
+            if record is not None and record.expired(evaluated_on):
                 failures.append(
                     f"{degenerate_message}; its reviewed exclusion expired "
                     f"{record.expires_on} (approved_by {record.approved_by}, "
                     f"{record.adjudication}) — renew the adjudication or "
                     "remove the entry."
+                )
+            elif record is not None:
+                failures.append(
+                    f"{degenerate_message}; its reviewed exclusion takes force "
+                    f"{record.approved_on} (approved_by {record.approved_by}, "
+                    f"{record.adjudication}) — correct the receipt's "
+                    "approved_on or wait for it."
                 )
             else:
                 failures.append(
@@ -975,16 +991,44 @@ def uk_degenerate_release_surface_gate(
     expired = sorted(
         name for name, record in exclusions.items() if record.expired(evaluated_on)
     )
+    premature = sorted(
+        name for name, record in exclusions.items() if record.premature(evaluated_on)
+    )
+    # Stale probing covers in-force entries only: an out-of-force entry gets
+    # receipt-context failures below, never "now carry signal; remove them."
     stale = sorted(
         name
         for name in exclusions
-        if name in present and name not in excluded and name not in live
+        if name in present
+        and name not in excluded
+        and name not in live
+        and name not in expired
+        and name not in premature
     )
     dormant = sorted(set(exclusions) - present)
     if stale:
         failures.append(
             "Stale reviewed degenerate-column exclusions now carry signal; remove "
             f"them: {stale}."
+        )
+    # Out-of-force entries whose column did not fail above (absent, or
+    # present without a degenerate finding) must still fail the gate: the
+    # register cannot rot just because its column moved. Live columns
+    # already carry per-column receipt context, so only the remainder gets
+    # the combined message (one failure per condition, never two per entry).
+    unreported_expired = [name for name in expired if name not in live]
+    if unreported_expired:
+        failures.append(
+            _expired_exclusion_failure(
+                exclusions, unreported_expired, family="degenerate-column"
+            )
+        )
+    unreported_premature = [name for name in premature if name not in live]
+    if unreported_premature:
+        failures.append(
+            _premature_exclusion_failure(
+                exclusions, unreported_premature, family="degenerate-column"
+            )
         )
     by_kind = {
         kind: sorted(name for name, detail in live.items() if detail["kind"] == kind)
@@ -1004,6 +1048,7 @@ def uk_degenerate_release_surface_gate(
             "stale_exclusions": stale,
             "dormant_exclusions": dormant,
             "expired_exclusions": expired,
+            "premature_exclusions": premature,
             "exclusions_evaluated_on": evaluated_on.isoformat(),
         },
     )
@@ -1408,10 +1453,19 @@ def uk_terminal_gate_report(
         lambda: uk_release_input_coverage_gate(dataset, coverage_engine)
     )
     # None resolves to the committed register — the reviewed policy of
-    # record (#630); an explicit {} runs with no exclusions.
+    # record (#630); an explicit {} runs with no exclusions. The mapping is
+    # coerced and frozen ONCE here, so the gate and the sealed policy digest
+    # cannot observe different contents when a caller mutates its argument
+    # between the two reads (the attestation must describe the policy the
+    # gate actually ran under).
     if reviewed_degenerate_exclusions is None:
         reviewed_degenerate_exclusions = uk_default_degenerate_reviewed_exclusions()
-    exclusion_evaluation_date = now or datetime.now(UTC).date()
+    reviewed_degenerate_exclusions = MappingProxyType(
+        coerce_reviewed_exclusions(
+            reviewed_degenerate_exclusions, label="UK degenerate-surface policy"
+        )
+    )
+    evaluation_date = exclusion_evaluation_date(now)
     fit_stage_present = fit_weight_records is not None or require_fit_weight_records
     materialized_fit_records: tuple[object, ...] | None = None
     fit_materialization_error: Exception | None = None
@@ -1428,7 +1482,7 @@ def uk_terminal_gate_report(
             lambda: uk_degenerate_release_surface_gate(
                 dataset,
                 reviewed_exclusions=reviewed_degenerate_exclusions,
-                now=exclusion_evaluation_date,
+                now=evaluation_date,
             ),
         ),
         (
@@ -1524,7 +1578,7 @@ def uk_terminal_gate_report(
                 uk_dataset_input_mass_totals(dataset),
                 input_mass_reference,
                 policy=input_mass_policy,
-                now=exclusion_evaluation_date,
+                now=evaluation_date,
             )
 
         evaluators.append((UK_INPUT_MASS_PARITY_GATE_NAME, input_mass_evaluator))
@@ -1540,7 +1594,7 @@ def uk_terminal_gate_report(
                 weights,
                 policy=qrf_tail_policy,
                 surface=surface,
-                now=exclusion_evaluation_date,
+                now=evaluation_date,
             )
 
         evaluators.append((UK_QRF_TAIL_CONCENTRATION_GATE_NAME, qrf_tail_evaluator))

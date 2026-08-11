@@ -988,3 +988,134 @@ def test_expired_degenerate_exclusion_fails_with_renewal_context() -> None:
     )
     # Expired-but-still-degenerate is not stale: the column carries no signal.
     assert expired.details["stale_exclusions"] == []
+
+
+def test_out_of_force_exclusions_fail_at_every_column_state() -> None:
+    """The register cannot rot silently just because its column moved.
+
+    Adversarial-review finding (three independent lenses): an expired entry
+    whose column was absent (dormant) or had regained signal produced no
+    failure — the build went green and the published report was only
+    rejected downstream by the contract's expired_exclusions expectation.
+    Out-of-force entries now fail the gate at every column state, with
+    receipt context rather than the stale "remove them" message.
+    """
+
+    from datetime import date
+
+    after_expiry = date(2027, 2, 11)
+    dormant = uk_degenerate_release_surface_gate(
+        _dataset(signal=7.0),
+        reviewed_exclusions={
+            "person.employment_income": _entry("Fixture broadcast, admitted."),
+            "person.ghost_column": _entry("Column since dropped."),
+        },
+        now=after_expiry,
+    )
+    assert not dormant.passed
+    assert dormant.details["dormant_exclusions"] == ["person.ghost_column"]
+    assert sorted(dormant.details["expired_exclusions"]) == [
+        "person.employment_income",
+        "person.ghost_column",
+    ]
+    combined = [f for f in dormant.failures if "person.ghost_column" in f]
+    assert len(combined) == 1
+    assert "renew the adjudication or remove the entries" in combined[0]
+
+    regained = uk_degenerate_release_surface_gate(
+        _dataset(),  # employment_income varies: the column carries signal now
+        reviewed_exclusions={
+            "person.employment_income": _entry("Fixture broadcast, admitted.")
+        },
+        now=after_expiry,
+    )
+    assert not regained.passed
+    assert regained.details["expired_exclusions"] == ["person.employment_income"]
+    # Receipt context wins over the stale message for out-of-force entries.
+    assert regained.details["stale_exclusions"] == []
+    assert len(regained.failures) == 1
+    assert "renew the adjudication" in regained.failures[0]
+
+
+def test_premature_degenerate_exclusion_never_suppresses() -> None:
+    """A receipt whose approved_on is still in the future is not an
+    approval: it must not suppress today (adversarial-review finding — a
+    typo'd future year would have silently suppressed for years)."""
+
+    from datetime import date
+
+    before_approval = date(2026, 8, 9)
+    live = uk_degenerate_release_surface_gate(
+        _dataset(signal=7.0),
+        reviewed_exclusions={
+            "person.employment_income": _entry("Fixture broadcast, admitted.")
+        },
+        now=before_approval,
+    )
+    assert not live.passed
+    assert live.details["premature_exclusions"] == ["person.employment_income"]
+    assert live.details["reviewed_exclusions"] == {}
+    assert "takes force 2026-08-10" in live.failures[0]
+    assert "correct the receipt's approved_on" in live.failures[0]
+
+    dormant = uk_degenerate_release_surface_gate(
+        _dataset(),
+        reviewed_exclusions={"person.ghost_column": _entry("Not yet approved.")},
+        now=before_approval,
+    )
+    assert not dormant.passed
+    assert dormant.details["premature_exclusions"] == ["person.ghost_column"]
+    assert "not yet in force" in dormant.failures[0]
+
+
+def test_exclusion_clocks_reject_datetimes() -> None:
+    """datetime is a date subclass; letting one through would compare
+    timestamps against dates or leak a timestamp into
+    exclusions_evaluated_on (adversarial-review finding)."""
+
+    from datetime import UTC, datetime
+
+    with pytest.raises(TypeError, match="must be a datetime.date"):
+        uk_degenerate_release_surface_gate(
+            _dataset(), reviewed_exclusions={}, now=datetime.now(UTC)
+        )
+    with pytest.raises(TypeError, match="must be a datetime.date"):
+        _report(now=datetime.now(UTC))
+
+
+def test_report_seals_the_register_snapshot_it_ran_under() -> None:
+    """The gate and the attested policy digest must observe one register.
+
+    Adversarial-review finding: the mapping was read once at gate time and
+    again at digest time, with caller-controlled evaluators running in
+    between — a mutation there produced an attestation describing a policy
+    the gate never ran under. The report now coerces and freezes the
+    mapping once at entry, before any evaluator runs.
+    """
+
+    mutable = {"person.employment_income": _entry("Fixture broadcast, admitted.")}
+    baseline = _report(
+        _dataset(signal=7.0),
+        reviewed_degenerate_exclusions=dict(mutable),
+    )
+
+    def mutating_coverage():
+        mutable.clear()
+        return _coverage()
+
+    with patch(
+        "microcosm.build.uk_runtime.weighted_integrity._validate_input_mass_reference",
+        return_value=None,
+    ):
+        mutated = uk_terminal_gate_report(
+            _dataset(signal=7.0),
+            object(),
+            release_id=TEST_UK_RELEASE_ID,
+            calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
+            input_coverage_evaluator=mutating_coverage,
+            reviewed_degenerate_exclusions=mutable,
+        )
+    assert mutated.attestation["policy_sha256"] == baseline.attestation["policy_sha256"]
+    degenerate = _gates(mutated)["degenerate_release_surface"]
+    assert degenerate["passed"] is True
+    assert "person.employment_income" in degenerate["details"]["reviewed_exclusions"]
