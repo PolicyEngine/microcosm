@@ -53,6 +53,7 @@ from microcosm.build.uk_runtime.terminal_gates import (
     UKZeroWeightStratumDeclaration,
     _household_weights,
     _missing_fit_weight_evidence_gate,
+    uk_default_degenerate_reviewed_exclusions,
     uk_degenerate_release_surface_gate,
     uk_export_surface_gate,
     uk_target_fit_gate,
@@ -62,6 +63,7 @@ from microcosm.build.uk_runtime.terminal_gates import (
     uk_zero_weight_strata_gate,
 )
 from microcosm.build.uk_runtime.weighted_integrity import (
+    UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
     UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
@@ -231,8 +233,20 @@ def _stage_names_evidence(
 def _evaluate_degenerate_release_surface(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
+    kwargs = dict(parameters)
+    register = kwargs.pop("reviewed_exclusions_resource", None)
+    if register != UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE:
+        raise ValueError(
+            f"uk/gates.json names exclusion register {register!r} but the "
+            f"runtime loads {UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE!r}."
+        )
+    # The committed register is the reviewed policy of record (#630/#610):
+    # the battery must run the same exclusions the legacy terminal report
+    # resolves for None, or the two paths diverge on dormant/expired state.
     return uk_degenerate_release_surface_gate(
-        _uk_gate_surface(context.frame), **dict(parameters)
+        _uk_gate_surface(context.frame),
+        reviewed_exclusions=uk_default_degenerate_reviewed_exclusions(),
+        **kwargs,
     )
 
 
@@ -427,7 +441,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     "degenerate_release_surface": UKGateBinding(
         name="degenerate_release_surface",
         evaluator=_evaluate_degenerate_release_surface,
-        parameter_keys=frozenset({"reviewed_exclusions"}),
+        parameter_keys=frozenset({"reviewed_exclusions_resource"}),
     ),
     "zero_weight_strata": UKGateBinding(
         name="zero_weight_strata",

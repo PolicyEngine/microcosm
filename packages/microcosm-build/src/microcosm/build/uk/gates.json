@@ -38,8 +38,10 @@
       "gate": "degenerate_release_surface",
       "phase": "terminal",
       "criticality": "release_blocking",
-      "parameters": {},
-      "notes": "No constant non-structural columns on any entity table. The microcosm#630 source-year finding lands here as a reviewed exclusion once its register entry is approved."
+      "parameters": {
+        "reviewed_exclusions_resource": "degenerate_reviewed_exclusions.json"
+      },
+      "notes": "No constant non-structural columns on any entity table. Reviewed exclusions come from the committed schema-2 register (the microcosm#630 source-year adjudication landed there via microcosm#658, approval receipt with expiry included); the battery runs the same policy of record the terminal report resolves."
     },
     {
       "id": "uk_zero_weight_strata",
