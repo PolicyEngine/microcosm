@@ -129,7 +129,7 @@ _UK_TERMINAL_GATE_SIGNING_KEY_ENV = "POPULACE_UK_TERMINAL_GATE_SIGNING_KEY"
 # alongside the committed threshold constants — a threshold outside this hash
 # is not attested.
 _UK_TERMINAL_GATE_POLICY_SHA256 = (
-    "2dbd78bcf36b3092ff16eb67a9206b020d4e555527e5d7326e7a5340f2796b50"
+    "ae93bd10a02362a523eb077bcbd32b362cef31f0447acbc40537df696e30c757"
 )
 # The published June release attests the pre-#630 policy (no degenerate
 # reviewed exclusions). Its report is immutable, so the superseded digest
@@ -1222,8 +1222,12 @@ def _check_uk_terminal_gate_observables(
             ("all_zero_columns", []),
             ("constant_columns", []),
             ("stale_exclusions", []),
+            # Schema-2 exclusions (#610): an expired approval must never ride
+            # a published report. Absent fields (reports predating schema 2)
+            # default to their own empty value so the check stays total.
+            ("expired_exclusions", []),
         ):
-            if degenerate.get(field) != empty:
+            if degenerate.get(field, empty) != empty:
                 failures.append(
                     f"{_UK_TERMINAL_GATE_REPORT_FILE} passing degenerate-surface "
                     f"gate requires details.{field} to be {empty!r}."
@@ -1343,6 +1347,11 @@ def _check_uk_terminal_gate_observables(
             failures.append(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} passing input-mass parity "
                 "requires details.stale_exclusions to be an empty list."
+            )
+        if input_mass.get("expired_exclusions", []) != []:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing input-mass parity "
+                "requires details.expired_exclusions to be an empty list."
             )
 
     qrf_tail = _uk_terminal_gate_details(gates, "qrf_tail_concentration")
@@ -1470,6 +1479,11 @@ def _check_uk_terminal_gate_observables(
                     "requires columns above details.max_top_share to match "
                     "details.reviewed_exclusions exactly."
                 )
+        if qrf_tail.get("expired_exclusions", []) != []:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                "requires details.expired_exclusions to be an empty list."
+            )
         surface = qrf_tail.get("surface")
         if not isinstance(surface, Mapping):
             failures.append(

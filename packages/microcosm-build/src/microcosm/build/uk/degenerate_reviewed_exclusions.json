@@ -1,7 +1,13 @@
 {
- "schema_version": 1,
- "description": "Reviewed degenerate-release-surface exclusions for the UK terminal battery (#630). Each entry maps an 'entity.column' name to a non-empty reason documenting why a constant or all-zero persisted release column is adjudicated as acceptable. The gate reports dormant entries and FAILS stale ones (columns that regain signal), so this register cannot rot. Interim schema-1 pending the #610 approval-identity/receipt/expiry design; upgrade together with the input-mass and QRF-tail registers.",
+ "schema_version": 2,
+ "description": "Reviewed degenerate-release-surface exclusions for the UK terminal battery (#630, schema 2 per #610). Each entry is a complete approval receipt: reason, approver, adjudication reference, approval date, and expiry. The gate reports dormant entries, FAILS stale ones (columns that regain signal), and FAILS expired ones until the adjudication is renewed, so this register cannot rot.",
  "exclusions": {
-  "household.source_year": "Single-year artifact: constant at the build vintage by construction. The column is lineage plumbing for the rowwise clone's source_household_key and documents the vintage at the row level, not signal. Reviewed exclusion adjudicated in microcosm#630."
+  "household.source_year": {
+   "reason": "Constant at the build vintage by construction on a single-vintage artifact, and fully derivable from the artifact's time_period metadata (the rowwise clone path re-derives it when absent). Retained deliberately for row-level vintage documentation and UK/US schema symmetry \u2014 the US pools three ASEC vintages, where the same column is irreducible per-row identity. Not signal.",
+   "approved_by": "juaristi22",
+   "adjudication": "microcosm#630",
+   "approved_on": "2026-08-10",
+   "expires_on": "2027-02-10"
+  }
  }
 }

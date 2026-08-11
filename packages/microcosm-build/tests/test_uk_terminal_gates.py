@@ -37,6 +37,20 @@ from microcosm.build.uk_runtime.terminal_gates import (
 )
 
 TEST_UK_TERMINAL_GATE_SIGNING_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+
+
+def _entry(reason: str, *, expires_on: str = "2027-02-10") -> dict[str, str]:
+    """A valid schema-2 approval receipt around the fixture's reason."""
+
+    return {
+        "reason": reason,
+        "approved_by": "test-reviewer",
+        "adjudication": "microcosm#610",
+        "approved_on": "2026-08-10",
+        "expires_on": expires_on,
+    }
+
+
 TEST_UK_RELEASE_ID = "populace-uk-2023-frs-k535080"
 TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256 = "c" * 64
 
@@ -147,18 +161,19 @@ def test_reviewed_degenerate_exclusion_is_recorded_and_stale_entries_fail() -> N
     reason = "Fixture intentionally broadcasts this reviewed input."
     live = uk_degenerate_release_surface_gate(
         _dataset(signal=7.0),
-        reviewed_exclusions={"person.employment_income": reason},
+        reviewed_exclusions={"person.employment_income": _entry(reason)},
     )
     stale = uk_degenerate_release_surface_gate(
         _dataset(),
-        reviewed_exclusions={"person.employment_income": reason},
+        reviewed_exclusions={"person.employment_income": _entry(reason)},
     )
 
     assert live.passed
-    assert (
-        live.details["reviewed_exclusions"]["person.employment_income"]["reason"]
-        == reason
-    )
+    recorded = live.details["reviewed_exclusions"]["person.employment_income"]
+    assert recorded["reason"] == reason
+    assert recorded["approved_by"] == "test-reviewer"
+    assert recorded["adjudication"] == "microcosm#610"
+    assert recorded["expires_on"] == "2027-02-10"
     assert not stale.passed
     assert stale.details["stale_exclusions"] == ["person.employment_income"]
 
@@ -601,7 +616,7 @@ def test_stale_weighted_integrity_exclusions_fail_the_armed_battery() -> None:
         input_mass_reference=_input_mass_reference(),
         input_mass_policy=_input_mass_policy(
             reviewed_exclusions={
-                "person.employment_income": "Seeded stale entry.",
+                "person.employment_income": _entry("Seeded stale entry."),
             }
         ),
     )
@@ -853,11 +868,12 @@ def test_production_terminal_report_pins_policy_and_evidence_membership(
     payload = json.loads(output.read_text(encoding="utf-8"))
 
     # The #630 source_year reviewed exclusion entered the committed register
-    # (the policy of record), so the frozen digest moved with it — the
-    # intended tripwire; the pre-#630 digest stays pinned in microcosm-data
-    # for the grandfathered June release.
+    # and #610's schema 2 sealed its full approval receipt (approver,
+    # adjudication, dates), so the frozen digest moved — the intended
+    # tripwire; the pre-#630 digest stays pinned in microcosm-data for the
+    # grandfathered June release.
     assert UK_TERMINAL_GATE_POLICY_SHA256 == (
-        "2dbd78bcf36b3092ff16eb67a9206b020d4e555527e5d7326e7a5340f2796b50"
+        "ae93bd10a02362a523eb077bcbd32b362cef31f0447acbc40537df696e30c757"
     )
     assert payload["attestation"]["policy_sha256"] == (UK_TERMINAL_GATE_POLICY_SHA256)
     assert payload["attestation"]["evaluated_gates"] == [
@@ -911,6 +927,41 @@ def test_committed_degenerate_register_is_the_policy_of_record() -> None:
     )
 
     assert set(UK_DEFAULT_DEGENERATE_REVIEWED_EXCLUSIONS) == {"household.source_year"}
-    reason = UK_DEFAULT_DEGENERATE_REVIEWED_EXCLUSIONS["household.source_year"]
-    assert "microcosm#630" in reason
-    assert "lineage plumbing" in reason
+    record = UK_DEFAULT_DEGENERATE_REVIEWED_EXCLUSIONS["household.source_year"]
+    assert record.adjudication == "microcosm#630"
+    assert record.approved_by == "juaristi22"
+    assert record.expires_on == "2027-02-10"
+    assert "schema symmetry" in record.reason
+    assert "derivable" in record.reason
+
+
+def test_expired_degenerate_exclusion_fails_with_renewal_context() -> None:
+    """Honored through expires_on; strictly after, the combined message names
+    the approver, the adjudication, and the lapse date."""
+
+    from datetime import date
+
+    entry = _entry("Fixture broadcast, admitted.")
+    honored = uk_degenerate_release_surface_gate(
+        _dataset(signal=7.0),
+        reviewed_exclusions={"person.employment_income": entry},
+        now=date(2027, 2, 10),
+    )
+    expired = uk_degenerate_release_surface_gate(
+        _dataset(signal=7.0),
+        reviewed_exclusions={"person.employment_income": entry},
+        now=date(2027, 2, 11),
+    )
+
+    assert honored.passed
+    assert honored.details["expired_exclusions"] == []
+    assert not expired.passed
+    assert expired.details["expired_exclusions"] == ["person.employment_income"]
+    assert expired.details["exclusions_evaluated_on"] == "2027-02-11"
+    assert (
+        "its reviewed exclusion expired 2027-02-10 (approved_by test-reviewer, "
+        "microcosm#610) — renew the adjudication or remove the entry."
+        in expired.failures[0]
+    )
+    # Expired-but-still-degenerate is not stale: the column carries no signal.
+    assert expired.details["stale_exclusions"] == []

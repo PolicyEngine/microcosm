@@ -36,6 +36,18 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 )
 
 
+def _entry(reason: str, *, expires_on: str = "2027-02-10") -> dict[str, str]:
+    """A valid schema-2 approval receipt around the fixture's reason."""
+
+    return {
+        "reason": reason,
+        "approved_by": "test-reviewer",
+        "adjudication": "microcosm#610",
+        "approved_on": "2026-08-10",
+        "expires_on": expires_on,
+    }
+
+
 def _dataset(
     *,
     n: int = 4,
@@ -252,9 +264,9 @@ def test_input_mass_exclusion_discipline_live_stale_dormant() -> None:
     policy = _policy(
         minimum_reference_total=1.0,
         reviewed_exclusions={
-            "person.employment_income": reason,
-            "person.tiny_layer": reason,
-            "person.never_shipped": reason,
+            "person.employment_income": _entry(reason),
+            "person.tiny_layer": _entry(reason),
+            "person.never_shipped": _entry(reason),
         },
     )
 
@@ -286,17 +298,17 @@ def test_input_mass_exclusion_discipline_live_stale_dormant() -> None:
 def test_input_mass_policy_and_reference_validation() -> None:
     with pytest.raises(ValueError, match="non-negative"):
         _policy(relative_tolerance=-0.1)
-    with pytest.raises(ValueError, match="need reasons"):
-        _policy(reviewed_exclusions={"person.employment_income": "  "})
+    with pytest.raises(ValueError, match="reason must be a non-empty string"):
+        _policy(reviewed_exclusions={"person.employment_income": _entry("  ")})
     with pytest.raises(ValueError, match="lowercase sha256"):
         _reference({"person.employment_income": 1.0}, sha256="nope")
     with pytest.raises(ValueError, match="non-empty mapping"):
         _reference({})
     with pytest.raises(ValueError, match="finite"):
         _reference({"person.employment_income": float("nan")})
-    with pytest.raises(TypeError, match="names and reasons must be strings"):
-        _policy(reviewed_exclusions={1: "Seeded invalid name."})
-    with pytest.raises(TypeError, match="names and reasons must be strings"):
+    with pytest.raises(ValueError, match="non-empty, trimmed column names"):
+        _policy(reviewed_exclusions={1: _entry("Seeded invalid name.")})
+    with pytest.raises(TypeError, match="must be an object with fields"):
         _policy(reviewed_exclusions={"person.employment_income": None})
 
 
@@ -464,7 +476,7 @@ def test_thin_qrf_exclusion_is_classified_as_dormant() -> None:
             top_k=10,
             max_top_share=0.5,
             min_nonzero_records=100,
-            reviewed_exclusions={"person.x": "Seeded thin entry."},
+            reviewed_exclusions={"person.x": _entry("Seeded thin entry.")},
         ),
     )
 
@@ -488,8 +500,8 @@ def test_qrf_stale_exclusion_fails_and_dormant_is_reported() -> None:
             max_top_share=0.5,
             min_nonzero_records=2,
             reviewed_exclusions={
-                "self_employment_income": "Seeded stale entry.",
-                "dividend_income": "Seeded dormant entry.",
+                "self_employment_income": _entry("Seeded stale entry."),
+                "dividend_income": _entry("Seeded dormant entry."),
             },
         ),
     )
@@ -507,12 +519,12 @@ def test_qrf_policy_validation() -> None:
         )
     with pytest.raises(ValueError, match=r"in \(0, 1\)"):
         UKQRFTailConcentrationPolicy(top_k=1, max_top_share=1.0, min_nonzero_records=2)
-    with pytest.raises(ValueError, match="need reasons"):
+    with pytest.raises(ValueError, match="reason must be a non-empty string"):
         UKQRFTailConcentrationPolicy(
             top_k=1,
             max_top_share=0.5,
             min_nonzero_records=2,
-            reviewed_exclusions={"self_employment_income": ""},
+            reviewed_exclusions={"self_employment_income": _entry("")},
         )
 
 
@@ -535,31 +547,67 @@ def test_register_loader_rejects_missing_reasons_and_bad_schema(tmp_path) -> Non
     bad_reason.write_text(
         json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "description": "Seeded register.",
-                "exclusions": {"person.x": ""},
+                "exclusions": {"person.x": _entry("")},
             }
         )
     )
-    bad_schema = tmp_path / "schema.json"
-    bad_schema.write_text(
+    legacy_schema = tmp_path / "schema.json"
+    legacy_schema.write_text(
         json.dumps(
             {
-                "schema_version": 2,
+                "schema_version": 1,
                 "description": "Seeded register.",
                 "exclusions": {},
             }
         )
     )
+    bad_expiry = tmp_path / "expiry.json"
+    bad_expiry.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "description": "Seeded register.",
+                "exclusions": {
+                    "person.x": _entry(
+                        "Seeded reversed dates.", expires_on="2026-08-09"
+                    )
+                },
+            }
+        )
+    )
+    bad_date = tmp_path / "date.json"
+    bad_date.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "description": "Seeded register.",
+                "exclusions": {
+                    "person.x": _entry("Seeded bad date.", expires_on="soon")
+                },
+            }
+        )
+    )
 
-    with pytest.raises(ValueError, match="need reasons"):
+    with pytest.raises(ValueError, match="reason must be a non-empty string"):
         load_uk_reviewed_exclusion_register(
             bad_reason,
             resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
         )
-    with pytest.raises(ValueError, match="schema_version"):
+    with pytest.raises(ValueError, match="schema_version must be 2"):
         load_uk_reviewed_exclusion_register(
-            bad_schema,
+            legacy_schema,
+            resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
+        )
+    with pytest.raises(ValueError, match="expires_on must be after approved_on"):
+        load_uk_reviewed_exclusion_register(
+            bad_expiry,
+            resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
+        )
+    with pytest.raises(ValueError, match="must be an ISO date"):
+        load_uk_reviewed_exclusion_register(
+            bad_date,
             resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
         )
 
@@ -568,29 +616,34 @@ def test_register_loader_rejects_missing_reasons_and_bad_schema(tmp_path) -> Non
     ("raw", "match"),
     [
         (
-            '{"schema_version":1,"description":"x","exclusions":'
+            '{"schema_version":2,"description":"x","exclusions":'
             '{"person.x":"first","person.x":null}}',
             "duplicate JSON key",
         ),
         (
-            '{"schema_version":1,"description":"x","exclusions":{"person.x":null}}',
-            "names and reasons must be strings",
+            '{"schema_version":2,"description":"x","exclusions":{"person.x":null}}',
+            "must be an object with fields",
         ),
         (
-            '{"schema_version":1,"description":"x",'
+            '{"schema_version":2,"description":"x",'
             '"exclusions":{"person.x":{"ticket":"610"}}}',
-            "names and reasons must be strings",
+            "fields must be exactly",
         ),
         (
-            '{"schema_version":1,"description":"x","exclusions":{"person.x":7}}',
-            "names and reasons must be strings",
+            '{"schema_version":2,"description":"x","exclusions":'
+            '{"person.x":"a plain schema-1 reason"}}',
+            "must be an object with fields",
         ),
         (
-            '{"schema_version":1,"description":"x","exclusions":[[1,"reason"]]}',
+            '{"schema_version":2,"description":"x","exclusions":{"person.x":7}}',
+            "must be an object with fields",
+        ),
+        (
+            '{"schema_version":2,"description":"x","exclusions":[[1,"reason"]]}',
             "'exclusions' object",
         ),
         ("null", "JSON object"),
-        ('{"schema_version":1', "malformed JSON"),
+        ('{"schema_version":2', "malformed JSON"),
     ],
 )
 def test_register_loader_rejects_malformed_or_coerced_entries(
@@ -737,6 +790,8 @@ def test_uk_input_mass_gate_is_the_shared_gate_plus_recorded_identity() -> None:
     assert set(ported.details) - set(shared_details) == {
         "stale_exclusions",
         "dormant_exclusions",
+        "expired_exclusions",
+        "exclusions_evaluated_on",
         "reference_identity",
     }
 
@@ -751,7 +806,7 @@ def test_uk_tail_gate_is_the_shared_gate_under_the_uk_name() -> None:
     concentrated[0] = 500.0
     values = {"self_employment_income": concentrated, "dividend_income": np.ones(n)}
     weights = {name: np.ones(n) for name in values}
-    exclusions = {"dividend_income": "Seeded stale entry."}
+    reason = "Seeded stale entry."
 
     shared = tail_concentration_gate(
         values,
@@ -759,7 +814,7 @@ def test_uk_tail_gate_is_the_shared_gate_under_the_uk_name() -> None:
         top_k=1,
         max_top_share=0.5,
         min_nonzero_records=2,
-        reviewed_exclusions=exclusions,
+        reviewed_exclusions={"dividend_income": reason},
     )
     ported = uk_qrf_tail_concentration_gate(
         values,
@@ -768,7 +823,7 @@ def test_uk_tail_gate_is_the_shared_gate_under_the_uk_name() -> None:
             top_k=1,
             max_top_share=0.5,
             min_nonzero_records=2,
-            reviewed_exclusions=exclusions,
+            reviewed_exclusions={"dividend_income": _entry(reason)},
         ),
     )
 
@@ -776,7 +831,14 @@ def test_uk_tail_gate_is_the_shared_gate_under_the_uk_name() -> None:
     assert ported.name == "qrf_tail_concentration"
     assert ported.passed == shared.passed
     assert ported.failures == shared.failures
-    assert dict(ported.details) == dict(shared.details)
+    shared_details = dict(shared.details)
+    assert {
+        key: value for key, value in ported.details.items() if key in shared_details
+    } == shared_details
+    assert set(ported.details) - set(shared_details) == {
+        "expired_exclusions",
+        "exclusions_evaluated_on",
+    }
 
 
 def test_input_mass_reference_round_trips_the_measurement_schema(tmp_path) -> None:
@@ -812,3 +874,36 @@ def test_input_mass_reference_round_trips_the_measurement_schema(tmp_path) -> No
     with pytest.raises(ValueError, match="schema_version"):
         path.write_text(json.dumps({"schema_version": 9}))
         load_uk_input_mass_reference(path)
+
+
+def test_expired_exclusion_stops_suppressing_and_names_its_receipt() -> None:
+    """Honored through expires_on; strictly after it, renew-or-remove fails."""
+
+    from datetime import date
+
+    reason = "Seeded reviewed loss for the fixture."
+    reference = _reference({"person.employment_income": 10.0})
+    policy = _policy(
+        minimum_reference_total=1.0,
+        reviewed_exclusions={"person.employment_income": _entry(reason)},
+    )
+    candidate = {"person.employment_income": 0.0}
+
+    honored = _synthetic_input_mass_gate(
+        candidate, reference, policy=policy, now=date(2027, 2, 10)
+    )
+    expired = _synthetic_input_mass_gate(
+        candidate, reference, policy=policy, now=date(2027, 2, 11)
+    )
+
+    assert honored.passed
+    assert honored.details["expired_exclusions"] == []
+    assert honored.details["exclusions_evaluated_on"] == "2027-02-10"
+    assert not expired.passed
+    assert expired.details["expired_exclusions"] == ["person.employment_income"]
+    assert any(
+        "renew the adjudication or remove the entries" in failure
+        and "test-reviewer" in failure
+        and "microcosm#610" in failure
+        for failure in expired.failures
+    )
