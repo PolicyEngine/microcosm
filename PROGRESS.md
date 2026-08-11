@@ -2,11 +2,12 @@
 
 ## State
 
-The smoke-r5 mechanism is fixed and the requested proof matrix is green.
-`TYPEHUGQ` now uses `acs_source` on both the input and the primary structural
-output; ASEC rows remain absent with no synthesized value or tolerated-absence
-receipt. The complete declared raw-input audit has no cross-origin whole-pool
-reads. Only the independent review and final report remain.
+The smoke-r5 mechanism is fixed, the requested proof matrix is green, and the
+independent review found no actionable issue. `TYPEHUGQ` now uses `acs_source`
+on both the input and the primary structural output; ASEC rows remain absent
+with no synthesized value or tolerated-absence receipt. The complete declared
+raw-input audit has no cross-origin whole-pool reads. This branch is ready for
+smoke r6.
 
 ## Done
 
@@ -57,10 +58,14 @@ reads. Only the independent review and final report remain.
   four changed Python files, and `git diff --check 27b07c73..HEAD`. The
   repository-wide formatter baseline still names 29 unrelated pre-existing
   files; none is part of this round.
+- Independent read-only review found no actionable correctness bug,
+  regression, or missing required test. Residual maintenance note: future
+  ASEC raw inputs must be added to the intentionally explicit provenance list.
 
 ## Next
 
-- Complete the independent read-only review and address any actionable
-  findings.
-- Commit final proof/review state and report the gradeable smoke-r6 prediction
-  to stdout.
+- Run the externally launched 1% smoke r6 (build execution is explicitly out
+  of scope for this round). Predict 15,316 ACS `TYPEHUGQ` rows in scope with
+  zero unfilled/invalid rows, 1,688 untouched ASEC structural nulls out of
+  scope, no `TYPEHUGQ` absence receipt, and successful progress beyond the
+  former primary-readiness refusal through the full smoke train.
