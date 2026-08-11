@@ -43,8 +43,10 @@ from microcosm.build.uk_runtime.battery_bindings import (
     UKGateBinding,
     _uk_gate_surface,
 )
-from microcosm.build.uk_runtime.national_build import _uk_gate_evidence
-from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.build.uk_runtime.national_frame import (
+    uk_household_weight_kind,
+    uk_national_frame,
+)
 from microcosm.build.uk_runtime.release_input_coverage import (
     UKReleaseInputColumn,
     UKReleaseInputCoverageManifest,
@@ -58,6 +60,7 @@ from microcosm.build.uk_runtime.terminal_gates import (
     UKReleaseParityEvidence,
     uk_terminal_gate_report,
 )
+from microcosm.frame import engine_tables
 
 KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 RELEASE_ID = "populace-uk-2023-frs-k535080"
@@ -250,20 +253,25 @@ def _assert_identical_verdicts(legacy, battery) -> None:
 
 
 class TestUKSurfaceAdapter:
-    def test_surface_matches_the_national_build_evidence_adapter(self) -> None:
+    def test_surface_materializes_the_frame_not_fallbacks(self) -> None:
+        # The one surviving copy of the legacy duck-attr evidence surface
+        # (the national build's adapter consolidated into it at the
+        # orchestration swap). Every attr must resolve to the frame's real
+        # values — a gate reading household_weight_kind or time_period must
+        # never see a fallback.
         person, benunit, household = _tables()
         frame = uk_national_frame(
             person=person, benunit=benunit, household=household, time_period="2023"
         )
         surface = _uk_gate_surface(frame)
-        legacy = _uk_gate_evidence(frame)
+        tables = engine_tables(frame)
 
-        pd.testing.assert_frame_equal(surface.person, legacy.person)
-        pd.testing.assert_frame_equal(surface.benunit, legacy.benunit)
-        pd.testing.assert_frame_equal(surface.household, legacy.household)
-        assert surface.time_period == legacy.time_period
-        assert surface.household_weight_kind == legacy.household_weight_kind
-        assert surface.mass_log == legacy.mass_log
+        pd.testing.assert_frame_equal(surface.person, tables["person"])
+        pd.testing.assert_frame_equal(surface.benunit, tables["benunit"])
+        pd.testing.assert_frame_equal(surface.household, tables["household"])
+        assert surface.time_period == "2023"
+        assert surface.household_weight_kind is uk_household_weight_kind(frame)
+        assert surface.mass_log == frame.mass_log
 
 
 class TestUKCompatibility:

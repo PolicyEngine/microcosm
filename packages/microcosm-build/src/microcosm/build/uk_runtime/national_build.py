@@ -1,4 +1,4 @@
-"""National UK build orchestration with batched terminal release gates.
+"""National UK build orchestration over the shared gate battery.
 
 UK source stages run ``Frame -> Frame`` on the national carrier assembled by
 :mod:`microcosm.build.uk_runtime.national_frame`; the staging H5 persists the
@@ -6,6 +6,14 @@ same person, benunit, and household tables PolicyEngine-UK reads, including
 ``household_weight`` as a real export column materialized from the frame's
 typed weights. The local-geography clone remains a separate downstream build
 product with its own carrier.
+
+Gates run through :class:`microcosm.build.gate_battery.GateBatteryRun` over
+the declared ``uk/gates.json`` spec: the preflight phase before the frame
+loads, the terminal phase after the last stage and immediately before the
+staging writer. Every declared entry appears in the persisted schema-4
+report — evidence the build cannot supply is a named ``evidence_absent``
+gap, blocking release candidates only — and the report is on disk before
+any blocking decision raises.
 """
 
 from __future__ import annotations
@@ -14,18 +22,27 @@ import json
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
 import microcosm.build.uk_runtime.national_frame as _national_frame
-import microcosm.build.uk_runtime.release_input_coverage as _release_input_coverage
+from microcosm.build.country_spec import load_country_spec
 from microcosm.build.frame_sampling import (
     validate_sample_fraction,
     validate_sample_seed,
 )
-from microcosm.build.gates import GateReport, GateResult
+from microcosm.build.gate_battery import (
+    BlockingMode,
+    EvidenceContext,
+    GateBatteryRun,
+    GateBinding,
+    GatePhaseReport,
+)
+from microcosm.build.gates import GateResult
+from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.national_frame import (
     UKStagingProvenance,
     uk_household_weight_kind,
@@ -39,8 +56,6 @@ from microcosm.build.uk_runtime.national_sampling import (
 )
 from microcosm.build.uk_runtime.release_input_coverage import (
     PolicyEngineUKCoverageEngine,
-    assert_uk_release_input_coverage_build_stages,
-    assert_uk_release_input_coverage_manifest_current,
 )
 from microcosm.build.uk_runtime.terminal_gates import (
     UKInputMassParityPolicy,
@@ -48,15 +63,9 @@ from microcosm.build.uk_runtime.terminal_gates import (
     UKQRFTailConcentrationPolicy,
     UKReleaseParityEvidence,
     UKReviewedExclusion,
-    uk_terminal_gate_report,
-    write_uk_terminal_gate_report,
 )
+from microcosm.build.uk_runtime.weighted_integrity import exclusion_evaluation_date
 from microcosm.frame import Frame, MassChangeRecord, WeightKind, engine_tables
-
-# Retained as the existing library-test monkeypatch seam. Production terminal
-# evaluation resolves the same function inside terminal_gates so its policy
-# attestation can identify the builtin evaluator.
-uk_release_input_coverage_gate = _release_input_coverage.uk_release_input_coverage_gate
 
 __all__ = [
     "UKNationalBuildResult",
@@ -109,40 +118,6 @@ class UKNationalStage:
 
 
 @dataclass(frozen=True)
-class _UKGateEvidence:
-    """The duck-attr evidence surface the UK gate battery consumes today.
-
-    Exactly the shadow carrier's read surface — the three entity tables plus
-    the weight-kind, period, and mass-log metadata — materialized from the
-    frame. The gate modules stay deliberately duck-typed (#611 owns their
-    Frame typing); until that lands, this adapter is the one place the legacy
-    evidence shape survives, so a gate that reads ``household_weight_kind``
-    or ``time_period`` sees the frame's real values rather than a fallback.
-    """
-
-    person: pd.DataFrame
-    benunit: pd.DataFrame
-    household: pd.DataFrame
-    time_period: str
-    household_weight_kind: WeightKind
-    mass_log: tuple[MassChangeRecord, ...]
-
-
-def _uk_gate_evidence(frame: Frame) -> _UKGateEvidence:
-    """Materialize the gate battery's evidence surface from the frame."""
-
-    tables = engine_tables(frame)
-    return _UKGateEvidence(
-        person=tables["person"],
-        benunit=tables["benunit"],
-        household=tables["household"],
-        time_period=uk_time_period(frame),
-        household_weight_kind=uk_household_weight_kind(frame),
-        mass_log=frame.mass_log,
-    )
-
-
-@dataclass(frozen=True)
 class UKNationalBuildResult:
     """A gated national staging artifact and its execution evidence."""
 
@@ -151,20 +126,26 @@ class UKNationalBuildResult:
     input_h5: Path
     staging_h5: Path
     stage_names: tuple[str, ...]
-    terminal_gates: GateReport
+    #: The in-memory phase reports, declared order (preflight, terminal).
+    phase_reports: tuple[GatePhaseReport, ...]
+    #: The exact schema-4 payload persisted at ``terminal_gate_path``.
+    gate_report: Mapping[str, object]
     terminal_gate_path: Path
     #: The #627 rung receipt; ``None`` on a full-scale (fraction 1.0) build.
     sampling_receipt: Mapping[str, object] | None = None
 
     @property
     def input_coverage(self) -> GateResult:
-        """Backward-compatible projection of the consolidated gate report."""
+        """Backward-compatible projection of the coverage gate's verdict."""
 
-        return next(
-            result
-            for result in self.terminal_gates.results
-            if result.name == "uk_release_input_coverage"
-        )
+        for report in self.phase_reports:
+            for outcome in report.outcomes:
+                if (
+                    outcome.entry.id == "uk_release_input_coverage"
+                    and outcome.result is not None
+                ):
+                    return outcome.result
+        raise LookupError("uk_release_input_coverage did not evaluate in this build.")
 
     @property
     def input_coverage_path(self) -> Path:
@@ -337,6 +318,9 @@ def build_uk_national_dataset(
     run_config: Mapping[str, object] | None = None,
     sample_fraction: float = 1.0,
     sample_seed: int = UK_SAMPLE_SEED_DEFAULT,
+    release_candidate: bool = False,
+    now: date | None = None,
+    gate_registry: Mapping[str, GateBinding] | None = None,
 ) -> UKNationalBuildResult:
     """Run ordered national stages, hard-gate the result, and stage an H5.
 
@@ -359,6 +343,14 @@ def build_uk_national_dataset(
     sampled run must carry the fraction and seed inside ``run_config`` (the
     driver does); otherwise two rungs pointed at one checkpoint directory
     would silently resume across each other.
+
+    ``release_candidate`` is the battery's second blocking axis: a candidate
+    build treats every ``evidence_absent`` gap as blocking, a dev build
+    records the gap and continues. A sampled rung is structurally
+    non-releasable, so requesting both is refused. ``now`` is the shared
+    exclusion-expiry clock (default: today, UTC), threaded to every
+    exclusion-consuming gate so one report carries one evaluation date.
+    ``gate_registry`` overrides the binding registry (tests only).
     """
 
     requested_input_path = Path(input_h5).expanduser()
@@ -392,20 +384,8 @@ def build_uk_national_dataset(
 
     materialized_stages = tuple(stages)
     _validate_stages(materialized_stages)
-    staging_path.unlink(missing_ok=True)
-    diagnostic_path.unlink(missing_ok=True)
-
-    engine = (
-        coverage_engine
-        if coverage_engine is not None
-        else PolicyEngineUKCoverageEngine()
-    )
-    # Mirrors the US cheap preflight: graph or reference drift aborts before
-    # source stages and, once added, before national target-registry compilation.
-    assert_uk_release_input_coverage_manifest_current(engine=engine)
-    assert_uk_release_input_coverage_build_stages(
-        tuple(stage.name for stage in materialized_stages)
-    )
+    # Configuration refusals precede the battery and the sidecar unlinks: a
+    # misconfigured run must not delete a previous report or write a new one.
     if checkpoint_dir is not None and run_config is None:
         raise ValueError(
             "a checkpointed UK national build requires run_config: the "
@@ -423,6 +403,47 @@ def build_uk_national_dataset(
             "run_config: two rungs pointed at one checkpoint directory must "
             "refuse, never cross-resume."
         )
+    if release_candidate and sample_fraction != 1.0:
+        raise ValueError(
+            "a sampled rung build is structurally non-releasable (#627); "
+            "release_candidate requires sample_fraction == 1.0."
+        )
+    if (input_mass_reference is None) != (input_mass_policy is None):
+        raise ValueError(
+            "input_mass_parity arms with a frozen reference and reviewed "
+            "thresholds together; supply both or neither."
+        )
+    staging_path.unlink(missing_ok=True)
+    diagnostic_path.unlink(missing_ok=True)
+
+    engine = (
+        coverage_engine
+        if coverage_engine is not None
+        else PolicyEngineUKCoverageEngine()
+    )
+    evaluation_date = exclusion_evaluation_date(now)
+    battery = GateBatteryRun(
+        load_country_spec("uk").gates,
+        release_id=release_id,
+        report_path=diagnostic_path,
+        release_candidate=release_candidate,
+        registry=UK_GATE_REGISTRY if gate_registry is None else gate_registry,
+        release_evidence={
+            "calibration_diagnostics_sha256": calibration_diagnostics_sha256
+        },
+    )
+    # Mirrors the US cheap preflight: graph or reference drift blocks before
+    # source stages — now with the refusal persisted as a schema-4 report.
+    battery.run_phase(
+        "preflight",
+        EvidenceContext(
+            artifacts={
+                "coverage_engine": engine,
+                "build_stage_names": tuple(stage.name for stage in materialized_stages),
+            }
+        ),
+    )
+    battery.enforce("preflight", mode=BlockingMode.BLOCKS_ARTIFACT)
     frame, provenance = load_uk_national_frame(requested_input_path)
     sampling_receipt: Mapping[str, object] | None = None
     if sample_fraction != 1.0:
@@ -453,35 +474,58 @@ def build_uk_national_dataset(
             run_config=run_config,
         )
 
-    # Mirrors the US final-export placement: evaluate every evidenced gate in
+    # Mirrors the US final-export placement: evaluate every declared gate in
     # one batch after all stages and immediately before the staging writer.
-    fit_weight_records, require_fit_weight_records = _stage_fit_weight_records(
-        materialized_stages
+    artifacts: dict[str, object] = {
+        "coverage_engine": engine,
+        "exclusions_evaluated_on": evaluation_date,
+    }
+    fit_weight_records = _stage_fit_weight_records(materialized_stages)
+    if fit_weight_records is not None:
+        artifacts["fit_weight_records"] = fit_weight_records
+    if parity_evidence is not None:
+        artifacts["parity_evidence"] = parity_evidence
+    if input_mass_reference is not None:
+        artifacts["input_mass_reference"] = input_mass_reference
+        artifacts["input_mass_policy"] = input_mass_policy
+    if qrf_tail_policy is not None:
+        artifacts["qrf_tail_policy"] = qrf_tail_policy
+    if reviewed_degenerate_exclusions is not None:
+        artifacts["reviewed_degenerate_exclusions"] = reviewed_degenerate_exclusions
+    terminal = battery.run_phase(
+        "terminal", EvidenceContext(frame=frame, artifacts=artifacts)
     )
-    terminal_gates = uk_terminal_gate_report(
-        _uk_gate_evidence(frame),
-        engine,
-        release_id=release_id,
-        calibration_diagnostics_sha256=calibration_diagnostics_sha256,
-        fit_weight_records=fit_weight_records,
-        require_fit_weight_records=require_fit_weight_records,
-        parity_evidence=parity_evidence,
-        input_mass_reference=input_mass_reference,
-        input_mass_policy=input_mass_policy,
-        qrf_tail_policy=qrf_tail_policy,
-        reviewed_degenerate_exclusions=reviewed_degenerate_exclusions,
+    coverage_outcome = next(
+        outcome
+        for outcome in terminal.outcomes
+        if outcome.entry.id == "uk_release_input_coverage"
     )
-    write_uk_terminal_gate_report(terminal_gates, diagnostic_path)
-    if legacy_input_coverage_output:
-        input_coverage = next(
-            gate
-            for gate in terminal_gates.results
-            if gate.name == "uk_release_input_coverage"
-        )
-        _write_input_coverage_diagnostic(diagnostic_path, input_coverage)
-    if not terminal_gates.passed:
+    if legacy_input_coverage_output and coverage_outcome.result is None:
         raise RuntimeError(
-            "Release gates failed: " + "; ".join(terminal_gates.failures)
+            "uk_release_input_coverage did not evaluate; the schema-1 "
+            "compatibility alias has no verdict to serialize."
+        )
+    try:
+        battery.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
+    finally:
+        # The alias consumer reads the schema-1 shape at this exact path, in
+        # the blocked case too — same last-write order as the legacy flow.
+        if legacy_input_coverage_output and coverage_outcome.result is not None:
+            _write_input_coverage_diagnostic(diagnostic_path, coverage_outcome.result)
+    gate_report = battery.report_payload()
+    attestation = gate_report["attestation"]
+    signing_error = (
+        attestation.get("signing_error") if isinstance(attestation, Mapping) else None
+    )
+    if signing_error is not None and sample_fraction == 1.0:
+        # A rung build may proceed unsigned (its report honestly says
+        # shippable: false, and a rung is structurally non-releasable); a
+        # full-scale build keeps the legacy guarantee — no staging artifact
+        # without an attested report. The unsigned report is already on disk.
+        raise RuntimeError(
+            "UK terminal gate report is unsigned and this is a full-scale "
+            f"build; refusing to stage. {signing_error} The unsigned report "
+            f"was written to {diagnostic_path}."
         )
 
     write_uk_national_frame(frame, staging_path)
@@ -491,7 +535,10 @@ def build_uk_national_dataset(
         input_h5=input_path,
         staging_h5=staging_path,
         stage_names=tuple(stage.name for stage in materialized_stages),
-        terminal_gates=terminal_gates,
+        phase_reports=tuple(
+            battery.phase_report(phase) for phase in battery.phases_evaluated
+        ),
+        gate_report=gate_report,
         terminal_gate_path=diagnostic_path,
         sampling_receipt=sampling_receipt,
     )
@@ -577,20 +624,27 @@ def _validate_stages(stages: tuple[UKNationalStage, ...]) -> None:
 
 def _stage_fit_weight_records(
     stages: tuple[UKNationalStage, ...],
-) -> tuple[tuple[object, ...] | None, bool]:
-    """Return real fit evidence, requiring it only when HMRC executed."""
+) -> tuple[object, ...] | None:
+    """The weights-audit evidence artifact: present iff the HMRC stage is.
+
+    ``None`` (no HMRC stage) leaves the artifact unsupplied, so the audit is
+    a named ``evidence_absent`` gap. A present stage always supplies the
+    artifact — records that are missing, unreadable, or empty coerce to
+    ``()``, which the UK audit binding fails: an absent audit is not a
+    passing audit.
+    """
 
     hmrc_stage = next(
         (stage for stage in stages if stage.name == "hmrc_spi_income"),
         None,
     )
     if hmrc_stage is None:
-        return (None, False)
+        return None
     try:
         records = getattr(hmrc_stage.transform, "fit_weight_records", None)
-        return (() if records is None else tuple(records), True)
-    except Exception:  # noqa: BLE001 - the terminal report must name the failure
-        return ((), True)
+        return () if records is None else tuple(records)
+    except Exception:  # noqa: BLE001 - the weights audit must name the failure
+        return ()
 
 
 def _write_input_coverage_diagnostic(path: Path, gate: GateResult) -> None:

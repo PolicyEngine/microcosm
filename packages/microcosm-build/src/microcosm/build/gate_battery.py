@@ -520,11 +520,12 @@ class GatePhaseReport:
 def _evaluate_gate(name: str, evaluator: Callable[[], GateResult]) -> GateResult:
     """Run one evaluator, failing closed on any misbehaviour.
 
-    Lifted verbatim from the UK terminal battery: a raising evaluator
-    becomes a failed result (the batch must keep evaluating — a crash that
-    masked the remaining gates would hide exactly the failures the battery
-    exists to surface), and a result under the wrong name fails rather than
-    letting one gate impersonate another.
+    The one fail-closed wrapper for every battery, shared with the legacy UK
+    terminal report: a raising evaluator becomes a failed result (the batch
+    must keep evaluating — a crash that masked the remaining gates would
+    hide exactly the failures the battery exists to surface), and a result
+    under the wrong name fails rather than letting one gate impersonate
+    another.
     """
 
     try:
@@ -803,6 +804,16 @@ class GateBatteryRun:
     @property
     def phases_evaluated(self) -> tuple[str, ...]:
         return tuple(self._phase_reports)
+
+    def phase_report(self, phase: str) -> GatePhaseReport:
+        """The evaluated report for ``phase``; refuses a phase that has not run."""
+
+        try:
+            return self._phase_reports[phase]
+        except KeyError:
+            raise ValueError(
+                f"phase {phase!r} has not run; evaluated: {list(self._phase_reports)}."
+            ) from None
 
     def _next_phase(self) -> str | None:
         for phase in self._gates.phases:
