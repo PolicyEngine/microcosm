@@ -359,6 +359,52 @@ def test_raw_source_identity_must_exist_on_candidate_base(tmp_path: Path) -> Non
         )
 
 
+def test_sampled_rung_receipts_the_dropped_raw_surface(tmp_path: Path) -> None:
+    """A #627 rung build restricts the raw surface and receipts the drop.
+
+    The completeness fence (every raw-survey person present in the base)
+    cannot hold when the base deliberately carries a sampled subset of
+    source families; declaring ``sampled_rung`` converts the raise into a
+    receipted count while the surviving surface stays source-faithful.
+    """
+
+    dataset, _source_person_ids = _candidate()
+    (tmp_path / "clean").mkdir()
+    (tmp_path / "extra").mkdir()
+    clean_adult_path, clean_benefits_path = _write_raw_tables(tmp_path / "clean")
+    strict = retain_uk_frs_hmrc_leaves(
+        dataset,
+        adult_tab_path=clean_adult_path,
+        benefits_tab_path=clean_benefits_path,
+    )
+    adult_path, benefits_path = _write_raw_tables(tmp_path / "extra")
+    adult = pd.read_csv(adult_path, sep="\t")
+    adult.loc[len(adult)] = {"SERNUM": 9, "PERSON": 1, "INEARNS": 1, "UNUSED": "x"}
+    adult.to_csv(adult_path, sep="\t", index=False)
+
+    result = retain_uk_frs_hmrc_leaves(
+        dataset,
+        adult_tab_path=adult_path,
+        benefits_tab_path=benefits_path,
+        sampled_rung=True,
+    )
+
+    assert result.source_people_outside_candidate == 1
+    assert result.evidence()["lineage"]["source_people_outside_candidate"] == 1
+    assert strict.source_people_outside_candidate == 0
+    # The surviving surface attaches exactly what the strict run attaches.
+    pd.testing.assert_frame_equal(
+        result.frame.table("person"), strict.frame.table("person")
+    )
+    # Signal-row evidence remains a fact about the SOURCE: the extra raw
+    # person's pay carrier is counted even though the rung dropped the row,
+    # so structural_zero can never be asserted from a sampled-away surface.
+    assert (
+        result.source_signal_rows[FRS_HMRC_PAY_COLUMN]
+        == strict.source_signal_rows[FRS_HMRC_PAY_COLUMN] + 1
+    )
+
+
 def test_candidate_clone_identity_mismatch_fails_closed(tmp_path: Path) -> None:
     dataset, _source_person_ids = _candidate()
     adult_path, benefits_path = _write_raw_tables(tmp_path)

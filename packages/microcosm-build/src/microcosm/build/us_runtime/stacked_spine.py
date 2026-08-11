@@ -47,6 +47,24 @@ from types import MappingProxyType
 import numpy as np
 import pandas as pd
 
+from microcosm.build.frame_sampling import (
+    EXACT_COUNT_RULE as _EXACT_COUNT_RULE,
+)
+from microcosm.build.frame_sampling import (
+    ids_sha256 as _ids_sha256,
+)
+from microcosm.build.frame_sampling import (
+    normalize_sampled_household_mass as _normalize_sampled_household_mass,
+)
+from microcosm.build.frame_sampling import (
+    sample_frame_households as _sample_frame_households,
+)
+from microcosm.build.frame_sampling import (
+    validate_sample_fraction as _validate_sample_fraction,
+)
+from microcosm.build.frame_sampling import (
+    validate_sample_seed as _validate_sample_seed,
+)
 from microcosm.build.gates import (
     FitWeightRecord,
     GateResult,
@@ -118,7 +136,7 @@ from microcosm.build.us_runtime.support_provenance import (
     support_source_id_column,
     validate_assembly_provenance,
 )
-from microcosm.frame import CONSERVE_MASS, US_SCHEMA, Frame, MassChange
+from microcosm.frame import US_SCHEMA, Frame
 
 __all__ = [
     "ACS_STACKED_SUPPORT_CHANNEL",
@@ -178,7 +196,6 @@ _SUPPORTED_STACKED_SPINE_MANIFEST_VERSIONS = {
     _LEGACY_STACKED_SPINE_MANIFEST_VERSION,
     _STACKED_SPINE_MANIFEST_VERSION,
 }
-_EXACT_COUNT_RULE = "floor(fraction * eligible)"
 _ACS_NATIVE_GQ_LINEAGE_VERSION = 1
 _ACS_NATIVE_GQ_SELECTION = "TYPEHUGQ in {2,3} on sampled native ACS rows"
 _MASS_RTOL = 1e-9
@@ -230,48 +247,13 @@ def _sample_survey_households(
             f"{source_name} household sampling runs before assembly; the source "
             f"frame already carries support provenance ({household_channel!r})."
         )
-
-    household_ids = source.table("household")["household_id"].to_numpy()
-    eligible = int(len(household_ids))
-    incoming_mass = float(source.weights_for("household").total)
-    requested = int(math.floor(fraction * eligible))
-    if requested < 1:
-        raise ValueError(
-            f"{source_name} sample fraction {fraction!r} floors to zero households "
-            f"({_EXACT_COUNT_RULE} with eligible={eligible}); the stacked "
-            "spine requires at least one sampled household."
-        )
-
-    ordered_ids = np.sort(np.asarray(household_ids, copy=True))
-    if requested == eligible:
-        selected_ids = ordered_ids
-        sampled = source
-    else:
-        rng = np.random.default_rng(seed)
-        selected_ids = np.sort(rng.choice(ordered_ids, size=requested, replace=False))
-        person_mask = (
-            source.table("person")["person_household_id"].isin(selected_ids).to_numpy()
-        )
-        sampled = source.select(person_mask)
-
-    realized_ids = np.sort(sampled.table("household")["household_id"].to_numpy())
-    if not np.array_equal(realized_ids, selected_ids):
-        raise ValueError(
-            f"{source_name} household sampling realized a different household set "
-            "than it selected; whole-household selection failed."
-        )
-    receipt: dict[str, object] = {
-        "fraction": float(fraction),
-        "seed": int(seed),
-        "eligible_household_count": eligible,
-        "requested_household_count": requested,
-        "realized_household_count": int(len(realized_ids)),
-        "exact_count_rule": _EXACT_COUNT_RULE,
-        "selected_household_ids_sha256": _ids_sha256(selected_ids),
-        "incoming_household_mass": incoming_mass,
-        "sampled_household_mass": float(sampled.weights_for("household").total),
-    }
-    return sampled, receipt
+    return _sample_frame_households(
+        source,
+        fraction=fraction,
+        seed=seed,
+        source_name=source_name,
+        floor_context="the stacked spine",
+    )
 
 
 def sample_acs_households(
@@ -472,41 +454,6 @@ def _acs_native_group_quarters_receipt(
         "native_person_mapping_sha256": _integer_rows_sha256(sorted_person_lineages),
         "native_person_order_sha256": _integer_rows_sha256(native_person_lineages),
     }
-
-
-def _normalize_sampled_household_mass(
-    sampled: Frame,
-    *,
-    target_mass: float,
-    source_name: str,
-) -> tuple[Frame, float]:
-    """Restore one sampled survey arm to its full-source design-weight mass."""
-
-    weights = sampled.weights_for("household")
-    sampled_mass = float(weights.total)
-    if not np.isfinite(sampled_mass) or sampled_mass <= 0.0:
-        raise ValueError(
-            f"{source_name} sampled household mass must be positive and finite."
-        )
-    factor = float(target_mass / sampled_mass)
-    normalized_weights = weights.with_values(weights.values * factor, weights.kind)
-    mass_policy: str | MassChange = (
-        CONSERVE_MASS
-        if np.isclose(factor, 1.0, rtol=_MASS_RTOL, atol=0.0)
-        else MassChange(
-            factor=factor,
-            reason=(
-                f"composition-preserving {source_name} survey sampling "
-                "normalization to full-source household mass"
-            ),
-        )
-    )
-    normalized = sampled.with_weights(
-        "household",
-        normalized_weights,
-        mass=mass_policy,
-    )
-    return normalized, factor
 
 
 def assemble_stacked_spine(
@@ -1605,14 +1552,6 @@ def _harmonization_receipt(
     return receipt
 
 
-def _ids_sha256(ids: np.ndarray) -> str:
-    payload = json.dumps(
-        [int(value) for value in np.asarray(ids).tolist()],
-        separators=(",", ":"),
-    )
-    return hashlib.sha256(payload.encode()).hexdigest()
-
-
 def _integer_rows_sha256(rows: np.ndarray) -> str:
     values = np.asarray(rows, dtype=np.int64)
     if values.ndim != 2:
@@ -1625,24 +1564,11 @@ def _integer_rows_sha256(rows: np.ndarray) -> str:
 
 
 def _validate_fraction(fraction: float, *, boundary: str | None = None) -> None:
-    prefix = f"{boundary}: " if boundary else ""
-    if (
-        isinstance(fraction, bool)
-        or not isinstance(fraction, (int, float))
-        or not np.isfinite(fraction)
-        or not 0.0 < float(fraction) <= 1.0
-    ):
-        raise ValueError(
-            f"{prefix}ACS sample fraction must be a finite number in (0, 1]; "
-            f"got {fraction!r}."
-        )
+    _validate_sample_fraction(fraction, label="ACS sample", boundary=boundary)
 
 
 def _validate_seed(seed: int) -> None:
-    if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
-        raise ValueError(
-            f"ACS sample seed must be a non-negative integer; got {seed!r}."
-        )
+    _validate_sample_seed(seed, label="ACS sample")
 
 
 def _json_ready(value: object) -> dict[str, object]:

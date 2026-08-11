@@ -383,6 +383,7 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
         "final_coverage_gate",
         "staging_write",
     ]
+    assert result.sampling_receipt is None
     assert result.stage_names == ("income",)
     assert result.input_coverage.passed is True
     assert result.terminal_gates.passed is True
@@ -397,6 +398,113 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
     diagnostic = json.loads(coverage_json.read_text())
     assert diagnostic["enforced"] is True
     assert diagnostic["input_coverage"]["passed"] is True
+
+
+def _write_clone_family_h5(path: Path) -> None:
+    """Four base clone families (canonical + one geography clone each).
+
+    Persons are ``household_id + 200``, so the canonical max is 214 and the
+    clone multiplier is 1000 — clone ids reverse onto the canonical surface
+    exactly as the stage fence re-derives them.
+    """
+
+    canonical = [11, 12, 13, 14]
+    regions = ["london", "north", "london", "north"]
+    rows = []
+    for household_id, region in zip(canonical, regions, strict=True):
+        rows.append((household_id, 0, region))
+        rows.append((household_id + 1_000, 1, "scotland"))
+    rows.sort()
+    ids = [row[0] for row in rows]
+    with pd.HDFStore(path) as store:
+        store.put(
+            "person",
+            pd.DataFrame(
+                {
+                    "person_id": [value + 200 for value in ids],
+                    "person_household_id": ids,
+                    "person_benunit_id": [value + 5_000_000 for value in ids],
+                }
+            ),
+            format="table",
+            data_columns=True,
+        )
+        store.put(
+            "benunit",
+            pd.DataFrame({"benunit_id": [value + 5_000_000 for value in ids]}),
+            format="table",
+            data_columns=True,
+        )
+        store.put(
+            "household",
+            pd.DataFrame(
+                {
+                    "household_id": ids,
+                    "household_weight": [2.0] * len(ids),
+                    "clone_index": [row[1] for row in rows],
+                    "region": [row[2] for row in rows],
+                    "household_is_spi_synthetic": [False] * len(ids),
+                    "household_is_capital_gains_clone": [False] * len(ids),
+                }
+            ),
+            format="table",
+            data_columns=True,
+        )
+        store.put(
+            "time_period",
+            pd.Series(["2023"]),
+            format="table",
+            data_columns=True,
+        )
+
+
+def test_national_build_samples_the_loaded_frame_before_stages(
+    monkeypatch, tmp_path
+) -> None:
+    pytest.importorskip("tables")
+    from microcosm.build.uk_runtime import national_build
+
+    input_h5 = tmp_path / "base.h5"
+    staging_h5 = tmp_path / "staging.h5"
+    coverage_json = tmp_path / "gates.json"
+    _write_clone_family_h5(input_h5)
+    stage_household_counts: list[int] = []
+
+    def stage_transform(frame: Frame) -> Frame:
+        stage_household_counts.append(len(frame.table("household")))
+        return frame
+
+    monkeypatch.setattr(
+        national_build,
+        "assert_uk_release_input_coverage_manifest_current",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        national_build,
+        "uk_release_input_coverage_gate",
+        lambda _evidence, _engine: _passing_gate(),
+    )
+
+    result = _run_national_build(
+        input_h5=input_h5,
+        staging_h5=staging_h5,
+        stages=(UKNationalStage("income", stage_transform),),
+        coverage_engine=object(),
+        input_coverage_path=coverage_json,
+        sample_fraction=0.5,
+        sample_seed=3,
+    )
+
+    receipt = result.sampling_receipt
+    assert receipt is not None
+    # The stages saw the sampled frame — the rung is upstream of stage one.
+    assert stage_household_counts == [receipt["realized_household_count"]]
+    assert receipt["realized_household_count"] < 8
+    assert receipt["uk_policy"]["sampling_unit"] == "source_frs_family"
+    # Renormalization: the staged artifact carries the full input mass.
+    staged, _staged_provenance = load_uk_national_frame(staging_h5)
+    assert float(staged.weights_for("household").total) == pytest.approx(8 * 2.0)
+    assert result.terminal_gates.passed is True
 
 
 def test_legacy_input_coverage_alias_is_byte_compatible_with_origin_main(

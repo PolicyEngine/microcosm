@@ -212,6 +212,9 @@ class UKHMRCIncomeStageTransform:
     qrf_estimators: int = 100
     donor_sample_size: int | None = DEFAULT_SPI_DONOR_SAMPLE_SIZE
     spi_prior_mass_share: float = DEFAULT_SPI_PRIOR_MASS_SHARE
+    #: Declared #627 rung build: the mid-stage effective-mass floor defers
+    #: to the terminal input-coverage gate. Never set on a release build.
+    sampled_rung: bool = False
     last_result: UKHMRCIncomeRestorationResult | None = field(
         default=None,
         init=False,
@@ -398,6 +401,7 @@ class UKHMRCIncomeStageTransform:
             qrf_estimators=self.qrf_estimators,
             donor_sample_size=self.donor_sample_size,
             spi_prior_mass_share=self.spi_prior_mass_share,
+            sampled_rung=self.sampled_rung,
         )
         return self.last_result.frame
 
@@ -502,8 +506,18 @@ def restore_uk_hmrc_income_family(
     qrf_estimators: int = 100,
     donor_sample_size: int | None = DEFAULT_SPI_DONOR_SAMPLE_SIZE,
     spi_prior_mass_share: float = DEFAULT_SPI_PRIOR_MASS_SHARE,
+    sampled_rung: bool = False,
 ) -> UKHMRCIncomeRestorationResult:
-    """Run the admissible real-donor replay without biased calibration."""
+    """Run the admissible real-donor replay without biased calibration.
+
+    ``sampled_rung`` declares a #627 scale-ladder build: sparse imputed
+    columns can legitimately restore near-zero effective mass on a small
+    sample, so the mid-stage effective-mass floor defers to the terminal
+    input-coverage gate — which evaluates the same surface and records a
+    receipted verdict — instead of aborting the build. The per-column
+    shares reach the replay report either way. Full-scale builds keep the
+    strict raise.
+    """
 
     assert_uk_hmrc_income_source_contract_current()
     _validate_certified_candidate_identity(certified_candidate)
@@ -567,7 +581,7 @@ def restore_uk_hmrc_income_family(
         for name, share in distributional_mass_shares.items()
         if share < DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE
     }
-    if insufficient:
+    if insufficient and not sampled_rung:
         raise RuntimeError(
             "Rebuilt SPI channel did not restore required effective-mass "
             f"coverage: {insufficient}."
