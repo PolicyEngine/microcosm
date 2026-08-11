@@ -22,7 +22,7 @@ import os
 import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime
+from datetime import date
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
