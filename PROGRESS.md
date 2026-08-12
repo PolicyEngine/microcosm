@@ -1,140 +1,48 @@
-# Progress: round 11 checkpoint nullable booleans
+# Progress
 
 ## State
 
-Round 11 is implementation-complete on `tail-stratum-support-652`. The real 1%
-US build failure was the durable stacked `transferred` checkpoint: the full
-late producer DAG completed in memory, then the old shared frame-checkpoint
-schema rejected `person.is_female`, the first of 39 nullable-boolean columns in
-table order. Conditional schema v3 now serializes those columns losslessly,
-all requested post-fix proofs and an independent follow-up review are green,
-and no build was run.
+Microcosm #516 whole-row donor outlier screen is complete on
+`mortgage-donor-outlier-screen` (rebased onto `origin/main` after the #515
+interim carve merged as #525). The `puf_tax_detail` donor now drops tax units
+whose grouped raw mortgage interest reaches $10M before the #515 carve
+(pinned-artifact effect: 3,066 rows, weight 3,684 of ~161M, removing $2.947T
+of phantom mortgage-interest mass), with the checkpoint schema bumped to v3
+so post-carve pre-screen checkpoints rebuild.
 
 ## Done
 
-- Confirmed the checkout is clean, on `tail-stratum-support-652`, and exactly
-  at `cd4faa33` before changes.
-- Confirmed that commit already merges the locally available `origin/main` at
-  `d1714a7c`; no network operation was performed.
-- Loaded the repository, PolicyEngine data, development-standard, and
-  debugging guidance.
-- Attempted the GitNexus debugging workflow. Repository parsing completed, but
-  the managed filesystem denied its global registry write. Removed the partial
-  local `.gitnexus` index and completed the audit from source, tests, and the
-  supplied smoke-r8 artifacts instead.
-- Located the exact failure path:
-  `build_stacked_pool` emits `stage="transferred"` through
-  `_PoolStageCheckpointStore.write`, which reaches `_series_spec` before the
-  checkpoint destination is touched. The earlier 81,434,791-byte
-  `assembled.checkpoint.h5` completed, while no partial transferred H5 or
-  sidecars exist. The Logbook row correctly stops after `puf_passed` because
-  the `transferred` phase mark follows the durable write.
-- Audited every durable stacked checkpoint boundary and every extension dtype:
-  `assembled` has 17 supported `StringDtype` columns and no nullable booleans;
-  `transferred` has 39 complete `BooleanDtype` columns and 19 `StringDtype`
-  columns; the stored `simulated` evaluation frame has the same 39 + 19.
-  No `Int64`, `Float64`, categorical, or other extension dtype reaches these
-  boundaries.
-- Enumerated the 39 nullable booleans: 20 gap-fill registry targets, 17
-  post-PUF registry targets, and the source-native `person.is_female` and
-  `person.is_household_head`. The simulated stage's eleven seeded take-up
-  outputs remain NumPy `bool`, so they do not expand this set.
-- Confirmed why lossless null support is still mandatory: before peer transfer,
-  source alignment creates declared absences on the opposite spine, including
-  the eight QBI boolean outputs outside PUF detail. The durable transferred
-  frame happens to be complete, but shared machinery must preserve these masks
-  whenever another legitimate boundary retains them.
-- Audited shared consumers: outer-stage runtime (including UK national stage
-  checkpoints), US ASEC raw-stage checkpoints, PUF support equivalence/raw
-  checkpoints, primary-QRF banks, and legacy and stacked pool stores all use
-  this codec. UK rowwise publication and ACS per-target banks use separate HDF
-  codecs. Existing sampled artifacts on those other paths carry only supported
-  strings or NumPy dtypes.
-- Established the compatibility constraint: retain the frozen artifact kind,
-  HDF root, and dataset identifiers; emit the existing schema-v2 bytes for
-  frames without the new encoding; accept legacy v2 on load; use a bumped
-  schema only when nullable data is present; and bump the pool checkpoint
-  envelope materializer so stale serializer bytes cannot resume silently while
-  leaving the stacked producer identity and its 182 valid target banks intact.
-- Added the Round 11 red-test matrix. It covers complete and missing nullable
-  booleans in entity and link tables, explicit mask corruption, forged-v2
-  metadata, deterministic rewrite, the actual 131-target canonical metric
-  registry, the exact 39-column stacked boundary inventory, pool-store reloads,
-  and pinned byte goldens for a generic schema-v2 frame and the UK outer-stage
-  checkpoint. The pre-fix run fails only at the intended BooleanDtype refusal;
-  the inventory and both unchanged-byte goldens already pass.
-- Implemented conditional frame-checkpoint schema v3 for pandas nullable
-  booleans. Complete columns write canonical NumPy-bool values without a mask;
-  columns with declared absences write the same values with masked storage bits
-  normalized to false plus an aligned uint8 0/1 null mask. Both reload as
-  `BooleanDtype` with exact logical values and absences.
-- Kept schema-v2 emission byte-identical whenever the new encoding is absent,
-  while the loader accepts both v2 and v3 and fails closed on downgraded,
-  mismatched, noncanonical, wrong-rank, wrong-dtype, nonbinary, missing, or
-  unexpected nullable-boolean data and masks.
-- Bumped the shared pool checkpoint envelope materializer from 5 to 6 while
-  retaining stacked producer identity 10 and legacy materializer 3. A dedicated
-  regression proves a v5 envelope is rejected without changing the stacked
-  base/bank identity, preserving the 182 completed smoke-r8 target banks.
-- Passed the implementation slice: 37 tests across the complete checkpoint
-  codec, canonical registry and extension inventory, stacked identity/envelope
-  seam, pool-store reload, and all UK stage-checkpoint tests.
-- Passed the full requested focused suite from final implementation HEAD: all
-  frame-checkpoint, US stacked-spine, and US multispine-pool tool tests, 392
-  passed with no skips or failures in 352.115 seconds. The exact JUnit receipt
-  is `/private/tmp/round11-final-focused.xml`.
-- Passed the separately graded #583 spine-blindness guard at its exact contract
-  from final HEAD: 495 passed, no skips or failures, in 4.346 seconds. Receipt:
-  `/private/tmp/round11-final-spine-blindness.xml`.
-- Passed the complete non-#583 workspace from final HEAD in eight deterministic
-  sorted chunks: 5,572 passed and 66 skipped across exactly 228 files, with no
-  failures or errors. Per-chunk passed/skipped receipts were 743/0, 616/21,
-  777/5, 839/1, 980/2, 805/1, 738/28, and 74/8. JUnit files are
-  `/private/tmp/round11-final-full-chunk-{1..8}.xml`.
-- Verified the file partition itself: 229 total and 229 unique `test_*.py`
-  files; the eight chunks contain 228 exactly once and exclude only
-  `test_us_spine_blindness.py`, which the separate 495-test receipt covers.
-  Combined non-overlapping workspace proof is 6,067 passed and 66 skipped.
-- Re-ran the explicit UK consumer surface from final HEAD: 62 passed and one
-  skipped across stage checkpoints, national build, rowwise dataset/candidate,
-  and rowwise weight metadata. The shared UK stage checkpoint remains exactly
-  23,712 bytes
-  with SHA-256 `7fd5d25833f395b9eac57fcb0bc6537a344862a024ee981daf167949722a17ee`;
-  the rowwise publisher's separate timestamped PyTables container retains its
-  semantic goldens. Receipt: `/private/tmp/round11-final-uk-compat.xml`.
-- Passed repository-wide `ruff check`, format-check on all six changed Python
-  files, committed-range `git diff --check`, and working-tree
-  `git diff --check`. The worktree is clean.
-- Gradeable smoke-r9 prediction for the same f001/s578 inputs and configured
-  namespace `99376eea69594de6c88e2f68f76e35e6590a3f1cdc2849953257f0de3a7d2f46`:
-  discovery rejects the old materializer-v5 assembled envelope but retains the
-  unchanged stacked v10 identity and reuses all 65 primary-QRF plus 117 ACS
-  target-bank artifacts. It rebuilds the assembled envelope as v6, then writes
-  and reloads `transferred.checkpoint.h5` and `simulated.checkpoint.h5` with
-  frame schema v3. Their 39 nullable-boolean columns restore as pandas
-  `boolean`, byte-equal in logical values with zero nulls and therefore no
-  `null_mask` datasets; the 19 supported string extensions remain canonical,
-  and the eleven simulated seed flags remain NumPy `bool`. The historical
-  transferred stage identity remains
-  `388f0f2793736b3ad762eb4078b977196a4619ea657ea8f6a9ce9b7efe2a26b6`
-  because the producer/bank identity stays v10. The launcher contains no
-  extension-dtype refusal, logs rebuilt `transferred` and `simulated` stages,
-  and the attempt row reaches at least `transferred`, `derived`, `seeded`, and
-  `simulated` before any later certification verdict.
-- The first final independent review found one fail-closed gap in corrupted
-  input handling: a forged `has_null_mask=true` spec could carry an all-zero
-  mask, which the writer never emits and which could reinterpret lost absences
-  as stored false values. The loader now rejects that noncanonical mask, the
-  new corruption regression passes, and the complete 26-test codec file is
-  green.
-- The independent follow-up review of the hardened final implementation found
-  no remaining actionable defects. Its only residual risk is the explicitly
-  requested one: smoke-r9 remains a gradeable prediction because builds were
-  prohibited, and the failed transferred artifact never existed to inspect.
+- Confirmed a clean starting worktree at `aef1c56`.
+- Read the repository guidance and established the #515 donor carve as the
+  screen's required downstream boundary.
+- Started source-level audits of every donor-frame consumer, checkpoint
+  validation, row-count pins, and existing donor-fact summaries.
+- Attempted the requested GitNexus impact workflow; the managed filesystem
+  denied its global registry write. Its local index also exposed a broad
+  `build/` ignore mismatch, so the completed impact audit uses direct source
+  call sites and tests.
+- Added `US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING = 10_000_000.0` with the
+  structural rationale and pinned-artifact receipts.
+- Added a whole-row screen on grouped raw person `home_mortgage_interest`
+  after tax-unit assembly, before the #515 carve, with retained-index reset.
+- Confirmed no downstream consumer pairs donor rows to the original HDF arrays
+  or carries a stale donor-length vector; values and weights always originate
+  from the same screened frame.
+- Bumped the primary QRF checkpoint schema from v2 to v3 and made the stale
+  checkpoint regression track the live constant while retaining literal-v1
+  corruptions.
+- Added regression coverage for the exact grouped boundary, whole-row removal,
+  retained/carved $5M row, raw-$10.5M pre-carve ordering, and constant.
+- Requested suites pass: PUF support/QRF 53; plan/gates 195; fiscal targets
+  139; microcosm-data 138 with 1 skip. The directly affected tail-bound suite
+  adds 12 passes. Ruff format/check and `git diff --check` are clean.
+- Wrote `SOL_516_REPORT.md` with the exact seam, consumer-by-consumer file:line
+  audit, expected 208,611-row real-artifact effect, verification results, count
+  sweep, and deliberately untouched surfaces.
 
 ## Next
 
-- Run the gradeable smoke-r9 externally if build authorization is later given;
-  it should rebuild only the v6 stage envelopes while reusing the unchanged
-  stacked-v10 target banks. No local implementation or proof work remains, and
-  no push or GitHub action has been performed.
+- PR #527 review cycle, then merge. After both #525 and #527: rebuild the
+  base/release; the mortgage critical-fit ratchet (0.20 -> 0.15) waits on a
+  run that holds per `us_critical_targets.py`.
+- Root record-level ETL carve stays open on microcosm#515.
