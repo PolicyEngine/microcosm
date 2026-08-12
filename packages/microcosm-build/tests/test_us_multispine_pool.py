@@ -183,13 +183,12 @@ def test_source_overlap_finalizer_mirrors_retirement_tail_bytes() -> None:
     )
 
     clone_index = finalized["person_support_clone_index"]
-    source_id = finalized["person_source_id"]
     for target in (
         "traditional_ira_contributions_desired",
         "self_employed_pension_contributions_desired",
     ):
-        parent = finalized.loc[clone_index.eq(1)].set_index(source_id)[target]
-        tail = finalized.loc[clone_index.eq(2)].set_index(source_id)[target]
+        parent = finalized.loc[clone_index.eq(1)].set_index("person_source_id")[target]
+        tail = finalized.loc[clone_index.eq(2)].set_index("person_source_id")[target]
         expected = parent.loc[tail.index].to_numpy()
         actual = tail.to_numpy()
         assert actual.dtype == expected.dtype

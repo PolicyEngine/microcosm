@@ -13,6 +13,7 @@ agreement outputs and is not the input-only pool returned for H5 publication.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -94,6 +95,7 @@ from microcosm.build.us_runtime.support_provenance import (
     spine_assembly_receipt,
     spine_provenance_counts,
     support_clone_index_column,
+    support_source_id_column,
     validate_assembly_provenance,
     without_support_role_metadata,
 )
@@ -101,6 +103,11 @@ from microcosm.build.us_runtime.take_up import with_us_take_up_inputs
 from microcosm.build.us_runtime.take_up_contract import (
     TakeUpProgram,
     load_take_up_contract,
+)
+from microcosm.build.us_runtime.us_late_overlap_ownership import (
+    US_LATE_EDUCATION_NOOP_TARGETS,
+    US_LATE_RETIREMENT_SOURCE_MIRROR_TARGETS,
+    us_late_overlap_ownership_receipt,
 )
 from microcosm.build.us_runtime.weeks_unemployed import with_us_weeks_unemployed
 from microcosm.build.us_runtime.wic_claim import with_us_wic_claim_input
@@ -1353,6 +1360,38 @@ def _run_source_operator_chain(
                 f"Multispine source operator {operator_name!r} changed entity row "
                 f"counts: input={available_rows}, output={output_rows}."
             )
+        overlap_ownership: Mapping[str, object] | None = None
+        overlap_targets = (
+            set(US_LATE_EDUCATION_NOOP_TARGETS)
+            if operator_name == "with_us_education_inputs"
+            else set(US_LATE_RETIREMENT_SOURCE_MIRROR_TARGETS)
+            if operator_name == "with_us_retirement_contribution_inputs"
+            else set()
+        )
+        declared_person_outputs = set(
+            declared_outputs.get(available.schema.person_entity, ())
+        )
+        if phase == _POST_CLONE_PHASE and overlap_targets & declared_person_outputs:
+            finalized_person, overlap_ownership = _finalize_source_overlap_output(
+                available.table(available.schema.person_entity),
+                outcome.table(outcome.schema.person_entity),
+                operator_name=operator_name,
+            )
+            if overlap_ownership is not None:
+                tables = {entity: outcome.table(entity) for entity in outcome.entities}
+                tables.update({link: outcome.link(link) for link in outcome.links})
+                tables[outcome.schema.person_entity] = finalized_person
+                outcome = Frame(
+                    tables,
+                    outcome.schema,
+                    {
+                        entity: outcome.weights_for(entity)
+                        for entity in outcome.weighted_entities
+                    },
+                    outcome.strata,
+                    mass_log=outcome.mass_log,
+                    metadata=outcome.metadata,
+                )
         _assert_source_operator_structure(
             available,
             outcome,
@@ -1423,6 +1462,9 @@ def _run_source_operator_chain(
                 },
                 "formula_owned_outputs_removed": formula_owned_removed,
                 "kernel_receipt": dict(kernel_receipt),
+                "overlap_ownership": (
+                    dict(overlap_ownership) if overlap_ownership is not None else None
+                ),
             }
         )
     uses_cps_source = any(
@@ -1627,6 +1669,164 @@ def _persisted_source_outputs(
             set(columns) - set(_FORMULA_OWNED_SOURCE_OUTPUTS.get(entity, ()))
         )
         for entity, columns in outputs.items()
+    }
+
+
+def _numeric_series_byte_receipt(
+    series: pd.Series,
+    *,
+    boundary: str,
+) -> dict[str, object]:
+    values = np.ascontiguousarray(series.to_numpy(copy=False))
+    if values.dtype.kind not in "biufc":
+        raise TypeError(
+            f"{boundary} requires a physical numeric dtype, got {series.dtype!s}."
+        )
+    digest = hashlib.sha256()
+    digest.update(str(series.dtype).encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(len(series).to_bytes(8, byteorder="little", signed=False))
+    digest.update(values.tobytes())
+    return {
+        "dtype": str(series.dtype),
+        "rows": int(len(series)),
+        "sha256": digest.hexdigest(),
+    }
+
+
+def _finalize_source_overlap_output(
+    before: pd.DataFrame,
+    after: pd.DataFrame,
+    *,
+    operator_name: str,
+) -> tuple[pd.DataFrame, dict[str, object] | None]:
+    """Enforce the reviewed final owner for source-callback overlap cells."""
+
+    education_operator = "with_us_education_inputs"
+    retirement_operator = "with_us_retirement_contribution_inputs"
+    if operator_name not in {education_operator, retirement_operator}:
+        return after, None
+
+    person_id = "person_id"
+    required_structure = {
+        person_id,
+        support_clone_index_column("person"),
+        support_source_id_column("person"),
+    }
+    missing_structure = sorted(
+        required_structure - set(before.columns)
+        | required_structure - set(after.columns)
+    )
+    if missing_structure:
+        raise ValueError(
+            f"US late overlap ownership for {operator_name!r} requires "
+            f"person columns {missing_structure}."
+        )
+    if before[person_id].duplicated().any() or after[person_id].duplicated().any():
+        raise ValueError(
+            f"US late overlap ownership for {operator_name!r} requires unique "
+            "person_id values."
+        )
+    if set(before[person_id]) != set(after[person_id]):
+        raise ValueError(
+            f"US late overlap ownership for {operator_name!r} requires unchanged "
+            "person_id values."
+        )
+
+    result = after.copy(deep=True)
+    targets_receipt: dict[str, object] = {}
+    if operator_name == education_operator:
+        for target in US_LATE_EDUCATION_NOOP_TARGETS:
+            if target not in before or target not in result:
+                raise ValueError(
+                    f"US education overlap target person.{target} is absent."
+                )
+            before_values = before.set_index(person_id)[target]
+            after_values = result.set_index(person_id).loc[before_values.index, target]
+            before_receipt = _numeric_series_byte_receipt(
+                before_values,
+                boundary=f"US education overlap input person.{target}",
+            )
+            after_receipt = _numeric_series_byte_receipt(
+                after_values,
+                boundary=f"US education overlap output person.{target}",
+            )
+            if before_receipt != after_receipt:
+                raise ValueError(
+                    f"US education overlap target person.{target} violated byte "
+                    "identity; its callback is consume-only."
+                )
+            targets_receipt[f"person.{target}"] = {
+                "action": "consume_only_byte_exact_noop",
+                "verified_rows": int(len(after_values)),
+                "byte_identity": after_receipt,
+            }
+    else:
+        clone_column = support_clone_index_column("person")
+        source_id = support_source_id_column("person")
+        clone_index = pd.to_numeric(result[clone_column], errors="raise")
+        clone_values = clone_index.to_numpy(dtype=np.float64)
+        if not np.equal(clone_values, np.floor(clone_values)).all():
+            raise ValueError(
+                "US retirement overlap ownership requires integral clone roles."
+            )
+        clone_one = clone_index.eq(1)
+        clone_two = clone_index.eq(2)
+        parents = result.loc[clone_one]
+        tails = result.loc[clone_two]
+        if parents[source_id].duplicated().any() or tails[source_id].duplicated().any():
+            raise ValueError(
+                "US retirement overlap ownership requires unique source IDs "
+                "within clone roles 1 and 2."
+            )
+        missing_parents = sorted(set(tails[source_id]) - set(parents[source_id]))
+        if missing_parents:
+            raise ValueError(
+                "US retirement overlap ownership found clone-2 rows without "
+                f"clone-1 parents: {missing_parents}."
+            )
+        parent_by_source = parents.set_index(source_id)
+        tail_source_ids = tails[source_id]
+        clone_one_before = result.loc[clone_one].copy(deep=True)
+        for target in US_LATE_RETIREMENT_SOURCE_MIRROR_TARGETS:
+            if target not in result:
+                raise ValueError(
+                    f"US retirement overlap target person.{target} is absent."
+                )
+            expected = parent_by_source.loc[tail_source_ids, target]
+            expected.index = tails.index
+            result.loc[clone_two, target] = expected.to_numpy(copy=True)
+            actual = result.loc[clone_two, target]
+            expected_receipt = _numeric_series_byte_receipt(
+                expected,
+                boundary=f"US retirement overlap parent person.{target}",
+            )
+            actual_receipt = _numeric_series_byte_receipt(
+                actual,
+                boundary=f"US retirement overlap tail person.{target}",
+            )
+            if expected_receipt != actual_receipt:
+                raise ValueError(
+                    f"US retirement overlap target person.{target} failed its "
+                    "byte-exact clone-1 mirror."
+                )
+            targets_receipt[f"person.{target}"] = {
+                "action": "byte_exact_clone_1_mirror",
+                "mirrored_clone_2_rows": int(clone_two.sum()),
+                "byte_identity": actual_receipt,
+            }
+        if not result.loc[clone_one].equals(clone_one_before):
+            raise ValueError(
+                "US retirement overlap finalization changed source-owned clone-1 "
+                "rows while mirroring clone 2."
+            )
+
+    ownership_receipt = us_late_overlap_ownership_receipt()
+    return result, {
+        "passed": True,
+        "operator": operator_name,
+        "ownership_sha256": ownership_receipt["sha256"],
+        "targets": targets_receipt,
     }
 
 
