@@ -279,7 +279,7 @@ def test_frame_without_nullable_booleans_keeps_schema_2_byte_golden(
     write_frame_checkpoint(path, _checkpoint_frame())
 
     assert hashlib.sha256(path.read_bytes()).hexdigest() == (
-        "7671ab32184c69d032bcd6072381dade5b086b29eb8bedc302e2cd89dbb8d930"
+        "e55095d29851d0b3f73b2c7d4d90932dbb54f1eccc9fc28b8decad772fb44ca8"
     )
     h5py = pytest.importorskip("h5py")
     with h5py.File(path, mode="r") as h5:

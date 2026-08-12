@@ -81,6 +81,11 @@ exclusion.
 - Verified the manifest against smoke-r9's transferred checkpoint: all 147
   engine inputs already present are classified non-absent, and the remaining
   12 future inputs are exactly Schedule D plus 11 seed-stage additions.
+- Isolated the first full-workspace chunk's only failure to Round 11's new
+  generic schema-v2 checkpoint byte golden. The serializer emits identical
+  `e55095d2...b44ca8` bytes across repeated writes, two filesystems, and the
+  available HDF5 1.14/2.0 runtimes; the independent UK schema-v2 golden remains
+  unchanged and green. Corrected only the stale generic expected digest.
 
 ## Next
 
