@@ -109,6 +109,9 @@ UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
     "ee4b88f939167dc91dc99f79d5f7b8ee776731e0cbedf75bfb78a12efe8789dc"
 )
+UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
+    "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
+)
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {
     "uk_release_input_coverage_manifest_current": (
@@ -956,9 +959,7 @@ def _gate_battery_payload(
         "uk_release_family_build_stages": _canonical_sha256(
             {"stage_names": list(stage_names)}
         ),
-        "uk_degenerate_release_surface": _canonical_sha256(
-            {"exclusions_register": "committed"}
-        ),
+        "uk_degenerate_release_surface": UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256,
         "uk_input_mass_parity": _canonical_sha256(
             {"reference_evidence_sha256": UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256}
         ),
@@ -3666,6 +3667,14 @@ def test_uk_gate_battery_pins_are_in_lockstep_with_the_contract() -> None:
     assert contract_module._UK_GATE_BATTERY_ENTRY_IDS == frozenset(
         UK_GATE_BATTERY_ENTRIES
     )
+    assert contract_module._UK_GATE_BATTERY_ENTRY_GATES == {
+        entry_id: (gate, phase)
+        for entry_id, (gate, phase, _detail) in UK_GATE_BATTERY_ENTRIES.items()
+    }
+    assert (
+        contract_module._UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256
+        == UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256
+    )
 
 
 def test_exact_k_uk_gate_battery_report_validates_end_to_end(tmp_path: Path) -> None:
@@ -3869,3 +3878,78 @@ def test_exact_k_uk_gate_battery_rejects_mixed_manifest_evidence_vocabulary(
 
     failures = _battery_failures(directory)
     assert "mixes the legacy stage vocabulary" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_a_diagnostic_relabel(tmp_path: Path) -> None:
+    # Every entry in this vintage is release_blocking; a failed entry
+    # relabeled diagnostic would dodge the shippability recompute.
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_weight_ratio"]
+    entry["status"] = "failed"
+    entry["failures"] = ["seeded ratio failure"]
+    entry["criticality"] = "diagnostic"
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert "criticality must be 'release_blocking'" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_a_not_applicable_excuse(
+    tmp_path: Path,
+) -> None:
+    # No entry in this spec vintage declares an excuse, so not_applicable
+    # cannot skip a gate's observables or drop its evidence requirement.
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_qrf_tail_concentration"]
+    entry["status"] = "not_applicable"
+    entry["details"] = {}
+    entry["reason"] = "declared excused"
+    _rewrite_battery_report(directory, payload)
+
+    assert "no entry in this spec vintage declares an excuse" in _battery_failures(
+        directory
+    )
+
+
+def test_exact_k_uk_gate_battery_pins_each_entrys_gate_and_phase(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_weight_ratio"]
+    entry["gate"] = "export_surface"
+    entry["phase"] = "preflight"
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert "gate must be 'weight_ratio'" in failures
+    assert "phase must be 'terminal'" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_a_float_schema_version(
+    tmp_path: Path,
+) -> None:
+    # 4.0 == 4 in Python; the dispatch and the checker must not let a
+    # non-integer vintage route as one.
+    directory, payload = _write_battery_release(tmp_path)
+    payload["schema_version"] = 4.0
+    _rewrite_battery_report(directory, payload, resign=False)
+
+    assert "schema_version must be 3" in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_rejects_an_overridden_exclusion_register(
+    tmp_path: Path,
+) -> None:
+    # The committed register is the policy of record: an overridden
+    # register's evidence digest is never releasable, however honestly
+    # the report self-describes it.
+    directory, payload = _write_battery_release(tmp_path)
+    payload["evidence_sha256"]["uk_degenerate_release_surface"] = "b" * 64
+    _rewrite_battery_report(directory, payload)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = dict(payload["evidence_sha256"])
+    build_path.write_text(json.dumps(build))
+    _refresh_terminal_manifest_hashes(directory)
+
+    assert "bind the committed exclusion register" in _battery_failures(directory)

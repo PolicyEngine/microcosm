@@ -12,7 +12,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import inspect
 import json
 
 import pytest
@@ -82,6 +81,37 @@ class TestMirrorConstants:
             entry.id for entry in spec.gates.gates
         }
 
+    def test_entry_metadata_mirrors_the_committed_spec(self) -> None:
+        # The verifier pins each entry's gate and phase, refuses any
+        # non-release_blocking criticality, and refuses not_applicable
+        # outright; all three must restate the spec exactly.
+        spec = load_country_spec("uk")
+        assert data_contract._UK_GATE_BATTERY_ENTRY_GATES == {
+            entry.id: (entry.gate, entry.phase) for entry in spec.gates.gates
+        }
+        assert all(
+            entry.criticality == "release_blocking" for entry in spec.gates.gates
+        )
+        assert all(entry.not_applicable is None for entry in spec.gates.gates)
+
+    def test_degenerate_evidence_pin_mirrors_the_committed_register(self) -> None:
+        from microcosm.build.gate_battery import _canonical_sha256
+        from microcosm.build.uk_runtime.terminal_gates import (
+            uk_default_degenerate_reviewed_exclusions,
+        )
+
+        records = uk_default_degenerate_reviewed_exclusions()
+        payload = {
+            "exclusions_policy": "committed",
+            "reviewed_exclusions": {
+                name: record.policy_payload()
+                for name, record in sorted(records.items())
+            },
+        }
+        assert data_contract._UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 == (
+            _canonical_sha256(payload)
+        )
+
     def test_input_mass_evidence_pin_mirrors_the_wrapped_reference(self) -> None:
         from microcosm.build.gate_battery import _canonical_sha256
 
@@ -132,19 +162,25 @@ class TestProducerRoundTrip:
             "the data shard's canonical JSON must reproduce the producer's signed bytes"
         )
 
+    @pytest.mark.xfail(
+        strict=True,
+        reason=(
+            "GateBatteryRun grows its release_evidence slot in the consumer "
+            "PR (uk-battery-consumer-a2); strict xfail turns the slot's "
+            "arrival into a loud XPASS failure, so whichever PR merges "
+            "second must delete this marker — the round trip can never "
+            "stay silently un-run."
+        ),
+    )
     def test_a_real_report_survives_every_mirror_check(
         self, tmp_path, monkeypatch
     ) -> None:
         monkeypatch.setenv(gate_signing_key_env("uk"), KEY)
-        arguments: dict = {}
-        if "release_evidence" in inspect.signature(GateBatteryRun.__init__).parameters:
-            arguments["release_evidence"] = {"calibration_diagnostics_sha256": "c" * 64}
-        else:  # pragma: no cover - pre-consumer-flip executors only
-            pytest.skip(
-                "GateBatteryRun has no release_evidence slot yet; flip when "
-                "the consumer PR (uk-battery-consumer-a2) merges."
-            )
-        run = _uk_run(tmp_path, release_candidate=True, **arguments)
+        run = _uk_run(
+            tmp_path,
+            release_candidate=True,
+            release_evidence={"calibration_diagnostics_sha256": "c" * 64},
+        )
         run.run_phase("preflight", EvidenceContext())
         run.run_phase("terminal", EvidenceContext())
         report = json.loads((tmp_path / "terminal_gates.json").read_text())

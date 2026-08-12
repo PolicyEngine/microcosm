@@ -323,7 +323,6 @@ _UK_GATE_BATTERY_PHASES = ("preflight", "terminal")
 _UK_GATE_BATTERY_STATUSES = frozenset(
     {"passed", "failed", "not_applicable", "evidence_absent", "unreached"}
 )
-_UK_GATE_BATTERY_CRITICALITIES = frozenset({"release_blocking", "diagnostic"})
 _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # Vintage pins over the committed uk/gates.json: the manifest digest covers
 # phase order and notes, the policy digest the reviewed thresholds, and the
@@ -354,13 +353,29 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_input_mass_parity": "input_mass_parity",
     "uk_qrf_tail_concentration": "qrf_tail_concentration",
 }
-_UK_GATE_BATTERY_ENTRY_IDS = frozenset(
-    {
-        "uk_release_input_coverage_manifest_current",
-        "uk_release_family_build_stages",
-        *_UK_GATE_BATTERY_ENTRY_LEGACY_NAMES,
-    }
-)
+#: Spec entry id -> (gate, phase), mirrored per entry so a report cannot
+#: relabel an entry's identity. Every entry in this vintage is
+#: release_blocking with no declared excuse, so criticality and
+#: not_applicable are enforced globally rather than per entry.
+_UK_GATE_BATTERY_ENTRY_GATES = {
+    "uk_release_input_coverage_manifest_current": (
+        "release_input_coverage",
+        "preflight",
+    ),
+    "uk_release_family_build_stages": ("source_coverage", "preflight"),
+    "uk_release_input_coverage": ("release_input_coverage", "terminal"),
+    "uk_degenerate_release_surface": ("degenerate_release_surface", "terminal"),
+    "uk_zero_weight_strata": ("zero_weight_strata", "terminal"),
+    "uk_weight_ess": ("weight_ess", "terminal"),
+    "uk_weight_ratio": ("weight_ratio", "terminal"),
+    "uk_weights_audit": ("weights_audit", "terminal"),
+    "uk_export_surface": ("export_surface", "terminal"),
+    "uk_target_surface": ("target_surface", "terminal"),
+    "uk_target_fit": ("target_fit", "terminal"),
+    "uk_input_mass_parity": ("input_mass_parity", "terminal"),
+    "uk_qrf_tail_concentration": ("tail_concentration", "terminal"),
+}
+_UK_GATE_BATTERY_ENTRY_IDS = frozenset(_UK_GATE_BATTERY_ENTRY_GATES)
 #: The entries whose bindings contribute an evidence digest; their keys are
 #: the only ones a schema-4 ``evidence_sha256`` may carry, and each appears
 #: exactly when its entry evaluated.
@@ -377,6 +392,13 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
 # still binds the enhanced-FRS incumbent totals.
 _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
     "87eb7fa51d826bbe95c9b4d218d82dbd2795b3916469615d38557472209d1e4b"
+)
+# The degenerate binding's evidence payload digests the resolved exclusion
+# records; for a release that must be the committed register, so its digest
+# is a vintage pin that moves with every reviewed register edit (the same
+# tripwire as the policy digest).
+_UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
+    "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
 )
 
 
@@ -687,9 +709,12 @@ def _check_uk_terminal_build_manifest(
                     f"stage(s): {unexpected}."
                 )
             if mixed:
+                legacy_seen = sorted(stages & _UK_TERMINAL_EVIDENCE_STAGES)
                 failures.append(
                     "build_manifest.json terminal_gate_evidence mixes the "
-                    f"legacy stage vocabulary with battery entry ids: {mixed}."
+                    f"legacy stage vocabulary {legacy_seen} with battery "
+                    f"entry ids {mixed}; one build produces one report under "
+                    "one schema, so a manifest never straddles the two."
                 )
         for stage, digest in evidence.items():
             _check_sha256_field(
@@ -2076,9 +2101,14 @@ def _check_uk_gate_battery_report(
             f"{file} (schema 4) must contain exactly "
             f"{sorted(required_report_fields)}, got {sorted(map(str, report))}."
         )
-    if report.get("schema_version") != _UK_GATE_BATTERY_SCHEMA_VERSION:
+    schema_version = report.get("schema_version")
+    if (
+        type(schema_version) is not int
+        or schema_version != _UK_GATE_BATTERY_SCHEMA_VERSION
+    ):
         failures.append(
-            f"{file} schema_version must be {_UK_GATE_BATTERY_SCHEMA_VERSION}."
+            f"{file} schema_version must be the integer "
+            f"{_UK_GATE_BATTERY_SCHEMA_VERSION}."
         )
     if report.get("country") != "uk":
         failures.append(f"{file} country must be 'uk'.")
@@ -2157,13 +2187,33 @@ def _check_uk_gate_battery_report(
                 f"{owner} is unreached, which contradicts a complete, "
                 "unblocked evaluation."
             )
+        if status == "not_applicable":
+            failures.append(
+                f"{owner} claims not_applicable, but no entry in this spec "
+                "vintage declares an excuse."
+            )
+        pinned = _UK_GATE_BATTERY_ENTRY_GATES.get(str(entry_id))
+        if pinned is not None:
+            pinned_gate, pinned_phase = pinned
+            if outcome.get("gate") != pinned_gate:
+                failures.append(
+                    f"{owner}.gate must be {pinned_gate!r} per the committed "
+                    f"spec, got {outcome.get('gate')!r}."
+                )
+            if outcome.get("phase") != pinned_phase:
+                failures.append(
+                    f"{owner}.phase must be {pinned_phase!r} per the committed "
+                    f"spec, got {outcome.get('phase')!r}."
+                )
         criticality = outcome.get("criticality")
-        if criticality not in _UK_GATE_BATTERY_CRITICALITIES:
-            failures.append(f"{owner}.criticality {criticality!r} is unknown.")
-        elif (
-            criticality == "release_blocking"
-            and status not in _UK_GATE_BATTERY_SHIPPABLE_STATUSES
-        ):
+        if criticality != "release_blocking":
+            # Every entry in this vintage blocks; a relabel to diagnostic
+            # would dodge the shippability recompute below.
+            failures.append(
+                f"{owner}.criticality must be 'release_blocking' per the "
+                f"committed spec, got {criticality!r}."
+            )
+        elif status not in _UK_GATE_BATTERY_SHIPPABLE_STATUSES:
             # Shippability is recomputed here, per entry, instead of
             # trusting the report's own shippable flag.
             failures.append(
@@ -2282,6 +2332,16 @@ def _check_uk_gate_battery_report(
             f"{file} uk_input_mass_parity evidence digest must bind the "
             "reviewed enhanced-FRS incumbent totals."
         )
+    if (
+        "uk_degenerate_release_surface" in evidence
+        and evidence.get("uk_degenerate_release_surface")
+        != _UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256
+    ):
+        failures.append(
+            f"{file} uk_degenerate_release_surface evidence digest must bind "
+            "the committed exclusion register; an overridden register is "
+            "never releasable."
+        )
     if build_manifest is not None:
         build_evidence = build_manifest.get("terminal_gate_evidence")
         if isinstance(build_evidence, Mapping) and dict(build_evidence) != dict(
@@ -2323,9 +2383,13 @@ def _check_uk_gate_battery_report(
             f"{sorted(required_attestation_fields)}, got "
             f"{sorted(map(str, attestation))}."
         )
-    if attestation.get("schema_version") != _UK_GATE_BATTERY_ATTESTATION_SCHEMA_VERSION:
+    attestation_schema = attestation.get("schema_version")
+    if (
+        type(attestation_schema) is not int
+        or attestation_schema != _UK_GATE_BATTERY_ATTESTATION_SCHEMA_VERSION
+    ):
         failures.append(
-            f"{file} attestation.schema_version must be "
+            f"{file} attestation.schema_version must be the integer "
             f"{_UK_GATE_BATTERY_ATTESTATION_SCHEMA_VERSION}."
         )
     if attestation.get("producer") != _UK_GATE_BATTERY_PRODUCER:
@@ -3749,6 +3813,9 @@ def validate_release_dir(release_dir: Path | str) -> None:
             # aggregator, 4 the shared gate battery. Anything else is not a
             # UK terminal report.
             report_schema = terminal_gate_report.get("schema_version")
+            if type(report_schema) is not int:
+                # A float 4.0 or string "4" must not route as a vintage.
+                report_schema = None
             if report_schema == _UK_GATE_BATTERY_SCHEMA_VERSION:
                 _check_uk_gate_battery_report(
                     terminal_gate_report,
