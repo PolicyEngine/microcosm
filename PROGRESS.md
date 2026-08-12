@@ -93,6 +93,12 @@ shared frame-checkpoint schema rejects pandas nullable `boolean`, and
   files; the eight chunks contain 228 exactly once and exclude only
   `test_us_spine_blindness.py`, which the separate 495-test receipt covers.
   Combined non-overlapping workspace proof is 6,066 passed and 66 skipped.
+- Re-ran the explicit UK consumer surface: 62 passed and one skipped across
+  stage checkpoints, national build, rowwise dataset/candidate, and rowwise
+  weight metadata. The shared UK stage checkpoint remains exactly 23,712 bytes
+  with SHA-256 `7fd5d25833f395b9eac57fcb0bc6537a344862a024ee981daf167949722a17ee`;
+  the rowwise publisher's separate timestamped PyTables container retains its
+  semantic goldens. Receipt: `/private/tmp/round11-uk-compat.xml`.
 
 ## Next
 
