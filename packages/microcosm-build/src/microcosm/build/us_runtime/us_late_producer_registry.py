@@ -27,6 +27,10 @@ from microcosm.build.us_runtime.acs_income_universe import (
     ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
 )
 from microcosm.build.us_runtime.acs_transfer import TargetFamilies
+from microcosm.build.us_runtime.education_inputs import (
+    US_EDUCATION_INPUTS_OUTPUT_COLUMNS,
+    US_EDUCATION_INPUTS_OWNED_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.late_producer_dag import (
     ProducerContract,
     ProducerInput,
@@ -1471,6 +1475,17 @@ def _assert_exhaustive_late_overlap_ownership() -> None:
         for targets in US_LATE_SOURCE_CALLBACK_PASSTHROUGH_OUTPUTS.values()
         for target in targets
     }
+    education_passthroughs = {
+        ("person", column)
+        for column in set(US_EDUCATION_INPUTS_OUTPUT_COLUMNS)
+        - set(US_EDUCATION_INPUTS_OWNED_OUTPUT_COLUMNS)
+    }
+    if callback_passthroughs != education_passthroughs:
+        raise RuntimeError(
+            "Canonical US education callback pass-through inventory changed: "
+            f"observed={sorted(education_passthroughs)}, "
+            f"declared={sorted(callback_passthroughs)}."
+        )
     transfer = {
         (group.entity, target)
         for group in CANONICAL_US_LATE_TRANSFER_GROUPS

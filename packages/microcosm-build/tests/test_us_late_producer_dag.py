@@ -11,6 +11,10 @@ import microcosm.build.us_runtime.acs_transfer as acs_transfer_module
 from microcosm.build.us_runtime.acs_income_universe import (
     ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
 )
+from microcosm.build.us_runtime.education_inputs import (
+    US_EDUCATION_INPUTS_OUTPUT_COLUMNS,
+    US_EDUCATION_INPUTS_OWNED_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.late_producer_dag import (
     ProducerContract,
     ProducerInput,
@@ -429,6 +433,20 @@ def test_late_overlap_ownership_exhausts_every_permitted_dual_write() -> None:
     } - tail_owned
     declared = set(US_LATE_OVERLAP_OWNERSHIP_TARGETS)
 
+    assert len(primary) == 65
+    assert len(source_writes) == 35
+    assert len(source_writes & transfer) == 29
+    assert len(transfer) == 70
+    assert len(recipient_owned) == 60
+    assert (
+        callback_passthroughs
+        == {
+            ("person", column)
+            for column in set(US_EDUCATION_INPUTS_OUTPUT_COLUMNS)
+            - set(US_EDUCATION_INPUTS_OWNED_OUTPUT_COLUMNS)
+        }
+        == {("person", "qualified_tuition_expenses")}
+    )
     assert primary & source_touches & transfer & recipient_owned == declared
     assert primary & source_writes & transfer & recipient_owned == {
         ("person", "traditional_ira_contributions_desired"),
