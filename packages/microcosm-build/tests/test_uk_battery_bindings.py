@@ -488,7 +488,7 @@ class TestExclusionDiscipline:
         committed = binding.evidence_payload(
             EvidenceContext(artifacts={"exclusions_evaluated_on": CLOCK}), {}
         )
-        assert committed["exclusions_register"] == "committed"
+        assert committed["exclusions_policy"] == "committed"
         assert "household.source_year" in committed["reviewed_exclusions"]
 
         overridden = binding.evidence_payload(
@@ -500,7 +500,7 @@ class TestExclusionDiscipline:
             ),
             {},
         )
-        assert overridden["exclusions_register"] == "override"
+        assert overridden["exclusions_policy"] == "override"
         assert overridden["reviewed_exclusions"] == {}
         assert overridden != committed, "an override must move the evidence digest"
 
@@ -529,7 +529,7 @@ class TestExclusionDiscipline:
             {},
         )
         assert resupplied == committed
-        assert resupplied["exclusions_register"] == "committed"
+        assert resupplied["exclusions_policy"] == "committed"
 
     def test_a_datetime_clock_is_refused(self, uk_gates) -> None:
         person, benunit, household = _tables()

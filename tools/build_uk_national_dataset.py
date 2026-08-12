@@ -776,13 +776,13 @@ def _aggregate_build_record(
             "sample_fraction": float(sample_fraction),
             "sample_seed": int(sample_seed),
             "rung_token": UK_SAMPLE_RUNG_TOKENS[sample_fraction],
-            # The attested policy digest is content-addressed, so a
-            # content-identical --degenerate-exclusions override would be
-            # invisible there; the record keeps the provenance honest
-            # without a path (this record is path-free by contract).
-            "degenerate_exclusions_register": (
-                "override" if degenerate_exclusions_override else "committed"
-            ),
+            # Answers "did the operator invoke the override path" — the
+            # operator-action record, kept path-free by contract. The signed
+            # report's evidence answers the different question "which
+            # register content governed" (``exclusions_policy``); a review
+            # file byte-identical to the committed register makes the two
+            # honestly disagree, which is why they carry distinct names.
+            "degenerate_exclusions_override_supplied": (degenerate_exclusions_override),
         },
         "sampling": (
             None if result.sampling_receipt is None else dict(result.sampling_receipt)

@@ -307,8 +307,14 @@ def _degenerate_exclusions_evidence(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> object:
     resolved, source = _resolve_degenerate_exclusions(context)
+    # ``exclusions_policy`` answers "which register content governed this
+    # run" — deliberately distinct from the build record's
+    # ``degenerate_exclusions_override_supplied``, which answers "did the
+    # operator invoke the override path". The two can honestly disagree
+    # (a review file byte-identical to the committed register), so they
+    # carry different names.
     return {
-        "exclusions_register": source,
+        "exclusions_policy": source,
         "reviewed_exclusions": {
             name: record.policy_payload() for name, record in sorted(resolved.items())
         },
