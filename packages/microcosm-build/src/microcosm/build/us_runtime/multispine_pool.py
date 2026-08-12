@@ -26,6 +26,9 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
+from microcosm.build.us_runtime.acs_income_universe import (
+    ACS_PUMS_EARNINGS_UNIVERSE_PERSON_INPUTS,
+)
 from microcosm.build.us_runtime.acs_transfer import (
     ACS_NATIVE_PERSON_INPUTS,
     TargetFamilies,
@@ -342,9 +345,9 @@ POOL_ENGINE_INPUT_PROJECTION_CONTRACT = PoolEngineInputProjectionContract(
 """Exact installed input registry scanned by the disposable projection."""
 
 POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
-    "f257f1e81f1e5d7a4165db7d237f88f99aa409a190e4530e48317dde93bcec6c"
+    "8247a93e5f8f63d3ae71c1de681c29524d4bb8f07e3c6a50dcaf431b1377020f"
 )
-"""Pinned content digest of all 992 post-transfer consumer/input rows."""
+"""Pinned content digest of all 993 post-transfer consumer/input rows."""
 
 
 @dataclass(frozen=True)
@@ -1230,6 +1233,22 @@ def pool_remaining_stage_input_manifest(
             variable,
             execution_scope="whole_pool",
             provision=provision,
+            available_by="assembled",
+        )
+    universe_owner_inputs = ACS_PUMS_EARNINGS_UNIVERSE_PERSON_INPUTS
+    for variable in set(universe_owner_inputs) - {
+        "age",
+        "person_tax_unit_id",
+        support_clone_index_column("person"),
+        support_source_id_column("person"),
+    }:
+        register(
+            "derive",
+            "with_us_qbi_input_reconciliation",
+            "person",
+            variable,
+            execution_scope="whole_pool",
+            provision=universe_owner_inputs[variable],
             available_by="assembled",
         )
     register(

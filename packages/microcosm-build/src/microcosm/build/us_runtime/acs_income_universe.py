@@ -29,6 +29,7 @@ __all__ = [
     "ACS_PUMS_2024_DATA_DICTIONARY_URL",
     "ACS_PUMS_EARNINGS_MINIMUM_AGE",
     "ACS_PUMS_EARNINGS_SOURCE_COLUMNS",
+    "ACS_PUMS_EARNINGS_UNIVERSE_PERSON_INPUTS",
     "AcsPumsEarningsUniverse",
     "AcsPumsEarningsUniverseApplication",
     "acs_pums_earnings_universe_contract_identity",
@@ -45,6 +46,19 @@ ACS_PUMS_EARNINGS_SOURCE_COLUMNS: Mapping[str, str] = MappingProxyType(
     {
         "employment_income_before_lsr": "WAGP",
         "self_employment_income_before_lsr": "SEMP",
+    }
+)
+
+# Physical person-table inputs owned by this provenance-aware universe
+# resolver. Population-treatment modules consume this declaration without
+# learning or constructing source-channel column names themselves.
+ACS_PUMS_EARNINGS_UNIVERSE_PERSON_INPUTS: Mapping[str, str] = MappingProxyType(
+    {
+        "age": "assembled_native_person_input",
+        "person_tax_unit_id": "frame_membership",
+        support_channel_column("person"): "assembly_support_provenance",
+        support_clone_index_column("person"): "assembly_support_provenance",
+        support_source_id_column("person"): "assembly_support_source_identity",
     }
 )
 

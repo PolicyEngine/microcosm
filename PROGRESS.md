@@ -67,8 +67,8 @@ exclusion.
   complete checked-in remaining-stage manifest now prevents this
   classification from drifting silently.
 - Added the complete remaining-stage manifest and bound its content receipt to
-  the stacked checkpoint identity and the derive-stage receipt. It contains 992
-  exact consumer/input rows: 33 derive, 29 seed, and 930 simulate. The simulate
+  the stacked checkpoint identity and the derive-stage receipt. It contains 993
+  exact consumer/input rows: 34 derive, 29 seed, and 930 simulate. The simulate
   section enumerates all 863 installed PolicyEngine input variables rather
   than using a wildcard and declares the ephemeral-default behavior for every
   present-null or absent input.
@@ -91,6 +91,13 @@ exclusion.
   blindness proof separately: exactly 495 passed, with zero skips, failures, or
   errors. The corrected generic and unchanged UK schema-v2 checkpoint suites
   also pass with 32 passed and one expected skip.
+- Independent review found one transitive manifest omission: the ACS earnings-
+  universe owner reads person support channel while resolving the QBI scope.
+  Added an owner-level structured input declaration, registered that physical
+  input without teaching the pool operator source-channel semantics, and
+  restored the exhaustive manifest to 993 rows. No other actionable finding
+  remained. The nine manifest/derive regressions and issue #583's exact 495
+  tests pass on the corrected tree.
 
 ## Next
 

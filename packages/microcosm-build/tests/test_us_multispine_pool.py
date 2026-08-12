@@ -22,6 +22,9 @@ from microcosm.build.us_runtime import multispine_pool as multispine_pool_module
 from microcosm.build.us_runtime import prior_year_income as prior_year_income_module
 from microcosm.build.us_runtime import puf_support as puf_support_module
 from microcosm.build.us_runtime import stacked_spine as stacked_spine_module
+from microcosm.build.us_runtime.acs_income_universe import (
+    ACS_PUMS_EARNINGS_UNIVERSE_PERSON_INPUTS,
+)
 from microcosm.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
@@ -1437,6 +1440,7 @@ def test_remaining_stage_manifest_covers_every_derive_read() -> None:
             ("person", "SEMP"),
             ("person", "person_tax_unit_id"),
             ("person", "person_support_clone_index"),
+            ("person", "person_support_channel"),
             ("person", "person_source_id"),
             ("person", "person_id"),
         },
@@ -1455,6 +1459,13 @@ def test_remaining_stage_manifest_covers_every_derive_read() -> None:
         execution_scope="whole_pool",
         provision="primary_puf_exact_zero_universe",
         available_by="transferred",
+    )
+    assert set(ACS_PUMS_EARNINGS_UNIVERSE_PERSON_INPUTS).issubset(
+        {
+            variable
+            for entity, variable in by_consumer["with_us_qbi_input_reconciliation"]
+            if entity == "person"
+        }
     )
 
 
@@ -1631,9 +1642,9 @@ def test_simulation_projection_defaults_match_pinned_engine_surface() -> None:
 def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     manifest = pool_remaining_stage_input_manifest(_installed_variable_metadata_index())
 
-    assert len(manifest) == 992
+    assert len(manifest) == 993
     assert Counter(entry.stage for entry in manifest) == Counter(
-        {"derive": 33, "seed": 29, "simulate": 930}
+        {"derive": 34, "seed": 29, "simulate": 930}
     )
     assert len(
         {
@@ -1646,9 +1657,9 @@ def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     receipt = pool_remaining_stage_input_manifest_receipt(
         _installed_variable_metadata_index()
     )
-    assert receipt["entry_count"] == 992
+    assert receipt["entry_count"] == 993
     assert receipt["stage_counts"] == {
-        "derive": 33,
+        "derive": 34,
         "seed": 29,
         "simulate": 930,
     }
@@ -3023,9 +3034,9 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
     derived = result.frame.table("person")
 
     assert result.receipt["operator_order"] == list(POOL_DERIVE_OPERATOR_ORDER)
-    assert result.receipt["remaining_stage_input_manifest"]["entry_count"] == 992
+    assert result.receipt["remaining_stage_input_manifest"]["entry_count"] == 993
     assert result.receipt["remaining_stage_input_manifest"]["stage_counts"] == {
-        "derive": 33,
+        "derive": 34,
         "seed": 29,
         "simulate": 930,
     }
