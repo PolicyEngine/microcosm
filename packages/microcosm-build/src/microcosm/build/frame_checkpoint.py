@@ -40,7 +40,11 @@ __all__ = [
     "write_frame_checkpoint",
 ]
 
-FRAME_CHECKPOINT_SCHEMA_VERSION = 2
+FRAME_CHECKPOINT_SCHEMA_VERSION = 3
+_LEGACY_FRAME_CHECKPOINT_SCHEMA_VERSION = 2
+_SUPPORTED_FRAME_CHECKPOINT_SCHEMA_VERSIONS = frozenset(
+    {_LEGACY_FRAME_CHECKPOINT_SCHEMA_VERSION, FRAME_CHECKPOINT_SCHEMA_VERSION}
+)
 
 _ARTIFACT_KIND = "populace_frame_checkpoint"
 _ROOT = "_populace_frame_checkpoint"
@@ -50,6 +54,7 @@ _ENCODING_NUMPY = "numpy"
 _ENCODING_DATETIME = "datetime64"
 _ENCODING_TIMEDELTA = "timedelta64"
 _ENCODING_OBJECT = "object_scalars_v1"
+_ENCODING_NULLABLE_BOOLEAN = "nullable_boolean_v1"
 
 _TAG_NONE = 0
 _TAG_PD_NA = 1
@@ -339,10 +344,26 @@ def _checkpoint_metadata(
             }
         )
 
+    strata_spec = _series_spec(frame.strata, label="strata")
+    uses_nullable_boolean = any(
+        column.get("encoding") == _ENCODING_NULLABLE_BOOLEAN
+        for table in table_specs
+        for column in table["columns"]
+    ) or any(
+        table["index"].get("encoding") == _ENCODING_NULLABLE_BOOLEAN
+        for table in table_specs
+    )
+    uses_nullable_boolean = uses_nullable_boolean or (
+        strata_spec.get("encoding") == _ENCODING_NULLABLE_BOOLEAN
+    )
     schema = frame.schema
     return {
         "artifact_kind": _ARTIFACT_KIND,
-        "schema_version": FRAME_CHECKPOINT_SCHEMA_VERSION,
+        "schema_version": (
+            FRAME_CHECKPOINT_SCHEMA_VERSION
+            if uses_nullable_boolean
+            else _LEGACY_FRAME_CHECKPOINT_SCHEMA_VERSION
+        ),
         "schema": {
             "person_entity": schema.person_entity,
             "group_entities": list(schema.group_entities),
@@ -368,7 +389,7 @@ def _checkpoint_metadata(
             if "household" in frame.weighted_entities
             else None
         ),
-        "strata": _series_spec(frame.strata, label="strata"),
+        "strata": strata_spec,
         "mass_log": [_mass_change_payload(record) for record in frame.mass_log],
         "external_metadata": external_metadata,
     }
@@ -380,7 +401,7 @@ def _frame_tables(frame: Frame) -> tuple[tuple[str, pd.DataFrame], ...]:
     return (*entities, *links)
 
 
-def _series_spec(series: pd.Series, *, label: str) -> dict[str, str]:
+def _series_spec(series: pd.Series, *, label: str) -> dict[str, object]:
     dtype = series.dtype
     if isinstance(dtype, pd.CategoricalDtype):
         raise TypeError(
@@ -392,6 +413,12 @@ def _series_spec(series: pd.Series, *, label: str) -> dict[str, str]:
             f"Frame checkpoint does not support timezone-aware dtype for {label!r}; "
             "convert it to timezone-naive datetime64 first."
         )
+    if isinstance(dtype, pd.BooleanDtype):
+        return {
+            "dtype": "boolean",
+            "encoding": _ENCODING_NULLABLE_BOOLEAN,
+            "has_null_mask": bool(series.isna().any()),
+        }
     if isinstance(dtype, pd.api.extensions.ExtensionDtype) and not isinstance(
         dtype, pd.StringDtype
     ):
@@ -523,6 +550,17 @@ def _write_series(group: Any, series: pd.Series, spec: Mapping[str, object]) -> 
         _write_numpy_dataset(group, "offsets", offsets)
         _write_bytes_dataset(group, "payload", payload)
         return
+    if encoding == _ENCODING_NULLABLE_BOOLEAN:
+        values = series.to_numpy(
+            dtype=np.bool_,
+            na_value=False,
+            copy=False,
+        )
+        _write_numpy_dataset(group, "values", values)
+        if spec.get("has_null_mask") is True:
+            null_mask = series.isna().to_numpy(dtype=np.uint8, copy=False)
+            _write_numpy_dataset(group, "null_mask", null_mask)
+        return
     raise RuntimeError(f"Unknown checkpoint series encoding {encoding!r}.")
 
 
@@ -552,6 +590,56 @@ def _read_series(
         payload = _read_bytes_dataset(group, "payload", path)
         values = _decode_object_values(offsets, payload, path=path, label=label)
         series = pd.Series(values, dtype=restore_dtype, copy=False)
+    elif encoding == _ENCODING_NULLABLE_BOOLEAN:
+        if dtype != "boolean":
+            raise ValueError(
+                f"Frame checkpoint {path} {label!r} nullable boolean encoding "
+                f"has declared dtype {dtype!r}, not 'boolean'."
+            )
+        has_null_mask = spec.get("has_null_mask")
+        if type(has_null_mask) is not bool:
+            raise ValueError(
+                f"Frame checkpoint {path} {label!r} nullable boolean "
+                "has_null_mask must be a boolean."
+            )
+        values = _read_numpy_dataset(group, "values", path)
+        if values.ndim != 1 or values.dtype != np.dtype(np.bool_):
+            raise ValueError(
+                f"Frame checkpoint {path} {label!r} nullable boolean values "
+                "must be a one-dimensional bool array."
+            )
+        if has_null_mask:
+            if "null_mask" not in group:
+                raise ValueError(
+                    f"Frame checkpoint {path} {label!r} is missing its null mask."
+                )
+            null_mask = _read_numpy_dataset(group, "null_mask", path)
+            if (
+                null_mask.ndim != 1
+                or null_mask.dtype != np.dtype(np.uint8)
+                or len(null_mask) != len(values)
+                or ((null_mask != 0) & (null_mask != 1)).any()
+            ):
+                raise ValueError(
+                    f"Frame checkpoint {path} {label!r} null mask must be a "
+                    "one-dimensional uint8 0/1 array aligned to its values."
+                )
+            mask = null_mask.astype(np.bool_, copy=False)
+            if values[mask].any():
+                raise ValueError(
+                    f"Frame checkpoint {path} {label!r} null mask covers "
+                    "noncanonical true storage bits."
+                )
+        else:
+            if "null_mask" in group:
+                raise ValueError(
+                    f"Frame checkpoint {path} {label!r} has an unexpected null mask."
+                )
+            mask = np.zeros(len(values), dtype=np.bool_)
+        series = pd.Series(
+            pd.arrays.BooleanArray(values, mask, copy=False),
+            copy=False,
+        )
     else:
         raise ValueError(
             f"Frame checkpoint {path} has unknown encoding {encoding!r} for {label!r}."
@@ -574,7 +662,7 @@ def _read_series(
 
 def _declared_dtype(
     spec: Mapping[str, Any], *, path: Path, label: str
-) -> str | pd.StringDtype:
+) -> str | pd.BooleanDtype | pd.StringDtype:
     """The concrete dtype a spec restores to, environment-independently.
 
     String dtypes resolve through the recorded storage and NA marker — the
@@ -586,6 +674,8 @@ def _declared_dtype(
     verified in produced, and it is the build's canonical string policy.
     """
     dtype = _require_string(spec, "dtype", label=label)
+    if dtype == "boolean":
+        return pd.BooleanDtype()
     if dtype not in ("str", "string"):
         return dtype
     storage = spec.get("string_storage", "python")
@@ -605,7 +695,12 @@ def _declared_dtype(
     )
 
 
-def _dtype_matches(actual: Any, expected: str | pd.StringDtype) -> bool:
+def _dtype_matches(
+    actual: Any,
+    expected: str | pd.BooleanDtype | pd.StringDtype,
+) -> bool:
+    if isinstance(expected, pd.BooleanDtype):
+        return actual == expected
     if isinstance(expected, pd.StringDtype):
         return actual == expected and getattr(actual, "storage", None) == (
             expected.storage
@@ -737,12 +832,67 @@ def _read_metadata(root: Any, path: Path) -> dict[str, Any]:
             f"{metadata.get('artifact_kind')!r}."
         )
     version = metadata.get("schema_version")
-    if version != FRAME_CHECKPOINT_SCHEMA_VERSION:
+    if version not in _SUPPORTED_FRAME_CHECKPOINT_SCHEMA_VERSIONS:
         raise ValueError(
             f"Frame checkpoint {path} schema version is {version!r}; expected "
-            f"{FRAME_CHECKPOINT_SCHEMA_VERSION}."
+            f"one of {sorted(_SUPPORTED_FRAME_CHECKPOINT_SCHEMA_VERSIONS)}."
+        )
+    nullable_spec_count = 0
+    for label, spec in _checkpoint_series_specs(metadata):
+        dtype = spec.get("dtype")
+        encoding = spec.get("encoding")
+        declares_nullable = dtype == "boolean"
+        uses_nullable_encoding = encoding == _ENCODING_NULLABLE_BOOLEAN
+        if version == _LEGACY_FRAME_CHECKPOINT_SCHEMA_VERSION and (
+            declares_nullable or uses_nullable_encoding
+        ):
+            raise ValueError(
+                f"Frame checkpoint {path} schema version 2 cannot carry nullable "
+                f"boolean spec {label!r}."
+            )
+        if version == FRAME_CHECKPOINT_SCHEMA_VERSION and (
+            declares_nullable != uses_nullable_encoding
+        ):
+            raise ValueError(
+                f"Frame checkpoint {path} schema version 3 nullable boolean spec "
+                f"{label!r} must pair declared dtype 'boolean' with encoding "
+                f"{_ENCODING_NULLABLE_BOOLEAN!r}."
+            )
+        if uses_nullable_encoding:
+            nullable_spec_count += 1
+            if type(spec.get("has_null_mask")) is not bool:
+                raise ValueError(
+                    f"Frame checkpoint {path} {label!r} nullable boolean "
+                    "has_null_mask must be a boolean."
+                )
+    if version == FRAME_CHECKPOINT_SCHEMA_VERSION and nullable_spec_count == 0:
+        raise ValueError(
+            f"Frame checkpoint {path} schema version 3 requires at least one "
+            "nullable boolean spec."
         )
     return metadata
+
+
+def _checkpoint_series_specs(
+    metadata: Mapping[str, Any],
+) -> tuple[tuple[str, dict[str, Any]], ...]:
+    """Return every serialized series spec for version-policy validation."""
+
+    specs: list[tuple[str, dict[str, Any]]] = []
+    for table_index, raw_table in enumerate(_require_list(metadata, "tables")):
+        table = _require_dict(raw_table, f"tables[{table_index}]")
+        name = table.get("name", f"tables[{table_index}]")
+        index = _require_dict(table.get("index"), f"tables[{table_index}].index")
+        if index.get("kind") == "values":
+            specs.append((f"{name}.index", index))
+        for column_index, raw_column in enumerate(_require_list(table, "columns")):
+            column = _require_dict(
+                raw_column,
+                f"tables[{table_index}].columns[{column_index}]",
+            )
+            specs.append((f"{name}.{column.get('name', column_index)}", column))
+    specs.append(("strata", _require_dict(metadata.get("strata"), "strata")))
+    return tuple(specs)
 
 
 def _schema_from_metadata(metadata: Mapping[str, Any]) -> EntitySchema:

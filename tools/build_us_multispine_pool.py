@@ -233,6 +233,9 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 # 5: Stacked transferred and simulated checkpoints carry and validate the
 #    independently propagated late-producer transition authority. Earlier
 #    envelopes cannot authenticate a reissued execution receipt.
+# 6: Frame-checkpoint schema v3 materializes pandas nullable booleans as bool
+#    values plus an explicit null mask when needed. Earlier envelopes cannot
+#    prove that declared absences survived serialization.
 #
 # Bump this version whenever any producer above changes a stage output without
 # changing one of the explicit identity fields below. In particular, adding,
@@ -247,7 +250,7 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 # normalizes that logical view in memory. Moving between those encodings does
 # not change a producer's scalar output and therefore does not advance this
 # ledger; changing string values or the canonical logical dtype policy does.
-POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 5
+POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 6
 
 _PRIMARY_QRF_N_ESTIMATORS = 100
 _ACS_TRANSFER_N_ESTIMATORS = 100

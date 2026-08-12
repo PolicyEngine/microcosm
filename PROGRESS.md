@@ -61,10 +61,24 @@ shared frame-checkpoint schema rejects pandas nullable `boolean`, and
   and pinned byte goldens for a generic schema-v2 frame and the UK outer-stage
   checkpoint. The pre-fix run fails only at the intended BooleanDtype refusal;
   the inventory and both unchanged-byte goldens already pass.
+- Implemented conditional frame-checkpoint schema v3 for pandas nullable
+  booleans. Complete columns write canonical NumPy-bool values without a mask;
+  columns with declared absences write the same values with masked storage bits
+  normalized to false plus an aligned uint8 0/1 null mask. Both reload as
+  `BooleanDtype` with exact logical values and absences.
+- Kept schema-v2 emission byte-identical whenever the new encoding is absent,
+  while the loader accepts both v2 and v3 and fails closed on downgraded,
+  mismatched, noncanonical, wrong-rank, wrong-dtype, nonbinary, missing, or
+  unexpected nullable-boolean data and masks.
+- Bumped the shared pool checkpoint envelope materializer from 5 to 6 while
+  retaining stacked producer identity 10 and legacy materializer 3. A dedicated
+  regression proves a v5 envelope is rejected without changing the stacked
+  base/bank identity, preserving the 182 completed smoke-r8 target banks.
+- Passed the implementation slice: 37 tests across the complete checkpoint
+  codec, canonical registry and extension inventory, stacked identity/envelope
+  seam, pool-store reload, and all UK stage-checkpoint tests.
 
 ## Next
 
-- Implement lossless nullable-boolean serialization, dual-version loading, and
-  the checkpoint/materializer bumps while preserving the schema-v2 goldens.
 - Run the requested focused, #583, full-workspace, lint, format, and golden
   proofs, then perform an independent review cycle.

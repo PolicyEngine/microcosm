@@ -2611,6 +2611,70 @@ def test_stacked_checkpoint_identity_binds_v10_semantic_contracts(
     assert "checkpoint base identity is stale" in capsys.readouterr().out
 
 
+def test_pool_envelope_v6_preserves_stacked_bank_identity_but_rejects_v5(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
+    stack = pool_tool.assemble_stacked_spine(
+        _many_household_source_frame(),
+        _many_household_source_frame(measured_offset=1_000.0),
+        sample_fraction=0.10,
+        sample_seed=578,
+    )
+
+    def identity() -> dict[str, object]:
+        return pool_tool._stacked_checkpoint_base_identity(
+            verified,
+            stack_receipt=stack.receipt,
+            sample_fraction=0.10,
+            sample_seed=578,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+            policyengine_us_version="fixture-engine",
+        )
+
+    current_identity = identity()
+    current_digest = pool_tool._pool_checkpoint_identity_sha256(current_identity)
+    checkpoint_root = tmp_path / "envelope-version-checkpoints"
+    with monkeypatch.context() as legacy:
+        legacy.setattr(
+            pool_tool,
+            "POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION",
+            5,
+        )
+        assert identity() == current_identity
+        legacy_store = pool_tool._PoolStageCheckpointStore(
+            checkpoint_root,
+            base_identity=current_identity,
+        )
+        assert legacy_store.base_identity_sha256 == current_digest
+        legacy_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+        legacy_store.write(
+            pool_tool.MultispinePoolCheckpoint(
+                stage="assembled",
+                frame=stack.frame,
+                assembly_receipt=stack.frame.metadata[
+                    pool_tool.SPINE_ASSEMBLY_MANIFEST_KEY
+                ],
+                stage_receipts={},
+            )
+        )
+    capsys.readouterr()
+
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 6
+    assert identity() == current_identity
+    current_store = pool_tool._PoolStageCheckpointStore(
+        checkpoint_root,
+        base_identity=current_identity,
+    )
+    assert current_store.base_identity_sha256 == current_digest
+    assert current_store.load_deepest() is None
+    assert "unsupported binding" in capsys.readouterr().out
+
+
 @pytest.mark.parametrize(
     ("route", "stage_receipts"),
     (
