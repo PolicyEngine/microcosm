@@ -382,7 +382,14 @@ def test_nullable_boolean_masked_storage_bits_are_canonical(
 
 @pytest.mark.parametrize(
     "damage",
-    ["missing", "nonbinary", "wrong_length", "wrong_dtype", "wrong_rank"],
+    [
+        "missing",
+        "all_zero",
+        "nonbinary",
+        "wrong_length",
+        "wrong_dtype",
+        "wrong_rank",
+    ],
 )
 def test_nullable_boolean_checkpoint_rejects_malformed_null_mask(
     tmp_path: Path,
@@ -399,7 +406,13 @@ def test_nullable_boolean_checkpoint_rejects_malformed_null_mask(
             column="missing_nullable_boolean",
         )
         del group["null_mask"]
-        if damage == "nonbinary":
+        if damage == "all_zero":
+            group.create_dataset(
+                "null_mask",
+                data=np.asarray([0, 0, 0], dtype=np.uint8),
+                track_times=False,
+            )
+        elif damage == "nonbinary":
             group.create_dataset(
                 "null_mask",
                 data=np.asarray([0, 2, 0], dtype=np.uint8),

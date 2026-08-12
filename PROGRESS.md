@@ -118,8 +118,15 @@ shared frame-checkpoint schema rejects pandas nullable `boolean`, and
   extension-dtype refusal, logs rebuilt `transferred` and `simulated` stages,
   and the attempt row reaches at least `transferred`, `derived`, `seeded`, and
   `simulated` before any later certification verdict.
+- The first final independent review found one fail-closed gap in corrupted
+  input handling: a forged `has_null_mask=true` spec could carry an all-zero
+  mask, which the writer never emits and which could reinterpret lost absences
+  as stored false values. The loader now rejects that noncanonical mask, the
+  new corruption regression passes, and the complete 26-test codec file is
+  green.
 
 ## Next
 
-- Perform the final independent review cycle, address any actionable findings,
-  and write the stdout-equivalent final report to the requested output file.
+- Rerun the requested proof matrix from the review-fix HEAD, complete the clean
+  follow-up review, and write the stdout-equivalent final report to the
+  requested output file.

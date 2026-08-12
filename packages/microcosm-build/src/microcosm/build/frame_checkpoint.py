@@ -619,6 +619,7 @@ def _read_series(
                 or null_mask.dtype != np.dtype(np.uint8)
                 or len(null_mask) != len(values)
                 or ((null_mask != 0) & (null_mask != 1)).any()
+                or not null_mask.any()
             ):
                 raise ValueError(
                     f"Frame checkpoint {path} {label!r} null mask must be a "
