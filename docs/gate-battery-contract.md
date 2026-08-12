@@ -224,7 +224,11 @@ stretches on declaration alone:
 | criticality mix | 8 blocking + 1 diagnostic | all blocking |
 
 The differences are entirely in the two country inputs — the spec file
-and the registry — which is the point.
+and the registry — which is the point. The UK national build is the
+executor's production consumer: it constructs one `GateBatteryRun` per
+build and runs both phases under `BLOCKS_ARTIFACT` (preflight before the
+frame loads, terminal immediately before the staging writer), while BE
+remains spec-only.
 
 ## The reference rule
 

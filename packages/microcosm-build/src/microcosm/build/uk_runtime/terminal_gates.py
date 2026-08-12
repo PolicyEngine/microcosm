@@ -30,6 +30,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.gate_battery import _evaluate_gate
 from microcosm.build.gates import (
     FitWeightRecord,
     GateReport,
@@ -1376,45 +1377,6 @@ def _missing_fit_weight_evidence_gate() -> GateResult:
         ),
         details={"fits_checked": 0, "evidence_missing": True},
     )
-
-
-def _evaluate_gate(name: str, evaluator: Callable[[], GateResult]) -> GateResult:
-    try:
-        result = evaluator()
-    except Exception as exc:  # noqa: BLE001 - terminal batch must keep evaluating
-        return GateResult(
-            name=name,
-            passed=False,
-            failures=(
-                f"Gate evaluation failed closed with {type(exc).__name__}: {exc}",
-            ),
-            details={
-                "evaluation_error": {
-                    "type": type(exc).__name__,
-                    "message": str(exc),
-                }
-            },
-        )
-    if not isinstance(result, GateResult):
-        return GateResult(
-            name=name,
-            passed=False,
-            failures=(
-                "Gate evaluation failed closed because the evaluator did not "
-                "return GateResult.",
-            ),
-            details={"returned_type": type(result).__name__},
-        )
-    if result.name != name:
-        return GateResult(
-            name=name,
-            passed=False,
-            failures=(
-                f"Gate evaluator returned name {result.name!r}, expected {name!r}.",
-            ),
-            details={"returned_gate": result.name},
-        )
-    return result
 
 
 def uk_terminal_gate_report(

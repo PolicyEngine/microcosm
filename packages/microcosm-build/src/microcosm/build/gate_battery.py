@@ -520,11 +520,12 @@ class GatePhaseReport:
 def _evaluate_gate(name: str, evaluator: Callable[[], GateResult]) -> GateResult:
     """Run one evaluator, failing closed on any misbehaviour.
 
-    Lifted verbatim from the UK terminal battery: a raising evaluator
-    becomes a failed result (the batch must keep evaluating — a crash that
-    masked the remaining gates would hide exactly the failures the battery
-    exists to surface), and a result under the wrong name fails rather than
-    letting one gate impersonate another.
+    The one fail-closed wrapper for every battery, shared with the legacy UK
+    terminal report: a raising evaluator becomes a failed result (the batch
+    must keep evaluating — a crash that masked the remaining gates would
+    hide exactly the failures the battery exists to surface), and a result
+    under the wrong name fails rather than letting one gate impersonate
+    another.
     """
 
     try:
@@ -749,6 +750,11 @@ class GateBatteryRun:
             cannot excuse absent evidence; dev builds record it and
             continue.
         registry: Gate bindings; defaults to :data:`DEFAULT_REGISTRY`.
+        release_evidence: Digests of release inputs the gates themselves do
+            not consume but the release contract links (for the UK, the
+            calibration-diagnostics digest). Carried in the report and the
+            signed attestation, so the linkage survives the build that
+            attested it.
     """
 
     def __init__(
@@ -759,15 +765,25 @@ class GateBatteryRun:
         report_path: Path | str,
         release_candidate: bool,
         registry: Mapping[str, GateBinding] = DEFAULT_REGISTRY,
+        release_evidence: Mapping[str, str] | None = None,
     ) -> None:
         if not isinstance(release_id, str) or not release_id.strip():
             raise ValueError("release_id must be a non-empty string.")
         validate_gate_parameters(gates, registry)
+        evidence = dict(release_evidence or {})
+        for key, value in evidence.items():
+            if not isinstance(key, str) or not key.strip():
+                raise ValueError("release_evidence keys must be non-empty strings.")
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"release_evidence[{key!r}] must be a non-empty string digest."
+                )
         self._gates = gates
         self._release_id = release_id
         self._report_path = Path(report_path)
         self._release_candidate = bool(release_candidate)
         self._registry = dict(registry)
+        self._release_evidence = dict(sorted(evidence.items()))
         self._gates_manifest_sha256 = _canonical_sha256(
             _gates_manifest_payload(self._gates)
         )
@@ -788,6 +804,16 @@ class GateBatteryRun:
     @property
     def phases_evaluated(self) -> tuple[str, ...]:
         return tuple(self._phase_reports)
+
+    def phase_report(self, phase: str) -> GatePhaseReport:
+        """The evaluated report for ``phase``; refuses a phase that has not run."""
+
+        try:
+            return self._phase_reports[phase]
+        except KeyError:
+            raise ValueError(
+                f"phase {phase!r} has not run; evaluated: {list(self._phase_reports)}."
+            ) from None
 
     def _next_phase(self) -> str | None:
         for phase in self._gates.phases:
@@ -922,7 +948,6 @@ class GateBatteryRun:
             and self._blocked_at_phase is None
             and blocking_ok
             and signing_key is not None
-            and self._gates_manifest_sha256 is not None
         )
         attestation: dict[str, object] = {
             "schema_version": GATE_BATTERY_ATTESTATION_SCHEMA_VERSION,
@@ -936,6 +961,7 @@ class GateBatteryRun:
             "phases": list(self._gates.phases),
             "phases_evaluated": list(self._phase_reports),
             "blocked_at_phase": self._blocked_at_phase,
+            "release_evidence": dict(self._release_evidence),
             "evidence_sha256": dict(evidence_sha256),
             "gate_outcomes_sha256": _canonical_sha256(gates_payload),
             "signature_algorithm": GATE_BATTERY_SIGNATURE_ALGORITHM,
@@ -961,6 +987,7 @@ class GateBatteryRun:
             "shippable": shippable,
             "gates": gates_payload,
             "policy_sha256": policy_sha256,
+            "release_evidence": dict(self._release_evidence),
             "evidence_sha256": dict(evidence_sha256),
             "attestation": attestation,
         }
