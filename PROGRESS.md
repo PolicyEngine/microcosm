@@ -2,11 +2,13 @@
 
 ## State
 
-The Round 11 failure audit is complete on `tail-stratum-support-652`. The real
-1% US build completed the full late producer DAG in memory and failed only
-while serializing the durable stacked `transferred` checkpoint. The current
-shared frame-checkpoint schema rejects pandas nullable `boolean`, and
-`person.is_female` is simply the first of 39 such columns in table order.
+Round 11 is implementation-complete on `tail-stratum-support-652`. The real 1%
+US build failure was the durable stacked `transferred` checkpoint: the full
+late producer DAG completed in memory, then the old shared frame-checkpoint
+schema rejected `person.is_female`, the first of 39 nullable-boolean columns in
+table order. Conditional schema v3 now serializes those columns losslessly,
+all requested post-fix proofs and an independent follow-up review are green,
+and no build was run.
 
 ## Done
 
@@ -77,28 +79,29 @@ shared frame-checkpoint schema rejects pandas nullable `boolean`, and
 - Passed the implementation slice: 37 tests across the complete checkpoint
   codec, canonical registry and extension inventory, stacked identity/envelope
   seam, pool-store reload, and all UK stage-checkpoint tests.
-- Passed the full requested focused suite from implementation HEAD: all frame
-  checkpoint, US stacked-spine, and US multispine-pool tool tests, 391 passed
-  with no skips or failures in 224.229 seconds. The exact JUnit receipt is
-  `/private/tmp/round11-focused.xml`.
-- Passed the separately graded #583 spine-blindness guard at its exact contract:
-  495 passed, no skips or failures, in 4.027 seconds. Receipt:
-  `/private/tmp/round11-spine-blindness.xml`.
-- Passed the complete non-#583 workspace in eight deterministic sorted chunks:
-  5,571 passed and 66 skipped across exactly 228 files, with no failures or
-  errors. Per-chunk passed/skipped receipts were 742/0, 616/21, 777/5, 839/1,
-  980/2, 805/1, 738/28, and 74/8. JUnit files are
-  `/private/tmp/round11-full-chunk-{1..8}.xml`.
+- Passed the full requested focused suite from final implementation HEAD: all
+  frame-checkpoint, US stacked-spine, and US multispine-pool tool tests, 392
+  passed with no skips or failures in 352.115 seconds. The exact JUnit receipt
+  is `/private/tmp/round11-final-focused.xml`.
+- Passed the separately graded #583 spine-blindness guard at its exact contract
+  from final HEAD: 495 passed, no skips or failures, in 4.346 seconds. Receipt:
+  `/private/tmp/round11-final-spine-blindness.xml`.
+- Passed the complete non-#583 workspace from final HEAD in eight deterministic
+  sorted chunks: 5,572 passed and 66 skipped across exactly 228 files, with no
+  failures or errors. Per-chunk passed/skipped receipts were 743/0, 616/21,
+  777/5, 839/1, 980/2, 805/1, 738/28, and 74/8. JUnit files are
+  `/private/tmp/round11-final-full-chunk-{1..8}.xml`.
 - Verified the file partition itself: 229 total and 229 unique `test_*.py`
   files; the eight chunks contain 228 exactly once and exclude only
   `test_us_spine_blindness.py`, which the separate 495-test receipt covers.
-  Combined non-overlapping workspace proof is 6,066 passed and 66 skipped.
-- Re-ran the explicit UK consumer surface: 62 passed and one skipped across
-  stage checkpoints, national build, rowwise dataset/candidate, and rowwise
-  weight metadata. The shared UK stage checkpoint remains exactly 23,712 bytes
+  Combined non-overlapping workspace proof is 6,067 passed and 66 skipped.
+- Re-ran the explicit UK consumer surface from final HEAD: 62 passed and one
+  skipped across stage checkpoints, national build, rowwise dataset/candidate,
+  and rowwise weight metadata. The shared UK stage checkpoint remains exactly
+  23,712 bytes
   with SHA-256 `7fd5d25833f395b9eac57fcb0bc6537a344862a024ee981daf167949722a17ee`;
   the rowwise publisher's separate timestamped PyTables container retains its
-  semantic goldens. Receipt: `/private/tmp/round11-uk-compat.xml`.
+  semantic goldens. Receipt: `/private/tmp/round11-final-uk-compat.xml`.
 - Passed repository-wide `ruff check`, format-check on all six changed Python
   files, committed-range `git diff --check`, and working-tree
   `git diff --check`. The worktree is clean.
@@ -124,9 +127,14 @@ shared frame-checkpoint schema rejects pandas nullable `boolean`, and
   as stored false values. The loader now rejects that noncanonical mask, the
   new corruption regression passes, and the complete 26-test codec file is
   green.
+- The independent follow-up review of the hardened final implementation found
+  no remaining actionable defects. Its only residual risk is the explicitly
+  requested one: smoke-r9 remains a gradeable prediction because builds were
+  prohibited, and the failed transferred artifact never existed to inspect.
 
 ## Next
 
-- Rerun the requested proof matrix from the review-fix HEAD, complete the clean
-  follow-up review, and write the stdout-equivalent final report to the
-  requested output file.
+- Run the gradeable smoke-r9 externally if build authorization is later given;
+  it should rebuild only the v6 stage envelopes while reusing the unchanged
+  stacked-v10 target banks. No local implementation or proof work remains, and
+  no push or GitHub action has been performed.
