@@ -675,6 +675,24 @@ def test_reconciliation_rejects_wrong_schema_and_missing_inputs() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "consumer",
+    (with_us_qbi_input_reconciliation, us_qbi_inputs_summary),
+    ids=("reconciliation", "summary"),
+)
+def test_present_s_corp_column_retains_exact_whole_pool_nonfinite_check(
+    consumer,
+) -> None:
+    person = _qbi_person(7)
+    person["s_corp_income"] = np.nan
+
+    with pytest.raises(
+        ValueError,
+        match=r"US QBI input 's_corp_income' contains 7 nonfinite value\(s\)\.",
+    ):
+        consumer(_frame(person))
+
+
 def test_summary_does_not_mutate_source_frame() -> None:
     reconciled = with_us_qbi_input_reconciliation(_frame(_qbi_person()))
     before = reconciled.table("person").copy(deep=True)
