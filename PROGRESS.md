@@ -81,6 +81,9 @@ shared frame-checkpoint schema rejects pandas nullable `boolean`, and
   checkpoint, US stacked-spine, and US multispine-pool tool tests, 391 passed
   with no skips or failures in 224.229 seconds. The exact JUnit receipt is
   `/private/tmp/round11-focused.xml`.
+- Passed the separately graded #583 spine-blindness guard at its exact contract:
+  495 passed, no skips or failures, in 4.027 seconds. Receipt:
+  `/private/tmp/round11-spine-blindness.xml`.
 
 ## Next
 
