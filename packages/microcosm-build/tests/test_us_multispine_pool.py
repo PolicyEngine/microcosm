@@ -222,6 +222,55 @@ def test_source_overlap_finalizer_rejects_education_tuition_write(
         )
 
 
+def test_postclone_chain_receipts_education_tuition_passthrough_noop() -> None:
+    asec = _source_frame()
+    asec_tables = {entity: asec.table(entity).copy() for entity in asec.entities}
+    asec_tables["person"]["PERIDNUM"] = ["asec-1", "asec-2"]
+    asec_tables["person"]["qualified_tuition_expenses"] = np.asarray(
+        [125.5, -0.0], dtype=np.float64
+    )
+    asec = Frame(
+        asec_tables,
+        asec.schema,
+        {"household": asec.weights_for("household")},
+        asec.strata,
+    )
+    acs = _source_frame(offset=100.0)
+    assembled = assemble_spines(
+        {"asec": asec, "acs": acs},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    cloned = clone_us_frame_for_puf_support(assembled)
+
+    def education(available: Frame) -> Frame:
+        person = available.table("person").copy()
+        person["educational_assistance"] = 0.0
+        return _replace_person(available, person)
+
+    completed = multispine_pool_module._run_source_operator_chain(
+        cloned,
+        phase="post_clone",
+        operator_names=("with_us_education_inputs",),
+        operators={"with_us_education_inputs": education},
+        output_families={
+            "education_inputs": {
+                "person": frozenset({"educational_assistance"}),
+            }
+        },
+    )
+
+    source = cloned.table("person")["qualified_tuition_expenses"]
+    observed = completed.frame.table("person")["qualified_tuition_expenses"]
+    assert observed.dtype == source.dtype
+    assert observed.to_numpy().tobytes() == source.to_numpy().tobytes()
+    suboperator = completed.receipt["suboperators"][0]
+    assert suboperator["output_columns"] == {"person": ["educational_assistance"]}
+    overlap = suboperator["overlap_ownership"]
+    assert overlap["targets"]["person.qualified_tuition_expenses"]["action"] == (
+        "consume_only_byte_exact_noop"
+    )
+
+
 _EXPECTED_SOURCE_OPERATOR_WRAPPERS = {
     "with_us_hours_worked_inputs": "_with_gated_us_hours_worked_inputs",
     "with_us_qbi_input_reconciliation": "reconcile_qbi_with_receipt",
