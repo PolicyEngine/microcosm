@@ -453,6 +453,50 @@ def test_late_overlap_ownership_exhausts_every_permitted_dual_write() -> None:
         )
         assert owner == row["final_owner"]
 
+    owner_by_cell = {
+        (row["target"], row["origin"], row["clone_index"]): row["final_owner"]
+        for row in receipt["ownership"]
+    }
+    for origin in ("asec", "acs"):
+        assert owner_by_cell[("qualified_tuition_expenses", origin, 0)] == (
+            "transfer:person/puf_tax_itemization__batch_2"
+        )
+        for clone_index in (1, 2):
+            assert (
+                owner_by_cell[("qualified_tuition_expenses", origin, clone_index)]
+                == US_LATE_PRIMARY_PUF_STAGE
+            )
+    for target in (
+        "traditional_ira_contributions_desired",
+        "self_employed_pension_contributions_desired",
+    ):
+        for clone_index in range(3):
+            assert owner_by_cell[(target, "asec", clone_index)] == source_producer_name(
+                "with_us_retirement_contribution_inputs"
+            )
+        assert owner_by_cell[(target, "acs", 0)] == transfer_producer_name(
+            "person",
+            "puf_tax_itemization__batch_2"
+            if target == "traditional_ira_contributions_desired"
+            else "puf_tax_itemization__batch_3",
+        )
+        for clone_index in (1, 2):
+            assert owner_by_cell[(target, "acs", clone_index)] == (
+                US_LATE_PRIMARY_PUF_STAGE
+            )
+
+    finalization_by_cell = {
+        (row["target"], row["origin"], row["clone_index"]): row["finalization"]
+        for row in receipt["ownership"]
+    }
+    for target in (
+        "traditional_ira_contributions_desired",
+        "self_employed_pension_contributions_desired",
+    ):
+        assert finalization_by_cell[(target, "asec", 2)] == (
+            "byte_exact_clone_1_mirror"
+        )
+
     schedule_receipt = us_late_producer_schedule_receipt()
     assert schedule_receipt["overlap_ownership"] == receipt
 
