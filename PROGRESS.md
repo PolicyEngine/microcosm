@@ -47,11 +47,13 @@ exclusion.
   a declared deterministic materialization, not missing-value imputation.
 - Audited SSI's installed PolicyEngine-US dependency closure from the static
   source index: 55 transitive input leaves. On the smoke-r9 transferred frame,
-  36 are present and complete, three SCF asset leaves are present/all-null under
-  the existing explicit deferred-owner contract, and 16 are absent and
-  therefore use declared engine defaults only on the disposable simulation
-  projection. The complete checked-in remaining-stage manifest is being added
-  so this classification cannot drift silently.
+  33 are present and complete, three SCF asset leaves are present/all-null under
+  the existing explicit deferred-owner contract, and 19 are absent. The seed
+  stage materializes `takes_up_ssi_if_eligible` at its disclosed engine default,
+  leaving 34 complete, three explicitly deferred, and 18 absent leaves that use
+  declared engine defaults only on the disposable simulation projection. The
+  complete checked-in remaining-stage manifest is being added so this
+  classification cannot drift silently.
 
 ## Next
 
