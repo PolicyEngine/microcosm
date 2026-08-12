@@ -2,14 +2,14 @@
 
 ## State
 
-Round 10 mechanism adjudication is complete on `tail-stratum-support-652`.
-Smoke-r7 did expose a genuine second producer, but not in the late transfer:
-the retirement source callback independently QRF-drew clone 1 and its clone-2
-tail descendant after the primary PUF/tail stage. The late-transfer producer
-already masks both positive clone roles. The derived repair is one source-owned
-ASEC clone-1 draw mirrored byte-exactly to ASEC clone 2, together with an
-18-row final-owner matrix for all three target/origin/clone combinations bound
-into both the late schedule and the tail manifest.
+Round 10 implementation is complete and focused tests are green on
+`tail-stratum-support-652`. Smoke-r7 exposed a genuine second producer, but not
+in the late transfer: the retirement source callback independently QRF-drew
+clone 1 and its clone-2 tail descendant after the primary PUF/tail stage. The
+repair now mirrors each source-owned ASEC clone-1 retirement result byte-exactly
+to clone 2. A canonical 18-row owner matrix covers all three target/origin/clone
+combinations and is content-bound into both the late schedule and tail manifest.
+The unchanged terminal preservation guard validates that canonical receipt.
 
 ## Done
 
@@ -42,13 +42,23 @@ into both the late schedule and the tail manifest.
   contributions. Adding source callback pass-through/touch outputs yields the
   third audited target, qualified tuition. The corresponding tail-owned
   intersection is empty; no other implicit dual-write target exists.
+- Committed red tests for the complete owner matrix, exact intersection audit,
+  education byte-identity rule, retirement clone-2 mirror, and forged tail
+  receipt rejection (`f0c5ce89`).
+- Added the canonical content-addressed ownership artifact, bumped late schedule
+  schema v14 to v15, enforced the exhaustive dual-touch intersection at import,
+  and bound the receipt into the stacked tail manifest (`9ef82161`).
+- Added runtime source finalization: education proves its qualified-tuition
+  callback is byte-exact consume-only; retirement preserves its certified
+  owner-last clone-1 QRF result and mirrors only the two overlapping columns to
+  clone 2 by assembly-unique source ID (`4d1adef9`).
+- Passed the full producer-DAG tests, the focused tail-manifest test, all three
+  new runtime finalizer cases, and the complete multispine-pool test file.
 
 ## Next
 
-- Add red registry and runtime tests for the complete 18-cell ownership matrix,
-  exhaustive intersection, tuition no-op, and retirement clone-2 mirroring.
-- Bind the registry receipt into late schedule identity and the tail manifest.
-- Implement and receipt the byte-exact retirement parent mirror without
-  changing the preservation guard.
-- Run focused proof, exact 495-test #583 proof, full workspace chunked proof,
-  ruff/format/diff checks, and record the changelog and smoke-r8 prediction.
+- Add the changelog fragment and request an independent implementation review.
+- Fix any actionable review findings and rerun focused coverage.
+- Run exact 495-test #583 proof, full workspace chunked proof, ruff/format/diff
+  checks, then record the gradeable smoke-r8 prediction and restore the root
+  progress file to its base state before the final report.
