@@ -53,9 +53,9 @@ reintroduces the US constants by default:
   reference surface mixes units: currency totals into the trillions,
   weighted person counts in the millions, and flag counts in the tens of
   thousands. Inheriting the US ``1e9`` floor would stop checking 50 of 131
-  columns, including ``person.gift_aid`` and
-  ``person.charitable_investment_gifts`` — the two the release input
-  coverage manifest specifically requires distributional effective mass for.
+  columns, including ``gift_aid`` and ``charitable_investment_gifts`` — the
+  two the release input coverage manifest specifically requires
+  distributional effective mass for.
   A floor of ``0.0`` still skips the three exact-zero reference columns,
   because the shared gate compares ``<=``. So ``0.0`` is the adjudicated
   floor; it is not committed as a constant yet only because a policy arms
@@ -90,7 +90,7 @@ before reading) shows:
   involved.
 * **A drift tolerance cannot be tight yet.** The 143 shared nonzero columns
   moved with median |drift| 10.52% and maximum +2,973.71%
-  (``person.adult_ema``), dominated by intentional reported-benefit
+  (``adult_ema``), dominated by intentional reported-benefit
   repopulation. Any tolerance between 5% and 50% would have failed 22–89
   columns of a reviewed, correct shipping. The no-headroom boundary for the
   release arm is therefore the pair's exact maximum, ``29.737060`` — wide
@@ -158,8 +158,17 @@ UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE = "degenerate_reviewed_exclusions.json
 # artifact (sha 584ae33d...) by build_uk_efrs_parity_reference.py. The totals
 # remain uncommitted under the UKDS EUL; this reviewed digest lets the gate and
 # publication contract bind them without disclosing them (PR #610 review).
+#
+# Re-frozen keys-only under the #611 A4 dedup: totals keys went from
+# "entity.column" to flat frame column names, every value byte-identical to
+# the #610 freeze (whose saved totals reproduce the prior digest 11b22dd4…
+# exactly), 131 columns before and after, zero cross-entity collisions —
+# also enforced at mint time by the migrated tool's collision guard. The
+# identity is unchanged. Reviewed by María Juaristi (2026-08-12); verified
+# by loading the re-keyed totals through load_uk_input_mass_reference
+# unpatched.
 UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
-    "11b22dd439a188e32cec5d2be157dd6b65f415d4317cd304c17f5349522a3914"
+    "c36c015a60f796ad9199a4a5652706f5310909cb572b1c90092ef9df1fa7187e"
 )
 _UK_INPUT_MASS_REFERENCE_IDENTITY = MappingProxyType(
     {
