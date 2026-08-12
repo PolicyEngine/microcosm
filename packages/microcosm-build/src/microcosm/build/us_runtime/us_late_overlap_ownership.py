@@ -106,11 +106,15 @@ def _ownership_row(
     tuition = spec["target"] == _QUALIFIED_TUITION
 
     if tuition:
+        source_action = (
+            "consume_only_byte_exact_noop"
+            if origin == "asec"
+            else "origin_projection_masked_noop"
+        )
         if clone_index == 0:
             owner = transfer
             finalization = "late_transfer_owner_last"
             primary_action = "scope_masked_noop"
-            source_action = "consume_only_byte_exact_noop"
             transfer_action = "final_write"
         else:
             owner = _PRIMARY_PUF_PRODUCER
@@ -120,7 +124,6 @@ def _ownership_row(
                 else "byte_exact_clone_1_inheritance"
             )
             primary_action = finalization
-            source_action = "consume_only_byte_exact_noop"
             transfer_action = "producer_masked_byte_exact_noop"
     elif origin == "asec":
         owner = source

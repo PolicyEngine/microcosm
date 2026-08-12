@@ -1374,14 +1374,11 @@ def _run_source_operator_chain(
         available_person_columns = set(
             available.table(available.schema.person_entity).columns
         )
-        outcome_person_columns = set(
-            outcome.table(outcome.schema.person_entity).columns
-        )
-        overlap_passthrough_present = bool(overlap_targets) and overlap_targets <= (
-            available_person_columns & outcome_person_columns
+        overlap_passthrough_required = bool(overlap_targets) and overlap_targets <= (
+            available_person_columns
         )
         if phase == _POST_CLONE_PHASE and (
-            overlap_targets & declared_person_outputs or overlap_passthrough_present
+            overlap_targets & declared_person_outputs or overlap_passthrough_required
         ):
             finalized_person, overlap_ownership = _finalize_source_overlap_output(
                 available.table(available.schema.person_entity),

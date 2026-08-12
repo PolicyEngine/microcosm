@@ -471,6 +471,25 @@ def test_late_overlap_ownership_exhausts_every_permitted_dual_write() -> None:
         )
         assert owner == row["final_owner"]
 
+    source_action_by_cell = {
+        (row["target"], row["origin"], row["clone_index"]): next(
+            action["action"]
+            for action in row["producer_actions"]
+            if action["producer"] == "source:with_us_education_inputs"
+        )
+        for row in receipt["ownership"]
+        if row["target"] == "qualified_tuition_expenses"
+    }
+    for clone_index in range(3):
+        assert (
+            source_action_by_cell[("qualified_tuition_expenses", "asec", clone_index)]
+            == "consume_only_byte_exact_noop"
+        )
+        assert (
+            source_action_by_cell[("qualified_tuition_expenses", "acs", clone_index)]
+            == "origin_projection_masked_noop"
+        )
+
     owner_by_cell = {
         (row["target"], row["origin"], row["clone_index"]): row["final_owner"]
         for row in receipt["ownership"]
