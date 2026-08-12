@@ -76,6 +76,7 @@ _REQUIRED_POOL_RUNTIME_MODULES = frozenset(
         "puf_support.py",
         "spine_agreement.py",
         "spine_assembly.py",
+        "us_late_overlap_ownership.py",
         "us_late_producer_registry.py",
     }
 )
@@ -106,6 +107,7 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         "stacked_spine.py",
         "support_provenance.py",  # Centralized provenance compatibility.
         # Declares provenance-scoped inputs and edges; never mutates rows.
+        "us_late_overlap_ownership.py",
         "us_late_producer_registry.py",
         "warm_start_selection.py",  # Provenance reporting and recovery.
     }
@@ -254,6 +256,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "take_up.py",
         "take_up_contract.py",
         "target_aging.py",
+        # Data-only final-owner matrix; provenance owner above.
+        "us_late_overlap_ownership.py",
         # Data-only late input/output registry; provenance owner above.
         "us_late_producer_registry.py",
         "validation_input_coverage.py",
@@ -3272,8 +3276,8 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 63, (
-            f"{tool.name} must reach the pinned 63-module runtime graph; "
+        assert len(runtime_graph) == 64, (
+            f"{tool.name} must reach the pinned 64-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (
