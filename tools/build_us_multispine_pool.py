@@ -960,9 +960,6 @@ def _pool_checkpoint_base_identity(
             ),
             "late_producer_schedule": _json_ready(us_late_producer_schedule_receipt()),
             "derive_operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
-            "remaining_stage_input_manifest": (
-                pool_remaining_stage_input_manifest_receipt()
-            ),
             "primary_qrf_target_order": list(PRIMARY_QRF_TARGET_ORDER),
             "transfer_target_families": _json_ready(pool_transfer_target_families()),
             "take_up_contract": take_up_contract_identity(),
