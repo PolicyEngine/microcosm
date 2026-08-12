@@ -1437,7 +1437,6 @@ def test_remaining_stage_manifest_covers_every_derive_read() -> None:
             ("person", "SEMP"),
             ("person", "person_tax_unit_id"),
             ("person", "person_support_clone_index"),
-            ("person", "person_support_channel"),
             ("person", "person_source_id"),
             ("person", "person_id"),
         },
@@ -1632,9 +1631,9 @@ def test_simulation_projection_defaults_match_pinned_engine_surface() -> None:
 def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     manifest = pool_remaining_stage_input_manifest(_installed_variable_metadata_index())
 
-    assert len(manifest) == 993
+    assert len(manifest) == 992
     assert Counter(entry.stage for entry in manifest) == Counter(
-        {"derive": 34, "seed": 29, "simulate": 930}
+        {"derive": 33, "seed": 29, "simulate": 930}
     )
     assert len(
         {
@@ -1647,9 +1646,9 @@ def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     receipt = pool_remaining_stage_input_manifest_receipt(
         _installed_variable_metadata_index()
     )
-    assert receipt["entry_count"] == 993
+    assert receipt["entry_count"] == 992
     assert receipt["stage_counts"] == {
-        "derive": 34,
+        "derive": 33,
         "seed": 29,
         "simulate": 930,
     }
@@ -3024,9 +3023,9 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
     derived = result.frame.table("person")
 
     assert result.receipt["operator_order"] == list(POOL_DERIVE_OPERATOR_ORDER)
-    assert result.receipt["remaining_stage_input_manifest"]["entry_count"] == 993
+    assert result.receipt["remaining_stage_input_manifest"]["entry_count"] == 992
     assert result.receipt["remaining_stage_input_manifest"]["stage_counts"] == {
-        "derive": 34,
+        "derive": 33,
         "seed": 29,
         "simulate": 930,
     }

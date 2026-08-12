@@ -342,9 +342,9 @@ POOL_ENGINE_INPUT_PROJECTION_CONTRACT = PoolEngineInputProjectionContract(
 """Exact installed input registry scanned by the disposable projection."""
 
 POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
-    "8247a93e5f8f63d3ae71c1de681c29524d4bb8f07e3c6a50dcaf431b1377020f"
+    "f257f1e81f1e5d7a4165db7d237f88f99aa409a190e4530e48317dde93bcec6c"
 )
-"""Pinned content digest of all 993 post-transfer consumer/input rows."""
+"""Pinned content digest of all 992 post-transfer consumer/input rows."""
 
 
 @dataclass(frozen=True)
@@ -1222,7 +1222,6 @@ def pool_remaining_stage_input_manifest(
         ("SEMP", "assembled_raw_acs_source_authority"),
         ("person_tax_unit_id", "frame_membership"),
         (support_clone_index_column("person"), "assembly_support_provenance"),
-        ("person_support_channel", "assembly_support_provenance"),
     ):
         register(
             "derive",

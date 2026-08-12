@@ -67,8 +67,8 @@ exclusion.
   complete checked-in remaining-stage manifest now prevents this
   classification from drifting silently.
 - Added the complete remaining-stage manifest and bound its content receipt to
-  both checkpoint identities and the derive-stage receipt. It contains 993
-  exact consumer/input rows: 34 derive, 29 seed, and 930 simulate. The simulate
+  the stacked checkpoint identity and the derive-stage receipt. It contains 992
+  exact consumer/input rows: 33 derive, 29 seed, and 930 simulate. The simulate
   section enumerates all 863 installed PolicyEngine input variables rather
   than using a wildcard and declares the ephemeral-default behavior for every
   present-null or absent input.
