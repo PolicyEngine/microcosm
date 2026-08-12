@@ -20,11 +20,26 @@ from microcosm.build.us_runtime.late_producer_dag import (
     run_producer_when_ready,
 )
 from microcosm.build.us_runtime.multispine_pool import (
+    POOL_OPERATOR_CONTRACTS,
     POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
+)
+from microcosm.build.us_runtime.operator_boundary import (
+    FORMULA_OWNED_SOURCE_COLUMNS,
+    PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+)
+from microcosm.build.us_runtime.puf_capital_gains_tail import (
+    PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,
+    PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
 )
 from microcosm.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+)
+from microcosm.build.us_runtime.us_late_overlap_ownership import (
+    US_LATE_OVERLAP_OWNERSHIP_TARGETS,
+    US_LATE_SOURCE_CALLBACK_PASSTHROUGH_OUTPUTS,
+    us_late_overlap_ownership_receipt,
+    validate_us_late_overlap_ownership_receipt,
 )
 from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_PRODUCER_REGISTRY,
@@ -376,6 +391,72 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
         } == {(group.entity, target) for target in group.targets}
 
 
+def test_late_overlap_ownership_exhausts_every_permitted_dual_write() -> None:
+    primary = {
+        (entity, column)
+        for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+            "primary_puf_qrf"
+        ].items()
+        for column in columns
+    }
+    source_writes = {
+        (entity, column)
+        for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+        for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+            POOL_OPERATOR_CONTRACTS[operator].family
+        ].items()
+        for column in columns
+        if column not in FORMULA_OWNED_SOURCE_COLUMNS.get(entity, ())
+    }
+    callback_passthroughs = {
+        target
+        for targets in US_LATE_SOURCE_CALLBACK_PASSTHROUGH_OUTPUTS.values()
+        for target in targets
+    }
+    source_touches = source_writes | callback_passthroughs
+    transfer = {
+        (group.entity, target)
+        for group in CANONICAL_US_LATE_TRANSFER_GROUPS
+        for target in group.targets
+    }
+    tail_owned = {
+        *(("person", column) for column in PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS),
+        *(("tax_unit", column) for column in PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS),
+    }
+    recipient_owned = {
+        *(("person", column) for column in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS),
+        *(("tax_unit", column) for column in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS),
+    } - tail_owned
+    declared = set(US_LATE_OVERLAP_OWNERSHIP_TARGETS)
+
+    assert primary & source_touches & transfer & recipient_owned == declared
+    assert primary & source_writes & transfer & recipient_owned == {
+        ("person", "traditional_ira_contributions_desired"),
+        ("person", "self_employed_pension_contributions_desired"),
+    }
+    assert primary & source_touches & transfer & tail_owned == set()
+
+    receipt = dict(us_late_overlap_ownership_receipt())
+    assert validate_us_late_overlap_ownership_receipt(receipt) == receipt["sha256"]
+    assert len(receipt["targets"]) == 3
+    assert len(receipt["ownership"]) == 18
+    assert {(row["entity"], row["target"]) for row in receipt["ownership"]} == declared
+    assert {(row["origin"], row["clone_index"]) for row in receipt["ownership"]} == {
+        (origin, clone) for origin in ("asec", "acs") for clone in range(3)
+    }
+    for row in receipt["ownership"]:
+        assert sum(action["owns_final"] for action in row["producer_actions"]) == 1
+        owner = next(
+            action["producer"]
+            for action in row["producer_actions"]
+            if action["owns_final"]
+        )
+        assert owner == row["final_owner"]
+
+    schedule_receipt = us_late_producer_schedule_receipt()
+    assert schedule_receipt["overlap_ownership"] == receipt
+
+
 def test_primary_puf_inventory_declares_exact_read_before_write_surface() -> None:
     requirements = {
         requirement.label: requirement
@@ -621,7 +702,7 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
 
     assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
     receipt = us_late_producer_schedule_receipt()
-    assert receipt["schema_version"] == 14
+    assert receipt["schema_version"] == 15
     assert receipt["execution_receipt_contract"] == {
         "version": 3,
         "row_binding": (

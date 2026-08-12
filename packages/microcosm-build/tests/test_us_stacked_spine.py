@@ -95,6 +95,9 @@ from microcosm.build.us_runtime.support_provenance import (
     support_clone_index_column,
     support_source_id_column,
 )
+from microcosm.build.us_runtime.us_late_overlap_ownership import (
+    us_late_overlap_ownership_receipt,
+)
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -5704,6 +5707,7 @@ def test_run_stacked_puf_pass_applies_clone_two_capital_gains_tail() -> None:
     assert tail["clone"]["support_role"] == "puf_tax_detail"
     assert tail["clone"]["source_channels"] == live_source_channels
     assert "support_channel" not in tail["clone"]
+    assert tail["late_overlap_ownership"] == dict(us_late_overlap_ownership_receipt())
 
     preservation = stacked_spine_module.assert_stacked_tail_cells_preserved(
         result.frame,
@@ -5711,6 +5715,27 @@ def test_run_stacked_puf_pass_applies_clone_two_capital_gains_tail() -> None:
     )
     assert preservation["passed"] is True
     assert preservation["tail_owned_cell_count"] == 14
+    assert (
+        preservation["overlap_ownership_sha256"]
+        == tail["late_overlap_ownership"]["sha256"]
+    )
+
+    forged_ownership = deepcopy(tail)
+    forged_receipt = forged_ownership["late_overlap_ownership"]
+    forged_receipt["ownership"][0]["final_owner"] = "forged_owner"
+    receipt_payload = dict(forged_receipt)
+    receipt_payload.pop("sha256")
+    forged_receipt["sha256"] = stacked_spine_module._canonical_sha256(receipt_payload)
+    manifest_payload = dict(forged_ownership)
+    manifest_payload.pop("manifest_sha256")
+    forged_ownership["manifest_sha256"] = stacked_spine_module._canonical_sha256(
+        manifest_payload
+    )
+    with pytest.raises(ValueError, match="overlap ownership"):
+        stacked_spine_module.assert_stacked_tail_cells_preserved(
+            result.frame,
+            forged_ownership,
+        )
 
     terminal_gates = (
         stacked_completeness_gate(result.frame, tail_manifest=tail),

@@ -152,6 +152,77 @@ def _installed_variable_metadata_index() -> PolicyEngineUSVariableMetadataIndex:
         pytest.skip("requires the policyengine-us [us] extra")
 
 
+def _overlap_person_table() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "person_id": np.asarray([1, 2, 3, 4, 5], dtype=np.int64),
+            "person_source_id": np.asarray([10, 10, 10, 20, 20], dtype=np.int64),
+            "person_support_channel": ["asec"] * 5,
+            "person_support_clone_index": np.asarray([0, 1, 2, 0, 1], dtype=np.int64),
+            "qualified_tuition_expenses": np.asarray(
+                [10.0, 20.0, 20.0, 30.0, 40.0], dtype=np.float64
+            ),
+            "traditional_ira_contributions_desired": np.asarray(
+                [1.0, 101.25, 999.0, 2.0, 202.5], dtype=np.float64
+            ),
+            "self_employed_pension_contributions_desired": np.asarray(
+                [3.0, -0.0, 777.0, 4.0, 404.5], dtype=np.float64
+            ),
+        }
+    )
+
+
+def test_source_overlap_finalizer_mirrors_retirement_tail_bytes() -> None:
+    before = _overlap_person_table()
+    after = before.copy(deep=True)
+
+    finalized, receipt = multispine_pool_module._finalize_source_overlap_output(
+        before,
+        after,
+        operator_name="with_us_retirement_contribution_inputs",
+    )
+
+    clone_index = finalized["person_support_clone_index"]
+    source_id = finalized["person_source_id"]
+    for target in (
+        "traditional_ira_contributions_desired",
+        "self_employed_pension_contributions_desired",
+    ):
+        parent = finalized.loc[clone_index.eq(1)].set_index(source_id)[target]
+        tail = finalized.loc[clone_index.eq(2)].set_index(source_id)[target]
+        expected = parent.loc[tail.index].to_numpy()
+        actual = tail.to_numpy()
+        assert actual.dtype == expected.dtype
+        assert actual.tobytes() == expected.tobytes()
+        assert receipt["targets"][f"person.{target}"]["action"] == (
+            "byte_exact_clone_1_mirror"
+        )
+        assert receipt["targets"][f"person.{target}"]["mirrored_clone_2_rows"] == 1
+    assert finalized.loc[clone_index.eq(1)].equals(after.loc[clone_index.eq(1)])
+    assert receipt["passed"] is True
+
+
+@pytest.mark.parametrize("mutation", ["value", "dtype"])
+def test_source_overlap_finalizer_rejects_education_tuition_write(
+    mutation: str,
+) -> None:
+    before = _overlap_person_table()
+    after = before.copy(deep=True)
+    if mutation == "value":
+        after.loc[0, "qualified_tuition_expenses"] += 1.0
+    else:
+        after["qualified_tuition_expenses"] = after[
+            "qualified_tuition_expenses"
+        ].astype(np.float32)
+
+    with pytest.raises(ValueError, match="qualified_tuition_expenses.*byte identity"):
+        multispine_pool_module._finalize_source_overlap_output(
+            before,
+            after,
+            operator_name="with_us_education_inputs",
+        )
+
+
 _EXPECTED_SOURCE_OPERATOR_WRAPPERS = {
     "with_us_hours_worked_inputs": "_with_gated_us_hours_worked_inputs",
     "with_us_qbi_input_reconciliation": "reconcile_qbi_with_receipt",
