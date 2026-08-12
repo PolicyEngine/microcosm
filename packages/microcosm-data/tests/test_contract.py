@@ -112,6 +112,9 @@ UK_GATE_BATTERY_SPEC_FINGERPRINT = (
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
 )
+UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
+    "87eb7fa51d826bbe95c9b4d218d82dbd2795b3916469615d38557472209d1e4b"
+)
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {
     "uk_release_input_coverage_manifest_current": (
@@ -960,9 +963,7 @@ def _gate_battery_payload(
             {"stage_names": list(stage_names)}
         ),
         "uk_degenerate_release_surface": UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256,
-        "uk_input_mass_parity": _canonical_sha256(
-            {"reference_evidence_sha256": UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256}
-        ),
+        "uk_input_mass_parity": UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256,
     }
     payload = {
         "schema_version": 4,
@@ -3674,6 +3675,13 @@ def test_uk_gate_battery_pins_are_in_lockstep_with_the_contract() -> None:
     assert (
         contract_module._UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256
         == UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256
+    )
+    assert (
+        contract_module._UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256
+        == UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256
+    )
+    assert UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 == _canonical_sha256(
+        {"reference_evidence_sha256": UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256}
     )
 
 
