@@ -77,6 +77,10 @@ shared frame-checkpoint schema rejects pandas nullable `boolean`, and
 - Passed the implementation slice: 37 tests across the complete checkpoint
   codec, canonical registry and extension inventory, stacked identity/envelope
   seam, pool-store reload, and all UK stage-checkpoint tests.
+- Passed the full requested focused suite from implementation HEAD: all frame
+  checkpoint, US stacked-spine, and US multispine-pool tool tests, 391 passed
+  with no skips or failures in 224.229 seconds. The exact JUnit receipt is
+  `/private/tmp/round11-focused.xml`.
 
 ## Next
 
