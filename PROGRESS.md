@@ -2,10 +2,11 @@
 
 ## State
 
-Investigation is in progress on `tail-stratum-support-652` at the requested
-starting commit `cd4faa33`. The real 1% US build reached a frame-checkpoint
-write before failing because `person.is_female` had pandas nullable `boolean`
-dtype, which the current checkpoint schema rejects.
+The Round 11 failure audit is complete on `tail-stratum-support-652`. The real
+1% US build completed the full late producer DAG in memory and failed only
+while serializing the durable stacked `transferred` checkpoint. The current
+shared frame-checkpoint schema rejects pandas nullable `boolean`, and
+`person.is_female` is simply the first of 39 such columns in table order.
 
 ## Done
 
@@ -15,15 +16,48 @@ dtype, which the current checkpoint schema rejects.
   `d1714a7c`; no network operation was performed.
 - Loaded the repository, PolicyEngine data, development-standard, and
   debugging guidance.
-- Identified the immediate investigation targets: the failing build receipt,
-  every frame-checkpoint call site, the canonical dtype-family registry, and
-  all checkpoint consumers including UK rowwise and legacy paths.
+- Attempted the GitNexus debugging workflow. Repository parsing completed, but
+  the managed filesystem denied its global registry write. Removed the partial
+  local `.gitnexus` index and completed the audit from source, tests, and the
+  supplied smoke-r8 artifacts instead.
+- Located the exact failure path:
+  `build_stacked_pool` emits `stage="transferred"` through
+  `_PoolStageCheckpointStore.write`, which reaches `_series_spec` before the
+  checkpoint destination is touched. The earlier 81,434,791-byte
+  `assembled.checkpoint.h5` completed, while no partial transferred H5 or
+  sidecars exist. The Logbook row correctly stops after `puf_passed` because
+  the `transferred` phase mark follows the durable write.
+- Audited every durable stacked checkpoint boundary and every extension dtype:
+  `assembled` has 17 supported `StringDtype` columns and no nullable booleans;
+  `transferred` has 39 complete `BooleanDtype` columns and 19 `StringDtype`
+  columns; the stored `simulated` evaluation frame has the same 39 + 19.
+  No `Int64`, `Float64`, categorical, or other extension dtype reaches these
+  boundaries.
+- Enumerated the 39 nullable booleans: 20 gap-fill registry targets, 17
+  post-PUF registry targets, and the source-native `person.is_female` and
+  `person.is_household_head`. The simulated stage's eleven seeded take-up
+  outputs remain NumPy `bool`, so they do not expand this set.
+- Confirmed why lossless null support is still mandatory: before peer transfer,
+  source alignment creates declared absences on the opposite spine, including
+  the eight QBI boolean outputs outside PUF detail. The durable transferred
+  frame happens to be complete, but shared machinery must preserve these masks
+  whenever another legitimate boundary retains them.
+- Audited shared consumers: outer-stage runtime (including UK national stage
+  checkpoints), US ASEC raw-stage checkpoints, PUF support equivalence/raw
+  checkpoints, primary-QRF banks, and legacy and stacked pool stores all use
+  this codec. UK rowwise publication and ACS per-target banks use separate HDF
+  codecs. Existing sampled artifacts on those other paths carry only supported
+  strings or NumPy dtypes.
+- Established the compatibility constraint: retain the frozen artifact kind,
+  HDF root, and dataset identifiers; emit the existing schema-v2 bytes for
+  frames without the new encoding; accept legacy v2 on load; use a bumped
+  schema only when nullable data is present; and bump the applicable stacked
+  materializer identity so stale serializer semantics cannot resume silently.
 
 ## Next
 
-- Reconstruct the exact checkpoint stage and enumerate every extension-dtype
-  column present at every checkpoint boundary.
 - Add registry-driven red tests for canonical dtype-family round-trips and
   byte-identical legacy artifacts without extension dtypes.
-- Implement lossless nullable serialization with a version bump, then run the
+- Resolve the materializer-version seam from its identity construction, then
+  implement lossless nullable serialization with a version bump and run the
   requested focused, #583, full-workspace, lint, format, and golden proofs.
