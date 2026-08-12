@@ -49,10 +49,9 @@ from microcosm.build.uk_runtime.hmrc_source_contract import (
 )
 from microcosm.build.uk_runtime.national_build import load_uk_national_frame
 from microcosm.build.uk_runtime.weighted_integrity import (
-    uk_dataset_input_mass_totals,
+    uk_input_mass_totals,
     uk_qrf_tail_concentration_columns,
 )
-from microcosm.frame import engine_tables
 
 DEFAULT_TOP_K_GRID = (10, 100, 500, 1000)
 # CD171-ResearchDataHandling §5.2.1: cells based on one or two cases are never
@@ -188,13 +187,10 @@ def _measure(
     minimum_count: int,
 ) -> dict[str, object]:
     frame, _provenance = load_uk_national_frame(path)
-    # The gate helpers are deliberately duck-typed (#611 owns their Frame
-    # typing); the materialized mapping satisfies them today.
-    tables = engine_tables(frame)
-    totals = uk_dataset_input_mass_totals(tables)
+    totals = uk_input_mass_totals(frame)
     declared = uk_hmrc_weighted_qrf_output_columns()
     values, weights, surface = uk_qrf_tail_concentration_columns(
-        tables,
+        frame,
         output_columns=declared,
     )
     qrf_tail = {
@@ -212,9 +208,9 @@ def _measure(
         "sha256": _sha256(path),
         "size_bytes": path.stat().st_size,
         "entity_rows": {
-            "person": len(tables["person"]),
-            "benunit": len(tables["benunit"]),
-            "household": len(tables["household"]),
+            "person": frame.n("person"),
+            "benunit": frame.n("benunit"),
+            "household": frame.n("household"),
         },
         "input_mass_totals": dict(sorted(totals.items())),
         "qrf_surface": surface,

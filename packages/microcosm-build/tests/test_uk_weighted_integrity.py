@@ -9,7 +9,6 @@ evidence plumbing plus the universal reviewed-exclusion discipline
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
@@ -17,6 +16,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime import weighted_integrity
+from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.spi_support import (
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
@@ -30,8 +30,8 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UKReviewedExclusion,
     load_uk_input_mass_reference,
     load_uk_reviewed_exclusion_register,
-    uk_dataset_input_mass_totals,
     uk_input_mass_parity_gate,
+    uk_input_mass_totals,
     uk_qrf_tail_concentration_columns,
     uk_qrf_tail_concentration_gate,
 )
@@ -49,7 +49,7 @@ def _entry(reason: str, *, expires_on: str = "2027-02-10") -> dict[str, str]:
     }
 
 
-def _dataset(
+def _frame(
     *,
     n: int = 4,
     weights: list[float] | np.ndarray | None = None,
@@ -65,7 +65,7 @@ def _dataset(
         "employment_income": np.arange(1, n + 1, dtype=float),
     }
     person.update(person_columns or {})
-    return SimpleNamespace(
+    return uk_national_frame(
         person=pd.DataFrame(person),
         benunit=pd.DataFrame({"benunit_id": np.arange(201, 201 + n, dtype=np.int64)}),
         household=pd.DataFrame(
@@ -75,6 +75,7 @@ def _dataset(
                 "council_tax": np.full(n, 10.0),
             }
         ),
+        time_period="2023",
     )
 
 
@@ -106,63 +107,96 @@ def _synthetic_input_mass_gate(*args, **kwargs):
         return uk_input_mass_parity_gate(*args, **kwargs)
 
 
-def test_dataset_totals_broadcast_household_weights_by_membership() -> None:
-    dataset = _dataset(weights=[2.0, 1.0, 1.0, 1.0])
+def test_frame_totals_broadcast_household_weights_by_membership() -> None:
+    frame = _frame(weights=[2.0, 1.0, 1.0, 1.0])
 
-    totals = uk_dataset_input_mass_totals(dataset)
+    totals = uk_input_mass_totals(frame)
 
     # person values 1..4 under weights [2,1,1,1] -> 2 + 2 + 3 + 4.
-    assert totals["person.employment_income"] == 11.0
-    assert totals["household.council_tax"] == 50.0
-    assert "household.household_weight" not in totals
-    assert "person.person_household_id" not in totals
+    assert totals["employment_income"] == 11.0
+    assert totals["council_tax"] == 50.0
+    assert "household_weight" not in totals
+    assert "person_household_id" not in totals
 
 
-def test_dataset_totals_fail_closed_on_memberless_benunits() -> None:
-    dataset = _dataset()
-    dataset.benunit = pd.DataFrame({"benunit_id": [201, 202, 203, 204, 999]})
+def test_memberless_benunits_are_refused_at_frame_construction() -> None:
+    """The old table helper refused memberless benunits itself; that refusal
+    moved to the construction seam (#611 A4) — a benunit no person references
+    is unrepresentable as a Frame, so the totals can never see one."""
 
-    with pytest.raises(ValueError, match="no member persons"):
-        uk_dataset_input_mass_totals(dataset)
+    with pytest.raises(ValueError, match="referenced by no person"):
+        uk_national_frame(
+            person=pd.DataFrame(
+                {
+                    "person_id": [101],
+                    "person_household_id": [1],
+                    "person_benunit_id": [201],
+                }
+            ),
+            benunit=pd.DataFrame({"benunit_id": [201, 999]}),
+            household=pd.DataFrame({"household_id": [1], "household_weight": [1.0]}),
+            time_period="2023",
+        )
 
 
-def test_dataset_totals_fail_closed_on_benunit_split_across_households() -> None:
-    """A split benunit has no single household weight to inherit."""
+def test_totals_fail_closed_on_benunit_spanning_unequal_households() -> None:
+    """A benunit across differently-weighted households has no single weight
+    to inherit: ``Frame.resolve_weights`` refuses the ambiguous collapse. An
+    equal-weight span is unambiguous and totals cleanly — the seam the old
+    any-span refusal narrowed to under #611 A4."""
 
-    dataset = _dataset()
-    # Person 4 keeps household 4 but joins benunit 201, which sits in
-    # household 1: benunit 201 would silently take whichever came first.
-    dataset.person.loc[3, "person_benunit_id"] = 201
+    def spanning_frame(household_weights: list[float]):
+        return uk_national_frame(
+            person=pd.DataFrame(
+                {
+                    "person_id": [101, 102],
+                    "person_household_id": [1, 2],
+                    "person_benunit_id": [201, 201],
+                    "employment_income": [1.0, 2.0],
+                }
+            ),
+            benunit=pd.DataFrame({"benunit_id": [201]}),
+            household=pd.DataFrame(
+                {
+                    "household_id": [1, 2],
+                    "household_weight": household_weights,
+                }
+            ),
+            time_period="2023",
+        )
 
-    with pytest.raises(ValueError, match="exactly one household"):
-        uk_dataset_input_mass_totals(dataset)
+    with pytest.raises(ValueError, match="unequal person-level weights"):
+        uk_input_mass_totals(spanning_frame([2.0, 3.0]))
+
+    totals = uk_input_mass_totals(spanning_frame([2.0, 2.0]))
+    assert totals["employment_income"] == 1.0 * 2.0 + 2.0 * 2.0
 
 
 def test_zeroed_input_column_fails_by_name_at_any_tolerance() -> None:
-    dataset = _dataset(person_columns={"employment_income": [0.0, 0.0, 0.0, 0.0]})
-    reference = _reference({"person.employment_income": 10.0})
+    frame = _frame(person_columns={"employment_income": [0.0, 0.0, 0.0, 0.0]})
+    reference = _reference({"employment_income": 10.0})
 
     gate = _synthetic_input_mass_gate(
-        uk_dataset_input_mass_totals(dataset),
+        uk_input_mass_totals(frame),
         reference,
         policy=_policy(relative_tolerance=1e9),
     )
 
     assert gate.name == "input_mass_parity"
     assert not gate.passed
-    assert "person.employment_income" in gate.failures[0]
+    assert "employment_income" in gate.failures[0]
     assert "mass is zero" in gate.failures[0]
 
 
 def test_material_mass_loss_fails_and_within_tolerance_passes() -> None:
-    reference = _reference({"person.employment_income": 10.0})
+    reference = _reference({"employment_income": 10.0})
     lost = _synthetic_input_mass_gate(
-        {"person.employment_income": 0.01},
+        {"employment_income": 0.01},
         reference,
         policy=_policy(),
     )
     kept = _synthetic_input_mass_gate(
-        {"person.employment_income": 9.0, "person.pension_income": 5.0},
+        {"employment_income": 9.0, "pension_income": 5.0},
         reference,
         policy=_policy(),
     )
@@ -171,14 +205,14 @@ def test_material_mass_loss_fails_and_within_tolerance_passes() -> None:
     assert "-99.9%" in lost.failures[0]
     assert kept.passed
     # Candidate-only columns are reported, never failed.
-    assert kept.details["candidate_only_columns"] == ["person.pension_income"]
+    assert kept.details["candidate_only_columns"] == ["pension_income"]
 
 
 def test_input_mass_reference_identity_is_recorded() -> None:
-    reference = _reference({"person.employment_income": 10.0})
+    reference = _reference({"employment_income": 10.0})
 
     gate = _synthetic_input_mass_gate(
-        {"person.employment_income": 10.0},
+        {"employment_income": 10.0},
         reference,
         policy=_policy(),
     )
@@ -195,12 +229,12 @@ def test_input_mass_reference_rejects_substituted_totals_at_approved_identity(
     tmp_path,
 ) -> None:
     caller_self_reference = _reference(
-        {"person.employment_income": 1.0},
+        {"employment_income": 1.0},
     )
 
     with pytest.raises(ValueError, match="reference totals must match the reviewed"):
         uk_input_mass_parity_gate(
-            {"person.employment_income": 1.0},
+            {"employment_income": 1.0},
             caller_self_reference,
             policy=_policy(),
         )
@@ -244,7 +278,7 @@ def test_input_mass_reference_identity_pin_cannot_be_shadowed_from_cwd(
     )
     monkeypatch.chdir(tmp_path)
     caller_reference = _reference(
-        {"person.employment_income": 1.0},
+        {"employment_income": 1.0},
         filename="caller.h5",
         revision="caller",
         sha256="b" * 64,
@@ -253,7 +287,7 @@ def test_input_mass_reference_identity_pin_cannot_be_shadowed_from_cwd(
 
     with pytest.raises(ValueError, match="identity must match the reviewed"):
         uk_input_mass_parity_gate(
-            {"person.employment_income": 1.0},
+            {"employment_income": 1.0},
             caller_reference,
             policy=_policy(),
         )
@@ -261,38 +295,38 @@ def test_input_mass_reference_identity_pin_cannot_be_shadowed_from_cwd(
 
 def test_input_mass_exclusion_discipline_live_stale_dormant() -> None:
     reason = "Seeded reviewed loss for the fixture."
-    reference = _reference({"person.employment_income": 10.0, "person.tiny_layer": 0.5})
+    reference = _reference({"employment_income": 10.0, "tiny_layer": 0.5})
     policy = _policy(
         minimum_reference_total=1.0,
         reviewed_exclusions={
-            "person.employment_income": _entry(reason),
-            "person.tiny_layer": _entry(reason),
-            "person.never_shipped": _entry(reason),
+            "employment_income": _entry(reason),
+            "tiny_layer": _entry(reason),
+            "never_shipped": _entry(reason),
         },
     )
 
     live = _synthetic_input_mass_gate(
-        {"person.employment_income": 0.0},
+        {"employment_income": 0.0},
         reference,
         policy=policy,
     )
     stale = _synthetic_input_mass_gate(
-        {"person.employment_income": 10.0},
+        {"employment_income": 10.0},
         reference,
         policy=policy,
     )
 
     # A live exclusion suppresses the zeroed-column failure and is recorded.
     assert live.passed
-    assert live.details["reviewed_exclusions"]["person.employment_income"] == reason
+    assert live.details["reviewed_exclusions"]["employment_income"] == reason
     # Below-floor and absent-from-reference entries are dormant, not failing.
     assert live.details["dormant_exclusions"] == [
-        "person.never_shipped",
-        "person.tiny_layer",
+        "never_shipped",
+        "tiny_layer",
     ]
     # A column now within tolerance is a rotted register entry and fails.
     assert not stale.passed
-    assert stale.details["stale_exclusions"] == ["person.employment_income"]
+    assert stale.details["stale_exclusions"] == ["employment_income"]
     assert "Stale reviewed input-mass exclusions" in stale.failures[0]
 
 
@@ -300,17 +334,17 @@ def test_input_mass_policy_and_reference_validation() -> None:
     with pytest.raises(ValueError, match="non-negative"):
         _policy(relative_tolerance=-0.1)
     with pytest.raises(ValueError, match="reason must be a non-empty string"):
-        _policy(reviewed_exclusions={"person.employment_income": _entry("  ")})
+        _policy(reviewed_exclusions={"employment_income": _entry("  ")})
     with pytest.raises(ValueError, match="lowercase sha256"):
-        _reference({"person.employment_income": 1.0}, sha256="nope")
+        _reference({"employment_income": 1.0}, sha256="nope")
     with pytest.raises(ValueError, match="non-empty mapping"):
         _reference({})
     with pytest.raises(ValueError, match="finite"):
-        _reference({"person.employment_income": float("nan")})
+        _reference({"employment_income": float("nan")})
     with pytest.raises(ValueError, match="non-empty, trimmed column names"):
         _policy(reviewed_exclusions={1: _entry("Seeded invalid name.")})
     with pytest.raises(TypeError, match="must be an object with fields"):
-        _policy(reviewed_exclusions={"person.employment_income": None})
+        _policy(reviewed_exclusions={"employment_income": None})
 
 
 def test_qrf_surface_is_derived_from_the_source_manifest() -> None:
@@ -334,9 +368,9 @@ def test_qrf_surface_is_derived_from_the_source_manifest() -> None:
 def test_qrf_columns_check_every_declared_output_regardless_of_density() -> None:
     n = 6
     dense = np.full(n, 5.0)  # 100% nonzero: the US 5% cutoff would skip it.
-    dataset = _dataset(n=n, person_columns={"self_employment_income": dense})
+    frame = _frame(n=n, person_columns={"self_employment_income": dense})
 
-    values, weights, surface = uk_qrf_tail_concentration_columns(dataset)
+    values, weights, surface = uk_qrf_tail_concentration_columns(frame)
 
     assert "self_employment_income" in values
     assert values["self_employment_income"].shape == (n,)
@@ -350,7 +384,7 @@ def test_qrf_columns_check_every_declared_output_regardless_of_density() -> None
 
 def test_declared_absent_qrf_output_is_a_named_gate_failure() -> None:
     values, weights, surface = uk_qrf_tail_concentration_columns(
-        _dataset(),
+        _frame(),
         output_columns=("declared_but_absent",),
     )
 
@@ -376,7 +410,7 @@ def test_declared_absent_qrf_output_is_a_named_gate_failure() -> None:
 
 def test_declared_nonnumeric_qrf_output_is_a_named_gate_failure() -> None:
     values, weights, surface = uk_qrf_tail_concentration_columns(
-        _dataset(person_columns={"declared_nonnumeric": ["x"] * 4}),
+        _frame(person_columns={"declared_nonnumeric": ["x"] * 4}),
         output_columns=("declared_nonnumeric",),
     )
 
@@ -426,8 +460,8 @@ def test_concentrated_qrf_column_fails_by_name() -> None:
     n = 10
     concentrated = np.ones(n)
     concentrated[0] = 1_000.0
-    dataset = _dataset(n=n, person_columns={"self_employment_income": concentrated})
-    values, weights, surface = uk_qrf_tail_concentration_columns(dataset)
+    frame = _frame(n=n, person_columns={"self_employment_income": concentrated})
+    values, weights, surface = uk_qrf_tail_concentration_columns(frame)
 
     gate = uk_qrf_tail_concentration_gate(
         values,
@@ -448,8 +482,8 @@ def test_concentrated_qrf_column_fails_by_name() -> None:
 
 def test_thin_qrf_column_is_reported_not_checked() -> None:
     n = 4
-    dataset = _dataset(n=n, person_columns={"self_employment_income": np.ones(n)})
-    values, weights, _surface = uk_qrf_tail_concentration_columns(dataset)
+    frame = _frame(n=n, person_columns={"self_employment_income": np.ones(n)})
+    values, weights, _surface = uk_qrf_tail_concentration_columns(frame)
 
     gate = uk_qrf_tail_concentration_gate(
         values,
@@ -467,8 +501,8 @@ def test_thin_qrf_column_is_reported_not_checked() -> None:
 
 
 def test_thin_qrf_exclusion_is_classified_as_dormant() -> None:
-    values = {"person.x": np.ones(4)}
-    weights = {"person.x": np.ones(4)}
+    values = {"x": np.ones(4)}
+    weights = {"x": np.ones(4)}
 
     gate = uk_qrf_tail_concentration_gate(
         values,
@@ -477,21 +511,21 @@ def test_thin_qrf_exclusion_is_classified_as_dormant() -> None:
             top_k=10,
             max_top_share=0.5,
             min_nonzero_records=100,
-            reviewed_exclusions={"person.x": _entry("Seeded thin entry.")},
+            reviewed_exclusions={"x": _entry("Seeded thin entry.")},
         ),
     )
 
     assert not gate.passed
-    assert gate.details["thin_columns"] == {"person.x": 4}
+    assert gate.details["thin_columns"] == {"x": 4}
     assert gate.details["reviewed_exclusions"] == {}
     assert gate.details["stale_exclusions"] == []
-    assert gate.details["dormant_exclusions"] == ["person.x"]
+    assert gate.details["dormant_exclusions"] == ["x"]
 
 
 def test_qrf_stale_exclusion_fails_and_dormant_is_reported() -> None:
     n = 10
-    dataset = _dataset(n=n, person_columns={"self_employment_income": np.ones(n)})
-    values, weights, _surface = uk_qrf_tail_concentration_columns(dataset)
+    frame = _frame(n=n, person_columns={"self_employment_income": np.ones(n)})
+    values, weights, _surface = uk_qrf_tail_concentration_columns(frame)
 
     gate = uk_qrf_tail_concentration_gate(
         values,
@@ -662,89 +696,60 @@ def test_register_loader_rejects_malformed_or_coerced_entries(
         )
 
 
-def test_uk_totals_handle_shuffled_ids_benunits_and_entity_name_collisions() -> None:
-    dataset = SimpleNamespace(
-        person=pd.DataFrame(
-            {
-                "person_id": [3, 1, 2],
-                "person_household_id": [20, 10, 20],
-                "person_benunit_id": [200, 100, 200],
-                "shared": [11.0, 5.0, 7.0],
-            }
-        ),
-        benunit=pd.DataFrame(
-            {
-                "benunit_id": [200, 100],
-                "shared": [13.0, 17.0],
-            }
-        ),
-        household=pd.DataFrame(
-            {
-                "household_id": [20, 10],
-                "household_weight": [3.0, 2.0],
-                "shared": [19.0, 23.0],
-            }
-        ),
-    )
+def test_uk_totals_are_the_shared_helper_minus_exported_weight_columns() -> None:
+    """The UK wrapper must not reinvent the shared numeric semantics.
 
-    totals = uk_dataset_input_mass_totals(dataset)
-
-    assert totals["person.shared"] == 64.0
-    assert totals["benunit.shared"] == 73.0
-    assert totals["household.shared"] == 103.0
-
-
-def test_uk_totals_match_the_shared_frame_helper_on_equivalent_data() -> None:
-    """The UK table-layout helper must not reinvent the US numeric semantics.
-
-    Same records, same weights, one expressed as a microcosm Frame (the US
-    path) and one as UK national tables: per-column weighted totals must be
-    identical, differing only in the ``entity.`` namespace the UK layout
-    needs because its tables do not enforce globally unique column names.
+    One frame through both helpers: per-column weighted totals must be
+    identical, except that the wrapper removes the exported weight column —
+    ``household_weight`` is a real, engine-known column on the UK frame
+    (the materialized export contract), so the shared helper totals its
+    squared mass and only the wrapper can say it is plumbing, not mass.
+    Anchored to a hand computation once, so the wrapper is pinned to the
+    shared semantics rather than merely to itself.
     """
 
     from microcosm.build.input_mass import input_mass_totals
-    from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
-    person = pd.DataFrame(
-        {
-            "person_id": [101, 102, 103],
-            "person_household_id": [1, 1, 2],
-            "employment_income": [30_000.0, np.nan, 12_000.0],
-            "is_disabled": pd.array([True, False, pd.NA], dtype="boolean"),
-            "occupation": ["a", "b", "c"],  # strings are skipped on both paths
-        }
-    )
-    household = pd.DataFrame({"household_id": [1, 2], "council_tax": [900.0, 1_500.0]})
     weights = np.array([2.0, 5.0])
-
-    frame_totals = input_mass_totals(
-        Frame(
-            {"person": person, "household": household},
-            EntitySchema(group_entities=("household",)),
-            {"household": Weights(weights, WeightKind.DESIGN)},
-        )
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [101, 102, 103],
+                "person_household_id": [1, 1, 2],
+                "person_benunit_id": [201, 201, 202],
+                "employment_income": [30_000.0, np.nan, 12_000.0],
+                "is_disabled": pd.array([True, False, pd.NA], dtype="boolean"),
+                "occupation": ["a", "b", "c"],  # strings are skipped
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [201, 202]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "household_weight": weights,
+                "council_tax": [900.0, 1_500.0],
+            }
+        ),
+        time_period="2023",
     )
-    uk_totals = uk_dataset_input_mass_totals(
-        SimpleNamespace(
-            person=person.assign(person_benunit_id=[201, 201, 202]),
-            benunit=pd.DataFrame({"benunit_id": [201, 202]}),
-            household=household.assign(household_weight=weights),
-        )
-    )
 
-    assert frame_totals == {
-        "employment_income": uk_totals["person.employment_income"],
-        "is_disabled": uk_totals["person.is_disabled"],
-        "council_tax": uk_totals["household.council_tax"],
+    shared_totals = input_mass_totals(frame)
+    uk_totals = uk_input_mass_totals(frame)
+
+    # The wrapper exists exactly for this key: sum of squared weights is not
+    # input mass.
+    assert shared_totals["household_weight"] == 2.0**2 + 5.0**2
+    assert uk_totals == {
+        name: total
+        for name, total in shared_totals.items()
+        if name != "household_weight"
     }
     # NaN fills to 0, booleans total weighted True mass, weights broadcast
-    # through membership — asserted against hand computation once, so both
-    # paths are pinned to the same semantics rather than merely to each other.
-    assert frame_totals["employment_income"] == 30_000.0 * 2.0 + 12_000.0 * 5.0
-    assert frame_totals["is_disabled"] == 2.0
-    assert "occupation" not in frame_totals
-    assert "person.occupation" not in uk_totals
+    # through membership — asserted against hand computation once.
+    assert uk_totals["employment_income"] == 30_000.0 * 2.0 + 12_000.0 * 5.0
+    assert uk_totals["is_disabled"] == 2.0
+    assert uk_totals["council_tax"] == 900.0 * 2.0 + 1_500.0 * 5.0
+    assert "occupation" not in uk_totals
 
 
 def test_uk_input_mass_gate_is_the_shared_gate_plus_recorded_identity() -> None:
@@ -758,15 +763,15 @@ def test_uk_input_mass_gate_is_the_shared_gate_plus_recorded_identity() -> None:
     from microcosm.build.gates import input_mass_parity_gate
 
     candidate = {
-        "person.employment_income": 0.0,  # the #278 signature
-        "person.pension_income": 4.0,  # -60% drift
-        "person.new_layer": 7.0,  # candidate-only
+        "employment_income": 0.0,  # the #278 signature
+        "pension_income": 4.0,  # -60% drift
+        "new_layer": 7.0,  # candidate-only
     }
     reference = _reference(
         {
-            "person.employment_income": 10.0,
-            "person.pension_income": 10.0,
-            "person.tiny": 0.5,  # below the floor
+            "employment_income": 10.0,
+            "pension_income": 10.0,
+            "tiny": 0.5,  # below the floor
         }
     )
     policy = _policy(relative_tolerance=0.5, minimum_reference_total=1.0)
@@ -858,7 +863,7 @@ def test_input_mass_reference_round_trips_the_measurement_schema(tmp_path) -> No
                     ),
                     "vintage": "2023_24",
                 },
-                "totals": {"person.employment_income": 10.5},
+                "totals": {"employment_income": 10.5},
             }
         )
     )
@@ -873,7 +878,7 @@ def test_input_mass_reference_round_trips_the_measurement_schema(tmp_path) -> No
         reference = load_uk_input_mass_reference(path)
 
     assert reference.filename == "enhanced_frs_2023_24.h5"
-    assert dict(reference.totals) == {"person.employment_income": 10.5}
+    assert dict(reference.totals) == {"employment_income": 10.5}
     with pytest.raises(ValueError, match="schema_version"):
         path.write_text(json.dumps({"schema_version": 9}))
         load_uk_input_mass_reference(path)
@@ -885,12 +890,12 @@ def test_expired_exclusion_stops_suppressing_and_names_its_receipt() -> None:
     from datetime import date
 
     reason = "Seeded reviewed loss for the fixture."
-    reference = _reference({"person.employment_income": 10.0})
+    reference = _reference({"employment_income": 10.0})
     policy = _policy(
         minimum_reference_total=1.0,
-        reviewed_exclusions={"person.employment_income": _entry(reason)},
+        reviewed_exclusions={"employment_income": _entry(reason)},
     )
-    candidate = {"person.employment_income": 0.0}
+    candidate = {"employment_income": 0.0}
 
     honored = _synthetic_input_mass_gate(
         candidate, reference, policy=policy, now=date(2027, 2, 10)
@@ -903,7 +908,7 @@ def test_expired_exclusion_stops_suppressing_and_names_its_receipt() -> None:
     assert honored.details["expired_exclusions"] == []
     assert honored.details["exclusions_evaluated_on"] == "2027-02-10"
     assert not expired.passed
-    assert expired.details["expired_exclusions"] == ["person.employment_income"]
+    assert expired.details["expired_exclusions"] == ["employment_income"]
     assert any(
         "renew the adjudication or remove the entries" in failure
         and "test-reviewer" in failure
@@ -920,12 +925,12 @@ def test_premature_exclusion_never_suppresses_and_names_its_receipt() -> None:
     from datetime import date
 
     reason = "Seeded reviewed loss for the fixture."
-    reference = _reference({"person.employment_income": 10.0})
+    reference = _reference({"employment_income": 10.0})
     policy = _policy(
         minimum_reference_total=1.0,
-        reviewed_exclusions={"person.employment_income": _entry(reason)},
+        reviewed_exclusions={"employment_income": _entry(reason)},
     )
-    candidate = {"person.employment_income": 0.0}
+    candidate = {"employment_income": 0.0}
 
     premature = _synthetic_input_mass_gate(
         candidate, reference, policy=policy, now=date(2026, 8, 9)
@@ -937,7 +942,7 @@ def test_premature_exclusion_never_suppresses_and_names_its_receipt() -> None:
     assert in_force.passed
     assert in_force.details["premature_exclusions"] == []
     assert not premature.passed
-    assert premature.details["premature_exclusions"] == ["person.employment_income"]
+    assert premature.details["premature_exclusions"] == ["employment_income"]
     # The underlying zero-mass failure fires (no suppression) AND the
     # receipt-context failure names the effective date.
     assert any(

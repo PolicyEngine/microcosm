@@ -12,16 +12,14 @@ from microcosm.build.gate_battery import (
     gate_signing_key_env,
 )
 from microcosm.build.gates import FitWeightRecord, GateResult
-from microcosm.build.uk_runtime.battery_bindings import (
-    UKGateBinding,
-    _uk_gate_surface,
-)
+from microcosm.build.uk_runtime.battery_bindings import UKGateBinding
 from microcosm.build.uk_runtime.national_build import (
     UKNationalStage,
     build_uk_national_dataset,
     load_uk_national_frame,
 )
 from microcosm.build.uk_runtime.national_frame import (
+    _uk_gate_surface,
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,

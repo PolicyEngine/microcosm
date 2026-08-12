@@ -42,6 +42,7 @@ from microcosm.build.gates import (
     target_surface_gate as _target_surface_gate,
 )
 from microcosm.build.uk_runtime.diagnostics import uk_weight_summary
+from microcosm.build.uk_runtime.national_frame import _uk_gate_surface
 from microcosm.build.uk_runtime.release_input_coverage import (
     uk_release_input_coverage_gate,
 )
@@ -58,11 +59,12 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     coerce_reviewed_exclusions,
     exclusion_evaluation_date,
     load_uk_reviewed_exclusion_register,
-    uk_dataset_input_mass_totals,
     uk_input_mass_parity_gate,
+    uk_input_mass_totals,
     uk_qrf_tail_concentration_columns,
     uk_qrf_tail_concentration_gate,
 )
+from microcosm.frame import Frame
 
 __all__ = [
     "UK_ALLOWED_EXTRA_EXPORT_COLUMNS",
@@ -1380,7 +1382,7 @@ def _missing_fit_weight_evidence_gate() -> GateResult:
 
 
 def uk_terminal_gate_report(
-    dataset: Any,
+    frame: Frame,
     coverage_engine: Any,
     *,
     release_id: str,
@@ -1410,9 +1412,14 @@ def uk_terminal_gate_report(
         release_id,
         calibration_diagnostics_sha256,
     )
+    # The legacy gate modules read the duck-attr evidence surface, and the
+    # coverage gate in particular reads its metadata attributes via
+    # getattr-with-default — handing it the raw Frame would silently degrade
+    # the checks, so the surface is built once here for every consumer.
+    surface = _uk_gate_surface(frame)
     builtin_coverage_evaluator = input_coverage_evaluator is None
     coverage = input_coverage_evaluator or (
-        lambda: uk_release_input_coverage_gate(dataset, coverage_engine)
+        lambda: uk_release_input_coverage_gate(surface, coverage_engine)
     )
     # None resolves to the committed register — the reviewed policy of
     # record (#630); an explicit {} runs with no exclusions. The mapping is
@@ -1442,7 +1449,7 @@ def uk_terminal_gate_report(
         (
             "degenerate_release_surface",
             lambda: uk_degenerate_release_surface_gate(
-                dataset,
+                surface,
                 reviewed_exclusions=reviewed_degenerate_exclusions,
                 now=evaluation_date,
             ),
@@ -1450,21 +1457,21 @@ def uk_terminal_gate_report(
         (
             "zero_weight_strata",
             lambda: uk_zero_weight_strata_gate(
-                dict(_entity_tables(dataset))["household"],
+                surface.household,
                 declarations=zero_weight_declarations,
             ),
         ),
         (
             "weight_ess",
             lambda: uk_weight_ess_gate(
-                _household_weights(dict(_entity_tables(dataset))["household"]),
+                _household_weights(surface.household),
                 minimum_ess_fraction=minimum_ess_fraction,
             ),
         ),
         (
             "weight_ratio",
             lambda: uk_weight_ratio_gate(
-                _household_weights(dict(_entity_tables(dataset))["household"]),
+                _household_weights(surface.household),
                 maximum_max_to_median_ratio=maximum_max_to_median_ratio,
             ),
         ),
@@ -1537,7 +1544,7 @@ def uk_terminal_gate_report(
                     "measurement pass."
                 )
             return uk_input_mass_parity_gate(
-                uk_dataset_input_mass_totals(dataset),
+                uk_input_mass_totals(frame),
                 input_mass_reference,
                 policy=input_mass_policy,
                 now=evaluation_date,
@@ -1550,12 +1557,12 @@ def uk_terminal_gate_report(
         def qrf_tail_evaluator() -> GateResult:
             if not isinstance(qrf_tail_policy, UKQRFTailConcentrationPolicy):
                 raise TypeError("qrf_tail_policy must be UKQRFTailConcentrationPolicy.")
-            values, weights, surface = uk_qrf_tail_concentration_columns(dataset)
+            values, weights, qrf_surface = uk_qrf_tail_concentration_columns(frame)
             return uk_qrf_tail_concentration_gate(
                 values,
                 weights,
                 policy=qrf_tail_policy,
-                surface=surface,
+                surface=qrf_surface,
                 now=evaluation_date,
             )
 

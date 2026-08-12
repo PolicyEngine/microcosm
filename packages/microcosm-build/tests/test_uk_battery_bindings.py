@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import base64
 from datetime import date, datetime
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
@@ -41,9 +40,9 @@ from microcosm.build.gates import FitWeightRecord, GateResult
 from microcosm.build.uk_runtime.battery_bindings import (
     UK_GATE_REGISTRY,
     UKGateBinding,
-    _uk_gate_surface,
 )
 from microcosm.build.uk_runtime.national_frame import (
+    _uk_gate_surface,
     uk_household_weight_kind,
     uk_national_frame,
 )
@@ -137,7 +136,7 @@ def _parity(**overrides) -> UKReleaseParityEvidence:
 
 def _reference() -> UKInputMassReference:
     return UKInputMassReference(
-        totals={"person.employment_income": 10.0},
+        totals={"employment_income": 10.0},
         filename="enhanced_frs_2023_24.h5",
         revision="655dd07e4bb9c777b00dac044949611f1feb824f",
         sha256="584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
@@ -184,7 +183,6 @@ def _run_both(tables, *, parity=None, fit_records=None, armed=True, clock=CLOCK)
     """
 
     person, benunit, household = tables
-    dataset = SimpleNamespace(person=person, benunit=benunit, household=household)
     frame = uk_national_frame(
         person=person, benunit=benunit, household=household, time_period="2023"
     )
@@ -215,7 +213,7 @@ def _run_both(tables, *, parity=None, fit_records=None, armed=True, clock=CLOCK)
     # needs no patching.
     with patch(VALIDATE_REFERENCE, return_value=None):
         legacy = uk_terminal_gate_report(
-            dataset,
+            frame,
             object(),
             release_id=RELEASE_ID,
             calibration_diagnostics_sha256=DIAGNOSTICS_SHA256,
@@ -423,9 +421,11 @@ class TestUnevidencedArms:
         # blocks release candidates. Same shipping decision, different
         # taxonomy — asserted so the A2 review can lean on it.
         person, benunit, household = _tables()
-        dataset = SimpleNamespace(person=person, benunit=benunit, household=household)
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
         legacy = uk_terminal_gate_report(
-            dataset,
+            frame,
             object(),
             release_id=RELEASE_ID,
             calibration_diagnostics_sha256=DIAGNOSTICS_SHA256,
@@ -435,9 +435,6 @@ class TestUnevidencedArms:
         legacy_audit = {r.name: r for r in legacy.results}["weights_audit"]
         assert legacy_audit.passed is False
 
-        frame = uk_national_frame(
-            person=person, benunit=benunit, household=household, time_period="2023"
-        )
         battery = evaluate_phase(
             load_country_spec("uk").gates,
             "terminal",

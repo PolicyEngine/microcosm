@@ -739,7 +739,7 @@ def _terminal_gate_details(name: str) -> dict:
             "columns_checked": 1,
             "columns_below_reference_floor": 0,
             "candidate_only_columns": [],
-            "worst_drifts": {"person.employment_income": 0.0},
+            "worst_drifts": {"employment_income": 0.0},
             "reviewed_exclusions": {},
             "unused_reviewed_exclusions": [],
             "stale_exclusions": [],
@@ -2229,7 +2229,7 @@ def test_exact_k_uk_terminal_rejects_substituted_input_mass_totals(
         {
             "reference": {
                 "identity": dict(UK_INPUT_MASS_REFERENCE_IDENTITY),
-                "totals": {"person.employment_income": 1.0},
+                "totals": {"employment_income": 1.0},
             }
         }
     )

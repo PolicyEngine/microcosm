@@ -389,26 +389,60 @@ def build_weighted_totals(source_h5: Path) -> dict[str, Any]:
         raise RuntimeError(
             "policyengine-uk is required to classify exported input leaves."
         ) from exc
-    from types import SimpleNamespace
-
-    from microcosm.build.uk_runtime.weighted_integrity import (
-        uk_dataset_input_mass_totals,
-    )
+    from microcosm.build.uk_runtime.national_frame import uk_national_frame
+    from microcosm.build.uk_runtime.weighted_integrity import uk_input_mass_totals
 
     effective_input_names = set(CountryTaxBenefitSystem().variables)
     structural = set(STRUCTURAL_COLUMNS)
     with pd.HDFStore(source_h5, mode="r") as store:
         tables = {entity: store[entity] for entity in ENTITY_TABLES}
-    requested = {
-        f"{entity}.{column}"
-        for entity, table in tables.items()
-        for column in table.columns
-        if column not in structural and column in effective_input_names
-    }
-    totals = uk_dataset_input_mass_totals(
-        SimpleNamespace(**tables),
-        columns=requested,
+        period = str(store["time_period"].iloc[0])
+    if period != SOURCE_PERIOD:
+        raise ValueError(
+            f"{source_h5}: expected time_period {SOURCE_PERIOD!r}, got {period!r}."
+        )
+
+    # Flat totals keys require the effective input surface to be collision-free
+    # across entity tables; Frame construction re-proves it for every kept
+    # column, but this guard names the offending input instead of failing on a
+    # generic uniqueness error.
+    requested: dict[str, str] = {}
+    for entity, table in tables.items():
+        for column in table.columns:
+            if column in structural or column not in effective_input_names:
+                continue
+            if column in requested:
+                raise ValueError(
+                    f"{source_h5}: effective input {column!r} occurs on both "
+                    f"{requested[column]!r} and {entity!r} tables."
+                )
+            requested[column] = entity
+
+    # The raw H5 was never held to the Frame invariants (global column
+    # uniqueness including scratch columns, sorted group ids, exact
+    # membership); subset to the gate surface and sort group ids so the
+    # constructor validates exactly what the totals are measured from.
+    def _gate_columns(entity: str) -> list[str]:
+        keep = (
+            structural | {"household_weight"} if entity == "household" else structural
+        )
+        return [
+            column
+            for column in tables[entity].columns
+            if column in keep or requested.get(column) == entity
+        ]
+
+    frame = uk_national_frame(
+        person=tables["person"][_gate_columns("person")],
+        benunit=tables["benunit"][_gate_columns("benunit")].sort_values(
+            "benunit_id", ignore_index=True
+        ),
+        household=tables["household"][_gate_columns("household")].sort_values(
+            "household_id", ignore_index=True
+        ),
+        time_period=period,
     )
+    totals = uk_input_mass_totals(frame, columns=set(requested))
     return {
         "schema_version": 1,
         "description": (

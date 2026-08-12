@@ -113,7 +113,6 @@ from datetime import UTC, date, datetime
 from importlib.resources import files
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -123,6 +122,9 @@ from microcosm.build.gates import (
     input_mass_parity_gate,
     tail_concentration_gate,
 )
+from microcosm.build.input_mass import input_mass_totals
+from microcosm.build.uk_runtime.national_frame import UK_EXPORTED_WEIGHT_COLUMNS
+from microcosm.frame import Frame
 
 __all__ = [
     "UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE",
@@ -139,8 +141,8 @@ __all__ = [
     "exclusion_evaluation_date",
     "load_uk_input_mass_reference",
     "load_uk_reviewed_exclusion_register",
-    "uk_dataset_input_mass_totals",
     "uk_input_mass_parity_gate",
+    "uk_input_mass_totals",
     "uk_qrf_tail_concentration_columns",
     "uk_qrf_tail_concentration_gate",
 ]
@@ -167,15 +169,6 @@ _UK_INPUT_MASS_REFERENCE_IDENTITY = MappingProxyType(
         "vintage": "2023_24",
     }
 )
-
-# Mirrors terminal_gates._STRUCTURAL_COLUMNS for the national table layout;
-# ids and the weight vector are plumbing, not input mass.
-_UK_ENTITY_STRUCTURAL_COLUMNS: Mapping[str, frozenset[str]] = {
-    "person": frozenset({"person_id", "person_household_id", "person_benunit_id"}),
-    "benunit": frozenset({"benunit_id"}),
-    "household": frozenset({"household_id", "household_weight"}),
-}
-
 
 _REVIEWED_EXCLUSION_FIELDS = frozenset(
     {"reason", "approved_by", "adjudication", "approved_on", "expires_on"}
@@ -479,7 +472,8 @@ def load_uk_input_mass_reference(source: str | Path) -> UKInputMassReference:
     """Load frozen reference totals emitted by the #609 measurement tooling.
 
     Schema: ``{"schema_version": 1, "identity": {filename, revision, sha256,
-    vintage}, "totals": {"entity.column": weighted_total}}``. The identity
+    vintage}, "totals": {column: weighted_total}}`` — totals keys are flat
+    frame column names, matching :func:`uk_input_mass_totals`. The identity
     names the pinned artifact the totals were measured from and is recorded
     verbatim in the gate details and the attestation evidence digest.
     """
@@ -724,126 +718,25 @@ class UKQRFTailConcentrationPolicy:
         }
 
 
-def _entity_table(dataset: Any, entity: str) -> pd.DataFrame:
-    table = (
-        dataset.get(entity)
-        if isinstance(dataset, Mapping)
-        else getattr(dataset, entity, None)
-    )
-    if not isinstance(table, pd.DataFrame):
-        raise TypeError(f"UK weighted-integrity gates require a {entity} DataFrame.")
-    return table
-
-
-def _uk_entity_weights(dataset: Any) -> dict[str, np.ndarray]:
-    """Resolve per-entity weights from the national household vector.
-
-    Household rows carry ``household_weight`` directly; person and benunit
-    rows inherit the weight of their containing household through the
-    membership columns, matching how PolicyEngine-UK broadcasts weights.
-    """
-
-    household = _entity_table(dataset, "household")
-    person = _entity_table(dataset, "person")
-    benunit = _entity_table(dataset, "benunit")
-    for entity, table in (("household", household), ("person", person)):
-        missing = _UK_ENTITY_STRUCTURAL_COLUMNS[entity] - set(table.columns)
-        if missing:
-            raise ValueError(
-                f"UK {entity} table is missing column(s): {sorted(missing)}."
-            )
-    if "benunit_id" not in benunit.columns:
-        raise ValueError("UK benunit table is missing column(s): ['benunit_id'].")
-
-    household_weights = pd.to_numeric(
-        household["household_weight"], errors="coerce"
-    ).astype(np.float64)
-    if (
-        household_weights.isna().any()
-        or not np.isfinite(household_weights.to_numpy()).all()
-    ):
-        raise ValueError("UK household weights must be finite numbers.")
-    by_household = pd.Series(
-        household_weights.to_numpy(), index=household["household_id"]
-    )
-    if by_household.index.duplicated().any():
-        raise ValueError("UK household_id values must be unique.")
-
-    person_weights = person["person_household_id"].map(by_household)
-    if person_weights.isna().any():
-        raise ValueError(
-            "UK person rows reference household_id values with no resolvable weight."
-        )
-
-    # A benunit inherits the weight of the household containing it, so the
-    # nesting must hold before the mapping means anything.  The effective-mass
-    # coverage gate enforces the same invariant, but that is a separate gate in
-    # a batched report: this one has to fail closed on its own evidence rather
-    # than total a split benunit against one of its households.
-    benunit_membership = person[
-        ["person_benunit_id", "person_household_id"]
-    ].drop_duplicates()
-    split = benunit_membership["person_benunit_id"].duplicated()
-    if bool(split.any()):
-        offenders = sorted(
-            benunit_membership.loc[split, "person_benunit_id"].unique().tolist()
-        )[:5]
-        raise ValueError(
-            "UK weighted-integrity totals require each benunit to belong to "
-            f"exactly one household; split benunit id(s): {offenders}."
-        )
-    benunit_household = benunit_membership.set_index("person_benunit_id")[
-        "person_household_id"
-    ]
-    benunit_weights = benunit["benunit_id"].map(benunit_household).map(by_household)
-    if benunit_weights.isna().any():
-        raise ValueError(
-            "UK benunit rows have no member persons to resolve a household weight from."
-        )
-    return {
-        "person": person_weights.to_numpy(dtype=np.float64),
-        "benunit": benunit_weights.to_numpy(dtype=np.float64),
-        "household": household_weights.to_numpy(dtype=np.float64),
-    }
-
-
-def uk_dataset_input_mass_totals(
-    dataset: Any,
+def uk_input_mass_totals(
+    frame: Frame,
     *,
     columns: Iterable[str] | None = None,
 ) -> dict[str, float]:
-    """Weighted totals of the national tables' numeric and boolean columns.
+    """Weighted totals of the national frame's numeric and boolean columns.
 
-    The UK analog of :func:`microcosm.build.input_mass.input_mass_totals` for
-    the person/benunit/household table layout the national builder stages
-    (the shared helper operates on :class:`microcosm.frame.Frame`). Column
-    names are namespaced as ``entity.column`` — the convention the UK
-    degenerate-surface gate already uses — because the national tables do not
-    enforce globally unique column names across entities.
+    A thin UK wrapper over the shared
+    :func:`microcosm.build.input_mass.input_mass_totals`: keys are flat frame
+    column names (the frame enforces global uniqueness across entity tables),
+    and the exported weight columns are removed after the shared helper runs —
+    the weight vector is plumbing, not mass, but it is a real engine-known
+    column on the UK frame, so neither the schema-derived structural set nor
+    a caller's ``columns`` allowlist can be trusted to exclude it.
     """
 
-    weights = _uk_entity_weights(dataset)
-    requested = None if columns is None else {str(name) for name in columns}
-    totals: dict[str, float] = {}
-    for entity in ("person", "benunit", "household"):
-        table = _entity_table(dataset, entity)
-        structural = _UK_ENTITY_STRUCTURAL_COLUMNS[entity]
-        entity_weights = weights[entity]
-        for column in table.columns:
-            if column in structural:
-                continue
-            name = f"{entity}.{column}"
-            if requested is not None and name not in requested:
-                continue
-            values = table[column]
-            if pd.api.types.is_bool_dtype(values):
-                numeric = values.fillna(False).to_numpy(dtype=np.float64)
-            elif pd.api.types.is_numeric_dtype(values):
-                numeric = pd.to_numeric(values, errors="coerce")
-                numeric = numeric.fillna(0.0).to_numpy(dtype=np.float64)
-            else:
-                continue
-            totals[name] = float(numeric @ entity_weights)
+    totals = input_mass_totals(frame, columns=columns)
+    for column in UK_EXPORTED_WEIGHT_COLUMNS:
+        totals.pop(column, None)
     return totals
 
 
@@ -940,7 +833,7 @@ def uk_input_mass_parity_gate(
 
 
 def uk_qrf_tail_concentration_columns(
-    dataset: Any,
+    frame: Frame,
     *,
     output_columns: Iterable[str] | None = None,
 ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray], dict[str, object]]:
@@ -969,8 +862,10 @@ def uk_qrf_tail_concentration_columns(
     if not declared:
         raise ValueError("UK QRF tail-concentration surface must be non-empty.")
 
-    person = _entity_table(dataset, "person")
-    person_weights = _uk_entity_weights(dataset)["person"]
+    person = frame.table("person")
+    person_weights = np.asarray(
+        frame.resolve_weights("person").values, dtype=np.float64
+    )
     values: dict[str, np.ndarray] = {}
     weights: dict[str, np.ndarray] = {}
     checked: list[str] = []

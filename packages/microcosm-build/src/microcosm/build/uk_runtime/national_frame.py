@@ -44,9 +44,11 @@ from microcosm.frame import (
     MassChangeRecord,
     WeightKind,
     Weights,
+    engine_tables,
 )
 
 __all__ = [
+    "UK_EXPORTED_WEIGHT_COLUMNS",
     "UK_NATIONAL_SCHEMA",
     "UK_TIME_PERIOD_METADATA_KEY",
     "UKStagingProvenance",
@@ -59,6 +61,13 @@ __all__ = [
 UK_NATIONAL_SCHEMA = EntitySchema(group_entities=("benunit", "household"))
 
 UK_TIME_PERIOD_METADATA_KEY = "time_period"
+
+# The persisted weight columns of the materialized export contract above:
+# real columns on the tables, but plumbing rather than input mass. Consumers
+# that total column mass (the input-mass parity surface, its reference
+# emitter) must exclude them — the frame schema cannot, because the column
+# is deliberately load-bearing here.
+UK_EXPORTED_WEIGHT_COLUMNS = frozenset({"household_weight"})
 
 
 @dataclass(frozen=True)
@@ -162,6 +171,39 @@ def uk_household_weight_kind(frame: Frame) -> WeightKind:
     """The kind of the frame's explicit household weights."""
 
     return frame.weights_for("household").kind
+
+
+@dataclass(frozen=True)
+class _UKGateSurface:
+    """The duck-attr evidence surface the legacy UK gate modules read.
+
+    Mirrors the national build's gate-evidence adapter: the three entity
+    tables plus the metadata gates consult (``time_period``,
+    ``household_weight_kind``, ``mass_log``). Lives here — the Frame-carrier
+    seam — as the single copy shared by the battery bindings and the legacy
+    report evaluator, neither of which may import the other.
+    """
+
+    person: pd.DataFrame
+    benunit: pd.DataFrame
+    household: pd.DataFrame
+    time_period: str
+    household_weight_kind: WeightKind
+    mass_log: tuple[MassChangeRecord, ...]
+
+
+def _uk_gate_surface(frame: Frame) -> _UKGateSurface:
+    if not isinstance(frame, Frame):
+        raise TypeError("UK gate evidence must be a Frame instance.")
+    tables = engine_tables(frame)
+    return _UKGateSurface(
+        person=tables["person"],
+        benunit=tables["benunit"],
+        household=tables["household"],
+        time_period=uk_time_period(frame),
+        household_weight_kind=uk_household_weight_kind(frame),
+        mass_log=frame.mass_log,
+    )
 
 
 def validate_uk_national_frame(frame: Frame) -> None:
