@@ -578,16 +578,22 @@ class TestReleaseEvidence:
         assert report["attestation"]["release_evidence"] == expected
         signature = report["attestation"]["signature"]
         report["attestation"]["signature"] = None
+
+        def recompute() -> str:
+            return hmac.new(
+                base64.b64decode(KEY),
+                json.dumps(
+                    report, sort_keys=True, separators=(",", ":"), allow_nan=False
+                ).encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+
+        # Baseline first: the untampered reconstruction must reproduce the
+        # signature, or the tamper inequality below would pass vacuously.
+        assert recompute() == signature
         report["release_evidence"]["calibration_diagnostics_sha256"] = "cd" * 32
         report["attestation"]["release_evidence"] = report["release_evidence"]
-        tampered = hmac.new(
-            base64.b64decode(KEY),
-            json.dumps(
-                report, sort_keys=True, separators=(",", ":"), allow_nan=False
-            ).encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
-        assert tampered != signature, "release_evidence sits outside the signature"
+        assert recompute() != signature, "release_evidence sits outside the signature"
 
     def test_release_evidence_defaults_to_an_empty_mapping(self, tmp_path, signing_env):
         manifest = _manifest([_entry("t", gate="support")], ["terminal"])

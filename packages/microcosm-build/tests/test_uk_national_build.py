@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -1375,4 +1375,52 @@ def test_release_candidate_is_refused_on_a_rung_before_any_unlink(
 
     # Configuration refusals precede the sidecar unlinks: the contradictory
     # request must not destroy the previous run's report.
+    assert terminal_json.read_text() == '{"previous_report": true}\n'
+
+
+@pytest.mark.parametrize(
+    ("bad_arguments", "match"),
+    [
+        ({"release_id": ""}, "release_id"),
+        ({"calibration_diagnostics_sha256": ""}, "release_evidence"),
+        ({"now": datetime(2026, 9, 1, 12, 0)}, "date"),
+        (
+            {"release_candidate": True, "use_alias_path": True},
+            "mutually exclusive",
+        ),
+    ],
+    ids=["empty-release-id", "empty-diagnostics-sha", "datetime-clock", "alias"],
+)
+def test_every_identity_refusal_precedes_the_sidecar_unlinks(
+    tmp_path, bad_arguments, match
+) -> None:
+    """No destructive step precedes argument validation — for every
+    validation, including the ones the battery construction owns."""
+
+    pytest.importorskip("tables")
+
+    input_h5 = tmp_path / "base.h5"
+    _write_toy_h5(input_h5)
+    staging_h5 = tmp_path / "staging.h5"
+    terminal_json = tmp_path / "terminal_gates.json"
+    staging_h5.write_bytes(b"previous-artifact")
+    terminal_json.write_text('{"previous_report": true}\n')
+    arguments: dict = {
+        "input_h5": input_h5,
+        "staging_h5": staging_h5,
+        "release_id": TEST_UK_RELEASE_ID,
+        "calibration_diagnostics_sha256": TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256,
+        "coverage_engine": object(),
+        "now": TEST_UK_EXCLUSION_CLOCK,
+        "gate_registry": _toy_gate_registry(),
+        "terminal_gate_path": terminal_json,
+    }
+    arguments.update(bad_arguments)
+    if arguments.pop("use_alias_path", False):
+        arguments["input_coverage_path"] = arguments.pop("terminal_gate_path")
+
+    with pytest.raises((ValueError, TypeError), match=match):
+        build_uk_national_dataset(**arguments)
+
+    assert staging_h5.read_bytes() == b"previous-artifact"
     assert terminal_json.read_text() == '{"previous_report": true}\n'

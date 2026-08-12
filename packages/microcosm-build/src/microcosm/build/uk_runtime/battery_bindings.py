@@ -19,11 +19,10 @@ battery executor fails a gate closed when the returned name disagrees
 with the declared one. Any *other* unexpected name passes through
 untouched so that check keeps biting.
 
-The evidence surface handed to the legacy gate modules mirrors the
-national build's adapter (the three entity tables plus period,
-weight-kind, and mass-log metadata); the two copies consolidate when the
-national build swaps onto the battery executor and the legacy
-orchestration path retires.
+The evidence surface handed to the legacy gate modules (the three entity
+tables plus period, weight-kind, and mass-log metadata) lives here as the
+single copy: the national build's adapter consolidated into it when the
+orchestration swapped onto the battery executor.
 """
 
 from __future__ import annotations
@@ -260,16 +259,29 @@ def _resolve_degenerate_exclusions(
     The committed register is the reviewed policy of record (#630/#610);
     a supplied ``reviewed_degenerate_exclusions`` artifact is the loud
     review-time override — the evidence hook digests whichever resolved,
-    so an overridden run self-describes in the signed report.
+    so an overridden run self-describes in the signed report. The label
+    follows the *content*, not the artifact's presence: records identical
+    to the committed register are the committed policy whichever route
+    delivered them, so an override cannot masquerade as a deviation (or a
+    caller re-supplying the register as a false one).
     """
 
+    committed = uk_default_degenerate_reviewed_exclusions()
     override = context.artifacts.get("reviewed_degenerate_exclusions")
     if override is None:
-        return uk_default_degenerate_reviewed_exclusions(), "committed"
-    return (
-        coerce_reviewed_exclusions(override, label="UK degenerate-surface policy"),
-        "override",
+        return committed, "committed"
+    resolved = coerce_reviewed_exclusions(
+        override, label="UK degenerate-surface policy"
     )
+    committed_payload = {
+        name: record.policy_payload() for name, record in committed.items()
+    }
+    resolved_payload = {
+        name: record.policy_payload() for name, record in resolved.items()
+    }
+    if resolved_payload == committed_payload:
+        return committed, "committed"
+    return resolved, "override"
 
 
 def _evaluate_degenerate_release_surface(

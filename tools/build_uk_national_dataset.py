@@ -316,6 +316,12 @@ def _parse_args() -> argparse.Namespace:
             "--release-candidate is refused on a sampled rung; a rung build "
             "is structurally non-releasable (#627)."
         )
+    if args.release_candidate and args.input_coverage_json is not None:
+        parser.error(
+            "--release-candidate is refused with --input-coverage-json; the "
+            "schema-1 alias is last-written over the report path and a "
+            "candidate must keep its signed schema-4 report."
+        )
     if args.sample_seed < 0:
         parser.error("sample seed must be a non-negative integer.")
     if args.sample_fraction != 1.0 and (
@@ -453,14 +459,19 @@ def main() -> int:
     # corrupted committed register must not surface hours later at
     # terminal-gate time.
     weighted_integrity_arguments = _weighted_integrity_arguments(args)
-    reviewed_degenerate_exclusions = (
+    if args.degenerate_exclusions is None:
+        # Preflight the committed register without passing it: a corrupted
+        # register dies here, while the absent artifact leaves the binding
+        # resolving the same policy of record itself — the artifact stays
+        # the review-time override channel, so a default run never
+        # self-describes as an override.
         uk_default_degenerate_reviewed_exclusions()
-        if args.degenerate_exclusions is None
-        else load_uk_reviewed_exclusion_register(
+        reviewed_degenerate_exclusions = None
+    else:
+        reviewed_degenerate_exclusions = load_uk_reviewed_exclusion_register(
             args.degenerate_exclusions,
             resource=UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
         )
-    )
     candidate = verify_certified_uk_candidate(args.input_h5)
     evidence_path.unlink(missing_ok=True)
     replay_path.unlink(missing_ok=True)

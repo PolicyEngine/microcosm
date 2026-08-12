@@ -227,6 +227,10 @@ def test_national_build_driver_uses_standalone_national_seam(
         ".terminal_gates.json"
     )
     assert calls[0]["release_candidate"] is False
+    # No --degenerate-exclusions: the artifact channel stays empty so the
+    # binding resolves the committed register itself and the run never
+    # self-describes as an override (the register is still preflighted).
+    assert calls[0]["reviewed_degenerate_exclusions"] is None
     payload = json.loads(capsys.readouterr().out)
     assert payload["schema_version"] == 5
     assert payload["build_kind"] == "uk_national_staging_dataset"
@@ -959,6 +963,37 @@ def test_national_driver_refuses_release_candidate_on_a_rung(
     with pytest.raises(SystemExit):
         builder._parse_args()
     assert "non-releasable" in capsys.readouterr().err
+
+
+def test_national_driver_refuses_release_candidate_with_the_legacy_alias(
+    monkeypatch, capsys
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
+            "--input-h5",
+            "base.h5",
+            "--staging-h5",
+            "staging.h5",
+            "--frs-raw-dir",
+            "frs_2023_24",
+            "--spi-tab",
+            "put2223uk.tab",
+            "--hmrc-ods",
+            "hmrc.ods",
+            "--input-coverage-json",
+            "coverage.json",
+            "--release-candidate",
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        builder._parse_args()
+    assert "signed schema-4 report" in capsys.readouterr().err
 
 
 def test_staging_run_config_pins_the_sampling_identity(monkeypatch, tmp_path) -> None:

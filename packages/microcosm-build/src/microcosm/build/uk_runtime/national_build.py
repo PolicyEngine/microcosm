@@ -37,6 +37,7 @@ from microcosm.build.frame_sampling import (
 from microcosm.build.gate_battery import (
     BlockingMode,
     EvidenceContext,
+    GateBatteryBlockedError,
     GateBatteryRun,
     GateBinding,
     GatePhaseReport,
@@ -128,7 +129,9 @@ class UKNationalBuildResult:
     stage_names: tuple[str, ...]
     #: The in-memory phase reports, declared order (preflight, terminal).
     phase_reports: tuple[GatePhaseReport, ...]
-    #: The exact schema-4 payload persisted at ``terminal_gate_path``.
+    #: The schema-4 payload the battery persisted at ``terminal_gate_path``
+    #: (in compatibility-alias mode the file is last-written as the schema-1
+    #: alias; this field always carries the full battery payload).
     gate_report: Mapping[str, object]
     terminal_gate_path: Path
     #: The #627 rung receipt; ``None`` on a full-scale (fraction 1.0) build.
@@ -349,7 +352,10 @@ def build_uk_national_dataset(
     records the gap and continues. A sampled rung is structurally
     non-releasable, so requesting both is refused. ``now`` is the shared
     exclusion-expiry clock (default: today, UTC), threaded to every
-    exclusion-consuming gate so one report carries one evaluation date.
+    exclusion-consuming gate so one report carries one evaluation date; it
+    is resolved once when the battery is armed — before the stages — where
+    the legacy aggregator resolved it after them, so a receipt expiring
+    mid-build is judged by the date the build started.
     ``gate_registry`` overrides the binding registry (tests only).
     """
 
@@ -384,8 +390,10 @@ def build_uk_national_dataset(
 
     materialized_stages = tuple(stages)
     _validate_stages(materialized_stages)
-    # Configuration refusals precede the battery and the sidecar unlinks: a
-    # misconfigured run must not delete a previous report or write a new one.
+    # Invariant: no destructive step precedes argument validation. Every
+    # configuration refusal sits above the sidecar unlinks and the battery,
+    # so a misconfigured run can neither delete a previous report nor write
+    # a new one (the #658 --degenerate-exclusions ordering bug, generalized).
     if checkpoint_dir is not None and run_config is None:
         raise ValueError(
             "a checkpointed UK national build requires run_config: the "
@@ -408,19 +416,28 @@ def build_uk_national_dataset(
             "a sampled rung build is structurally non-releasable (#627); "
             "release_candidate requires sample_fraction == 1.0."
         )
+    if release_candidate and legacy_input_coverage_output:
+        raise ValueError(
+            "input_coverage_path is a compatibility alias whose schema-1 "
+            "payload is last-written over the report path; a release "
+            "candidate must keep its signed schema-4 report, so the two "
+            "are mutually exclusive."
+        )
     if (input_mass_reference is None) != (input_mass_policy is None):
         raise ValueError(
             "input_mass_parity arms with a frozen reference and reviewed "
             "thresholds together; supply both or neither."
         )
-    staging_path.unlink(missing_ok=True)
-    diagnostic_path.unlink(missing_ok=True)
 
     engine = (
         coverage_engine
         if coverage_engine is not None
         else PolicyEngineUKCoverageEngine()
     )
+    # The clock and the battery construction validate their inputs (the
+    # date's type; release identity, spec parameters, release_evidence
+    # values), so they sit inside the no-destruction-before-validation
+    # fence too: the unlinks come strictly last.
     evaluation_date = exclusion_evaluation_date(now)
     battery = GateBatteryRun(
         load_country_spec("uk").gates,
@@ -432,6 +449,8 @@ def build_uk_national_dataset(
             "calibration_diagnostics_sha256": calibration_diagnostics_sha256
         },
     )
+    staging_path.unlink(missing_ok=True)
+    diagnostic_path.unlink(missing_ok=True)
     # Mirrors the US cheap preflight: graph or reference drift blocks before
     # source stages — now with the refusal persisted as a schema-4 report.
     battery.run_phase(
@@ -507,11 +526,21 @@ def build_uk_national_dataset(
         )
     try:
         battery.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
-    finally:
+    except GateBatteryBlockedError as blocked:
         # The alias consumer reads the schema-1 shape at this exact path, in
         # the blocked case too — same last-write order as the legacy flow.
+        # A failing alias write must not displace the typed block: the block
+        # is the build's outcome, the write failure rides along as its cause.
         if legacy_input_coverage_output and coverage_outcome.result is not None:
-            _write_input_coverage_diagnostic(diagnostic_path, coverage_outcome.result)
+            try:
+                _write_input_coverage_diagnostic(
+                    diagnostic_path, coverage_outcome.result
+                )
+            except Exception as write_error:  # noqa: BLE001 - keep the block typed
+                raise blocked from write_error
+        raise
+    if legacy_input_coverage_output:
+        _write_input_coverage_diagnostic(diagnostic_path, coverage_outcome.result)
     gate_report = battery.report_payload()
     attestation = gate_report["attestation"]
     signing_error = (
@@ -643,12 +672,18 @@ def _stage_fit_weight_records(
     try:
         records = getattr(hmrc_stage.transform, "fit_weight_records", None)
         return () if records is None else tuple(records)
-    except Exception:  # noqa: BLE001 - the weights audit must name the failure
+    except Exception:  # noqa: BLE001 - unreadable records coerce to () and
+        # fail the audit as missing evidence rather than crashing the batch.
         return ()
 
 
 def _write_input_coverage_diagnostic(path: Path, gate: GateResult) -> None:
-    """Write the byte-compatible origin/main schema for the legacy alias."""
+    """Write the byte-compatible origin/main schema for the legacy alias.
+
+    Atomic like every other writer on this surface: the alias last-writes
+    over the gate-report path, and a crash mid-write must not leave
+    truncated JSON where a consumer expects a report.
+    """
 
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -660,10 +695,12 @@ def _write_input_coverage_diagnostic(path: Path, gate: GateResult) -> None:
             "details": dict(gate.details),
         },
     }
-    path.write_text(
+    temporary_path = path.with_name(path.name + ".tmp")
+    temporary_path.write_text(
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+    temporary_path.replace(path)
 
 
 def _weight_kind_from_stored(value: object) -> WeightKind:

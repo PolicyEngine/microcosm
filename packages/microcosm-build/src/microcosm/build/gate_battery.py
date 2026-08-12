@@ -948,7 +948,6 @@ class GateBatteryRun:
             and self._blocked_at_phase is None
             and blocking_ok
             and signing_key is not None
-            and self._gates_manifest_sha256 is not None
         )
         attestation: dict[str, object] = {
             "schema_version": GATE_BATTERY_ATTESTATION_SCHEMA_VERSION,

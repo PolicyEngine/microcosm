@@ -141,11 +141,19 @@ warns if neither is set. After that, every release publishes with an automatic
 Slack alert.
 
 Canonical UK exact-k builds also require a stable, base64-encoded 32-byte
-`POPULACE_UK_TERMINAL_GATE_SIGNING_KEY`. Source `tools/release.env` before the
-national build as well as publication. The terminal-gate aggregator authenticates
-the complete report, canonical release id, and exact calibration-diagnostics
-digest with HMAC-SHA256; the persistence seam
-cannot sign caller-composed gate results, and publication independently verifies
-the report from the same out-of-band key. If the key is missing or malformed,
-the writer first persists an unsigned failed report and then raises, and
-publication rejects it.
+release key. Source `tools/release.env` before the national build as well as
+publication. Two variables carry it during the report-format migration —
+export both from the same key material:
+
+- `MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY` — what the national build signs
+  with (the gate-battery executor) and what schema-4 report verification
+  reads.
+- `POPULACE_UK_TERMINAL_GATE_SIGNING_KEY` — what schema-3 (legacy-format)
+  report verification reads; retires with the legacy format.
+
+The gate battery authenticates the complete report, canonical release id, and
+exact calibration-diagnostics digest with HMAC-SHA256; the persistence seam
+cannot sign caller-composed gate results, and publication independently
+verifies the report from the same out-of-band key. If the key is missing or
+malformed, a full-scale build persists the unsigned report and then refuses
+to stage, and publication rejects unsigned reports.

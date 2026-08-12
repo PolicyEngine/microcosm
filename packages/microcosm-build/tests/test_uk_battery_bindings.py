@@ -504,6 +504,33 @@ class TestExclusionDiscipline:
         assert overridden["reviewed_exclusions"] == {}
         assert overridden != committed, "an override must move the evidence digest"
 
+    def test_resupplying_the_committed_register_is_not_an_override(self) -> None:
+        # The label follows content, not the artifact's presence: a caller
+        # routing the committed register through the artifact (as a driver
+        # preflight might) runs the committed policy and must say so — and
+        # a review file byte-identical to the register is no deviation.
+        from microcosm.build.uk_runtime.terminal_gates import (
+            uk_default_degenerate_reviewed_exclusions,
+        )
+
+        binding = UK_GATE_REGISTRY["degenerate_release_surface"]
+        committed = binding.evidence_payload(
+            EvidenceContext(artifacts={"exclusions_evaluated_on": CLOCK}), {}
+        )
+        resupplied = binding.evidence_payload(
+            EvidenceContext(
+                artifacts={
+                    "exclusions_evaluated_on": CLOCK,
+                    "reviewed_degenerate_exclusions": dict(
+                        uk_default_degenerate_reviewed_exclusions()
+                    ),
+                }
+            ),
+            {},
+        )
+        assert resupplied == committed
+        assert resupplied["exclusions_register"] == "committed"
+
     def test_a_datetime_clock_is_refused(self, uk_gates) -> None:
         person, benunit, household = _tables()
         frame = uk_national_frame(
