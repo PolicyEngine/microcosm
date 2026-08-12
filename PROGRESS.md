@@ -86,10 +86,14 @@ exclusion.
   `e55095d2...b44ca8` bytes across repeated writes, two filesystems, and the
   available HDF5 1.14/2.0 runtimes; the independent UK schema-v2 golden remains
   unchanged and green. Corrected only the stale generic expected digest.
+- Re-ran the complete focused Round 12 surface against a stable tree: exactly
+  638 passed, with zero skips, failures, or errors. Re-ran issue #583's required
+  blindness proof separately: exactly 495 passed, with zero skips, failures, or
+  errors. The corrected generic and unchanged UK schema-v2 checkpoint suites
+  also pass with 32 passed and one expected skip.
 
 ## Next
 
-- Add a static, stage-by-stage input manifest for derive, seed, and
-  simulate, and classify every input as materialized or declared by its use.
-- Run the requested focused, issue-583, full-workspace, formatting, lint, and
-  diff proofs without builds; add the changelog and final smoke-r10 prediction.
+- Run the full workspace in eight disjoint exact-count chunks, then run final
+  formatting, lint, and diff proofs without builds.
+- Add the changelog and write the gradeable smoke-r10 prediction and verdict.
