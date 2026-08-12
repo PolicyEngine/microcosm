@@ -1654,6 +1654,27 @@ def test_canonical_metric_registry_covers_the_declared_131_target_split() -> Non
     } & {target for _entity, _family, target, _clone in surface_targets}
 
 
+def _registry_boolean_targets(
+    surface: Mapping[str, Mapping[str, tuple[str, ...]]],
+) -> set[tuple[str, str]]:
+    registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+    return {
+        (entity, target)
+        for entity, families in surface.items()
+        for family, targets in families.items()
+        for target in targets
+        if registry[(entity, family, target, 0)] == "boolean_incidence"
+    }
+
+
+def _transferred_registry_boolean_targets() -> set[tuple[str, str]]:
+    return _registry_boolean_targets(
+        stacked_spine_module.CANONICAL_STACKED_GAP_FILL_SURFACE
+    ) | _registry_boolean_targets(
+        stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
+    )
+
+
 def _canonical_registry_checkpoint_frame() -> Frame:
     frame = _source_frame(
         household_ids=[1, 2, 3],
@@ -1662,6 +1683,7 @@ def _canonical_registry_checkpoint_frame() -> Frame:
     )
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+    nullable_booleans = _transferred_registry_boolean_targets()
     string_categories = {"immigration_status_str", "ssn_card_type"}
     for (entity, _family, column, _clone_index), metric in sorted(registry.items()):
         table = tables[entity]
@@ -1671,11 +1693,14 @@ def _canonical_registry_checkpoint_frame() -> Frame:
                 dtype=np.float64,
             )
         elif metric == "boolean_incidence":
-            values = pd.Series(
-                [True, pd.NA, False],
-                index=table.index,
-                dtype="boolean",
-            )
+            if (entity, column) in nullable_booleans:
+                values = pd.Series(
+                    [True, pd.NA, False],
+                    index=table.index,
+                    dtype="boolean",
+                )
+            else:
+                values = np.asarray([True, False, True], dtype=np.bool_)
         elif column in string_categories:
             values = pd.Series(
                 ["A", pd.NA, "B"],
@@ -1684,7 +1709,7 @@ def _canonical_registry_checkpoint_frame() -> Frame:
             )
         else:
             assert metric == "categorical_tvd"
-            values = np.asarray([1, 2, 3], dtype=np.int64)
+            values = np.asarray([1.0, np.nan, 3.0], dtype=np.float64)
         table[column] = values
 
     person = tables["person"]
@@ -1717,6 +1742,7 @@ def test_canonical_metric_registry_drives_checkpoint_round_trip(
 
     assert first_path.read_bytes() == second_path.read_bytes()
     registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+    nullable_booleans = _transferred_registry_boolean_targets()
     assert Counter(registry.values()) == {
         "monetary_sign_separated": 79,
         "boolean_incidence": 48,
@@ -1732,37 +1758,28 @@ def test_canonical_metric_registry_drives_checkpoint_round_trip(
             check_exact=True,
         )
         if metric == "boolean_incidence":
-            assert observed.dtype == pd.BooleanDtype()
-            assert observed.isna().sum() == 1
+            if (entity, column) in nullable_booleans:
+                assert observed.dtype == pd.BooleanDtype()
+                assert observed.isna().sum() == 1
+            else:
+                assert observed.dtype == np.dtype(np.bool_)
+                assert not observed.isna().any()
         elif metric == "monetary_sign_separated":
             assert observed.dtype == np.dtype(np.float64)
         elif column in {"immigration_status_str", "ssn_card_type"}:
             assert observed.dtype == CANONICAL_STRING_DTYPE
         else:
-            assert observed.dtype == np.dtype(np.int64)
+            assert observed.dtype == np.dtype(np.float64)
+            assert observed.isna().sum() == 1
     for column in ("is_female", "is_household_head"):
         observed = loaded.person[column]
         assert observed.dtype == pd.BooleanDtype()
         assert not observed.isna().any()
 
 
-def test_checkpoint_boundary_nullable_boolean_inventory_is_exact() -> None:
+def test_checkpoint_boundary_extension_dtype_inventory_is_exact() -> None:
     registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
-
-    def boolean_targets(surface: Mapping[str, Mapping[str, tuple[str, ...]]]):
-        return {
-            (entity, target)
-            for entity, families in surface.items()
-            for family, targets in families.items()
-            for target in targets
-            if registry[(entity, family, target, 0)] == "boolean_incidence"
-        }
-
-    transferred_registry = boolean_targets(
-        stacked_spine_module.CANONICAL_STACKED_GAP_FILL_SURFACE
-    ) | boolean_targets(
-        stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
-    )
+    transferred_registry = _transferred_registry_boolean_targets()
     source_native = {
         ("person", "is_female"),
         ("person", "is_household_head"),
@@ -1836,16 +1853,53 @@ def test_checkpoint_boundary_nullable_boolean_inventory_is_exact() -> None:
         ("tax_unit", "takes_up_eitc"),
     }
     assert len(seeded_numpy_booleans) == 11
+    assembled_strings = {
+        ("person", "PERIDNUM"),
+        ("person", "source_person_id"),
+        ("person", "tax_unit_role_input"),
+        ("person", "person_support_channel"),
+        ("household", "SERIALNO"),
+        ("household", "ST"),
+        ("household", "PUMA"),
+        ("household", "puma_geoid"),
+        ("household", "puma"),
+        ("household", "tenure_type"),
+        ("household", "household_support_channel"),
+        ("tax_unit", "filing_status_input"),
+        ("tax_unit", "tax_unit_support_channel"),
+        ("spm_unit", "spm_unit_tenure_type"),
+        ("spm_unit", "spm_unit_support_channel"),
+        ("family", "family_support_channel"),
+        ("marital_unit", "marital_unit_support_channel"),
+    }
+    transferred_strings = assembled_strings | {
+        ("person", "immigration_status_str"),
+        ("person", "ssn_card_type"),
+    }
     boundary_inventory = {
-        "assembled": frozenset(),
-        "transferred": frozenset(transferred),
-        "simulated": frozenset(transferred),
+        "assembled": {
+            "boolean": frozenset(),
+            "string": frozenset(assembled_strings),
+        },
+        "transferred": {
+            "boolean": frozenset(transferred),
+            "string": frozenset(transferred_strings),
+        },
+        "simulated": {
+            "boolean": frozenset(transferred),
+            "string": frozenset(transferred_strings),
+        },
     }
-    assert {stage: len(columns) for stage, columns in boundary_inventory.items()} == {
-        "assembled": 0,
-        "transferred": 39,
-        "simulated": 39,
+    assert {
+        stage: {family: len(columns) for family, columns in families.items()}
+        for stage, families in boundary_inventory.items()
+    } == {
+        "assembled": {"boolean": 0, "string": 17},
+        "transferred": {"boolean": 39, "string": 19},
+        "simulated": {"boolean": 39, "string": 19},
     }
+    assert sum(map(len, boundary_inventory["assembled"].values())) == 17
+    assert sum(map(len, boundary_inventory["transferred"].values())) == 58
     assert boundary_inventory["transferred"] == boundary_inventory["simulated"]
 
 

@@ -173,6 +173,36 @@ def _nullable_boolean_checkpoint_frame() -> Frame:
     )
 
 
+def _checkpoint_series_group(root, *, table: str, column: str):
+    metadata = json.loads(np.asarray(root["metadata_json"]).tobytes())
+    table_position = next(
+        position
+        for position, spec in enumerate(metadata["tables"])
+        if spec["name"] == table
+    )
+    table_spec = metadata["tables"][table_position]
+    column_position = next(
+        position
+        for position, spec in enumerate(table_spec["columns"])
+        if spec["name"] == column
+    )
+    return (
+        metadata,
+        table_spec["columns"][column_position],
+        root[f"tables/t{table_position:05d}/columns/c{column_position:05d}"],
+    )
+
+
+def _replace_checkpoint_metadata(root, metadata: dict[str, object]) -> None:
+    encoded = frame_checkpoint_module._canonical_json(metadata).encode("utf-8")
+    del root["metadata_json"]
+    root.create_dataset(
+        "metadata_json",
+        data=np.frombuffer(encoded, dtype=np.uint8),
+        track_times=False,
+    )
+
+
 def test_frame_checkpoint_round_trip_is_byte_identical(tmp_path: Path) -> None:
     frame = _checkpoint_frame()
     first_path = tmp_path / "first.h5"
@@ -274,36 +304,37 @@ def test_nullable_boolean_round_trip_preserves_dtype_values_and_null_masks(
         ("person", "missing_nullable_boolean"),
         ("jobs", "link_nullable_boolean"),
     ):
+        loaded_table = (
+            loaded.frame.table(table)
+            if table in loaded.frame.entities
+            else loaded.frame.link(table)
+        )
+        expected_table = (
+            frame.table(table) if table in frame.entities else frame.link(table)
+        )
         pd.testing.assert_series_equal(
-            loaded.frame.table(table)[column],
-            frame.table(table)[column],
+            loaded_table[column],
+            expected_table[column],
             check_dtype=True,
             check_exact=True,
         )
-        assert loaded.frame.table(table)[column].dtype == pd.BooleanDtype()
+        assert loaded_table[column].dtype == pd.BooleanDtype()
 
     h5py = pytest.importorskip("h5py")
     with h5py.File(first_path, mode="r") as h5:
         root = h5["_populace_frame_checkpoint"]
         metadata = json.loads(np.asarray(root["metadata_json"]).tobytes())
         assert metadata["schema_version"] == 3
-        table_positions = {
-            spec["name"]: position for position, spec in enumerate(metadata["tables"])
-        }
         for table, column, expected_mask in (
             ("person", "complete_nullable_boolean", None),
             ("person", "missing_nullable_boolean", [0, 1, 0]),
             ("jobs", "link_nullable_boolean", [1, 0, 0, 1]),
         ):
-            table_position = table_positions[table]
-            table_spec = metadata["tables"][table_position]
-            column_position = next(
-                position
-                for position, spec in enumerate(table_spec["columns"])
-                if spec["name"] == column
+            _metadata, spec, group = _checkpoint_series_group(
+                root,
+                table=table,
+                column=column,
             )
-            spec = table_spec["columns"][column_position]
-            group = root[f"tables/t{table_position:05d}/columns/c{column_position:05d}"]
             assert spec == {
                 "name": column,
                 "dtype": "boolean",
@@ -319,7 +350,40 @@ def test_nullable_boolean_round_trip_preserves_dtype_values_and_null_masks(
                 assert mask.tolist() == expected_mask
 
 
-@pytest.mark.parametrize("damage", ["missing", "nonbinary", "wrong_length"])
+def test_nullable_boolean_masked_storage_bits_are_canonical(
+    tmp_path: Path,
+) -> None:
+    false_hidden = _nullable_boolean_checkpoint_frame()
+    true_hidden = _nullable_boolean_checkpoint_frame()
+    false_person = false_hidden.person
+    true_person = true_hidden.person
+    false_person["missing_nullable_boolean"] = pd.Series(
+        pd.arrays.BooleanArray(
+            np.asarray([True, False, False], dtype=np.bool_),
+            np.asarray([False, True, False], dtype=np.bool_),
+        ),
+        index=false_person.index,
+    )
+    true_person["missing_nullable_boolean"] = pd.Series(
+        pd.arrays.BooleanArray(
+            np.asarray([True, True, False], dtype=np.bool_),
+            np.asarray([False, True, False], dtype=np.bool_),
+        ),
+        index=true_person.index,
+    )
+    first_path = tmp_path / "hidden-false.h5"
+    second_path = tmp_path / "hidden-true.h5"
+
+    write_frame_checkpoint(first_path, false_hidden)
+    write_frame_checkpoint(second_path, true_hidden)
+
+    assert first_path.read_bytes() == second_path.read_bytes()
+
+
+@pytest.mark.parametrize(
+    "damage",
+    ["missing", "nonbinary", "wrong_length", "wrong_dtype", "wrong_rank"],
+)
 def test_nullable_boolean_checkpoint_rejects_malformed_null_mask(
     tmp_path: Path,
     damage: str,
@@ -329,19 +393,11 @@ def test_nullable_boolean_checkpoint_rejects_malformed_null_mask(
     h5py = pytest.importorskip("h5py")
     with h5py.File(path, mode="r+") as h5:
         root = h5["_populace_frame_checkpoint"]
-        metadata = json.loads(np.asarray(root["metadata_json"]).tobytes())
-        person_position = next(
-            position
-            for position, spec in enumerate(metadata["tables"])
-            if spec["name"] == "person"
+        _metadata, _spec, group = _checkpoint_series_group(
+            root,
+            table="person",
+            column="missing_nullable_boolean",
         )
-        person_spec = metadata["tables"][person_position]
-        column_position = next(
-            position
-            for position, spec in enumerate(person_spec["columns"])
-            if spec["name"] == "missing_nullable_boolean"
-        )
-        group = root[f"tables/t{person_position:05d}/columns/c{column_position:05d}"]
         del group["null_mask"]
         if damage == "nonbinary":
             group.create_dataset(
@@ -355,8 +411,120 @@ def test_nullable_boolean_checkpoint_rejects_malformed_null_mask(
                 data=np.asarray([0, 1], dtype=np.uint8),
                 track_times=False,
             )
+        elif damage == "wrong_dtype":
+            group.create_dataset(
+                "null_mask",
+                data=np.asarray([0, 1, 0], dtype=np.int16),
+                track_times=False,
+            )
+        elif damage == "wrong_rank":
+            group.create_dataset(
+                "null_mask",
+                data=np.asarray([[0, 1, 0]], dtype=np.uint8),
+                track_times=False,
+            )
 
     with pytest.raises(ValueError, match="null mask"):
+        load_frame_checkpoint(path)
+
+
+@pytest.mark.parametrize("damage", ["wrong_dtype", "wrong_rank"])
+def test_nullable_boolean_checkpoint_rejects_malformed_values(
+    tmp_path: Path,
+    damage: str,
+) -> None:
+    path = tmp_path / f"malformed-values-{damage}.h5"
+    write_frame_checkpoint(path, _nullable_boolean_checkpoint_frame())
+    h5py = pytest.importorskip("h5py")
+    with h5py.File(path, mode="r+") as h5:
+        root = h5["_populace_frame_checkpoint"]
+        _metadata, _spec, group = _checkpoint_series_group(
+            root,
+            table="person",
+            column="missing_nullable_boolean",
+        )
+        del group["values"]
+        values = (
+            np.asarray([1, 0, 0], dtype=np.uint8)
+            if damage == "wrong_dtype"
+            else np.asarray([[True, False, False]], dtype=np.bool_)
+        )
+        group.create_dataset("values", data=values, track_times=False)
+
+    with pytest.raises(ValueError, match="nullable boolean values"):
+        load_frame_checkpoint(path)
+
+
+def test_maskless_nullable_boolean_rejects_unexpected_null_mask(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "unexpected-mask.h5"
+    write_frame_checkpoint(path, _nullable_boolean_checkpoint_frame())
+    h5py = pytest.importorskip("h5py")
+    with h5py.File(path, mode="r+") as h5:
+        root = h5["_populace_frame_checkpoint"]
+        _metadata, _spec, group = _checkpoint_series_group(
+            root,
+            table="person",
+            column="complete_nullable_boolean",
+        )
+        group.create_dataset(
+            "null_mask",
+            data=np.zeros(3, dtype=np.uint8),
+            track_times=False,
+        )
+
+    with pytest.raises(ValueError, match="unexpected null mask"):
+        load_frame_checkpoint(path)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("has_null_mask", "yes", "has_null_mask"),
+        ("dtype", "bool", "declared dtype"),
+    ],
+)
+def test_nullable_boolean_checkpoint_rejects_malformed_spec(
+    tmp_path: Path,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    path = tmp_path / f"malformed-spec-{field}.h5"
+    write_frame_checkpoint(path, _nullable_boolean_checkpoint_frame())
+    h5py = pytest.importorskip("h5py")
+    with h5py.File(path, mode="r+") as h5:
+        root = h5["_populace_frame_checkpoint"]
+        metadata, spec, _group = _checkpoint_series_group(
+            root,
+            table="person",
+            column="missing_nullable_boolean",
+        )
+        spec[field] = value
+        _replace_checkpoint_metadata(root, metadata)
+
+    with pytest.raises(ValueError, match=message):
+        load_frame_checkpoint(path)
+
+
+def test_schema_2_checkpoint_rejects_boolean_dtype_under_legacy_encoding(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "forged-schema-2-object-boolean.h5"
+    write_frame_checkpoint(path, _checkpoint_frame())
+    h5py = pytest.importorskip("h5py")
+    with h5py.File(path, mode="r+") as h5:
+        root = h5["_populace_frame_checkpoint"]
+        metadata, spec, _group = _checkpoint_series_group(
+            root,
+            table="person",
+            column="nullable_flag",
+        )
+        spec["dtype"] = "boolean"
+        _replace_checkpoint_metadata(root, metadata)
+
+    with pytest.raises(ValueError, match="schema version 2.*boolean"):
         load_frame_checkpoint(path)
 
 
@@ -367,20 +535,28 @@ def test_schema_2_checkpoint_cannot_smuggle_nullable_boolean_encoding(
     write_frame_checkpoint(path, _nullable_boolean_checkpoint_frame())
     h5py = pytest.importorskip("h5py")
     with h5py.File(path, mode="r+") as h5:
-        dataset = h5["_populace_frame_checkpoint/metadata_json"]
-        metadata = json.loads(np.asarray(dataset).tobytes())
+        root = h5["_populace_frame_checkpoint"]
+        metadata = json.loads(np.asarray(root["metadata_json"]).tobytes())
         metadata["schema_version"] = 2
-        forged = json.dumps(
-            metadata,
-            allow_nan=False,
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        ).encode("utf-8")
-        assert len(forged) == len(dataset)
-        dataset[...] = np.frombuffer(forged, dtype=np.uint8)
+        _replace_checkpoint_metadata(root, metadata)
 
     with pytest.raises(ValueError, match="schema version 2.*nullable"):
+        load_frame_checkpoint(path)
+
+
+def test_schema_3_checkpoint_requires_nullable_boolean_encoding(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "forged-schema-3.h5"
+    write_frame_checkpoint(path, _checkpoint_frame())
+    h5py = pytest.importorskip("h5py")
+    with h5py.File(path, mode="r+") as h5:
+        root = h5["_populace_frame_checkpoint"]
+        metadata = json.loads(np.asarray(root["metadata_json"]).tobytes())
+        metadata["schema_version"] = 3
+        _replace_checkpoint_metadata(root, metadata)
+
+    with pytest.raises(ValueError, match="schema version 3.*nullable"):
         load_frame_checkpoint(path)
 
 

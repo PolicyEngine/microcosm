@@ -51,8 +51,9 @@ shared frame-checkpoint schema rejects pandas nullable `boolean`, and
 - Established the compatibility constraint: retain the frozen artifact kind,
   HDF root, and dataset identifiers; emit the existing schema-v2 bytes for
   frames without the new encoding; accept legacy v2 on load; use a bumped
-  schema only when nullable data is present; and bump the applicable stacked
-  materializer identity so stale serializer semantics cannot resume silently.
+  schema only when nullable data is present; and bump the pool checkpoint
+  envelope materializer so stale serializer bytes cannot resume silently while
+  leaving the stacked producer identity and its 182 valid target banks intact.
 - Added the Round 11 red-test matrix. It covers complete and missing nullable
   booleans in entity and link tables, explicit mask corruption, forged-v2
   metadata, deterministic rewrite, the actual 131-target canonical metric
