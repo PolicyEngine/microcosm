@@ -2,7 +2,7 @@
 
 ## State
 
-Round 10 implementation is complete and focused tests are green on
+Round 10 implementation and independent review are complete on
 `tail-stratum-support-652`. Smoke-r7 exposed a genuine second producer, but not
 in the late transfer: the retirement source callback independently QRF-drew
 clone 1 and its clone-2 tail descendant after the primary PUF/tail stage. The
@@ -10,6 +10,8 @@ repair now mirrors each source-owned ASEC clone-1 retirement result byte-exactly
 to clone 2. A canonical 18-row owner matrix covers all three target/origin/clone
 combinations and is content-bound into both the late schedule and tail manifest.
 The unchanged terminal preservation guard validates that canonical receipt.
+The first review found two enforcement-description gaps; both are fixed, and
+the follow-up review is clean with no remaining actionable findings.
 
 ## Done
 
@@ -54,11 +56,18 @@ The unchanged terminal preservation guard validates that canonical receipt.
   clone 2 by assembly-unique source ID (`4d1adef9`).
 - Passed the full producer-DAG tests, the focused tail-manifest test, all three
   new runtime finalizer cases, and the complete multispine-pool test file.
+- Classified the new data-only ownership module as a reviewed provenance owner
+  and pinned the reachable runtime graph at 64 modules; #583 passes its exact
+  495-test contract.
+- Fixed the review findings: education verification now fails closed if the
+  callback omits its consume-only tuition passthrough, and the matrix correctly
+  distinguishes ASEC callback byte verification from ACS projection masking.
+  Added per-action and end-to-end omission regressions (`dbac19ab`).
+- Completed an independent follow-up review with no actionable findings.
 
 ## Next
 
-- Add the changelog fragment and request an independent implementation review.
-- Fix any actionable review findings and rerun focused coverage.
-- Run exact 495-test #583 proof, full workspace chunked proof, ruff/format/diff
-  checks, then record the gradeable smoke-r8 prediction and restore the root
-  progress file to its base state before the final report.
+- Rerun all seven deterministic full-workspace chunks and the exact 495-test
+  #583 guard from final implementation HEAD; record exact aggregate counts.
+- Run ruff/format/diff checks, record the gradeable smoke-r8 prediction, and
+  restore the root progress file to its base state before the final report.
