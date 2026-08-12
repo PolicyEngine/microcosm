@@ -2,7 +2,7 @@
 
 ## State
 
-Round 12 is in progress on `tail-stratum-support-652` from `8ba55275`. The
+Round 12 is complete on `tail-stratum-support-652` from `8ba55275`. The
 reported real 1% build reached the stacked `transferred` phase, then the QBI
 derivation rejected `s_corp_income` as nonfinite for all 38,604 persons. The
 mechanism audit is complete and the provenance fix is implemented. The certified
@@ -13,7 +13,9 @@ finalizer materialized that zero over the whole pool; the strict stacked
 whole-pool QBI consumer retained the certified read scope. The fix declares
 and authenticates that exact whole-pool universe-zero semantic without `fillna`,
 while retaining QBI's exact nonfinite check and the deliberate transfer-plan
-exclusion.
+exclusion. Focused, issue #583, full-workspace, lint, format, diff, and
+independent-review proofs are green. No build was run; smoke-r10 remains the
+external certification step.
 
 ## Done
 
@@ -72,10 +74,27 @@ exclusion.
   section enumerates all 863 installed PolicyEngine input variables rather
   than using a wildcard and declares the ephemeral-default behavior for every
   present-null or absent input.
+
+  | Stage | Consumer | Inputs | Static provision point |
+  | --- | --- | ---: | --- |
+  | derive | `prepare_stacked_tail_derivation` | 2 | assembled provenance or declared optional derived leaf |
+  | derive | `_complete_schedule_d_input` | 5 | assembled structure or transferred parents |
+  | derive | `with_us_qbi_input_reconciliation` | 27 | assembled provenance/native source or transferred declared producer |
+  | seed | `seed_multispine_pool_inputs` | 13 | transferred input, administrative seed, or disclosed engine default |
+  | seed | `with_us_take_up_inputs` | 16 | assembled identity, membership, weight, and age inputs |
+  | simulate | `PolicyEngineUSEngine.materialize` | 12 | assembled entity graph and household weight |
+  | simulate | `ssi_static_dependency_closure` | 55 | 33 complete, 3 declared deferred, 19 declared absent at transfer; 34/3/18 after seed |
+  | simulate | `_simulation_projection` | 863 | 123 materialized, 13 seeded, 3 deferred, 5 native, 10 structural, 4 preserved, 1 derived, 704 declared absent |
+  | **Total** |  | **993** | every read materialized by `available_by` or paired with an explicit fallback |
+
 - Pinned the installed PolicyEngine-US 1.764.6 SSI dependency graph at 55 input
   leaves, 62 formula nodes, and 186 edges; pinned the full engine-input surface
   at 863 names/entities and 863 declared defaults; and pinned the complete
-  manifest. Independent review found and we corrected Schedule D's
+  manifest at
+  `8247a93e5f8f63d3ae71c1de681c29524d4bb8f07e3c6a50dcaf431b1377020f`
+  with receipt
+  `54b7196a6cf7d1ae18a6b149833fe5ecf5d998b4b14f8388766341af153ff3df`.
+  Independent review found and we corrected Schedule D's
   derived-stage availability and seven present-null default paths, then
   returned `VERDICT: CLEAN`.
 - Verified the manifest against smoke-r9's transferred checkpoint: all 147
@@ -90,8 +109,8 @@ exclusion.
 - Re-ran the complete focused Round 12 surface against a stable tree: exactly
   638 passed, with zero skips, failures, or errors. Re-ran issue #583's required
   blindness proof separately: exactly 495 passed, with zero skips, failures, or
-  errors. A final locked-environment rerun of the generic and UK schema-v2
-  checkpoint suites remains pending after restoring the original golden.
+  errors. The final locked-environment rerun of the generic and UK schema-v2
+  checkpoint suites passed 33 tests with zero skips, failures, or errors.
 - Independent review found one transitive manifest omission: the ACS earnings-
   universe owner reads person support channel while resolving the QBI scope.
   Added an owner-level structured input declaration, registered that physical
@@ -101,10 +120,50 @@ exclusion.
   tests pass on the corrected tree.
 - Added the Round 12 changelog fragment describing both the certified whole-
   pool S-corporation zero universe and the exhaustive remaining-stage manifest.
+- Re-ran the final focused eight-file surface on the committed tree: 638 passed,
+  zero skipped, failed, or errored. Re-ran issue #583 separately and asserted
+  exactly 495 passed, zero skipped, failed, or errored.
+- Partitioned all 228 non-#583 test files into eight sorted, disjoint chunks and
+  asserted the partition cardinality. The chunks reported, respectively:
+  `743/743/0`, `637/616/21`, `782/777/5`, `840/839/1`, `994/992/2`,
+  `814/813/1`, `766/738/28`, and `82/74/8` tests/passed/skipped, with no
+  failures or errors. Including #583, the exact 229-file workspace total is
+  6,153 tests: 6,087 passed, 66 skipped, zero failed, and zero errored.
+- Ran repository-wide `ruff check .`, changed-Python-file
+  `ruff format --check`, `git diff --check 8ba55275..HEAD`, and working-tree
+  `git diff --check`; all passed. The final independent review returned
+  `VERDICT: CLEAN` with no actionable correctness, regression, or coverage
+  finding.
+- Recomputed the smoke-r10 identities from the exact smoke-r9 pins and stack
+  receipt: configured namespace
+  `2e45c4d60f66b4321bc00ffa22816470bf162c59fd91956514832f97e066ed3c`,
+  base identity
+  `5fa474987eb0c9f3dc461cb0e3656678ac45dd449ef1b7d683f8311c092d39d0`,
+  assembled identity
+  `f584881dc59088efc7b9372d154a97eb7509fa7bd4070add07b55e9855586d25`,
+  transferred identity
+  `f7107c4591df4ec3e4250f32923251ac418f00c2674f6fd97db13ba75a602a8b`,
+  and simulated identity
+  `50e4b6885bee8f05aca3f94800a78807c82ca0294d9e22d683813ed75c6e06ba`.
+  The stacked authority is
+  `f0b676f6508dbf6bb2b787c42e6b85331bacc57c6649ac7ad15fdaa5884a1b2d`.
+  The new configured namespace cannot discover smoke-r9's
+  `99376eea69594de6c88e2f68f76e35e6590a3f1cdc2849953257f0de3a7d2f46`
+  subtree, so smoke-r10 must rebuild all 65 primary-QRF target files and 117
+  physical ACS-transfer bank files (118 logical outputs; the immigration pair
+  shares one file). The late schedule remains 38 producers, 16 source
+  producers, 19 transfer groups, 70 targets, 71 edges, and six waves, with
+  schedule SHA-256
+  `b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5`.
+- Predicted the new whole-pool S-corporation receipt on smoke-r10 exactly:
+  23,179 donor rows verified; 38,604 native rows materialized; 41,791 produced
+  rows verified; 80,395 person rows; clone-role counts 0/1/2 of
+  38,604/38,604/3,187; and zero post-materialization nonfinite or nonzero rows.
+  The attempt should pass `transferred`, then reach `derived`, `seeded`, and
+  `simulated` without the reported QBI exception. Later terminal-gate outcomes
+  remain certification results, not static predictions.
 
 ## Next
 
-- Re-run full-workspace chunk 1 and the two checkpoint suites in the locked
-  environment; chunks 2--8 are already clean.
-- Run final formatting, lint, and diff proofs without builds, then record the
-  gradeable smoke-r10 prediction and verdict.
+- Run the external real 1% smoke-r10 build and compare its identities, rebuild
+  counts, S-corporation receipt, and phase sequence with the prediction above.
