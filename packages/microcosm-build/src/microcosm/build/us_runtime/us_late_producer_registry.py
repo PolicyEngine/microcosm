@@ -99,7 +99,10 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-# v15 content-binds the complete late dual-producer ownership matrix and
+# v16 declares person.s_corp_income as a whole-pool primary-PUF output: its
+# certified combined-source semantics are carried by partnership_income, while
+# the separate S-corporation leaf is an exact-zero universe. v15 content-binds
+# the complete late dual-producer ownership matrix and
 # validates that it exhausts the primary/source/transfer intersection. v14
 # scopes origin-exclusive raw requirements independently of their inventory
 # defaults and retires whole-pool RELSHIPP/TEN/H_TENURE transfer fallbacks. v13
@@ -120,7 +123,7 @@ __all__ = [
 # cardinalities across each execution row, binds source-receipt outputs to the
 # callback receipt, and requires the primary callback to report the exact
 # resources it consumed. Receipt v2 introduced exact virtual-resource payloads.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 15
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 16
 US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 3
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
@@ -1596,7 +1599,15 @@ def _build_registry() -> dict[str, ProducerContract]:
     late_keys = _target_key_rows(late_surface)
     puf_keys = _target_key_rows(pool_post_puf_puf_producer_target_families())
     declared_primary_outputs = tuple(
-        ProducerOutput(entity, column, _PUF_CLONE_SCOPE)
+        ProducerOutput(
+            entity,
+            column,
+            (
+                _WHOLE_POOL_SCOPE
+                if (entity, column) == ("person", "s_corp_income")
+                else _PUF_CLONE_SCOPE
+            ),
+        )
         for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
             "primary_puf_qrf"
         ].items()

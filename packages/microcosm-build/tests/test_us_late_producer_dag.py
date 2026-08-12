@@ -356,9 +356,9 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
     assert len(registry[US_LATE_PRIMARY_PUF_STAGE].inputs) == 119
     primary_outputs = registry[US_LATE_PRIMARY_PUF_STAGE].outputs
     assert len(primary_outputs) == 100
-    assert sum(output.coverage_scope == "puf_clone" for output in primary_outputs) == 65
+    assert sum(output.coverage_scope == "puf_clone" for output in primary_outputs) == 64
     assert (
-        sum(output.coverage_scope == "whole_pool" for output in primary_outputs) == 34
+        sum(output.coverage_scope == "whole_pool" for output in primary_outputs) == 35
     )
     assert sum(output.coverage_scope == "acs_source" for output in primary_outputs) == 1
     assert {
@@ -374,6 +374,7 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
         if output.coverage_scope == "whole_pool"
     } >= {
         ("person", "person_support_clone_index", "whole_pool"),
+        ("person", "s_corp_income", "whole_pool"),
         ("frame", "@us_puf_clone_attachment_manifest", "whole_pool"),
     }
     assert all(contract.inputs for contract in registry.values())
@@ -783,7 +784,7 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
 
     assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
     receipt = us_late_producer_schedule_receipt()
-    assert receipt["schema_version"] == 15
+    assert receipt["schema_version"] == 16
     assert receipt["execution_receipt_contract"] == {
         "version": 3,
         "row_binding": (

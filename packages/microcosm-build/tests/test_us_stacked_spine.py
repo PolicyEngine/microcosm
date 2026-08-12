@@ -649,6 +649,157 @@ def _finalize_fixture_predictions(
     return predictions, donor
 
 
+def _s_corp_universe_fixture() -> Frame:
+    cloned = _cloned_stacked_fixture()
+    person = cloned.table("person").copy(deep=True)
+    clone_column = support_clone_index_column("person")
+    clone_index = person[clone_column]
+    person["s_corp_income"] = np.where(clone_index.eq(0), np.nan, 0.0)
+    first_clone = person.index[clone_index.eq(1)][0]
+    person.loc[first_clone, clone_column] = 2
+    tables = {entity: cloned.table(entity) for entity in cloned.entities}
+    tables["person"] = person
+    return Frame(
+        tables,
+        cloned.schema,
+        {entity: cloned.weights_for(entity) for entity in cloned.weighted_entities},
+        cloned.strata,
+        mass_log=cloned.mass_log,
+        metadata=cloned.metadata,
+    )
+
+
+def test_s_corp_universe_zero_materializes_native_rows_with_exact_receipt() -> None:
+    frame = _s_corp_universe_fixture()
+    input_person = frame.table("person").copy(deep=True)
+    donor = pd.DataFrame({"s_corp_income": [0.0, -0.0, 0.0]})
+
+    materialized, receipt = (
+        stacked_spine_module._materialize_us_puf_s_corp_universe_zero(frame, donor)
+    )
+
+    clone_column = support_clone_index_column("person")
+    clone_index = input_person[clone_column]
+    native = clone_index.eq(0)
+    assert input_person.loc[native, "s_corp_income"].isna().all()
+    assert materialized.table("person")["s_corp_income"].eq(0.0).all()
+    assert receipt["rule"] == (
+        stacked_spine_module.us_puf_s_corp_universe_zero_rule_identity()
+    )
+    assert receipt["status"] == "materialized"
+    assert receipt["donor_rows_verified"] == 3
+    assert receipt["native_rows_materialized"] == int(native.sum())
+    assert receipt["produced_rows_verified"] == int((clone_index > 0).sum())
+    assert receipt["person_rows"] == len(input_person)
+    assert receipt["person_rows_by_clone_role"] == {
+        str(role): int(clone_index.eq(role).sum()) for role in (0, 1, 2)
+    }
+    assert receipt["post_materialization_nonfinite_rows"] == 0
+    assert receipt["post_materialization_nonzero_rows"] == 0
+    assert len(receipt["donor_values_sha256"]) == 64
+    assert len(receipt["person_values_sha256"]) == 64
+    assert receipt["sha256"] == stacked_spine_module._canonical_sha256(
+        {key: value for key, value in receipt.items() if key != "sha256"}
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    (
+        ("donor_nonfinite", r"donor precondition failed: 1 nonfinite"),
+        ("donor_nonzero", r"donor precondition failed: 1 nonzero"),
+        ("native_preexisting", r"native precondition failed: 1 native cell"),
+        ("clone_nonfinite", r"clone precondition failed: 1 nonfinite"),
+        ("tail_nonzero", r"clone precondition failed: 1 nonzero"),
+    ),
+)
+def test_s_corp_universe_zero_fails_closed(
+    mutation: str,
+    match: str,
+) -> None:
+    frame = _s_corp_universe_fixture()
+    donor = pd.DataFrame({"s_corp_income": [0.0, 0.0]})
+    person = frame.table("person")
+    clone_index = person[support_clone_index_column("person")]
+    if mutation == "donor_nonfinite":
+        donor.loc[0, "s_corp_income"] = np.nan
+    elif mutation == "donor_nonzero":
+        donor.loc[0, "s_corp_income"] = 1.0
+    elif mutation == "native_preexisting":
+        person.loc[person.index[clone_index.eq(0)][0], "s_corp_income"] = 0.0
+    elif mutation == "clone_nonfinite":
+        person.loc[person.index[clone_index.eq(1)][0], "s_corp_income"] = np.nan
+    else:
+        person.loc[person.index[clone_index.eq(2)][0], "s_corp_income"] = 1.0
+
+    with pytest.raises(ValueError, match=match):
+        stacked_spine_module._materialize_us_puf_s_corp_universe_zero(frame, donor)
+
+
+def test_stacked_primary_applies_s_corp_universe_rule_after_qrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+
+    def impute(frame: Frame, *_args: object, **kwargs: object) -> Frame:
+        events.append("primary_qrf")
+        receipts = kwargs["predictor_universe_receipts"]
+        assert isinstance(receipts, list)
+        receipts.append({"fixture": "recipient-universe"})
+        person = frame.table("person").copy(deep=True)
+        clone_index = person[support_clone_index_column("person")]
+        person["s_corp_income"] = np.where(clone_index.eq(0), np.nan, 0.0)
+        tables = {entity: frame.table(entity) for entity in frame.entities}
+        tables["person"] = person
+        return Frame(
+            tables,
+            frame.schema,
+            {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+            frame.strata,
+            mass_log=frame.mass_log,
+            metadata=frame.metadata,
+        )
+
+    materialize = stacked_spine_module._materialize_us_puf_s_corp_universe_zero
+
+    def materialize_after_qrf(
+        frame: Frame,
+        donor: pd.DataFrame,
+    ) -> tuple[Frame, dict[str, object]]:
+        events.append("s_corp_universe_zero")
+        return materialize(frame, donor)
+
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "impute_us_puf_tax_detail_support",
+        impute,
+    )
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "_materialize_us_puf_s_corp_universe_zero",
+        materialize_after_qrf,
+    )
+
+    result = stacked_spine_module._run_stacked_puf_pass_without_tail_for_test(
+        _late_primary_entry(_stacked_gap_fixture()),
+        pd.DataFrame({"s_corp_income": [0.0, 0.0]}),
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+        predictors=(),
+        person_outputs=("s_corp_income",),
+        tax_unit_outputs=(),
+    )
+
+    assert events == ["primary_qrf", "s_corp_universe_zero"]
+    assert result.frame.table("person")["s_corp_income"].eq(0.0).all()
+    assert result.receipt["s_corp_income_universe_zero"]["status"] == "materialized"
+    assert result.receipt["doctrines"]["whole_pool_output_universes"] == {
+        "person.s_corp_income": (
+            stacked_spine_module.us_puf_s_corp_universe_zero_rule_identity()
+        )
+    }
+
+
 def test_finalize_preserve_nulls_keeps_unowned_cells_null() -> None:
     cloned = _cloned_stacked_fixture()
     predictions, donor = _finalize_fixture_predictions(cloned)
@@ -3545,7 +3696,7 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
         "tax_unit_outputs": "canonical_default",
     }
     execution = baseline["tax_unit.@primary_puf_execution_config"]["binding"]
-    assert execution["schema_version"] == 3
+    assert execution["schema_version"] == 4
     assert execution["clone_attachment"]["support_channels"] == [
         stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL,
         stacked_spine_module.PUF_TAX_DETAIL_SUPPORT_CHANNEL,
@@ -3555,6 +3706,23 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
     )
     assert execution["qrf"]["tail_bound_quantiles"] == {
         "non_sch_d_capital_gains": 0.999
+    }
+    assert execution["doctrines"]["whole_pool_output_universes"] == {
+        "person.s_corp_income": {
+            "rule_id": "puf_tax_detail_s_corp_income_universe_zero_v1",
+            "schema_version": 1,
+            "entity": "person",
+            "column": "s_corp_income",
+            "coverage_scope": "whole_pool",
+            "materialized_value": 0.0,
+            "source_semantics": (
+                "puf_combined_partnership_s_corp_carried_by_partnership_income"
+            ),
+            "donor_precondition": "finite_exact_zero",
+            "puf_clone_precondition": "finite_exact_zero",
+            "native_precondition": "all_null",
+            "assignment": "explicit_array_assignment",
+        }
     }
     worker = execution["qrf"]["worker_execution"]
     assert worker["module"] == "microcosm.build.us_runtime.puf_qrf_worker"
@@ -6792,7 +6960,7 @@ def test_self_digested_partial_authority_cannot_forge_production_identity() -> N
         GateReport((result,)).to_manifest()
 
 
-@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6, 7, 8))
+@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6, 7, 8, 9))
 def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     stale_version: int,
 ) -> None:
@@ -6812,7 +6980,7 @@ def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     )
     stale_receipt = stacked_spine_module._authority_receipt(stale)
 
-    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 9
+    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 10
     assert stale_receipt["version"] == stale_version
     assert stale_receipt["integrity_valid"] is True
     assert stale_receipt["digest_matches_declared"] is True
@@ -6831,7 +6999,7 @@ def test_stacked_authority_binds_import_validated_late_producer_schedule() -> No
     receipt = stacked_spine_module.stacked_spine_authority_receipt()
     component = receipt["components"]["late_producer_schedule"]
 
-    assert receipt["version"] == 9
+    assert receipt["version"] == 10
     assert component["producer_count"] == 38
     assert component["schedule_sha256"] == (
         stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE.sha256

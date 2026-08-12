@@ -236,6 +236,9 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 # 6: Frame-checkpoint schema v3 materializes pandas nullable booleans as bool
 #    values plus an explicit null mask when needed. Earlier envelopes cannot
 #    prove that declared absences survived serialization.
+# 7: Stacked primary-PUF output universes are explicit. Earlier envelopes can
+#    contain nulls outside the PUF clone for an output declared over the whole
+#    pool and therefore cannot resume safely even when their bank is reusable.
 #
 # Bump this version whenever any producer above changes a stage output without
 # changing one of the explicit identity fields below. In particular, adding,
@@ -250,7 +253,7 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 # normalizes that logical view in memory. Moving between those encodings does
 # not change a producer's scalar output and therefore does not advance this
 # ledger; changing string values or the canonical logical dtype policy does.
-POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 6
+POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 7
 
 _PRIMARY_QRF_N_ESTIMATORS = 100
 _ACS_TRANSFER_N_ESTIMATORS = 100
@@ -275,10 +278,11 @@ _STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
     1.00: "f100",
 }
 _STACKED_PIPELINE = "us-stacked-pool"
-# Version 10 additionally binds the complete late-resource semantics and the
+# Version 11 additionally binds the primary-PUF whole-pool universe semantics.
+# Earlier checkpoints must rebuild rather than resume with a nullable
+# s_corp_income leaf. Version 10 bound the complete late-resource semantics and
 # corrected outer order (the primary PUF callback is nested inside the DAG).
-# Earlier checkpoints must rebuild rather than resume with stale producers.
-_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 10
+_STACKED_CHECKPOINT_MATERIALIZER_VERSION = 11
 _STACKED_RELEASE_ID_PATTERN = re.compile(
     r"^populace-us-2024-stacked-f(?:001|010|100)-s[0-9]+-"
     r"asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"

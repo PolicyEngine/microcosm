@@ -5,13 +5,13 @@
 Round 12 is in progress on `tail-stratum-support-652` from `8ba55275`. The
 reported real 1% build reached the stacked `transferred` phase, then the QBI
 derivation rejected `s_corp_income` as nonfinite for all 38,604 persons. The
-mechanism audit is complete and implementation is beginning. The certified
+mechanism audit is complete and the provenance fix is implemented. The certified
 processed PUF maps its combined partnership/S-corporation carrier entirely to
 `partnership_income` and emits `s_corp_income` as exact zero. The historical
 finalizer materialized that zero over the whole pool; the strict stacked
 `preserve_nulls` path materialized it only on PUF descendants, while the
-whole-pool QBI consumer retained the certified read scope. The fix will declare
-and authenticate that exact whole-pool universe-zero semantic without `fillna`,
+whole-pool QBI consumer retained the certified read scope. The fix declares
+and authenticates that exact whole-pool universe-zero semantic without `fillna`,
 while retaining QBI's exact nonfinite check and the deliberate transfer-plan
 exclusion.
 
@@ -45,6 +45,18 @@ exclusion.
   and then assign an explicit whole-pool zero array with a bound receipt. The
   late registry will advertise whole-pool coverage for this one output. This is
   a declared deterministic materialization, not missing-value imputation.
+- Implemented that producer after primary QRF and capital-gains-tail
+  convergence. It rejects a missing, nonfinite, or nonzero donor; any
+  pre-materialized native cell; and any nonfinite or nonzero clone-1/clone-2
+  cell before explicitly assigning zeros to native rows. Its receipt binds the
+  rule, per-role counts, and donor/person value digests.
+- Advanced the late-producer registry to schema 16, stacked authority to 10,
+  primary execution-resource schema to 4, outer stacked materializer to 11,
+  and shared pool checkpoint envelope to 7. The callback receipt and resource
+  binding carry the same named whole-pool output-universe doctrine, so older
+  checkpoints fail closed.
+- Added focused producer/DAG/version tests, including the exact all-null QBI
+  regression, and ran the consolidated producer selection: 18 tests passed.
 - Audited SSI's installed PolicyEngine-US dependency closure from the static
   source index: 55 transitive input leaves. On the smoke-r9 transferred frame,
   33 are present and complete, three SCF asset leaves are present/all-null under
@@ -59,6 +71,6 @@ exclusion.
 
 - Add a static, stage-by-stage input manifest for derive, seed, and
   simulate, and classify every input as materialized or declared by its use.
-- Add failing contract coverage, implement the provenance-correct
-  plan/DAG change with required version bumps, then run the requested focused,
-  issue-583, full-workspace, formatting, lint, and diff proofs without builds.
+- Finish and bind the static remaining-stage input manifest, then run the
+  requested focused, issue-583, full-workspace, formatting, lint, and diff
+  proofs without builds.
