@@ -99,8 +99,27 @@ shared frame-checkpoint schema rejects pandas nullable `boolean`, and
   with SHA-256 `7fd5d25833f395b9eac57fcb0bc6537a344862a024ee981daf167949722a17ee`;
   the rowwise publisher's separate timestamped PyTables container retains its
   semantic goldens. Receipt: `/private/tmp/round11-uk-compat.xml`.
+- Passed repository-wide `ruff check`, format-check on all six changed Python
+  files, committed-range `git diff --check`, and working-tree
+  `git diff --check`. The worktree is clean.
+- Gradeable smoke-r9 prediction for the same f001/s578 inputs and configured
+  namespace `99376eea69594de6c88e2f68f76e35e6590a3f1cdc2849953257f0de3a7d2f46`:
+  discovery rejects the old materializer-v5 assembled envelope but retains the
+  unchanged stacked v10 identity and reuses all 65 primary-QRF plus 117 ACS
+  target-bank artifacts. It rebuilds the assembled envelope as v6, then writes
+  and reloads `transferred.checkpoint.h5` and `simulated.checkpoint.h5` with
+  frame schema v3. Their 39 nullable-boolean columns restore as pandas
+  `boolean`, byte-equal in logical values with zero nulls and therefore no
+  `null_mask` datasets; the 19 supported string extensions remain canonical,
+  and the eleven simulated seed flags remain NumPy `bool`. The historical
+  transferred stage identity remains
+  `388f0f2793736b3ad762eb4078b977196a4619ea657ea8f6a9ce9b7efe2a26b6`
+  because the producer/bank identity stays v10. The launcher contains no
+  extension-dtype refusal, logs rebuilt `transferred` and `simulated` stages,
+  and the attempt row reaches at least `transferred`, `derived`, `seeded`, and
+  `simulated` before any later certification verdict.
 
 ## Next
 
-- Run the requested focused, #583, full-workspace, lint, format, and golden
-  proofs, then perform an independent review cycle.
+- Perform the final independent review cycle, address any actionable findings,
+  and write the stdout-equivalent final report to the requested output file.
