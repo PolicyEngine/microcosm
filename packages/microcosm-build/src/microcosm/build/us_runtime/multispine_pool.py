@@ -14,8 +14,11 @@ agreement outputs and is not the input-only pool returned for H5 publication.
 from __future__ import annotations
 
 import hashlib
+import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from functools import lru_cache
+from importlib.metadata import version
 from typing import Protocol
 
 import numpy as np
@@ -69,6 +72,7 @@ from microcosm.build.us_runtime.prior_year_income import (
 from microcosm.build.us_runtime.puf_qrf_chain import PRIMARY_QRF_TARGET_ORDER
 from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from microcosm.build.us_runtime.qbi_inputs import (
+    US_QBI_RECONCILED_PERSON_COLUMNS,
     bind_us_qbi_reconciliation_transition_authority,
     us_qbi_post_reconciliation_person_columns,
     us_qbi_reconciliation_change_receipt,
@@ -114,10 +118,15 @@ from microcosm.build.us_runtime.wic_claim import with_us_wic_claim_input
 from microcosm.build.us_runtime.workers_compensation import (
     with_us_workers_compensation,
 )
-from microcosm.frame import Frame
+from microcosm.frame import US_SCHEMA, Frame
+from microcosm.frame.adapters.policyengine_us import (
+    PolicyEngineUSVariableMetadataIndex,
+    VariableDependencyClosure,
+)
 
 __all__ = [
     "POOL_CHECKPOINT_STAGE_ORDER",
+    "POOL_ENGINE_INPUT_PROJECTION_CONTRACT",
     "POOL_HOUSEHOLD_MASS_SHARES",
     "POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES",
     "POOL_HOUSING_ASSISTANCE_N_ESTIMATORS",
@@ -127,6 +136,8 @@ __all__ = [
     "POOL_OPERATOR_CONTRACTS",
     "POOL_OPERATOR_ORDER",
     "POOL_RANDOM_SEED",
+    "POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256",
+    "POOL_SSI_DEPENDENCY_CONTRACT",
     "POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE",
     "POOL_POST_CLONE_SOURCE_OPERATOR_ORDER",
     "POOL_POST_CLONE_SOURCE_PHASE",
@@ -139,6 +150,9 @@ __all__ = [
     "MultispinePoolCheckpoint",
     "MultispinePoolResult",
     "PoolInputSurfaceEntry",
+    "PoolEngineInputProjectionContract",
+    "PoolRemainingStageInput",
+    "PoolSsiDependencyContract",
     "PoolStageOutput",
     "SourceOperatorContract",
     "complete_multispine_source_inputs",
@@ -147,6 +161,10 @@ __all__ = [
     "materialize_multispine_agreement_outputs",
     "materialize_pool_deferred_transfer_inputs",
     "pool_input_surface",
+    "pool_engine_input_projection_receipt",
+    "pool_remaining_stage_input_manifest",
+    "pool_remaining_stage_input_manifest_receipt",
+    "pool_ssi_dependency_closure",
     "pool_post_puf_puf_producer_target_families",
     "pool_post_puf_source_producer_target_families",
     "pool_post_puf_transfer_target_families",
@@ -260,6 +278,73 @@ class PoolInputSurfaceEntry:
     entity: str
     family: str
     provenance: tuple[str, ...]
+
+
+@dataclass(frozen=True, order=True)
+class PoolRemainingStageInput:
+    """One statically declared read after the transferred checkpoint.
+
+    ``provision`` names the producer or fallback doctrine that makes the read
+    valid by ``available_by``.  Pseudo-columns enclosed in angle brackets are
+    structural Frame resources rather than persisted PolicyEngine variables.
+    """
+
+    stage: str
+    consumer: str
+    entity: str
+    variable: str
+    execution_scope: str
+    provision: str
+    available_by: str
+    fallback: str | None = None
+
+
+@dataclass(frozen=True)
+class PoolSsiDependencyContract:
+    """Checked-in identity of the static PE-US SSI dependency closure."""
+
+    engine_version: str
+    root: str
+    input_leaf_count: int
+    formula_node_count: int
+    edge_count: int
+    sha256: str
+
+
+@dataclass(frozen=True)
+class PoolEngineInputProjectionContract:
+    """Pinned identity of every installed engine input scanned at simulate."""
+
+    engine_version: str
+    input_count: int
+    default_count: int
+    sha256: str
+    defaults_sha256: str
+
+
+POOL_SSI_DEPENDENCY_CONTRACT = PoolSsiDependencyContract(
+    engine_version="1.764.6",
+    root="ssi",
+    input_leaf_count=55,
+    formula_node_count=62,
+    edge_count=186,
+    sha256="e3351cdedbe592456b637286ecd04b7079746e1c409e594fbca60a7d28666838",
+)
+"""Exact static graph consumed by the terminal SSI agreement simulation."""
+
+POOL_ENGINE_INPUT_PROJECTION_CONTRACT = PoolEngineInputProjectionContract(
+    engine_version="1.764.6",
+    input_count=863,
+    default_count=863,
+    sha256="67a66b018c6261a03a88852cce5c5a4cbe9f5595735d17f2f7666e19e464dfbf",
+    defaults_sha256="87f508fbb382036946aa5e225d339e1b593a464ee6cfc644d7d710540b00a9a7",
+)
+"""Exact installed input registry scanned by the disposable projection."""
+
+POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
+    "8247a93e5f8f63d3ae71c1de681c29524d4bb8f07e3c6a50dcaf431b1377020f"
+)
+"""Pinned content digest of all 993 post-transfer consumer/input rows."""
 
 
 @dataclass(frozen=True)
@@ -555,6 +640,20 @@ _POOL_NATIVE_COMPLETE_OUTPUTS: Mapping[str, frozenset[str]] = {
     "household": frozenset({"tenure_type"}),
     "spm_unit": frozenset({"spm_unit_tenure_type"}),
 }
+_POOL_SIMULATION_PRESERVED_ENGINE_INPUTS: Mapping[
+    tuple[str, str], tuple[str, str | None]
+] = {
+    ("person", "is_related_to_head_or_spouse"): ("assembled", None),
+    ("household", "puma"): (
+        "assembled",
+        "ephemeral_simulation_projection_engine_default_for_null",
+    ),
+    ("person", "ssi_reported"): (
+        "transferred",
+        "ephemeral_simulation_projection_engine_default_for_null",
+    ),
+    ("household", "state_fips"): ("assembled", None),
+}
 
 _SCF_WEALTH_DEFERRAL_REASON = (
     "The increment-2 pool input contract contains no SCF 2022 or SIPP 2023 "
@@ -838,6 +937,674 @@ def pool_input_surface() -> tuple[PoolInputSurfaceEntry, ...]:
     return tuple(
         sorted(entries.values(), key=lambda entry: (entry.variable, entry.entity))
     )
+
+
+def pool_ssi_dependency_closure(
+    metadata_index: PolicyEngineUSVariableMetadataIndex | None = None,
+) -> VariableDependencyClosure:
+    """Return SSI's static PE-US graph after checking the pinned identity."""
+
+    index = (
+        metadata_index
+        if metadata_index is not None
+        else PolicyEngineUSVariableMetadataIndex()
+    )
+    closure = index.variable_dependency_closure(POOL_SSI_DEPENDENCY_CONTRACT.root)
+    observed = {
+        "engine_version": closure.engine_version,
+        "root": closure.root,
+        "input_leaf_count": len(closure.input_leaves),
+        "formula_node_count": len(closure.formula_nodes),
+        "edge_count": len(closure.edges),
+        "sha256": closure.sha256,
+    }
+    expected = {
+        "engine_version": POOL_SSI_DEPENDENCY_CONTRACT.engine_version,
+        "root": POOL_SSI_DEPENDENCY_CONTRACT.root,
+        "input_leaf_count": POOL_SSI_DEPENDENCY_CONTRACT.input_leaf_count,
+        "formula_node_count": POOL_SSI_DEPENDENCY_CONTRACT.formula_node_count,
+        "edge_count": POOL_SSI_DEPENDENCY_CONTRACT.edge_count,
+        "sha256": POOL_SSI_DEPENDENCY_CONTRACT.sha256,
+    }
+    if observed != expected:
+        raise ValueError(
+            "PolicyEngine-US SSI dependency closure drifted; refresh the "
+            f"remaining-stage input audit. expected={expected}, observed={observed}."
+        )
+    return closure
+
+
+def _pool_engine_input_projection(
+    metadata_index: PolicyEngineUSVariableMetadataIndex,
+    *,
+    engine_version: str,
+) -> tuple[tuple[str, str], ...]:
+    """Return every installed engine input after checking its pinned digest."""
+
+    projection = tuple(
+        (metadata_index.variable_metadata(variable).entity, variable)
+        for variable in metadata_index.variables()
+    )
+    payload = [
+        {"entity": entity, "variable": variable} for entity, variable in projection
+    ]
+    digest = hashlib.sha256(
+        json.dumps(
+            payload,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    observed = {
+        "engine_version": engine_version,
+        "input_count": len(projection),
+        "sha256": digest,
+    }
+    expected = {
+        "engine_version": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.engine_version,
+        "input_count": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.input_count,
+        "sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.sha256,
+    }
+    if observed != expected:
+        raise ValueError(
+            "PolicyEngine-US simulation input projection drifted; refresh the "
+            f"remaining-stage input audit. expected={expected}, observed={observed}."
+        )
+    return projection
+
+
+def pool_engine_input_projection_receipt(
+    engine: _PoolRulesEngine | None = None,
+) -> dict[str, object]:
+    """Validate every installed simulation input and its declared default."""
+
+    rules_engine = engine
+    if rules_engine is None:
+        from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+        rules_engine = PolicyEngineUSEngine()
+    variables = list(rules_engine.variables())
+    defaults = dict(rules_engine.default_values(variables))
+    missing_defaults = sorted(set(variables) - set(defaults))
+    extra_defaults = sorted(set(defaults) - set(variables))
+    if missing_defaults or extra_defaults:
+        raise ValueError(
+            "PolicyEngine-US simulation input default surface is not exact; "
+            f"missing={missing_defaults}, extra={extra_defaults}."
+        )
+    rows = [
+        {
+            "entity": rules_engine.variable_metadata(variable).entity,
+            "variable": variable,
+            "default": defaults[variable],
+        }
+        for variable in variables
+    ]
+    defaults_sha256 = hashlib.sha256(
+        json.dumps(
+            rows,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    observed = {
+        "engine_version": version("policyengine-us"),
+        "input_count": len(variables),
+        "default_count": len(defaults),
+        "defaults_sha256": defaults_sha256,
+    }
+    expected = {
+        "engine_version": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.engine_version,
+        "input_count": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.input_count,
+        "default_count": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.default_count,
+        "defaults_sha256": (POOL_ENGINE_INPUT_PROJECTION_CONTRACT.defaults_sha256),
+    }
+    if observed != expected:
+        raise ValueError(
+            "PolicyEngine-US simulation input defaults drifted; refresh the "
+            f"remaining-stage input audit. expected={expected}, observed={observed}."
+        )
+    return observed
+
+
+@lru_cache(maxsize=8)
+def pool_remaining_stage_input_manifest(
+    metadata_index: PolicyEngineUSVariableMetadataIndex | None = None,
+) -> tuple[PoolRemainingStageInput, ...]:
+    """Enumerate and statically provision every remaining-stage data read.
+
+    The manifest starts at a validated ``transferred`` checkpoint and covers
+    tail preparation, both derive kernels, all thirteen seed-program branches,
+    and the terminal SSI simulation.  Simulation leaves come from the pinned
+    source-index graph rather than a handwritten dependency list.
+    """
+
+    entries: dict[
+        tuple[str, str, str, str],
+        PoolRemainingStageInput,
+    ] = {}
+
+    def register(
+        stage: str,
+        consumer: str,
+        entity: str,
+        variable: str,
+        *,
+        execution_scope: str,
+        provision: str,
+        available_by: str,
+        fallback: str | None = None,
+    ) -> None:
+        entry = PoolRemainingStageInput(
+            stage=stage,
+            consumer=consumer,
+            entity=entity,
+            variable=variable,
+            execution_scope=execution_scope,
+            provision=provision,
+            available_by=available_by,
+            fallback=fallback,
+        )
+        key = (stage, consumer, entity, variable)
+        previous = entries.setdefault(key, entry)
+        if previous != entry:
+            raise ValueError(
+                "Remaining-stage input has conflicting provisions: "
+                f"{previous!r} versus {entry!r}."
+            )
+
+    surface = {entry.variable: entry for entry in pool_input_surface()}
+
+    def surface_provision(variable: str) -> str:
+        declaration = surface.get(variable)
+        if declaration is None:
+            raise ValueError(
+                f"Remaining-stage input {variable!r} has no pool input producer."
+            )
+        return f"pool_input_surface:{declaration.family}"
+
+    # The stacked tail step reads only clone provenance and the optional memo
+    # leaf that it deliberately clears before deterministic re-derivation.
+    register(
+        "derive",
+        "prepare_stacked_tail_derivation",
+        "person",
+        support_clone_index_column("person"),
+        execution_scope="whole_pool",
+        provision="assembly_support_provenance",
+        available_by="assembled",
+    )
+    register(
+        "derive",
+        "prepare_stacked_tail_derivation",
+        "person",
+        "schedule_d_capital_gain_distributions",
+        execution_scope="clone_2",
+        provision="optional_existing_derived_leaf",
+        available_by="transferred",
+        fallback="absent_or_cleared_then_schedule_d_derived",
+    )
+
+    for variable in (
+        "long_term_capital_gains_before_response",
+        "non_sch_d_capital_gains",
+    ):
+        register(
+            "derive",
+            "_complete_schedule_d_input",
+            "person",
+            variable,
+            execution_scope="whole_pool",
+            provision=surface_provision(variable),
+            available_by="transferred",
+        )
+    for entity, variable, provision in (
+        ("person", "person_tax_unit_id", "frame_membership"),
+        ("tax_unit", "tax_unit_id", "frame_entity_id"),
+    ):
+        register(
+            "derive",
+            "_complete_schedule_d_input",
+            entity,
+            variable,
+            execution_scope="whole_pool",
+            provision=provision,
+            available_by="assembled",
+        )
+    register(
+        "derive",
+        "_complete_schedule_d_input",
+        "person",
+        "schedule_d_capital_gain_distributions",
+        execution_scope="whole_pool",
+        provision="optional_transferred_or_schedule_d_derived",
+        available_by="transferred",
+        fallback="derive_from_finite_transferred_parents",
+    )
+
+    for variable in US_QBI_RECONCILED_PERSON_COLUMNS:
+        register(
+            "derive",
+            "with_us_qbi_input_reconciliation",
+            "person",
+            variable,
+            execution_scope="whole_pool",
+            provision=surface_provision(variable),
+            available_by="transferred",
+        )
+    for variable in (
+        "partnership_income",
+        "estate_income",
+        "non_qualified_dividend_income",
+    ):
+        register(
+            "derive",
+            "with_us_qbi_input_reconciliation",
+            "person",
+            variable,
+            execution_scope="whole_pool",
+            provision=surface_provision(variable),
+            available_by="transferred",
+        )
+    register(
+        "derive",
+        "with_us_qbi_input_reconciliation",
+        "person",
+        "s_corp_income",
+        execution_scope="whole_pool",
+        provision="primary_puf_exact_zero_universe",
+        available_by="transferred",
+    )
+    for variable, provision in (
+        ("age", "assembled_native_person_input"),
+        ("SEMP", "assembled_raw_acs_source_authority"),
+        ("person_tax_unit_id", "frame_membership"),
+        (support_clone_index_column("person"), "assembly_support_provenance"),
+        ("person_support_channel", "assembly_support_provenance"),
+    ):
+        register(
+            "derive",
+            "with_us_qbi_input_reconciliation",
+            "person",
+            variable,
+            execution_scope="whole_pool",
+            provision=provision,
+            available_by="assembled",
+        )
+    register(
+        "derive",
+        "with_us_qbi_input_reconciliation",
+        "person",
+        support_source_id_column("person"),
+        execution_scope="whole_pool",
+        provision="assembly_support_source_identity",
+        available_by="assembled",
+        fallback="person_id_for_unstacked_lineage_digest",
+    )
+    register(
+        "derive",
+        "with_us_qbi_input_reconciliation",
+        "person",
+        "person_id",
+        execution_scope="whole_pool",
+        provision="frame_entity_id",
+        available_by="assembled",
+    )
+
+    contract = load_take_up_contract()
+    transfer_owned = {
+        variable
+        for families in pool_transfer_target_families().values()
+        for variables in families.values()
+        for variable in variables
+    }
+    for program in contract.programs:
+        if program.is_seeded:
+            provision = "administrative_seed_or_preserved_input"
+            fallback = "sourced_seed_when_input_is_missing"
+        elif program.variable in transfer_owned:
+            provision = "transferred_or_preserved_input"
+            fallback = None
+        else:
+            provision = "preserved_input_or_disclosed_engine_default"
+            fallback = "checked_take_up_contract_engine_default"
+        register(
+            "seed",
+            "seed_multispine_pool_inputs",
+            program.entity,
+            program.variable,
+            execution_scope="whole_pool",
+            provision=provision,
+            available_by=(
+                "transferred" if program.variable in transfer_owned else "seeded"
+            ),
+            fallback=fallback,
+        )
+
+    # Stable Bernoulli draws consume these structural columns and resolved
+    # weights.  The source-identity triplet is optional as a unit: support or
+    # entity identity remains the declared deterministic fallback.
+    for entity in (
+        "person",
+        "household",
+        "tax_unit",
+        "spm_unit",
+        "family",
+        "marital_unit",
+    ):
+        register(
+            "seed",
+            "with_us_take_up_inputs",
+            entity,
+            support_source_id_column(entity),
+            execution_scope="whole_pool",
+            provision="assembly_support_source_identity",
+            available_by="assembled",
+        )
+    for entity in ("tax_unit", "spm_unit"):
+        register(
+            "seed",
+            "with_us_take_up_inputs",
+            entity,
+            f"{entity}_id",
+            execution_scope="whole_pool",
+            provision="frame_entity_id",
+            available_by="assembled",
+        )
+        register(
+            "seed",
+            "with_us_take_up_inputs",
+            "person",
+            f"person_{entity}_id",
+            execution_scope="whole_pool",
+            provision="frame_membership",
+            available_by="assembled",
+        )
+        register(
+            "seed",
+            "with_us_take_up_inputs",
+            entity,
+            "<resolved_weight>",
+            execution_scope="whole_pool",
+            provision="frame_resolve_weights_from_household_weight",
+            available_by="assembled",
+        )
+    for variable in ("source_year", "source_household_id", "source_person_id"):
+        register(
+            "seed",
+            "with_us_take_up_inputs",
+            "person",
+            variable,
+            execution_scope="whole_pool",
+            provision="optional_assembled_source_identity",
+            available_by="assembled",
+            fallback="support_source_id_then_entity_id",
+        )
+    register(
+        "seed",
+        "with_us_take_up_inputs",
+        "person",
+        "age",
+        execution_scope="whole_pool",
+        provision="assembled_native_person_input",
+        available_by="assembled",
+    )
+
+    resolved_metadata_index = (
+        metadata_index
+        if metadata_index is not None
+        else PolicyEngineUSVariableMetadataIndex()
+    )
+    closure = pool_ssi_dependency_closure(resolved_metadata_index)
+    take_up_variables = {program.variable for program in contract.programs}
+    actual_surface_provenance = {
+        "pool_transfer_target_families",
+        "PRIMARY_QRF_TARGET_ORDER",
+    }
+    ssi_provisions: dict[str, int] = {}
+    for variable in closure.input_leaves:
+        metadata = resolved_metadata_index.variable_metadata(variable)
+        declaration = surface.get(variable)
+        if variable in POOL_DEFERRED_TRANSFER_INPUTS:
+            provision = "declared_deferred_null_input"
+            available_by = "transferred"
+            fallback = "ephemeral_simulation_projection_engine_default"
+        elif variable == "age":
+            provision = "assembled_native_person_input"
+            available_by = "assembled"
+            fallback = None
+        elif variable in take_up_variables:
+            provision = "seed_stage_program_contract"
+            available_by = "seeded"
+            fallback = "seed_receipted_value_or_disclosed_engine_default"
+        elif declaration is not None and actual_surface_provenance.intersection(
+            declaration.provenance
+        ):
+            provision = "materialized_pool_input_surface"
+            available_by = "transferred"
+            fallback = None
+        else:
+            provision = "declared_absent_engine_input"
+            available_by = "simulate"
+            fallback = "policyengine_default_for_absent_input"
+        ssi_provisions[provision] = ssi_provisions.get(provision, 0) + 1
+        register(
+            "simulate",
+            "ssi_static_dependency_closure",
+            metadata.entity,
+            variable,
+            execution_scope="whole_pool",
+            provision=provision,
+            available_by=available_by,
+            fallback=fallback,
+        )
+
+    expected_ssi_provisions = {
+        "assembled_native_person_input": 1,
+        "materialized_pool_input_surface": 32,
+        "seed_stage_program_contract": 1,
+        "declared_deferred_null_input": 3,
+        "declared_absent_engine_input": 18,
+    }
+    if ssi_provisions != expected_ssi_provisions:
+        raise ValueError(
+            "SSI input-leaf provisioning drifted; "
+            f"expected={expected_ssi_provisions}, observed={ssi_provisions}."
+        )
+
+    for group in US_SCHEMA.group_entities:
+        register(
+            "simulate",
+            "PolicyEngineUSEngine.materialize",
+            group,
+            US_SCHEMA.entity_id_column(group),
+            execution_scope="whole_pool",
+            provision="frame_entity_id",
+            available_by="assembled",
+        )
+        register(
+            "simulate",
+            "PolicyEngineUSEngine.materialize",
+            "person",
+            US_SCHEMA.membership_column(group),
+            execution_scope="whole_pool",
+            provision="frame_membership",
+            available_by="assembled",
+        )
+    register(
+        "simulate",
+        "PolicyEngineUSEngine.materialize",
+        "person",
+        US_SCHEMA.person_id_column,
+        execution_scope="whole_pool",
+        provision="frame_entity_id",
+        available_by="assembled",
+    )
+    register(
+        "simulate",
+        "PolicyEngineUSEngine.materialize",
+        "household",
+        "<resolved_weight>",
+        execution_scope="whole_pool",
+        provision="frame_household_weight",
+        available_by="assembled",
+    )
+    engine_structural_inputs = {
+        (group, US_SCHEMA.entity_id_column(group)) for group in US_SCHEMA.group_entities
+    } | {
+        ("person", US_SCHEMA.membership_column(group))
+        for group in US_SCHEMA.group_entities
+    }
+    native_engine_inputs = {
+        (entity, variable)
+        for entity, variables in _POOL_NATIVE_COMPLETE_OUTPUTS.items()
+        for variable in variables
+    }
+    projection_provisions: dict[str, int] = {}
+    for entity, variable in _pool_engine_input_projection(
+        resolved_metadata_index,
+        engine_version=closure.engine_version,
+    ):
+        fallback: str | None = (
+            "ephemeral_simulation_projection_engine_default_if_present_null"
+        )
+        if variable in POOL_DEFERRED_TRANSFER_INPUTS:
+            provision = "declared_deferred_null_input"
+            available_by = "transferred"
+            fallback = "ephemeral_simulation_projection_engine_default"
+        elif variable in take_up_variables:
+            provision = "seed_stage_program_contract"
+            available_by = "seeded"
+        elif variable in surface:
+            provision = "materialized_pool_input_surface"
+            available_by = "transferred"
+        elif (entity, variable) in native_engine_inputs:
+            provision = "assembled_native_engine_input"
+            available_by = "assembled"
+        elif (entity, variable) in engine_structural_inputs:
+            provision = "frame_structural_engine_input"
+            available_by = "assembled"
+        elif (entity, variable) in _POOL_SIMULATION_PRESERVED_ENGINE_INPUTS:
+            provision = "preserved_stacked_engine_input"
+            available_by, preserved_fallback = _POOL_SIMULATION_PRESERVED_ENGINE_INPUTS[
+                (entity, variable)
+            ]
+            if preserved_fallback is not None:
+                fallback = preserved_fallback
+        elif variable == "schedule_d_capital_gain_distributions":
+            provision = "derived_schedule_d_input"
+            available_by = "derived"
+        else:
+            provision = "declared_absent_engine_input"
+            available_by = "simulate"
+            fallback = "policyengine_default_if_absent"
+        projection_provisions[provision] = projection_provisions.get(provision, 0) + 1
+        register(
+            "simulate",
+            "_simulation_projection",
+            entity,
+            variable,
+            execution_scope="disposable_simulation_copy",
+            provision=provision,
+            available_by=available_by,
+            fallback=fallback,
+        )
+
+    expected_projection_provisions = {
+        "materialized_pool_input_surface": 123,
+        "seed_stage_program_contract": 13,
+        "declared_deferred_null_input": 3,
+        "assembled_native_engine_input": 5,
+        "frame_structural_engine_input": 10,
+        "preserved_stacked_engine_input": 4,
+        "derived_schedule_d_input": 1,
+        "declared_absent_engine_input": 704,
+    }
+    if projection_provisions != expected_projection_provisions:
+        raise ValueError(
+            "Simulation input-projection provisioning drifted; "
+            f"expected={expected_projection_provisions}, "
+            f"observed={projection_provisions}."
+        )
+
+    return tuple(sorted(entries.values()))
+
+
+def pool_remaining_stage_input_manifest_receipt(
+    metadata_index: PolicyEngineUSVariableMetadataIndex | None = None,
+) -> dict[str, object]:
+    """Return a content identity for the exhaustive post-transfer manifest."""
+
+    manifest = pool_remaining_stage_input_manifest(metadata_index)
+    rows = [
+        {
+            "stage": entry.stage,
+            "consumer": entry.consumer,
+            "entity": entry.entity,
+            "variable": entry.variable,
+            "execution_scope": entry.execution_scope,
+            "provision": entry.provision,
+            "available_by": entry.available_by,
+            "fallback": entry.fallback,
+        }
+        for entry in manifest
+    ]
+    manifest_sha256 = hashlib.sha256(
+        json.dumps(
+            rows,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    if manifest_sha256 != POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256:
+        raise ValueError(
+            "Remaining-stage input manifest drifted; refresh its static audit. "
+            f"expected={POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256}, "
+            f"observed={manifest_sha256}."
+        )
+    stage_counts = {
+        stage: sum(entry.stage == stage for entry in manifest)
+        for stage in ("derive", "seed", "simulate")
+    }
+    consumer_names = sorted({entry.consumer for entry in manifest})
+    consumer_counts = {
+        consumer: sum(entry.consumer == consumer for entry in manifest)
+        for consumer in consumer_names
+    }
+    receipt: dict[str, object] = {
+        "schema_version": 1,
+        "entry_count": len(manifest),
+        "stage_counts": stage_counts,
+        "consumer_counts": consumer_counts,
+        "ssi_dependency_contract": {
+            "engine_version": POOL_SSI_DEPENDENCY_CONTRACT.engine_version,
+            "root": POOL_SSI_DEPENDENCY_CONTRACT.root,
+            "input_leaf_count": POOL_SSI_DEPENDENCY_CONTRACT.input_leaf_count,
+            "formula_node_count": POOL_SSI_DEPENDENCY_CONTRACT.formula_node_count,
+            "edge_count": POOL_SSI_DEPENDENCY_CONTRACT.edge_count,
+            "sha256": POOL_SSI_DEPENDENCY_CONTRACT.sha256,
+        },
+        "engine_input_projection_contract": {
+            "engine_version": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.engine_version,
+            "input_count": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.input_count,
+            "default_count": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.default_count,
+            "sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.sha256,
+            "defaults_sha256": (POOL_ENGINE_INPUT_PROJECTION_CONTRACT.defaults_sha256),
+        },
+        "manifest_sha256": manifest_sha256,
+    }
+    receipt["sha256"] = hashlib.sha256(
+        json.dumps(
+            receipt,
+            allow_nan=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).hexdigest()
+    return receipt
 
 
 def materialize_pool_deferred_transfer_inputs(frame: Frame) -> PoolStageOutput:
@@ -2030,6 +2797,8 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
     all-or-nothing identities on the imputed PUF-detail surface.
     """
 
+    remaining_stage_manifest_receipt = pool_remaining_stage_input_manifest_receipt()
+
     def reconcile_qbi_with_receipt(input_frame: Frame) -> PoolStageOutput:
         reconciled = with_us_qbi_input_reconciliation(input_frame)
         receipt = us_qbi_reconciliation_change_receipt(input_frame, reconciled)
@@ -2070,6 +2839,7 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
         {
             "phase": _POST_CLONE_PHASE,
             "operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
+            "remaining_stage_input_manifest": remaining_stage_manifest_receipt,
             "schedule_d_capital_gain_distributions": schedule_d_receipt,
             "qbi_input_reconciliation": dict(qbi_receipt),
         },
@@ -2326,6 +3096,11 @@ def materialize_multispine_agreement_outputs(
         from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
         rules_engine = PolicyEngineUSEngine()
+        projection_contract_receipt: Mapping[str, object] = (
+            pool_engine_input_projection_receipt(rules_engine)
+        )
+    else:
+        projection_contract_receipt = {"status": "injected_test_engine"}
 
     simulation_frame, default_fills = _simulation_projection(frame, rules_engine)
     household_ids = simulation_frame.table("household")["household_id"].to_numpy()
@@ -2389,6 +3164,7 @@ def materialize_multispine_agreement_outputs(
             },
             "household_batch_size": POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE,
             "batches": batch_count,
+            "engine_input_projection_contract": dict(projection_contract_receipt),
             "simulation_projection_default_fills": default_fills,
             "persisted_to_pool": False,
         },

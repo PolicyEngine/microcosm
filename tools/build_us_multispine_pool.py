@@ -121,6 +121,7 @@ from microcosm.build.us_runtime.multispine_pool import (
     complete_multispine_source_inputs,
     derive_multispine_pool_inputs,
     materialize_multispine_agreement_outputs,
+    pool_remaining_stage_input_manifest_receipt,
     pool_transfer_target_families,
     prepare_multispine_source_inputs_for_clone,
     run_multispine_pool_path,
@@ -959,6 +960,9 @@ def _pool_checkpoint_base_identity(
             ),
             "late_producer_schedule": _json_ready(us_late_producer_schedule_receipt()),
             "derive_operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
+            "remaining_stage_input_manifest": (
+                pool_remaining_stage_input_manifest_receipt()
+            ),
             "primary_qrf_target_order": list(PRIMARY_QRF_TARGET_ORDER),
             "transfer_target_families": _json_ready(pool_transfer_target_families()),
             "take_up_contract": take_up_contract_identity(),
@@ -1113,6 +1117,9 @@ def _stacked_checkpoint_base_identity(
                 )
             ),
             "derive_operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
+            "remaining_stage_input_manifest": (
+                pool_remaining_stage_input_manifest_receipt()
+            ),
             "primary_qrf_target_order": list(PRIMARY_QRF_TARGET_ORDER),
             "primary_qrf_checkpoint_schema_version": (
                 PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION

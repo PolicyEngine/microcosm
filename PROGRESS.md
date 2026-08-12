@@ -64,13 +64,27 @@ exclusion.
   stage materializes `takes_up_ssi_if_eligible` at its disclosed engine default,
   leaving 34 complete, three explicitly deferred, and 18 absent leaves that use
   declared engine defaults only on the disposable simulation projection. The
-  complete checked-in remaining-stage manifest is being added so this
-  classification cannot drift silently.
+  complete checked-in remaining-stage manifest now prevents this
+  classification from drifting silently.
+- Added the complete remaining-stage manifest and bound its content receipt to
+  both checkpoint identities and the derive-stage receipt. It contains 993
+  exact consumer/input rows: 34 derive, 29 seed, and 930 simulate. The simulate
+  section enumerates all 863 installed PolicyEngine input variables rather
+  than using a wildcard and declares the ephemeral-default behavior for every
+  present-null or absent input.
+- Pinned the installed PolicyEngine-US 1.764.6 SSI dependency graph at 55 input
+  leaves, 62 formula nodes, and 186 edges; pinned the full engine-input surface
+  at 863 names/entities and 863 declared defaults; and pinned the complete
+  manifest. Independent review found and we corrected Schedule D's
+  derived-stage availability and seven present-null default paths, then
+  returned `VERDICT: CLEAN`.
+- Verified the manifest against smoke-r9's transferred checkpoint: all 147
+  engine inputs already present are classified non-absent, and the remaining
+  12 future inputs are exactly Schedule D plus 11 seed-stage additions.
 
 ## Next
 
 - Add a static, stage-by-stage input manifest for derive, seed, and
   simulate, and classify every input as materialized or declared by its use.
-- Finish and bind the static remaining-stage input manifest, then run the
-  requested focused, issue-583, full-workspace, formatting, lint, and diff
-  proofs without builds.
+- Run the requested focused, issue-583, full-workspace, formatting, lint, and
+  diff proofs without builds; add the changelog and final smoke-r10 prediction.

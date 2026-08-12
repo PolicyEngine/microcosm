@@ -2422,6 +2422,9 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
     assert pool_code["us_qbi_reconciliation_contract"] == (
         pool_tool.us_qbi_reconciliation_contract_identity()
     )
+    assert pool_code["remaining_stage_input_manifest"] == (
+        pool_tool.pool_remaining_stage_input_manifest_receipt()
+    )
 
     with monkeypatch.context() as changed:
         changed.setattr(pool_tool, "PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION", 5)
@@ -2456,6 +2459,17 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
     with monkeypatch.context() as changed:
         changed.setattr(pool_tool, "PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION", 1)
         stale_tail_schema = identity()
+    with monkeypatch.context() as changed:
+        remaining_manifest = copy.deepcopy(
+            pool_tool.pool_remaining_stage_input_manifest_receipt()
+        )
+        remaining_manifest["manifest_sha256"] = "0" * 64
+        changed.setattr(
+            pool_tool,
+            "pool_remaining_stage_input_manifest_receipt",
+            lambda: remaining_manifest,
+        )
+        stale_remaining_manifest = identity()
     with monkeypatch.context() as changed:
         tail_contract = copy.deepcopy(
             pool_tool.puf_capital_gains_tail_support_contract_identity()
@@ -2507,12 +2521,13 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
             stale_acs,
             stale_qbi,
             stale_tail_schema,
+            stale_remaining_manifest,
             stale_tail_contract,
             stale_late_schedule,
             stale_source_asset,
         )
     }
-    assert len(digests) == 8
+    assert len(digests) == 9
 
     # Positive control: discovery accepts the exact current semantic identity
     # under the same fixture engine version used to construct it.

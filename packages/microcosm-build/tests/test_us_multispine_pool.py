@@ -29,26 +29,34 @@ from microcosm.build.us_runtime.multispine_pool import (
     POOL_CHECKPOINT_STAGE_ORDER,
     POOL_DEFERRED_TRANSFER_INPUTS,
     POOL_DERIVE_OPERATOR_ORDER,
+    POOL_ENGINE_INPUT_PROJECTION_CONTRACT,
     POOL_OPERATOR_CONTRACTS,
     POOL_OPERATOR_ORDER,
     POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
     POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER,
+    POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256,
     POOL_SOURCE_OPERATOR_CONTRACTS,
     POOL_SOURCE_OPERATOR_ORDER,
     POOL_SPINE_AGREEMENT_REGISTRY,
+    POOL_SSI_DEPENDENCY_CONTRACT,
     MultispinePoolCheckpoint,
     MultispinePoolResult,
     PoolInputSurfaceEntry,
+    PoolRemainingStageInput,
     PoolStageOutput,
     _complete_schedule_d_input,
     finalize_multispine_source_inputs,
     materialize_multispine_agreement_outputs,
     materialize_pool_deferred_transfer_inputs,
+    pool_engine_input_projection_receipt,
     pool_input_surface,
     pool_post_puf_puf_producer_target_families,
     pool_post_puf_source_producer_target_families,
     pool_post_puf_transfer_target_families,
     pool_pre_clone_gap_fill_target_families,
+    pool_remaining_stage_input_manifest,
+    pool_remaining_stage_input_manifest_receipt,
+    pool_ssi_dependency_closure,
     pool_transfer_target_families,
     prepare_multispine_puf_predictors,
     prepare_multispine_source_inputs_for_clone,
@@ -87,6 +95,7 @@ from microcosm.build.us_runtime.support_provenance import (
 from microcosm.build.us_runtime.take_up_contract import load_take_up_contract
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from microcosm.frame.adapters.policyengine_us import (
+    PolicyEngineUSEngine,
     PolicyEngineUSVariableMetadataIndex,
 )
 
@@ -1325,6 +1334,351 @@ def test_pool_input_surface_rejects_primary_qrf_target_without_entity(
         pool_input_surface()
 
 
+def test_ssi_static_dependency_closure_matches_pinned_engine_graph() -> None:
+    closure = pool_ssi_dependency_closure(_installed_variable_metadata_index())
+
+    assert closure.engine_version == POOL_SSI_DEPENDENCY_CONTRACT.engine_version
+    assert closure.root == "ssi"
+    assert len(closure.input_leaves) == 55
+    assert len(closure.formula_nodes) == 62
+    assert len(closure.edges) == 186
+    assert closure.sha256 == POOL_SSI_DEPENDENCY_CONTRACT.sha256
+    assert closure.input_leaves == (
+        "age",
+        "alimony_income",
+        "bank_account_assets",
+        "bond_assets",
+        "child_support_received",
+        "disability_benefits",
+        "employment_income_before_lsr",
+        "financial_assistance",
+        "gi_cash_assistance",
+        "immigration_status_str",
+        "is_blind",
+        "is_disabled",
+        "is_full_time_college_student",
+        "is_separated",
+        "keogh_distributions",
+        "meets_ssi_disability_criteria",
+        "non_qualified_dividend_income",
+        "own_children_in_household",
+        "qualified_dividend_income",
+        "rental_income",
+        "self_employment_income_before_lsr",
+        "social_security_dependents",
+        "social_security_disability",
+        "social_security_retirement",
+        "social_security_survivors",
+        "ssi_lives_in_another_persons_household",
+        "ssi_lives_in_medical_treatment_facility",
+        "ssi_medicaid_pays_majority_of_care",
+        "ssi_others_pay_all_meals",
+        "ssi_qualifying_quarters_earnings",
+        "ssi_receives_food_from_others",
+        "ssi_receives_outside_shelter_support",
+        "ssi_receives_shelter_from_others_in_household",
+        "ssi_shelter_support_value",
+        "sstb_self_employment_income_before_lsr",
+        "stock_assets",
+        "survivor_benefits",
+        "takes_up_ssi_if_eligible",
+        "tax_exempt_401k_distributions",
+        "tax_exempt_403b_distributions",
+        "tax_exempt_interest_income",
+        "tax_exempt_ira_distributions",
+        "tax_exempt_private_pension_income",
+        "tax_exempt_public_pension_income",
+        "tax_exempt_sep_distributions",
+        "taxable_401k_distributions",
+        "taxable_403b_distributions",
+        "taxable_interest_income",
+        "taxable_ira_distributions",
+        "taxable_private_pension_income",
+        "taxable_public_pension_income",
+        "taxable_sep_distributions",
+        "unemployment_compensation",
+        "veterans_benefits",
+        "workers_compensation",
+    )
+
+
+def test_remaining_stage_manifest_covers_every_derive_read() -> None:
+    manifest = pool_remaining_stage_input_manifest(_installed_variable_metadata_index())
+    derive = [entry for entry in manifest if entry.stage == "derive"]
+    by_consumer = {
+        consumer: {
+            (entry.entity, entry.variable)
+            for entry in derive
+            if entry.consumer == consumer
+        }
+        for consumer in {entry.consumer for entry in derive}
+    }
+
+    assert by_consumer == {
+        "prepare_stacked_tail_derivation": {
+            ("person", "person_support_clone_index"),
+            ("person", "schedule_d_capital_gain_distributions"),
+        },
+        "_complete_schedule_d_input": {
+            ("person", "long_term_capital_gains_before_response"),
+            ("person", "non_sch_d_capital_gains"),
+            ("person", "person_tax_unit_id"),
+            ("person", "schedule_d_capital_gain_distributions"),
+            ("tax_unit", "tax_unit_id"),
+        },
+        "with_us_qbi_input_reconciliation": {
+            *{("person", variable) for variable in US_QBI_OUTPUT_COLUMNS},
+            ("person", "self_employment_income_before_lsr"),
+            ("person", "partnership_income"),
+            ("person", "s_corp_income"),
+            ("person", "estate_income"),
+            ("person", "non_qualified_dividend_income"),
+            ("person", "age"),
+            ("person", "SEMP"),
+            ("person", "person_tax_unit_id"),
+            ("person", "person_support_clone_index"),
+            ("person", "person_support_channel"),
+            ("person", "person_source_id"),
+            ("person", "person_id"),
+        },
+    }
+    s_corp = next(
+        entry
+        for entry in derive
+        if entry.consumer == "with_us_qbi_input_reconciliation"
+        and entry.variable == "s_corp_income"
+    )
+    assert s_corp == PoolRemainingStageInput(
+        stage="derive",
+        consumer="with_us_qbi_input_reconciliation",
+        entity="person",
+        variable="s_corp_income",
+        execution_scope="whole_pool",
+        provision="primary_puf_exact_zero_universe",
+        available_by="transferred",
+    )
+
+
+def test_remaining_stage_manifest_covers_seed_programs_and_structure() -> None:
+    manifest = pool_remaining_stage_input_manifest(_installed_variable_metadata_index())
+    seed = [entry for entry in manifest if entry.stage == "seed"]
+    program_names = {program.variable for program in load_take_up_contract().programs}
+    programs = [entry for entry in seed if entry.variable in program_names]
+
+    assert len(programs) == len(program_names) == 13
+    assert {entry.variable for entry in programs} == program_names
+    assert Counter(entry.provision for entry in programs) == Counter(
+        {
+            "administrative_seed_or_preserved_input": 2,
+            "transferred_or_preserved_input": 2,
+            "preserved_input_or_disclosed_engine_default": 9,
+        }
+    )
+    structural = {
+        (entry.entity, entry.variable, entry.provision)
+        for entry in seed
+        if entry.variable not in program_names
+    }
+    assert structural == {
+        *{
+            (
+                entity,
+                f"{entity}_source_id",
+                "assembly_support_source_identity",
+            )
+            for entity in (
+                "person",
+                "household",
+                "tax_unit",
+                "spm_unit",
+                "family",
+                "marital_unit",
+            )
+        },
+        ("person", "age", "assembled_native_person_input"),
+        ("person", "person_spm_unit_id", "frame_membership"),
+        ("person", "person_tax_unit_id", "frame_membership"),
+        ("person", "source_household_id", "optional_assembled_source_identity"),
+        ("person", "source_person_id", "optional_assembled_source_identity"),
+        ("person", "source_year", "optional_assembled_source_identity"),
+        (
+            "spm_unit",
+            "<resolved_weight>",
+            "frame_resolve_weights_from_household_weight",
+        ),
+        ("spm_unit", "spm_unit_id", "frame_entity_id"),
+        (
+            "tax_unit",
+            "<resolved_weight>",
+            "frame_resolve_weights_from_household_weight",
+        ),
+        ("tax_unit", "tax_unit_id", "frame_entity_id"),
+    }
+
+
+def test_remaining_stage_manifest_provisions_every_ssi_leaf_by_seed() -> None:
+    index = _installed_variable_metadata_index()
+    manifest = pool_remaining_stage_input_manifest(index)
+    closure = pool_ssi_dependency_closure(index)
+    leaves = [
+        entry for entry in manifest if entry.consumer == "ssi_static_dependency_closure"
+    ]
+
+    assert len(leaves) == 55
+    assert tuple(sorted(entry.variable for entry in leaves)) == closure.input_leaves
+    assert Counter(entry.provision for entry in leaves) == Counter(
+        {
+            "assembled_native_person_input": 1,
+            "materialized_pool_input_surface": 32,
+            "seed_stage_program_contract": 1,
+            "declared_deferred_null_input": 3,
+            "declared_absent_engine_input": 18,
+        }
+    )
+    transferred_complete = sum(
+        entry.provision
+        in {"assembled_native_person_input", "materialized_pool_input_surface"}
+        for entry in leaves
+    )
+    deferred = sum(
+        entry.provision == "declared_deferred_null_input" for entry in leaves
+    )
+    transferred_absent = len(leaves) - transferred_complete - deferred
+    seeded_complete = transferred_complete + sum(
+        entry.provision == "seed_stage_program_contract" for entry in leaves
+    )
+    seeded_absent = len(leaves) - seeded_complete - deferred
+    assert (transferred_complete, deferred, transferred_absent) == (33, 3, 19)
+    assert (seeded_complete, deferred, seeded_absent) == (34, 3, 18)
+    assert all(
+        entry.fallback is not None
+        for entry in leaves
+        if entry.provision
+        in {
+            "seed_stage_program_contract",
+            "declared_deferred_null_input",
+            "declared_absent_engine_input",
+        }
+    )
+
+
+def test_remaining_stage_manifest_enumerates_every_simulation_projection_input() -> (
+    None
+):
+    index = _installed_variable_metadata_index()
+    manifest = pool_remaining_stage_input_manifest(index)
+    projection = [
+        entry for entry in manifest if entry.consumer == "_simulation_projection"
+    ]
+
+    assert len(projection) == POOL_ENGINE_INPUT_PROJECTION_CONTRACT.input_count == 863
+    assert {(entry.entity, entry.variable) for entry in projection} == {
+        (index.variable_metadata(variable).entity, variable)
+        for variable in index.variables()
+    }
+    assert Counter(entry.provision for entry in projection) == Counter(
+        {
+            "materialized_pool_input_surface": 123,
+            "seed_stage_program_contract": 13,
+            "declared_deferred_null_input": 3,
+            "assembled_native_engine_input": 5,
+            "frame_structural_engine_input": 10,
+            "preserved_stacked_engine_input": 4,
+            "derived_schedule_d_input": 1,
+            "declared_absent_engine_input": 704,
+        }
+    )
+    preserved = {
+        (entry.entity, entry.variable, entry.fallback)
+        for entry in projection
+        if entry.provision == "preserved_stacked_engine_input"
+    }
+    assert preserved == {
+        (
+            "person",
+            "is_related_to_head_or_spouse",
+            "ephemeral_simulation_projection_engine_default_if_present_null",
+        ),
+        (
+            "household",
+            "puma",
+            "ephemeral_simulation_projection_engine_default_for_null",
+        ),
+        (
+            "person",
+            "ssi_reported",
+            "ephemeral_simulation_projection_engine_default_for_null",
+        ),
+        (
+            "household",
+            "state_fips",
+            "ephemeral_simulation_projection_engine_default_if_present_null",
+        ),
+    }
+    assert all(entry.fallback is not None for entry in projection)
+
+
+def test_simulation_projection_defaults_match_pinned_engine_surface() -> None:
+    receipt = pool_engine_input_projection_receipt(PolicyEngineUSEngine())
+
+    assert receipt == {
+        "engine_version": "1.764.6",
+        "input_count": 863,
+        "default_count": 863,
+        "defaults_sha256": (POOL_ENGINE_INPUT_PROJECTION_CONTRACT.defaults_sha256),
+    }
+
+
+def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
+    manifest = pool_remaining_stage_input_manifest(_installed_variable_metadata_index())
+
+    assert len(manifest) == 993
+    assert Counter(entry.stage for entry in manifest) == Counter(
+        {"derive": 34, "seed": 29, "simulate": 930}
+    )
+    assert len(
+        {
+            (entry.stage, entry.consumer, entry.entity, entry.variable)
+            for entry in manifest
+        }
+    ) == len(manifest)
+    assert all(entry.provision and entry.available_by for entry in manifest)
+
+    receipt = pool_remaining_stage_input_manifest_receipt(
+        _installed_variable_metadata_index()
+    )
+    assert receipt["entry_count"] == 993
+    assert receipt["stage_counts"] == {
+        "derive": 34,
+        "seed": 29,
+        "simulate": 930,
+    }
+    assert receipt["engine_input_projection_contract"] == {
+        "engine_version": "1.764.6",
+        "input_count": 863,
+        "default_count": 863,
+        "sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.sha256,
+        "defaults_sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.defaults_sha256,
+    }
+    assert receipt["manifest_sha256"] == POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256
+    assert len(receipt["sha256"]) == 64
+
+
+def test_remaining_stage_manifest_rejects_unreviewed_content_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256",
+        "0" * 64,
+    )
+
+    with pytest.raises(ValueError, match="Remaining-stage input manifest drifted"):
+        pool_remaining_stage_input_manifest_receipt(
+            _installed_variable_metadata_index()
+        )
+
+
 class _ProducerDtypeFittedQRF:
     def __init__(
         self,
@@ -2515,6 +2869,7 @@ def test_production_operator_invocations_are_total_and_guarded(
                 "bind_us_qbi_reconciliation_transition_authority",
                 "dict",
                 "list",
+                "pool_remaining_stage_input_manifest_receipt",
                 "us_qbi_reconciliation_change_receipt",
                 "validate_us_qbi_reconciliation_live_output",
                 "validate_us_qbi_reconciliation_transition",
@@ -2669,6 +3024,12 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
     derived = result.frame.table("person")
 
     assert result.receipt["operator_order"] == list(POOL_DERIVE_OPERATOR_ORDER)
+    assert result.receipt["remaining_stage_input_manifest"]["entry_count"] == 993
+    assert result.receipt["remaining_stage_input_manifest"]["stage_counts"] == {
+        "derive": 34,
+        "seed": 29,
+        "simulate": 930,
+    }
     assert (
         result.receipt["qbi_input_reconciliation"]["recipient_source_universe"][
             "rows_excluded_from_base_self_employment_rewrite"

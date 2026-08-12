@@ -17,7 +17,9 @@ already guarantees them. The one thing it adds is the ``household_weight``
 column, materialized from the frame's typed household weights.
 """
 
+import json
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from functools import lru_cache
 from hashlib import sha256
 from importlib.metadata import PackageNotFoundError, distribution
@@ -46,6 +48,7 @@ __all__ = [
     "ConsumerReceipt",
     "PolicyEngineUSEngine",
     "PolicyEngineUSVariableMetadataIndex",
+    "VariableDependencyClosure",
 ]
 
 _PERSON_TABLE = "person"
@@ -73,6 +76,26 @@ _FORMULA_OWNED_COMPAT_COLUMNS = frozenset(
         "social_security",
     }
 )
+
+
+@dataclass(frozen=True)
+class VariableDependencyClosure:
+    """Static transitive variable graph for one PolicyEngine output.
+
+    Edges are ordered ``(consumer, dependency)`` pairs and are deduplicated
+    across source-reference sites.  The digest binds the installed engine
+    version and the complete normalized graph, so a checked-in downstream
+    input manifest can fail closed on either source or dependency drift
+    without executing a microsimulation.
+    """
+
+    engine_version: str
+    root: str
+    input_leaves: tuple[str, ...]
+    formula_nodes: tuple[str, ...]
+    edges: tuple[tuple[str, str], ...]
+    sha256: str
+
 
 # PolicyEngine ``value_type`` (a Python type) → kernel dtype kind. Enum value
 # types are not listed and fall back to ``"str"`` at the call site.
@@ -273,6 +296,7 @@ class PolicyEngineUSVariableMetadataIndex:
         source_index = _installed_policyengine_us_variable_sources()
         self._definitions = source_index.definitions
         self._consumers = source_index.consumers
+        self._engine_version = distribution("policyengine-us").version
 
     def variable_metadata(self, name: str) -> VariableMetadata:
         definition = self._definitions.get(name)
@@ -294,6 +318,66 @@ class PolicyEngineUSVariableMetadataIndex:
         if name not in self._definitions:
             raise ValueError(f"Unknown PolicyEngine-US source variable {name!r}.")
         return self._consumers.get(name, ())
+
+    def variable_dependency_closure(self, name: str) -> VariableDependencyClosure:
+        """Return the statically authenticated transitive graph for ``name``.
+
+        The source index records references in the target-to-consumer
+        direction.  This method inverts those receipts, walks outward from the
+        requested output, and classifies each reachable definition exactly as
+        :meth:`variables` does.  Multiple source sites for the same reference
+        collapse to one semantic edge.
+        """
+
+        if name not in self._definitions:
+            raise ValueError(f"Unknown PolicyEngine-US source variable {name!r}.")
+
+        dependencies: dict[str, set[str]] = {}
+        for target, receipts in self._consumers.items():
+            for receipt in receipts:
+                if receipt.consumer in self._definitions:
+                    dependencies.setdefault(receipt.consumer, set()).add(target)
+
+        reachable: set[str] = set()
+        edges: set[tuple[str, str]] = set()
+        pending = [name]
+        while pending:
+            consumer = pending.pop()
+            if consumer in reachable:
+                continue
+            reachable.add(consumer)
+            for target in dependencies.get(consumer, ()):
+                edges.add((consumer, target))
+                if target not in reachable:
+                    pending.append(target)
+
+        inputs = set(self.variables())
+        input_leaves = tuple(sorted(reachable & inputs))
+        formula_nodes = tuple(sorted(reachable - inputs))
+        ordered_edges = tuple(sorted(edges))
+        payload = {
+            "engine_version": self._engine_version,
+            "root": name,
+            "input_leaves": list(input_leaves),
+            "formula_nodes": list(formula_nodes),
+            "edges": [list(edge) for edge in ordered_edges],
+        }
+        digest = sha256(
+            json.dumps(
+                payload,
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        return VariableDependencyClosure(
+            engine_version=self._engine_version,
+            root=name,
+            input_leaves=input_leaves,
+            formula_nodes=formula_nodes,
+            edges=ordered_edges,
+            sha256=digest,
+        )
 
     def formula_owned_outputs(self, names: Iterable[str]) -> set[str]:
         requested = set(names)
