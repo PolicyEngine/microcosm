@@ -46,9 +46,18 @@ from microcosm.build.us_runtime.operator_boundary import (
     FORMULA_OWNED_SOURCE_COLUMNS,
     PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
 )
+from microcosm.build.us_runtime.puf_capital_gains_tail import (
+    PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,
+    PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
+)
 from microcosm.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+)
+from microcosm.build.us_runtime.us_late_overlap_ownership import (
+    US_LATE_OVERLAP_OWNERSHIP_TARGETS,
+    US_LATE_SOURCE_CALLBACK_PASSTHROUGH_OUTPUTS,
+    us_late_overlap_ownership_receipt,
 )
 
 __all__ = [
@@ -86,7 +95,9 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-# v14 scopes origin-exclusive raw requirements independently of their inventory
+# v15 content-binds the complete late dual-producer ownership matrix and
+# validates that it exhausts the primary/source/transfer intersection. v14
+# scopes origin-exclusive raw requirements independently of their inventory
 # defaults and retires whole-pool RELSHIPP/TEN/H_TENURE transfer fallbacks. v13
 # declares the primary callback's optional tax-unit pass-through reads and
 # binds its complete tail-control/runtime-asset surface. v12 declared every
@@ -105,7 +116,7 @@ __all__ = [
 # cardinalities across each execution row, binds source-receipt outputs to the
 # callback receipt, and requires the primary callback to report the exact
 # resources it consumed. Receipt v2 introduced exact virtual-resource payloads.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 14
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 15
 US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 3
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
@@ -1436,6 +1447,88 @@ CANONICAL_US_LATE_SOURCE_OUTPUTS: Mapping[str, tuple[ProducerOutput, ...]] = (
 )
 
 
+def _assert_exhaustive_late_overlap_ownership() -> None:
+    """Fail import unless every permitted multi-producer touch is adjudicated."""
+
+    primary = {
+        (entity, column)
+        for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+            "primary_puf_qrf"
+        ].items()
+        for column in columns
+    }
+    physical_source_writes = {
+        (entity, column)
+        for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+        for entity, columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+            POOL_OPERATOR_CONTRACTS[operator].family
+        ].items()
+        for column in columns
+        if column not in FORMULA_OWNED_SOURCE_COLUMNS.get(entity, ())
+    }
+    callback_passthroughs = {
+        target
+        for targets in US_LATE_SOURCE_CALLBACK_PASSTHROUGH_OUTPUTS.values()
+        for target in targets
+    }
+    transfer = {
+        (group.entity, target)
+        for group in CANONICAL_US_LATE_TRANSFER_GROUPS
+        for target in group.targets
+    }
+    tail_owned = {
+        *(("person", column) for column in PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS),
+        *(("tax_unit", column) for column in PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS),
+    }
+    recipient_owned = {
+        *(("person", column) for column in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS),
+        *(("tax_unit", column) for column in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS),
+    } - tail_owned
+    declared = set(US_LATE_OVERLAP_OWNERSHIP_TARGETS)
+    observed = primary & (physical_source_writes | callback_passthroughs) & transfer
+    observed &= recipient_owned
+    physical_observed = primary & physical_source_writes & transfer & recipient_owned
+    expected_physical = declared - {("person", _QUALIFIED_TUITION)}
+    tail_overlap = (
+        primary
+        & (physical_source_writes | callback_passthroughs)
+        & transfer
+        & tail_owned
+    )
+    if observed != declared:
+        raise RuntimeError(
+            "Canonical US late overlap ownership does not exhaust the permitted "
+            f"recipient-owned dual-write surface: observed={sorted(observed)}, "
+            f"declared={sorted(declared)}."
+        )
+    if physical_observed != expected_physical:
+        raise RuntimeError(
+            "Canonical US late physical dual-write surface changed: "
+            f"observed={sorted(physical_observed)}, "
+            f"expected={sorted(expected_physical)}."
+        )
+    if tail_overlap:
+        raise RuntimeError(
+            "Canonical US late producer DAG permits an unadjudicated tail-owned "
+            f"dual write: {sorted(tail_overlap)}."
+        )
+    canonical_source_keys = {
+        (output.entity, output.column)
+        for outputs in CANONICAL_US_LATE_SOURCE_OUTPUTS.values()
+        for output in outputs
+    }
+    if not expected_physical <= canonical_source_keys or callback_passthroughs & (
+        canonical_source_keys
+    ):
+        raise RuntimeError(
+            "Canonical US late source outputs disagree with overlap write/no-op "
+            "classification."
+        )
+
+
+_assert_exhaustive_late_overlap_ownership()
+
+
 def _target_key_rows(surface: TargetFamilies) -> set[tuple[str, str]]:
     return {
         (entity, target)
@@ -1931,6 +2024,7 @@ def us_late_producer_schedule_payload() -> dict[str, object]:
     schedule = CANONICAL_US_LATE_PRODUCER_SCHEDULE
     return {
         "schema_version": US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION,
+        "overlap_ownership": dict(us_late_overlap_ownership_receipt()),
         "execution_receipt_contract": {
             "version": US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
             "row_binding": (

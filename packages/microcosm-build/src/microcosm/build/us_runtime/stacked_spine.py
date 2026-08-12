@@ -165,6 +165,10 @@ from microcosm.build.us_runtime.support_provenance import (
     support_source_id_column,
     validate_assembly_provenance,
 )
+from microcosm.build.us_runtime.us_late_overlap_ownership import (
+    us_late_overlap_ownership_receipt,
+    validate_us_late_overlap_ownership_receipt,
+)
 from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_PRODUCER_REGISTRY,
     CANONICAL_US_LATE_PRODUCER_SCHEDULE,
@@ -10063,6 +10067,16 @@ def _bind_stacked_tail_origin_receipt(
 
     bound = _json_ready(tail_manifest)
     bound.pop("manifest_sha256", None)
+    overlap_ownership = _json_ready(us_late_overlap_ownership_receipt())
+    existing_overlap_ownership = bound.get("late_overlap_ownership")
+    if (
+        existing_overlap_ownership is not None
+        and existing_overlap_ownership != overlap_ownership
+    ):
+        raise ValueError(
+            "Stacked tail overlap ownership conflicts with the canonical owner matrix."
+        )
+    bound["late_overlap_ownership"] = overlap_ownership
     clone_receipt = bound.get("clone")
     if not isinstance(clone_receipt, dict):
         raise ValueError("Stacked tail clone provenance receipt is malformed.")
@@ -10128,6 +10142,19 @@ def assert_stacked_tail_cells_preserved(
 
     validate_stacked_spine_frame(frame, boundary="stacked tail preservation")
     validate_puf_capital_gains_tail_manifest(tail_manifest)
+    overlap_ownership = tail_manifest.get("late_overlap_ownership")
+    if not isinstance(overlap_ownership, Mapping):
+        raise ValueError(
+            "Stacked tail overlap ownership receipt is absent or malformed."
+        )
+    try:
+        overlap_ownership_sha256 = validate_us_late_overlap_ownership_receipt(
+            overlap_ownership
+        )
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            f"Stacked tail overlap ownership receipt is invalid: {error}"
+        ) from error
     attachment = validate_puf_clone_attachment(
         frame,
         boundary="stacked tail preservation attachment",
@@ -10537,6 +10564,7 @@ def assert_stacked_tail_cells_preserved(
         "tail_owned_state_count": len(observed_state),
         "recipient_owned_qrf_cell_count": preserved_nonowned,
         "tail_owned_cells_sha256": _canonical_sha256(observed_state),
+        "overlap_ownership_sha256": overlap_ownership_sha256,
     }
 
 
