@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
+from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.frs_hmrc_leaves import (
     UKFRSHMRCRetainedLeavesStageTransform,
 )
@@ -211,6 +212,9 @@ class UKHMRCIncomeStageTransform:
     qrf_estimators: int = 100
     donor_sample_size: int | None = DEFAULT_SPI_DONOR_SAMPLE_SIZE
     spi_prior_mass_share: float = DEFAULT_SPI_PRIOR_MASS_SHARE
+    #: Declared #627 rung build: the mid-stage effective-mass floor defers
+    #: to the terminal input-coverage gate. Never set on a release build.
+    sampled_rung: bool = False
     last_result: UKHMRCIncomeRestorationResult | None = field(
         default=None,
         init=False,
@@ -219,7 +223,7 @@ class UKHMRCIncomeStageTransform:
         default=None,
         init=False,
     )
-    bound_frame: Frame | None = field(
+    bound_input_identity: str | None = field(
         default=None,
         init=False,
         repr=False,
@@ -233,6 +237,90 @@ class UKHMRCIncomeStageTransform:
             return ()
         return tuple(self.last_result.imputation.fit_weight_records)
 
+    def checkpoint_metadata(self) -> dict[str, object]:
+        """JSON-safe evidence the stage checkpoint carries for a resume.
+
+        Everything a later process consumes without re-running the stage:
+        the fit-weight records the terminal weights audit reads, and the
+        aggregate family evidence and replay-report payload the national
+        driver writes as stage sidecars (the adversarial-review blocker: a
+        resumed run must still produce byte-identical evidence reports).
+        """
+
+        if self.last_result is None:
+            raise RuntimeError(
+                "checkpoint metadata requires a completed SPI restoration run."
+            )
+        return {
+            "fit_weight_records": [
+                {"fit_name": record.fit_name, "weight_kind": record.weight_kind}
+                for record in self.last_result.imputation.fit_weight_records
+            ],
+            "evidence": self.last_result.evidence(),
+            "replay_payload": self.last_result.replay_report.to_payload(),
+            "output_content_identity": uk_frame_content_identity(
+                self.last_result.frame
+            ),
+        }
+
+    def resume_from_checkpoint(
+        self,
+        metadata: Mapping[str, object],
+        frame: Frame,
+    ) -> None:
+        """Rehydrate a completed run's evidence surface from its record.
+
+        ``frame`` is the stage's checkpointed output; the recorded output
+        identity must match its content — the same drift check the
+        retained-leaves stage runs, and this is the terminal stage, whose
+        frame feeds the batched gates and the staging writer. The runtime's
+        checkpoint sha covers the bytes on disk; this check covers the
+        record/frame pairing.
+        """
+
+        payload = metadata.get("fit_weight_records")
+        evidence = metadata.get("evidence")
+        replay_payload = metadata.get("replay_payload")
+        output_identity = metadata.get("output_content_identity")
+        if (
+            not isinstance(payload, list)
+            or not all(isinstance(entry, Mapping) for entry in payload)
+            or not isinstance(evidence, Mapping)
+            or not isinstance(replay_payload, Mapping)
+            or not isinstance(output_identity, str)
+            or not output_identity
+        ):
+            raise RuntimeError(
+                "SPI restoration resume requires the checkpoint record to "
+                "carry the run's fit-weight records, family evidence, "
+                "replay payload, and output content identity; a record "
+                "without them cannot feed the weights audit, the driver's "
+                "stage reports, or the drift check."
+            )
+        if uk_frame_content_identity(frame) != output_identity:
+            raise RuntimeError(
+                "SPI restoration checkpoint content does not match its "
+                "recorded output identity; refusing to resume from a "
+                "drifted record."
+            )
+        records = tuple(
+            FitWeightRecord(
+                fit_name=str(entry["fit_name"]),
+                weight_kind=str(entry["weight_kind"]),
+            )
+            for entry in payload
+        )
+        self.last_result = _ResumedHMRCRestoration(
+            frame=frame,
+            imputation=_ResumedImputationEvidence(fit_weight_records=records),
+            evidence_payload=dict(evidence),
+            replay_payload=dict(replay_payload),
+        )
+        # The rehydration consumes the single-use binding: the stage will
+        # not run, so a binding must not outlive the resume either.
+        self.staging_provenance = None
+        self.bound_input_identity = None
+
     def bind_staging_provenance(
         self,
         provenance: UKStagingProvenance,
@@ -242,10 +330,11 @@ class UKHMRCIncomeStageTransform:
 
         Provenance travels beside the frame, never inside it, so the driver
         hands both to the one stage whose fence binds the loaded bytes to the
-        verified certified candidate. Binding the frame object restores the
-        descent guarantee the retired carrier's loader-attached fields gave:
-        the fence can require that the pipeline it sits in started from this
-        exact loaded object, not merely that a matching load happened once.
+        verified certified candidate. Binding records the loaded frame's
+        content identity — derived here, inside the attesting code — so the
+        fence can require that the pipeline it sits in started from a frame
+        whose full content matches what the driver loaded, a guarantee that
+        survives a process boundary where object identity cannot.
         """
 
         if not isinstance(provenance, UKStagingProvenance):
@@ -253,15 +342,15 @@ class UKHMRCIncomeStageTransform:
         if not isinstance(frame, Frame):
             raise TypeError("bound frame must be a microcosm Frame.")
         self.staging_provenance = provenance
-        self.bound_frame = frame
+        self.bound_input_identity = uk_frame_content_identity(frame)
 
     def __call__(self, frame: Frame) -> Frame:
         # Single-use: a binding never outlives the run that consumes it, so
         # a stale binding from an earlier build can never fence a later one.
         staging_provenance = self.staging_provenance
-        bound_frame = self.bound_frame
+        bound_input_identity = self.bound_input_identity
         self.staging_provenance = None
-        self.bound_frame = None
+        self.bound_input_identity = None
         retained = (
             None
             if self.retained_leaves_transform is None
@@ -272,19 +361,35 @@ class UKHMRCIncomeStageTransform:
                 "HMRC replay requires the raw-FRS retained-leaves stage to run "
                 "immediately before the SPI stage."
             )
-        if retained.frame is not frame:
+        # Descent fence A, content-addressed: the frame this stage received
+        # must carry the exact content the retained-leaves stage produced.
+        # Same-object is the free fast path (identity proves content); a
+        # rehydrated (checkpointed) frame passes by content; a substituted
+        # or tampered frame does not. The content check — and the
+        # absence-is-refusal branch inside _retained_content_identity — is
+        # the cross-process path's guarantee; the fast path shares the
+        # same-process in-place-mutation exposure every consumer of
+        # Frame.table has, mitigated by validate_uk_national_frame's
+        # revalidation at each seam.
+        if retained.frame is not frame and _retained_content_identity(
+            retained, "output_content_identity"
+        ) != uk_frame_content_identity(frame):
             raise RuntimeError(
                 "HMRC replay raw-FRS evidence is not bound to the frame "
                 "received from the immediately preceding retained-leaves stage."
             )
-        if bound_frame is not None:
-            retained_input = getattr(self.retained_leaves_transform, "last_input", None)
-            if retained_input is not bound_frame:
-                raise RuntimeError(
-                    "HMRC replay pipeline did not start from the frame the "
-                    "driver loaded and bound; the certified-candidate fence "
-                    "refuses a substituted input."
-                )
+        # Descent fence B: the frame the retained-leaves stage consumed must
+        # carry the exact content of the frame the driver loaded and bound.
+        if (
+            bound_input_identity is not None
+            and _retained_content_identity(retained, "input_content_identity")
+            != bound_input_identity
+        ):
+            raise RuntimeError(
+                "HMRC replay pipeline did not start from the frame the "
+                "driver loaded and bound; the certified-candidate fence "
+                "refuses a substituted input."
+            )
         self.last_result = restore_uk_hmrc_income_family(
             frame,
             spi_tab_path=self.spi_tab_path,
@@ -296,8 +401,53 @@ class UKHMRCIncomeStageTransform:
             qrf_estimators=self.qrf_estimators,
             donor_sample_size=self.donor_sample_size,
             spi_prior_mass_share=self.spi_prior_mass_share,
+            sampled_rung=self.sampled_rung,
         )
         return self.last_result.frame
+
+
+@dataclass(frozen=True)
+class _ResumedImputationEvidence:
+    """The audit slice of an SPI imputation, rehydrated from a checkpoint."""
+
+    fit_weight_records: tuple[FitWeightRecord, ...]
+
+
+@dataclass(frozen=True)
+class _ResumedHMRCRestoration:
+    """A completed SPI restoration rehydrated from its checkpoint record.
+
+    Exposes the full surface a national build consumes downstream: the
+    fit-weight audit records, the aggregate family evidence, and the replay
+    payload the driver writes verbatim (its content came from the real
+    report's ``to_payload()`` at completion time).
+    """
+
+    frame: Frame
+    imputation: _ResumedImputationEvidence
+    evidence_payload: dict[str, object]
+    replay_payload: dict[str, object]
+
+    def evidence(self) -> dict[str, object]:
+        return dict(self.evidence_payload)
+
+
+def _retained_content_identity(retained: object, attribute: str) -> str:
+    """Read a content identity off a retained-leaves result, failing closed.
+
+    A retained result without content identities cannot prove descent, so
+    the fence refuses it instead of silently downgrading to a weaker check
+    (the microcosm#617 lesson: absence is a refusal, never a default).
+    """
+
+    identity = getattr(retained, attribute, None)
+    if not isinstance(identity, str) or not identity:
+        raise RuntimeError(
+            "HMRC replay retained-leaves evidence carries no "
+            f"{attribute}; the descent fence refuses a result that cannot "
+            "prove which frames its run consumed and produced."
+        )
+    return identity
 
 
 def verify_certified_uk_candidate(path: str | Path) -> UKCertifiedCandidateIdentity:
@@ -356,8 +506,18 @@ def restore_uk_hmrc_income_family(
     qrf_estimators: int = 100,
     donor_sample_size: int | None = DEFAULT_SPI_DONOR_SAMPLE_SIZE,
     spi_prior_mass_share: float = DEFAULT_SPI_PRIOR_MASS_SHARE,
+    sampled_rung: bool = False,
 ) -> UKHMRCIncomeRestorationResult:
-    """Run the admissible real-donor replay without biased calibration."""
+    """Run the admissible real-donor replay without biased calibration.
+
+    ``sampled_rung`` declares a #627 scale-ladder build: sparse imputed
+    columns can legitimately restore near-zero effective mass on a small
+    sample, so the mid-stage effective-mass floor defers to the terminal
+    input-coverage gate — which evaluates the same surface and records a
+    receipted verdict — instead of aborting the build. The per-column
+    shares reach the replay report either way. Full-scale builds keep the
+    strict raise.
+    """
 
     assert_uk_hmrc_income_source_contract_current()
     _validate_certified_candidate_identity(certified_candidate)
@@ -421,7 +581,7 @@ def restore_uk_hmrc_income_family(
         for name, share in distributional_mass_shares.items()
         if share < DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE
     }
-    if insufficient:
+    if insufficient and not sampled_rung:
         raise RuntimeError(
             "Rebuilt SPI channel did not restore required effective-mass "
             f"coverage: {insufficient}."

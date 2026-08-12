@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
+from microcosm.build.gate_battery import GateBatteryBlockedError
 from microcosm.build.uk_runtime.national_frame import (
     UKStagingProvenance,
     _uk_source_file_fingerprint,
@@ -59,6 +60,8 @@ _PATH_ARGUMENTS = (
     "input_mass_reference_path",
     "input_mass_exclusions_path",
     "qrf_tail_exclusions_path",
+    "degenerate_exclusions_path",
+    "rung_abort_path",
 )
 _IDENTITY_CLI_ARGUMENTS = (
     "--release-id",
@@ -76,26 +79,27 @@ def _gate_result(*, passed: bool) -> SimpleNamespace:
     )
 
 
-def _terminal_gates(input_coverage: SimpleNamespace) -> SimpleNamespace:
-    manifest = {
-        "passed": bool(input_coverage.passed),
+def _fake_gate_report(input_coverage: SimpleNamespace) -> dict:
+    """A schema-4-shaped payload as the build result now carries it."""
+
+    return {
+        "schema_version": 4,
+        "blocked_at_phase": None,
+        "shippable": False,
+        "release_evidence": {"calibration_diagnostics_sha256": "c" * 64},
         "gates": {
             "uk_release_input_coverage": {
-                "passed": bool(input_coverage.passed),
+                "status": "passed" if input_coverage.passed else "failed",
                 "failures": list(input_coverage.failures),
                 "details": dict(input_coverage.details),
             },
-            "weight_ess": {
-                "passed": True,
+            "uk_weight_ess": {
+                "status": "passed",
                 "failures": [],
                 "details": {"ess_fraction": 0.5},
             },
         },
     }
-    return SimpleNamespace(
-        passed=bool(input_coverage.passed),
-        to_manifest=lambda: manifest,
-    )
 
 
 def _load_builder_module():
@@ -153,8 +157,10 @@ def test_national_build_driver_uses_standalone_national_seam(
                 "frs_hmrc_retained_leaves",
                 "hmrc_spi_income",
             ),
-            terminal_gates=_terminal_gates(input_coverage),
+            phase_reports=(),
+            gate_report=_fake_gate_report(input_coverage),
             input_coverage=input_coverage,
+            sampling_receipt=None,
         )
 
     monkeypatch.setattr(builder, "build_uk_national_dataset", fake_build)
@@ -220,15 +226,22 @@ def test_national_build_driver_uses_standalone_national_seam(
     assert calls[0]["terminal_gate_path"] == staging_h5.with_suffix(
         ".terminal_gates.json"
     )
+    assert calls[0]["release_candidate"] is False
+    # No --degenerate-exclusions: the artifact channel stays empty so the
+    # binding resolves the committed register itself and the run never
+    # self-describes as an override (the register is still preflighted).
+    assert calls[0]["reviewed_degenerate_exclusions"] is None
     payload = json.loads(capsys.readouterr().out)
+    assert payload["schema_version"] == 5
     assert payload["build_kind"] == "uk_national_staging_dataset"
     assert payload["stages"] == [
         "frs_hmrc_retained_leaves",
         "hmrc_spi_income",
     ]
     assert payload["input_coverage"]["passed"] is True
-    assert payload["terminal_gates"]["passed"] is True
-    assert payload["terminal_gates"]["gates"]["weight_ess"]["passed"] is True
+    assert payload["terminal_gates"]["schema_version"] == 4
+    assert payload["terminal_gates"]["blocked_at_phase"] is None
+    assert payload["terminal_gates"]["gates"]["uk_weight_ess"]["status"] == "passed"
     assert payload["hmrc_replay"]["summary"] == {"excluded_with_fence": 208}
     assert payload["artifacts"]["staging_h5"]["sha256"]
     evidence_path = staging_h5.with_suffix(".hmrc_income.json")
@@ -246,8 +259,10 @@ def test_national_build_driver_uses_standalone_national_seam(
     assert payload["artifacts"]["terminal_gates"]["sha256"]
     assert payload["artifacts"]["build_record"]["sha256"]
     record = json.loads(build_record_path.read_text(encoding="utf-8"))
+    assert record["schema_version"] == 3
     assert record["status"] == "passed"
-    assert record["terminal_gates"]["gates"]["weight_ess"]["passed"] is True
+    assert record["calibration_diagnostics_sha256"] == "c" * 64
+    assert record["terminal_gates"]["gates"]["uk_weight_ess"]["status"] == "passed"
     assert record["dataset"] == {
         "entity_rows": {"benunit": 1, "household": 1, "person": 2},
         "household_weight_kind": "importance",
@@ -297,10 +312,14 @@ def test_national_driver_writes_aggregate_reports_before_reraising_final_gate(
             evidence=lambda: {"stage": "hmrc_spi_income"},
             replay_report=replay_report,
         )
-        kwargs["terminal_gate_path"].write_text('{"passed": false}\n')
-        raise RuntimeError(
-            "Release gates failed: [uk_release_input_coverage] gift_aid remains "
-            "a reviewed exclusion with positive effective-mass signal"
+        kwargs["terminal_gate_path"].write_text('{"blocked_at_phase": "terminal"}\n')
+        raise GateBatteryBlockedError(
+            "terminal",
+            [
+                "[uk_release_input_coverage] gift_aid remains a reviewed "
+                "exclusion with positive effective-mass signal"
+            ],
+            kwargs["terminal_gate_path"],
         )
 
     monkeypatch.setattr(builder, "build_uk_national_dataset", fake_build)
@@ -343,7 +362,7 @@ def test_national_driver_writes_aggregate_reports_before_reraising_final_gate(
         ],
     )
 
-    with pytest.raises(RuntimeError, match="Release gates failed"):
+    with pytest.raises(GateBatteryBlockedError, match="Gate battery blocked"):
         builder.main()
 
     evidence = json.loads(
@@ -356,6 +375,81 @@ def test_national_driver_writes_aggregate_reports_before_reraising_final_gate(
     ]
     assert staging_h5.with_suffix(".terminal_gates.json").is_file()
     assert not staging_h5.exists()
+    assert not staging_h5.with_suffix(".build.json").exists()
+
+
+def test_national_driver_writes_no_stage_reports_for_a_preflight_block(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """A preflight block ran no stage; aggregate reports would be fiction."""
+
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "base.h5"
+    staging_h5 = tmp_path / "staging.h5"
+    spi_tab = tmp_path / "put2223uk.tab"
+    hmrc_ods = tmp_path / "hmrc.ods"
+    frs_raw_dir = tmp_path / "frs_2023_24"
+    frs_raw_dir.mkdir()
+    for path in (
+        input_h5,
+        spi_tab,
+        hmrc_ods,
+        frs_raw_dir / "adult.tab",
+        frs_raw_dir / "benefits.tab",
+    ):
+        path.write_bytes(b"source")
+
+    def fake_build(**kwargs):
+        kwargs["terminal_gate_path"].write_text('{"blocked_at_phase": "preflight"}\n')
+        raise GateBatteryBlockedError(
+            "preflight",
+            ["[uk_release_input_coverage_manifest_current] manifest drift"],
+            kwargs["terminal_gate_path"],
+        )
+
+    monkeypatch.setattr(builder, "build_uk_national_dataset", fake_build)
+    monkeypatch.setattr(
+        builder,
+        "verify_certified_uk_candidate",
+        lambda path: SimpleNamespace(
+            path=Path(path).resolve(),
+            filename="populace_uk_2023.h5",
+            tier="frs",
+            revision="test-revision",
+            sha256="a" * 64,
+            size_bytes=6,
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "write_hmrc_replay_report",
+        lambda *_args: pytest.fail("preflight blocks must not emit replay reports"),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
+            "--input-h5",
+            str(input_h5),
+            "--staging-h5",
+            str(staging_h5),
+            "--frs-raw-dir",
+            str(frs_raw_dir),
+            "--spi-tab",
+            str(spi_tab),
+            "--hmrc-ods",
+            str(hmrc_ods),
+        ],
+    )
+
+    with pytest.raises(GateBatteryBlockedError):
+        builder.main()
+
+    assert not staging_h5.with_suffix(".hmrc_income.json").exists()
+    assert not staging_h5.with_suffix(".hmrc_replay.json").exists()
     assert not staging_h5.with_suffix(".build.json").exists()
 
 
@@ -698,3 +792,348 @@ def test_national_driver_rejects_unreviewed_release_overrides(
 
     with pytest.raises(SystemExit):
         builder._parse_args()
+
+
+def test_stage_reports_survive_a_checkpoint_resumed_spi_stage(tmp_path):
+    """The adversarial-review blocker: a resumed run must still write sidecars.
+
+    A checkpoint-resumed SPI transform carries the rehydrated evidence
+    surface instead of a live report object; the driver's stage reports
+    must consume it, and the resumed replay sidecar must be byte-identical
+    to what the payload serializes to.
+    """
+
+    import json
+    from types import SimpleNamespace
+
+    builder = _load_builder_module()
+    from microcosm.build.uk_runtime.frs_hmrc_leaves import (
+        UKFRSHMRCRetainedLeavesStageTransform,
+        _ResumedRetainedLeaves,
+    )
+    from microcosm.build.uk_runtime.hmrc_restoration import (
+        UKHMRCIncomeStageTransform,
+    )
+
+    retained = UKFRSHMRCRetainedLeavesStageTransform(
+        adult_tab_path=tmp_path / "adult.tab",
+        benefits_tab_path=tmp_path / "benefits.tab",
+    )
+    retained.last_result = _ResumedRetainedLeaves(
+        frame=None,
+        evidence_payload={"stage": "frs_hmrc_retained_leaves"},
+        input_content_identity="a" * 64,
+        output_content_identity="b" * 64,
+    )
+    hmrc = UKHMRCIncomeStageTransform(
+        spi_tab_path=tmp_path / "put2223uk.tab",
+        hmrc_ods_path=tmp_path / "hmrc.ods",
+        certified_candidate=SimpleNamespace(),
+    )
+    from microcosm.build.uk_runtime.content_identity import (
+        uk_frame_content_identity,
+    )
+
+    resumed_frame = _toy_result_frame()
+    replay_payload = {"summary": {"status": "comparisons_passed"}, "facts": {}}
+    hmrc.resume_from_checkpoint(
+        {
+            "fit_weight_records": [
+                {"fit_name": "uk_spi_fill_qrf", "weight_kind": "design"}
+            ],
+            "evidence": {"stage": "hmrc_spi_income"},
+            "replay_payload": replay_payload,
+            "output_content_identity": uk_frame_content_identity(resumed_frame),
+        },
+        resumed_frame,
+    )
+
+    evidence_path = tmp_path / "evidence.json"
+    replay_path = tmp_path / "replay.json"
+    builder._write_stage_reports(
+        evidence_path=evidence_path,
+        replay_path=replay_path,
+        candidate=SimpleNamespace(
+            path=tmp_path / "candidate.h5",
+            filename="candidate.h5",
+            tier="frs",
+            revision="r",
+            sha256="c" * 64,
+            size_bytes=1,
+        ),
+        retained_leaves_transform=retained,
+        hmrc_transform=hmrc,
+    )
+    written = json.loads(replay_path.read_text())
+    assert written == replay_payload
+    evidence = json.loads(evidence_path.read_text())
+    assert evidence["family"] == {"stage": "hmrc_spi_income"}
+    assert builder._replay_summary(hmrc.last_result) == replay_payload["summary"]
+
+
+def test_national_driver_rejects_non_rung_sample_fractions(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
+            "--input-h5",
+            "base.h5",
+            "--staging-h5",
+            "staging.h5",
+            "--frs-raw-dir",
+            "frs_2023_24",
+            "--spi-tab",
+            "put2223uk.tab",
+            "--hmrc-ods",
+            "hmrc.ods",
+            "--sample-fraction",
+            "0.2",
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        builder._parse_args()
+
+
+def test_national_driver_refuses_canonical_release_ids_for_rung_builds(
+    monkeypatch, capsys
+) -> None:
+    builder = _load_builder_module()
+    # _IDENTITY_CLI_ARGUMENTS carries the canonical populace-uk-...-k id; a
+    # sampled rung build must refuse it — rung artifacts are receipts, never
+    # releases (#627).
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
+            "--input-h5",
+            "base.h5",
+            "--staging-h5",
+            "staging.h5",
+            "--frs-raw-dir",
+            "frs_2023_24",
+            "--spi-tab",
+            "put2223uk.tab",
+            "--hmrc-ods",
+            "hmrc.ods",
+            "--sample-fraction",
+            "0.01",
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        builder._parse_args()
+    assert "non-releasable" in capsys.readouterr().err
+
+
+def test_national_driver_refuses_release_candidate_on_a_rung(
+    monkeypatch, capsys
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            "--release-id",
+            "uk-dev-rung-check",
+            "--calibration-diagnostics-sha256",
+            "c" * 64,
+            "--input-h5",
+            "base.h5",
+            "--staging-h5",
+            "staging.h5",
+            "--frs-raw-dir",
+            "frs_2023_24",
+            "--spi-tab",
+            "put2223uk.tab",
+            "--hmrc-ods",
+            "hmrc.ods",
+            "--sample-fraction",
+            "0.10",
+            "--release-candidate",
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        builder._parse_args()
+    assert "non-releasable" in capsys.readouterr().err
+
+
+def test_national_driver_refuses_release_candidate_with_the_legacy_alias(
+    monkeypatch, capsys
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
+            "--input-h5",
+            "base.h5",
+            "--staging-h5",
+            "staging.h5",
+            "--frs-raw-dir",
+            "frs_2023_24",
+            "--spi-tab",
+            "put2223uk.tab",
+            "--hmrc-ods",
+            "hmrc.ods",
+            "--input-coverage-json",
+            "coverage.json",
+            "--release-candidate",
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        builder._parse_args()
+    assert "signed schema-4 report" in capsys.readouterr().err
+
+
+def test_staging_run_config_pins_the_sampling_identity(monkeypatch, tmp_path) -> None:
+    builder = _load_builder_module()
+    for name in ("adult.tab", "benefits.tab", "put2223uk.tab", "hmrc.ods"):
+        (tmp_path / name).write_bytes(b"x")
+    import microcosm.build.code_identity as code_identity_module
+
+    monkeypatch.setattr(
+        code_identity_module,
+        "builder_code_identity",
+        lambda *args, **kwargs: {"stub": True},
+    )
+    args = SimpleNamespace(
+        release_id="uk-dev-rung",
+        calibration_diagnostics_sha256="c" * 64,
+        seed=42,
+        qrf_estimators=100,
+        sample_fraction=0.01,
+        sample_seed=7,
+    )
+    retained = SimpleNamespace(
+        adult_tab_path=tmp_path / "adult.tab",
+        benefits_tab_path=tmp_path / "benefits.tab",
+    )
+    hmrc = SimpleNamespace(
+        spi_tab_path=tmp_path / "put2223uk.tab",
+        hmrc_ods_path=tmp_path / "hmrc.ods",
+    )
+    candidate = SimpleNamespace(sha256="a" * 64, size_bytes=3)
+
+    config = builder._staging_run_config(
+        args,
+        candidate=candidate,
+        retained_leaves_transform=retained,
+        hmrc_transform=hmrc,
+    )
+
+    # The fraction is a string on purpose: run-config equality is exact over
+    # canonical JSON, and float normalization is exactly the ambiguity a run
+    # identity must not carry. Two rungs on one checkpoint directory refuse
+    # instead of cross-resuming.
+    assert config["sampling"] == {
+        "sample_fraction": "0.01",
+        "sample_seed": 7,
+        "rung_token": "f001",
+    }
+
+
+def _rung_abort_argv(tmp_path: Path, *, fraction: str) -> list[str]:
+    frs_raw_dir = tmp_path / "frs_2023_24"
+    frs_raw_dir.mkdir(exist_ok=True)
+    for name in ("adult.tab", "benefits.tab"):
+        (frs_raw_dir / name).write_bytes(b"x")
+    for name in ("base.h5", "put2223uk.tab", "hmrc.ods"):
+        (tmp_path / name).write_bytes(b"x")
+    return [
+        "build_uk_national_dataset.py",
+        "--release-id",
+        "uk-dev-rung",
+        "--calibration-diagnostics-sha256",
+        "c" * 64,
+        "--input-h5",
+        str(tmp_path / "base.h5"),
+        "--staging-h5",
+        str(tmp_path / "staging.h5"),
+        "--frs-raw-dir",
+        str(frs_raw_dir),
+        "--spi-tab",
+        str(tmp_path / "put2223uk.tab"),
+        "--hmrc-ods",
+        str(tmp_path / "hmrc.ods"),
+        "--sample-fraction",
+        fraction,
+    ]
+
+
+def _named_edge_error() -> ValueError:
+    return ValueError(
+        "The least populated classes in y have only 1 member, which is too "
+        "few. The minimum number of groups for any class cannot be less "
+        "than 2. Classes with too few members are: [0.0]"
+    )
+
+
+def _install_rung_abort_seams(builder, monkeypatch, error: Exception) -> None:
+    monkeypatch.setattr(
+        builder,
+        "verify_certified_uk_candidate",
+        lambda path: SimpleNamespace(
+            path=Path(path).resolve(),
+            filename="populace_uk_2023.h5",
+            tier="frs",
+            revision="test-revision",
+            sha256="a" * 64,
+            size_bytes=1,
+        ),
+    )
+
+    def raising_build(**_kwargs):
+        raise error
+
+    monkeypatch.setattr(builder, "build_uk_national_dataset", raising_build)
+
+
+def test_rung_named_edge_aborts_with_a_receipt(monkeypatch, tmp_path) -> None:
+    """The one named dev-scale edge (#657) receipts instead of crashing."""
+
+    builder = _load_builder_module()
+    _install_rung_abort_seams(builder, monkeypatch, _named_edge_error())
+    monkeypatch.setattr(sys, "argv", _rung_abort_argv(tmp_path, fraction="0.10"))
+
+    assert builder.main() == builder._RUNG_ABORT_EXIT_CODE
+
+    receipt = json.loads((tmp_path / "staging.rung_abort.json").read_text())
+    assert receipt["named_edge"] == "spi_split_singleton_class"
+    assert receipt["disposition"] == "aborted_with_receipt"
+    assert receipt["sampling"]["rung_token"] == "f010"
+    assert "least populated classes" in receipt["error"]
+
+
+def test_full_scale_named_edge_still_crashes(monkeypatch, tmp_path) -> None:
+    builder = _load_builder_module()
+    _install_rung_abort_seams(builder, monkeypatch, _named_edge_error())
+    monkeypatch.setattr(sys, "argv", _rung_abort_argv(tmp_path, fraction="1.0"))
+
+    with pytest.raises(ValueError, match="least populated classes"):
+        builder.main()
+    assert not (tmp_path / "staging.rung_abort.json").exists()
+
+
+def test_rung_unknown_exception_still_crashes(monkeypatch, tmp_path) -> None:
+    """Only the named edge is receipted — the path cannot absorb defects."""
+
+    builder = _load_builder_module()
+    _install_rung_abort_seams(
+        builder, monkeypatch, ValueError("some entirely different failure")
+    )
+    monkeypatch.setattr(sys, "argv", _rung_abort_argv(tmp_path, fraction="0.10"))
+
+    with pytest.raises(ValueError, match="entirely different"):
+        builder.main()
+    assert not (tmp_path / "staging.rung_abort.json").exists()

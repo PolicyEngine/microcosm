@@ -371,8 +371,22 @@ class StageRuntime:
         self._append_record(record)
         return self._root / record.checkpoint_filename
 
-    def load(self, stage_name: str) -> LoadedStageCheckpoint:
-        """Load and validate the Frame checkpoint bound to a completed stage."""
+    def load(
+        self,
+        stage_name: str,
+        *,
+        frame_metadata_key: str | None = None,
+    ) -> LoadedStageCheckpoint:
+        """Load and validate the Frame checkpoint bound to a completed stage.
+
+        ``frame_metadata_key`` names a stage-metadata entry whose mapping
+        value is restored as :class:`~microcosm.frame.Frame` metadata during
+        the loader's one Frame construction (checkpoints do not serialize
+        frame metadata). The entry travels in the run context and was
+        normalized at :meth:`complete`, so restoring from it keeps the
+        metadata bound to the recorded stage rather than to a side channel.
+        Naming a key that is absent or not a mapping fails closed.
+        """
 
         context = self._load_context()
         stage_index = self._pipeline.index(stage_name)
@@ -384,6 +398,15 @@ class StageRuntime:
                 f"run context record {stage_index} is {record.stage!r}, not "
                 f"{stage_name!r}."
             )
+        frame_metadata: Mapping[str, object] | None = None
+        if frame_metadata_key is not None:
+            value = record.metadata.get(frame_metadata_key)
+            if not isinstance(value, Mapping):
+                raise ValueError(
+                    f"stage {record.stage!r} metadata carries no mapping under "
+                    f"{frame_metadata_key!r} to restore as frame metadata."
+                )
+            frame_metadata = value
         checkpoint_path = self._root / record.checkpoint_filename
         actual_checkpoint_sha256 = _file_sha256(checkpoint_path)
         if actual_checkpoint_sha256 != record.checkpoint_sha256:
@@ -392,7 +415,7 @@ class StageRuntime:
                 f"expected {record.checkpoint_sha256}, got "
                 f"{actual_checkpoint_sha256}."
             )
-        loaded = load_frame_checkpoint(checkpoint_path)
+        loaded = load_frame_checkpoint(checkpoint_path, frame_metadata=frame_metadata)
         expected_checkpoint_index = self._pipeline.index(record.checkpoint_stage)
         expected_metadata = {
             "artifact_kind": _ARTIFACT_KIND,
@@ -422,14 +445,22 @@ class StageRuntime:
             metadata=_normalize_json_mapping(record.metadata, label="metadata"),
         )
 
-    def load_predecessor(self, stage_name: str) -> LoadedStageCheckpoint | None:
+    def load_predecessor(
+        self,
+        stage_name: str,
+        *,
+        frame_metadata_key: str | None = None,
+    ) -> LoadedStageCheckpoint | None:
         """Validate readiness and load the immediate predecessor, if one exists."""
 
         self.require_ready(stage_name)
         stage_index = self._pipeline.index(stage_name)
         if stage_index == 0:
             return None
-        return self.load(self._pipeline.names[stage_index - 1])
+        return self.load(
+            self._pipeline.names[stage_index - 1],
+            frame_metadata_key=frame_metadata_key,
+        )
 
     def _checkpoint_path(self, stage_index: int, stage_name: str) -> Path:
         return self._root / f"{stage_index:03d}_{stage_name}.frame.h5"

@@ -2009,3 +2009,21 @@ def test_calibrate_reports_epoch_progress(feasible_frame) -> None:
     assert [event["epoch"] for event in events] == [1, 2, 3, 4, 5]
     assert all(event["epochs"] == 5 for event in events)
     assert all(isinstance(event["loss"], float) for event in events)
+
+
+def test_mass_reason_rides_the_free_mass_record() -> None:
+    """A caller-supplied mass_reason lands verbatim on the mass record."""
+
+    frame, targets, _ = _l2_concentration_fixture()
+    reason = "Calibration to the census_households/constituency family."
+
+    result = calibrate(frame, targets, epochs=4, mass_reason=reason)
+    assert result.frame.mass_log[-1].reason == reason
+
+    default = calibrate(frame, targets, epochs=4)
+    assert "capped weighted-MAPE" in default.frame.mass_log[-1].reason
+
+    with pytest.raises(ValueError, match="mass_reason requires mass='free'"):
+        calibrate(frame, targets, epochs=4, mass="conserve", mass_reason=reason)
+    with pytest.raises(ValueError, match="non-empty string"):
+        calibrate(frame, targets, epochs=4, mass_reason="   ")

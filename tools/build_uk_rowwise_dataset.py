@@ -25,6 +25,7 @@ from microcosm.build.uk_runtime import (
     PERSON_ID_COLUMNS,
     POOL_SOURCE_LINEAGE_COLUMN,
     UK_GEOGRAPHY_LADDER_COLUMNS,
+    UKLadderRowwiseDatasetResult,
     apply_uk_source_lineage_modulus,
     assign_household_geography,
     assign_uk_geography_ladder,
@@ -35,9 +36,12 @@ from microcosm.build.uk_runtime import (
     expected_uk_rowwise_area_support,
     geography_coverage_summary,
     id_multiplier_for_values,
+    ladder_clone_index_column,
     load_uk_oa_ladder,
     read_uk_single_year_weight_metadata,
     uk_geography_ladder_gate,
+    uk_household_weight_kind,
+    uk_time_period,
     validate_geography_coverage,
     write_geography_crosswalk,
 )
@@ -1007,7 +1011,22 @@ def _rowwise_summary(
     constituency_column: str = "constituency_code_oa",
     la_column: str = "la_code_oa",
 ) -> dict[str, Any]:
-    household = result.household
+    if isinstance(result, UKLadderRowwiseDatasetResult):
+        person = result.frame.table("person")
+        benunit = result.frame.table("benunit")
+        household = result.frame.table("household")
+        weight_kind = uk_household_weight_kind(result.frame)
+        mass_log = result.frame.mass_log
+        time_period = uk_time_period(result.frame)
+        clone_column = ladder_clone_index_column("household")
+    else:
+        person = result.person
+        benunit = result.benunit
+        household = result.household
+        weight_kind = result.household_weight_kind
+        mass_log = result.mass_log
+        time_period = result.time_period
+        clone_column = "clone_index"
     missing_geography = household[list(geo_columns)].isna().any(axis=1)
     for column in geo_columns:
         missing_geography |= household[column].fillna("").astype(str).str.strip().eq("")
@@ -1027,8 +1046,8 @@ def _rowwise_summary(
     input_total = float(base_summary["household_weight_sum"])
     abs_delta = abs(weight_sum - input_total)
     clone0 = household
-    if "clone_index" in household.columns:
-        clone0 = household[household["clone_index"] == 0]
+    if clone_column in household.columns:
+        clone0 = household[household[clone_column] == 0]
     lineage = {
         "pool_modulus": source_lineage_modulus,
         "pool": _pool_lineage_block(clone0),
@@ -1044,8 +1063,8 @@ def _rowwise_summary(
     }
     return {
         "weights": {
-            "household_weight_kind": result.household_weight_kind.value,
-            "mass_log_records": len(result.mass_log),
+            "household_weight_kind": weight_kind.value,
+            "mass_log_records": len(mass_log),
             "mass_conservation": {
                 "input_total": input_total,
                 "output_total": weight_sum,
@@ -1058,11 +1077,11 @@ def _rowwise_summary(
         },
         "source_lineage": lineage,
         "tables": {
-            "person": list(result.person.shape),
-            "benunit": list(result.benunit.shape),
+            "person": list(person.shape),
+            "benunit": list(benunit.shape),
             "household": list(household.shape),
         },
-        "time_period": result.time_period,
+        "time_period": time_period,
         "n_clones": result.n_clones,
         "id_multiplier": result.id_multiplier,
         "household_weight_sum": weight_sum,

@@ -129,6 +129,16 @@ _UK_TERMINAL_GATE_SIGNING_KEY_ENV = "POPULACE_UK_TERMINAL_GATE_SIGNING_KEY"
 # alongside the committed threshold constants — a threshold outside this hash
 # is not attested.
 _UK_TERMINAL_GATE_POLICY_SHA256 = (
+    "ae93bd10a02362a523eb077bcbd32b362cef31f0447acbc40537df696e30c757"
+)
+# The published June release attests the pre-#630 policy (no degenerate
+# reviewed exclusions). Its report is immutable, so the superseded digest
+# stays pinned for exactly the grandfathered release ids — a vintage-aware
+# pin, never a loosening: every release still matches exactly one reviewed
+# policy digest. Today the terminal-report checker only runs for exact-k
+# release ids, so this branch is defensive; it becomes load-bearing the day
+# grandfathered reports are checked.
+_UK_TERMINAL_GATE_POLICY_SHA256_LEGACY = (
     "74c9cd474d76e2b8d4ca5b298c19fc6348ac1a90746594afc8a81283a0398b68"
 )
 _UK_ALWAYS_APPLICABLE_GATE_NAMES = (
@@ -201,6 +211,9 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "reviewed_exclusions",
             "stale_exclusions",
             "dormant_exclusions",
+            "expired_exclusions",
+            "premature_exclusions",
+            "exclusions_evaluated_on",
         }
     ),
     "zero_weight_strata": frozenset(
@@ -265,6 +278,9 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "unused_reviewed_exclusions",
             "stale_exclusions",
             "dormant_exclusions",
+            "expired_exclusions",
+            "premature_exclusions",
+            "exclusions_evaluated_on",
             "reference_identity",
         }
     ),
@@ -280,6 +296,9 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "reviewed_exclusions",
             "stale_exclusions",
             "dormant_exclusions",
+            "expired_exclusions",
+            "premature_exclusions",
+            "exclusions_evaluated_on",
             "surface",
         }
     ),
@@ -1214,12 +1233,37 @@ def _check_uk_terminal_gate_observables(
             ("all_zero_columns", []),
             ("constant_columns", []),
             ("stale_exclusions", []),
+            # Schema-2 exclusions (#610): an out-of-force approval must
+            # never ride a published report. Presence is enforced by the
+            # required detail schema above, so the checks read strictly.
+            ("expired_exclusions", []),
+            ("premature_exclusions", []),
         ):
             if degenerate.get(field) != empty:
                 failures.append(
                     f"{_UK_TERMINAL_GATE_REPORT_FILE} passing degenerate-surface "
                     f"gate requires details.{field} to be {empty!r}."
                 )
+
+    # One report evaluates every exclusion register on one date (the
+    # aggregator threads a single clock). A hand-composed collection mixing
+    # evaluation dates is not the aggregator's output.
+    evaluation_dates = {
+        name: details["exclusions_evaluated_on"]
+        for name in (
+            "degenerate_release_surface",
+            "input_mass_parity",
+            "qrf_tail_concentration",
+        )
+        if (details := _uk_terminal_gate_details(gates, name)) is not None
+        and "exclusions_evaluated_on" in details
+    }
+    if len(set(evaluation_dates.values())) > 1:
+        failures.append(
+            f"{_UK_TERMINAL_GATE_REPORT_FILE} exclusion-consuming gates must "
+            "share one details.exclusions_evaluated_on date; got "
+            f"{dict(sorted(evaluation_dates.items()))}."
+        )
 
     diagnostic_weights: Mapping | None = None
     if calibration_diagnostics is not None:
@@ -1335,6 +1379,16 @@ def _check_uk_terminal_gate_observables(
             failures.append(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} passing input-mass parity "
                 "requires details.stale_exclusions to be an empty list."
+            )
+        if input_mass.get("expired_exclusions") != []:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing input-mass parity "
+                "requires details.expired_exclusions to be an empty list."
+            )
+        if input_mass.get("premature_exclusions") != []:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing input-mass parity "
+                "requires details.premature_exclusions to be an empty list."
             )
 
     qrf_tail = _uk_terminal_gate_details(gates, "qrf_tail_concentration")
@@ -1462,6 +1516,16 @@ def _check_uk_terminal_gate_observables(
                     "requires columns above details.max_top_share to match "
                     "details.reviewed_exclusions exactly."
                 )
+        if qrf_tail.get("expired_exclusions") != []:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                "requires details.expired_exclusions to be an empty list."
+            )
+        if qrf_tail.get("premature_exclusions") != []:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                "requires details.premature_exclusions to be an empty list."
+            )
         surface = qrf_tail.get("surface")
         if not isinstance(surface, Mapping):
             failures.append(
@@ -1747,10 +1811,15 @@ def _check_uk_terminal_gate_report(
             "calibration_diagnostics_sha256 must match the local "
             "calibration_diagnostics.json bytes."
         )
-    if attestation.get("policy_sha256") != _UK_TERMINAL_GATE_POLICY_SHA256:
+    expected_policy_sha256 = (
+        _UK_TERMINAL_GATE_POLICY_SHA256_LEGACY
+        if release_id in _UK_LEGACY_RELEASE_IDS
+        else _UK_TERMINAL_GATE_POLICY_SHA256
+    )
+    if attestation.get("policy_sha256") != expected_policy_sha256:
         failures.append(
             f"{_UK_TERMINAL_GATE_REPORT_FILE} attestation.policy_sha256 does "
-            "not match the certified UK gate policy."
+            "not match the certified UK gate policy for this release vintage."
         )
     if attestation.get("signature_algorithm") != _UK_TERMINAL_GATE_SIGNATURE_ALGORITHM:
         failures.append(

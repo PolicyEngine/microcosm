@@ -10,6 +10,7 @@ import pytest
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.uk_runtime import hmrc_restoration
+from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.frs_hmrc_leaves import (
     FRS_HMRC_INCPBEN_COLUMN,
     FRS_HMRC_OSSBEN_IDENTIFIABLE_SUBSET_COLUMN,
@@ -93,6 +94,20 @@ def _dataset() -> Frame:
                 "household_weight": [10.0],
             }
         ),
+        time_period=HMRC_SPI_BUILD_PERIOD,
+    )
+
+
+def _tampered_dataset() -> Frame:
+    """A frame that differs from :func:`_dataset` by one payload value."""
+
+    frame = _dataset()
+    person = frame.table("person").copy()
+    person[FRS_HMRC_PAY_COLUMN] = [20_001.0]
+    return uk_national_frame(
+        person=person,
+        benunit=frame.table("benunit"),
+        household=frame.table("household"),
         time_period=HMRC_SPI_BUILD_PERIOD,
     )
 
@@ -640,6 +655,43 @@ def test_restoration_runs_replay_without_calibration_and_emits_208_facts(
     assert evidence["post_draw_identity"]["exact"] is True
 
 
+def test_sampled_rung_defers_the_effective_mass_floor_to_the_terminal_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A #627 rung build records a thin imputed column instead of aborting.
+
+    Sparse imputed columns can legitimately restore near-zero effective mass
+    on a small sample; the declared rung defers the mid-stage floor to the
+    terminal input-coverage gate, whose verdict is receipted. The strict
+    raise is unchanged without the declaration.
+    """
+
+    candidate = _candidate_identity(tmp_path)
+    dataset, provenance = _dataset_from_source(candidate.path)
+    _install_replay_mocks(monkeypatch, dataset, tmp_path)
+    monkeypatch.setattr(
+        hmrc_restoration,
+        "_distributional_mass_shares",
+        lambda _frame: {"charitable_investment_gifts": 1e-7},
+    )
+
+    with pytest.raises(RuntimeError, match="did not restore required effective-mass"):
+        _restore(dataset, candidate, tmp_path, provenance=provenance)
+
+    restored = restore_uk_hmrc_income_family(
+        dataset,
+        spi_tab_path=tmp_path / "put2223uk.tab",
+        hmrc_ods_path=tmp_path / "hmrc.ods",
+        certified_candidate=candidate,
+        staging_provenance=provenance,
+        frs_source_evidence=_FRS_SOURCE_EVIDENCE,
+        sampled_rung=True,
+    )
+    # The thin share still reaches the replay report's evidence surface.
+    assert restored.distributional_mass_shares == {"charitable_investment_gifts": 1e-7}
+
+
 def test_post_draw_total_income_identity_is_exact_not_tolerance_based(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -728,9 +780,23 @@ def test_stage_transform_requires_retained_leaf_stage_and_forwards_evidence(
     with pytest.raises(RuntimeError, match="retained-leaves stage"):
         transform(dataset)
 
-    stale_result = SimpleNamespace(
-        frame=_dataset(),
+    # A retained result that cannot prove its content lineage fails closed
+    # rather than downgrading to a weaker check.
+    unprovable = SimpleNamespace(
+        frame=_tampered_dataset(),
         evidence=lambda: _FRS_SOURCE_EVIDENCE,
+    )
+    transform.retained_leaves_transform = SimpleNamespace(last_result=unprovable)
+    with pytest.raises(RuntimeError, match="carries no output_content_identity"):
+        transform(dataset)
+
+    # A retained result whose recorded output differs from the received
+    # frame's content is a substitution and is refused.
+    tampered = _tampered_dataset()
+    stale_result = SimpleNamespace(
+        frame=tampered,
+        evidence=lambda: _FRS_SOURCE_EVIDENCE,
+        output_content_identity=uk_frame_content_identity(tampered),
     )
     transform.retained_leaves_transform = SimpleNamespace(last_result=stale_result)
     with pytest.raises(RuntimeError, match="not bound to the frame"):
@@ -763,12 +829,12 @@ def test_stage_transform_binding_is_single_use_and_asserts_descent(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """The provenance binding restores the retired carrier's descent fence.
+    """The provenance binding carries the descent fence by content identity.
 
-    Binding couples the provenance to the exact loaded frame; the stage
-    consumes the binding on use, so a stale binding can never fence a later
-    run, and a pipeline whose first stage consumed a substituted frame
-    fails closed even when a matching load once happened.
+    Binding records the loaded frame's content identity; the stage consumes
+    the binding on use, so a stale binding can never fence a later run, and
+    a pipeline whose first stage consumed a content-different frame fails
+    closed even when a matching load once happened.
     """
 
     loaded = _dataset()
@@ -791,23 +857,27 @@ def test_stage_transform_binding_is_single_use_and_asserts_descent(
         )[1],
     )
 
-    # Descent violation: the pipeline's first stage consumed a frame other
-    # than the one the driver loaded and bound.
-    substituted = _dataset()
+    # Descent violation: the pipeline's first stage consumed a frame whose
+    # content differs from the one the driver loaded and bound.
+    substituted = _tampered_dataset()
     transform.retained_leaves_transform = SimpleNamespace(
         last_result=SimpleNamespace(
-            frame=loaded, evidence=lambda: _FRS_SOURCE_EVIDENCE
+            frame=loaded,
+            evidence=lambda: _FRS_SOURCE_EVIDENCE,
+            input_content_identity=uk_frame_content_identity(substituted),
+            output_content_identity=uk_frame_content_identity(loaded),
         ),
-        last_input=substituted,
     )
     transform.bind_staging_provenance(provenance, loaded)
     with pytest.raises(RuntimeError, match="did not start from the frame"):
         transform(loaded)
     assert transform.staging_provenance is None
-    assert transform.bound_frame is None
+    assert transform.bound_input_identity is None
 
     # Descent-consistent run forwards the bound provenance exactly once...
-    transform.retained_leaves_transform.last_input = loaded
+    transform.retained_leaves_transform.last_result.input_content_identity = (
+        uk_frame_content_identity(loaded)
+    )
     transform.bind_staging_provenance(provenance, loaded)
     assert transform(loaded) is loaded
     assert forwarded == [provenance]
@@ -816,6 +886,56 @@ def test_stage_transform_binding_is_single_use_and_asserts_descent(
     # restore then fails closed on staging_provenance=None).
     assert transform(loaded) is loaded
     assert forwarded == [provenance, None]
+
+
+def test_stage_transform_descent_fence_is_content_addressed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The descent fence survives a process boundary by construction.
+
+    A content-identical frame that is a different Python object — the shape
+    a checkpoint rehydration produces — passes both fences; a tampered
+    frame with the same structure fails them. Object identity is only a
+    fast path, never the guarantee.
+    """
+
+    loaded = _dataset()
+    provenance = UKStagingProvenance(
+        source_h5=(tmp_path / "populace_uk_2023.h5").resolve(),
+        fingerprint=_TEST_SOURCE_FINGERPRINT,
+    )
+    transform = UKHMRCIncomeStageTransform(
+        spi_tab_path=tmp_path / "put2223uk.tab",
+        hmrc_ods_path=tmp_path / "hmrc.ods",
+        certified_candidate=_candidate_identity(tmp_path),
+    )
+    monkeypatch.setattr(
+        hmrc_restoration,
+        "restore_uk_hmrc_income_family",
+        lambda frame, **kwargs: SimpleNamespace(frame=frame),
+    )
+
+    # Rehydration shape: the received frame and the bound input are fresh,
+    # content-identical reconstructions, not the original objects.
+    stage_output = _dataset()
+    transform.retained_leaves_transform = SimpleNamespace(
+        last_result=SimpleNamespace(
+            frame=stage_output,
+            evidence=lambda: _FRS_SOURCE_EVIDENCE,
+            input_content_identity=uk_frame_content_identity(_dataset()),
+            output_content_identity=uk_frame_content_identity(stage_output),
+        ),
+    )
+    transform.bind_staging_provenance(provenance, loaded)
+    rehydrated = _dataset()
+    assert rehydrated is not stage_output
+    assert transform(rehydrated) is rehydrated
+
+    # Tampered payload with identical structure: fence A refuses it.
+    transform.bind_staging_provenance(provenance, loaded)
+    with pytest.raises(RuntimeError, match="not bound to the frame"):
+        transform(_tampered_dataset())
 
 
 @pytest.mark.parametrize(
@@ -849,3 +969,60 @@ def test_restoration_rejects_unreviewed_release_parameter_overrides(
             staging_provenance=provenance,
             **kwargs,
         )
+
+
+def test_checkpoint_metadata_round_trips_the_fit_weight_audit(tmp_path) -> None:
+    """A resumed SPI stage still feeds the weights audit from its record."""
+
+    from microcosm.build.gates import FitWeightRecord
+
+    transform = UKHMRCIncomeStageTransform(
+        spi_tab_path=tmp_path / "put2223uk.tab",
+        hmrc_ods_path=tmp_path / "hmrc.ods",
+        certified_candidate=_candidate_identity(tmp_path),
+    )
+    with pytest.raises(RuntimeError, match="completed SPI restoration run"):
+        transform.checkpoint_metadata()
+
+    records = (
+        FitWeightRecord(fit_name="uk_spi_fill_qrf", weight_kind="design"),
+        FitWeightRecord(fit_name="uk_spi_income_qrf", weight_kind="design"),
+    )
+    evidence = {"stage": "hmrc_spi_income", "post_draw_identity_rows": 3}
+    replay_payload = {"summary": {"status": "comparisons_passed"}, "facts": {}}
+    transform.last_result = SimpleNamespace(
+        frame=_dataset(),
+        imputation=SimpleNamespace(fit_weight_records=records),
+        evidence=lambda: dict(evidence),
+        replay_report=SimpleNamespace(to_payload=lambda: dict(replay_payload)),
+    )
+    metadata = transform.checkpoint_metadata()
+    assert metadata["output_content_identity"] == uk_frame_content_identity(_dataset())
+
+    resumed = UKHMRCIncomeStageTransform(
+        spi_tab_path=tmp_path / "put2223uk.tab",
+        hmrc_ods_path=tmp_path / "hmrc.ods",
+        certified_candidate=_candidate_identity(tmp_path),
+    )
+    # A resume consumes the single-use binding: the stage will not run.
+    resumed.bind_staging_provenance(
+        UKStagingProvenance(
+            source_h5=(tmp_path / "populace_uk_2023.h5").resolve(),
+            fingerprint=_TEST_SOURCE_FINGERPRINT,
+        ),
+        _dataset(),
+    )
+    resumed.resume_from_checkpoint(metadata, _dataset())
+    assert resumed.fit_weight_records == records
+    assert resumed.last_result.evidence() == evidence
+    assert resumed.last_result.replay_payload == replay_payload
+    assert resumed.staging_provenance is None
+    assert resumed.bound_input_identity is None
+
+    with pytest.raises(RuntimeError, match="cannot feed the weights audit"):
+        resumed.resume_from_checkpoint({}, _dataset())
+
+    # The terminal stage runs the same drift check as the retained stage:
+    # a frame that does not match the recorded output identity is refused.
+    with pytest.raises(RuntimeError, match="drifted record"):
+        resumed.resume_from_checkpoint(metadata, _tampered_dataset())

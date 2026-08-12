@@ -13,12 +13,14 @@ mistaken for the full SPI ``OSSBEN`` or ``SRP`` concepts.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_national_frame,
@@ -149,7 +151,16 @@ class UKFRSRawTableIdentity:
 
 @dataclass(frozen=True)
 class UKFRSHMRCRetainedLeavesResult:
-    """National frame plus raw-source and lineage evidence."""
+    """National frame plus raw-source and lineage evidence.
+
+    ``input_content_identity`` and ``output_content_identity`` are the
+    content identities (:func:`uk_frame_content_identity`) of the frame this
+    stage consumed and the frame it produced, derived inside the attesting
+    run. The SPI stage's descent fence compares against them, so the
+    guarantee survives a process boundary: a checkpoint-rehydrated frame is
+    content-identical to the one that was checkpointed, while a substituted
+    or tampered frame is not.
+    """
 
     frame: Frame
     adult_source: UKFRSRawTableIdentity
@@ -161,6 +172,12 @@ class UKFRSHMRCRetainedLeavesResult:
     candidate_people: int
     source_signal_rows: dict[str, int]
     structural_zero_columns: tuple[str, ...]
+    input_content_identity: str
+    output_content_identity: str
+    #: Raw-survey people outside the candidate base. Zero on a full-scale
+    #: build (the completeness fence raises otherwise); on a #627 rung
+    #: sample it receipts how much of the raw surface the rung dropped.
+    source_people_outside_candidate: int = 0
 
     def evidence(self) -> dict[str, object]:
         """Return aggregate, JSON-safe evidence for a national build driver."""
@@ -184,6 +201,9 @@ class UKFRSHMRCRetainedLeavesResult:
                 "capital_gains_person_id_offset": (self.capital_gains_person_id_offset),
                 "raw_source_people": self.raw_source_people,
                 "candidate_people": self.candidate_people,
+                "source_people_outside_candidate": (
+                    self.source_people_outside_candidate
+                ),
             },
             "retained_leaves": {
                 column: {
@@ -202,20 +222,20 @@ class UKFRSHMRCRetainedLeavesStageTransform:
 
     adult_tab_path: Path
     benefits_tab_path: Path
+    #: Declared #627 rung build: relaxes the raw-surface completeness fence
+    #: into a receipted count. Never set on a release build.
+    sampled_rung: bool = False
     last_result: UKFRSHMRCRetainedLeavesResult | None = field(
         default=None,
         init=False,
-    )
-    last_input: Frame | None = field(
-        default=None,
-        init=False,
-        repr=False,
     )
 
     @classmethod
     def from_raw_frs_directory(
         cls,
         raw_frs_directory: str | Path,
+        *,
+        sampled_rung: bool = False,
     ) -> UKFRSHMRCRetainedLeavesStageTransform:
         """Resolve the two permitted tables from a CLI-supplied directory."""
 
@@ -223,19 +243,97 @@ class UKFRSHMRCRetainedLeavesStageTransform:
         return cls(
             adult_tab_path=directory / "adult.tab",
             benefits_tab_path=directory / "benefits.tab",
+            sampled_rung=sampled_rung,
         )
 
     def __call__(self, frame: Frame) -> Frame:
-        # Recorded so the SPI stage's fence can assert descent: the frame
-        # this stage consumed must be the very object the driver loaded
-        # and bound its provenance to.
-        self.last_input = frame
+        # The result records the content identities of the frame this stage
+        # consumed and produced, so the SPI stage's fence can assert descent
+        # from the frame the driver loaded and bound — including across a
+        # process boundary, where object identity cannot travel.
         self.last_result = retain_uk_frs_hmrc_leaves(
             frame,
             adult_tab_path=self.adult_tab_path,
             benefits_tab_path=self.benefits_tab_path,
+            sampled_rung=self.sampled_rung,
         )
         return self.last_result.frame
+
+    def checkpoint_metadata(self) -> dict[str, object]:
+        """JSON-safe evidence the stage checkpoint carries for a resume.
+
+        The SPI stage consumes the retained-leaves evidence and the descent
+        identities; persisting them on the completed stage's run-context
+        record is what lets a later process resume past this stage without
+        re-running it.
+        """
+
+        if self.last_result is None:
+            raise RuntimeError(
+                "checkpoint metadata requires a completed retained-leaves run."
+            )
+        return {
+            "evidence": self.last_result.evidence(),
+            "input_content_identity": self.last_result.input_content_identity,
+            "output_content_identity": self.last_result.output_content_identity,
+        }
+
+    def resume_from_checkpoint(
+        self,
+        metadata: Mapping[str, object],
+        frame: Frame,
+    ) -> None:
+        """Rehydrate a completed run's evidence from its checkpoint record.
+
+        ``frame`` is the stage's checkpointed output; the rehydrated result
+        exposes exactly the surface the SPI stage's descent fence reads. The
+        recorded output identity must match the loaded frame's content — a
+        mismatch means the record and the checkpoint have drifted apart, and
+        the resume fails closed.
+        """
+
+        evidence = metadata.get("evidence")
+        input_identity = metadata.get("input_content_identity")
+        output_identity = metadata.get("output_content_identity")
+        if (
+            not isinstance(evidence, Mapping)
+            or not isinstance(input_identity, str)
+            or not isinstance(output_identity, str)
+        ):
+            raise RuntimeError(
+                "retained-leaves resume requires the checkpoint record to "
+                "carry the run's evidence and content identities; a record "
+                "without them cannot prove descent."
+            )
+        if uk_frame_content_identity(frame) != output_identity:
+            raise RuntimeError(
+                "retained-leaves checkpoint content does not match its "
+                "recorded output identity; refusing to resume from a "
+                "drifted record."
+            )
+        self.last_result = _ResumedRetainedLeaves(
+            frame=frame,
+            evidence_payload=dict(evidence),
+            input_content_identity=input_identity,
+            output_content_identity=output_identity,
+        )
+
+
+@dataclass(frozen=True)
+class _ResumedRetainedLeaves:
+    """A completed retained-leaves run rehydrated from its checkpoint.
+
+    Carries exactly the surface the SPI stage consumes: the output frame,
+    the JSON-safe evidence, and the descent content identities.
+    """
+
+    frame: Frame
+    evidence_payload: dict[str, object]
+    input_content_identity: str
+    output_content_identity: str
+
+    def evidence(self) -> dict[str, object]:
+        return dict(self.evidence_payload)
 
 
 @dataclass(frozen=True)
@@ -261,10 +359,20 @@ def retain_uk_frs_hmrc_leaves(
     *,
     adult_tab_path: str | Path,
     benefits_tab_path: str | Path,
+    sampled_rung: bool = False,
 ) -> UKFRSHMRCRetainedLeavesResult:
-    """Read two raw FRS tables and retain the adjudicated HMRC constituents."""
+    """Read two raw FRS tables and retain the adjudicated HMRC constituents.
+
+    ``sampled_rung`` declares a #627 scale-ladder build: the candidate base
+    deliberately carries only a sampled subset of source families, so the
+    completeness fence (every raw-survey person present in the base) cannot
+    hold. The raw surface is restricted to surviving canonicals and the
+    dropped count is receipted instead — never silently. Full-scale builds
+    keep the strict fence.
+    """
 
     validate_uk_national_frame(frame)
+    input_content_identity = uk_frame_content_identity(frame)
     time_period = uk_time_period(frame)
     if time_period not in {FRS_SOURCE_BUILD_PERIOD, FRS_SOURCE_VINTAGE}:
         raise ValueError(
@@ -287,11 +395,24 @@ def retain_uk_frs_hmrc_leaves(
     unknown_source_ids = sorted(
         set(source_leaves.index) - lineage.canonical_raw_person_ids
     )
-    if unknown_source_ids:
+    if unknown_source_ids and not sampled_rung:
         raise ValueError(
             "Raw FRS retained leaves contain person identity value(s) absent "
             f"from the certified candidate base: {unknown_source_ids[:5]}."
         )
+    source_people_outside_candidate = len(unknown_source_ids)
+    # Signal-row evidence stays a fact about the SOURCE at every rung:
+    # structural_zero must never be asserted from a sampled-away surface
+    # (adversarial-review finding). The rung also cannot distinguish a
+    # compact genuinely missing raw people from sampling loss — that check
+    # remains the full-scale fence's, which stays strict.
+    full_source_leaves = source_leaves
+    if unknown_source_ids:
+        # A rung sample deliberately drops most source families; restrict the
+        # raw surface to the surviving canonicals and receipt the count.
+        source_leaves = source_leaves.loc[
+            source_leaves.index.isin(list(lineage.canonical_raw_person_ids))
+        ]
 
     person = frame.table("person").copy()
     aligned = source_leaves.reindex(lineage.source_person_ids, fill_value=0.0)
@@ -322,7 +443,7 @@ def retain_uk_frs_hmrc_leaves(
         source_leaves=source_leaves,
     )
     source_signal_rows = {
-        column: int((source_leaves[column] > 0.0).sum())
+        column: int((full_source_leaves[column] > 0.0).sum())
         for column in FRS_HMRC_RETAINED_LEAF_COLUMNS
     }
     structural_zero_columns = tuple(
@@ -339,8 +460,11 @@ def retain_uk_frs_hmrc_leaves(
         capital_gains_person_id_offset=lineage.capital_gains_person_id_offset,
         raw_source_people=len(source_leaves),
         candidate_people=len(person),
+        source_people_outside_candidate=source_people_outside_candidate,
         source_signal_rows=source_signal_rows,
         structural_zero_columns=structural_zero_columns,
+        input_content_identity=input_content_identity,
+        output_content_identity=uk_frame_content_identity(result_frame),
     )
 
 

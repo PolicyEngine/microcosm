@@ -359,6 +359,52 @@ def test_raw_source_identity_must_exist_on_candidate_base(tmp_path: Path) -> Non
         )
 
 
+def test_sampled_rung_receipts_the_dropped_raw_surface(tmp_path: Path) -> None:
+    """A #627 rung build restricts the raw surface and receipts the drop.
+
+    The completeness fence (every raw-survey person present in the base)
+    cannot hold when the base deliberately carries a sampled subset of
+    source families; declaring ``sampled_rung`` converts the raise into a
+    receipted count while the surviving surface stays source-faithful.
+    """
+
+    dataset, _source_person_ids = _candidate()
+    (tmp_path / "clean").mkdir()
+    (tmp_path / "extra").mkdir()
+    clean_adult_path, clean_benefits_path = _write_raw_tables(tmp_path / "clean")
+    strict = retain_uk_frs_hmrc_leaves(
+        dataset,
+        adult_tab_path=clean_adult_path,
+        benefits_tab_path=clean_benefits_path,
+    )
+    adult_path, benefits_path = _write_raw_tables(tmp_path / "extra")
+    adult = pd.read_csv(adult_path, sep="\t")
+    adult.loc[len(adult)] = {"SERNUM": 9, "PERSON": 1, "INEARNS": 1, "UNUSED": "x"}
+    adult.to_csv(adult_path, sep="\t", index=False)
+
+    result = retain_uk_frs_hmrc_leaves(
+        dataset,
+        adult_tab_path=adult_path,
+        benefits_tab_path=benefits_path,
+        sampled_rung=True,
+    )
+
+    assert result.source_people_outside_candidate == 1
+    assert result.evidence()["lineage"]["source_people_outside_candidate"] == 1
+    assert strict.source_people_outside_candidate == 0
+    # The surviving surface attaches exactly what the strict run attaches.
+    pd.testing.assert_frame_equal(
+        result.frame.table("person"), strict.frame.table("person")
+    )
+    # Signal-row evidence remains a fact about the SOURCE: the extra raw
+    # person's pay carrier is counted even though the rung dropped the row,
+    # so structural_zero can never be asserted from a sampled-away surface.
+    assert (
+        result.source_signal_rows[FRS_HMRC_PAY_COLUMN]
+        == strict.source_signal_rows[FRS_HMRC_PAY_COLUMN] + 1
+    )
+
+
 def test_candidate_clone_identity_mismatch_fails_closed(tmp_path: Path) -> None:
     dataset, _source_person_ids = _candidate()
     adult_path, benefits_path = _write_raw_tables(tmp_path)
@@ -463,3 +509,47 @@ def test_missing_code16_var2_fails_closed(tmp_path: Path) -> None:
             adult_tab_path=adult_path,
             benefits_tab_path=benefits_path,
         )
+
+
+def test_checkpoint_metadata_round_trips_the_descent_evidence(tmp_path) -> None:
+    """A fresh process resumes the retained stage from its record alone.
+
+    The rehydrated result exposes exactly the surface the SPI stage's
+    descent fence reads — evidence and both content identities — and a
+    checkpoint whose content no longer matches its recorded output identity
+    is refused as drifted.
+    """
+
+    from microcosm.build.uk_runtime.content_identity import (
+        uk_frame_content_identity,
+    )
+
+    dataset, _source_person_ids = _candidate()
+    _write_raw_tables(tmp_path)
+    transform = UKFRSHMRCRetainedLeavesStageTransform.from_raw_frs_directory(tmp_path)
+    staged = transform(dataset)
+    metadata = transform.checkpoint_metadata()
+
+    resumed = UKFRSHMRCRetainedLeavesStageTransform.from_raw_frs_directory(tmp_path)
+    resumed.resume_from_checkpoint(metadata, staged)
+    assert resumed.last_result is not None
+    assert resumed.last_result.frame is staged
+    assert resumed.last_result.evidence() == transform.last_result.evidence()
+    assert resumed.last_result.input_content_identity == uk_frame_content_identity(
+        dataset
+    )
+    assert resumed.last_result.output_content_identity == uk_frame_content_identity(
+        staged
+    )
+
+    drifted = UKFRSHMRCRetainedLeavesStageTransform.from_raw_frs_directory(tmp_path)
+    with pytest.raises(RuntimeError, match="drifted record"):
+        drifted.resume_from_checkpoint(metadata, dataset)
+
+    empty = UKFRSHMRCRetainedLeavesStageTransform.from_raw_frs_directory(tmp_path)
+    with pytest.raises(RuntimeError, match="cannot prove descent"):
+        empty.resume_from_checkpoint({}, staged)
+
+    unrun = UKFRSHMRCRetainedLeavesStageTransform.from_raw_frs_directory(tmp_path)
+    with pytest.raises(RuntimeError, match="completed retained-leaves run"):
+        unrun.checkpoint_metadata()

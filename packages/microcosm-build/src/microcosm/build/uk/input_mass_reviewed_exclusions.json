@@ -1,5 +1,5 @@
 {
- "schema_version": 1,
- "description": "Reviewed input-mass parity exclusions for the UK terminal battery (#609). Each entry maps an 'entity.column' name to a non-empty reason documenting why that column is allowed to drift or disappear against the frozen reference. The gate reports dormant entries (columns outside the audited surface) and FAILS stale ones (columns now within tolerance), so this register cannot rot. Empty until an incident or adjudication earns an entry.",
+ "schema_version": 2,
+ "description": "Reviewed input-mass parity exclusions for the UK terminal battery (#609). Each entry is a complete approval receipt (schema 2 per #610: reason, approver, adjudication reference, approval date, expiry) documenting why that column is allowed to drift or disappear against the frozen reference. The gate reports dormant entries (columns outside the audited surface) and FAILS stale ones (columns now within tolerance) and FAILS expired ones until the adjudication is renewed, so this register cannot rot. Empty until an incident or adjudication earns an entry.",
  "exclusions": {}
 }

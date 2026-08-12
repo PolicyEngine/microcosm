@@ -5,12 +5,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import uuid
 from itertools import combinations
 from pathlib import Path
 
 import pandas as pd
 
+from microcosm.build.gate_battery import GateBatteryBlockedError
 from microcosm.build.uk_runtime.frs_hmrc_leaves import (
     UKFRSHMRCRetainedLeavesStageTransform,
 )
@@ -27,7 +29,16 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_time_period,
 )
+from microcosm.build.uk_runtime.national_sampling import (
+    UK_SAMPLE_RUNG_TOKENS,
+    UK_SAMPLE_SEED_DEFAULT,
+)
+from microcosm.build.uk_runtime.release_identity import UK_RELEASE_TIERS
+from microcosm.build.uk_runtime.terminal_gates import (
+    uk_default_degenerate_reviewed_exclusions,
+)
 from microcosm.build.uk_runtime.weighted_integrity import (
+    UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
@@ -35,6 +46,50 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     load_uk_input_mass_reference,
     load_uk_reviewed_exclusion_register,
 )
+
+#: Canonical UK release ids (and the grandfathered June id) name shippable
+#: artifacts; a sampled rung build must never carry one. Mirrors the
+#: microcosm-data contract's release-identity check without importing the
+#: data shard into the build tool. The durable coupling is the gate
+#: battery's ``release_candidate`` flag (wired below: ``--release-candidate``
+#: is refused on a rung); this fence stays as defense in depth over the id
+#: namespace itself.
+# Year and count widths mirror the microcosm-data contract's release-identity
+# regex ([1-9][0-9]*), and the tier alternation is built from the build
+# shard's ratified UK_RELEASE_TIERS so a newly ratified tier is fenced
+# automatically (adversarial-review finding).
+_CANONICAL_UK_RELEASE_ID = re.compile(
+    r"populace-uk-[1-9][0-9]*-(?:"
+    + "|".join(sorted(re.escape(tier) for tier in UK_RELEASE_TIERS))
+    + r")-k[1-9][0-9]*"
+)
+_UK_JUNE_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
+
+#: The one named dev-scale statistical edge receipted on a rung (#657,
+#: closed without code): sklearn's stratified split inside the SPI imputation
+#: refuses a singleton class on an unlucky small-sample composition. The
+#: computation is never altered — the rung build aborts, but with a receipt
+#: naming the edge instead of a bare traceback, and the remedy is re-rolling
+#: ``--seed``. Only this named edge is receipted; unknown exceptions crash
+#: loudly, so the receipt path can never absorb a real defect.
+_RUNG_NAMED_EDGE_SIGNATURE = "The least populated classes in y have only 1 member"
+_RUNG_ABORT_EXIT_CODE = 3
+
+
+def _rung_sample_fraction(value: str) -> float:
+    """CLI rung policy (#624) over the permissive library validator."""
+
+    try:
+        fraction = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            f"sample fraction must be a number; got {value!r}."
+        ) from error
+    if fraction not in UK_SAMPLE_RUNG_TOKENS:
+        raise argparse.ArgumentTypeError(
+            "sample fraction must be one of 0.01, 0.10, or 1.0 (the #624 rungs)."
+        )
+    return fraction
 
 
 def _parse_args() -> argparse.Namespace:
@@ -129,6 +184,39 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--qrf-estimators", type=int, default=100)
     parser.add_argument(
+        "--sample-fraction",
+        type=_rung_sample_fraction,
+        default=1.0,
+        help=(
+            "Scale-ladder rung (#627): 0.01 smoke, 0.10 dev, or 1.0 full. "
+            "Below 1.0 the loaded compact is sampled at clone-family grain, "
+            "renormalized to full household mass, and refused a canonical "
+            "release id — rung artifacts are receipts, never releases."
+        ),
+    )
+    parser.add_argument(
+        "--sample-seed",
+        type=int,
+        default=UK_SAMPLE_SEED_DEFAULT,
+        help=(
+            "Whole-clone-family survey sampling seed (default: "
+            f"{UK_SAMPLE_SEED_DEFAULT}). Separate from --seed so dev-scale "
+            "sweeps vary one draw at a time."
+        ),
+    )
+    parser.add_argument(
+        "--checkpoint-dir",
+        type=Path,
+        help=(
+            "Persist a lossless Frame checkpoint at every stage boundary and "
+            "resume completed stages from it (#612 increment 3). The run is "
+            "pinned by a content-addressed run config (input digest, seed, "
+            "QRF estimators, raw-source digests); rerunning the same command "
+            "against the same directory resumes, a changed configuration is "
+            "refused. Omit for the destructive single-process build."
+        ),
+    )
+    parser.add_argument(
         "--input-mass-reference-json",
         type=Path,
         help=(
@@ -199,7 +287,53 @@ def _parse_args() -> argparse.Namespace:
             "entries fail the gate; dormant entries are reported."
         ),
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--degenerate-exclusions",
+        type=Path,
+        help=(
+            "Reviewed degenerate-release-surface exclusion register "
+            f"overriding the committed {UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE} "
+            "(#630). Stale entries fail the gate; dormant entries are "
+            "reported. The gate is always armed; the override is digested "
+            "into the report's evidence_sha256, so an overridden run "
+            "self-describes against the committed register."
+        ),
+    )
+    parser.add_argument(
+        "--release-candidate",
+        action="store_true",
+        help=(
+            "Arm the battery's release-candidate posture: every "
+            "evidence_absent gap blocks instead of being recorded. Refused "
+            "on a sampled rung — a rung is structurally non-releasable "
+            "(#627). Default off: the staging build records its gaps "
+            "honestly and continues."
+        ),
+    )
+    args = parser.parse_args()
+    if args.release_candidate and args.sample_fraction != 1.0:
+        parser.error(
+            "--release-candidate is refused on a sampled rung; a rung build "
+            "is structurally non-releasable (#627)."
+        )
+    if args.release_candidate and args.input_coverage_json is not None:
+        parser.error(
+            "--release-candidate is refused with --input-coverage-json; the "
+            "schema-1 alias is last-written over the report path and a "
+            "candidate must keep its signed schema-4 report."
+        )
+    if args.sample_seed < 0:
+        parser.error("sample seed must be a non-negative integer.")
+    if args.sample_fraction != 1.0 and (
+        _CANONICAL_UK_RELEASE_ID.fullmatch(args.release_id)
+        or args.release_id == _UK_JUNE_RELEASE_ID
+    ):
+        parser.error(
+            "a sampled build (--sample-fraction below 1.0) must not carry a "
+            "canonical release id; rung artifacts are structurally "
+            "non-releasable (#627)."
+        )
+    return args
 
 
 def _weighted_integrity_arguments(args: argparse.Namespace) -> dict[str, object]:
@@ -291,8 +425,15 @@ def main() -> int:
     build_record_path = args.build_record_json or args.staging_h5.with_suffix(
         ".build.json"
     )
+    rung_abort_path = args.staging_h5.with_suffix(".rung_abort.json")
     retained_leaves_transform = (
-        UKFRSHMRCRetainedLeavesStageTransform.from_raw_frs_directory(args.frs_raw_dir)
+        UKFRSHMRCRetainedLeavesStageTransform.from_raw_frs_directory(
+            args.frs_raw_dir,
+            # A rung build's base deliberately carries a sampled subset of
+            # source families; the stage receipts the dropped raw surface
+            # instead of failing its completeness fence (#627).
+            sampled_rung=args.sample_fraction != 1.0,
+        )
     )
     _validate_distinct_paths(
         evidence_path=evidence_path,
@@ -308,14 +449,37 @@ def main() -> int:
         input_mass_reference_path=args.input_mass_reference_json,
         input_mass_exclusions_path=args.input_mass_exclusions,
         qrf_tail_exclusions_path=args.qrf_tail_exclusions,
+        degenerate_exclusions_path=args.degenerate_exclusions,
+        rung_abort_path=rung_abort_path,
     )
     # Read-only gate inputs are materialized before any sidecar unlink so a
-    # path collision cannot consume a just-deleted file.
+    # path collision cannot consume a just-deleted file — and so a typo'd
+    # register path dies here, before it can destroy a prior build's
+    # sidecars. The default register is preflighted for the same reason: a
+    # corrupted committed register must not surface hours later at
+    # terminal-gate time.
     weighted_integrity_arguments = _weighted_integrity_arguments(args)
+    if args.degenerate_exclusions is None:
+        # Preflight the committed register without passing it: a corrupted
+        # register dies here, while the absent artifact leaves the binding
+        # resolving the same policy of record itself — the artifact stays
+        # the review-time override channel, so a default run never
+        # self-describes as an override.
+        uk_default_degenerate_reviewed_exclusions()
+        reviewed_degenerate_exclusions = None
+    else:
+        reviewed_degenerate_exclusions = load_uk_reviewed_exclusion_register(
+            args.degenerate_exclusions,
+            resource=UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
+        )
     candidate = verify_certified_uk_candidate(args.input_h5)
     evidence_path.unlink(missing_ok=True)
     replay_path.unlink(missing_ok=True)
     build_record_path.unlink(missing_ok=True)
+    # A prior rung abort must never sit beside a fresh build's artifacts
+    # (adversarial-review finding: a stale receipt contradicted a later
+    # successful run at the same staging path).
+    rung_abort_path.unlink(missing_ok=True)
     hmrc_transform = UKHMRCIncomeStageTransform(
         spi_tab_path=args.spi_tab,
         hmrc_ods_path=args.hmrc_ods,
@@ -323,6 +487,7 @@ def main() -> int:
         retained_leaves_transform=retained_leaves_transform,
         seed=args.seed,
         qrf_estimators=args.qrf_estimators,
+        sampled_rung=args.sample_fraction != 1.0,
     )
     try:
         # This staging path performs no calibration and therefore has no real
@@ -336,11 +501,23 @@ def main() -> int:
             if legacy_input_coverage_path is not None
             else {"terminal_gate_path": terminal_gate_path}
         )
+        checkpoint_arguments: dict[str, object] = {}
+        if args.checkpoint_dir is not None:
+            checkpoint_arguments = {
+                "checkpoint_dir": args.checkpoint_dir,
+                "run_config": _staging_run_config(
+                    args,
+                    candidate=candidate,
+                    retained_leaves_transform=retained_leaves_transform,
+                    hmrc_transform=hmrc_transform,
+                ),
+            }
         result = build_uk_national_dataset(
             input_h5=args.input_h5,
             staging_h5=args.staging_h5,
             release_id=args.release_id,
             calibration_diagnostics_sha256=args.calibration_diagnostics_sha256,
+            reviewed_degenerate_exclusions=reviewed_degenerate_exclusions,
             stages=(
                 UKNationalStage(
                     name="frs_hmrc_retained_leaves",
@@ -353,10 +530,44 @@ def main() -> int:
             ),
             **gate_path_argument,
             **weighted_integrity_arguments,
+            **checkpoint_arguments,
+            sample_fraction=args.sample_fraction,
+            sample_seed=args.sample_seed,
+            release_candidate=args.release_candidate,
         )
-    except RuntimeError as error:
+    except ValueError as error:
+        if args.sample_fraction != 1.0 and _RUNG_NAMED_EDGE_SIGNATURE in str(error):
+            receipt = {
+                "schema_version": 1,
+                "artifact_kind": "uk_rung_abort_receipt",
+                "build_kind": "uk_national_staging_dataset",
+                "release_id": str(args.release_id),
+                "sampling": {
+                    "sample_fraction": float(args.sample_fraction),
+                    "sample_seed": int(args.sample_seed),
+                    "rung_token": UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
+                },
+                "seed": int(args.seed),
+                "named_edge": "spi_split_singleton_class",
+                "stage": "hmrc_spi_income",
+                "error": str(error),
+                "disposition": "aborted_with_receipt",
+                "remedy": (
+                    "Re-roll --seed; accepted dev-scale statistical edge "
+                    "(microcosm#657, closed). The computation is never "
+                    "altered to avoid it."
+                ),
+            }
+            _write_json(rung_abort_path, receipt)
+            print(json.dumps(receipt, indent=2, sort_keys=True))
+            return _RUNG_ABORT_EXIT_CODE
+        raise
+    except GateBatteryBlockedError as error:
+        # Only the terminal block leaves completed stage evidence behind; a
+        # preflight block ran no stage, and any other RuntimeError is a
+        # stage failure that must not be dressed in aggregate reports.
         if (
-            _is_final_release_gate_failure(error)
+            error.phase == "terminal"
             and retained_leaves_transform.last_result is not None
             and hmrc_transform.last_result is not None
         ):
@@ -378,7 +589,7 @@ def main() -> int:
     assert hmrc_transform.last_result is not None  # guarded by report writer
     hmrc_evidence = {
         "passed": True,
-        "summary": dict(hmrc_transform.last_result.replay_report.summary),
+        "summary": _replay_summary(hmrc_transform.last_result),
     }
     artifact_paths = {
         "input_h5": result.input_h5,
@@ -399,13 +610,21 @@ def main() -> int:
         family_evidence=hmrc_transform.last_result.evidence(),
         seed=args.seed,
         qrf_estimators=args.qrf_estimators,
+        sample_fraction=args.sample_fraction,
+        sample_seed=args.sample_seed,
+        degenerate_exclusions_override=args.degenerate_exclusions is not None,
     )
     _write_json(build_record_path, build_record)
     payload = {
-        "schema_version": 4,
+        "schema_version": 5,
         "build_kind": "uk_national_staging_dataset",
+        "sampling": {
+            "sample_fraction": float(args.sample_fraction),
+            "sample_seed": int(args.sample_seed),
+            "rung_token": UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
+        },
         "stages": list(result.stage_names),
-        "terminal_gates": result.terminal_gates.to_manifest(),
+        "terminal_gates": dict(result.gate_report),
         "input_coverage": {
             "passed": result.input_coverage.passed,
             "failures": list(result.input_coverage.failures),
@@ -419,6 +638,72 @@ def main() -> int:
     }
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
+
+
+def _staging_run_config(
+    args: argparse.Namespace,
+    *,
+    candidate: object,
+    retained_leaves_transform: UKFRSHMRCRetainedLeavesStageTransform,
+    hmrc_transform: UKHMRCIncomeStageTransform,
+) -> dict[str, object]:
+    """The content-addressed identity of a checkpointed staging run.
+
+    Everything that determines the stage outputs is pinned by content, not
+    by path or stat: the verified certified-candidate digest, the raw-source
+    digests (read from the transforms' own resolved paths, so the pinned
+    files are exactly the files the stages consume), the seeds, the release
+    coordinates, and the builder code identity (packaged sources plus the
+    numeric-dependency versions). The stage runtime refuses to resume a
+    checkpoint directory under a different config, so a drifted input,
+    parameter, code change, or environment upgrade can never blend into an
+    old run's prefix.
+    """
+
+    from microcosm.build.code_identity import builder_code_identity
+
+    def _digest(path: str | Path) -> dict[str, object]:
+        info = _artifact_info(path)
+        return {"sha256": info["sha256"], "size_bytes": info["size_bytes"]}
+
+    return {
+        "build_kind": "uk_national_staging_dataset",
+        "release_id": str(args.release_id),
+        "calibration_diagnostics_sha256": str(args.calibration_diagnostics_sha256),
+        "seed": int(args.seed),
+        "qrf_estimators": int(args.qrf_estimators),
+        "sampling": {
+            # Pinned as a string: run-config equality is exact over canonical
+            # JSON, and float normalization across serializers is exactly the
+            # ambiguity a run identity must not carry. Two rungs pointed at
+            # one checkpoint directory refuse instead of cross-resuming.
+            "sample_fraction": str(float(args.sample_fraction)),
+            "sample_seed": int(args.sample_seed),
+            "rung_token": UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
+        },
+        "certified_candidate": {
+            "sha256": str(candidate.sha256),
+            "size_bytes": int(candidate.size_bytes),
+        },
+        "sources": {
+            "adult_tab": _digest(retained_leaves_transform.adult_tab_path),
+            "benefits_tab": _digest(retained_leaves_transform.benefits_tab_path),
+            "spi_tab": _digest(hmrc_transform.spi_tab_path),
+            "hmrc_ods": _digest(hmrc_transform.hmrc_ods_path),
+        },
+        "code_identity": builder_code_identity(
+            Path(__file__).resolve().parents[1],
+            tool_path=Path(__file__).resolve(),
+            distributions=(
+                "h5py",
+                "numpy",
+                "pandas",
+                "quantile-forest",
+                "scikit-learn",
+                "tables",
+            ),
+        ),
+    }
 
 
 def _artifact_info(path: str | Path) -> dict[str, str | int]:
@@ -442,6 +727,9 @@ def _aggregate_build_record(
     family_evidence: dict[str, object],
     seed: int,
     qrf_estimators: int,
+    sample_fraction: float = 1.0,
+    sample_seed: int = UK_SAMPLE_SEED_DEFAULT,
+    degenerate_exclusions_override: bool = False,
 ) -> dict[str, object]:
     """Return commit-safe aggregate evidence for one successful staging build."""
 
@@ -473,15 +761,32 @@ def _aggregate_build_record(
     household_weights = pd.to_numeric(
         result.frame.table("household")["household_weight"], errors="raise"
     )
+    release_evidence = dict(result.gate_report["release_evidence"])
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "build_kind": "uk_national_staging_dataset",
         "status": "passed",
+        "calibration_diagnostics_sha256": release_evidence[
+            "calibration_diagnostics_sha256"
+        ],
         "stages": list(result.stage_names),
         "parameters": {
             "seed": int(seed),
             "qrf_estimators": int(qrf_estimators),
+            "sample_fraction": float(sample_fraction),
+            "sample_seed": int(sample_seed),
+            "rung_token": UK_SAMPLE_RUNG_TOKENS[sample_fraction],
+            # Answers "did the operator invoke the override path" — the
+            # operator-action record, kept path-free by contract. The signed
+            # report's evidence answers the different question "which
+            # register content governed" (``exclusions_policy``); a review
+            # file byte-identical to the committed register makes the two
+            # honestly disagree, which is why they carry distinct names.
+            "degenerate_exclusions_override_supplied": (degenerate_exclusions_override),
         },
+        "sampling": (
+            None if result.sampling_receipt is None else dict(result.sampling_receipt)
+        ),
         "dataset": {
             "time_period": uk_time_period(result.frame),
             "entity_rows": {
@@ -503,7 +808,7 @@ def _aggregate_build_record(
             ),
         },
         "source_vintages": dict(family_evidence.get("source_vintages", {})),
-        "terminal_gates": result.terminal_gates.to_manifest(),
+        "terminal_gates": dict(result.gate_report),
         "input_coverage": {
             "passed": bool(result.input_coverage.passed),
             "failures": list(result.input_coverage.failures),
@@ -575,13 +880,35 @@ def _write_stage_reports(
         "family": hmrc_result.evidence(),
     }
     _write_json(evidence_path, payload)
-    write_hmrc_replay_report(hmrc_result.replay_report, replay_path)
+    # A checkpoint-resumed SPI stage carries no report object, only the
+    # payload its real report produced at completion time; _write_json and
+    # write_hmrc_replay_report share the exact serialization (indent=2,
+    # sort_keys, trailing newline), so the resumed sidecar is byte-identical.
+    replay_report = getattr(hmrc_result, "replay_report", None)
+    if replay_report is not None:
+        write_hmrc_replay_report(replay_report, replay_path)
+    else:
+        _write_json(replay_path, dict(_resumed_replay_payload(hmrc_result)))
 
 
-def _is_final_release_gate_failure(error: RuntimeError) -> bool:
-    """Match only the national seam's post-stage, pre-staging hard gate."""
+def _resumed_replay_payload(hmrc_result: object) -> dict[str, object]:
+    payload = getattr(hmrc_result, "replay_payload", None)
+    if not isinstance(payload, dict):
+        raise RuntimeError(
+            "resumed SPI restoration carries no replay payload; the "
+            "checkpoint record cannot feed the driver's stage reports."
+        )
+    return payload
 
-    return str(error).startswith("Release gates failed:")
+
+def _replay_summary(hmrc_result: object) -> dict[str, object]:
+    report = getattr(hmrc_result, "replay_report", None)
+    if report is not None:
+        return dict(report.summary)
+    summary = _resumed_replay_payload(hmrc_result).get("summary")
+    if not isinstance(summary, dict):
+        raise RuntimeError("resumed SPI replay payload carries no summary block.")
+    return dict(summary)
 
 
 def _validate_distinct_paths(
@@ -599,6 +926,8 @@ def _validate_distinct_paths(
     input_mass_reference_path: Path | None,
     input_mass_exclusions_path: Path | None,
     qrf_tail_exclusions_path: Path | None,
+    degenerate_exclusions_path: Path | None,
+    rung_abort_path: Path,
 ) -> None:
     paths = {
         "--input-h5": input_h5.resolve(),
@@ -611,6 +940,7 @@ def _validate_distinct_paths(
         "--terminal-gates-json/--input-coverage-json": terminal_gate_path.resolve(),
         "--hmrc-evidence-json": evidence_path.resolve(),
         "--hmrc-replay-json": replay_path.resolve(),
+        "rung-abort receipt (derived from --staging-h5)": rung_abort_path.resolve(),
     }
     paths.update(
         (label, path.resolve())
@@ -618,6 +948,7 @@ def _validate_distinct_paths(
             "--input-mass-reference-json": input_mass_reference_path,
             "--input-mass-exclusions": input_mass_exclusions_path,
             "--qrf-tail-exclusions": qrf_tail_exclusions_path,
+            "--degenerate-exclusions": degenerate_exclusions_path,
         }.items()
         if path is not None
     )

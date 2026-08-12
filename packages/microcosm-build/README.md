@@ -30,6 +30,12 @@ All gate losses use the calibrator's capped weighted-MAPE helper
 `weighted_mean(min(abs((estimate − target) / scale), cap))` — scorers consume
 the same functions, so there is no calibrator-vs-scorer objective mismatch.
 
+How gates are *selected, batched, reported, and enforced* per country is the
+country-agnostic gate battery (`gate_battery.py`), with gate policy declared
+as data in each country package's `gates.json`. The consumer contract — what
+a country declares and what its build supplies — is
+[docs/gate-battery-contract.md](../../docs/gate-battery-contract.md).
+
 ## Target source contract
 
 Microcosm calibration targets are Ledger-owned. Production Microcosm builds must
@@ -49,46 +55,33 @@ modules; guard tests enforce this so country content stays declarative.
 
 ## UK local-geography path
 
-`microcosm.build.uk_runtime.local_geography` holds the Microcosm-owned replacement shape
-for UK constituency and local-authority geography. It uses the same stacked
-local-area layout as the US local ECPS flow:
+`microcosm.build.uk_runtime.local_rowwise` is the UK local-solve surface: one
+weight per cloned household, each household assigned to exactly one area by
+the OA geography ladder, so an area's target rows draw support only from the
+households assigned there. The matrix builder fails closed when an assigned
+area is missing from the target surface, and every solve runs under the
+reviewed `UK_LOCAL_SOLVE_DOCTRINE` (declared loss cap and weight-ratio
+stretch bound, no per-target knobs) with the microcosm#492 past-cap census on
+every result. The pre-ladder stacked `areas x households` research harness
+(`local_runner` and the stacked matrix/solve helpers) was removed with
+microcosm#612 increment 2 — the rowwise clone path is the single local-solve
+story, and positional-assignment safety now rides on the Frame kernel's
+sorted-group-id invariants rather than a helper.
 
-```text
-column = area_index * n_households + household_index
-```
-
-The solved weights export to a long sidecar with `(area_type, area_code,
-household_id, weight)` rows plus source-year/source-household lineage. This is
-the format PolicyEngine can group by directly for constituency and local
-authority outputs, and it avoids preserving the legacy dense
-`areas x households` matrix artifact.
-
-The module does not import the incumbent UK data package. Engine runners and
-target providers pass household metric tables and aligned target tables into
-`build_stacked_local_matrix`; this keeps Microcosm clean while the target source
-files move over. The helper `sort_households_by_id` also codifies the 2024-25
-FRS fix: household attributes and weights must be sorted by the same stable
-household ID before any positional assignment.
+`microcosm.build.uk_runtime.local_geography` keeps the area-target alignment
+contract (`align_area_targets`): target providers pass explicit area tables,
+and the module aligns metric columns to a canonical area-code order without
+importing the incumbent UK data package.
 
 `microcosm.build.uk_runtime.local_targets` declares the constituency and local-authority
 metric surface used by the local build: HMRC employment/self-employment amount
 and count rows, ONS age bands, Universal Credit household rows, constituency
 UC-by-children rows, and the LA income/tenure/rent rows. It accepts a
 PolicyEngine-UK-like simulation object and returns household-indexed metric
-tables; it still takes target values as explicit input tables. `local_solver`
-wraps the Microcosm calibrator's log-weight optimizer for stacked local weights
-and records per-area/per-metric diagnostics before the solved weights are
-exported with `stacked_weights_to_long`.
-
-`microcosm.build.uk_runtime.local_runner` is the Microcosm-owned candidate build path. It
-loads explicit area and target tables, aligns a sorted household frame with
-source-year/source-household/clone lineage, optionally computes household
-metrics once per UK country by setting the PolicyEngine-UK `region` input, then
-solves and writes `local_geography_weights.csv.gz`,
-`solve_diagnostics.csv`, `area_support_summary.csv`, and `solve_summary.json`.
-It accepts already-pooled or already-cloned household pools, so the compact UK
-artifact can remain the fast national default while a separate `local` variant
-scales up with pooled FRS years, cloned records, and L0 budget control.
+tables; it still takes target values as explicit input tables. The rowwise
+doctrine solve goes through the public `microcosm.calibrate.calibrate` front
+door — the kernel enforces the `CALIBRATED` kind transition and mints the
+mass record — and records per-area/per-metric diagnostics on every result.
 
 ## UK firm generation
 

@@ -3,8 +3,10 @@
   "country": "uk",
   "policy": "spec-only country package; Python execution lives in shared runtime modules",
   "resources": [
+    "degenerate_reviewed_exclusions.json",
     "efrs_parity_known_gaps.json",
     "efrs_parity_reference.json",
+    "gates.json",
     "hmrc_income_release_gate_report.json",
     "hmrc_income_replay_report.json",
     "hmrc_income_source_stages.json",
