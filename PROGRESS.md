@@ -98,6 +98,8 @@ exclusion.
   restored the exhaustive manifest to 993 rows. No other actionable finding
   remained. The nine manifest/derive regressions and issue #583's exact 495
   tests pass on the corrected tree.
+- Added the Round 12 changelog fragment describing both the certified whole-
+  pool S-corporation zero universe and the exhaustive remaining-stage manifest.
 
 ## Next
 
