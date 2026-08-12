@@ -84,6 +84,15 @@ shared frame-checkpoint schema rejects pandas nullable `boolean`, and
 - Passed the separately graded #583 spine-blindness guard at its exact contract:
   495 passed, no skips or failures, in 4.027 seconds. Receipt:
   `/private/tmp/round11-spine-blindness.xml`.
+- Passed the complete non-#583 workspace in eight deterministic sorted chunks:
+  5,571 passed and 66 skipped across exactly 228 files, with no failures or
+  errors. Per-chunk passed/skipped receipts were 742/0, 616/21, 777/5, 839/1,
+  980/2, 805/1, 738/28, and 74/8. JUnit files are
+  `/private/tmp/round11-full-chunk-{1..8}.xml`.
+- Verified the file partition itself: 229 total and 229 unique `test_*.py`
+  files; the eight chunks contain 228 exactly once and exclude only
+  `test_us_spine_blindness.py`, which the separate 495-test receipt covers.
+  Combined non-overlapping workspace proof is 6,066 passed and 66 skipped.
 
 ## Next
 
