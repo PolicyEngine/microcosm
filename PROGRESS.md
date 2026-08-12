@@ -53,11 +53,17 @@ shared frame-checkpoint schema rejects pandas nullable `boolean`, and
   frames without the new encoding; accept legacy v2 on load; use a bumped
   schema only when nullable data is present; and bump the applicable stacked
   materializer identity so stale serializer semantics cannot resume silently.
+- Added the Round 11 red-test matrix. It covers complete and missing nullable
+  booleans in entity and link tables, explicit mask corruption, forged-v2
+  metadata, deterministic rewrite, the actual 131-target canonical metric
+  registry, the exact 39-column stacked boundary inventory, pool-store reloads,
+  and pinned byte goldens for a generic schema-v2 frame and the UK outer-stage
+  checkpoint. The pre-fix run fails only at the intended BooleanDtype refusal;
+  the inventory and both unchanged-byte goldens already pass.
 
 ## Next
 
-- Add registry-driven red tests for canonical dtype-family round-trips and
-  byte-identical legacy artifacts without extension dtypes.
-- Resolve the materializer-version seam from its identity construction, then
-  implement lossless nullable serialization with a version bump and run the
-  requested focused, #583, full-workspace, lint, format, and golden proofs.
+- Implement lossless nullable-boolean serialization, dual-version loading, and
+  the checkpoint/materializer bumps while preserving the schema-v2 goldens.
+- Run the requested focused, #583, full-workspace, lint, format, and golden
+  proofs, then perform an independent review cycle.

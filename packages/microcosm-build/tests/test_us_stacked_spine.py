@@ -1654,6 +1654,201 @@ def test_canonical_metric_registry_covers_the_declared_131_target_split() -> Non
     } & {target for _entity, _family, target, _clone in surface_targets}
 
 
+def _canonical_registry_checkpoint_frame() -> Frame:
+    frame = _source_frame(
+        household_ids=[1, 2, 3],
+        weights=[1.0, 2.0, 3.0],
+        stratum="registry_checkpoint",
+    )
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+    string_categories = {"immigration_status_str", "ssn_card_type"}
+    for (entity, _family, column, _clone_index), metric in sorted(registry.items()):
+        table = tables[entity]
+        if metric == "monetary_sign_separated":
+            values: pd.Series | np.ndarray = np.asarray(
+                [-1.25, 0.0, 2.5],
+                dtype=np.float64,
+            )
+        elif metric == "boolean_incidence":
+            values = pd.Series(
+                [True, pd.NA, False],
+                index=table.index,
+                dtype="boolean",
+            )
+        elif column in string_categories:
+            values = pd.Series(
+                ["A", pd.NA, "B"],
+                index=table.index,
+                dtype=CANONICAL_STRING_DTYPE,
+            )
+        else:
+            assert metric == "categorical_tvd"
+            values = np.asarray([1, 2, 3], dtype=np.int64)
+        table[column] = values
+
+    person = tables["person"]
+    for column in ("is_female", "is_household_head"):
+        person[column] = pd.Series(
+            [True, False, True],
+            index=person.index,
+            dtype="boolean",
+        )
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+
+
+def test_canonical_metric_registry_drives_checkpoint_round_trip(
+    tmp_path: Path,
+) -> None:
+    frame = _canonical_registry_checkpoint_frame()
+    first_path = tmp_path / "registry-first.h5"
+    second_path = tmp_path / "registry-second.h5"
+
+    write_frame_checkpoint(first_path, frame)
+    loaded = load_frame_checkpoint(first_path).frame
+    write_frame_checkpoint(second_path, loaded)
+
+    assert first_path.read_bytes() == second_path.read_bytes()
+    registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+    assert Counter(registry.values()) == {
+        "monetary_sign_separated": 79,
+        "boolean_incidence": 48,
+        "categorical_tvd": 4,
+    }
+    for (entity, _family, column, _clone_index), metric in registry.items():
+        expected = frame.table(entity)[column]
+        observed = loaded.table(entity)[column]
+        pd.testing.assert_series_equal(
+            observed,
+            expected,
+            check_dtype=True,
+            check_exact=True,
+        )
+        if metric == "boolean_incidence":
+            assert observed.dtype == pd.BooleanDtype()
+            assert observed.isna().sum() == 1
+        elif metric == "monetary_sign_separated":
+            assert observed.dtype == np.dtype(np.float64)
+        elif column in {"immigration_status_str", "ssn_card_type"}:
+            assert observed.dtype == CANONICAL_STRING_DTYPE
+        else:
+            assert observed.dtype == np.dtype(np.int64)
+    for column in ("is_female", "is_household_head"):
+        observed = loaded.person[column]
+        assert observed.dtype == pd.BooleanDtype()
+        assert not observed.isna().any()
+
+
+def test_checkpoint_boundary_nullable_boolean_inventory_is_exact() -> None:
+    registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+
+    def boolean_targets(surface: Mapping[str, Mapping[str, tuple[str, ...]]]):
+        return {
+            (entity, target)
+            for entity, families in surface.items()
+            for family, targets in families.items()
+            for target in targets
+            if registry[(entity, family, target, 0)] == "boolean_incidence"
+        }
+
+    transferred_registry = boolean_targets(
+        stacked_spine_module.CANONICAL_STACKED_GAP_FILL_SURFACE
+    ) | boolean_targets(
+        stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
+    )
+    source_native = {
+        ("person", "is_female"),
+        ("person", "is_household_head"),
+    }
+    transferred = transferred_registry | source_native
+    expected = {
+        (
+            "person",
+            "attends_eligible_educational_institution_for_american_opportunity_credit",
+        ),
+        ("person", "business_is_sstb"),
+        ("person", "estate_income_would_be_qualified"),
+        ("person", "farm_operations_income_would_be_qualified"),
+        ("person", "farm_rent_income_would_be_qualified"),
+        ("person", "has_american_opportunity_credit_1098_t_or_exception"),
+        ("person", "has_american_opportunity_credit_institution_ein"),
+        ("person", "has_champva_health_coverage_at_interview"),
+        ("person", "has_esi"),
+        ("person", "has_indian_health_service_coverage_at_interview"),
+        ("person", "has_marketplace_health_coverage_at_interview"),
+        ("person", "has_medicaid_health_coverage_at_interview"),
+        ("person", "has_non_marketplace_direct_purchase_health_coverage_at_interview"),
+        ("person", "has_other_means_tested_health_coverage_at_interview"),
+        ("person", "has_tricare_health_coverage_at_interview"),
+        ("person", "has_va_health_coverage_at_interview"),
+        ("person", "is_blind"),
+        ("person", "is_disabled"),
+        ("person", "is_enrolled_at_least_half_time_for_american_opportunity_credit"),
+        ("person", "is_female"),
+        ("person", "is_full_time_college_student"),
+        ("person", "is_household_head"),
+        ("person", "is_incapable_of_self_care"),
+        ("person", "is_pregnant"),
+        ("person", "is_pursuing_credential_for_american_opportunity_credit"),
+        ("person", "is_separated"),
+        ("person", "is_surviving_spouse"),
+        ("person", "partnership_s_corp_income_would_be_qualified"),
+        ("person", "previous_year_income_available"),
+        ("person", "receives_wic"),
+        ("person", "rental_income_would_be_qualified"),
+        ("person", "self_employment_income_would_be_qualified"),
+        ("person", "sstb_self_employment_income_would_be_qualified"),
+        ("person", "takes_up_medicare_if_eligible"),
+        ("person", "would_claim_wic"),
+        ("spm_unit", "is_tanf_enrolled"),
+        ("spm_unit", "receives_housing_assistance"),
+        ("spm_unit", "receives_snap"),
+        ("spm_unit", "takes_up_housing_assistance_if_eligible"),
+    }
+    assert len(transferred_registry) == 37
+    assert transferred == expected
+    assert len(transferred) == 39
+
+    terminal_registry = {
+        (entity, column)
+        for (entity, _family, column, _clone_index), metric in registry.items()
+        if metric == "boolean_incidence"
+    }
+    seeded_numpy_booleans = terminal_registry - transferred_registry
+    assert seeded_numpy_booleans == {
+        ("person", "takes_up_basic_health_program_if_eligible"),
+        ("person", "takes_up_chip_if_eligible"),
+        ("person", "takes_up_early_head_start_if_eligible"),
+        ("person", "takes_up_head_start_if_eligible"),
+        ("person", "takes_up_medicaid_if_eligible"),
+        ("person", "takes_up_ssi_if_eligible"),
+        ("spm_unit", "takes_up_snap_if_eligible"),
+        ("spm_unit", "takes_up_tanf_if_eligible"),
+        ("tax_unit", "takes_up_aca_if_eligible"),
+        ("tax_unit", "takes_up_dc_ptc"),
+        ("tax_unit", "takes_up_eitc"),
+    }
+    assert len(seeded_numpy_booleans) == 11
+    boundary_inventory = {
+        "assembled": frozenset(),
+        "transferred": frozenset(transferred),
+        "simulated": frozenset(transferred),
+    }
+    assert {stage: len(columns) for stage, columns in boundary_inventory.items()} == {
+        "assembled": 0,
+        "transferred": 39,
+        "simulated": 39,
+    }
+    assert boundary_inventory["transferred"] == boundary_inventory["simulated"]
+
+
 def test_registry_drives_every_late_callback_dtype_family_check() -> None:
     registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
     by_column = {

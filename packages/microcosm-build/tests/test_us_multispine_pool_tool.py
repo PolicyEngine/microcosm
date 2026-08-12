@@ -512,6 +512,7 @@ def _run_checkpoint_fixture(
     target_bank_receipt: Mapping[str, object] | None = None,
     primary_qrf_manifest_path: Path | None = None,
     authenticated_qbi: bool = True,
+    checkpoint_nullable_booleans: bool = False,
 ):
     order: list[str] = []
 
@@ -523,6 +524,22 @@ def _run_checkpoint_fixture(
             order.append(name)
             person = frame.table("person").copy()
             transform(person)
+            if name == "impute" and checkpoint_nullable_booleans:
+                complete = np.resize(
+                    np.asarray([True, False], dtype=np.bool_),
+                    len(person),
+                )
+                missing = pd.array(complete, dtype="boolean")
+                missing[1] = pd.NA
+                person["is_female"] = pd.Series(
+                    complete,
+                    index=person.index,
+                    dtype="boolean",
+                )
+                person["fixture_declared_boolean"] = pd.Series(
+                    missing,
+                    index=person.index,
+                )
             receipt: dict[str, object] = {"fixture_stage": name}
             if name == "impute" and primary_qrf_manifest_path is not None:
                 receipt = {
@@ -2672,7 +2689,7 @@ def test_qbi_receipt_route_resolution_rejects_wrong_or_ambiguous_paths(
         )
 
 
-@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5, 6, 7, 8, 9))
+@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
 def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -2725,7 +2742,7 @@ def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
             )
         )
 
-    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 10
+    assert pool_tool._STACKED_CHECKPOINT_MATERIALIZER_VERSION == 11
     assert (
         pool_tool._discover_stacked_checkpoint_identity(
             checkpoint_root,
@@ -3122,7 +3139,7 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
     manifest = pool_tool._read_json_object(outputs.manifest)
     diagnostics = pool_tool._read_json_object(outputs.agreement_diagnostics)
     assert pool_tool.POOL_MANIFEST_SCHEMA_VERSION == 7
-    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 5
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 6
     assert manifest["schema_version"] == 4
     assert diagnostics["schema_version"] == 4
     assert manifest["stage_checkpoints"]["materializer_version"] == 3
@@ -4249,11 +4266,60 @@ def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
     }
 
 
-def test_simulated_v5_checkpoint_accepts_both_string_encodings_without_rewrite(
+def test_pool_checkpoint_store_round_trips_nullable_boolean_families(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
-    """V5 authenticates both physical string encodings as one logical frame."""
+    checkpoint_root = tmp_path / "nullable-boolean-checkpoints"
+    cold_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
+
+    _run_checkpoint_fixture(
+        pool_tool,
+        tmp_path,
+        store=cold_store,
+        checkpoint_nullable_booleans=True,
+    )
+
+    h5py = pytest.importorskip("h5py")
+    for stage, expected_schema in (
+        ("assembled", 2),
+        ("transferred", 3),
+        ("simulated", 3),
+    ):
+        path = cold_store.checkpoint_path(stage)
+        with h5py.File(path, mode="r") as h5:
+            raw = np.asarray(h5["_populace_frame_checkpoint/metadata_json"]).tobytes()
+        assert json.loads(raw)["schema_version"] == expected_schema
+        manifest = pool_tool._read_json_object(
+            cold_store.checkpoint_manifest_path(stage)
+        )
+        assert manifest["materializer_version"] == 6
+        loaded = pool_tool.load_frame_checkpoint(path).frame
+        if stage == "assembled":
+            assert "fixture_declared_boolean" not in loaded.person
+            continue
+        assert loaded.person["is_female"].dtype == pd.BooleanDtype()
+        assert loaded.person["fixture_declared_boolean"].dtype == pd.BooleanDtype()
+        assert not loaded.person["is_female"].isna().any()
+        assert loaded.person["fixture_declared_boolean"].isna().sum() == 1
+
+    cold_store.checkpoint_path("simulated").unlink()
+    cold_store.checkpoint_manifest_path("simulated").unlink()
+    warm_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
+    resumed = warm_store.load_deepest()
+
+    assert resumed is not None
+    assert resumed.stage == "transferred"
+    assert resumed.frame.person["is_female"].dtype == pd.BooleanDtype()
+    assert resumed.frame.person["fixture_declared_boolean"].isna().sum() == 1
+
+
+def test_simulated_v6_checkpoint_accepts_both_string_encodings_without_rewrite(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    """V6 authenticates both physical string encodings as one logical frame."""
 
     pytest.importorskip("h5py")
     checkpoint_root = tmp_path / "checkpoints"
@@ -4265,7 +4331,7 @@ def test_simulated_v5_checkpoint_accepts_both_string_encodings_without_rewrite(
     loaded = pool_tool.load_frame_checkpoint(checkpoint_path)
     canonical_v2_bytes = checkpoint_path.read_bytes()
     canonical_identity = loaded.metadata["identity"]
-    assert loaded.metadata["materializer_version"] == 5
+    assert loaded.metadata["materializer_version"] == 6
     assert any(
         column["dtype"] == str(CANONICAL_STRING_DTYPE)
         for columns in loaded.metadata["frame_schema"]["entities"].values()
@@ -4296,7 +4362,7 @@ def test_simulated_v5_checkpoint_accepts_both_string_encodings_without_rewrite(
     banked_v2_bytes = checkpoint_path.read_bytes()
     assert banked_v2_bytes != canonical_v2_bytes
     assert legacy_metadata["identity"] == canonical_identity
-    assert legacy_metadata["materializer_version"] == 5
+    assert legacy_metadata["materializer_version"] == 6
     assert any(
         column["dtype"] == "object"
         for columns in legacy_metadata["frame_schema"]["entities"].values()
@@ -4671,7 +4737,7 @@ def test_tail_support_contract_identity_mutation_rebuilds_pool_checkpoints(
     assert changed_store.load_deepest() is None
 
 
-@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4))
+@pytest.mark.parametrize("legacy_version", (1, 2, 3, 4, 5))
 def test_legacy_pool_materializer_artifacts_fail_closed_with_named_receipts(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -4704,9 +4770,9 @@ def test_legacy_pool_materializer_artifacts_fail_closed_with_named_receipts(
             assert manifest["identity"]["materializer_version"] == legacy_version
     capsys.readouterr()
 
-    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 5
+    assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 6
     current_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
-    assert current_store.base_identity["materializer_version"] == 5
+    assert current_store.base_identity["materializer_version"] == 6
     assert current_store.load_deepest() is None
 
     output = capsys.readouterr().out
