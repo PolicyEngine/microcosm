@@ -2,7 +2,7 @@
 
 ## State
 
-Round 10 implementation and independent review are complete on
+Round 10 implementation, review, and local proof are complete on
 `tail-stratum-support-652`. Smoke-r7 exposed a genuine second producer, but not
 in the late transfer: the retirement source callback independently QRF-drew
 clone 1 and its clone-2 tail descendant after the primary PUF/tail stage. The
@@ -11,7 +11,8 @@ to clone 2. A canonical 18-row owner matrix covers all three target/origin/clone
 combinations and is content-bound into both the late schedule and tail manifest.
 The unchanged terminal preservation guard validates that canonical receipt.
 The first review found two enforcement-description gaps; both are fixed, and
-the follow-up review is clean with no remaining actionable findings.
+the follow-up review is clean with no remaining actionable findings. The branch
+is ready for the requested real 1% smoke-r8 rerun; no build was run locally.
 
 ## Done
 
@@ -64,10 +65,25 @@ the follow-up review is clean with no remaining actionable findings.
   distinguishes ASEC callback byte verification from ACS projection masking.
   Added per-action and end-to-end omission regressions (`dbac19ab`).
 - Completed an independent follow-up review with no actionable findings.
+- Passed the final focused suite: 130 passed.
+- Passed all 225 workspace test files in seven deterministic 32-file chunks
+  plus the separately graded #583 guard: 5,922 passed and 66 skipped. Chunk
+  receipts were 712/1, 562/21, 779/4, 1,038/1, 773/2, 827/1, 736/36, and the
+  exact #583 receipt was 495 passed.
+- Passed repository-wide `ruff check`, changed-file `ruff format --check` on
+  all eight changed Python files, and both committed/working-tree
+  `git diff --check` checks. A whole-repository format scan still names 29
+  unrelated pre-existing files; none was rewritten.
+- Gradeable smoke-r8 prediction for the same deterministic 1% input: both
+  retirement overlap receipts report 3,187 byte-exact clone-1-to-clone-2
+  mirrors; tuition reports an ASEC consume-only byte no-op; the terminal tail
+  preservation receipt passes with the canonical ownership SHA; execution
+  advances beyond `assert_stacked_tail_cells_preserved` without any of the
+  three overlap columns raising a clone-2 change error.
 
 ## Next
 
-- Rerun all seven deterministic full-workspace chunks and the exact 495-test
-  #583 guard from final implementation HEAD; record exact aggregate counts.
-- Run ruff/format/diff checks, record the gradeable smoke-r8 prediction, and
-  restore the root progress file to its base state before the final report.
+- Run the real 1% smoke-r8 build and compare the observed mirror counts and
+  terminal preservation receipt with the prediction above.
+- Restore this root progress file to its pre-round base state before the final
+  report, preserving the complete Round 10 journal in committed history only.
