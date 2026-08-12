@@ -81,16 +81,17 @@ exclusion.
 - Verified the manifest against smoke-r9's transferred checkpoint: all 147
   engine inputs already present are classified non-absent, and the remaining
   12 future inputs are exactly Schedule D plus 11 seed-stage additions.
-- Isolated the first full-workspace chunk's only failure to Round 11's new
-  generic schema-v2 checkpoint byte golden. The serializer emits identical
-  `e55095d2...b44ca8` bytes across repeated writes, two filesystems, and the
-  available HDF5 1.14/2.0 runtimes; the independent UK schema-v2 golden remains
-  unchanged and green. Corrected only the stale generic expected digest.
+- Resolved the first full-workspace chunk's only failure as a test-environment
+  mismatch, not a serializer change. The borrowed Populace environment lacked
+  the repository-pinned PyArrow dependency and emitted `e55095d2...b44ca8`;
+  restoring locked PyArrow 25.0.0 reproduces the checked-in
+  `7671ab32...d930` bytes exactly. Restored the original generic schema-v2
+  golden; the independent UK golden remains unchanged.
 - Re-ran the complete focused Round 12 surface against a stable tree: exactly
   638 passed, with zero skips, failures, or errors. Re-ran issue #583's required
   blindness proof separately: exactly 495 passed, with zero skips, failures, or
-  errors. The corrected generic and unchanged UK schema-v2 checkpoint suites
-  also pass with 32 passed and one expected skip.
+  errors. A final locked-environment rerun of the generic and UK schema-v2
+  checkpoint suites remains pending after restoring the original golden.
 - Independent review found one transitive manifest omission: the ACS earnings-
   universe owner reads person support channel while resolving the QBI scope.
   Added an owner-level structured input declaration, registered that physical
@@ -103,6 +104,7 @@ exclusion.
 
 ## Next
 
-- Run the full workspace in eight disjoint exact-count chunks, then run final
-  formatting, lint, and diff proofs without builds.
-- Add the changelog and write the gradeable smoke-r10 prediction and verdict.
+- Re-run full-workspace chunk 1 and the two checkpoint suites in the locked
+  environment; chunks 2--8 are already clean.
+- Run final formatting, lint, and diff proofs without builds, then record the
+  gradeable smoke-r10 prediction and verdict.
