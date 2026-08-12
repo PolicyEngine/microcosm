@@ -14,8 +14,6 @@ import hashlib
 import hmac
 import json
 
-import pytest
-
 from microcosm.build import load_country_spec
 from microcosm.build.gate_battery import (
     GATE_BATTERY_ATTESTATION_SCHEMA_VERSION,
@@ -162,16 +160,6 @@ class TestProducerRoundTrip:
             "the data shard's canonical JSON must reproduce the producer's signed bytes"
         )
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason=(
-            "GateBatteryRun grows its release_evidence slot in the consumer "
-            "PR (uk-battery-consumer-a2); strict xfail turns the slot's "
-            "arrival into a loud XPASS failure, so whichever PR merges "
-            "second must delete this marker — the round trip can never "
-            "stay silently un-run."
-        ),
-    )
     def test_a_real_report_survives_every_mirror_check(
         self, tmp_path, monkeypatch
     ) -> None:

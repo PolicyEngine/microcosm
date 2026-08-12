@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from microcosm.build.gate_battery import GateBatteryBlockedError
 from microcosm.build.uk_runtime.frs_hmrc_leaves import (
     UKFRSHMRCRetainedLeavesStageTransform,
 )
@@ -50,8 +51,9 @@ from microcosm.build.uk_runtime.weighted_integrity import (
 #: artifacts; a sampled rung build must never carry one. Mirrors the
 #: microcosm-data contract's release-identity check without importing the
 #: data shard into the build tool. The durable coupling is the gate
-#: battery's ``release_candidate`` flag; this fence holds until the #611
-#: consumer half wires it.
+#: battery's ``release_candidate`` flag (wired below: ``--release-candidate``
+#: is refused on a rung); this fence stays as defense in depth over the id
+#: namespace itself.
 # Year and count widths mirror the microcosm-data contract's release-identity
 # regex ([1-9][0-9]*), and the tier alternation is built from the build
 # shard's ratified UK_RELEASE_TIERS so a newly ratified tier is fenced
@@ -292,11 +294,34 @@ def _parse_args() -> argparse.Namespace:
             "Reviewed degenerate-release-surface exclusion register "
             f"overriding the committed {UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE} "
             "(#630). Stale entries fail the gate; dormant entries are "
-            "reported. The gate is always armed; the override changes the "
-            "run's policy digest away from the certified pin."
+            "reported. The gate is always armed; the override is digested "
+            "into the report's evidence_sha256, so an overridden run "
+            "self-describes against the committed register."
+        ),
+    )
+    parser.add_argument(
+        "--release-candidate",
+        action="store_true",
+        help=(
+            "Arm the battery's release-candidate posture: every "
+            "evidence_absent gap blocks instead of being recorded. Refused "
+            "on a sampled rung — a rung is structurally non-releasable "
+            "(#627). Default off: the staging build records its gaps "
+            "honestly and continues."
         ),
     )
     args = parser.parse_args()
+    if args.release_candidate and args.sample_fraction != 1.0:
+        parser.error(
+            "--release-candidate is refused on a sampled rung; a rung build "
+            "is structurally non-releasable (#627)."
+        )
+    if args.release_candidate and args.input_coverage_json is not None:
+        parser.error(
+            "--release-candidate is refused with --input-coverage-json; the "
+            "schema-1 alias is last-written over the report path and a "
+            "candidate must keep its signed schema-4 report."
+        )
     if args.sample_seed < 0:
         parser.error("sample seed must be a non-negative integer.")
     if args.sample_fraction != 1.0 and (
@@ -434,14 +459,19 @@ def main() -> int:
     # corrupted committed register must not surface hours later at
     # terminal-gate time.
     weighted_integrity_arguments = _weighted_integrity_arguments(args)
-    reviewed_degenerate_exclusions = (
+    if args.degenerate_exclusions is None:
+        # Preflight the committed register without passing it: a corrupted
+        # register dies here, while the absent artifact leaves the binding
+        # resolving the same policy of record itself — the artifact stays
+        # the review-time override channel, so a default run never
+        # self-describes as an override.
         uk_default_degenerate_reviewed_exclusions()
-        if args.degenerate_exclusions is None
-        else load_uk_reviewed_exclusion_register(
+        reviewed_degenerate_exclusions = None
+    else:
+        reviewed_degenerate_exclusions = load_uk_reviewed_exclusion_register(
             args.degenerate_exclusions,
             resource=UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
         )
-    )
     candidate = verify_certified_uk_candidate(args.input_h5)
     evidence_path.unlink(missing_ok=True)
     replay_path.unlink(missing_ok=True)
@@ -503,6 +533,7 @@ def main() -> int:
             **checkpoint_arguments,
             sample_fraction=args.sample_fraction,
             sample_seed=args.sample_seed,
+            release_candidate=args.release_candidate,
         )
     except ValueError as error:
         if args.sample_fraction != 1.0 and _RUNG_NAMED_EDGE_SIGNATURE in str(error):
@@ -531,9 +562,12 @@ def main() -> int:
             print(json.dumps(receipt, indent=2, sort_keys=True))
             return _RUNG_ABORT_EXIT_CODE
         raise
-    except RuntimeError as error:
+    except GateBatteryBlockedError as error:
+        # Only the terminal block leaves completed stage evidence behind; a
+        # preflight block ran no stage, and any other RuntimeError is a
+        # stage failure that must not be dressed in aggregate reports.
         if (
-            _is_final_release_gate_failure(error)
+            error.phase == "terminal"
             and retained_leaves_transform.last_result is not None
             and hmrc_transform.last_result is not None
         ):
@@ -582,7 +616,7 @@ def main() -> int:
     )
     _write_json(build_record_path, build_record)
     payload = {
-        "schema_version": 4,
+        "schema_version": 5,
         "build_kind": "uk_national_staging_dataset",
         "sampling": {
             "sample_fraction": float(args.sample_fraction),
@@ -590,7 +624,7 @@ def main() -> int:
             "rung_token": UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
         },
         "stages": list(result.stage_names),
-        "terminal_gates": result.terminal_gates.to_manifest(),
+        "terminal_gates": dict(result.gate_report),
         "input_coverage": {
             "passed": result.input_coverage.passed,
             "failures": list(result.input_coverage.failures),
@@ -727,10 +761,14 @@ def _aggregate_build_record(
     household_weights = pd.to_numeric(
         result.frame.table("household")["household_weight"], errors="raise"
     )
+    release_evidence = dict(result.gate_report["release_evidence"])
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "build_kind": "uk_national_staging_dataset",
         "status": "passed",
+        "calibration_diagnostics_sha256": release_evidence[
+            "calibration_diagnostics_sha256"
+        ],
         "stages": list(result.stage_names),
         "parameters": {
             "seed": int(seed),
@@ -738,13 +776,13 @@ def _aggregate_build_record(
             "sample_fraction": float(sample_fraction),
             "sample_seed": int(sample_seed),
             "rung_token": UK_SAMPLE_RUNG_TOKENS[sample_fraction],
-            # The attested policy digest is content-addressed, so a
-            # content-identical --degenerate-exclusions override would be
-            # invisible there; the record keeps the provenance honest
-            # without a path (this record is path-free by contract).
-            "degenerate_exclusions_register": (
-                "override" if degenerate_exclusions_override else "committed"
-            ),
+            # Answers "did the operator invoke the override path" — the
+            # operator-action record, kept path-free by contract. The signed
+            # report's evidence answers the different question "which
+            # register content governed" (``exclusions_policy``); a review
+            # file byte-identical to the committed register makes the two
+            # honestly disagree, which is why they carry distinct names.
+            "degenerate_exclusions_override_supplied": (degenerate_exclusions_override),
         },
         "sampling": (
             None if result.sampling_receipt is None else dict(result.sampling_receipt)
@@ -770,7 +808,7 @@ def _aggregate_build_record(
             ),
         },
         "source_vintages": dict(family_evidence.get("source_vintages", {})),
-        "terminal_gates": result.terminal_gates.to_manifest(),
+        "terminal_gates": dict(result.gate_report),
         "input_coverage": {
             "passed": bool(result.input_coverage.passed),
             "failures": list(result.input_coverage.failures),
@@ -871,12 +909,6 @@ def _replay_summary(hmrc_result: object) -> dict[str, object]:
     if not isinstance(summary, dict):
         raise RuntimeError("resumed SPI replay payload carries no summary block.")
     return dict(summary)
-
-
-def _is_final_release_gate_failure(error: RuntimeError) -> bool:
-    """Match only the national seam's post-stage, pre-staging hard gate."""
-
-    return str(error).startswith("Release gates failed:")
 
 
 def _validate_distinct_paths(

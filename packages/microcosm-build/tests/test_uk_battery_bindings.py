@@ -16,6 +16,7 @@ the legacy battery tests.
 from __future__ import annotations
 
 import base64
+from datetime import date, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -42,8 +43,10 @@ from microcosm.build.uk_runtime.battery_bindings import (
     UKGateBinding,
     _uk_gate_surface,
 )
-from microcosm.build.uk_runtime.national_build import _uk_gate_evidence
-from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.build.uk_runtime.national_frame import (
+    uk_household_weight_kind,
+    uk_national_frame,
+)
 from microcosm.build.uk_runtime.release_input_coverage import (
     UKReleaseInputColumn,
     UKReleaseInputCoverageManifest,
@@ -57,10 +60,15 @@ from microcosm.build.uk_runtime.terminal_gates import (
     UKReleaseParityEvidence,
     uk_terminal_gate_report,
 )
+from microcosm.frame import engine_tables
 
 KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 RELEASE_ID = "populace-uk-2023-frs-k535080"
 DIAGNOSTICS_SHA256 = "c" * 64
+#: The shared exclusion-expiry clock, fixed inside the committed register's
+#: validity window (approved 2026-08-10, expires 2027-02-10) so the suite
+#: never drifts across an expiry boundary.
+CLOCK = date(2026, 9, 1)
 
 #: Neutral declared name -> the legacy result name the bindings re-mint.
 LEGACY_NAMES = {
@@ -165,12 +173,14 @@ def _fixture_coverage_registry():
     }
 
 
-def _run_both(tables, *, parity=None, fit_records=None, armed=True):
+def _run_both(tables, *, parity=None, fit_records=None, armed=True, clock=CLOCK):
     """Run the legacy battery and the declared battery over one evidence set.
 
     Both sides are built from the same tables and the same evidence objects
     in one place — evidence asymmetry between the sides would read as a
-    false differential failure.
+    false differential failure. That includes the exclusion-expiry clock:
+    the legacy aggregator threads ``now`` and the battery threads the
+    ``exclusions_evaluated_on`` artifact, both set to the same date here.
     """
 
     person, benunit, household = tables
@@ -178,8 +188,11 @@ def _run_both(tables, *, parity=None, fit_records=None, armed=True):
     frame = uk_national_frame(
         person=person, benunit=benunit, household=household, time_period="2023"
     )
-    artifacts: dict[str, object] = {"coverage_engine": object()}
-    legacy_kwargs: dict[str, object] = {}
+    artifacts: dict[str, object] = {
+        "coverage_engine": object(),
+        "exclusions_evaluated_on": clock,
+    }
+    legacy_kwargs: dict[str, object] = {"now": clock}
     if fit_records is not None:
         artifacts["fit_weight_records"] = fit_records
         legacy_kwargs["fit_weight_records"] = fit_records
@@ -240,20 +253,25 @@ def _assert_identical_verdicts(legacy, battery) -> None:
 
 
 class TestUKSurfaceAdapter:
-    def test_surface_matches_the_national_build_evidence_adapter(self) -> None:
+    def test_surface_materializes_the_frame_not_fallbacks(self) -> None:
+        # The one surviving copy of the legacy duck-attr evidence surface
+        # (the national build's adapter consolidated into it at the
+        # orchestration swap). Every attr must resolve to the frame's real
+        # values — a gate reading household_weight_kind or time_period must
+        # never see a fallback.
         person, benunit, household = _tables()
         frame = uk_national_frame(
             person=person, benunit=benunit, household=household, time_period="2023"
         )
         surface = _uk_gate_surface(frame)
-        legacy = _uk_gate_evidence(frame)
+        tables = engine_tables(frame)
 
-        pd.testing.assert_frame_equal(surface.person, legacy.person)
-        pd.testing.assert_frame_equal(surface.benunit, legacy.benunit)
-        pd.testing.assert_frame_equal(surface.household, legacy.household)
-        assert surface.time_period == legacy.time_period
-        assert surface.household_weight_kind == legacy.household_weight_kind
-        assert surface.mass_log == legacy.mass_log
+        pd.testing.assert_frame_equal(surface.person, tables["person"])
+        pd.testing.assert_frame_equal(surface.benunit, tables["benunit"])
+        pd.testing.assert_frame_equal(surface.household, tables["household"])
+        assert surface.time_period == "2023"
+        assert surface.household_weight_kind is uk_household_weight_kind(frame)
+        assert surface.mass_log == frame.mass_log
 
 
 class TestUKCompatibility:
@@ -289,7 +307,11 @@ class TestUKCompatibility:
         reasons = {o.entry.id: o.reason for o in phase.outcomes}
         assert reasons["uk_weights_audit"] == ("missing evidence: fit_weight_records")
         assert reasons["uk_input_mass_parity"] == (
-            "missing evidence: frame, input_mass_policy, input_mass_reference"
+            "missing evidence: frame, exclusions_evaluated_on, "
+            "input_mass_policy, input_mass_reference"
+        )
+        assert reasons["uk_degenerate_release_surface"] == (
+            "missing evidence: frame, exclusions_evaluated_on"
         )
 
 
@@ -425,6 +447,109 @@ class TestUnevidencedArms:
         audit = {o.entry.id: o for o in battery.outcomes}["uk_weights_audit"]
         assert audit.status is GateStatus.EVIDENCE_ABSENT
         assert audit.reason == "missing evidence: fit_weight_records"
+
+
+class TestExclusionDiscipline:
+    """One expiry clock, a committed register of record, a loud override."""
+
+    EXCLUSION_GATES = (
+        "uk_degenerate_release_surface",
+        "uk_input_mass_parity",
+        "uk_qrf_tail_concentration",
+    )
+
+    def test_every_exclusion_gate_shares_the_injected_clock(self) -> None:
+        _legacy, battery = _run_both(
+            _tables(),
+            parity=_parity(),
+            fit_records=(FitWeightRecord("spi_qrf", "importance"),),
+        )
+        by_id = {o.entry.id: o for o in battery.outcomes}
+        stamps = {
+            entry_id: by_id[entry_id].result.details["exclusions_evaluated_on"]
+            for entry_id in self.EXCLUSION_GATES
+        }
+        assert set(stamps.values()) == {CLOCK.isoformat()}, stamps
+
+    def test_an_expired_register_behaves_identically_on_both_sides(self) -> None:
+        # Past the committed register's expiry the exclusion is out of
+        # force on both paths; whatever the verdict, it must be the same
+        # verdict — the differential contract holds at every clock value.
+        legacy, battery = _run_both(
+            _tables(),
+            parity=_parity(),
+            fit_records=(FitWeightRecord("spi_qrf", "importance"),),
+            clock=date(2027, 3, 1),
+        )
+        _assert_identical_verdicts(legacy, battery)
+
+    def test_review_override_is_loud_in_the_evidence_payload(self) -> None:
+        binding = UK_GATE_REGISTRY["degenerate_release_surface"]
+        committed = binding.evidence_payload(
+            EvidenceContext(artifacts={"exclusions_evaluated_on": CLOCK}), {}
+        )
+        assert committed["exclusions_policy"] == "committed"
+        assert "household.source_year" in committed["reviewed_exclusions"]
+
+        overridden = binding.evidence_payload(
+            EvidenceContext(
+                artifacts={
+                    "exclusions_evaluated_on": CLOCK,
+                    "reviewed_degenerate_exclusions": {},
+                }
+            ),
+            {},
+        )
+        assert overridden["exclusions_policy"] == "override"
+        assert overridden["reviewed_exclusions"] == {}
+        assert overridden != committed, "an override must move the evidence digest"
+
+    def test_resupplying_the_committed_register_is_not_an_override(self) -> None:
+        # The label follows content, not the artifact's presence: a caller
+        # routing the committed register through the artifact (as a driver
+        # preflight might) runs the committed policy and must say so — and
+        # a review file byte-identical to the register is no deviation.
+        from microcosm.build.uk_runtime.terminal_gates import (
+            uk_default_degenerate_reviewed_exclusions,
+        )
+
+        binding = UK_GATE_REGISTRY["degenerate_release_surface"]
+        committed = binding.evidence_payload(
+            EvidenceContext(artifacts={"exclusions_evaluated_on": CLOCK}), {}
+        )
+        resupplied = binding.evidence_payload(
+            EvidenceContext(
+                artifacts={
+                    "exclusions_evaluated_on": CLOCK,
+                    "reviewed_degenerate_exclusions": dict(
+                        uk_default_degenerate_reviewed_exclusions()
+                    ),
+                }
+            ),
+            {},
+        )
+        assert resupplied == committed
+        assert resupplied["exclusions_policy"] == "committed"
+
+    def test_a_datetime_clock_is_refused(self, uk_gates) -> None:
+        person, benunit, household = _tables()
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
+        entry = {e.id: e for e in uk_gates.gates}["uk_degenerate_release_surface"]
+        binding = UK_GATE_REGISTRY["degenerate_release_surface"]
+        result = _evaluate_gate(
+            "degenerate_release_surface",
+            lambda: binding.evaluate(
+                EvidenceContext(
+                    frame=frame,
+                    artifacts={"exclusions_evaluated_on": datetime(2026, 9, 1, 12, 0)},
+                ),
+                entry.parameters,
+            ),
+        )
+        assert result.passed is False
+        assert "shared clock" in result.details["evaluation_error"]["message"]
 
 
 class _TerminalCoverageEngine:

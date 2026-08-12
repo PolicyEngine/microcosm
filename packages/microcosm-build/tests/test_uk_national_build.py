@@ -1,12 +1,21 @@
 from __future__ import annotations
 
 import json
+from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
-from microcosm.build.gates import FitWeightRecord, GateReport, GateResult
+from microcosm.build.gate_battery import (
+    GateBatteryBlockedError,
+    gate_signing_key_env,
+)
+from microcosm.build.gates import FitWeightRecord, GateResult
+from microcosm.build.uk_runtime.battery_bindings import (
+    UKGateBinding,
+    _uk_gate_surface,
+)
 from microcosm.build.uk_runtime.national_build import (
     UKNationalStage,
     build_uk_national_dataset,
@@ -17,24 +26,75 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     uk_time_period,
 )
-from microcosm.build.uk_runtime.terminal_gates import (
-    UK_TERMINAL_GATE_SIGNING_KEY_ENV,
-    UKReleaseParityEvidence,
+from microcosm.build.uk_runtime.release_input_coverage import (
+    uk_release_input_coverage_gate,
 )
-from microcosm.build.uk_runtime.terminal_gates import (
-    uk_terminal_gate_report as real_uk_terminal_gate_report,
-)
-from microcosm.build.uk_runtime.terminal_gates import (
-    write_uk_terminal_gate_report as real_write_uk_terminal_gate_report,
-)
+from microcosm.build.uk_runtime.terminal_gates import UKReleaseParityEvidence
 from microcosm.frame import Frame, MassChangeRecord, WeightKind
 
 TEST_UK_RELEASE_ID = "populace-uk-2023-frs-k535080"
 TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256 = "c" * 64
 TEST_UK_TERMINAL_GATE_SIGNING_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+#: A fixed exclusion clock inside the committed register's validity window
+#: keeps toy builds deterministic across the suite's lifetime.
+TEST_UK_EXCLUSION_CLOCK = date(2026, 9, 1)
+
+
+def _toy_coverage_evaluator(context, parameters):
+    """Pass the manifest preflight, run the real coverage gate at terminal.
+
+    The manifest-currency check needs the shipped coverage machinery these
+    toy builds do not carry; the terminal verdict stays the real gate over
+    the real frame surface, as the legacy seam fixture ran it.
+    """
+
+    if parameters.get("check") == "manifest_current":
+        return GateResult(
+            name="release_input_coverage",
+            passed=True,
+            details={"check": "manifest_current", "toy_preflight": True},
+        )
+    return uk_release_input_coverage_gate(
+        _uk_gate_surface(context.frame), context.artifacts["coverage_engine"]
+    )
+
+
+def _toy_gate_registry() -> dict[str, UKGateBinding]:
+    """The seam-test registry: real terminal coverage, pass-through roster.
+
+    These seam tests use toy stages, so the family-roster gate and the
+    manifest preflight are pass-throughs (both have their own tests) and
+    every gate without a binding is a named ``evidence_absent`` gap —
+    non-blocking off the release-candidate posture, exactly the legacy
+    fixture's effect of reporting only the coverage verdict.
+    """
+
+    return {
+        "release_input_coverage": UKGateBinding(
+            name="release_input_coverage",
+            evaluator=_toy_coverage_evaluator,
+            parameter_keys=frozenset({"check"}),
+            artifact_keys=frozenset({"coverage_engine"}),
+            frame_predicate=(
+                lambda parameters: parameters.get("check") != "manifest_current"
+            ),
+            legacy_name="uk_release_input_coverage",
+        ),
+        "source_coverage": UKGateBinding(
+            name="source_coverage",
+            evaluator=lambda context, parameters: GateResult(
+                name="source_coverage",
+                passed=True,
+                details={"toy_stage_roster": True},
+            ),
+            needs_frame=False,
+        ),
+    }
 
 
 def _run_national_build(**kwargs):
+    kwargs.setdefault("gate_registry", _toy_gate_registry())
+    kwargs.setdefault("now", TEST_UK_EXCLUSION_CLOCK)
     return build_uk_national_dataset(
         release_id=TEST_UK_RELEASE_ID,
         calibration_diagnostics_sha256=TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256,
@@ -58,47 +118,8 @@ def _replace_person(frame: Frame, person: pd.DataFrame) -> Frame:
 @pytest.fixture(autouse=True)
 def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
     monkeypatch.setenv(
-        UK_TERMINAL_GATE_SIGNING_KEY_ENV,
+        gate_signing_key_env("uk"),
         TEST_UK_TERMINAL_GATE_SIGNING_KEY,
-    )
-
-
-@pytest.fixture(autouse=True)
-def _isolate_generic_seam_from_shipped_family_contract(monkeypatch) -> None:
-    """These seam tests use toy stages; family enforcement has its own tests."""
-
-    from microcosm.build.uk_runtime import national_build
-
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_build_stages",
-        lambda _stage_names: None,
-    )
-    monkeypatch.setattr(
-        national_build,
-        "uk_terminal_gate_report",
-        lambda dataset, engine, **_kwargs: GateReport(
-            (national_build.uk_release_input_coverage_gate(dataset, engine),)
-        ),
-    )
-
-    def write_generic_seam_report(report, path):
-        output = Path(path)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(
-            json.dumps(
-                {"schema_version": 2, "enforced": True, **report.to_manifest()},
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n"
-        )
-        return output
-
-    monkeypatch.setattr(
-        national_build,
-        "write_uk_terminal_gate_report",
-        write_generic_seam_report,
     )
 
 
@@ -210,6 +231,32 @@ def _failing_gate() -> GateResult:
     )
 
 
+def _registry_with_coverage(gate_result_factory) -> dict[str, UKGateBinding]:
+    """The toy registry with the terminal coverage verdict stubbed."""
+
+    def evaluator(context, parameters):
+        if parameters.get("check") == "manifest_current":
+            return GateResult(
+                name="release_input_coverage",
+                passed=True,
+                details={"check": "manifest_current", "toy_preflight": True},
+            )
+        return gate_result_factory()
+
+    registry = _toy_gate_registry()
+    registry["release_input_coverage"] = UKGateBinding(
+        name="release_input_coverage",
+        evaluator=evaluator,
+        parameter_keys=frozenset({"check"}),
+        artifact_keys=frozenset({"coverage_engine"}),
+        frame_predicate=(
+            lambda parameters: parameters.get("check") != "manifest_current"
+        ),
+        legacy_name="uk_release_input_coverage",
+    )
+    return registry
+
+
 def test_driver_validates_the_uk_residue_after_each_stage(
     monkeypatch, tmp_path
 ) -> None:
@@ -225,16 +272,10 @@ def test_driver_validates_the_uk_residue_after_each_stage(
     """
 
     pytest.importorskip("tables")
-    from microcosm.build.uk_runtime import national_build
     from microcosm.frame import CONSERVE_MASS, Weights
 
     input_h5 = tmp_path / "base.h5"
     _write_two_row_h5(input_h5)
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        lambda **_kwargs: None,
-    )
 
     def redistribute_without_refreshing_column(frame: Frame) -> Frame:
         weights = frame.weights_for("household")
@@ -253,55 +294,6 @@ def test_driver_validates_the_uk_residue_after_each_stage(
             ),
             coverage_engine=object(),
         )
-
-
-def test_gate_evidence_reproduces_the_legacy_attr_surface() -> None:
-    """_uk_gate_evidence exposes exactly what the duck-typed gates read.
-
-    The gate modules stay deliberately duck-typed until #611 types them on
-    Frame; the evidence adapter must therefore carry the metadata attrs
-    (kind, period, mass log) the coverage gate's hmrc family getattr-reads,
-    with the typed weights materialized authoritatively into the tables.
-    """
-
-    from microcosm.build.uk_runtime import national_build
-
-    mass_log = (
-        MassChangeRecord(
-            entity="household",
-            old_total=2.0,
-            new_total=2.0,
-            declared_factor=1.0,
-            reason="Toy reviewed record.",
-        ),
-    )
-    frame = uk_national_frame(
-        person=pd.DataFrame(
-            {
-                "person_id": [10],
-                "person_benunit_id": [100],
-                "person_household_id": [1],
-            }
-        ),
-        benunit=pd.DataFrame({"benunit_id": [100]}),
-        household=pd.DataFrame({"household_id": [1], "household_weight": [2.0]}),
-        time_period="2023",
-        weight_kind=WeightKind.IMPORTANCE,
-        mass_log=mass_log,
-    )
-
-    evidence = national_build._uk_gate_evidence(frame)
-
-    assert evidence.household_weight_kind is WeightKind.IMPORTANCE
-    assert evidence.time_period == "2023"
-    assert evidence.mass_log == mass_log
-    assert evidence.household["household_weight"].tolist() == [2.0]
-    pd.testing.assert_frame_equal(evidence.person, frame.person)
-    # The same getattr surface the gates use resolves to real values, never
-    # the silent fallbacks a plain table mapping produced.
-    assert getattr(evidence, "household_weight_kind", None) is not None
-    assert str(getattr(evidence, "time_period", "")) == "2023"
-    assert tuple(getattr(evidence, "mass_log", ())) == mass_log
 
 
 class _RecordedFitStage:
@@ -332,20 +324,37 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
         person["employment_income"] = 50_000.0
         return _replace_person(frame, person)
 
-    def assert_current(**_kwargs) -> None:
-        events.append("manifest_preflight")
-
-    def coverage_gate(evidence, _engine):
+    def recording_coverage(context, parameters):
+        if parameters.get("check") == "manifest_current":
+            events.append("manifest_preflight")
+            return GateResult(
+                name="release_input_coverage",
+                passed=True,
+                details={"check": "manifest_current"},
+            )
         events.append("final_coverage_gate")
-        assert evidence.person["employment_income"].tolist() == [50_000.0]
-        # The gate battery's evidence carries the frame's metadata surface —
-        # the coverage gate's hmrc family reads these attrs, and a bare table
+        surface = _uk_gate_surface(context.frame)
+        assert surface.person["employment_income"].tolist() == [50_000.0]
+        # The battery's evidence surface carries the frame's metadata — the
+        # coverage gate's hmrc family reads these attrs, and a bare table
         # mapping silently fails them to ''/() (caught by the first
         # credentialed acceptance build, not by CI's toy stages).
-        assert evidence.time_period == "2023"
-        assert evidence.household_weight_kind is WeightKind.DESIGN
-        assert evidence.mass_log == ()
+        assert surface.time_period == "2023"
+        assert surface.household_weight_kind is WeightKind.DESIGN
+        assert surface.mass_log == ()
         return _passing_gate()
+
+    registry = _toy_gate_registry()
+    registry["release_input_coverage"] = UKGateBinding(
+        name="release_input_coverage",
+        evaluator=recording_coverage,
+        parameter_keys=frozenset({"check"}),
+        artifact_keys=frozenset({"coverage_engine"}),
+        frame_predicate=(
+            lambda parameters: parameters.get("check") != "manifest_current"
+        ),
+        legacy_name="uk_release_input_coverage",
+    )
 
     real_writer = national_build.write_uk_national_frame
 
@@ -353,16 +362,6 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
         events.append("staging_write")
         return real_writer(frame, path)
 
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        assert_current,
-    )
-    monkeypatch.setattr(
-        national_build,
-        "uk_release_input_coverage_gate",
-        coverage_gate,
-    )
     monkeypatch.setattr(
         national_build,
         "write_uk_national_frame",
@@ -375,6 +374,7 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
         stages=(UKNationalStage("income", stage_transform),),
         coverage_engine=object(),
         input_coverage_path=coverage_json,
+        gate_registry=registry,
     )
 
     assert events == [
@@ -386,7 +386,13 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
     assert result.sampling_receipt is None
     assert result.stage_names == ("income",)
     assert result.input_coverage.passed is True
-    assert result.terminal_gates.passed is True
+    assert result.gate_report["blocked_at_phase"] is None
+    assert result.gate_report["phases_evaluated"] == ["preflight", "terminal"]
+    gates = result.gate_report["gates"]
+    assert gates["uk_release_input_coverage"]["status"] == "passed"
+    assert result.gate_report["release_evidence"] == {
+        "calibration_diagnostics_sha256": TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256
+    }
     assert result.terminal_gate_path == coverage_json.resolve()
     assert result.input_coverage_path == result.terminal_gate_path
     assert result.provenance.source_h5 == input_h5.resolve()
@@ -458,11 +464,8 @@ def _write_clone_family_h5(path: Path) -> None:
         )
 
 
-def test_national_build_samples_the_loaded_frame_before_stages(
-    monkeypatch, tmp_path
-) -> None:
+def test_national_build_samples_the_loaded_frame_before_stages(tmp_path) -> None:
     pytest.importorskip("tables")
-    from microcosm.build.uk_runtime import national_build
 
     input_h5 = tmp_path / "base.h5"
     staging_h5 = tmp_path / "staging.h5"
@@ -474,17 +477,6 @@ def test_national_build_samples_the_loaded_frame_before_stages(
         stage_household_counts.append(len(frame.table("household")))
         return frame
 
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        lambda **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        national_build,
-        "uk_release_input_coverage_gate",
-        lambda _evidence, _engine: _passing_gate(),
-    )
-
     result = _run_national_build(
         input_h5=input_h5,
         staging_h5=staging_h5,
@@ -493,6 +485,7 @@ def test_national_build_samples_the_loaded_frame_before_stages(
         input_coverage_path=coverage_json,
         sample_fraction=0.5,
         sample_seed=3,
+        gate_registry=_registry_with_coverage(_passing_gate),
     )
 
     receipt = result.sampling_receipt
@@ -504,35 +497,24 @@ def test_national_build_samples_the_loaded_frame_before_stages(
     # Renormalization: the staged artifact carries the full input mass.
     staged, _staged_provenance = load_uk_national_frame(staging_h5)
     assert float(staged.weights_for("household").total) == pytest.approx(8 * 2.0)
-    assert result.terminal_gates.passed is True
+    assert result.gate_report["blocked_at_phase"] is None
 
 
 def test_legacy_input_coverage_alias_is_byte_compatible_with_origin_main(
-    monkeypatch,
     tmp_path,
 ) -> None:
     pytest.importorskip("tables")
-    from microcosm.build.uk_runtime import national_build
 
     input_h5 = tmp_path / "base.h5"
     staging_h5 = tmp_path / "staging.h5"
     legacy_json = tmp_path / "input_coverage.json"
     _write_toy_h5(input_h5, employment_income=40_000.0)
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        lambda **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        national_build,
-        "uk_release_input_coverage_gate",
-        lambda _dataset, _engine: _passing_gate(),
-    )
     _run_national_build(
         input_h5=input_h5,
         staging_h5=staging_h5,
         coverage_engine=object(),
         input_coverage_path=legacy_json,
+        gate_registry=_registry_with_coverage(_passing_gate),
     )
 
     # Pinned from origin/main's schema-1 serializer for this exact GateResult.
@@ -545,88 +527,83 @@ def test_legacy_input_coverage_alias_is_byte_compatible_with_origin_main(
     assert legacy_json.read_bytes() == expected
 
 
-def test_legacy_input_coverage_alias_fails_closed_without_signing_key(
-    monkeypatch,
-    tmp_path,
-) -> None:
-    """The compatibility output cannot bypass the signed terminal writer."""
+def test_full_scale_build_refuses_to_stage_unsigned(monkeypatch, tmp_path) -> None:
+    """No full-scale staging artifact without an attested report.
+
+    The battery core records a missing key as ``signing_error`` and carries
+    on; the national build restores the legacy guarantee for full-scale
+    builds — the unsigned report is on disk, the H5 is not.
+    """
 
     pytest.importorskip("tables")
-    from microcosm.build.uk_runtime import national_build, terminal_gates
 
     input_h5 = tmp_path / "base.h5"
     staging_h5 = tmp_path / "staging.h5"
-    legacy_json = tmp_path / "input_coverage.json"
+    terminal_json = tmp_path / "terminal_gates.json"
     _write_two_row_h5(input_h5)
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        lambda **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        national_build,
-        "uk_release_input_coverage_gate",
-        lambda _dataset, _engine: _passing_gate(),
-    )
-    monkeypatch.setattr(
-        terminal_gates,
-        "uk_release_input_coverage_gate",
-        lambda _dataset, _engine: _passing_gate(),
-    )
-    monkeypatch.setattr(
-        national_build,
-        "uk_terminal_gate_report",
-        real_uk_terminal_gate_report,
-    )
-    monkeypatch.setattr(
-        national_build,
-        "write_uk_terminal_gate_report",
-        real_write_uk_terminal_gate_report,
-    )
-    monkeypatch.delenv(UK_TERMINAL_GATE_SIGNING_KEY_ENV)
+    monkeypatch.delenv(gate_signing_key_env("uk"))
 
-    with pytest.raises(RuntimeError, match="Unsigned failed report was written"):
+    with pytest.raises(RuntimeError, match="unsigned and this is a full-scale"):
         _run_national_build(
             input_h5=input_h5,
             staging_h5=staging_h5,
             coverage_engine=object(),
-            input_coverage_path=legacy_json,
+            terminal_gate_path=terminal_json,
+            gate_registry=_registry_with_coverage(_passing_gate),
         )
 
     assert not staging_h5.exists()
-    payload = json.loads(legacy_json.read_text(encoding="utf-8"))
-    assert payload["schema_version"] == 3
-    assert payload["passed"] is False
+    payload = json.loads(terminal_json.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == 4
+    assert payload["shippable"] is False
     assert payload["attestation"]["signature"] is None
     assert payload["attestation"]["signing_key_sha256"] is None
+    assert "signing_error" in payload["attestation"]
 
 
-def test_national_build_gate_failure_writes_diagnostic_not_h5(
+def test_rung_build_proceeds_unsigned_with_an_honest_report(
     monkeypatch, tmp_path
 ) -> None:
+    """A rung is structurally non-releasable, so it may run without the key;
+    its report says so instead of pretending."""
+
     pytest.importorskip("tables")
-    from microcosm.build.uk_runtime import national_build
+
+    input_h5 = tmp_path / "base.h5"
+    staging_h5 = tmp_path / "staging.h5"
+    terminal_json = tmp_path / "terminal_gates.json"
+    _write_clone_family_h5(input_h5)
+    monkeypatch.delenv(gate_signing_key_env("uk"))
+
+    result = _run_national_build(
+        input_h5=input_h5,
+        staging_h5=staging_h5,
+        coverage_engine=object(),
+        terminal_gate_path=terminal_json,
+        sample_fraction=0.5,
+        sample_seed=3,
+        gate_registry=_registry_with_coverage(_passing_gate),
+    )
+
+    assert staging_h5.exists()
+    assert result.gate_report["shippable"] is False
+    assert "signing_error" in result.gate_report["attestation"]
+
+
+def test_national_build_gate_failure_writes_diagnostic_not_h5(tmp_path) -> None:
+    pytest.importorskip("tables")
 
     input_h5 = tmp_path / "base.h5"
     staging_h5 = tmp_path / "staging.h5"
     coverage_json = tmp_path / "input_coverage.json"
     _write_toy_h5(input_h5)
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        lambda **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        national_build,
-        "uk_release_input_coverage_gate",
-        lambda _dataset, _engine: _failing_gate(),
-    )
-    with pytest.raises(RuntimeError, match="Release gates failed"):
+    with pytest.raises(GateBatteryBlockedError, match="Gate battery blocked"):
         _run_national_build(
             input_h5=input_h5,
             staging_h5=staging_h5,
             coverage_engine=object(),
             input_coverage_path=coverage_json,
+            gate_registry=_registry_with_coverage(_failing_gate),
         )
 
     assert not staging_h5.exists()
@@ -649,51 +626,56 @@ def test_default_terminal_report_write_precedes_gate_failure_raise(
     _write_toy_h5(input_h5)
     events: list[str] = []
     real_loader = national_build.load_uk_national_frame
-    real_report_writer = national_build.write_uk_terminal_gate_report
-
-    def preflight(**_kwargs) -> None:
-        events.append("preflight")
-
-    def stage_contract(_stage_names) -> None:
-        events.append("stage contract")
 
     def load(path):
         events.append("load")
         return real_loader(path)
 
-    def evaluate(_dataset, _engine):
+    def recording_coverage(context, parameters):
+        if parameters.get("check") == "manifest_current":
+            events.append("preflight")
+            return GateResult(
+                name="release_input_coverage",
+                passed=True,
+                details={"check": "manifest_current"},
+            )
         events.append("evaluate")
+        # The preflight report is already on disk before the frame loads —
+        # the write-then-block ordering holds per phase, not just at the end.
+        assert json.loads(default_terminal_json.read_text())["phases_evaluated"] == [
+            "preflight"
+        ]
         return _failing_gate()
 
-    def write_report(report, path):
-        events.append("write report")
-        assert Path(path) == default_terminal_json.resolve()
-        return real_report_writer(report, path)
+    def recording_roster(context, parameters):
+        events.append("stage contract")
+        return GateResult(name="source_coverage", passed=True, details={})
 
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        preflight,
+    registry = _toy_gate_registry()
+    registry["release_input_coverage"] = UKGateBinding(
+        name="release_input_coverage",
+        evaluator=recording_coverage,
+        parameter_keys=frozenset({"check"}),
+        artifact_keys=frozenset({"coverage_engine"}),
+        frame_predicate=(
+            lambda parameters: parameters.get("check") != "manifest_current"
+        ),
+        legacy_name="uk_release_input_coverage",
     )
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_build_stages",
-        stage_contract,
+    registry["source_coverage"] = UKGateBinding(
+        name="source_coverage",
+        evaluator=recording_roster,
+        needs_frame=False,
     )
     monkeypatch.setattr(national_build, "load_uk_national_frame", load)
-    monkeypatch.setattr(national_build, "uk_release_input_coverage_gate", evaluate)
-    monkeypatch.setattr(
-        national_build,
-        "write_uk_terminal_gate_report",
-        write_report,
-    )
 
-    with pytest.raises(RuntimeError, match="Release gates failed"):
+    with pytest.raises(GateBatteryBlockedError, match="Gate battery blocked"):
         _run_national_build(
             input_h5=input_h5,
             staging_h5=staging_h5,
             coverage_engine=object(),
             terminal_gate_path=None,
+            gate_registry=registry,
         )
     events.append("raise")
 
@@ -702,12 +684,41 @@ def test_default_terminal_report_write_precedes_gate_failure_raise(
         "stage contract",
         "load",
         "evaluate",
-        "write report",
         "raise",
     ]
     assert default_terminal_json.is_file()
-    assert json.loads(default_terminal_json.read_text())["passed"] is False
+    payload = json.loads(default_terminal_json.read_text())
+    assert payload["schema_version"] == 4
+    assert payload["blocked_at_phase"] == "terminal"
+    assert payload["gates"]["uk_release_input_coverage"]["status"] == "failed"
     assert not staging_h5.exists()
+
+
+def _stub_real_coverage(monkeypatch, gate_result_factory) -> None:
+    """Point the real registry's coverage binding at a stubbed verdict.
+
+    The bindings resolve the manifest assert and the coverage gate as
+    module globals at call time, so patching them where the bindings look
+    them up leaves every other real binding untouched.
+    """
+
+    from microcosm.build.uk_runtime import battery_bindings
+
+    monkeypatch.setattr(
+        battery_bindings,
+        "assert_uk_release_input_coverage_manifest_current",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        battery_bindings,
+        "assert_uk_release_input_coverage_build_stages",
+        lambda _stage_names, manifest=None: None,
+    )
+    monkeypatch.setattr(
+        battery_bindings,
+        "uk_release_input_coverage_gate",
+        lambda _surface, _engine, manifest=None: gate_result_factory(),
+    )
 
 
 def test_national_build_real_terminal_batch_passes_before_staging(
@@ -715,64 +726,55 @@ def test_national_build_real_terminal_batch_passes_before_staging(
     tmp_path,
 ) -> None:
     pytest.importorskip("tables")
-    from microcosm.build.uk_runtime import national_build, terminal_gates
 
     input_h5 = tmp_path / "healthy.h5"
     staging_h5 = tmp_path / "staging.h5"
     terminal_json = tmp_path / "terminal_gates.json"
     _write_two_row_h5(input_h5)
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        lambda **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        national_build,
-        "uk_release_input_coverage_gate",
-        lambda _dataset, _engine: _passing_gate(),
-    )
-    monkeypatch.setattr(
-        terminal_gates,
-        "uk_release_input_coverage_gate",
-        lambda _dataset, _engine: _passing_gate(),
-    )
-    monkeypatch.setattr(
-        national_build,
-        "uk_terminal_gate_report",
-        real_uk_terminal_gate_report,
-    )
+    _stub_real_coverage(monkeypatch, _passing_gate)
 
     result = _run_national_build(
         input_h5=input_h5,
         staging_h5=staging_h5,
         coverage_engine=object(),
         terminal_gate_path=terminal_json,
+        gate_registry=None,  # the real UK registry
     )
 
-    assert result.terminal_gates.passed
-    assert [gate.name for gate in result.terminal_gates.results] == [
-        "uk_release_input_coverage",
-        "degenerate_release_surface",
-        "zero_weight_strata",
-        "weight_ess",
-        "weight_ratio",
-    ]
-    assert result.input_coverage is result.terminal_gates.results[0]
+    assert result.input_coverage.passed is True
     assert result.terminal_gate_path == terminal_json.resolve()
     assert staging_h5.is_file()
     payload = json.loads(terminal_json.read_text(encoding="utf-8"))
-    assert payload["passed"] is True
-    assert set(payload["gates"]) == {
-        "uk_release_input_coverage",
-        "degenerate_release_surface",
-        "zero_weight_strata",
-        "weight_ess",
-        "weight_ratio",
+    assert payload["schema_version"] == 4
+    assert payload["blocked_at_phase"] is None
+    statuses = {entry_id: gate["status"] for entry_id, gate in payload["gates"].items()}
+    assert statuses == {
+        "uk_release_input_coverage_manifest_current": "passed",
+        "uk_release_family_build_stages": "passed",
+        "uk_release_input_coverage": "passed",
+        "uk_degenerate_release_surface": "passed",
+        "uk_zero_weight_strata": "passed",
+        "uk_weight_ess": "passed",
+        "uk_weight_ratio": "passed",
+        # The legacy report omitted unevidenced gates; the battery names
+        # every gap — non-blocking off the release-candidate posture.
+        "uk_weights_audit": "evidence_absent",
+        "uk_export_surface": "evidence_absent",
+        "uk_target_surface": "evidence_absent",
+        "uk_target_fit": "evidence_absent",
+        "uk_input_mass_parity": "evidence_absent",
+        "uk_qrf_tail_concentration": "evidence_absent",
     }
-    assert "weights_audit" not in payload["gates"]
-    assert "export_surface" not in payload["gates"]
-    assert "target_surface" not in payload["gates"]
-    assert "target_fit" not in payload["gates"]
+    # One exclusion clock: the evaluated exclusion gate stamps the injected
+    # date, never a per-gate default.
+    degenerate = payload["gates"]["uk_degenerate_release_surface"]
+    assert (
+        degenerate["details"]["exclusions_evaluated_on"]
+        == TEST_UK_EXCLUSION_CLOCK.isoformat()
+    )
+    assert payload["release_evidence"] == {
+        "calibration_diagnostics_sha256": TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256
+    }
 
 
 def test_national_build_real_terminal_batch_writes_all_findings_before_raise(
@@ -780,92 +782,55 @@ def test_national_build_real_terminal_batch_writes_all_findings_before_raise(
     tmp_path,
 ) -> None:
     pytest.importorskip("tables")
-    from microcosm.build.uk_runtime import national_build, terminal_gates
 
     input_h5 = tmp_path / "defective.h5"
     staging_h5 = tmp_path / "staging.h5"
     terminal_json = tmp_path / "terminal_gates.json"
     _write_two_row_h5(input_h5, employment_income=(0.0, 0.0))
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        lambda **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        national_build,
-        "uk_release_input_coverage_gate",
-        lambda _dataset, _engine: _failing_gate(),
-    )
-    monkeypatch.setattr(
-        terminal_gates,
-        "uk_release_input_coverage_gate",
-        lambda _dataset, _engine: _failing_gate(),
-    )
-    monkeypatch.setattr(
-        national_build,
-        "uk_terminal_gate_report",
-        real_uk_terminal_gate_report,
-    )
+    _stub_real_coverage(monkeypatch, _failing_gate)
 
-    with pytest.raises(RuntimeError, match="Release gates failed") as error:
+    with pytest.raises(GateBatteryBlockedError) as error:
         _run_national_build(
             input_h5=input_h5,
             staging_h5=staging_h5,
             stages=(UKNationalStage("hmrc_spi_income", lambda dataset: dataset),),
             coverage_engine=object(),
             terminal_gate_path=terminal_json,
+            gate_registry=None,  # the real UK registry
         )
 
     assert "[uk_release_input_coverage]" in str(error.value)
-    assert "[degenerate_release_surface]" in str(error.value)
-    assert "[weights_audit]" in str(error.value)
+    assert "[uk_degenerate_release_surface]" in str(error.value)
+    assert "[uk_weights_audit]" in str(error.value)
+    assert error.value.phase == "terminal"
     assert terminal_json.is_file()
     payload = json.loads(terminal_json.read_text(encoding="utf-8"))
-    assert payload["passed"] is False
-    assert payload["gates"]["uk_release_input_coverage"]["passed"] is False
-    assert payload["gates"]["degenerate_release_surface"]["passed"] is False
-    assert payload["gates"]["weights_audit"] == {
-        "details": {"evidence_missing": True, "fits_checked": 0},
-        "failures": [
-            "A production fit stage ran but emitted no FitWeightRecord evidence; "
-            "an absent audit is not a passing audit."
-        ],
-        "passed": False,
+    assert payload["blocked_at_phase"] == "terminal"
+    assert payload["shippable"] is False
+    assert payload["gates"]["uk_release_input_coverage"]["status"] == "failed"
+    assert payload["gates"]["uk_degenerate_release_surface"]["status"] == "failed"
+    weights_audit = payload["gates"]["uk_weights_audit"]
+    assert weights_audit["status"] == "failed"
+    assert weights_audit["details"] == {
+        "evidence_missing": True,
+        "fits_checked": 0,
     }
+    assert weights_audit["failures"] == [
+        "A production fit stage ran but emitted no FitWeightRecord evidence; "
+        "an absent audit is not a passing audit."
+    ]
     assert not staging_h5.exists()
 
 
-def test_national_build_includes_parity_trio_only_with_real_evidence(
+def test_national_build_parity_trio_evaluates_with_evidence_absent_without(
     monkeypatch,
     tmp_path,
 ) -> None:
     pytest.importorskip("tables")
-    from microcosm.build.uk_runtime import national_build, terminal_gates
 
     input_h5 = tmp_path / "healthy.h5"
-    staging_h5 = tmp_path / "staging.h5"
-    terminal_json = tmp_path / "terminal_gates.json"
     _write_two_row_h5(input_h5)
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        lambda **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        national_build,
-        "uk_release_input_coverage_gate",
-        lambda _dataset, _engine: _passing_gate(),
-    )
-    monkeypatch.setattr(
-        terminal_gates,
-        "uk_release_input_coverage_gate",
-        lambda _dataset, _engine: _passing_gate(),
-    )
-    monkeypatch.setattr(
-        national_build,
-        "uk_terminal_gate_report",
-        real_uk_terminal_gate_report,
-    )
+    _stub_real_coverage(monkeypatch, _passing_gate)
     parity = UKReleaseParityEvidence(
         candidate_columns=("person.employment_income",),
         reference_columns=("person.employment_income",),
@@ -874,28 +839,38 @@ def test_national_build_includes_parity_trio_only_with_real_evidence(
         target_relative_errors={"population": 0.0},
     )
 
-    result = _run_national_build(
+    with_evidence = _run_national_build(
         input_h5=input_h5,
-        staging_h5=staging_h5,
+        staging_h5=tmp_path / "staging.h5",
         stages=(UKNationalStage("hmrc_spi_income", _RecordedFitStage()),),
         coverage_engine=object(),
         parity_evidence=parity,
-        terminal_gate_path=terminal_json,
+        terminal_gate_path=tmp_path / "terminal_gates.json",
+        gate_registry=None,  # the real UK registry
     )
 
-    assert result.terminal_gates.passed
-    weights_audit = next(
-        gate for gate in result.terminal_gates.results if gate.name == "weights_audit"
-    )
-    assert weights_audit.details["resolved_weight_kinds"] == {
+    gates = with_evidence.gate_report["gates"]
+    assert gates["uk_weights_audit"]["status"] == "passed"
+    assert gates["uk_weights_audit"]["details"]["resolved_weight_kinds"] == {
         "uk_frs_only_spi_fill": "importance",
         "uk_spi_2022_23_income": "design",
     }
-    assert [gate.name for gate in result.terminal_gates.results][-3:] == [
-        "export_surface",
-        "target_surface",
-        "target_fit",
-    ]
+    for entry_id in ("uk_export_surface", "uk_target_surface", "uk_target_fit"):
+        assert gates[entry_id]["status"] == "passed", entry_id
+
+    without_evidence = _run_national_build(
+        input_h5=input_h5,
+        staging_h5=tmp_path / "staging2.h5",
+        stages=(UKNationalStage("hmrc_spi_income", _RecordedFitStage()),),
+        coverage_engine=object(),
+        terminal_gate_path=tmp_path / "terminal_gates2.json",
+        gate_registry=None,
+    )
+
+    gates = without_evidence.gate_report["gates"]
+    for entry_id in ("uk_export_surface", "uk_target_surface", "uk_target_fit"):
+        assert gates[entry_id]["status"] == "evidence_absent", entry_id
+        assert gates[entry_id]["reason"] == "missing evidence: parity_evidence"
 
 
 def test_national_build_rejects_both_gate_path_names_and_h5_collisions(
@@ -924,10 +899,9 @@ def test_national_build_rejects_both_gate_path_names_and_h5_collisions(
 
 
 def test_national_build_rejects_duplicate_stage_names_before_running(
-    monkeypatch, tmp_path
+    tmp_path,
 ) -> None:
     pytest.importorskip("tables")
-    from microcosm.build.uk_runtime import national_build
 
     input_h5 = tmp_path / "base.h5"
     _write_toy_h5(input_h5)
@@ -937,12 +911,6 @@ def test_national_build_rejects_duplicate_stage_names_before_running(
         nonlocal called
         called = True
         return frame
-
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        lambda **_kwargs: None,
-    )
 
     with pytest.raises(ValueError, match="Duplicate UK national stage"):
         _run_national_build(
@@ -958,11 +926,17 @@ def test_national_build_rejects_duplicate_stage_names_before_running(
     assert called is False
 
 
-def test_national_build_manifest_failure_removes_stale_outputs_before_stages(
-    monkeypatch, tmp_path
+def test_national_build_manifest_failure_blocks_before_stages_with_a_report(
+    tmp_path,
 ) -> None:
+    """Preflight drift blocks before any stage — and now leaves a report.
+
+    The legacy assertions raised bare, deleting the stale outputs and
+    writing nothing; the battery persists the refusal as a schema-4 report
+    with the terminal entries honestly ``unreached``.
+    """
+
     pytest.importorskip("tables")
-    from microcosm.build.uk_runtime import national_build
 
     input_h5 = tmp_path / "base.h5"
     staging_h5 = tmp_path / "staging.h5"
@@ -977,42 +951,52 @@ def test_national_build_manifest_failure_removes_stale_outputs_before_stages(
         stage_called = True
         return frame
 
-    def reject_manifest(**_kwargs) -> None:
-        raise ValueError("manifest drift")
+    def drifting_coverage(context, parameters):
+        if parameters.get("check") == "manifest_current":
+            raise ValueError("manifest drift")
+        return _passing_gate()
 
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        reject_manifest,
+    registry = _toy_gate_registry()
+    registry["release_input_coverage"] = UKGateBinding(
+        name="release_input_coverage",
+        evaluator=drifting_coverage,
+        parameter_keys=frozenset({"check"}),
+        artifact_keys=frozenset({"coverage_engine"}),
+        frame_predicate=(
+            lambda parameters: parameters.get("check") != "manifest_current"
+        ),
+        legacy_name="uk_release_input_coverage",
     )
 
-    with pytest.raises(ValueError, match="manifest drift"):
+    with pytest.raises(GateBatteryBlockedError, match="manifest drift") as error:
         _run_national_build(
             input_h5=input_h5,
             staging_h5=staging_h5,
             stages=(UKNationalStage("should_not_run", stage_transform),),
             coverage_engine=object(),
             input_coverage_path=coverage_json,
+            gate_registry=registry,
         )
 
+    assert error.value.phase == "preflight"
     assert stage_called is False
     assert not staging_h5.exists()
-    assert not coverage_json.exists()
+    payload = json.loads(coverage_json.read_text())
+    assert payload["schema_version"] == 4
+    assert payload["blocked_at_phase"] == "preflight"
+    assert (
+        payload["gates"]["uk_release_input_coverage_manifest_current"]["status"]
+        == "failed"
+    )
+    assert payload["gates"]["uk_release_input_coverage"]["status"] == "unreached"
+    assert payload["gates"]["uk_weight_ratio"]["status"] == "unreached"
 
 
-def test_national_build_rejects_stage_that_breaks_entity_links(
-    monkeypatch, tmp_path
-) -> None:
+def test_national_build_rejects_stage_that_breaks_entity_links(tmp_path) -> None:
     pytest.importorskip("tables")
-    from microcosm.build.uk_runtime import national_build
 
     input_h5 = tmp_path / "base.h5"
     _write_toy_h5(input_h5)
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        lambda **_kwargs: None,
-    )
 
     def break_links(frame: Frame) -> Frame:
         person = frame.table("person").copy()
@@ -1055,18 +1039,12 @@ def test_national_build_rejects_stage_that_breaks_entity_links(
     ],
 )
 def test_national_build_rejects_invalid_stage_population_metadata(
-    monkeypatch, tmp_path, stage_name, transform, message
+    tmp_path, stage_name, transform, message
 ) -> None:
     pytest.importorskip("tables")
-    from microcosm.build.uk_runtime import national_build
 
     input_h5 = tmp_path / "base.h5"
     _write_toy_h5(input_h5)
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        lambda **_kwargs: None,
-    )
 
     with pytest.raises(ValueError, match=message):
         _run_national_build(
@@ -1077,17 +1055,11 @@ def test_national_build_rejects_invalid_stage_population_metadata(
         )
 
 
-def test_national_build_refuses_to_overwrite_its_input(monkeypatch, tmp_path) -> None:
+def test_national_build_refuses_to_overwrite_its_input(tmp_path) -> None:
     pytest.importorskip("tables")
-    from microcosm.build.uk_runtime import national_build
 
     input_h5 = tmp_path / "base.h5"
     _write_toy_h5(input_h5)
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        lambda **_kwargs: None,
-    )
 
     with pytest.raises(ValueError, match="must differ"):
         _run_national_build(
@@ -1097,32 +1069,20 @@ def test_national_build_refuses_to_overwrite_its_input(monkeypatch, tmp_path) ->
         )
 
 
-def test_national_build_accepts_hugging_face_style_h5_symlink(
-    monkeypatch, tmp_path
-) -> None:
+def test_national_build_accepts_hugging_face_style_h5_symlink(tmp_path) -> None:
     pytest.importorskip("tables")
-    from microcosm.build.uk_runtime import national_build
 
     cached_blob = tmp_path / "content-addressed-blob"
     input_h5 = tmp_path / "populace_uk_2023.h5"
     staging_h5 = tmp_path / "staging.h5"
     _write_toy_h5(cached_blob, employment_income=40_000.0)
     input_h5.symlink_to(cached_blob)
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        lambda **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        national_build,
-        "uk_release_input_coverage_gate",
-        lambda _dataset, _engine: _passing_gate(),
-    )
 
     result = _run_national_build(
         input_h5=input_h5,
         staging_h5=staging_h5,
         coverage_engine=object(),
+        gate_registry=_registry_with_coverage(_passing_gate),
     )
 
     assert result.input_h5 == cached_blob.resolve()
@@ -1224,18 +1184,8 @@ def test_checkpointed_build_matches_the_monolith(monkeypatch, tmp_path) -> None:
 
     pytest.importorskip("tables")
     pytest.importorskip("h5py")
-    from microcosm.build.uk_runtime import national_build
 
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        lambda **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        national_build,
-        "uk_release_input_coverage_gate",
-        lambda _dataset, _engine: _passing_gate(),
-    )
+    registry = _registry_with_coverage(_passing_gate)
     input_h5 = tmp_path / "base.h5"
     _write_two_row_h5(input_h5)
     run_config = {"input_sha256": "a" * 64, "seed": 42}
@@ -1245,6 +1195,7 @@ def test_checkpointed_build_matches_the_monolith(monkeypatch, tmp_path) -> None:
         input_h5=input_h5,
         staging_h5=tmp_path / "mono.h5",
         stages=(_counting_stage("one"), _counting_stage("two")),
+        gate_registry=registry,
     )
     calls: list[str] = []
     _run_national_build(
@@ -1254,6 +1205,7 @@ def test_checkpointed_build_matches_the_monolith(monkeypatch, tmp_path) -> None:
         stages=(_counting_stage("one", calls), _counting_stage("two", calls)),
         checkpoint_dir=tmp_path / "checkpoints",
         run_config=run_config,
+        gate_registry=registry,
     )
     assert calls == ["one", "two"]
     _assert_same_staging_payload(tmp_path / "mono.h5", tmp_path / "staged.h5")
@@ -1274,6 +1226,7 @@ def test_checkpointed_build_matches_the_monolith(monkeypatch, tmp_path) -> None:
         ),
         checkpoint_dir=tmp_path / "checkpoints",
         run_config=run_config,
+        gate_registry=registry,
     )
     assert resumed_calls == []
     _assert_same_staging_payload(tmp_path / "mono.h5", tmp_path / "resumed.h5")
@@ -1284,18 +1237,8 @@ def test_checkpointed_build_resumes_past_a_crash(monkeypatch, tmp_path) -> None:
 
     pytest.importorskip("tables")
     pytest.importorskip("h5py")
-    from microcosm.build.uk_runtime import national_build
 
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        lambda **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        national_build,
-        "uk_release_input_coverage_gate",
-        lambda _dataset, _engine: _passing_gate(),
-    )
+    registry = _registry_with_coverage(_passing_gate)
     input_h5 = tmp_path / "base.h5"
     _write_two_row_h5(input_h5)
     run_config = {"input_sha256": "a" * 64, "seed": 42}
@@ -1314,6 +1257,7 @@ def test_checkpointed_build_resumes_past_a_crash(monkeypatch, tmp_path) -> None:
             ),
             checkpoint_dir=tmp_path / "checkpoints",
             run_config=run_config,
+            gate_registry=registry,
         )
 
     calls: list[str] = []
@@ -1324,27 +1268,18 @@ def test_checkpointed_build_resumes_past_a_crash(monkeypatch, tmp_path) -> None:
         stages=(_counting_stage("one", calls), _counting_stage("two", calls)),
         checkpoint_dir=tmp_path / "checkpoints",
         run_config=run_config,
+        gate_registry=registry,
     )
     assert calls == ["two"]
 
 
-def test_checkpointed_build_pins_the_run_config(monkeypatch, tmp_path) -> None:
+def test_checkpointed_build_pins_the_run_config(tmp_path) -> None:
     """Resuming under a different configuration is refused, never blended."""
 
     pytest.importorskip("tables")
     pytest.importorskip("h5py")
-    from microcosm.build.uk_runtime import national_build
 
-    monkeypatch.setattr(
-        national_build,
-        "assert_uk_release_input_coverage_manifest_current",
-        lambda **_kwargs: None,
-    )
-    monkeypatch.setattr(
-        national_build,
-        "uk_release_input_coverage_gate",
-        lambda _dataset, _engine: _passing_gate(),
-    )
+    registry = _registry_with_coverage(_passing_gate)
     input_h5 = tmp_path / "base.h5"
     _write_two_row_h5(input_h5)
 
@@ -1355,6 +1290,7 @@ def test_checkpointed_build_pins_the_run_config(monkeypatch, tmp_path) -> None:
             staging_h5=tmp_path / "unpinned.h5",
             stages=(_counting_stage("one"),),
             checkpoint_dir=tmp_path / "checkpoints",
+            gate_registry=registry,
         )
 
     _run_national_build(
@@ -1364,6 +1300,7 @@ def test_checkpointed_build_pins_the_run_config(monkeypatch, tmp_path) -> None:
         stages=(_counting_stage("one"),),
         checkpoint_dir=tmp_path / "checkpoints",
         run_config={"input_sha256": "a" * 64, "seed": 42},
+        gate_registry=registry,
     )
     with pytest.raises(ValueError, match="new checkpoint directory"):
         _run_national_build(
@@ -1373,4 +1310,117 @@ def test_checkpointed_build_pins_the_run_config(monkeypatch, tmp_path) -> None:
             stages=(_counting_stage("one"),),
             checkpoint_dir=tmp_path / "checkpoints",
             run_config={"input_sha256": "b" * 64, "seed": 42},
+            gate_registry=registry,
         )
+
+
+def test_release_candidate_blocks_on_named_evidence_gaps(tmp_path) -> None:
+    """The chartered semantics live: a candidate cannot excuse absent
+    evidence, a dev build records the same gaps and continues."""
+
+    pytest.importorskip("tables")
+
+    input_h5 = tmp_path / "base.h5"
+    _write_toy_h5(input_h5)
+    registry = _registry_with_coverage(_passing_gate)
+
+    dev = _run_national_build(
+        input_h5=input_h5,
+        staging_h5=tmp_path / "dev.h5",
+        coverage_engine=object(),
+        terminal_gate_path=tmp_path / "dev_gates.json",
+        gate_registry=registry,
+    )
+    assert dev.gate_report["blocked_at_phase"] is None
+    absent = {
+        entry_id
+        for entry_id, gate in dev.gate_report["gates"].items()
+        if gate["status"] == "evidence_absent"
+    }
+    assert "uk_weight_ratio" in absent  # unbound in the toy registry
+
+    with pytest.raises(GateBatteryBlockedError) as error:
+        _run_national_build(
+            input_h5=input_h5,
+            staging_h5=tmp_path / "candidate.h5",
+            coverage_engine=object(),
+            terminal_gate_path=tmp_path / "candidate_gates.json",
+            gate_registry=registry,
+            release_candidate=True,
+        )
+    assert error.value.phase == "terminal"
+    assert "[uk_weight_ratio]" in str(error.value)
+    assert not (tmp_path / "candidate.h5").exists()
+
+
+def test_release_candidate_is_refused_on_a_rung_before_any_unlink(
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+
+    input_h5 = tmp_path / "base.h5"
+    _write_toy_h5(input_h5)
+    terminal_json = tmp_path / "terminal_gates.json"
+    terminal_json.write_text('{"previous_report": true}\n')
+
+    with pytest.raises(ValueError, match="structurally non-releasable"):
+        _run_national_build(
+            input_h5=input_h5,
+            staging_h5=tmp_path / "staging.h5",
+            coverage_engine=object(),
+            terminal_gate_path=terminal_json,
+            sample_fraction=0.5,
+            release_candidate=True,
+        )
+
+    # Configuration refusals precede the sidecar unlinks: the contradictory
+    # request must not destroy the previous run's report.
+    assert terminal_json.read_text() == '{"previous_report": true}\n'
+
+
+@pytest.mark.parametrize(
+    ("bad_arguments", "match"),
+    [
+        ({"release_id": ""}, "release_id"),
+        ({"calibration_diagnostics_sha256": ""}, "release_evidence"),
+        ({"now": datetime(2026, 9, 1, 12, 0)}, "date"),
+        (
+            {"release_candidate": True, "use_alias_path": True},
+            "mutually exclusive",
+        ),
+    ],
+    ids=["empty-release-id", "empty-diagnostics-sha", "datetime-clock", "alias"],
+)
+def test_every_identity_refusal_precedes_the_sidecar_unlinks(
+    tmp_path, bad_arguments, match
+) -> None:
+    """No destructive step precedes argument validation — for every
+    validation, including the ones the battery construction owns."""
+
+    pytest.importorskip("tables")
+
+    input_h5 = tmp_path / "base.h5"
+    _write_toy_h5(input_h5)
+    staging_h5 = tmp_path / "staging.h5"
+    terminal_json = tmp_path / "terminal_gates.json"
+    staging_h5.write_bytes(b"previous-artifact")
+    terminal_json.write_text('{"previous_report": true}\n')
+    arguments: dict = {
+        "input_h5": input_h5,
+        "staging_h5": staging_h5,
+        "release_id": TEST_UK_RELEASE_ID,
+        "calibration_diagnostics_sha256": TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256,
+        "coverage_engine": object(),
+        "now": TEST_UK_EXCLUSION_CLOCK,
+        "gate_registry": _toy_gate_registry(),
+        "terminal_gate_path": terminal_json,
+    }
+    arguments.update(bad_arguments)
+    if arguments.pop("use_alias_path", False):
+        arguments["input_coverage_path"] = arguments.pop("terminal_gate_path")
+
+    with pytest.raises((ValueError, TypeError), match=match):
+        build_uk_national_dataset(**arguments)
+
+    assert staging_h5.read_bytes() == b"previous-artifact"
+    assert terminal_json.read_text() == '{"previous_report": true}\n'
