@@ -15,12 +15,16 @@ from microcosm.build.us_runtime.h5_io import (
     US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
     US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
-    US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
     load_simulation_ready_us_multispine_pool,
     write_nullable_us_h5,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+
+# This minimal downstream-consumer fixture intentionally models the preserved
+# pre-stacked publication envelope, not a schema-6 stacked artifact without its
+# required DAG authority fields.
+_LEGACY_POOL_MANIFEST_SCHEMA_VERSION = 4
 
 
 def _builder_module():
@@ -98,7 +102,7 @@ def _write_ready_pool(tmp_path: Path) -> Path:
         json.dumps(
             {
                 "artifact_kind": (US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND),
-                "schema_version": US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
+                "schema_version": _LEGACY_POOL_MANIFEST_SCHEMA_VERSION,
                 "simulation_ready": True,
                 "publication_run_id": run_id,
                 "agreement_gate": agreement_gate,
@@ -110,17 +114,36 @@ def _write_ready_pool(tmp_path: Path) -> Path:
         json.dumps(
             {
                 "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
-                "schema_version": US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
+                "schema_version": _LEGACY_POOL_MANIFEST_SCHEMA_VERSION,
                 "status": "simulation_ready",
                 "simulation_ready": True,
                 "publication_run_id": run_id,
                 "period": 2024,
+                "operator_order": [
+                    "assemble",
+                    "clone",
+                    "impute",
+                    "derive",
+                    "seed",
+                    "simulate",
+                    "agreement",
+                ],
+                "stage_receipts": {
+                    stage: {"operator": stage}
+                    for stage in ("impute", "derive", "seed", "simulate")
+                },
                 "stage_checkpoints": {
+                    "artifact_kind": (
+                        "populace_us_multispine_pool_checkpoint_provenance"
+                    ),
+                    "schema_version": 1,
+                    "materializer_version": 3,
+                    "enabled": False,
                     "agreement": {
                         "source": "always_fresh",
                         "cached": False,
                         "terminal_verdict_persisted": False,
-                    }
+                    },
                 },
                 "agreement_gate": agreement_gate,
                 "provenance_counts": {"household": {"rows": 8}},

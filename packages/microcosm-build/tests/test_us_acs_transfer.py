@@ -1236,10 +1236,10 @@ def test_engine_boolean_metadata_restores_primary_qrf_float_h5_donor(
         PolicyEngineUSVariableMetadataIndex()
     except ImportError:
         pytest.skip("requires the policyengine-us [us] extra")
-    # Primary PUF finalization physically stores QBI boolean-count outputs as
-    # floats; the supported legacy ACS builder can then load them from HDF as
-    # its transfer donor. Pin that real producer/HDF representation rather
-    # than using an unrelated model-required boolean.
+    # Retiring primary-PUF artifacts physically stored QBI boolean-count
+    # outputs as floats, and the supported legacy ACS builder can still load
+    # them from HDF as its transfer donor. Pin that compatibility representation
+    # rather than using an unrelated model-required boolean.
     source = tmp_path / "legacy-boolean-donor.h5"
     pd.DataFrame({"business_is_sstb": [1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0]}).to_hdf(
         source, key="person", format="fixed"
@@ -2070,6 +2070,31 @@ def test_schedule_d_post_transfer_fills_only_newly_imputed_rows(
         if item.column == "schedule_d_capital_gain_distributions"
     )
     assert derived.imputed_recipient_rows == 2
+
+    targets = (
+        "long_term_capital_gains_before_response",
+        "non_sch_d_capital_gains",
+    )
+    bound_contract = acs_transfer_module.acs_transfer_execution_contract_identity(
+        targets=targets,
+        derive_schedule_d=False,
+    )
+    suppressed = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={"person": {"capital_gain_details": targets}},
+        n_estimators=1,
+        derive_schedule_d=False,
+        execution_contract=bound_contract,
+    )
+    pd.testing.assert_series_equal(
+        suppressed.frame.person["schedule_d_capital_gain_distributions"],
+        cgd_before,
+    )
+    assert all(
+        item.column != "schedule_d_capital_gain_distributions"
+        for item in suppressed.imputed_inputs
+    )
 
 
 def test_adult_care_reconciliation_changes_only_imputed_expenses(

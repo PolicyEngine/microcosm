@@ -456,9 +456,10 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
     )
-    # 10 = #557 preserves the staged retirement surface through release
-    # materialization; pre-#557 QRF-refitted checkpoints (9) must not serve.
-    assert identity["materializer_version"] == 10
+    # 11 = target checkpoints preserve nullable booleans explicitly; schema 2
+    # distinguishes the new values+mask codec from schema-1 checkpoints.
+    assert identity["schema_version"] == 2
+    assert identity["materializer_version"] == 11
     # The SSI prior-weight basis is identity-bearing (microcosm#543 instance
     # 2): unflagged runs carry the key as None.
     assert identity["ssi_take_up_prior_weight_basis_sha256"] is None
@@ -509,6 +510,160 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
     )
 
 
+def test_target_frame_checkpoint_nullable_boolean_storage_is_explicit(
+    monkeypatch,
+    tmp_path,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
+    tables = {
+        entity: small_frame.table(entity).copy() for entity in small_frame.entities
+    }
+    tables["person"]["native_boolean"] = np.asarray(
+        [False, True, False, True], dtype=np.bool_
+    )
+    tables["person"]["complete_nullable_boolean"] = pd.Series(
+        [True, False, True, False], dtype="boolean"
+    )
+    tables["person"]["missing_nullable_boolean"] = pd.Series(
+        [True, pd.NA, False, pd.NA], dtype="boolean"
+    )
+    frame = Frame(
+        tables,
+        small_frame.schema,
+        {"household": small_frame.weights_for("household")},
+        small_frame.strata,
+    )
+    identity = {
+        "schema_version": builder.TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
+        "materializer_version": builder.TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION,
+    }
+    path = tmp_path / "nullable-booleans.h5"
+
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=frame,
+        identity=identity,
+        compilation={},
+    )
+    loaded = builder._read_target_frame_checkpoint(
+        path,
+        identity=identity,
+        target_specs=(),
+    )
+
+    assert loaded is not None
+    observed = loaded[0].table("person")
+    assert observed["native_boolean"].dtype == np.dtype(np.bool_)
+    assert observed["complete_nullable_boolean"].dtype == pd.BooleanDtype()
+    assert observed["missing_nullable_boolean"].dtype == pd.BooleanDtype()
+    pd.testing.assert_series_equal(
+        observed["missing_nullable_boolean"],
+        tables["person"]["missing_nullable_boolean"],
+    )
+    with h5py.File(path, mode="r") as h5:
+        person = h5["tables"]["person"]
+        columns = json.loads(str(person.attrs["columns_json"]))
+        groups = {
+            column: person["columns"][f"{columns.index(column):05d}"]
+            for column in (
+                "native_boolean",
+                "complete_nullable_boolean",
+                "missing_nullable_boolean",
+            )
+        }
+        assert bool(groups["native_boolean"].attrs["nullable"]) is False
+        assert bool(groups["complete_nullable_boolean"].attrs["nullable"]) is True
+        assert bool(groups["complete_nullable_boolean"].attrs["has_null_mask"]) is False
+        missing = groups["missing_nullable_boolean"]
+        assert bool(missing.attrs["nullable"]) is True
+        assert bool(missing.attrs["has_null_mask"]) is True
+        assert (
+            np.asarray(missing["values"]).tobytes()
+            == np.asarray([True, False, False, False], dtype=np.bool_).tobytes()
+        )
+        assert np.asarray(missing["null_mask"]).dtype == np.dtype(np.uint8)
+        np.testing.assert_array_equal(
+            np.asarray(missing["null_mask"]),
+            np.asarray([0, 1, 0, 1], dtype=np.uint8),
+        )
+
+
+@pytest.mark.parametrize(
+    "corrupt",
+    (
+        "missing_mask",
+        "noncanonical_hidden_bit",
+        "nonbinary_mask",
+        "unexpected_mask",
+        "missing_metadata",
+    ),
+)
+def test_target_frame_checkpoint_rejects_malformed_boolean_storage(
+    tmp_path,
+    small_frame,
+    corrupt,
+) -> None:
+    builder = _load_builder_module()
+    tables = {
+        entity: small_frame.table(entity).copy() for entity in small_frame.entities
+    }
+    tables["person"]["flag"] = pd.Series([True, pd.NA, False, pd.NA], dtype="boolean")
+    frame = Frame(
+        tables,
+        small_frame.schema,
+        {"household": small_frame.weights_for("household")},
+        small_frame.strata,
+    )
+    path = tmp_path / f"malformed-{corrupt}.h5"
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=frame,
+        identity={},
+        compilation={},
+    )
+
+    with h5py.File(path, mode="r+") as h5:
+        person = h5["tables"]["person"]
+        columns = json.loads(str(person.attrs["columns_json"]))
+        group = person["columns"][f"{columns.index('flag'):05d}"]
+        if corrupt == "missing_mask":
+            del group["null_mask"]
+        elif corrupt == "noncanonical_hidden_bit":
+            group["values"][1] = True
+        elif corrupt == "nonbinary_mask":
+            group["null_mask"][1] = 2
+        elif corrupt == "unexpected_mask":
+            group.attrs["has_null_mask"] = False
+        else:
+            del group.attrs["nullable"]
+
+    with h5py.File(path, mode="r") as h5, pytest.raises(RuntimeError):
+        builder._read_checkpoint_dataframe(h5["tables"]["person"])
+
+
+def test_target_frame_checkpoint_rejects_schema_one(
+    monkeypatch,
+    tmp_path,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
+    path = tmp_path / "schema-one.h5"
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=small_frame,
+        identity={},
+        compilation={},
+    )
+    with h5py.File(path, mode="r+") as h5:
+        h5.attrs["schema_version"] = 1
+
+    with pytest.raises(RuntimeError, match="schema mismatch.*got 1, expected 2"):
+        builder._read_target_frame_checkpoint(path, identity={}, target_specs=())
+
+
 def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
     monkeypatch,
     tmp_path,
@@ -516,10 +671,9 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
 ) -> None:
     """A checkpoint stored under a superseded materializer version must not load.
 
-    #557 changed the staged retirement-surface semantics: version-9
-    checkpoints can carry release-refitted leaves instead of the preserved
-    support-built surface. The version constant participates in the identity
-    comparison; this pins the stored-9 versus current-10 rejection directly.
+    Version 11 adds the lossless nullable-boolean checkpoint codec. The version
+    constant participates in the identity comparison; this pins stored-10
+    versus current-11 rejection directly.
     """
     builder = _load_builder_module()
     monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
@@ -553,10 +707,10 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         ssi_take_up_assignment_sha256="ssi-flags-sha",
         selection_identities_sha256=None,
     )
-    # 9 = the pre-#557 release-refit world; 8 = the still-older pre-#374 blend
-    # world. Both must miss against expected version 10.
-    stale_identity = {**dict(identity), "materializer_version": 9}
-    older_identity = {**dict(identity), "materializer_version": 8}
+    # 10 = the pre-nullable-boolean-codec world; 9 = the still-older pre-#557
+    # release-refit world. Both must miss against expected version 11.
+    stale_identity = {**dict(identity), "materializer_version": 10}
+    older_identity = {**dict(identity), "materializer_version": 9}
     path = tmp_path / "target_frame_checkpoint.h5"
     builder._write_target_frame_checkpoint(
         path,

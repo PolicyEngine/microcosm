@@ -8,7 +8,6 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from types import ModuleType
 
 import numpy as np
 import pandas as pd
@@ -20,7 +19,13 @@ from microcosm.build.us_runtime.h5_io import (
     load_legacy_calibrated_us_h5,
     write_nullable_us_h5,
 )
-from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+from microcosm.frame import (
+    US_SCHEMA,
+    Frame,
+    WeightKind,
+    Weights,
+    put_frame_table,
+)
 
 
 def _shim_path() -> Path:
@@ -170,33 +175,24 @@ def test_shim_preserves_legacy_write_signature_and_default(
 
 
 def test_legacy_loader_and_shim_keep_calibrated_weight_contract(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
+    # The loader reads legacy artifacts directly via HDFStore — no
+    # policyengine_us dependency remains — so the contract is exercised
+    # against a real legacy-shaped file.
+    pytest.importorskip("tables")
     source = _frame(weight_kind=WeightKind.DESIGN)
-    captured: dict[str, str] = {}
+    path = tmp_path / "legacy.h5"
+    with pd.HDFStore(path, mode="w") as store:
+        for entity in source.entities:
+            table = source.table(entity).copy()
+            if entity == "household":
+                table["household_weight"] = [7.0, 11.0]
+            put_frame_table(store, entity, table, preferred_format="fixed")
 
-    class FakeDataset:
-        def __init__(self, *, file_path: str) -> None:
-            captured["file_path"] = file_path
-            for entity in source.entities:
-                table = source.table(entity).copy()
-                if entity == "household":
-                    table["household_weight"] = [7.0, 11.0]
-                setattr(self, entity, table)
-
-    package = ModuleType("policyengine_us")
-    package.__path__ = []  # type: ignore[attr-defined]
-    data = ModuleType("policyengine_us.data")
-    data.USSingleYearDataset = FakeDataset  # type: ignore[attr-defined]
-    package.data = data  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "policyengine_us", package)
-    monkeypatch.setitem(sys.modules, "policyengine_us.data", data)
-
-    path = Path("legacy.h5")
     direct = load_legacy_calibrated_us_h5(path)
     via_shim = _load_shim_module()._load_base_frame(path)
 
-    assert captured["file_path"] == str(path)
     for loaded in (direct, via_shim):
         assert loaded.weights_for("household").kind is WeightKind.CALIBRATED
         assert loaded.weights_for("household").values.tolist() == [7.0, 11.0]

@@ -93,6 +93,11 @@ def test_sql_schema_round_trip_matches_python_hash_surface() -> None:
     assert "ALTER EXTENSION pgcrypto SET SCHEMA extensions" in sql
     assert "trim_scale((p_value #>> '{}')::numeric)::text" in sql
     assert "rung IN ('f001', 'f010', 'f100')" in sql
+    rung_migration = (
+        MIGRATION.parent / "20260813000000_logbook_f004_rung.sql"
+    ).read_text(encoding="utf-8")
+    assert "rung IN ('f001', 'f004', 'f010', 'f100')" in rung_migration
+    assert "builds_rung_fraction_token" in rung_migration
     assert "CHECK (logbook.valid_build_phases(phases_reached))" in builds
     assert "CHECK (logbook.valid_gate_verdicts(gate_verdicts))" in builds
     assert "phases_reached jsonb NOT NULL DEFAULT" not in builds
@@ -245,7 +250,7 @@ def test_published_row_requires_an_artifact_location() -> None:
         LogbookRow.create(**_row_kwargs(disposition="published"))
 
 
-@pytest.mark.parametrize("rung", ["f001", "f010", "f100"])
+@pytest.mark.parametrize("rung", ["f001", "f004", "f010", "f100"])
 def test_standard_scale_rungs_are_accepted(rung: str) -> None:
     assert LogbookRow.create(**_row_kwargs(rung=rung)).rung == rung
 

@@ -15,7 +15,6 @@ import gc
 import hashlib
 import json
 import os
-import warnings
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -53,7 +52,13 @@ from microcosm.build.us_runtime.puma_ladder import (
     UsPumaLadder,
     load_us_puma_ladder,
 )
-from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame import (
+    Frame,
+    WeightKind,
+    Weights,
+    put_frame_table,
+    read_frame_table,
+)
 from microcosm.frame.units import US_SCHEMA
 
 PERIOD = 2024
@@ -965,17 +970,11 @@ def _spine_totals(frame: Frame) -> dict[str, dict[str, Any]]:
 def _load_base_frame(path: Path) -> Frame:
     """Load the dense donor H5 without importing PolicyEngine-US at tool import."""
 
-    from policyengine_us.data import USSingleYearDataset
-
-    dataset = USSingleYearDataset(file_path=str(path))
-    tables = {
-        "person": dataset.person,
-        "household": dataset.household,
-        "tax_unit": dataset.tax_unit,
-        "spm_unit": dataset.spm_unit,
-        "family": dataset.family,
-        "marital_unit": dataset.marital_unit,
-    }
+    with pd.HDFStore(path, mode="r") as store:
+        tables = {
+            entity: read_frame_table(store, entity) for entity in US_SCHEMA.entities
+        }
+    tables["household"] = tables["household"].copy()
     household_weights = (
         tables["household"].pop("household_weight").to_numpy(dtype=np.float64)
     )
@@ -1010,12 +1009,12 @@ def _write_dataset(
                     table = table.copy()
                     table["household_weight"] = frame.weights_for("household").values
                 if len(table):
-                    # Fixed format preserves mixed bool/null object columns
-                    # losslessly. Table format rejects them, which would force
-                    # an unauthorized fill or type rewrite on base-only inputs.
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore", pd.errors.PerformanceWarning)
-                        store.put(entity, table, format="fixed")
+                    put_frame_table(
+                        store,
+                        entity,
+                        table,
+                        preferred_format="fixed",
+                    )
             store.put(
                 "_time_period",
                 pd.Series([int(period)]),
@@ -1045,7 +1044,7 @@ def _write_dataset(
                 expected = frame.table(entity)
                 if not len(expected):
                     continue
-                stored = store[entity]
+                stored = read_frame_table(store, entity)
                 expected_columns = list(expected.columns)
                 if entity == "household":
                     expected_columns.append("household_weight")

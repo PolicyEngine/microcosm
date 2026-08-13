@@ -11,7 +11,17 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.frame import EntitySchema, Frame, WeightKind, Weights, engine_tables
+from microcosm.frame import (
+    EntitySchema,
+    Frame,
+    WeightKind,
+    Weights,
+    engine_tables,
+    materialize_nullable_booleans_for_pytables,
+    nullable_boolean_values_and_mask,
+    put_frame_table,
+    read_frame_table,
+)
 
 
 def _uk_frame(*, stale_weight_column: bool) -> Frame:
@@ -104,3 +114,127 @@ def test_simple_schema_bundle_matches_typed_weights(make_bundle) -> None:
         tables["household"]["household_weight"].to_numpy(),
         bundle.weights_for("household").values,
     )
+
+
+def test_nullable_boolean_values_are_canonical_under_the_null_mask() -> None:
+    series = pd.Series([True, pd.NA, False], dtype="boolean")
+
+    values, mask = nullable_boolean_values_and_mask(series)
+
+    assert values.dtype == np.dtype(np.bool_)
+    assert (
+        values.tobytes() == np.asarray([True, False, False], dtype=np.bool_).tobytes()
+    )
+    np.testing.assert_array_equal(mask, np.asarray([False, True, False]))
+
+
+def test_pytables_boolean_materialization_is_lossless_and_non_mutating() -> None:
+    source = pd.DataFrame(
+        {
+            "native": np.asarray([False, True, False], dtype=np.bool_),
+            "complete": pd.Series([True, False, True], dtype="boolean"),
+            "missing": pd.Series([True, pd.NA, False], dtype="boolean"),
+        }
+    )
+    before = source.copy(deep=True)
+
+    materialized = materialize_nullable_booleans_for_pytables(source)
+
+    pd.testing.assert_frame_equal(source, before, check_exact=True, check_dtype=True)
+    assert materialized.table is not source
+    assert materialized.nullable_columns == ("complete", "missing")
+    assert materialized.missing_columns == ("missing",)
+    assert materialized.table["native"].dtype == np.dtype(np.bool_)
+    assert materialized.table["complete"].dtype == np.dtype(np.bool_)
+    assert materialized.table["complete"].to_numpy(copy=False).tobytes() == (
+        source["complete"].to_numpy(dtype=np.bool_, copy=False).tobytes()
+    )
+    assert materialized.table["missing"].dtype == np.dtype(object)
+    assert materialized.table["missing"].tolist() == [True, pd.NA, False]
+    assert materialized.hdf_format("table") == "fixed"
+    assert materialized.hdf_format("fixed") == "fixed"
+
+
+def test_pytables_writer_uses_native_bool_or_fixed_explicit_na(tmp_path) -> None:
+    pytest.importorskip("tables")
+    path = tmp_path / "nullable-booleans.h5"
+    complete = pd.DataFrame({"flag": pd.Series([True, False, True], dtype="boolean")})
+    missing = pd.DataFrame({"flag": pd.Series([True, pd.NA, False], dtype="boolean")})
+
+    with pd.HDFStore(path, mode="w") as store:
+        put_frame_table(
+            store,
+            "complete",
+            complete,
+            preferred_format="table",
+            data_columns=True,
+        )
+        put_frame_table(
+            store,
+            "missing",
+            missing,
+            preferred_format="table",
+            data_columns=True,
+        )
+        assert store.get_storer("complete").is_table is True
+        assert store.get_storer("missing").is_table is False
+
+    with pd.HDFStore(path, mode="r") as store:
+        stored_complete = store["complete"]["flag"]
+        stored_missing = store["missing"]["flag"]
+    assert stored_complete.dtype == np.dtype(np.bool_)
+    assert (
+        stored_complete.to_numpy(copy=False).tobytes()
+        == np.asarray([True, False, True], dtype=np.bool_).tobytes()
+    )
+    assert stored_missing.dtype == np.dtype(object)
+    assert stored_missing.tolist() == [True, pd.NA, False]
+
+
+def test_pytables_reader_restores_all_missing_nullable_boolean(tmp_path) -> None:
+    pytest.importorskip("tables")
+    path = tmp_path / "all-missing-nullable-boolean.h5"
+    source = pd.DataFrame({"flag": pd.Series([pd.NA, pd.NA, pd.NA], dtype="boolean")})
+
+    with pd.HDFStore(path, mode="w") as store:
+        put_frame_table(store, "person", source, preferred_format="fixed")
+
+    with pd.HDFStore(path, mode="r") as store:
+        raw = store["person"]
+        restored = read_frame_table(store, "person")
+
+    assert raw["flag"].dtype.kind in {"O", "U"}
+    assert restored["flag"].dtype == np.dtype(object)
+    assert restored["flag"].tolist() == [pd.NA, pd.NA, pd.NA]
+    pd.testing.assert_series_equal(
+        restored["flag"].astype("boolean"),
+        source["flag"],
+    )
+
+
+@pytest.mark.parametrize(
+    ("payload", "match"),
+    [
+        ("not-json", "malformed dtype codec"),
+        (
+            '{"codec_version":2,"nullable_boolean_columns":["flag"]}',
+            "unsupported dtype codec version",
+        ),
+        (
+            '{"codec_version":1,"nullable_boolean_columns":["absent"]}',
+            "names absent column",
+        ),
+    ],
+)
+def test_pytables_reader_rejects_invalid_dtype_codec(
+    tmp_path, payload: str, match: str
+) -> None:
+    pytest.importorskip("tables")
+    path = tmp_path / "invalid-codec.h5"
+    with pd.HDFStore(path, mode="w") as store:
+        store.put("person", pd.DataFrame({"flag": [True]}), format="fixed")
+        store.get_storer("person").attrs._microcosm_frame_table_codec = payload
+
+    with pd.HDFStore(path, mode="r") as store:
+        with pytest.raises(ValueError, match=match):
+            read_frame_table(store, "person")

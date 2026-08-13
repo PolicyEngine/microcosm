@@ -35,18 +35,26 @@ per-arm scale factors are receipted rather than assumed.
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import math
+import os
 import pickle
+import struct
+import sys
 from collections import Counter
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import asdict, dataclass, field
+from importlib.resources import files
 from pathlib import Path
 from types import MappingProxyType
 
 import numpy as np
 import pandas as pd
 
+import microcosm.build.us_runtime.acs_income_universe as acs_income_universe_runtime
+import microcosm.build.us_runtime.acs_transfer as acs_transfer_runtime
+import microcosm.build.us_runtime.multispine_pool as multispine_pool_runtime
 from microcosm.build.frame_sampling import (
     EXACT_COUNT_RULE as _EXACT_COUNT_RULE,
 )
@@ -71,20 +79,42 @@ from microcosm.build.gates import (
     _sealed_stacked_gate_result,
 )
 from microcosm.build.serialization_dtypes import canonicalize_table_string_dtypes
+from microcosm.build.source_manifest import load_source_manifest
 from microcosm.build.us_runtime.acs_income_universe import (
+    ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
+    AcsPumsEarningsUniverseApplication,
+    acs_pums_earnings_universe_contract_identity,
     apply_acs_pums_earnings_universe_zeros,
+    resolve_acs_pums_earnings_universe,
 )
 from microcosm.build.us_runtime.acs_transfer import (
+    ASEC_PUF_DONOR_SPINE,
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     AcsTransferResult,
     AcsTransferTargetBank,
     TargetFamilies,
     transfer_acs_inputs,
 )
+from microcosm.build.us_runtime.late_producer_dag import (
+    ProducerContract,
+    ProducerInput,
+    ProducerInputColumn,
+    ProducerOutput,
+    run_producer_when_ready,
+)
 from microcosm.build.us_runtime.multispine_pool import (
+    POOL_DEFERRED_TRANSFER_INPUTS,
+    POOL_DEFERRED_TRANSFER_STATUS,
+    POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES,
+    POOL_HOUSING_ASSISTANCE_N_ESTIMATORS,
     POOL_OPERATOR_CONTRACTS,
+    POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
+    POOL_POST_CLONE_SOURCE_PHASE,
     POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER,
+    POOL_RANDOM_SEED,
+    POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE,
     POOL_SPINE_AGREEMENT_REGISTRY,
+    POOL_TIME_PERIOD,
     pool_post_puf_puf_producer_target_families,
     pool_post_puf_source_producer_target_families,
     pool_post_puf_transfer_target_families,
@@ -92,7 +122,11 @@ from microcosm.build.us_runtime.multispine_pool import (
     pool_transfer_target_families,
 )
 from microcosm.build.us_runtime.operator_boundary import (
+    FORMULA_OWNED_SOURCE_COLUMNS,
     PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+)
+from microcosm.build.us_runtime.puf_aggregate_records import (
+    PufAggregateDisaggregationSpec,
 )
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
@@ -104,11 +138,21 @@ from microcosm.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL,
     PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
     PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN,
+    puf_capital_gains_tail_execution_inputs_identity,
+    puf_capital_gains_tail_spec_identity,
+    puf_capital_gains_tail_support_contract_identity,
+    puf_capital_gains_tail_terminal_support_receipt,
+    resolve_puf_capital_gains_tail_execution_inputs,
     transfer_puf_capital_gains_tail,
     validate_puf_capital_gains_tail_manifest,
+    validate_puf_capital_gains_tail_terminal_support_receipt,
 )
+from microcosm.build.us_runtime.puf_interest_components import PufE19200AgiBand
 from microcosm.build.us_runtime.puf_qrf_chain import (
+    PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
     PRIMARY_QRF_MANIFEST_FILENAME,
+    PRIMARY_QRF_TARGET_ORDER,
+    PRIMARY_QRF_TARGET_ORDER_SHA256,
     finalize_primary_puf_qrf_chain,
     initialize_primary_puf_qrf_chain,
     primary_puf_qrf_recipient_predictor_universe_receipt,
@@ -118,11 +162,14 @@ from microcosm.build.us_runtime.puf_support import (
     PUF_ABSENT_CELLS_PRESERVE_NULLS,
     PUF_CLONE_ATTACHMENT_MANIFEST_KEY,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+    PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+    PUF_TAX_DETAIL_SUPPORT_CHANNEL,
     US_PUF_SUPPORT_FIT_NAME,
     bind_puf_clone_attachment_tail_descendant,
     clone_us_frame_for_puf_support,
     impute_us_puf_tax_detail_support,
+    puf_tax_detail_tail_bound_quantiles_identity,
     validate_puf_clone_attachment,
 )
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
@@ -135,6 +182,30 @@ from microcosm.build.us_runtime.support_provenance import (
     support_clone_index_column,
     support_source_id_column,
     validate_assembly_provenance,
+)
+from microcosm.build.us_runtime.us_late_overlap_ownership import (
+    us_late_overlap_ownership_receipt,
+    validate_us_late_overlap_ownership_receipt,
+)
+from microcosm.build.us_runtime.us_late_producer_registry import (
+    CANONICAL_US_LATE_PRODUCER_REGISTRY,
+    CANONICAL_US_LATE_PRODUCER_SCHEDULE,
+    CANONICAL_US_LATE_TRANSFER_GROUPS,
+    US_LATE_ACS_EARNINGS_UNIVERSE_CONFIG_INPUT,
+    US_LATE_ACS_EARNINGS_UNIVERSE_RECEIPT_INPUT,
+    US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
+    US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT,
+    US_LATE_PRIMARY_PUF_STAGE,
+    US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
+    US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID,
+    US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY,
+    US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION,
+    US_LATE_SOURCE_EXECUTION_CONFIG_INPUT,
+    US_LATE_SOURCE_FINALIZER_EXECUTION_CONFIG_INPUT,
+    US_LATE_SOURCE_FINALIZER_STAGE,
+    US_LATE_TRANSFER_MODEL_CONFIG_INPUT,
+    US_LATE_TRANSFER_TARGET_BANK_INPUT,
+    us_late_producer_schedule_receipt,
 )
 from microcosm.frame import US_SCHEMA, Frame
 
@@ -154,12 +225,15 @@ __all__ = [
     "STACKED_PILOT_ACS_SAMPLE_FRACTION",
     "STACKED_PILOT_ACS_SAMPLE_SEED",
     "STACKED_SPINE_MANIFEST_KEY",
+    "US_PUF_S_CORP_UNIVERSE_ZERO_RULE_ID",
+    "US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY",
     "AbsenceProof",
     "GapFillAbsenceRule",
     "GapFillDirection",
     "GapFillResult",
     "OriginBatterySpec",
     "StackedPufPassResult",
+    "StackedLateProducerResult",
     "StackedPostPufTransferResult",
     "StackedSpineResult",
     "assemble_stacked_spine",
@@ -167,13 +241,21 @@ __all__ = [
     "by_origin_battery",
     "gap_fill_stacked_spine",
     "run_stacked_puf_pass",
+    "run_stacked_late_producer_dag",
     "prepare_stacked_tail_derivation",
     "sample_acs_households",
     "stacked_completeness_gate",
     "stacked_gap_fill_plan",
     "stacked_gap_fill_producer_schedule_receipt",
+    "stacked_late_primary_checkpoint_input_binding",
+    "stacked_late_primary_resource_receipts",
+    "stacked_late_producer_resource_semantics_receipt",
     "stacked_spine_authority_receipt",
     "transfer_stacked_post_puf_inputs",
+    "transfer_stacked_post_puf_group",
+    "us_puf_s_corp_universe_zero_rule_identity",
+    "validate_stacked_late_producer_receipt",
+    "validate_stacked_late_producer_transition_authority",
     "validate_stacked_post_puf_transfer_receipt",
     "validate_stacked_spine_frame",
 ]
@@ -190,6 +272,7 @@ DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES: Mapping[str, float] = {
 }
 
 STACKED_SPINE_MANIFEST_KEY = "us_stacked_spine_manifest"
+US_PUF_S_CORP_UNIVERSE_ZERO_RULE_ID = "puf_tax_detail_s_corp_income_universe_zero_v1"
 _LEGACY_STACKED_SPINE_MANIFEST_VERSION = 1
 _STACKED_SPINE_MANIFEST_VERSION = 4
 _SUPPORTED_STACKED_SPINE_MANIFEST_VERSIONS = {
@@ -1577,6 +1660,17 @@ def _json_ready(value: object) -> dict[str, object]:
             return {str(key): thaw(nested) for key, nested in item.items()}
         if isinstance(item, (list, tuple)):
             return [thaw(nested) for nested in item]
+        if isinstance(item, (set, frozenset)):
+            values = [thaw(nested) for nested in item]
+            return sorted(
+                values,
+                key=lambda nested: json.dumps(
+                    nested,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                ),
+            )
         if isinstance(item, np.generic):
             return item.item()
         return item
@@ -1594,9 +1688,11 @@ _GAP_FILL_ASEC_TO_ACS = "asec_survey_to_acs"
 _GAP_FILL_ASEC_HOUSING_TO_ACS = "asec_housing_to_acs"
 _GAP_FILL_HOUSING_FAMILY = "housing"
 _STACKED_AUTHORITY_ID = "us_stacked_spine_authority"
-# v6 binds the ASEC-consistent ACS earnings-universe application and the
-# authenticated whole-pool QBI mutation semantics into the outer identity.
-_STACKED_AUTHORITY_VERSION = 6
+# v10 binds the primary-PUF whole-pool output-universe declaration. v9 bound
+# the content-hashed execution/transition-authority schema in addition to the
+# import-validated producer/input DAG. Version 8 named the graph but did not
+# authenticate its live input/output transition.
+_STACKED_AUTHORITY_VERSION = 10
 _CANONICAL_AUTHORITY_FORM = "CANONICAL"
 _NONCANONICAL_AUTHORITY_FORM = "NON-CANONICAL"
 _PRE_CLONE_PREPARATION_STAGE = "prepare_multispine_source_inputs_for_clone"
@@ -1815,6 +1911,28 @@ class _BatterySupportProfile:
     min_effective_support: int
 
 
+def _freeze_authority_payload(value: object) -> object:
+    """Recursively freeze one JSON-shaped authority component."""
+
+    if isinstance(value, Mapping):
+        return MappingProxyType(
+            {
+                str(key): _freeze_authority_payload(nested)
+                for key, nested in value.items()
+            }
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_authority_payload(nested) for nested in value)
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, np.generic):
+        return value.item()
+    raise TypeError(
+        "Stacked authority components must contain only canonical JSON values; "
+        f"got {type(value).__name__}."
+    )
+
+
 @dataclass(frozen=True)
 class _StackedAuthority:
     """One digest-carrying, deeply immutable stacked-spine authority bundle."""
@@ -1829,6 +1947,8 @@ class _StackedAuthority:
     metric_registry: Mapping[tuple[str, str, str, int], str]
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
     support_profile: _BatterySupportProfile
+    puf_capital_gains_tail_support_contract: Mapping[str, object]
+    late_producer_schedule: Mapping[str, object]
     declared_component_sha256: Mapping[str, str]
     declared_sha256: str
     declared_form: str
@@ -1876,6 +1996,25 @@ class _StackedAuthority:
             raise TypeError(
                 "Stacked authority support_profile must be a _BatterySupportProfile."
             )
+        if not isinstance(self.puf_capital_gains_tail_support_contract, Mapping):
+            raise TypeError(
+                "Stacked authority capital-gains-tail support contract must be "
+                "a mapping."
+            )
+        object.__setattr__(
+            self,
+            "puf_capital_gains_tail_support_contract",
+            _freeze_authority_payload(self.puf_capital_gains_tail_support_contract),
+        )
+        if not isinstance(self.late_producer_schedule, Mapping):
+            raise TypeError(
+                "Stacked authority late producer schedule must be a mapping."
+            )
+        object.__setattr__(
+            self,
+            "late_producer_schedule",
+            _freeze_authority_payload(self.late_producer_schedule),
+        )
         component_digests = dict(self.declared_component_sha256)
         if set(component_digests) != {
             "gap_fill_plan",
@@ -1884,6 +2023,8 @@ class _StackedAuthority:
             "metric_registry",
             "joint_metric_registry",
             "support_profile",
+            "puf_capital_gains_tail_support_contract",
+            "late_producer_schedule",
         }:
             raise ValueError(
                 "Stacked authority must carry every component's declared digest."
@@ -2177,6 +2318,8 @@ def _authority_component_payloads(
     metric_registry: Mapping[tuple[str, str, str, int], str],
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str],
     support_profile: _BatterySupportProfile,
+    puf_capital_gains_tail_support_contract: Mapping[str, object],
+    late_producer_schedule: Mapping[str, object],
 ) -> dict[str, object]:
     return {
         "gap_fill_plan": _plan_payload(gap_fill_plan),
@@ -2196,6 +2339,10 @@ def _authority_component_payloads(
         "metric_registry": _metric_registry_payload(metric_registry),
         "joint_metric_registry": _joint_metric_registry_payload(joint_metric_registry),
         "support_profile": _support_profile_payload(support_profile),
+        "puf_capital_gains_tail_support_contract": _json_ready(
+            puf_capital_gains_tail_support_contract
+        ),
+        "late_producer_schedule": _json_ready(late_producer_schedule),
     }
 
 
@@ -2222,6 +2369,10 @@ def _authority_live_digests(
         metric_registry=authority.metric_registry,
         joint_metric_registry=authority.joint_metric_registry,
         support_profile=authority.support_profile,
+        puf_capital_gains_tail_support_contract=(
+            authority.puf_capital_gains_tail_support_contract
+        ),
+        late_producer_schedule=authority.late_producer_schedule,
     )
     component_digests = {
         name: _canonical_sha256(payload) for name, payload in payloads.items()
@@ -2248,6 +2399,8 @@ def _make_stacked_authority(
     metric_registry: Mapping[tuple[str, str, str, int], str],
     support_profile: _BatterySupportProfile,
     declared_form: str,
+    puf_capital_gains_tail_support_contract: Mapping[str, object] | None = None,
+    late_producer_schedule: Mapping[str, object] | None = None,
     joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
     | None = None,
     declared_component_sha256: Mapping[str, str] | None = None,
@@ -2266,6 +2419,20 @@ def _make_stacked_authority(
     frozen_joint_registry = _freeze_joint_metric_registry(
         {} if joint_metric_registry is None else joint_metric_registry
     )
+    frozen_tail_support_contract = _freeze_authority_payload(
+        puf_capital_gains_tail_support_contract_identity()
+        if puf_capital_gains_tail_support_contract is None
+        else puf_capital_gains_tail_support_contract
+    )
+    if not isinstance(frozen_tail_support_contract, Mapping):
+        raise TypeError("Capital-gains-tail support contract must be a mapping.")
+    frozen_late_producer_schedule = _freeze_authority_payload(
+        us_late_producer_schedule_receipt()
+        if late_producer_schedule is None
+        else late_producer_schedule
+    )
+    if not isinstance(frozen_late_producer_schedule, Mapping):
+        raise TypeError("Late producer schedule must be a mapping.")
     component_payloads = _authority_component_payloads(
         gap_fill_plan=frozen_plan,
         post_puf_transfer_surface=frozen_post_puf_surface,
@@ -2275,6 +2442,8 @@ def _make_stacked_authority(
         metric_registry=frozen_registry,
         joint_metric_registry=frozen_joint_registry,
         support_profile=support_profile,
+        puf_capital_gains_tail_support_contract=frozen_tail_support_contract,
+        late_producer_schedule=frozen_late_producer_schedule,
     )
     live_components = {
         name: _canonical_sha256(payload) for name, payload in component_payloads.items()
@@ -2297,6 +2466,8 @@ def _make_stacked_authority(
         metric_registry=frozen_registry,
         joint_metric_registry=frozen_joint_registry,
         support_profile=support_profile,
+        puf_capital_gains_tail_support_contract=frozen_tail_support_contract,
+        late_producer_schedule=frozen_late_producer_schedule,
         declared_component_sha256=(
             live_components
             if declared_component_sha256 is None
@@ -2940,6 +3111,7 @@ def _production_stacked_authority(
         CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
     ),
 ) -> _StackedAuthority:
+    live_late_producer_schedule = us_late_producer_schedule_receipt()
     identity = (
         _STACKED_GAP_FILL_PLAN is _canonical_plan
         and _STACKED_GAP_FILL_SURFACE is _canonical_gap_surface
@@ -2952,6 +3124,8 @@ def _production_stacked_authority(
         and _BATTERY_METRIC_REGISTRY is _canonical_registry
         and _BATTERY_JOINT_METRIC_REGISTRY is _canonical_joint_registry
         and _BATTERY_SUPPORT_PROFILE is _canonical_profile
+        and _json_ready(live_late_producer_schedule)
+        == _json_ready(_canonical_authority.late_producer_schedule)
     )
     if identity:
         return _canonical_authority
@@ -2966,6 +3140,7 @@ def _production_stacked_authority(
         metric_registry=_BATTERY_METRIC_REGISTRY,
         joint_metric_registry=_BATTERY_JOINT_METRIC_REGISTRY,
         support_profile=_BATTERY_SUPPORT_PROFILE,
+        late_producer_schedule=live_late_producer_schedule,
         declared_form=_CANONICAL_AUTHORITY_FORM,
         declared_component_sha256=_canonical_authority.declared_component_sha256,
         declared_sha256=_canonical_authority.declared_sha256,
@@ -3256,6 +3431,26 @@ def _authority_receipt(
             "declared_sha256": authority.declared_component_sha256["support_profile"],
             "digest_matches_declared": component_integrity["support_profile"],
         },
+        "puf_capital_gains_tail_support_contract": {
+            "identity": _json_ready(authority.puf_capital_gains_tail_support_contract),
+            "sha256": live_components["puf_capital_gains_tail_support_contract"],
+            "declared_sha256": authority.declared_component_sha256[
+                "puf_capital_gains_tail_support_contract"
+            ],
+            "digest_matches_declared": component_integrity[
+                "puf_capital_gains_tail_support_contract"
+            ],
+        },
+        "late_producer_schedule": {
+            "identity": _json_ready(authority.late_producer_schedule),
+            "sha256": live_components["late_producer_schedule"],
+            "declared_sha256": authority.declared_component_sha256[
+                "late_producer_schedule"
+            ],
+            "schedule_sha256": authority.late_producer_schedule.get("schedule_sha256"),
+            "producer_count": authority.late_producer_schedule.get("producer_count"),
+            "digest_matches_declared": component_integrity["late_producer_schedule"],
+        },
     }
     return {
         "authority_id": authority.authority_id,
@@ -3403,6 +3598,11 @@ def _authority_validation_failures(
         ("metric_registry", "metric registry"),
         ("joint_metric_registry", "joint metric registry"),
         ("support_profile", "support profile"),
+        (
+            "puf_capital_gains_tail_support_contract",
+            "PUF capital-gains-tail support contract",
+        ),
+        ("late_producer_schedule", "late producer schedule"),
     ):
         component = receipt["components"][name]
         if not component["digest_matches_declared"]:
@@ -3501,7 +3701,7 @@ def validate_stacked_post_puf_transfer_receipt(
     *,
     boundary: str,
 ) -> None:
-    """Reject a late-transfer receipt unless it carries canonical authority."""
+    """Reject a late-transfer receipt unless its full DAG proof is canonical."""
 
     if not isinstance(receipt, Mapping):
         raise ValueError(f"{boundary}: stacked post-PUF transfer receipt is absent.")
@@ -3512,6 +3712,3336 @@ def validate_stacked_post_puf_transfer_receipt(
             "production manifest emission is forbidden."
         )
     _validate_production_authority_receipt(authority, boundary=boundary)
+    schedule = receipt.get("producer_schedule")
+    expected_schedule = _json_ready(us_late_producer_schedule_receipt())
+    if not isinstance(schedule, Mapping) or _json_ready(schedule) != expected_schedule:
+        raise ValueError(
+            f"{boundary}: stacked post-PUF transfer receipt has no canonical "
+            "late-producer schedule; production manifest emission is forbidden."
+        )
+    expected_execution_order = [
+        producer
+        for producer in CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
+        if producer != US_LATE_PRIMARY_PUF_STAGE
+    ]
+    if receipt.get("producer_execution_order") != expected_execution_order:
+        raise ValueError(
+            f"{boundary}: stacked post-PUF transfer execution order does not "
+            "match the derived late-producer schedule; production manifest "
+            "emission is forbidden."
+        )
+    expected_groups = {group.name: group for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    groups = receipt.get("groups")
+    if not isinstance(groups, Mapping) or set(groups) != set(expected_groups):
+        raise ValueError(
+            f"{boundary}: stacked post-PUF transfer group surface is not the "
+            "canonical 19-group partition; production manifest emission is "
+            "forbidden."
+        )
+    for name, group in expected_groups.items():
+        group_receipt = groups[name]
+        if (
+            not isinstance(group_receipt, Mapping)
+            or group_receipt.get("producer") != name
+            or tuple(group_receipt.get("ordered_targets", ())) != group.targets
+        ):
+            raise ValueError(
+                f"{boundary}: stacked post-PUF transfer group {name!r} is "
+                "misbound; production manifest emission is forbidden."
+            )
+    expected_target_labels = {
+        f"{entity}/{family}/{target}"
+        for entity, families in CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
+        for family, targets in families.items()
+        for target in targets
+    }
+    targets = receipt.get("targets")
+    if not isinstance(targets, Mapping) or set(targets) != expected_target_labels:
+        raise ValueError(
+            f"{boundary}: stacked post-PUF transfer target surface is not the "
+            "canonical 70-target surface; production manifest emission is "
+            "forbidden."
+        )
+    if any(
+        not isinstance(target_receipt, Mapping)
+        or target_receipt.get("residual_null_rows") != 0
+        for target_receipt in targets.values()
+    ):
+        raise ValueError(
+            f"{boundary}: stacked post-PUF transfer target receipts do not "
+            "prove zero residual nulls; production manifest emission is forbidden."
+        )
+    completion = receipt.get("completion")
+    if completion != {
+        "status": "complete",
+        "group_count": 19,
+        "target_count": 70,
+        "residual_null_rows": 0,
+    }:
+        raise ValueError(
+            f"{boundary}: stacked post-PUF transfer completion receipt is not "
+            "canonical; production manifest emission is forbidden."
+        )
+
+
+_LATE_TABLE_DIGEST_CODEC = "canonical_scalar_v1"
+_LATE_PRIMARY_QRF_INPUT_BINDING_ARTIFACT_KIND = (
+    "populace_us_stacked_late_primary_qrf_input_binding"
+)
+_LATE_PRIMARY_QRF_INPUT_BINDING_FILENAME = "late-producer-input-binding.json"
+_LATE_RESOURCE_SEMANTICS_ARTIFACT_KIND = (
+    "populace_us_stacked_late_producer_resource_semantics"
+)
+_LATE_TABLE_DIGEST_CHUNK_ROWS = 65_536
+
+
+def _late_digest_part(
+    digest,
+    *,
+    domain: str,
+    payload: bytes | bytearray | memoryview | np.ndarray,
+) -> None:
+    """Append one length-framed, domain-separated byte field to a digest."""
+
+    domain_bytes = domain.encode("utf-8")
+    payload_view = memoryview(payload)
+    if payload_view.format != "B" or payload_view.ndim != 1:
+        payload_view = payload_view.cast("B")
+    digest.update(struct.pack("<I", len(domain_bytes)))
+    digest.update(domain_bytes)
+    digest.update(struct.pack("<Q", payload_view.nbytes))
+    digest.update(payload_view)
+
+
+def _late_little_endian_bytes(values: np.ndarray) -> np.ndarray:
+    """Return a contiguous, explicitly little-endian numeric byte source."""
+
+    array = np.asarray(values)
+    array = array.astype(array.dtype.newbyteorder("<"), copy=False)
+    return np.ascontiguousarray(array)
+
+
+def _late_scalar_bytes(value: object) -> bytes:
+    """Encode one supported object scalar without lossy intermediary hashes."""
+
+    missing = pd.isna(value)
+    if isinstance(missing, (bool, np.bool_)) and bool(missing):
+        return b"null"
+    if isinstance(value, (bool, np.bool_)):
+        return b"bool\x01" if bool(value) else b"bool\x00"
+    if isinstance(value, (int, np.integer)):
+        return b"integer\x00" + str(int(value)).encode("ascii")
+    if isinstance(value, (float, np.floating)):
+        if isinstance(value, np.floating) and value.dtype.itemsize > 8:
+            raise TypeError(
+                "US late-producer content digest does not support object "
+                f"floating scalar {value.dtype!s}."
+            )
+        return b"float64\x00" + struct.pack("<d", float(value))
+    if isinstance(value, (complex, np.complexfloating)):
+        if isinstance(value, np.complexfloating) and value.dtype.itemsize > 16:
+            raise TypeError(
+                "US late-producer content digest does not support object "
+                f"complex scalar {value.dtype!s}."
+            )
+        numeric = complex(value)
+        return b"complex128\x00" + struct.pack("<dd", numeric.real, numeric.imag)
+    if isinstance(value, str):
+        return b"string\x00" + value.encode("utf-8")
+    if isinstance(value, (bytes, np.bytes_)):
+        return b"bytes\x00" + bytes(value)
+    if isinstance(value, (pd.Timestamp, np.datetime64)):
+        timestamp = pd.Timestamp(value)
+        return b"datetime64ns\x00" + struct.pack("<q", timestamp.value)
+    if isinstance(value, (pd.Timedelta, np.timedelta64)):
+        delta = pd.Timedelta(value)
+        return b"timedelta64ns\x00" + struct.pack("<q", delta.value)
+    raise TypeError(
+        "US late-producer content digest received unsupported object scalar "
+        f"{type(value).__name__}."
+    )
+
+
+def _late_digest_variable_width_values(
+    digest,
+    values: Sequence[object],
+    missing: np.ndarray,
+    *,
+    domain: str,
+    strings_only: bool,
+) -> None:
+    """Stream framed string or object scalars in bounded-memory chunks."""
+
+    for chunk_index, start in enumerate(
+        range(0, len(values), _LATE_TABLE_DIGEST_CHUNK_ROWS)
+    ):
+        stop = min(start + _LATE_TABLE_DIGEST_CHUNK_ROWS, len(values))
+        lengths = np.zeros(stop - start, dtype="<u8")
+        payload = bytearray()
+        for local_index, value in enumerate(values[start:stop]):
+            if missing[start + local_index]:
+                encoded = b""
+            elif strings_only:
+                if not isinstance(value, str):
+                    raise TypeError(
+                        "US late-producer string digest received non-string "
+                        f"scalar {type(value).__name__}."
+                    )
+                encoded = value.encode("utf-8")
+            else:
+                encoded = _late_scalar_bytes(value)
+            lengths[local_index] = len(encoded)
+            payload.extend(encoded)
+        chunk_domain = f"{domain}/chunk/{chunk_index}"
+        _late_digest_part(
+            digest,
+            domain=f"{chunk_domain}/lengths",
+            payload=lengths,
+        )
+        _late_digest_part(
+            digest,
+            domain=f"{chunk_domain}/payload",
+            payload=payload,
+        )
+
+
+def _late_digest_series_values(
+    digest,
+    series: pd.Series,
+    *,
+    domain: str,
+) -> None:
+    """Hash one ordered logical Series with explicit dtype and null domains."""
+
+    dtype = series.dtype
+    missing = series.isna().to_numpy(dtype=bool)
+    _late_digest_part(
+        digest,
+        domain=f"{domain}/dtype",
+        payload=str(dtype).encode("utf-8"),
+    )
+    _late_digest_part(
+        digest,
+        domain=f"{domain}/row_count",
+        payload=struct.pack("<Q", len(series)),
+    )
+    _late_digest_part(
+        digest,
+        domain=f"{domain}/null_bitmap",
+        payload=np.ascontiguousarray(missing, dtype=np.uint8),
+    )
+
+    if pd.api.types.is_bool_dtype(dtype):
+        encoded = series.to_numpy(dtype=np.uint8, na_value=0)
+    elif pd.api.types.is_integer_dtype(dtype):
+        numpy_dtype = np.dtype(getattr(dtype, "numpy_dtype", dtype))
+        encoded = series.to_numpy(dtype=numpy_dtype, na_value=0)
+    elif pd.api.types.is_float_dtype(dtype):
+        numpy_dtype = np.dtype(getattr(dtype, "numpy_dtype", dtype))
+        encoded = series.to_numpy(dtype=numpy_dtype, na_value=0.0)
+        if missing.any():
+            encoded = encoded.copy()
+            encoded[missing] = 0.0
+    elif pd.api.types.is_complex_dtype(dtype):
+        numpy_dtype = np.dtype(getattr(dtype, "numpy_dtype", dtype))
+        encoded = series.to_numpy(dtype=numpy_dtype, na_value=0.0j)
+        if missing.any():
+            encoded = encoded.copy()
+            encoded[missing] = 0.0j
+    elif pd.api.types.is_datetime64_any_dtype(dtype):
+        encoded = series.array.asi8.copy()
+        encoded[missing] = 0
+    elif pd.api.types.is_timedelta64_dtype(dtype):
+        encoded = series.array.asi8.copy()
+        encoded[missing] = 0
+    elif isinstance(dtype, pd.StringDtype):
+        _late_digest_variable_width_values(
+            digest,
+            series.array,
+            missing,
+            domain=f"{domain}/strings",
+            strings_only=True,
+        )
+        return
+    else:
+        _late_digest_variable_width_values(
+            digest,
+            series.array,
+            missing,
+            domain=f"{domain}/objects",
+            strings_only=False,
+        )
+        return
+
+    _late_digest_part(
+        digest,
+        domain=f"{domain}/fixed_width_values",
+        payload=_late_little_endian_bytes(encoded),
+    )
+
+
+def _late_table_values_sha256(
+    table: pd.DataFrame,
+    *,
+    normalize_strings: bool = False,
+) -> str:
+    """Hash ordered table scalars directly with typed, null-aware framing."""
+
+    values = (
+        canonicalize_table_string_dtypes(
+            table,
+            boundary="late-producer content digest",
+            table_name="declared_surface",
+        )
+        if normalize_strings
+        else table
+    )
+    if isinstance(values.index, pd.MultiIndex):
+        index_levels = [
+            pd.Series(values.index.get_level_values(level), copy=False)
+            for level in range(values.index.nlevels)
+        ]
+    else:
+        index_levels = [pd.Series(values.index, copy=False)]
+    header = {
+        "codec": _LATE_TABLE_DIGEST_CODEC,
+        "columns": [str(column) for column in values.columns],
+        "dtypes": [
+            str(values.iloc[:, index].dtype) for index in range(values.shape[1])
+        ],
+        "index_type": type(values.index).__name__,
+        "index_dtype": str(values.index.dtype),
+        "index_level_dtypes": [str(level.dtype) for level in index_levels],
+        "index_names": [
+            None if name is None else str(name) for name in values.index.names
+        ],
+    }
+    digest = hashlib.sha256()
+    _late_digest_part(
+        digest,
+        domain="late_table_digest_codec",
+        payload=_LATE_TABLE_DIGEST_CODEC.encode("ascii"),
+    )
+    _late_digest_part(
+        digest,
+        domain="late_table_header_json",
+        payload=json.dumps(
+            header,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8"),
+    )
+    for level_index, level in enumerate(index_levels):
+        _late_digest_series_values(
+            digest,
+            level,
+            domain=f"index_level/{level_index}",
+        )
+    for column_index in range(values.shape[1]):
+        _late_digest_series_values(
+            digest,
+            values.iloc[:, column_index],
+            domain=f"column/{column_index}",
+        )
+    return digest.hexdigest()
+
+
+def _late_virtual_resource_kind(column: str) -> str:
+    """Return the exact semantic kind for one declared virtual input."""
+
+    kinds = {
+        "@puf_donor_tax_units": "puf_donor_tax_units",
+        "@primary_qrf_checkpoint": "primary_qrf_checkpoint",
+        US_LATE_ACS_EARNINGS_UNIVERSE_CONFIG_INPUT: (
+            "acs_pums_earnings_universe_execution_config"
+        ),
+        US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT: "primary_puf_execution_config",
+        US_LATE_SOURCE_EXECUTION_CONFIG_INPUT: ("post_clone_source_execution_config"),
+        US_LATE_SOURCE_FINALIZER_EXECUTION_CONFIG_INPUT: (
+            "source_finalizer_execution_config"
+        ),
+        US_LATE_TRANSFER_MODEL_CONFIG_INPUT: "late_transfer_model_config",
+        US_LATE_TRANSFER_TARGET_BANK_INPUT: "late_transfer_target_bank",
+    }
+    if column.startswith("@source_receipt:"):
+        return "source_operator_receipt"
+    try:
+        return kinds[column]
+    except KeyError as exc:
+        raise ValueError(
+            f"Unknown US late-producer virtual resource input {column!r}."
+        ) from exc
+
+
+def _late_resource_binding_schema_version(column: str) -> int:
+    """Return the independently versioned payload schema for one resource."""
+
+    kind = _late_virtual_resource_kind(column)
+    return {
+        "acs_pums_earnings_universe_execution_config": 2,
+        "primary_puf_execution_config": 4,
+        "post_clone_source_execution_config": 3,
+        "source_finalizer_execution_config": 2,
+        "late_transfer_model_config": 3,
+    }.get(kind, 1)
+
+
+def _late_contract_available_input_keys(
+    contract: ProducerContract,
+) -> set[str]:
+    """Return the exact external-receipt keys required by one contract."""
+
+    return {
+        f"{column.entity}.{column.column}"
+        for requirement in contract.inputs
+        for alternative in requirement.alternatives
+        for column in alternative
+        if column.column.startswith("@")
+        and column.column != "@resolved_weight"
+        and column.entity != "frame"
+    }
+
+
+def _validate_late_resource_binding(
+    binding: Mapping[str, object],
+    *,
+    producer: str,
+    entity: str,
+    column: str,
+    boundary: str,
+) -> None:
+    """Reject hash-consistent resource claims with incomplete semantics."""
+
+    kind = _late_virtual_resource_kind(column)
+
+    def require_keys(expected: set[str]) -> None:
+        if set(binding) != expected:
+            raise ValueError(
+                f"{boundary}: late resource {entity}.{column} {kind!r} binding "
+                f"schema drifted; missing={sorted(expected - set(binding))}, "
+                f"extra={sorted(set(binding) - expected)}."
+            )
+
+    def require_nonnegative_integer(value: object, *, label: str) -> int:
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(
+                f"{boundary}: late resource {entity}.{column} has invalid "
+                f"{label}={value!r}."
+            )
+        return value
+
+    def require_positive_integer(value: object, *, label: str) -> int:
+        result = require_nonnegative_integer(value, label=label)
+        if result == 0:
+            raise ValueError(
+                f"{boundary}: late resource {entity}.{column} requires positive "
+                f"{label}."
+            )
+        return result
+
+    common = {"resource_kind", "schema_version"}
+    if kind == "puf_donor_tax_units":
+        require_keys({*common, "table_content_sha256", "ordered_columns", "dtypes"})
+        _validate_sha256(
+            binding.get("table_content_sha256"),
+            boundary=f"{boundary} PUF donor content",
+        )
+        columns = binding.get("ordered_columns")
+        dtypes = binding.get("dtypes")
+        if (
+            not isinstance(columns, list)
+            or not columns
+            or any(not isinstance(value, str) or not value for value in columns)
+            or not isinstance(dtypes, list)
+            or len(dtypes) != len(columns)
+            or any(not isinstance(value, str) or not value for value in dtypes)
+        ):
+            raise ValueError(
+                f"{boundary}: late PUF donor binding has malformed columns/dtypes."
+            )
+        return
+    if kind == "primary_qrf_checkpoint":
+        require_keys(
+            {
+                *common,
+                "checkpoint_identity_sha256",
+                "checkpoint_schema_version",
+                "manifest_filename",
+                "mode",
+                "target_order",
+                "target_order_sha256",
+            }
+        )
+        _validate_sha256(
+            binding.get("checkpoint_identity_sha256"),
+            boundary=f"{boundary} primary-QRF checkpoint identity",
+        )
+        expected = {
+            "mode": "identity_bound_checkpoint",
+            "checkpoint_schema_version": PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
+            "manifest_filename": PRIMARY_QRF_MANIFEST_FILENAME,
+            "target_order": list(PRIMARY_QRF_TARGET_ORDER),
+            "target_order_sha256": PRIMARY_QRF_TARGET_ORDER_SHA256,
+        }
+        if any(binding.get(key) != value for key, value in expected.items()):
+            raise ValueError(
+                f"{boundary}: late primary-QRF checkpoint semantics changed."
+            )
+        return
+    if kind == "acs_pums_earnings_universe_execution_config":
+        require_keys(
+            {
+                *common,
+                "runtime_identity_owner",
+                "ordered_mapped_columns",
+                "person_scope_mode",
+                "contract_identity",
+            }
+        )
+        if binding.get("ordered_mapped_columns") != list(
+            ACS_PUMS_EARNINGS_SOURCE_COLUMNS
+        ):
+            raise ValueError(
+                f"{boundary}: late ACS earnings-universe target order changed."
+            )
+        if binding.get("person_scope_mode") != "whole_frame_acs_channel":
+            raise ValueError(
+                f"{boundary}: late ACS earnings-universe scope mode changed."
+            )
+        if (
+            binding.get("contract_identity")
+            != _CANONICAL_ACS_EARNINGS_UNIVERSE_CONTRACT_IDENTITY
+        ):
+            raise ValueError(
+                f"{boundary}: late ACS earnings-universe contract changed."
+            )
+        if binding.get("runtime_identity_owner") != (
+            "microcosm.build.us_runtime.acs_income_universe"
+        ):
+            raise ValueError(
+                f"{boundary}: late ACS earnings-universe runtime owner changed."
+            )
+        return
+    if kind == "primary_puf_execution_config":
+        require_keys(
+            {
+                *common,
+                "clone_attachment",
+                "qrf",
+                "doctrines",
+                "capital_gains_tail",
+                "audit_sinks",
+            }
+        )
+        clone = binding.get("clone_attachment")
+        qrf = binding.get("qrf")
+        doctrines = binding.get("doctrines")
+        tail = binding.get("capital_gains_tail")
+        audit_sinks = binding.get("audit_sinks")
+        if not isinstance(clone, Mapping) or set(clone) != {
+            "fraction",
+            "seed",
+            "support_channels",
+            "puf_clone_index",
+        }:
+            raise ValueError(f"{boundary}: late clone-attachment config is malformed.")
+        fraction = clone.get("fraction")
+        if (
+            isinstance(fraction, bool)
+            or not isinstance(fraction, (int, float))
+            or not np.isfinite(fraction)
+            or not 0 < float(fraction) <= 1
+        ):
+            raise ValueError(f"{boundary}: late clone-attachment fraction is invalid.")
+        require_nonnegative_integer(clone.get("seed"), label="clone seed")
+        if (
+            clone.get("support_channels")
+            != [
+                BASE_ASEC_SUPPORT_CHANNEL,
+                PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+            ]
+            or clone.get("puf_clone_index") != PUF_TAX_DETAIL_CLONE_INDEX
+        ):
+            raise ValueError(f"{boundary}: late clone support roles changed.")
+        qrf_keys = {
+            "seed",
+            "n_estimators",
+            "predictors",
+            "person_outputs",
+            "tax_unit_outputs",
+            "invocation_mode",
+            "tail_bound_quantiles",
+            "worker_execution",
+        }
+        if not isinstance(qrf, Mapping) or set(qrf) != qrf_keys:
+            raise ValueError(f"{boundary}: late primary-QRF config is malformed.")
+        require_nonnegative_integer(qrf.get("seed"), label="QRF seed")
+        require_positive_integer(qrf.get("n_estimators"), label="QRF n_estimators")
+        invocation = qrf.get("invocation_mode")
+        if not isinstance(invocation, Mapping) or set(invocation) != {
+            "predictors",
+            "person_outputs",
+            "tax_unit_outputs",
+        }:
+            raise ValueError(
+                f"{boundary}: late primary-QRF invocation mode is invalid."
+            )
+        defaults = {
+            "predictors": list(PUF_TAX_DETAIL_DEFAULT_PREDICTORS),
+            "person_outputs": list(PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS),
+            "tax_unit_outputs": list(PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS),
+        }
+        for field, default in defaults.items():
+            values = qrf.get(field)
+            mode = invocation.get(field)
+            if (
+                not isinstance(values, list)
+                or not values
+                or any(not isinstance(value, str) or not value for value in values)
+                or mode not in {"canonical_default", "explicit"}
+                or (mode == "canonical_default" and values != default)
+            ):
+                raise ValueError(
+                    f"{boundary}: late primary-QRF {field} binding is invalid."
+                )
+        if qrf.get("tail_bound_quantiles") != (
+            puf_tax_detail_tail_bound_quantiles_identity()
+        ):
+            raise ValueError(f"{boundary}: late primary-QRF tail bounds changed.")
+        if qrf.get("worker_execution") != (
+            _late_primary_qrf_worker_execution_binding()
+        ):
+            raise ValueError(f"{boundary}: late primary-QRF worker binding changed.")
+        if doctrines != {
+            "require_complete_recipient_predictors": True,
+            "absent_cells": PUF_ABSENT_CELLS_PRESERVE_NULLS,
+            "whole_pool_output_universes": {
+                "person.s_corp_income": (us_puf_s_corp_universe_zero_rule_identity()),
+            },
+        }:
+            raise ValueError(f"{boundary}: late primary-PUF doctrines changed.")
+        if audit_sinks != {
+            "fit_records": "enabled",
+            "tail_bound_diagnostics": "enabled",
+            "recipient_predictor_universe": "required_receipt",
+        }:
+            raise ValueError(f"{boundary}: late primary-PUF audit sinks changed.")
+        tail_inputs = puf_capital_gains_tail_execution_inputs_identity()
+        expected_tail_keys = {
+            "enabled",
+            "seed",
+            "support_contract",
+            "spec",
+            "soi_e19200_agi_bands",
+            "concentration_gate",
+        }
+        if (
+            not isinstance(tail, Mapping)
+            or set(tail) != expected_tail_keys
+            or tail.get("enabled") is not True
+            or tail.get("seed") != qrf.get("seed")
+            or tail.get("support_contract")
+            != puf_capital_gains_tail_support_contract_identity()
+            or tail.get("spec") != puf_capital_gains_tail_spec_identity()
+            or tail.get("soi_e19200_agi_bands") != tail_inputs["soi_e19200_agi_bands"]
+            or tail.get("concentration_gate") != tail_inputs["concentration_gate"]
+        ):
+            raise ValueError(f"{boundary}: late capital-gains-tail config changed.")
+        return
+    if kind == "source_operator_receipt":
+        require_keys({*common, "source_operator", "source_receipt_sha256"})
+        expected_operator = column.removeprefix("@source_receipt:")
+        if binding.get("source_operator") != expected_operator:
+            raise ValueError(f"{boundary}: late source receipt owner changed.")
+        _validate_sha256(
+            binding.get("source_receipt_sha256"),
+            boundary=f"{boundary} source receipt",
+        )
+        return
+    if kind == "source_finalizer_execution_config":
+        expected = _late_source_finalizer_execution_binding(live_runtime=False)
+        require_keys(set(expected))
+        if _json_ready(binding) != _json_ready(expected):
+            raise ValueError(f"{boundary}: late source-finalizer config changed.")
+        return
+    if kind == "post_clone_source_execution_config":
+        expected_operator = producer.removeprefix("source:")
+        if (
+            producer != f"source:{expected_operator}"
+            or binding.get("operator") != expected_operator
+        ):
+            raise ValueError(f"{boundary}: late source execution owner changed.")
+        expected = _late_source_execution_config_binding(
+            producer,
+            live_runtime=False,
+        )
+        require_keys(set(expected))
+        if _json_ready(binding) != _json_ready(expected):
+            raise ValueError(f"{boundary}: late source execution config changed.")
+        return
+    if kind == "late_transfer_model_config":
+        require_keys(
+            {
+                *common,
+                "producer",
+                "entity",
+                "family",
+                "ordered_targets",
+                "seed",
+                "n_estimators",
+                "max_targets_per_fit",
+                "donor_spine",
+                "donor_channel",
+                "donor_selection",
+                "donor_projection",
+                "transfer_execution_contract",
+            }
+        )
+        group = next(
+            (
+                item
+                for item in CANONICAL_US_LATE_TRANSFER_GROUPS
+                if item.name == producer
+            ),
+            None,
+        )
+        if group is None or any(
+            binding.get(key) != value
+            for key, value in {
+                "producer": group.name,
+                "entity": group.entity,
+                "family": group.family,
+                "ordered_targets": list(group.targets),
+                "donor_spine": ASEC_PUF_DONOR_SPINE,
+                "donor_channel": None,
+                "donor_selection": ("all_rows_from_post_puf_asec_origin_projection"),
+                "donor_projection": {
+                    "support_channel": BASE_ASEC_SUPPORT_CHANNEL,
+                    "support_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+                },
+            }.items()
+        ):
+            raise ValueError(f"{boundary}: late transfer model owner/targets changed.")
+        require_nonnegative_integer(binding.get("seed"), label="transfer seed")
+        require_positive_integer(
+            binding.get("n_estimators"), label="transfer n_estimators"
+        )
+        if (
+            require_positive_integer(
+                binding.get("max_targets_per_fit"),
+                label="transfer max_targets_per_fit",
+            )
+            != DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT
+        ):
+            raise ValueError(
+                f"{boundary}: late transfer max_targets_per_fit is noncanonical."
+            )
+        if binding.get("transfer_execution_contract") != (
+            acs_transfer_runtime.acs_transfer_execution_contract_identity(
+                targets=group.targets,
+                derive_schedule_d=False,
+            )
+        ):
+            raise ValueError(f"{boundary}: late transfer execution contract changed.")
+        return
+    if kind == "late_transfer_target_bank":
+        mode = binding.get("mode")
+        if mode == "ephemeral_no_checkpoint":
+            require_keys({*common, "mode"})
+            return
+        if mode == "identity_bound_checkpoint":
+            require_keys({*common, "mode", "identity_sha256"})
+            _validate_sha256(
+                binding.get("identity_sha256"),
+                boundary=f"{boundary} transfer target-bank identity",
+            )
+            return
+        raise ValueError(f"{boundary}: late transfer target-bank mode is invalid.")
+    raise AssertionError(f"Unhandled late virtual resource kind {kind!r}.")
+
+
+def _late_available_input_receipt(
+    *,
+    producer: str,
+    entity: str,
+    column: str,
+    rows: int,
+    binding: Mapping[str, object],
+) -> dict[str, object]:
+    """Create one exact, hash-bound virtual-resource availability receipt."""
+
+    if isinstance(rows, bool) or not isinstance(rows, int) or rows <= 0:
+        raise ValueError(
+            "US late-producer virtual-resource rows must be a positive integer; "
+            f"got {rows!r}."
+        )
+    normalized_binding = _json_ready(binding)
+    expected_kind = _late_virtual_resource_kind(column)
+    if normalized_binding.get("resource_kind") != expected_kind:
+        raise ValueError(
+            f"US late-producer resource {entity}.{column} requires "
+            f"resource_kind={expected_kind!r}."
+        )
+    expected_schema_version = _late_resource_binding_schema_version(column)
+    if normalized_binding.get("schema_version") != expected_schema_version:
+        raise ValueError(
+            f"US late-producer resource {entity}.{column} requires binding "
+            f"schema_version={expected_schema_version}."
+        )
+    receipt = {
+        "receipt_id": f"available_input:{producer}:{entity}.{column}",
+        "status": "available",
+        "producer": producer,
+        "entity": entity,
+        "column": column,
+        "rows": rows,
+        "binding": normalized_binding,
+        "binding_sha256": _canonical_sha256(normalized_binding),
+    }
+    _validate_late_available_input_receipt(
+        receipt,
+        producer=producer,
+        entity=entity,
+        column=column,
+        boundary="US late-producer resource construction",
+    )
+    return receipt
+
+
+def _validate_late_available_input_receipt(
+    receipt: object,
+    *,
+    producer: str,
+    entity: str,
+    column: str,
+    boundary: str,
+) -> None:
+    """Validate one virtual input receipt without trusting a row count alone."""
+
+    expected_keys = {
+        "receipt_id",
+        "status",
+        "producer",
+        "entity",
+        "column",
+        "rows",
+        "binding",
+        "binding_sha256",
+    }
+    if not isinstance(receipt, Mapping) or set(receipt) != expected_keys:
+        raise ValueError(
+            f"{boundary}: late-producer available-input receipt "
+            f"{entity}.{column!s} does not carry its exact semantic binding."
+        )
+    expected = {
+        "receipt_id": f"available_input:{producer}:{entity}.{column}",
+        "status": "available",
+        "producer": producer,
+        "entity": entity,
+        "column": column,
+    }
+    if any(receipt.get(key) != value for key, value in expected.items()):
+        raise ValueError(
+            f"{boundary}: late-producer available-input receipt "
+            f"{entity}.{column!s} is misbound."
+        )
+    rows = receipt.get("rows")
+    if isinstance(rows, bool) or not isinstance(rows, int) or rows <= 0:
+        raise ValueError(
+            f"{boundary}: late-producer available-input receipt "
+            f"{entity}.{column!s} has invalid rows={rows!r}."
+        )
+    binding = receipt.get("binding")
+    expected_kind = _late_virtual_resource_kind(column)
+    expected_schema_version = _late_resource_binding_schema_version(column)
+    if (
+        not isinstance(binding, Mapping)
+        or binding.get("resource_kind") != expected_kind
+        or binding.get("schema_version") != expected_schema_version
+    ):
+        raise ValueError(
+            f"{boundary}: late-producer available-input receipt "
+            f"{entity}.{column!s} has a malformed semantic binding."
+        )
+    binding_sha256 = receipt.get("binding_sha256")
+    _validate_sha256(
+        binding_sha256,
+        boundary=f"{boundary} late resource {entity}.{column} binding",
+    )
+    if binding_sha256 != _canonical_sha256(_json_ready(binding)):
+        raise ValueError(
+            f"{boundary}: late-producer available-input receipt "
+            f"{entity}.{column!s} binding SHA-256 mismatch."
+        )
+    _validate_late_resource_binding(
+        binding,
+        producer=producer,
+        entity=entity,
+        column=column,
+        boundary=boundary,
+    )
+
+
+def _late_available_input_receipt_is_valid(
+    receipt: object,
+    *,
+    producer: str,
+    entity: str,
+    column: str,
+) -> bool:
+    try:
+        _validate_late_available_input_receipt(
+            receipt,
+            producer=producer,
+            entity=entity,
+            column=column,
+            boundary="US late-producer readiness",
+        )
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def _late_string_sequence(
+    values: Sequence[str] | None,
+    *,
+    label: str,
+) -> list[str] | None:
+    if values is None:
+        return None
+    if isinstance(values, (str, bytes)) or any(
+        not isinstance(value, str) or not value for value in values
+    ):
+        raise TypeError(f"{label} must be a sequence of non-empty strings or None.")
+    return list(values)
+
+
+_PRIMARY_QRF_WORKER_MODULE = "microcosm.build.us_runtime.puf_qrf_worker"
+_PRIMARY_QRF_SEMANTIC_ENVIRONMENT_NAMES = (
+    "POPULACE_FIT_N_JOBS",
+    "POPULACE_FIT_PREDICT_WORKERS",
+)
+
+
+def _late_primary_qrf_worker_execution_binding() -> dict[str, object]:
+    """Bind the interpreter and reviewed inherited environment controls."""
+
+    fit_jobs_raw = os.environ.get("POPULACE_FIT_N_JOBS")
+    if fit_jobs_raw is None:
+        fit_jobs = -1
+    else:
+        try:
+            fit_jobs = int(fit_jobs_raw)
+        except ValueError as exc:
+            raise ValueError(
+                "POPULACE_FIT_N_JOBS must be a positive integer for the "
+                "primary-QRF worker binding."
+            ) from exc
+        if fit_jobs < 1 or str(fit_jobs) != fit_jobs_raw:
+            raise ValueError(
+                "POPULACE_FIT_N_JOBS must be a canonical positive integer for "
+                "the primary-QRF worker binding."
+            )
+    predict_workers_raw = os.environ.get("POPULACE_FIT_PREDICT_WORKERS")
+    if predict_workers_raw is None or not predict_workers_raw.strip():
+        predict_workers = os.cpu_count() or 1
+        predict_workers_source = "os_cpu_count_fallback"
+    else:
+        try:
+            predict_workers = int(predict_workers_raw)
+        except ValueError as exc:
+            raise ValueError(
+                "POPULACE_FIT_PREDICT_WORKERS must be a positive integer for "
+                "the primary-QRF worker binding."
+            ) from exc
+        if predict_workers < 1:
+            raise ValueError(
+                "POPULACE_FIT_PREDICT_WORKERS must be positive for the "
+                "primary-QRF worker binding."
+            )
+        predict_workers_source = "environment_override"
+    executable = Path(sys.executable)
+    return {
+        "module": _PRIMARY_QRF_WORKER_MODULE,
+        "argv_template": [
+            str(executable),
+            "-m",
+            _PRIMARY_QRF_WORKER_MODULE,
+            "--checkpoint-dir",
+            "{checkpoint_dir}",
+            "--target-index",
+            "{target_index}",
+        ],
+        "interpreter": {
+            "executable": str(executable),
+            "resolved_executable": str(executable.resolve()),
+            "implementation": sys.implementation.name,
+            "cache_tag": sys.implementation.cache_tag,
+            "version": list(sys.version_info[:3]),
+        },
+        "environment": {
+            "policy": "inherit_parent_environment_with_bound_fit_controls",
+            "overrides": {},
+            "semantic_controls": {
+                "POPULACE_FIT_N_JOBS": {
+                    "configured": fit_jobs_raw,
+                    "resolved": fit_jobs,
+                },
+                "POPULACE_FIT_PREDICT_WORKERS": {
+                    "configured": predict_workers_raw,
+                    "resolved": predict_workers,
+                    "resolution": predict_workers_source,
+                },
+            },
+            "bound_names": list(_PRIMARY_QRF_SEMANTIC_ENVIRONMENT_NAMES),
+        },
+    }
+
+
+def _late_primary_execution_config_binding(
+    *,
+    clone_attachment_fraction: float,
+    clone_attachment_seed: int,
+    seed: int,
+    n_estimators: int,
+    predictors: Sequence[str] | None,
+    person_outputs: Sequence[str] | None,
+    tax_unit_outputs: Sequence[str] | None,
+    fit_records_enabled: bool,
+    tail_bound_diagnostics_enabled: bool,
+    capital_gains_tail_spec: PufAggregateDisaggregationSpec | None = None,
+    capital_gains_tail_agi_bands: Sequence[PufE19200AgiBand] | None = None,
+) -> dict[str, object]:
+    """Return every non-Frame control consumed by the primary callback."""
+
+    resolved_predictors = _late_string_sequence(
+        PUF_TAX_DETAIL_DEFAULT_PREDICTORS if predictors is None else predictors,
+        label="predictors",
+    )
+    resolved_person_outputs = _late_string_sequence(
+        PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+        if person_outputs is None
+        else person_outputs,
+        label="person_outputs",
+    )
+    resolved_tax_unit_outputs = _late_string_sequence(
+        PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+        if tax_unit_outputs is None
+        else tax_unit_outputs,
+        label="tax_unit_outputs",
+    )
+    tail_inputs = puf_capital_gains_tail_execution_inputs_identity(
+        spec=capital_gains_tail_spec,
+        agi_bands=capital_gains_tail_agi_bands,
+    )
+    return {
+        "resource_kind": "primary_puf_execution_config",
+        "schema_version": 4,
+        "clone_attachment": {
+            "fraction": float(clone_attachment_fraction),
+            "seed": clone_attachment_seed,
+            "support_channels": [
+                BASE_ASEC_SUPPORT_CHANNEL,
+                PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+            ],
+            "puf_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+        },
+        "qrf": {
+            "seed": seed,
+            "n_estimators": n_estimators,
+            "predictors": resolved_predictors,
+            "person_outputs": resolved_person_outputs,
+            "tax_unit_outputs": resolved_tax_unit_outputs,
+            "invocation_mode": {
+                "predictors": (
+                    "canonical_default" if predictors is None else "explicit"
+                ),
+                "person_outputs": (
+                    "canonical_default" if person_outputs is None else "explicit"
+                ),
+                "tax_unit_outputs": (
+                    "canonical_default" if tax_unit_outputs is None else "explicit"
+                ),
+            },
+            "tail_bound_quantiles": (puf_tax_detail_tail_bound_quantiles_identity()),
+            "worker_execution": _late_primary_qrf_worker_execution_binding(),
+        },
+        "doctrines": {
+            "require_complete_recipient_predictors": True,
+            "absent_cells": PUF_ABSENT_CELLS_PRESERVE_NULLS,
+            "whole_pool_output_universes": {
+                "person.s_corp_income": (us_puf_s_corp_universe_zero_rule_identity()),
+            },
+        },
+        "capital_gains_tail": {
+            "enabled": True,
+            "seed": seed,
+            "support_contract": puf_capital_gains_tail_support_contract_identity(
+                capital_gains_tail_agi_bands
+            ),
+            "spec": tail_inputs["aggregate_disaggregation_spec"],
+            "soi_e19200_agi_bands": tail_inputs["soi_e19200_agi_bands"],
+            "concentration_gate": tail_inputs["concentration_gate"],
+        },
+        "audit_sinks": {
+            "fit_records": "enabled" if fit_records_enabled else "disabled",
+            "tail_bound_diagnostics": (
+                "enabled" if tail_bound_diagnostics_enabled else "disabled"
+            ),
+            "recipient_predictor_universe": "required_receipt",
+        },
+    }
+
+
+def _late_puf_donor_resource_semantics_binding() -> dict[str, object]:
+    """Describe the dynamic donor binding without embedding build-specific bytes."""
+
+    return {
+        "resource_kind": "puf_donor_tax_units",
+        "schema_version": 1,
+        "runtime_identity": {
+            "codec": _LATE_TABLE_DIGEST_CODEC,
+            "fields": ["table_content_sha256", "ordered_columns", "dtypes"],
+            "normalization": "canonical_table_string_dtypes",
+        },
+        "source_input_pins": ["processed_puf", "puf_source_year"],
+    }
+
+
+def _late_primary_qrf_checkpoint_static_binding() -> dict[str, object]:
+    """Return the non-recursive primary-QRF bank semantics."""
+
+    return {
+        "resource_kind": "primary_qrf_checkpoint",
+        "schema_version": 1,
+        "mode": "identity_bound_checkpoint",
+        "checkpoint_schema_version": PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
+        "manifest_filename": PRIMARY_QRF_MANIFEST_FILENAME,
+        "target_order": list(PRIMARY_QRF_TARGET_ORDER),
+        "target_order_sha256": PRIMARY_QRF_TARGET_ORDER_SHA256,
+    }
+
+
+def stacked_late_primary_resource_receipts(
+    donor_tax_units: pd.DataFrame,
+    *,
+    primary_qrf_checkpoint_identity_sha256: str,
+    clone_attachment_fraction: float,
+    clone_attachment_seed: int,
+    seed: int,
+    n_estimators: int,
+    fit_records_enabled: bool,
+    tail_bound_diagnostics_enabled: bool,
+    predictors: Sequence[str] | None = None,
+    person_outputs: Sequence[str] | None = None,
+    tax_unit_outputs: Sequence[str] | None = None,
+    capital_gains_tail_spec: PufAggregateDisaggregationSpec | None = None,
+    capital_gains_tail_agi_bands: Sequence[PufE19200AgiBand] | None = None,
+) -> dict[str, dict[str, object]]:
+    """Bind every non-Frame input consumed by the primary PUF producer."""
+
+    if not isinstance(donor_tax_units, pd.DataFrame) or donor_tax_units.empty:
+        raise ValueError("US late primary-PUF donor must be a nonempty DataFrame.")
+    _validate_sha256(
+        primary_qrf_checkpoint_identity_sha256,
+        boundary="US late primary-QRF checkpoint identity",
+    )
+    if (
+        isinstance(clone_attachment_fraction, bool)
+        or not isinstance(clone_attachment_fraction, (int, float))
+        or not np.isfinite(clone_attachment_fraction)
+        or not 0 < float(clone_attachment_fraction) <= 1
+    ):
+        raise ValueError(
+            "US late primary-PUF clone attachment fraction must be finite in "
+            f"(0, 1]; got {clone_attachment_fraction!r}."
+        )
+    for label, value in {
+        "clone_attachment_seed": clone_attachment_seed,
+        "seed": seed,
+    }.items():
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(f"US late primary-PUF {label} must be non-negative.")
+    if (
+        isinstance(n_estimators, bool)
+        or not isinstance(n_estimators, int)
+        or n_estimators <= 0
+    ):
+        raise ValueError("US late primary-PUF n_estimators must be positive.")
+    if not isinstance(fit_records_enabled, bool) or not isinstance(
+        tail_bound_diagnostics_enabled, bool
+    ):
+        raise TypeError("US late primary-PUF audit-sink modes must be booleans.")
+    normalized_donor = canonicalize_table_string_dtypes(
+        donor_tax_units,
+        boundary="late primary-PUF donor resource binding",
+        table_name="puf_donor_tax_units",
+    )
+    donor_binding = {
+        "resource_kind": "puf_donor_tax_units",
+        "schema_version": 1,
+        "table_content_sha256": _late_table_values_sha256(
+            normalized_donor,
+        ),
+        "ordered_columns": [str(column) for column in normalized_donor.columns],
+        "dtypes": [str(dtype) for dtype in normalized_donor.dtypes],
+    }
+    checkpoint_binding = {
+        **_late_primary_qrf_checkpoint_static_binding(),
+        "checkpoint_identity_sha256": primary_qrf_checkpoint_identity_sha256,
+    }
+    config_binding = _late_primary_execution_config_binding(
+        clone_attachment_fraction=clone_attachment_fraction,
+        clone_attachment_seed=clone_attachment_seed,
+        seed=seed,
+        n_estimators=n_estimators,
+        predictors=predictors,
+        person_outputs=person_outputs,
+        tax_unit_outputs=tax_unit_outputs,
+        fit_records_enabled=fit_records_enabled,
+        tail_bound_diagnostics_enabled=tail_bound_diagnostics_enabled,
+        capital_gains_tail_spec=capital_gains_tail_spec,
+        capital_gains_tail_agi_bands=capital_gains_tail_agi_bands,
+    )
+    return {
+        "tax_unit.@puf_donor_tax_units": _late_available_input_receipt(
+            producer=US_LATE_PRIMARY_PUF_STAGE,
+            entity="tax_unit",
+            column="@puf_donor_tax_units",
+            rows=int(len(donor_tax_units)),
+            binding=donor_binding,
+        ),
+        "tax_unit.@primary_qrf_checkpoint": _late_available_input_receipt(
+            producer=US_LATE_PRIMARY_PUF_STAGE,
+            entity="tax_unit",
+            column="@primary_qrf_checkpoint",
+            rows=1,
+            binding=checkpoint_binding,
+        ),
+        f"tax_unit.{US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT}": (
+            _late_available_input_receipt(
+                producer=US_LATE_PRIMARY_PUF_STAGE,
+                entity="tax_unit",
+                column=US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT,
+                rows=1,
+                binding=config_binding,
+            )
+        ),
+    }
+
+
+def _validate_stacked_late_primary_checkpoint_input_binding(
+    binding: object,
+    *,
+    boundary: str,
+) -> None:
+    """Authenticate the sidecar that prevents stale primary-QRF bank reuse."""
+
+    expected_keys = {
+        "artifact_kind",
+        "schema_version",
+        "primary_resource_receipts",
+        "sha256",
+    }
+    if not isinstance(binding, Mapping) or set(binding) != expected_keys:
+        raise ValueError(f"{boundary}: primary-QRF input binding schema drifted.")
+    if (
+        binding.get("artifact_kind") != _LATE_PRIMARY_QRF_INPUT_BINDING_ARTIFACT_KIND
+        or binding.get("schema_version") != 1
+    ):
+        raise ValueError(f"{boundary}: primary-QRF input binding identity changed.")
+    resources = binding.get("primary_resource_receipts")
+    contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[US_LATE_PRIMARY_PUF_STAGE]
+    expected_resources = _late_contract_available_input_keys(contract)
+    if not isinstance(resources, Mapping) or set(resources) != expected_resources:
+        raise ValueError(
+            f"{boundary}: primary-QRF input binding does not cover its exact "
+            "declared resource surface."
+        )
+    for key, receipt in resources.items():
+        entity, column = key.split(".", 1)
+        _validate_late_available_input_receipt(
+            receipt,
+            producer=US_LATE_PRIMARY_PUF_STAGE,
+            entity=entity,
+            column=column,
+            boundary=boundary,
+        )
+    unsigned = dict(binding)
+    sha256 = unsigned.pop("sha256")
+    _validate_sha256(sha256, boundary=f"{boundary} primary-QRF input binding")
+    if sha256 != _canonical_sha256(_json_ready(unsigned)):
+        raise ValueError(f"{boundary}: primary-QRF input binding SHA-256 mismatch.")
+
+
+def stacked_late_primary_checkpoint_input_binding(
+    primary_resource_receipts: Mapping[str, Mapping[str, object]],
+) -> dict[str, object]:
+    """Build the durable input sidecar for the primary-QRF checkpoint bank."""
+
+    resources = {
+        key: _json_ready(receipt)
+        for key, receipt in sorted(primary_resource_receipts.items())
+    }
+    payload: dict[str, object] = {
+        "artifact_kind": _LATE_PRIMARY_QRF_INPUT_BINDING_ARTIFACT_KIND,
+        "schema_version": 1,
+        "primary_resource_receipts": resources,
+    }
+    payload["sha256"] = _canonical_sha256(payload)
+    _validate_stacked_late_primary_checkpoint_input_binding(
+        payload,
+        boundary="US stacked late primary-QRF input-binding construction",
+    )
+    return payload
+
+
+_SOURCE_MANIFEST_STAGE_BY_OPERATOR: Mapping[str, str] = MappingProxyType(
+    {
+        "with_us_prior_year_income_inputs": "prior_year_income",
+        "with_us_medicare_take_up_input": "medicare_take_up_input",
+        "with_us_pregnancy_inputs": "pregnancy",
+        "with_us_wic_claim_input": "wic_claim_input",
+        "with_us_child_support_inputs": "child_support_inputs",
+        "with_us_disability_benefits": "disability_benefits_input",
+        "with_us_workers_compensation": "workers_compensation_input",
+        "with_us_weeks_unemployed": "weeks_unemployed_input",
+        "with_us_childcare_inputs": "childcare_inputs",
+        "with_us_adult_care_inputs": "adult_care_inputs",
+        "with_us_energy_subsidy_input": "energy_subsidy",
+        "with_us_retirement_contribution_inputs": "retirement_contributions",
+        "with_us_retirement_distribution_inputs": "retirement_distributions",
+        "with_us_immigration_inputs": "immigration_status",
+        "with_us_education_inputs": "education_inputs",
+    }
+)
+_SOURCE_STAGE_SPEC_RESOLVER_BY_OPERATOR: Mapping[str, tuple[str, str]] = (
+    MappingProxyType(
+        {
+            "with_us_prior_year_income_inputs": (
+                "microcosm.build.us_runtime.prior_year_income",
+                "us_prior_year_income_stage_spec",
+            ),
+            "with_us_medicare_take_up_input": (
+                "microcosm.build.us_runtime.medicare_take_up",
+                "us_medicare_take_up_stage_spec",
+            ),
+            "with_us_pregnancy_inputs": (
+                "microcosm.build.us_runtime.pregnancy",
+                "us_pregnancy_stage_spec",
+            ),
+            "with_us_wic_claim_input": (
+                "microcosm.build.us_runtime.wic_claim",
+                "us_wic_claim_stage_spec",
+            ),
+            "with_us_child_support_inputs": (
+                "microcosm.build.us_runtime.child_support",
+                "us_child_support_stage_spec",
+            ),
+            "with_us_disability_benefits": (
+                "microcosm.build.us_runtime.disability_benefits",
+                "us_disability_benefits_stage_spec",
+            ),
+            "with_us_workers_compensation": (
+                "microcosm.build.us_runtime.workers_compensation",
+                "us_workers_compensation_stage_spec",
+            ),
+            "with_us_weeks_unemployed": (
+                "microcosm.build.us_runtime.weeks_unemployed",
+                "us_weeks_unemployed_stage_spec",
+            ),
+            "with_us_childcare_inputs": (
+                "microcosm.build.us_runtime.childcare",
+                "us_childcare_stage_spec",
+            ),
+            "with_us_adult_care_inputs": (
+                "microcosm.build.us_runtime.adult_care",
+                "us_adult_care_stage_spec",
+            ),
+            "with_us_energy_subsidy_input": (
+                "microcosm.build.us_runtime.energy_subsidy",
+                "us_energy_subsidy_stage_spec",
+            ),
+            "with_us_retirement_contribution_inputs": (
+                "microcosm.build.us_runtime.retirement_contributions",
+                "us_retirement_contributions_stage_spec",
+            ),
+            "with_us_retirement_distribution_inputs": (
+                "microcosm.build.us_runtime.retirement_distributions",
+                "us_retirement_distributions_stage_spec",
+            ),
+            "with_us_immigration_inputs": (
+                "microcosm.build.us_runtime.immigration",
+                "us_immigration_stage_spec",
+            ),
+            "with_us_education_inputs": (
+                "microcosm.build.us_runtime.education_inputs",
+                "us_education_inputs_stage_spec",
+            ),
+        }
+    )
+)
+_DIRECT_HOUSING_ASSISTANCE_SOURCE_OPERATOR = (
+    "impute_us_housing_assistance_to_puf_support"
+)
+if len(_SOURCE_MANIFEST_STAGE_BY_OPERATOR) != 15 or set(
+    _SOURCE_MANIFEST_STAGE_BY_OPERATOR
+) | {_DIRECT_HOUSING_ASSISTANCE_SOURCE_OPERATOR} != set(
+    POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+):
+    raise RuntimeError(
+        "US late source callback-identity map must cover exactly fifteen "
+        "manifest stages plus the direct housing-assistance QRF."
+    )
+if set(_SOURCE_STAGE_SPEC_RESOLVER_BY_OPERATOR) != set(
+    _SOURCE_MANIFEST_STAGE_BY_OPERATOR
+):
+    raise RuntimeError(
+        "US late source runtime-spec resolver map must cover exactly the "
+        "fifteen manifest-backed callbacks."
+    )
+
+
+def _late_source_stage_spec_binding(
+    operator: str,
+    *,
+    resource: object | None = None,
+) -> dict[str, object] | None:
+    """Resolve the exact packaged SourceStageSpec consumed by a callback."""
+
+    if operator == _DIRECT_HOUSING_ASSISTANCE_SOURCE_OPERATOR:
+        return None
+    try:
+        stage_name = _SOURCE_MANIFEST_STAGE_BY_OPERATOR[operator]
+    except KeyError as exc:
+        raise ValueError(
+            f"US late source operator {operator!r} has no manifest-stage binding."
+        ) from exc
+    resolved_resource = (
+        files("microcosm.build.us").joinpath("source_stages.json")
+        if resource is None
+        else resource
+    )
+    if not hasattr(resolved_resource, "read_bytes"):
+        raise TypeError("US source-stage binding resource must expose read_bytes().")
+    manifest = load_source_manifest(resolved_resource)
+    stage_map = manifest.stage_map()
+    if stage_name not in stage_map:
+        raise ValueError(
+            f"US source manifest declares no bound stage {stage_name!r} for "
+            f"operator {operator!r}."
+        )
+    stage_spec = _json_ready(asdict(stage_map[stage_name]))
+    resolver_module, resolver_name = _SOURCE_STAGE_SPEC_RESOLVER_BY_OPERATOR[operator]
+    runtime_spec_verified = resource is None
+    if runtime_spec_verified:
+        runtime_module = importlib.import_module(resolver_module)
+        runtime_resolver = getattr(runtime_module, resolver_name, None)
+        if not callable(runtime_resolver):
+            raise RuntimeError(
+                f"US late source runtime resolver {resolver_module}.{resolver_name} "
+                "is unavailable."
+            )
+        runtime_stage_spec = _json_ready(asdict(runtime_resolver()))
+        if runtime_stage_spec != stage_spec:
+            raise ValueError(
+                f"US late source operator {operator!r} runtime SourceStageSpec "
+                "differs from the content-bound packaged manifest."
+            )
+    asset_bytes = resolved_resource.read_bytes()
+    return {
+        "asset": "microcosm.build.us/source_stages.json",
+        "asset_sha256": hashlib.sha256(asset_bytes).hexdigest(),
+        "manifest": {
+            "country": manifest.country,
+            "version": manifest.version,
+            "policy": manifest.policy,
+        },
+        "stage_name": stage_name,
+        "resolved_stage_spec": stage_spec,
+        "resolved_stage_spec_sha256": _canonical_sha256(stage_spec),
+        "runtime_stage_spec_resolver": {
+            "module": resolver_module,
+            "callable": resolver_name,
+        },
+        "runtime_stage_spec_verified": runtime_spec_verified,
+    }
+
+
+def _late_source_execution_config_binding(
+    producer_name: str,
+    *,
+    live_runtime: bool = True,
+) -> dict[str, object]:
+    """Return all fixed controls consumed by one post-clone source callback."""
+
+    operator = producer_name.removeprefix("source:")
+    if producer_name != f"source:{operator}":
+        raise ValueError(
+            f"US late source producer name is malformed: {producer_name!r}."
+        )
+    if live_runtime:
+        seed = multispine_pool_runtime.POOL_RANDOM_SEED
+        time_period = multispine_pool_runtime.POOL_TIME_PERIOD
+        allow_existing = (
+            multispine_pool_runtime.POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE
+        )
+        housing_n_estimators = (
+            multispine_pool_runtime.POOL_HOUSING_ASSISTANCE_N_ESTIMATORS
+        )
+        housing_max_train_samples = (
+            multispine_pool_runtime.POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES
+        )
+        operator_registry = (
+            multispine_pool_runtime.POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+        )
+        phase = multispine_pool_runtime._POST_CLONE_PHASE
+        operator_contracts = multispine_pool_runtime.POOL_OPERATOR_CONTRACTS
+        output_families = multispine_pool_runtime.PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES
+        formula_owned_outputs = multispine_pool_runtime._FORMULA_OWNED_SOURCE_OUTPUTS
+    else:
+        seed = POOL_RANDOM_SEED
+        time_period = POOL_TIME_PERIOD
+        allow_existing = POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE
+        housing_n_estimators = POOL_HOUSING_ASSISTANCE_N_ESTIMATORS
+        housing_max_train_samples = POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES
+        operator_registry = POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+        phase = POOL_POST_CLONE_SOURCE_PHASE
+        operator_contracts = POOL_OPERATOR_CONTRACTS
+        output_families = PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES
+        formula_owned_outputs = FORMULA_OWNED_SOURCE_COLUMNS
+    try:
+        operator_contract = operator_contracts[operator]
+    except KeyError as exc:
+        raise ValueError(
+            f"US late source runtime declares no operator {operator!r}."
+        ) from exc
+    family_outputs = output_families[operator_contract.family]
+    return {
+        "resource_kind": "post_clone_source_execution_config",
+        "schema_version": 3,
+        "operator": operator,
+        "phase": phase,
+        "operator_registry": list(operator_registry),
+        "operator_contract": {
+            "family": operator_contract.family,
+            "phases": list(operator_contract.phases),
+            "mechanism": operator_contract.mechanism,
+            "execution_scope": operator_contract.execution_scope,
+        },
+        "declared_output_family": {
+            entity: sorted(columns)
+            for entity, columns in sorted(family_outputs.items())
+        },
+        "formula_owned_outputs_removed": {
+            entity: sorted(set(columns) & set(formula_owned_outputs.get(entity, ())))
+            for entity, columns in sorted(family_outputs.items())
+            if set(columns) & set(formula_owned_outputs.get(entity, ()))
+        },
+        "seed": seed,
+        "time_period": (
+            None
+            if operator == "impute_us_housing_assistance_to_puf_support"
+            else time_period
+        ),
+        "force_puf_imputation": (
+            True if operator == "with_us_retirement_distribution_inputs" else None
+        ),
+        "allow_existing_without_source": (
+            allow_existing
+            if operator
+            in {
+                "with_us_child_support_inputs",
+                "with_us_disability_benefits",
+                "with_us_workers_compensation",
+                "with_us_childcare_inputs",
+                "with_us_adult_care_inputs",
+                "with_us_energy_subsidy_input",
+            }
+            else None
+        ),
+        "housing_assistance_qrf": (
+            {
+                "n_estimators": housing_n_estimators,
+                "max_train_samples": housing_max_train_samples,
+            }
+            if operator == _DIRECT_HOUSING_ASSISTANCE_SOURCE_OPERATOR
+            else None
+        ),
+        "external_sidecars": (
+            {"asec_2023_source": {"mode": "not_supplied"}}
+            if operator == "with_us_weeks_unemployed"
+            else {"asec_education_source": {"mode": "not_supplied"}}
+            if operator == "with_us_education_inputs"
+            else {}
+        ),
+        "source_stage_spec": _late_source_stage_spec_binding(operator),
+    }
+
+
+def _late_source_resource_receipts(
+    *,
+    producer_name: str,
+) -> dict[str, dict[str, object]]:
+    """Bind the fixed controls consumed by one post-clone source callback."""
+
+    binding = _late_source_execution_config_binding(producer_name)
+    return {
+        f"person.{US_LATE_SOURCE_EXECUTION_CONFIG_INPUT}": (
+            _late_available_input_receipt(
+                producer=producer_name,
+                entity="person",
+                column=US_LATE_SOURCE_EXECUTION_CONFIG_INPUT,
+                rows=1,
+                binding=binding,
+            )
+        )
+    }
+
+
+def _late_source_finalizer_execution_binding(
+    *,
+    live_runtime: bool = True,
+) -> dict[str, object]:
+    """Bind every doctrine input consumed by the source finalizer callback."""
+
+    if live_runtime:
+        phase = multispine_pool_runtime._POST_CLONE_PHASE
+        operator_registry = (
+            multispine_pool_runtime.POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+        )
+        formula_owned_outputs = multispine_pool_runtime._FORMULA_OWNED_SOURCE_OUTPUTS
+        deferred_inputs = multispine_pool_runtime.POOL_DEFERRED_TRANSFER_INPUTS
+        deferred_status = multispine_pool_runtime.POOL_DEFERRED_TRANSFER_STATUS
+    else:
+        phase = POOL_POST_CLONE_SOURCE_PHASE
+        operator_registry = POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+        formula_owned_outputs = FORMULA_OWNED_SOURCE_COLUMNS
+        deferred_inputs = POOL_DEFERRED_TRANSFER_INPUTS
+        deferred_status = POOL_DEFERRED_TRANSFER_STATUS
+    return {
+        "resource_kind": "source_finalizer_execution_config",
+        "schema_version": 2,
+        "phase": phase,
+        "source_operator_registry": list(operator_registry),
+        "formula_owned_output_exclusions": {
+            entity: sorted(columns)
+            for entity, columns in sorted(formula_owned_outputs.items())
+        },
+        "deferred_transfer_inputs": _json_ready(deferred_inputs),
+        "deferred_status": deferred_status,
+    }
+
+
+def _late_source_finalizer_resource_receipts() -> dict[str, dict[str, object]]:
+    """Bind the finalizer's phase, registry, exclusions, and deferral contract."""
+
+    column = US_LATE_SOURCE_FINALIZER_EXECUTION_CONFIG_INPUT
+    return {
+        f"person.{column}": _late_available_input_receipt(
+            producer=US_LATE_SOURCE_FINALIZER_STAGE,
+            entity="person",
+            column=column,
+            rows=1,
+            binding=_late_source_finalizer_execution_binding(),
+        )
+    }
+
+
+def _assert_late_callback_consumed_bound_config(
+    *,
+    producer: str,
+    entity: str,
+    column: str,
+    available_input_receipts: Mapping[str, Mapping[str, object]],
+    actual_binding: Mapping[str, object],
+) -> None:
+    """Refuse a callback whose live runtime config differs from its DAG input."""
+
+    key = f"{entity}.{column}"
+    receipt = available_input_receipts.get(key)
+    bound = receipt.get("binding") if isinstance(receipt, Mapping) else None
+    if not isinstance(bound, Mapping) or _json_ready(bound) != _json_ready(
+        actual_binding
+    ):
+        raise ValueError(
+            f"Late producer {producer!r} consumed a runtime execution config "
+            f"that differs from its bound input {key}."
+        )
+
+
+_CANONICAL_ACS_EARNINGS_UNIVERSE_CONTRACT_IDENTITY = dict(
+    acs_pums_earnings_universe_contract_identity()
+)
+
+
+def _late_acs_earnings_universe_execution_binding() -> dict[str, object]:
+    """Return the exact rules and scope consumed by the universe producer."""
+
+    return {
+        "resource_kind": "acs_pums_earnings_universe_execution_config",
+        "schema_version": 2,
+        "runtime_identity_owner": ("microcosm.build.us_runtime.acs_income_universe"),
+        "ordered_mapped_columns": list(
+            acs_income_universe_runtime.ACS_PUMS_EARNINGS_SOURCE_COLUMNS
+        ),
+        "person_scope_mode": "whole_frame_acs_channel",
+        "contract_identity": (
+            acs_income_universe_runtime.acs_pums_earnings_universe_contract_identity()
+        ),
+    }
+
+
+def _late_acs_earnings_universe_resource_receipts() -> dict[str, dict[str, object]]:
+    """Bind the exact rules and scope consumed by the universe producer."""
+
+    column = US_LATE_ACS_EARNINGS_UNIVERSE_CONFIG_INPUT
+    return {
+        f"person.{column}": _late_available_input_receipt(
+            producer=US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
+            entity="person",
+            column=column,
+            rows=1,
+            binding=_late_acs_earnings_universe_execution_binding(),
+        )
+    }
+
+
+def _late_transfer_model_config_binding(
+    *,
+    group_name: str,
+    entity: str,
+    family: str,
+    targets: Sequence[str],
+    seed: int,
+    n_estimators: int,
+    max_targets_per_fit: int,
+) -> dict[str, object]:
+    """Return every static model and donor-selection control for one group."""
+
+    return {
+        "resource_kind": "late_transfer_model_config",
+        "schema_version": 3,
+        "producer": group_name,
+        "entity": entity,
+        "family": family,
+        "ordered_targets": list(targets),
+        "seed": seed,
+        "n_estimators": n_estimators,
+        "max_targets_per_fit": max_targets_per_fit,
+        "donor_spine": ASEC_PUF_DONOR_SPINE,
+        "donor_channel": None,
+        "donor_selection": "all_rows_from_post_puf_asec_origin_projection",
+        "donor_projection": {
+            "support_channel": BASE_ASEC_SUPPORT_CHANNEL,
+            "support_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+        },
+        "transfer_execution_contract": (
+            acs_transfer_runtime.acs_transfer_execution_contract_identity(
+                targets=targets,
+                derive_schedule_d=False,
+            )
+        ),
+    }
+
+
+def _late_transfer_target_bank_static_binding(*, mode: str) -> dict[str, object]:
+    """Return the shared non-recursive target-bank mode binding."""
+
+    if mode not in {"ephemeral_no_checkpoint", "identity_bound_checkpoint"}:
+        raise ValueError(f"Unsupported US late target-bank mode {mode!r}.")
+    return {
+        "resource_kind": "late_transfer_target_bank",
+        "schema_version": 1,
+        "mode": mode,
+    }
+
+
+def _late_transfer_target_bank_binding(
+    *,
+    group_name: str,
+    target_bank: AcsTransferTargetBank | None,
+) -> dict[str, object]:
+    """Return one runtime target-bank binding without hiding its mode."""
+
+    if target_bank is None:
+        return _late_transfer_target_bank_static_binding(mode="ephemeral_no_checkpoint")
+    identity_sha256 = getattr(target_bank, "identity_sha256", None)
+    _validate_sha256(
+        identity_sha256,
+        boundary=f"US late transfer {group_name!r} target-bank identity",
+    )
+    return {
+        **_late_transfer_target_bank_static_binding(mode="identity_bound_checkpoint"),
+        "identity_sha256": identity_sha256,
+    }
+
+
+def _late_transfer_resource_receipts(
+    *,
+    group_name: str,
+    entity: str,
+    family: str,
+    targets: Sequence[str],
+    seed: int,
+    n_estimators: int,
+    max_targets_per_fit: int,
+    target_bank: AcsTransferTargetBank | None,
+) -> dict[str, dict[str, object]]:
+    """Bind model controls and durable-bank identity for one transfer node."""
+
+    model_binding = _late_transfer_model_config_binding(
+        group_name=group_name,
+        entity=entity,
+        family=family,
+        targets=targets,
+        seed=seed,
+        n_estimators=n_estimators,
+        max_targets_per_fit=max_targets_per_fit,
+    )
+    bank_binding = _late_transfer_target_bank_binding(
+        group_name=group_name,
+        target_bank=target_bank,
+    )
+    return {
+        f"{entity}.{US_LATE_TRANSFER_MODEL_CONFIG_INPUT}": (
+            _late_available_input_receipt(
+                producer=group_name,
+                entity=entity,
+                column=US_LATE_TRANSFER_MODEL_CONFIG_INPUT,
+                rows=1,
+                binding=model_binding,
+            )
+        ),
+        f"{entity}.{US_LATE_TRANSFER_TARGET_BANK_INPUT}": (
+            _late_available_input_receipt(
+                producer=group_name,
+                entity=entity,
+                column=US_LATE_TRANSFER_TARGET_BANK_INPUT,
+                rows=1,
+                binding=bank_binding,
+            )
+        ),
+    }
+
+
+def stacked_late_producer_resource_semantics_receipt(
+    *,
+    clone_attachment_fraction: float,
+    clone_attachment_seed: int,
+    primary_seed: int,
+    primary_n_estimators: int,
+    transfer_seed: int,
+    transfer_n_estimators: int,
+    transfer_max_targets_per_fit: int,
+) -> dict[str, object]:
+    """Bind every static or derivation-mode resource in the late DAG.
+
+    Runtime table and bank digests remain dynamic. Their exact codecs and
+    derivations are bound here so the outer checkpoint identity covers the
+    complete resource doctrine without recursively embedding its own digest.
+    """
+
+    schedule_receipt = us_late_producer_schedule_receipt()
+    group_by_name = {group.name: group for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    producer_rows: list[dict[str, object]] = []
+    for producer_name in CANONICAL_US_LATE_PRODUCER_SCHEDULE.order:
+        contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[producer_name]
+        expected_keys = _late_contract_available_input_keys(contract)
+        resources: dict[str, object]
+        if contract.kind == "acs_earnings_universe":
+            resources = {
+                f"person.{US_LATE_ACS_EARNINGS_UNIVERSE_CONFIG_INPUT}": {
+                    "resolution": "static_exact",
+                    "binding": _late_acs_earnings_universe_execution_binding(),
+                }
+            }
+        elif contract.kind == "primary_puf":
+            resources = {
+                "tax_unit.@puf_donor_tax_units": {
+                    "resolution": "runtime_content_bound",
+                    "binding": _late_puf_donor_resource_semantics_binding(),
+                },
+                "tax_unit.@primary_qrf_checkpoint": {
+                    "resolution": "outer_identity_derived",
+                    "binding": _late_primary_qrf_checkpoint_static_binding(),
+                    "dynamic_field": {
+                        "name": "checkpoint_identity_sha256",
+                        "derivation": (
+                            "canonical_sha256(outer_stacked_checkpoint_base_identity)"
+                        ),
+                    },
+                },
+                f"tax_unit.{US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT}": {
+                    "resolution": "static_exact",
+                    "binding": _late_primary_execution_config_binding(
+                        clone_attachment_fraction=clone_attachment_fraction,
+                        clone_attachment_seed=clone_attachment_seed,
+                        seed=primary_seed,
+                        n_estimators=primary_n_estimators,
+                        predictors=None,
+                        person_outputs=None,
+                        tax_unit_outputs=None,
+                        fit_records_enabled=True,
+                        tail_bound_diagnostics_enabled=True,
+                    ),
+                },
+            }
+        elif contract.kind == "post_clone_source":
+            resources = {
+                f"person.{US_LATE_SOURCE_EXECUTION_CONFIG_INPUT}": {
+                    "resolution": "static_exact",
+                    "binding": _late_source_execution_config_binding(producer_name),
+                }
+            }
+        elif contract.kind == "source_finalizer":
+            resources = {
+                f"person.{US_LATE_SOURCE_FINALIZER_EXECUTION_CONFIG_INPUT}": {
+                    "resolution": "static_exact",
+                    "binding": _late_source_finalizer_execution_binding(),
+                }
+            }
+            resources.update(
+                {
+                    f"person.@source_receipt:{operator}": {
+                        "resolution": "signed_callback_receipt_derived",
+                        "binding": {
+                            "resource_kind": "source_operator_receipt",
+                            "schema_version": 1,
+                            "source_operator": operator,
+                            "dynamic_field": {
+                                "name": "source_receipt_sha256",
+                                "derivation": (
+                                    "canonical_sha256(signed_source_callback_receipt)"
+                                ),
+                            },
+                        },
+                    }
+                    for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+                }
+            )
+        elif contract.kind == "late_transfer":
+            group = group_by_name[producer_name]
+            resources = {
+                f"{group.entity}.{US_LATE_TRANSFER_MODEL_CONFIG_INPUT}": {
+                    "resolution": "static_exact",
+                    "binding": _late_transfer_model_config_binding(
+                        group_name=group.name,
+                        entity=group.entity,
+                        family=group.family,
+                        targets=group.targets,
+                        seed=transfer_seed,
+                        n_estimators=transfer_n_estimators,
+                        max_targets_per_fit=transfer_max_targets_per_fit,
+                    ),
+                },
+                f"{group.entity}.{US_LATE_TRANSFER_TARGET_BANK_INPUT}": {
+                    "resolution": "transferred_stage_identity_derived",
+                    "binding": _late_transfer_target_bank_static_binding(
+                        mode="identity_bound_checkpoint"
+                    ),
+                    "dynamic_field": {
+                        "name": "identity_sha256",
+                        "derivation": {
+                            "base": "transferred_pool_checkpoint_stage_identity",
+                            "late_producer_dag_sha256": schedule_receipt[
+                                "schedule_sha256"
+                            ],
+                            "late_producer_schedule_sha256": schedule_receipt[
+                                "payload_sha256"
+                            ],
+                            "producer": {
+                                "name": group.name,
+                                "entity": group.entity,
+                                "family": group.family,
+                                "ordered_targets": list(group.targets),
+                            },
+                        },
+                    },
+                },
+            }
+        else:  # pragma: no cover - import-validated canonical kind partition
+            raise AssertionError(f"Unhandled late producer kind {contract.kind!r}.")
+        if set(resources) != expected_keys:
+            raise RuntimeError(
+                f"US late resource semantics for {producer_name!r} do not cover "
+                f"its exact virtual surface; missing={sorted(expected_keys - set(resources))}, "
+                f"extra={sorted(set(resources) - expected_keys)}."
+            )
+        producer_rows.append(
+            {
+                "producer": producer_name,
+                "kind": contract.kind,
+                "resources": {
+                    key: _json_ready(resources[key]) for key in sorted(resources)
+                },
+            }
+        )
+    payload: dict[str, object] = {
+        "artifact_kind": _LATE_RESOURCE_SEMANTICS_ARTIFACT_KIND,
+        "schema_version": 1,
+        "producer_schedule_sha256": schedule_receipt["schedule_sha256"],
+        "producer_schedule_payload_sha256": schedule_receipt["payload_sha256"],
+        "producer_count": len(producer_rows),
+        "producers": producer_rows,
+    }
+    payload["sha256"] = _canonical_sha256(payload)
+    return payload
+
+
+def _late_frame_content_sha256(frame: Frame) -> str:
+    """Hash a live frame while excluding the self-referential authority key."""
+
+    metadata = {
+        key: value
+        for key, value in frame.metadata.items()
+        if key != US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY
+    }
+    table_receipts = {
+        name: _late_table_values_sha256(
+            frame.table(name),
+            normalize_strings=True,
+        )
+        for name in frame.entities
+    }
+    link_receipts = {
+        name: _late_table_values_sha256(
+            frame.link(name),
+            normalize_strings=True,
+        )
+        for name in frame.links
+    }
+    weight_receipts = {}
+    for entity in frame.weighted_entities:
+        weights = frame.weights_for(entity)
+        digest = hashlib.sha256(weights.values.astype("<f8", copy=False).tobytes())
+        weight_receipts[entity] = {
+            "kind": weights.kind.value,
+            "rows": len(weights.values),
+            "sha256": digest.hexdigest(),
+        }
+    payload = {
+        "version": 1,
+        "entities": list(frame.entities),
+        "links": list(frame.links),
+        "tables": table_receipts,
+        "link_tables": link_receipts,
+        "weights": weight_receipts,
+        "strata_sha256": _late_table_values_sha256(
+            frame.strata.rename("stratum").to_frame(),
+            normalize_strings=True,
+        ),
+        "mass_log": [
+            {
+                "entity": record.entity,
+                "old_total": record.old_total,
+                "new_total": record.new_total,
+                "declared_factor": record.declared_factor,
+                "reason": record.reason,
+            }
+            for record in frame.mass_log
+        ],
+        "metadata": _json_ready(metadata),
+    }
+    return _canonical_sha256(payload)
+
+
+def _late_input_column_evidence(
+    frame: Frame,
+    *,
+    input_column: ProducerInputColumn,
+    required_scope: str,
+    producer_name: str,
+    available_input_receipts: Mapping[str, Mapping[str, object]],
+) -> dict[str, object]:
+    """Bind one declared physical or virtual input to its live content."""
+
+    missing_rows, invalid_rows = _late_input_column_readiness_rows(
+        frame,
+        input_column=input_column,
+        required_scope=required_scope,
+        producer_name=producer_name,
+        available_input_receipts=available_input_receipts,
+    )
+    payload: dict[str, object] = {
+        "entity": input_column.entity,
+        "column": input_column.column,
+        "value_kind": input_column.value_kind,
+        "missing_rows": missing_rows,
+        "invalid_rows": invalid_rows,
+    }
+    if input_column.entity == "frame":
+        metadata_key = input_column.column.removeprefix("@")
+        value = frame.metadata.get(metadata_key)
+        payload.update(
+            {
+                "required_scope": required_scope,
+                "scope_rows": 1,
+                "status": "present" if isinstance(value, Mapping) else "absent",
+                "content_sha256": _canonical_sha256(
+                    _json_ready(value)
+                    if isinstance(value, Mapping)
+                    else {"absent": True}
+                ),
+            }
+        )
+        return payload
+    table = frame.table(input_column.entity)
+    scope = _late_required_scope_mask(
+        frame,
+        entity=input_column.entity,
+        required_scope=required_scope,
+    )
+    payload.update(
+        {
+            "required_scope": required_scope,
+            "scope_rows": int(scope.sum()),
+        }
+    )
+    if input_column.column == "@resolved_weight":
+        weights = frame.resolve_weights(input_column.entity)
+        scoped = pd.DataFrame(
+            {"resolved_weight": weights.values[scope.to_numpy(dtype=bool)]},
+            index=table.index[scope],
+        )
+        payload.update(
+            {
+                "status": "present",
+                "weight_kind": weights.kind.value,
+                "content_sha256": _late_table_values_sha256(scoped),
+            }
+        )
+        return payload
+    if input_column.column.startswith("@"):
+        receipt_key = f"{input_column.entity}.{input_column.column}"
+        receipt = available_input_receipts.get(receipt_key)
+        payload.update(
+            {
+                "status": "present" if isinstance(receipt, Mapping) else "absent",
+                "content_sha256": _canonical_sha256(
+                    _json_ready(receipt)
+                    if isinstance(receipt, Mapping)
+                    else {"absent": True}
+                ),
+            }
+        )
+        return payload
+    if input_column.column not in table:
+        payload.update(
+            {
+                "status": "absent",
+                "content_sha256": _canonical_sha256({"absent": True}),
+            }
+        )
+        return payload
+    values = table.loc[scope, [input_column.column]]
+    payload.update(
+        {
+            "status": "present",
+            "content_sha256": _late_table_values_sha256(values),
+        }
+    )
+    return payload
+
+
+def _late_declared_input_evidence(
+    frame: Frame,
+    contract: ProducerContract,
+    *,
+    available_input_receipts: Mapping[str, Mapping[str, object]],
+    unfilled_rows: Mapping[ProducerInput, int],
+    invalid_rows: Mapping[ProducerInput, int],
+) -> list[dict[str, object]]:
+    """Build the exact, content-bound readiness surface for one producer."""
+
+    result: list[dict[str, object]] = []
+    for requirement in contract.inputs:
+        evidence = {
+            "alternatives": [
+                [
+                    _late_input_column_evidence(
+                        frame,
+                        input_column=column,
+                        required_scope=requirement.required_scope,
+                        producer_name=contract.name,
+                        available_input_receipts=available_input_receipts,
+                    )
+                    for column in alternative
+                ]
+                for alternative in requirement.alternatives
+            ]
+        }
+        evidence["sha256"] = _canonical_sha256(evidence)
+        result.append(
+            {
+                "entity": requirement.entity,
+                "column": requirement.column,
+                "required_scope": requirement.required_scope,
+                "producing_stage": requirement.producing_stage,
+                "unfilled_rows": unfilled_rows[requirement],
+                "invalid_rows": invalid_rows[requirement],
+                "evidence": evidence,
+            }
+        )
+    return result
+
+
+def _late_scalar_is_hashable(value: object) -> bool:
+    try:
+        hash(value)
+    except TypeError:
+        return False
+    return True
+
+
+def _late_output_matches_metric_family(values: pd.Series, metric: str) -> bool:
+    """Return whether one late output's physical dtype matches its registry family."""
+
+    is_boolean = pd.api.types.is_bool_dtype(values.dtype)
+    is_real_numeric = bool(
+        pd.api.types.is_numeric_dtype(values.dtype)
+        and not is_boolean
+        and not pd.api.types.is_complex_dtype(values.dtype)
+    )
+    if metric == "boolean_incidence":
+        return bool(is_boolean)
+    if metric in {"monetary_sign_separated", "rare_incidence"}:
+        return is_real_numeric
+    if metric != "categorical_tvd":
+        return False
+    if is_boolean or pd.api.types.is_complex_dtype(values.dtype):
+        return False
+    if is_real_numeric or isinstance(values.dtype, pd.CategoricalDtype):
+        return True
+    if pd.api.types.is_object_dtype(values.dtype):
+        inferred = pd.api.types.infer_dtype(values, skipna=True)
+        return inferred != "boolean" and all(
+            _late_scalar_is_hashable(value) for value in values.dropna()
+        )
+    return bool(pd.api.types.is_string_dtype(values.dtype))
+
+
+def _validate_late_callback_output_metric_families(
+    frame: Frame,
+    contract: ProducerContract,
+    *,
+    metric_registry: Mapping[
+        tuple[str, str, str, int], str
+    ] = _CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY_ANCHOR,
+) -> None:
+    """Fail closed when a callback materializes a registered output incorrectly."""
+
+    declared_by_column: dict[tuple[str, str], list[tuple[str, str]]] = {}
+    for (entity, family, column, clone_index), metric in metric_registry.items():
+        if clone_index != 0:
+            continue
+        declared_by_column.setdefault((entity, column), []).append((family, metric))
+
+    failures: list[str] = []
+    for output in contract.outputs:
+        if output.entity == "frame" or output.column.startswith("@"):
+            continue
+        declarations = declared_by_column.get((output.entity, output.column), ())
+        if not declarations:
+            continue
+        metrics = {metric for _family, metric in declarations}
+        if len(metrics) != 1:
+            raise RuntimeError(
+                "The origin-battery metric registry gives conflicting dtype "
+                f"families to {output.entity}.{output.column}: {declarations}."
+            )
+        table = frame.table(output.entity)
+        if output.column not in table:
+            continue
+        metric = next(iter(metrics))
+        values = table[output.column]
+        if not _late_output_matches_metric_family(values, metric):
+            families = sorted(family for family, _metric in declarations)
+            failures.append(
+                f"{output.entity}.{output.column}: registry families {families} "
+                f"declare {metric!r}, callback dtype is {str(values.dtype)!r}"
+            )
+    if failures:
+        raise TypeError(
+            f"Late producer {contract.name!r} output dtype-family validation "
+            "failed:\n  " + "\n  ".join(failures)
+        )
+
+
+def _late_output_column_evidence(
+    frame: Frame,
+    *,
+    output: ProducerOutput,
+    producer_receipt: Mapping[str, object],
+) -> dict[str, object]:
+    """Bind one declared producer output to its post-callback content."""
+
+    payload: dict[str, object] = {
+        "entity": output.entity,
+        "column": output.column,
+        "coverage_scope": output.coverage_scope,
+    }
+    if output.entity == "frame":
+        value = frame.metadata.get(output.column.removeprefix("@"))
+        payload.update(
+            {
+                "status": "present" if isinstance(value, Mapping) else "absent",
+                "content_sha256": _canonical_sha256(
+                    _json_ready(value)
+                    if isinstance(value, Mapping)
+                    else {"absent": True}
+                ),
+            }
+        )
+        return payload
+    table = frame.table(output.entity)
+    if output.column.startswith("@source_receipt:"):
+        payload.update(
+            {
+                "scope_rows": len(table),
+                "status": "present",
+                "content_sha256": _canonical_sha256(_json_ready(producer_receipt)),
+            }
+        )
+        return payload
+    scope = _late_required_scope_mask(
+        frame,
+        entity=output.entity,
+        required_scope=output.coverage_scope,
+    )
+    payload["scope_rows"] = int(scope.sum())
+    if output.column == "@resolved_weight":
+        weights = frame.resolve_weights(output.entity)
+        scoped = pd.DataFrame(
+            {"resolved_weight": weights.values[scope.to_numpy(dtype=bool)]},
+            index=table.index[scope],
+        )
+        payload.update(
+            {
+                "status": "present",
+                "weight_kind": weights.kind.value,
+                "content_sha256": _late_table_values_sha256(scoped),
+            }
+        )
+    elif output.column not in table:
+        payload.update(
+            {
+                "status": "absent",
+                "content_sha256": _canonical_sha256({"absent": True}),
+            }
+        )
+    else:
+        payload.update(
+            {
+                "status": "present",
+                "content_sha256": _late_table_values_sha256(
+                    table.loc[scope, [output.column]]
+                ),
+            }
+        )
+    return payload
+
+
+def _late_producer_transition_authority_receipt(
+    receipt: Mapping[str, object],
+) -> dict[str, object]:
+    """Derive the immutable live-frame anchor for one signed DAG receipt."""
+
+    schedule = receipt["producer_schedule"]
+    assert isinstance(schedule, Mapping)
+    authority: dict[str, object] = {
+        "authority_id": US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID,
+        "version": US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION,
+        "receipt_sha256": receipt["sha256"],
+        "producer_schedule_sha256": schedule["payload_sha256"],
+        "input_frame_sha256": receipt["input_frame_sha256"],
+        "output_frame_sha256": receipt["output_frame_sha256"],
+        "execution_chain_sha256": receipt["execution_chain_sha256"],
+    }
+    authority["sha256"] = _canonical_sha256(authority)
+    return authority
+
+
+def _bind_late_producer_transition_authority(
+    frame: Frame,
+    receipt: Mapping[str, object],
+) -> tuple[Frame, str]:
+    """Bind a generated DAG transition into immutable Frame metadata."""
+
+    if US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY in frame.metadata:
+        raise ValueError(
+            "US late-producer transition authority is already bound; refusing "
+            "to overwrite the immutable generation anchor."
+        )
+    authority = _late_producer_transition_authority_receipt(receipt)
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables.update({link: frame.link(link).copy() for link in frame.links})
+    bound = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata={
+            **frame.metadata,
+            US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY: authority,
+        },
+    )
+    return bound, str(authority["sha256"])
+
+
+def _validate_primary_callback_resource_binding(
+    producer_receipt: Mapping[str, object],
+    *,
+    available_input_receipts: Mapping[str, object],
+    boundary: str,
+) -> None:
+    """Prove the primary callback consumed the resources gated by its DAG row."""
+
+    observed = producer_receipt.get("primary_resource_receipts_sha256")
+    _validate_sha256(observed, boundary=f"{boundary} primary callback resources")
+    expected = _canonical_sha256(_json_ready(available_input_receipts))
+    if observed != expected:
+        raise ValueError(
+            f"{boundary}: primary callback receipt disagrees with its declared "
+            f"resources; expected={expected}, observed={observed}."
+        )
+
+
+def _validate_late_execution_row(
+    raw_row: object,
+    *,
+    contract: ProducerContract,
+    execution_index: int,
+    expected_previous_sha256: str,
+    boundary: str,
+) -> str:
+    """Re-run one persisted readiness proof without invoking its callback."""
+
+    if not isinstance(raw_row, Mapping):
+        raise ValueError(
+            f"{boundary}: late producer execution row {execution_index} is not "
+            "an object."
+        )
+    expected_keys = {
+        "execution_index",
+        "producer",
+        "kind",
+        "declared_inputs",
+        "declared_absence_receipts",
+        "available_input_receipts",
+        "input_surface_sha256",
+        "output_surface",
+        "output_surface_sha256",
+        "producer_receipt",
+        "producer_receipt_sha256",
+        "previous_execution_sha256",
+        "status",
+        "sha256",
+    }
+    if set(raw_row) != expected_keys:
+        raise ValueError(
+            f"{boundary}: late producer execution row {execution_index} schema "
+            f"drifted; missing={sorted(expected_keys - set(raw_row))}, "
+            f"extra={sorted(set(raw_row) - expected_keys)}."
+        )
+    expected_status = "complete"
+    if (
+        raw_row.get("execution_index") != execution_index
+        or raw_row.get("producer") != contract.name
+        or raw_row.get("kind") != contract.kind
+        or raw_row.get("status") != expected_status
+    ):
+        raise ValueError(
+            f"{boundary}: late producer execution row {execution_index} is "
+            f"misbound; expected producer={contract.name!r}, kind={contract.kind!r}, "
+            f"status={expected_status!r}."
+        )
+    declared_inputs = raw_row.get("declared_inputs")
+    if not isinstance(declared_inputs, list) or len(declared_inputs) != len(
+        contract.inputs
+    ):
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} does not carry its "
+            f"exact {len(contract.inputs)}-input readiness surface."
+        )
+    unfilled_rows: dict[ProducerInput, int] = {}
+    invalid_rows: dict[ProducerInput, int] = {}
+    evidenced_available_keys: set[str] = set()
+    evidenced_available_sha256: dict[str, str] = {}
+    physical_input_states: dict[
+        tuple[str, str, str], tuple[int, int, str, str, str | None]
+    ] = {}
+    scope_cardinalities: dict[tuple[str, str], int] = {}
+    for requirement, raw_input in zip(contract.inputs, declared_inputs, strict=True):
+        if not isinstance(raw_input, Mapping):
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} has a malformed "
+                "declared-input receipt."
+            )
+        expected_input = {
+            "entity": requirement.entity,
+            "column": requirement.column,
+            "required_scope": requirement.required_scope,
+            "producing_stage": requirement.producing_stage,
+        }
+        expected_input_keys = {
+            *expected_input,
+            "unfilled_rows",
+            "invalid_rows",
+            "evidence",
+        }
+        if set(raw_input) != expected_input_keys:
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} input receipt "
+                f"schema drifted from {requirement.entity}.{requirement.column}."
+            )
+        if any(raw_input.get(key) != value for key, value in expected_input.items()):
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} input receipt "
+                f"drifted from {requirement.entity}.{requirement.column}."
+            )
+        rows = raw_input.get("unfilled_rows")
+        if isinstance(rows, bool) or not isinstance(rows, int) or rows < 0:
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} input "
+                f"{requirement.entity}.{requirement.column} has invalid "
+                f"unfilled_rows={rows!r}."
+            )
+        unfilled_rows[requirement] = rows
+        invalid = raw_input.get("invalid_rows")
+        if isinstance(invalid, bool) or not isinstance(invalid, int) or invalid < 0:
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} input "
+                f"{requirement.entity}.{requirement.column} has invalid "
+                f"invalid_rows={invalid!r}."
+            )
+        invalid_rows[requirement] = invalid
+        evidence = raw_input.get("evidence")
+        if not isinstance(evidence, Mapping) or set(evidence) != {
+            "alternatives",
+            "sha256",
+        }:
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} input "
+                f"{requirement.entity}.{requirement.column} has malformed "
+                "content evidence."
+            )
+        evidence_unsigned = dict(evidence)
+        evidence_sha256 = evidence_unsigned.pop("sha256")
+        _validate_sha256(
+            evidence_sha256,
+            boundary=(f"{boundary} late producer {contract.name!r} input evidence"),
+        )
+        if evidence_sha256 != _canonical_sha256(evidence_unsigned):
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} input "
+                f"{requirement.entity}.{requirement.column} evidence SHA-256 "
+                "mismatch."
+            )
+        alternatives = evidence.get("alternatives")
+        if not isinstance(alternatives, list) or len(alternatives) != len(
+            requirement.alternatives
+        ):
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} input "
+                f"{requirement.entity}.{requirement.column} evidence changed "
+                "its alternative surface."
+            )
+        column_states: dict[
+            ProducerInputColumn, tuple[int, int, dict[str, object]]
+        ] = {}
+        alternative_missing_counts: list[int] = []
+        for declared_alternative, raw_alternative in zip(
+            requirement.alternatives,
+            alternatives,
+            strict=True,
+        ):
+            if not isinstance(raw_alternative, list) or len(raw_alternative) != len(
+                declared_alternative
+            ):
+                raise ValueError(
+                    f"{boundary}: late producer {contract.name!r} input "
+                    f"{requirement.entity}.{requirement.column} evidence changed "
+                    "one physical alternative."
+                )
+            alternative_missing = 0
+            for declared_column, raw_column in zip(
+                declared_alternative,
+                raw_alternative,
+                strict=True,
+            ):
+                if not isinstance(raw_column, Mapping) or any(
+                    raw_column.get(field) != value
+                    for field, value in {
+                        "entity": declared_column.entity,
+                        "column": declared_column.column,
+                        "value_kind": declared_column.value_kind,
+                        "required_scope": requirement.required_scope,
+                    }.items()
+                ):
+                    raise ValueError(
+                        f"{boundary}: late producer {contract.name!r} input "
+                        f"{requirement.entity}.{requirement.column} evidence "
+                        "is misbound to its physical columns."
+                    )
+                expected_column_keys = {
+                    "entity",
+                    "column",
+                    "value_kind",
+                    "required_scope",
+                    "scope_rows",
+                    "missing_rows",
+                    "invalid_rows",
+                    "status",
+                    "content_sha256",
+                }
+                if declared_column.column == "@resolved_weight":
+                    expected_column_keys.add("weight_kind")
+                if set(raw_column) != expected_column_keys:
+                    raise ValueError(
+                        f"{boundary}: late producer {contract.name!r} input "
+                        f"{requirement.entity}.{requirement.column} evidence "
+                        f"schema drifted for {declared_column.entity}."
+                        f"{declared_column.column}."
+                    )
+                for count_field in ("scope_rows", "missing_rows", "invalid_rows"):
+                    count = raw_column.get(count_field)
+                    if (
+                        isinstance(count, bool)
+                        or not isinstance(count, int)
+                        or count < 0
+                    ):
+                        raise ValueError(
+                            f"{boundary}: late producer {contract.name!r} "
+                            f"input evidence has invalid {count_field}={count!r}."
+                        )
+                scope_rows = int(raw_column["scope_rows"])
+                missing_rows = int(raw_column["missing_rows"])
+                evidence_invalid_rows = int(raw_column["invalid_rows"])
+                status = raw_column.get("status")
+                if status not in {"present", "absent"}:
+                    raise ValueError(
+                        f"{boundary}: late producer {contract.name!r} input "
+                        f"evidence has invalid status={status!r}."
+                    )
+                is_virtual = (
+                    declared_column.column.startswith("@")
+                    and declared_column.column != "@resolved_weight"
+                    and declared_column.entity != "frame"
+                )
+                if declared_column.entity == "frame" and scope_rows != 1:
+                    raise ValueError(
+                        f"{boundary}: late producer {contract.name!r} frame "
+                        "input evidence must have scope_rows=1."
+                    )
+                if status == "absent":
+                    expected_missing = (
+                        1
+                        if declared_column.entity == "frame"
+                        else max(1, scope_rows)
+                        if is_virtual
+                        else scope_rows
+                    )
+                    if (
+                        missing_rows != expected_missing
+                        or evidence_invalid_rows != 0
+                        or raw_column.get("content_sha256")
+                        != _canonical_sha256({"absent": True})
+                    ):
+                        raise ValueError(
+                            f"{boundary}: late producer {contract.name!r} "
+                            "absent input evidence has inconsistent counts or "
+                            "content identity."
+                        )
+                elif declared_column.entity == "frame" or is_virtual:
+                    if missing_rows != 0 or evidence_invalid_rows != 0:
+                        raise ValueError(
+                            f"{boundary}: late producer {contract.name!r} "
+                            "present virtual input evidence has nonzero "
+                            "readiness counts."
+                        )
+                elif declared_column.column == "@resolved_weight":
+                    if (
+                        missing_rows != 0
+                        or not isinstance(raw_column.get("weight_kind"), str)
+                        or not raw_column.get("weight_kind")
+                    ):
+                        raise ValueError(
+                            f"{boundary}: late producer {contract.name!r} "
+                            "resolved-weight evidence is malformed."
+                        )
+                elif (
+                    missing_rows > scope_rows
+                    or evidence_invalid_rows > scope_rows
+                    or missing_rows + evidence_invalid_rows > scope_rows
+                ):
+                    raise ValueError(
+                        f"{boundary}: late producer {contract.name!r} physical "
+                        "input evidence counts exceed its declared scope."
+                    )
+                _validate_sha256(
+                    raw_column.get("content_sha256"),
+                    boundary=(
+                        f"{boundary} late producer {contract.name!r} input content"
+                    ),
+                )
+                normalized_column = dict(raw_column)
+                if (
+                    declared_column.entity != "frame"
+                    and not declared_column.column.startswith("@")
+                ):
+                    physical_key = (
+                        declared_column.entity,
+                        declared_column.column,
+                        requirement.required_scope,
+                    )
+                    physical_state = (
+                        scope_rows,
+                        missing_rows,
+                        str(status),
+                        str(raw_column["content_sha256"]),
+                        str(raw_column["weight_kind"])
+                        if "weight_kind" in raw_column
+                        else None,
+                    )
+                    previous_physical_state = physical_input_states.get(physical_key)
+                    if (
+                        previous_physical_state is not None
+                        and previous_physical_state != physical_state
+                    ):
+                        raise ValueError(
+                            f"{boundary}: late producer {contract.name!r} carries "
+                            "inconsistent physical input evidence for "
+                            f"{declared_column.entity}.{declared_column.column} "
+                            f"on {requirement.required_scope}."
+                        )
+                    physical_input_states[physical_key] = physical_state
+                    scope_key = (
+                        declared_column.entity,
+                        requirement.required_scope,
+                    )
+                    previous_scope_rows = scope_cardinalities.get(scope_key)
+                    if (
+                        previous_scope_rows is not None
+                        and previous_scope_rows != scope_rows
+                    ):
+                        raise ValueError(
+                            f"{boundary}: late producer {contract.name!r} has "
+                            "inconsistent input scope cardinality for "
+                            f"{declared_column.entity}.{requirement.required_scope}."
+                        )
+                    scope_cardinalities[scope_key] = scope_rows
+                previous_state = column_states.get(declared_column)
+                current_state = (
+                    missing_rows,
+                    evidence_invalid_rows,
+                    normalized_column,
+                )
+                if previous_state is not None and previous_state != current_state:
+                    raise ValueError(
+                        f"{boundary}: late producer {contract.name!r} repeats "
+                        "one physical input with inconsistent evidence."
+                    )
+                column_states[declared_column] = current_state
+                alternative_missing += missing_rows
+                if (
+                    declared_column.column.startswith("@")
+                    and declared_column.column != "@resolved_weight"
+                    and declared_column.entity != "frame"
+                    and raw_column.get("status") == "present"
+                ):
+                    evidence_key = f"{declared_column.entity}.{declared_column.column}"
+                    evidenced_available_keys.add(evidence_key)
+                    evidenced_available_sha256[evidence_key] = str(
+                        raw_column["content_sha256"]
+                    )
+            alternative_missing_counts.append(alternative_missing)
+        recomputed_unfilled = min(alternative_missing_counts)
+        recomputed_invalid = sum(state[1] for state in column_states.values())
+        if rows != recomputed_unfilled or invalid != recomputed_invalid:
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} input "
+                f"{requirement.entity}.{requirement.column} readiness counts "
+                "disagree with its physical evidence; "
+                f"declared=({rows}, {invalid}), "
+                f"recomputed=({recomputed_unfilled}, {recomputed_invalid})."
+            )
+
+    raw_absence = raw_row.get("declared_absence_receipts")
+    if not isinstance(raw_absence, Mapping):
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} absence receipts are "
+            "not an object."
+        )
+    expected_absence_ids = {
+        receipt_id
+        for requirement, rows in unfilled_rows.items()
+        if rows > 0 and invalid_rows[requirement] == 0
+        for receipt_id in requirement.tolerated_absence_receipts
+    }
+    if set(raw_absence) != expected_absence_ids:
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} declared-absence "
+            f"surface drifted; expected={sorted(expected_absence_ids)}, "
+            f"got={sorted(map(str, raw_absence))}."
+        )
+    for requirement, rows in unfilled_rows.items():
+        if rows <= 0:
+            continue
+        for receipt_id in requirement.tolerated_absence_receipts:
+            receipt = raw_absence.get(receipt_id)
+            expected_receipt = {
+                "receipt_id": receipt_id,
+                "status": "declared_absence",
+                "entity": requirement.entity,
+                "column": requirement.column,
+                "required_scope": requirement.required_scope,
+                "rows": rows,
+                "producer": contract.name,
+                "reason": "optional availability-pattern input",
+            }
+            if not isinstance(receipt, Mapping) or dict(receipt) != expected_receipt:
+                raise ValueError(
+                    f"{boundary}: late producer {contract.name!r} absence receipt "
+                    f"{receipt_id!r} is not canonical."
+                )
+
+    available_inputs = raw_row.get("available_input_receipts")
+    if not isinstance(available_inputs, Mapping):
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} available-input "
+            "receipts are not an object."
+        )
+    if contract.kind in {
+        "acs_earnings_universe",
+        "primary_puf",
+        "source_finalizer",
+        "late_transfer",
+    }:
+        mandatory_available_keys = _late_contract_available_input_keys(contract)
+    elif contract.kind == "post_clone_source":
+        mandatory_available_keys = {f"person.{US_LATE_SOURCE_EXECUTION_CONFIG_INPUT}"}
+    else:
+        mandatory_available_keys = set()
+    if not mandatory_available_keys <= evidenced_available_keys:
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} virtual-input "
+            "evidence does not prove every mandatory available resource."
+        )
+    if contract.kind in {
+        "acs_earnings_universe",
+        "primary_puf",
+        "source_finalizer",
+        "late_transfer",
+    }:
+        if evidenced_available_keys != mandatory_available_keys:
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} virtual-input "
+                "evidence adds a noncanonical mandatory resource."
+            )
+    expected_available_keys = evidenced_available_keys
+    if set(available_inputs) != expected_available_keys:
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} available-input "
+            f"surface drifted; expected={sorted(expected_available_keys)}, "
+            f"got={sorted(map(str, available_inputs))}."
+        )
+    for key, receipt in available_inputs.items():
+        entity, column = key.split(".", 1)
+        _validate_late_available_input_receipt(
+            receipt,
+            producer=contract.name,
+            entity=entity,
+            column=column,
+            boundary=f"{boundary} late producer {contract.name!r}",
+        )
+        if evidenced_available_sha256.get(key) != _canonical_sha256(
+            _json_ready(receipt)
+        ):
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} available-input "
+                f"receipt {key!r} disagrees with its declared content evidence."
+            )
+
+    input_surface_sha256 = raw_row.get("input_surface_sha256")
+    _validate_sha256(
+        input_surface_sha256,
+        boundary=f"{boundary} late producer {contract.name!r} input surface",
+    )
+    if input_surface_sha256 != _canonical_sha256(declared_inputs):
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} input-surface "
+            "SHA-256 mismatch."
+        )
+
+    output_surface = raw_row.get("output_surface")
+    if not isinstance(output_surface, list) or len(output_surface) != len(
+        contract.outputs
+    ):
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} does not carry its "
+            f"exact {len(contract.outputs)}-output content surface."
+        )
+    for output, raw_output in zip(contract.outputs, output_surface, strict=True):
+        expected_output = {
+            "entity": output.entity,
+            "column": output.column,
+            "coverage_scope": output.coverage_scope,
+        }
+        expected_output_keys = {
+            *expected_output,
+            "status",
+            "content_sha256",
+        }
+        if output.entity != "frame":
+            expected_output_keys.add("scope_rows")
+        if output.column == "@resolved_weight":
+            expected_output_keys.add("weight_kind")
+        if (
+            not isinstance(raw_output, Mapping)
+            or set(raw_output) != expected_output_keys
+            or any(
+                raw_output.get(field) != value
+                for field, value in expected_output.items()
+            )
+        ):
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} output evidence "
+                f"drifted from {output.entity}.{output.column}."
+            )
+        if raw_output.get("status") != "present":
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} completed with "
+                f"absent output {output.entity}.{output.column}."
+            )
+        if output.entity != "frame":
+            scope_rows = raw_output.get("scope_rows")
+            if (
+                isinstance(scope_rows, bool)
+                or not isinstance(scope_rows, int)
+                or scope_rows < 0
+            ):
+                raise ValueError(
+                    f"{boundary}: late producer {contract.name!r} output "
+                    f"{output.entity}.{output.column} has invalid "
+                    f"scope_rows={scope_rows!r}."
+                )
+            if contract.kind != "primary_puf" and not output.column.startswith("@"):
+                scope_key = (output.entity, output.coverage_scope)
+                previous_scope_rows = scope_cardinalities.get(scope_key)
+                if (
+                    previous_scope_rows is not None
+                    and previous_scope_rows != scope_rows
+                ):
+                    raise ValueError(
+                        f"{boundary}: late producer {contract.name!r} output "
+                        "scope cardinality disagrees with its declared input "
+                        f"scope for {output.entity}.{output.coverage_scope}; "
+                        f"input={previous_scope_rows}, output={scope_rows}."
+                    )
+                scope_cardinalities[scope_key] = int(scope_rows)
+        if output.column == "@resolved_weight" and (
+            not isinstance(raw_output.get("weight_kind"), str)
+            or not raw_output.get("weight_kind")
+        ):
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} resolved-weight "
+                "output evidence is malformed."
+            )
+        _validate_sha256(
+            raw_output.get("content_sha256"),
+            boundary=f"{boundary} late producer {contract.name!r} output content",
+        )
+    output_surface_sha256 = raw_row.get("output_surface_sha256")
+    _validate_sha256(
+        output_surface_sha256,
+        boundary=f"{boundary} late producer {contract.name!r} output surface",
+    )
+    if output_surface_sha256 != _canonical_sha256(output_surface):
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} output-surface "
+            "SHA-256 mismatch."
+        )
+
+    producer_receipt = raw_row.get("producer_receipt")
+    if not isinstance(producer_receipt, Mapping):
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} callback receipt is "
+            "not an object."
+        )
+    producer_receipt_sha256 = raw_row.get("producer_receipt_sha256")
+    _validate_sha256(
+        producer_receipt_sha256,
+        boundary=f"{boundary} late producer {contract.name!r} callback receipt",
+    )
+    if producer_receipt_sha256 != _canonical_sha256(producer_receipt):
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} callback-receipt "
+            "SHA-256 mismatch."
+        )
+    for raw_output in output_surface:
+        if str(raw_output["column"]).startswith("@source_receipt:") and (
+            raw_output["content_sha256"] != producer_receipt_sha256
+        ):
+            raise ValueError(
+                f"{boundary}: late producer {contract.name!r} source-receipt "
+                "output digest disagrees with its callback receipt."
+            )
+    if contract.kind == "primary_puf":
+        _validate_primary_callback_resource_binding(
+            producer_receipt,
+            available_input_receipts=available_inputs,
+            boundary=f"{boundary} late producer {contract.name!r}",
+        )
+
+    if raw_row.get("previous_execution_sha256") != expected_previous_sha256:
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} execution chain does "
+            "not name the preceding digest."
+        )
+
+    run_producer_when_ready(
+        contract,
+        lambda: None,
+        unfilled_rows=unfilled_rows,
+        invalid_rows=invalid_rows,
+        absence_receipts=raw_absence,
+    )
+    unsigned = dict(raw_row)
+    observed_sha256 = unsigned.pop("sha256")
+    _validate_sha256(
+        observed_sha256,
+        boundary=f"{boundary} late producer {contract.name!r} execution row",
+    )
+    if observed_sha256 != _canonical_sha256(unsigned):
+        raise ValueError(
+            f"{boundary}: late producer {contract.name!r} execution-row "
+            "SHA-256 mismatch."
+        )
+    return str(observed_sha256)
+
+
+def _late_execution_genesis_sha256(
+    *,
+    producer_schedule_sha256: object,
+    input_frame_sha256: object,
+) -> str:
+    return _canonical_sha256(
+        {
+            "receipt_schema_version": US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
+            "producer_schedule_sha256": producer_schedule_sha256,
+            "input_frame_sha256": input_frame_sha256,
+        }
+    )
+
+
+def _validate_late_transition_authority(
+    frame: Frame,
+    receipt: Mapping[str, object],
+    *,
+    boundary: str,
+    expected_transition_authority_sha256: str,
+    require_live_output: bool,
+) -> None:
+    """Authenticate the immutable frame anchor and independent digest carrier."""
+
+    _validate_sha256(
+        expected_transition_authority_sha256,
+        boundary=f"{boundary} independently carried late-producer authority",
+    )
+    authority = frame.metadata.get(US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY)
+    if not isinstance(authority, Mapping):
+        raise ValueError(
+            f"{boundary}: late-producer transition authority is absent from "
+            "live frame metadata."
+        )
+    expected_authority = _late_producer_transition_authority_receipt(receipt)
+    if dict(authority) != expected_authority:
+        raise ValueError(
+            f"{boundary}: late-producer receipt is not bound to the immutable "
+            "live transition authority."
+        )
+    if authority.get("sha256") != expected_transition_authority_sha256:
+        raise ValueError(
+            f"{boundary}: late-producer receipt differs from the independently "
+            "carried late-producer transition authority."
+        )
+    if require_live_output:
+        live_output_sha256 = _late_frame_content_sha256(frame)
+        if receipt.get("output_frame_sha256") != live_output_sha256:
+            raise ValueError(
+                f"{boundary}: late-producer output digest does not match the "
+                "live frame."
+            )
+
+
+def validate_stacked_late_producer_transition_authority(
+    frame: Frame,
+    receipt: Mapping[str, object],
+    *,
+    boundary: str,
+    expected_transition_authority_sha256: str,
+) -> None:
+    """Validate the anchor after declared downstream operators have run."""
+
+    validate_stacked_late_producer_receipt(receipt, boundary=boundary)
+    _validate_late_transition_authority(
+        frame,
+        receipt,
+        boundary=boundary,
+        expected_transition_authority_sha256=(expected_transition_authority_sha256),
+        require_live_output=False,
+    )
+
+
+def validate_stacked_late_producer_receipt(
+    receipt: Mapping[str, object],
+    *,
+    boundary: str,
+    frame: Frame | None = None,
+    expected_transition_authority_sha256: str | None = None,
+) -> None:
+    """Authenticate the complete derived execution and source/transfer proof."""
+
+    if not isinstance(receipt, Mapping):
+        raise ValueError(f"{boundary}: stacked late-producer DAG receipt is absent.")
+    expected_keys = {
+        "version",
+        "producer_schedule",
+        "input_frame_sha256",
+        "output_frame_sha256",
+        "execution_chain_sha256",
+        "execution",
+        "source_completion",
+        "post_puf_transfer",
+        "sha256",
+    }
+    if set(receipt) != expected_keys:
+        raise ValueError(
+            f"{boundary}: stacked late-producer DAG receipt schema drifted; "
+            f"missing={sorted(expected_keys - set(receipt))}, "
+            f"extra={sorted(set(receipt) - expected_keys)}."
+        )
+    if receipt.get("version") != US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION:
+        raise ValueError(
+            f"{boundary}: stacked late-producer DAG receipt version changed."
+        )
+    expected_schedule = _json_ready(us_late_producer_schedule_receipt())
+    schedule = receipt.get("producer_schedule")
+    if not isinstance(schedule, Mapping) or _json_ready(schedule) != expected_schedule:
+        raise ValueError(
+            f"{boundary}: stacked late-producer DAG schedule is not canonical."
+        )
+    for digest_field in (
+        "input_frame_sha256",
+        "output_frame_sha256",
+        "execution_chain_sha256",
+        "sha256",
+    ):
+        _validate_sha256(
+            receipt.get(digest_field), boundary=f"{boundary} {digest_field}"
+        )
+    execution = receipt.get("execution")
+    expected_order = CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
+    if not isinstance(execution, list) or len(execution) != len(expected_order):
+        raise ValueError(
+            f"{boundary}: stacked late-producer DAG must carry exactly "
+            f"{len(expected_order)} execution rows."
+        )
+    previous_sha256 = _late_execution_genesis_sha256(
+        producer_schedule_sha256=schedule["payload_sha256"],
+        input_frame_sha256=receipt["input_frame_sha256"],
+    )
+    execution_by_name: dict[str, Mapping[str, object]] = {}
+    for index, producer_name in enumerate(expected_order):
+        raw_row = execution[index]
+        previous_sha256 = _validate_late_execution_row(
+            raw_row,
+            contract=CANONICAL_US_LATE_PRODUCER_REGISTRY[producer_name],
+            execution_index=index,
+            expected_previous_sha256=previous_sha256,
+            boundary=boundary,
+        )
+        assert isinstance(raw_row, Mapping)
+        execution_by_name[producer_name] = raw_row
+    if receipt.get("execution_chain_sha256") != previous_sha256:
+        raise ValueError(
+            f"{boundary}: stacked late-producer execution-chain terminus "
+            "does not match its final row."
+        )
+
+    expected_source_order = [
+        producer.removeprefix("source:")
+        for producer in expected_order
+        if producer.startswith("source:")
+    ]
+    source_completion = receipt.get("source_completion")
+    if not isinstance(source_completion, Mapping):
+        raise ValueError(
+            f"{boundary}: stacked late-producer DAG source completion is absent."
+        )
+    suboperators = source_completion.get("suboperators")
+    if (
+        source_completion.get("phase") != "post_clone"
+        or source_completion.get("operator_order") != expected_source_order
+        or not isinstance(suboperators, list)
+        or len(suboperators) != len(expected_source_order)
+    ):
+        raise ValueError(
+            f"{boundary}: stacked late-producer DAG source completion does not "
+            "match the derived sixteen-source order."
+        )
+    for index, (operator, suboperator) in enumerate(
+        zip(expected_source_order, suboperators, strict=True)
+    ):
+        if (
+            not isinstance(suboperator, Mapping)
+            or suboperator.get("operator") != operator
+            or suboperator.get("order_index") != index
+        ):
+            raise ValueError(
+                f"{boundary}: stacked source completion row {index} is not "
+                f"bound to {operator!r}."
+            )
+    deferred = source_completion.get("deferred_transfer_inputs")
+    deferred_inputs = deferred.get("inputs") if isinstance(deferred, Mapping) else None
+    if not isinstance(deferred_inputs, Mapping) or set(deferred_inputs) != {
+        "bank_account_assets",
+        "bond_assets",
+        "stock_assets",
+    }:
+        raise ValueError(
+            f"{boundary}: stacked source completion lacks the exact three-input "
+            "deferred-source receipt."
+        )
+
+    normalized_suboperators: list[dict[str, object]] = []
+    source_evidence: list[object] = []
+    for index, operator in enumerate(expected_source_order):
+        source_row = execution_by_name[f"source:{operator}"]
+        source_receipt = source_row.get("producer_receipt")
+        if not isinstance(source_receipt, Mapping):
+            raise ValueError(
+                f"{boundary}: source producer {operator!r} has no callback receipt."
+            )
+        source_suboperators = source_receipt.get("suboperators")
+        if (
+            source_receipt.get("phase") != "post_clone"
+            or source_receipt.get("operator_order") != [operator]
+            or not isinstance(source_suboperators, list)
+            or len(source_suboperators) != 1
+            or not isinstance(source_suboperators[0], Mapping)
+            or source_suboperators[0].get("operator") != operator
+        ):
+            raise ValueError(
+                f"{boundary}: source producer {operator!r} callback receipt is "
+                "not the canonical single-operator proof."
+            )
+        normalized = dict(source_suboperators[0])
+        normalized["order_index"] = index
+        normalized_suboperators.append(normalized)
+        source_evidence.append(source_receipt.get("cps_source_evidence"))
+    if suboperators != normalized_suboperators:
+        raise ValueError(
+            f"{boundary}: stacked source completion is not reconstructed from "
+            "the sixteen producer receipts."
+        )
+    if source_evidence and any(
+        evidence != source_evidence[0] for evidence in source_evidence[1:]
+    ):
+        raise ValueError(
+            f"{boundary}: stacked source producer receipts disagree on CPS "
+            "source evidence."
+        )
+    if source_completion.get("cps_source_evidence") != (
+        source_evidence[0] if source_evidence else None
+    ):
+        raise ValueError(
+            f"{boundary}: stacked source completion CPS evidence is not bound "
+            "to its producer receipts."
+        )
+    finalizer_row = execution_by_name[US_LATE_SOURCE_FINALIZER_STAGE]
+    finalizer_inputs = finalizer_row.get("available_input_receipts")
+    assert isinstance(finalizer_inputs, Mapping)
+    for operator in expected_source_order:
+        key = f"person.@source_receipt:{operator}"
+        source_receipt = execution_by_name[f"source:{operator}"]["producer_receipt"]
+        input_receipt = finalizer_inputs.get(key)
+        input_binding = (
+            input_receipt.get("binding") if isinstance(input_receipt, Mapping) else None
+        )
+        if not isinstance(input_binding, Mapping) or input_binding.get(
+            "source_receipt_sha256"
+        ) != _canonical_sha256(source_receipt):
+            raise ValueError(
+                f"{boundary}: source finalizer input {key!r} is not bound to "
+                "its producer receipt."
+            )
+    if _json_ready(finalizer_row["producer_receipt"]) != _json_ready(source_completion):
+        raise ValueError(
+            f"{boundary}: source-finalizer execution receipt differs from the "
+            "aggregate source completion proof."
+        )
+
+    transfer = receipt.get("post_puf_transfer")
+    if not isinstance(transfer, Mapping):
+        raise ValueError(
+            f"{boundary}: stacked late-producer DAG transfer proof is absent."
+        )
+    validate_stacked_post_puf_transfer_receipt(transfer, boundary=boundary)
+    groups = transfer["groups"]
+    assert isinstance(groups, Mapping)
+    canonical_family = {
+        (entity, target): family
+        for entity, families in CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
+        for family, targets in families.items()
+        for target in targets
+    }
+    reconstructed_targets: dict[str, object] = {}
+    for group in CANONICAL_US_LATE_TRANSFER_GROUPS:
+        row_receipt = execution_by_name[group.name]["producer_receipt"]
+        if _json_ready(row_receipt) != _json_ready(groups[group.name]):
+            raise ValueError(
+                f"{boundary}: transfer execution receipt for {group.name!r} "
+                "differs from its aggregate group proof."
+            )
+        assert isinstance(row_receipt, Mapping)
+        group_targets = row_receipt.get("targets")
+        assert isinstance(group_targets, Mapping)
+        for target in group.targets:
+            bounded_label = f"{group.entity}/{group.family}/{target}"
+            aggregate_label = (
+                f"{group.entity}/{canonical_family[(group.entity, target)]}/{target}"
+            )
+            reconstructed_targets[aggregate_label] = group_targets[bounded_label]
+    if _json_ready(transfer["targets"]) != _json_ready(reconstructed_targets):
+        raise ValueError(
+            f"{boundary}: aggregate late-transfer targets are not reconstructed "
+            "from the nineteen producer receipts."
+        )
+
+    unsigned = dict(receipt)
+    observed_sha256 = unsigned.pop("sha256")
+    if observed_sha256 != _canonical_sha256(unsigned):
+        raise ValueError(
+            f"{boundary}: stacked late-producer DAG receipt SHA-256 mismatch."
+        )
+    if (frame is None) != (expected_transition_authority_sha256 is None):
+        raise ValueError(
+            f"{boundary}: live frame and independently carried late-producer "
+            "authority must be supplied together."
+        )
+    if frame is not None:
+        assert expected_transition_authority_sha256 is not None
+        _validate_late_transition_authority(
+            frame,
+            receipt,
+            boundary=boundary,
+            expected_transition_authority_sha256=(expected_transition_authority_sha256),
+            require_live_output=True,
+        )
 
 
 def _validate_test_authority(authority: _StackedAuthority, *, boundary: str) -> None:
@@ -3562,6 +7092,17 @@ def _validate_stacked_gate_manifest_details(
         raise ValueError(
             f"{boundary}: {reason}; production manifest emission is forbidden."
         )
+
+    tail_support_receipt = details.get(_TAIL_SUPPORT_GATE_DETAIL_KEY)
+    if tail_support_receipt is not None:
+        if not isinstance(tail_support_receipt, Mapping):
+            reject("capital-gains-tail support receipt must be an object")
+        try:
+            validate_puf_capital_gains_tail_terminal_support_receipt(
+                tail_support_receipt
+            )
+        except (TypeError, ValueError) as error:
+            reject(f"capital-gains-tail support receipt is invalid: {error}")
 
     def nonnegative_int(
         receipt: Mapping[str, object],
@@ -3957,9 +7498,9 @@ if (
     or len(_canonical_early_transfer_keys) != 48
     or len(_canonical_late_transfer_keys) != 70
     or len(_canonical_late_puf_producer_keys) != 43
-    or len(_canonical_late_source_producer_keys) != 30
+    or len(_canonical_late_source_producer_keys) != 29
     or len(_canonical_late_puf_producer_keys & _canonical_late_source_producer_keys)
-    != 3
+    != 2
     or _canonical_late_puf_producer_keys | _canonical_late_source_producer_keys
     != _canonical_late_transfer_keys
     or _canonical_early_transfer_keys & _canonical_late_transfer_keys
@@ -3988,8 +7529,8 @@ if (
         "Canonical stacked authority must partition the exact 118-target "
         "transfer surface into 48 early gap-fill and 70 post-PUF targets "
         "inside an exact 131-target terminal surface and metric registry; "
-        "the late surface must be exactly covered by 43 PUF-clone and 30 "
-        "ASEC-source producer targets with their declared three-target overlap."
+        "the late surface must be exactly covered by 43 PUF-clone and 29 "
+        "ASEC-source producer targets with their declared two-target overlap."
     )
 
 
@@ -4665,6 +8206,87 @@ class StackedPostPufTransferResult:
     transfer_result: AcsTransferResult
 
 
+@dataclass(frozen=True)
+class StackedLateProducerResult:
+    """A fully executed late-producer DAG and its aggregate provenance."""
+
+    frame: Frame
+    receipt: Mapping[str, object]
+    primary_puf_result: StackedPufPassResult
+    source_completion_receipt: Mapping[str, object]
+    transfer_result: AcsTransferResult
+    transition_authority_sha256: str
+
+
+def _producer_role_surface_for_group(
+    group_surface: TargetFamilies,
+    producer_surface: TargetFamilies,
+) -> TargetFamilies:
+    """Project canonical producer roles onto one bounded transfer family."""
+
+    producer_targets = {
+        (entity, target)
+        for entity, families in producer_surface.items()
+        for targets in families.values()
+        for target in targets
+    }
+    return {
+        entity: {
+            family: tuple(
+                target for target in targets if (entity, target) in producer_targets
+            )
+        }
+        for entity, families in group_surface.items()
+        for family, targets in families.items()
+        if any((entity, target) in producer_targets for target in targets)
+    }
+
+
+def transfer_stacked_post_puf_group(
+    frame: Frame,
+    *,
+    group_name: str,
+    seed: int = 0,
+    n_estimators: int = 100,
+    max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    target_bank: AcsTransferTargetBank | None = None,
+    execution_contract: Mapping[str, object] | None = None,
+) -> StackedPostPufTransferResult:
+    """Execute one canonical bounded late-transfer producer."""
+
+    groups = {group.name: group for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    if group_name not in groups:
+        raise ValueError(
+            f"Unknown canonical US late-transfer producer {group_name!r}; "
+            f"expected one of {sorted(groups)}."
+        )
+    group = groups[group_name]
+    authority = _production_stacked_authority()
+    result = _transfer_stacked_post_puf_inputs_evaluate(
+        frame,
+        authority=authority,
+        production=True,
+        seed=seed,
+        n_estimators=n_estimators,
+        max_targets_per_fit=max_targets_per_fit,
+        target_bank=target_bank,
+        target_families=group.target_families,
+        derive_schedule_d=False,
+        execution_contract=execution_contract,
+    )
+    return StackedPostPufTransferResult(
+        frame=result.frame,
+        receipt={
+            **dict(result.receipt),
+            "producer": group.name,
+            "entity": group.entity,
+            "family": group.family,
+            "ordered_targets": list(group.targets),
+        },
+        transfer_result=result.transfer_result,
+    )
+
+
 def transfer_stacked_post_puf_inputs(
     frame: Frame,
     *,
@@ -4683,6 +8305,9 @@ def transfer_stacked_post_puf_inputs(
         n_estimators=n_estimators,
         max_targets_per_fit=max_targets_per_fit,
         target_bank=target_bank,
+        target_families=None,
+        derive_schedule_d=True,
+        execution_contract=None,
     )
 
 
@@ -4706,6 +8331,9 @@ def _transfer_stacked_post_puf_inputs_with_test_authority(
         n_estimators=n_estimators,
         max_targets_per_fit=max_targets_per_fit,
         target_bank=target_bank,
+        target_families=None,
+        derive_schedule_d=True,
+        execution_contract=None,
     )
 
 
@@ -4718,6 +8346,9 @@ def _transfer_stacked_post_puf_inputs_evaluate(
     n_estimators: int,
     max_targets_per_fit: int,
     target_bank: AcsTransferTargetBank | None,
+    target_families: TargetFamilies | None,
+    derive_schedule_d: bool,
+    execution_contract: Mapping[str, object] | None,
 ) -> StackedPostPufTransferResult:
     """Run the late transfer from the one role carrying every declared target."""
 
@@ -4741,23 +8372,39 @@ def _transfer_stacked_post_puf_inputs_evaluate(
         frame,
         boundary="stacked post-PUF transfer attachment",
     )
-    surface = authority.post_puf_transfer_surface
+    surface = (
+        authority.post_puf_transfer_surface
+        if target_families is None
+        else target_families
+    )
     if not _surface_target_keys(surface):
         raise ValueError("Stacked post-PUF transfer requires at least one target.")
+    puf_producer_surface = (
+        authority.post_puf_puf_producer_surface
+        if target_families is None
+        else _producer_role_surface_for_group(
+            surface,
+            authority.post_puf_puf_producer_surface,
+        )
+    )
+    source_producer_surface = (
+        authority.post_puf_source_producer_surface
+        if target_families is None
+        else _producer_role_surface_for_group(
+            surface,
+            authority.post_puf_source_producer_surface,
+        )
+    )
 
     pre_counts = _verify_post_puf_transfer_activation_authority(
         frame,
         target_families=surface,
-        puf_producer_families=authority.post_puf_puf_producer_surface,
-        source_producer_families=authority.post_puf_source_producer_surface,
+        puf_producer_families=puf_producer_surface,
+        source_producer_families=source_producer_surface,
     )
     donor = _post_puf_donor_projection(frame)
-    puf_producer_keys = set(
-        _surface_target_keys(authority.post_puf_puf_producer_surface)
-    )
-    source_producer_keys = set(
-        _surface_target_keys(authority.post_puf_source_producer_surface)
-    )
+    puf_producer_keys = set(_surface_target_keys(puf_producer_surface))
+    source_producer_keys = set(_surface_target_keys(source_producer_surface))
     producer_snapshot = {
         (entity, target): _post_puf_producer_snapshot(
             frame,
@@ -4774,17 +8421,20 @@ def _transfer_stacked_post_puf_inputs_evaluate(
         frame,
         donor,
         target_families=surface,
+        donor_spine=ASEC_PUF_DONOR_SPINE,
         donor_channel=None,
         seed=seed,
         n_estimators=n_estimators,
         max_targets_per_fit=max_targets_per_fit,
         target_bank=target_bank,
+        derive_schedule_d=derive_schedule_d,
+        execution_contract=execution_contract,
     )
     target_receipts = _verify_post_puf_transfer_outcome(
         transfer.frame,
         target_families=surface,
-        puf_producer_families=authority.post_puf_puf_producer_surface,
-        source_producer_families=authority.post_puf_source_producer_surface,
+        puf_producer_families=puf_producer_surface,
+        source_producer_families=source_producer_surface,
         pre_counts=pre_counts,
         producer_snapshot=producer_snapshot,
         result=transfer,
@@ -5079,9 +8729,998 @@ def _verify_post_puf_transfer_outcome(
     return target_receipts
 
 
+def _late_required_scope_mask(
+    frame: Frame,
+    *,
+    entity: str,
+    required_scope: str,
+) -> pd.Series:
+    """Resolve one declared late-stage row scope without inferring absence."""
+
+    table = frame.table(entity)
+    if required_scope == "whole_pool":
+        return pd.Series(True, index=table.index, dtype=bool)
+    if required_scope == "asec_source":
+        return (
+            table[support_channel_column(entity)]
+            .astype(str)
+            .eq(BASE_ASEC_SUPPORT_CHANNEL)
+        )
+    if required_scope == "acs_source":
+        return (
+            table[support_channel_column(entity)]
+            .astype(str)
+            .eq(ACS_STACKED_SUPPORT_CHANNEL)
+        )
+    if required_scope == "puf_clone":
+        return pd.to_numeric(
+            table[support_clone_index_column(entity)],
+            errors="raise",
+        ).gt(0)
+    raise ValueError(f"Unknown US late-producer scope {required_scope!r}.")
+
+
+def _late_input_readiness_rows(
+    frame: Frame,
+    contract: ProducerContract,
+    *,
+    available_input_receipts: Mapping[str, Mapping[str, object]] | None = None,
+) -> tuple[dict[ProducerInput, int], dict[ProducerInput, int]]:
+    """Count missing rows and invalid values as distinct readiness states."""
+
+    available = (
+        {} if available_input_receipts is None else dict(available_input_receipts)
+    )
+    unfilled: dict[ProducerInput, int] = {}
+    invalid: dict[ProducerInput, int] = {}
+    for requirement in contract.inputs:
+        column_states = {
+            input_column: _late_input_column_readiness_rows(
+                frame,
+                input_column=input_column,
+                required_scope=requirement.required_scope,
+                producer_name=contract.name,
+                available_input_receipts=available,
+            )
+            for alternative in requirement.alternatives
+            for input_column in alternative
+        }
+        alternative_missing_counts = [
+            sum(column_states[input_column][0] for input_column in alternative)
+            for alternative in requirement.alternatives
+        ]
+        # Invalid finite-numeric values never become absence merely because a
+        # different spelling is absent.  Callbacks select alternatives by
+        # physical availability, so every present declared numeric column must
+        # be valid before the callback may inspect it.
+        unfilled[requirement] = min(alternative_missing_counts)
+        invalid[requirement] = sum(
+            column_states[input_column][1] for input_column in column_states
+        )
+    return unfilled, invalid
+
+
+def _late_unfilled_input_rows(
+    frame: Frame,
+    contract: ProducerContract,
+    *,
+    available_input_receipts: Mapping[str, Mapping[str, object]] | None = None,
+) -> dict[ProducerInput, int]:
+    """Compatibility projection of the distinct late-input readiness state."""
+
+    unfilled, _invalid = _late_input_readiness_rows(
+        frame,
+        contract,
+        available_input_receipts=available_input_receipts,
+    )
+    return unfilled
+
+
+def _late_input_column_readiness_rows(
+    frame: Frame,
+    *,
+    input_column: ProducerInputColumn,
+    required_scope: str,
+    producer_name: str,
+    available_input_receipts: Mapping[str, Mapping[str, object]],
+) -> tuple[int, int]:
+    """Return ``(missing_rows, invalid_values)`` for one declared column."""
+
+    if input_column.entity == "frame":
+        if not input_column.column.startswith("@"):
+            raise ValueError(
+                "Frame-level late inputs require an @ name; "
+                f"got {input_column.column!r}."
+            )
+        metadata_key = input_column.column.removeprefix("@")
+        return (
+            (0, 0) if isinstance(frame.metadata.get(metadata_key), Mapping) else (1, 0)
+        )
+    table = frame.table(input_column.entity)
+    scope = _late_required_scope_mask(
+        frame,
+        entity=input_column.entity,
+        required_scope=required_scope,
+    )
+    if input_column.column == "@resolved_weight":
+        weights = np.asarray(
+            frame.resolve_weights(input_column.entity).values,
+            dtype=np.float64,
+        )
+        if weights.shape != (len(table),):
+            return 0, int(scope.sum())
+        return 0, int((~np.isfinite(weights) & scope.to_numpy(dtype=bool)).sum())
+    if input_column.column.startswith("@"):
+        receipt_key = f"{input_column.entity}.{input_column.column}"
+        receipt = available_input_receipts.get(receipt_key)
+        if _late_available_input_receipt_is_valid(
+            receipt,
+            producer=producer_name,
+            entity=input_column.entity,
+            column=input_column.column,
+        ):
+            return 0, 0
+        return max(1, int(scope.sum())), 0
+    if input_column.column not in table:
+        return int(scope.sum()), 0
+    values = table[input_column.column]
+    if input_column.value_kind == "column_present":
+        return 0, 0
+    missing = values.isna()
+    invalid = pd.Series(False, index=values.index, dtype=bool)
+    if input_column.value_kind == "finite_numeric":
+        numeric = pd.to_numeric(values, errors="coerce").to_numpy(
+            dtype=np.float64,
+            na_value=np.nan,
+        )
+        invalid = (~missing) & ~np.isfinite(numeric)
+    return int((missing & scope).sum()), int((invalid & scope).sum())
+
+
+def _late_declared_absence_receipts(
+    contract: ProducerContract,
+    unfilled_rows: Mapping[ProducerInput, int],
+    *,
+    invalid_rows: Mapping[ProducerInput, int],
+) -> dict[str, Mapping[str, object]]:
+    """Materialize only absences explicitly tolerated by the contract."""
+
+    receipts: dict[str, Mapping[str, object]] = {}
+    for requirement, rows in unfilled_rows.items():
+        if (
+            rows <= 0
+            or invalid_rows.get(requirement, 0) > 0
+            or not requirement.tolerated_absence_receipts
+        ):
+            continue
+        for receipt_id in requirement.tolerated_absence_receipts:
+            receipts[receipt_id] = {
+                "receipt_id": receipt_id,
+                "status": "declared_absence",
+                "entity": requirement.entity,
+                "column": requirement.column,
+                "required_scope": requirement.required_scope,
+                "rows": rows,
+                "producer": contract.name,
+                "reason": "optional availability-pattern input",
+            }
+    return receipts
+
+
+def _assert_primary_puf_stage_complete(frame: Frame) -> None:
+    """Validate the already-executed root producer before DAG dispatch."""
+
+    contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[US_LATE_PRIMARY_PUF_STAGE]
+    failures: list[str] = []
+    for output in contract.outputs:
+        if output.entity == "frame":
+            metadata_key = output.column.removeprefix("@")
+            if not isinstance(frame.metadata.get(metadata_key), Mapping):
+                failures.append(
+                    f"frame.{output.column}: metadata receipt absent on "
+                    f"{output.coverage_scope}"
+                )
+            continue
+        table = frame.table(output.entity)
+        scope = _late_required_scope_mask(
+            frame,
+            entity=output.entity,
+            required_scope=output.coverage_scope,
+        )
+        if output.column == "@resolved_weight":
+            weights = np.asarray(
+                frame.resolve_weights(output.entity).values,
+                dtype=np.float64,
+            )
+            if weights.shape != (len(table),):
+                failures.append(
+                    f"{output.entity}.@resolved_weight: shape {weights.shape} "
+                    f"does not match {(len(table),)}"
+                )
+            else:
+                count = int(
+                    (
+                        ~np.isfinite(weights) & scope.to_numpy(dtype=bool, copy=False)
+                    ).sum()
+                )
+                if count:
+                    failures.append(
+                        f"{output.entity}.@resolved_weight: {count} invalid "
+                        f"row(s) on {output.coverage_scope}"
+                    )
+            continue
+        if output.column not in table:
+            failures.append(
+                f"{output.entity}.{output.column}: column absent on "
+                f"{output.coverage_scope}"
+            )
+            continue
+        values = table[output.column]
+        missing = values.isna()
+        if pd.api.types.is_numeric_dtype(values.dtype):
+            missing |= ~np.isfinite(
+                pd.to_numeric(values, errors="coerce").to_numpy(dtype=np.float64)
+            )
+        count = int((missing & scope).sum())
+        if count:
+            failures.append(
+                f"{output.entity}.{output.column}: {count} unfilled row(s) on "
+                f"{output.coverage_scope}"
+            )
+    if failures:
+        raise ValueError(
+            f"Late producer {US_LATE_PRIMARY_PUF_STAGE!r} is not complete:\n  "
+            + "\n  ".join(failures)
+        )
+
+
+def _materialize_stacked_acs_earnings_universe(
+    frame: Frame,
+    *,
+    execution_config: Mapping[str, object] | None = None,
+) -> AcsPumsEarningsUniverseApplication:
+    """Run and bind the declared pre-primary ACS earnings-universe producer."""
+
+    resolved_config = (
+        _late_acs_earnings_universe_execution_binding()
+        if execution_config is None
+        else _json_ready(execution_config)
+    )
+    columns = resolved_config.get("ordered_mapped_columns")
+    if not isinstance(columns, list) or any(
+        not isinstance(column, str) or not column for column in columns
+    ):
+        raise ValueError("Late ACS earnings-universe execution config is malformed.")
+    application = apply_acs_pums_earnings_universe_zeros(
+        frame,
+        columns=tuple(columns),
+        boundary="late ACS PUMS earnings-universe producer",
+    )
+    receipt = _json_ready(application.receipt)
+    contract = resolved_config.get("contract_identity")
+    if not isinstance(contract, Mapping) or any(
+        receipt.get(field) != contract.get(field)
+        for field in (
+            "version",
+            "source_channel",
+            "minimum_age",
+            "aggregation",
+            "produced_frame_semantics",
+        )
+    ):
+        raise ValueError(
+            "Late ACS earnings-universe application receipt differs from its "
+            "bound runtime contract."
+        )
+    receipt_rules = [
+        {
+            "rule_id": rule.get("rule_id"),
+            "source_column": rule.get("source_column"),
+            "mapped_column": rule.get("mapped_column"),
+        }
+        for rule in receipt.get("rules", {}).values()
+    ]
+    if receipt_rules != contract.get("rules"):
+        raise ValueError(
+            "Late ACS earnings-universe application rules differ from their "
+            "bound runtime contract."
+        )
+    metadata_key = US_LATE_ACS_EARNINGS_UNIVERSE_RECEIPT_INPUT.removeprefix("@")
+    if metadata_key in application.frame.metadata:
+        raise ValueError(
+            "Late ACS PUMS earnings-universe producer found a pre-existing "
+            "application receipt."
+        )
+    bound = Frame(
+        {
+            entity: application.frame.table(entity)
+            for entity in application.frame.entities
+        },
+        application.frame.schema,
+        {
+            entity: application.frame.weights_for(entity)
+            for entity in application.frame.weighted_entities
+        },
+        application.frame.strata,
+        mass_log=application.frame.mass_log,
+        metadata={**application.frame.metadata, metadata_key: receipt},
+    )
+    return AcsPumsEarningsUniverseApplication(bound, receipt)
+
+
+def _aggregate_late_transfer_result(
+    frame: Frame,
+    *,
+    group_results: Mapping[
+        str,
+        tuple[
+            Mapping[str, object],
+            tuple[object, ...],
+            tuple[FitWeightRecord, ...],
+            tuple[str, ...],
+            str | None,
+        ],
+    ],
+    execution_order: Sequence[str],
+) -> StackedPostPufTransferResult:
+    """Bind all bounded group outcomes into the canonical 70-target receipt."""
+
+    expected_groups = tuple(group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS)
+    if set(group_results) != set(expected_groups):
+        raise ValueError(
+            "US late-transfer finalization requires every canonical group once; "
+            f"missing={sorted(set(expected_groups) - set(group_results))}, "
+            f"extra={sorted(set(group_results) - set(expected_groups))}."
+        )
+    authority = _production_stacked_authority()
+    canonical_family = {
+        (entity, target): family
+        for entity, families in authority.post_puf_transfer_surface.items()
+        for family, targets in families.items()
+        for target in targets
+    }
+    aggregate_targets: dict[str, object] = {}
+    imputed_inputs = []
+    fit_records = []
+    deferred_inputs: list[str] = []
+    resolved_channels: set[str | None] = set()
+    group_receipts: dict[str, object] = {}
+    residual_null_rows = 0
+    for group in CANONICAL_US_LATE_TRANSFER_GROUPS:
+        (
+            group_receipt,
+            group_imputed_inputs,
+            group_fit_records,
+            group_deferred_inputs,
+            resolved_donor_channel,
+        ) = group_results[group.name]
+        if group_receipt.get("producer") != group.name:
+            raise ValueError(
+                f"US late-transfer group receipt for {group.name!r} is misbound."
+            )
+        raw_targets = group_receipt.get("targets")
+        if not isinstance(raw_targets, Mapping):
+            raise ValueError(
+                f"US late-transfer group {group.name!r} has no target receipts."
+            )
+        expected_target_labels = {
+            f"{group.entity}/{group.family}/{target}" for target in group.targets
+        }
+        if set(raw_targets) != expected_target_labels:
+            raise ValueError(
+                f"US late-transfer group {group.name!r} target receipt drift; "
+                f"expected={sorted(expected_target_labels)}, "
+                f"got={sorted(raw_targets)}."
+            )
+        for target in group.targets:
+            bounded_label = f"{group.entity}/{group.family}/{target}"
+            family = canonical_family[(group.entity, target)]
+            aggregate_targets[f"{group.entity}/{family}/{target}"] = dict(
+                raw_targets[bounded_label]
+            )
+            table = frame.table(group.entity)
+            if target not in table:
+                residual_null_rows += len(table)
+            else:
+                residual_null_rows += int(table[target].isna().sum())
+        group_receipts[group.name] = dict(group_receipt)
+        imputed_inputs.extend(group_imputed_inputs)
+        fit_records.extend(group_fit_records)
+        deferred_inputs.extend(group_deferred_inputs)
+        resolved_channels.add(resolved_donor_channel)
+    if residual_null_rows:
+        raise ValueError(
+            "US late-transfer DAG finalization found "
+            f"{residual_null_rows} residual null target cell(s); zero are allowed."
+        )
+    if len(resolved_channels) != 1:
+        raise ValueError(
+            "US late-transfer groups disagree on resolved donor channel: "
+            f"{sorted(map(str, resolved_channels))}."
+        )
+    aggregate = AcsTransferResult(
+        frame=frame,
+        imputed_inputs=tuple(imputed_inputs),
+        fit_records=tuple(fit_records),
+        deferred_inputs=tuple(dict.fromkeys(deferred_inputs)),
+        resolved_donor_channel=next(iter(resolved_channels)),
+    )
+    receipt = {
+        "authority": _authority_receipt(authority),
+        "producer_schedule": dict(us_late_producer_schedule_receipt()),
+        "producer_execution_order": list(execution_order),
+        "donor_selection": "owner_projection_of_asec_origin_clone_1",
+        "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
+        "donor_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+        "recipient_selection": ("target_specific_complement_of_declared_producer_rows"),
+        "resolved_donor_channel": aggregate.resolved_donor_channel,
+        "groups": group_receipts,
+        "targets": aggregate_targets,
+        "fit_records": [
+            {"fit_name": record.fit_name, "weight_kind": record.weight_kind}
+            for record in aggregate.fit_records
+        ],
+        "completion": {
+            "status": "complete",
+            "group_count": len(expected_groups),
+            "target_count": len(aggregate_targets),
+            "residual_null_rows": 0,
+        },
+    }
+    validate_stacked_post_puf_transfer_receipt(
+        receipt,
+        boundary="US late-transfer DAG finalization",
+    )
+    return StackedPostPufTransferResult(frame, receipt, aggregate)
+
+
+def run_stacked_late_producer_dag(
+    frame: Frame,
+    *,
+    primary_puf_producer: Callable[[Frame], StackedPufPassResult],
+    primary_resource_receipts: Mapping[str, Mapping[str, object]],
+    seed: int = 0,
+    n_estimators: int = 100,
+    max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    target_banks: Mapping[str, AcsTransferTargetBank | None] | None = None,
+    absence_receipts: Mapping[str, Mapping[str, object]] | None = None,
+) -> StackedLateProducerResult:
+    """Derive and execute the complete late stage from producer contracts."""
+
+    from microcosm.build.us_runtime.multispine_pool import (
+        POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
+        finalize_multispine_source_inputs,
+        run_multispine_post_clone_source_operator,
+    )
+
+    if max_targets_per_fit != DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT:
+        raise ValueError(
+            "Canonical US late-producer groups require "
+            f"max_targets_per_fit={DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT}; "
+            f"got {max_targets_per_fit}."
+        )
+    if not callable(primary_puf_producer):
+        raise TypeError("US late-producer DAG requires a primary-PUF callback.")
+    if not isinstance(primary_resource_receipts, Mapping):
+        raise TypeError(
+            "US late-producer DAG primary resource receipts must be a mapping."
+        )
+    expected_primary_resources = _late_contract_available_input_keys(
+        CANONICAL_US_LATE_PRODUCER_REGISTRY[US_LATE_PRIMARY_PUF_STAGE]
+    )
+    if set(primary_resource_receipts) != expected_primary_resources:
+        raise ValueError(
+            "US late-producer DAG primary resource receipts must exactly cover "
+            "the declared virtual inputs; "
+            f"missing={sorted(expected_primary_resources - set(primary_resource_receipts))}, "
+            f"extra={sorted(set(primary_resource_receipts) - expected_primary_resources)}."
+        )
+    if US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY in frame.metadata:
+        raise ValueError(
+            "US late-producer DAG entry already carries a transition authority; "
+            "refusing to execute the transition twice."
+        )
+    expected_groups = {group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    banks = {} if target_banks is None else dict(target_banks)
+    if target_banks is not None and set(banks) != expected_groups:
+        raise ValueError(
+            "US late-producer target-bank mapping must exactly cover the "
+            f"canonical groups; missing={sorted(expected_groups - set(banks))}, "
+            f"extra={sorted(set(banks) - expected_groups)}."
+        )
+    declared_absence = {} if absence_receipts is None else dict(absence_receipts)
+    current = frame
+    input_frame_sha256 = _late_frame_content_sha256(frame)
+    schedule_receipt = _json_ready(us_late_producer_schedule_receipt())
+    previous_execution_sha256 = _late_execution_genesis_sha256(
+        producer_schedule_sha256=schedule_receipt["payload_sha256"],
+        input_frame_sha256=input_frame_sha256,
+    )
+    execution_order: list[str] = []
+    execution_receipts: list[dict[str, object]] = []
+    primary_puf_result: StackedPufPassResult | None = None
+    source_receipts: dict[str, Mapping[str, object]] = {}
+    source_completion_receipt: Mapping[str, object] | None = None
+    group_results: dict[
+        str,
+        tuple[
+            Mapping[str, object],
+            tuple[object, ...],
+            tuple[FitWeightRecord, ...],
+            tuple[str, ...],
+            str | None,
+        ],
+    ] = {}
+    group_by_name = {group.name: group for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    for schedule_index, producer_name in enumerate(
+        CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
+    ):
+        contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[producer_name]
+        if producer_name == US_LATE_ACS_EARNINGS_UNIVERSE_STAGE:
+            node_available_inputs = _late_acs_earnings_universe_resource_receipts()
+        elif producer_name == US_LATE_PRIMARY_PUF_STAGE:
+            node_available_inputs = dict(primary_resource_receipts)
+        elif contract.kind == "post_clone_source":
+            node_available_inputs = _late_source_resource_receipts(
+                producer_name=producer_name,
+            )
+        elif producer_name == US_LATE_SOURCE_FINALIZER_STAGE:
+            node_available_inputs = _late_source_finalizer_resource_receipts()
+            node_available_inputs.update(
+                {
+                    f"person.@source_receipt:{operator}": (
+                        _late_available_input_receipt(
+                            producer=US_LATE_SOURCE_FINALIZER_STAGE,
+                            entity="person",
+                            column=f"@source_receipt:{operator}",
+                            rows=len(current.table("person")),
+                            binding={
+                                "resource_kind": "source_operator_receipt",
+                                "schema_version": 1,
+                                "source_operator": operator,
+                                "source_receipt_sha256": _canonical_sha256(
+                                    _json_ready(source_receipts[operator])
+                                ),
+                            },
+                        )
+                    )
+                    for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+                    if operator in source_receipts
+                }
+            )
+        elif contract.kind == "late_transfer":
+            group = group_by_name[producer_name]
+            node_available_inputs = _late_transfer_resource_receipts(
+                group_name=group.name,
+                entity=group.entity,
+                family=group.family,
+                targets=group.targets,
+                seed=seed,
+                n_estimators=n_estimators,
+                max_targets_per_fit=max_targets_per_fit,
+                target_bank=banks.get(producer_name),
+            )
+        else:
+            node_available_inputs = {}
+        unfilled_rows, invalid_rows = _late_input_readiness_rows(
+            current,
+            contract,
+            available_input_receipts=node_available_inputs,
+        )
+        node_absence_receipts = _late_declared_absence_receipts(
+            contract,
+            unfilled_rows,
+            invalid_rows=invalid_rows,
+        )
+        for receipt_id, receipt in node_absence_receipts.items():
+            previous = declared_absence.setdefault(receipt_id, receipt)
+            if dict(previous) != dict(receipt):
+                raise ValueError(
+                    f"Late producer {producer_name!r} absence receipt "
+                    f"{receipt_id!r} conflicts with supplied evidence."
+                )
+        declared_input_evidence = _late_declared_input_evidence(
+            current,
+            contract,
+            available_input_receipts=node_available_inputs,
+            unfilled_rows=unfilled_rows,
+            invalid_rows=invalid_rows,
+        )
+        outcome: dict[str, object] = {}
+
+        def execute(
+            *,
+            bound_contract: ProducerContract = contract,
+            bound_producer_name: str = producer_name,
+            bound_frame: Frame = current,
+            bound_outcome: dict[str, object] = outcome,
+            bound_available_inputs: Mapping[
+                str, Mapping[str, object]
+            ] = node_available_inputs,
+        ) -> None:
+            if bound_contract.kind == "acs_earnings_universe":
+                config_receipt = bound_available_inputs[
+                    f"person.{US_LATE_ACS_EARNINGS_UNIVERSE_CONFIG_INPUT}"
+                ]
+                result = _materialize_stacked_acs_earnings_universe(
+                    bound_frame,
+                    execution_config=config_receipt["binding"],
+                )
+            elif bound_contract.kind == "primary_puf":
+                result = primary_puf_producer(bound_frame)
+            elif bound_contract.kind == "post_clone_source":
+                operator = bound_producer_name.removeprefix("source:")
+                result = run_multispine_post_clone_source_operator(
+                    bound_frame,
+                    operator,
+                )
+            elif bound_contract.kind == "source_finalizer":
+                result = finalize_multispine_source_inputs(
+                    bound_frame,
+                    operator_receipts=source_receipts,
+                )
+            elif bound_contract.kind == "late_transfer":
+                group = group_by_name[bound_producer_name]
+                config_receipt = bound_available_inputs[
+                    f"{group.entity}.{US_LATE_TRANSFER_MODEL_CONFIG_INPUT}"
+                ]
+                config_binding = config_receipt["binding"]
+                assert isinstance(config_binding, Mapping)
+                execution_contract = config_binding["transfer_execution_contract"]
+                assert isinstance(execution_contract, Mapping)
+                result = transfer_stacked_post_puf_group(
+                    bound_frame,
+                    group_name=bound_producer_name,
+                    seed=seed,
+                    n_estimators=n_estimators,
+                    max_targets_per_fit=max_targets_per_fit,
+                    target_bank=banks.get(bound_producer_name),
+                    execution_contract=execution_contract,
+                )
+            else:
+                raise AssertionError(
+                    f"Unhandled US late-producer kind {bound_contract.kind!r}."
+                )
+            bound_outcome["result"] = result
+
+        run_producer_when_ready(
+            contract,
+            execute,
+            unfilled_rows=unfilled_rows,
+            invalid_rows=invalid_rows,
+            absence_receipts=declared_absence,
+        )
+        result = outcome["result"]
+        if contract.kind == "acs_earnings_universe":
+            _assert_late_callback_consumed_bound_config(
+                producer=producer_name,
+                entity="person",
+                column=US_LATE_ACS_EARNINGS_UNIVERSE_CONFIG_INPUT,
+                available_input_receipts=node_available_inputs,
+                actual_binding=_late_acs_earnings_universe_execution_binding(),
+            )
+        elif contract.kind == "post_clone_source":
+            _assert_late_callback_consumed_bound_config(
+                producer=producer_name,
+                entity="person",
+                column=US_LATE_SOURCE_EXECUTION_CONFIG_INPUT,
+                available_input_receipts=node_available_inputs,
+                actual_binding=_late_source_execution_config_binding(producer_name),
+            )
+        elif contract.kind == "source_finalizer":
+            _assert_late_callback_consumed_bound_config(
+                producer=producer_name,
+                entity="person",
+                column=US_LATE_SOURCE_FINALIZER_EXECUTION_CONFIG_INPUT,
+                available_input_receipts=node_available_inputs,
+                actual_binding=_late_source_finalizer_execution_binding(),
+            )
+        elif contract.kind == "late_transfer":
+            group = group_by_name[producer_name]
+            _assert_late_callback_consumed_bound_config(
+                producer=producer_name,
+                entity=group.entity,
+                column=US_LATE_TRANSFER_MODEL_CONFIG_INPUT,
+                available_input_receipts=node_available_inputs,
+                actual_binding=_late_transfer_model_config_binding(
+                    group_name=group.name,
+                    entity=group.entity,
+                    family=group.family,
+                    targets=group.targets,
+                    seed=seed,
+                    n_estimators=n_estimators,
+                    max_targets_per_fit=max_targets_per_fit,
+                ),
+            )
+            _assert_late_callback_consumed_bound_config(
+                producer=producer_name,
+                entity=group.entity,
+                column=US_LATE_TRANSFER_TARGET_BANK_INPUT,
+                available_input_receipts=node_available_inputs,
+                actual_binding=_late_transfer_target_bank_binding(
+                    group_name=group.name,
+                    target_bank=banks.get(producer_name),
+                ),
+            )
+        current = result.frame
+        _validate_late_callback_output_metric_families(current, contract)
+        producer_receipt = _json_ready(result.receipt)
+        if contract.kind == "primary_puf":
+            _validate_primary_callback_resource_binding(
+                producer_receipt,
+                available_input_receipts=node_available_inputs,
+                boundary=f"late producer {producer_name!r}",
+            )
+        output_surface = [
+            _late_output_column_evidence(
+                current,
+                output=output,
+                producer_receipt=producer_receipt,
+            )
+            for output in contract.outputs
+        ]
+        absent_outputs = [
+            f"{item['entity']}.{item['column']}"
+            for item in output_surface
+            if item.get("status") != "present"
+        ]
+        if absent_outputs:
+            raise ValueError(
+                f"Late producer {producer_name!r} completed without declared "
+                f"output(s) {absent_outputs}."
+            )
+        execution_row: dict[str, object] = {
+            "execution_index": schedule_index,
+            "producer": producer_name,
+            "kind": contract.kind,
+            "declared_inputs": declared_input_evidence,
+            "declared_absence_receipts": {
+                receipt_id: dict(receipt)
+                for receipt_id, receipt in node_absence_receipts.items()
+            },
+            "available_input_receipts": {
+                receipt_id: dict(receipt)
+                for receipt_id, receipt in sorted(node_available_inputs.items())
+            },
+            "input_surface_sha256": _canonical_sha256(declared_input_evidence),
+            "output_surface": output_surface,
+            "output_surface_sha256": _canonical_sha256(output_surface),
+            "producer_receipt": producer_receipt,
+            "producer_receipt_sha256": _canonical_sha256(producer_receipt),
+            "previous_execution_sha256": previous_execution_sha256,
+            "status": "complete",
+        }
+        execution_row["sha256"] = _canonical_sha256(execution_row)
+        previous_execution_sha256 = str(execution_row["sha256"])
+        execution_receipts.append(execution_row)
+        if contract.kind == "acs_earnings_universe":
+            execution_order.append(producer_name)
+            continue
+        if contract.kind == "primary_puf":
+            if not isinstance(result, StackedPufPassResult):
+                raise TypeError(
+                    "US primary-PUF producer callback must return StackedPufPassResult."
+                )
+            _assert_primary_puf_stage_complete(current)
+            primary_puf_result = result
+            continue
+
+        execution_order.append(producer_name)
+        if contract.kind == "post_clone_source":
+            operator = producer_name.removeprefix("source:")
+            source_receipts[operator] = result.receipt
+        elif contract.kind == "source_finalizer":
+            source_completion_receipt = result.receipt
+        else:
+            group = group_by_name[producer_name]
+            if tuple(result.receipt.get("ordered_targets", ())) != group.targets:
+                raise ValueError(
+                    f"Late-transfer producer {producer_name!r} changed its "
+                    "declared target order."
+                )
+            group_results[producer_name] = (
+                result.receipt,
+                result.transfer_result.imputed_inputs,
+                result.transfer_result.fit_records,
+                result.transfer_result.deferred_inputs,
+                result.transfer_result.resolved_donor_channel,
+            )
+    if source_completion_receipt is None:
+        raise AssertionError("US late-producer DAG did not finalize source inputs.")
+    if primary_puf_result is None:
+        raise AssertionError("US late-producer DAG did not execute primary PUF.")
+    aggregate = _aggregate_late_transfer_result(
+        current,
+        group_results=group_results,
+        execution_order=execution_order,
+    )
+    late_receipt: dict[str, object] = {
+        "version": US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
+        "producer_schedule": schedule_receipt,
+        "input_frame_sha256": input_frame_sha256,
+        "output_frame_sha256": _late_frame_content_sha256(aggregate.frame),
+        "execution_chain_sha256": previous_execution_sha256,
+        "execution": execution_receipts,
+        "source_completion": _json_ready(source_completion_receipt),
+        "post_puf_transfer": _json_ready(aggregate.receipt),
+    }
+    late_receipt["sha256"] = _canonical_sha256(late_receipt)
+    validate_stacked_late_producer_receipt(
+        late_receipt,
+        boundary="US late-producer DAG finalization",
+    )
+    authorized_frame, transition_authority_sha256 = (
+        _bind_late_producer_transition_authority(aggregate.frame, late_receipt)
+    )
+    validate_stacked_late_producer_receipt(
+        late_receipt,
+        boundary="US late-producer DAG live-output finalization",
+        frame=authorized_frame,
+        expected_transition_authority_sha256=transition_authority_sha256,
+    )
+    return StackedLateProducerResult(
+        frame=authorized_frame,
+        receipt=late_receipt,
+        primary_puf_result=primary_puf_result,
+        source_completion_receipt=source_completion_receipt,
+        transfer_result=aggregate.transfer_result,
+        transition_authority_sha256=transition_authority_sha256,
+    )
+
+
 # ---------------------------------------------------------------------------
 # The single PUF pass over the stacked spine (charter item 3)
 # ---------------------------------------------------------------------------
+
+
+def us_puf_s_corp_universe_zero_rule_identity() -> dict[str, object]:
+    """Return the declared whole-pool meaning of the PUF S-corp leaf."""
+
+    return {
+        "rule_id": US_PUF_S_CORP_UNIVERSE_ZERO_RULE_ID,
+        "schema_version": 1,
+        "entity": "person",
+        "column": "s_corp_income",
+        "coverage_scope": "whole_pool",
+        "materialized_value": 0.0,
+        "source_semantics": (
+            "puf_combined_partnership_s_corp_carried_by_partnership_income"
+        ),
+        "donor_precondition": "finite_exact_zero",
+        "puf_clone_precondition": "finite_exact_zero",
+        "native_precondition": "all_null",
+        "assignment": "explicit_array_assignment",
+    }
+
+
+def _materialize_us_puf_s_corp_universe_zero(
+    frame: Frame,
+    donor_tax_units: pd.DataFrame,
+) -> tuple[Frame, dict[str, object]]:
+    """Materialize the certified all-zero S-corp leaf over the whole pool.
+
+    The PUF source stores combined partnership/S-corporation income in
+    ``partnership_income`` and exposes ``s_corp_income`` as an exact-zero
+    schema leaf.  The QRF therefore proves the clone values, while this owner
+    extends that declared universe meaning to native stacked rows.  Every
+    precondition is checked before one explicit array assignment; this is not
+    a missing-value fallback.
+    """
+
+    column = "s_corp_income"
+    if column not in donor_tax_units:
+        raise ValueError(
+            "US PUF s_corp_income universe-zero materialization requires the "
+            "declared donor column."
+        )
+    donor_values = pd.to_numeric(donor_tax_units[column], errors="coerce").to_numpy(
+        dtype=np.float64,
+        na_value=np.nan,
+    )
+    donor_nonfinite = int((~np.isfinite(donor_values)).sum())
+    if donor_nonfinite:
+        raise ValueError(
+            "US PUF s_corp_income universe-zero donor precondition failed: "
+            f"{donor_nonfinite} nonfinite value(s)."
+        )
+    donor_nonzero = int((donor_values != 0.0).sum())
+    if donor_nonzero:
+        raise ValueError(
+            "US PUF s_corp_income universe-zero donor precondition failed: "
+            f"{donor_nonzero} nonzero value(s)."
+        )
+
+    person_entity = frame.schema.person_entity
+    person = frame.table(person_entity).copy(deep=True)
+    if column not in person:
+        raise ValueError(
+            "US PUF s_corp_income universe-zero materialization requires the "
+            "primary-QRF output column."
+        )
+    clone_column = support_clone_index_column(person_entity)
+    clone_values = pd.to_numeric(person[clone_column], errors="coerce").to_numpy(
+        dtype=np.float64,
+        na_value=np.nan,
+    )
+    if not np.isfinite(clone_values).all():
+        raise ValueError(
+            "US PUF s_corp_income universe-zero materialization found a "
+            "nonfinite person clone role."
+        )
+    native = clone_values == 0.0
+    produced = clone_values > 0.0
+    preexisting_native = int(person.loc[native, column].notna().sum())
+    if preexisting_native:
+        raise ValueError(
+            "US PUF s_corp_income universe-zero native precondition failed: "
+            f"{preexisting_native} native cell(s) were already materialized."
+        )
+
+    produced_values = pd.to_numeric(
+        person.loc[produced, column],
+        errors="coerce",
+    ).to_numpy(dtype=np.float64, na_value=np.nan)
+    produced_nonfinite = int((~np.isfinite(produced_values)).sum())
+    if produced_nonfinite:
+        raise ValueError(
+            "US PUF s_corp_income universe-zero clone precondition failed: "
+            f"{produced_nonfinite} nonfinite clone/tail value(s)."
+        )
+    produced_nonzero = int((produced_values != 0.0).sum())
+    if produced_nonzero:
+        raise ValueError(
+            "US PUF s_corp_income universe-zero clone precondition failed: "
+            f"{produced_nonzero} nonzero clone/tail value(s)."
+        )
+
+    output_values = pd.to_numeric(person[column], errors="coerce").to_numpy(
+        dtype=np.float64,
+        na_value=np.nan,
+        copy=True,
+    )
+    output_values[native] = np.zeros(int(native.sum()), dtype=np.float64)
+    person[column] = output_values
+    output_nonfinite = int((~np.isfinite(output_values)).sum())
+    output_nonzero = int((output_values != 0.0).sum())
+    if output_nonfinite or output_nonzero:
+        raise AssertionError(
+            "US PUF s_corp_income universe-zero explicit assignment did not "
+            "produce an exact finite-zero whole-pool column."
+        )
+
+    tables = {entity: frame.table(entity) for entity in frame.entities}
+    tables[person_entity] = person
+    materialized = Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=frame.metadata,
+    )
+    role_counts = {
+        str(int(role)): int((clone_values == role).sum())
+        for role in sorted(set(clone_values))
+    }
+    receipt: dict[str, object] = {
+        "rule": us_puf_s_corp_universe_zero_rule_identity(),
+        "status": "materialized",
+        "donor_rows_verified": len(donor_values),
+        "native_rows_materialized": int(native.sum()),
+        "produced_rows_verified": int(produced.sum()),
+        "person_rows": len(person),
+        "person_rows_by_clone_role": role_counts,
+        "post_materialization_nonfinite_rows": output_nonfinite,
+        "post_materialization_nonzero_rows": output_nonzero,
+        "donor_values_sha256": _late_table_values_sha256(
+            donor_tax_units.loc[:, [column]]
+        ),
+        "person_values_sha256": _late_table_values_sha256(
+            person.loc[:, [clone_column, column]]
+        ),
+    }
+    receipt["sha256"] = _canonical_sha256(receipt)
+    return materialized, receipt
 
 
 @dataclass(frozen=True)
@@ -5106,6 +9745,7 @@ def run_stacked_puf_pass(
     fit_records: list[FitWeightRecord] | None = None,
     tail_bound_diagnostics: list[dict[str, object]] | None = None,
     primary_qrf_checkpoint_dir: str | Path | None = None,
+    primary_qrf_input_binding: Mapping[str, object] | None = None,
 ) -> StackedPufPassResult:
     """Run the resumable primary QRF and clone-2 tail over the stacked spine.
 
@@ -5131,6 +9771,7 @@ def run_stacked_puf_pass(
         fit_records=fit_records,
         tail_bound_diagnostics=tail_bound_diagnostics,
         primary_qrf_checkpoint_dir=primary_qrf_checkpoint_dir,
+        primary_qrf_input_binding=primary_qrf_input_binding,
         apply_capital_gains_tail=True,
     )
 
@@ -5164,10 +9805,44 @@ def _run_stacked_puf_pass_evaluate(
     fit_records: list[FitWeightRecord] | None = None,
     tail_bound_diagnostics: list[dict[str, object]] | None = None,
     primary_qrf_checkpoint_dir: str | Path | None = None,
+    primary_qrf_input_binding: Mapping[str, object] | None = None,
     apply_capital_gains_tail: bool,
 ) -> StackedPufPassResult:
     """Internal evaluator with one explicit fixture-only tail seam."""
 
+    if primary_qrf_input_binding is not None:
+        noncanonical = {
+            "predictors": predictors,
+            "person_outputs": person_outputs,
+            "tax_unit_outputs": tax_unit_outputs,
+        }
+        explicit = sorted(
+            name for name, value in noncanonical.items() if value is not None
+        )
+        if explicit:
+            raise ValueError(
+                "Stacked production primary QRF requires the import-declared "
+                f"canonical predictor/output surface; explicit={explicit}."
+            )
+        missing_sinks = [
+            name
+            for name, value in {
+                "fit_records": fit_records,
+                "tail_bound_diagnostics": tail_bound_diagnostics,
+            }.items()
+            if value is None
+        ]
+        if missing_sinks:
+            raise ValueError(
+                "Stacked production primary QRF requires its declared audit "
+                f"sink(s): {missing_sinks}."
+            )
+    canonical_tail_bounds = (
+        puf_tax_detail_tail_bound_quantiles_identity()
+        if person_outputs is None and tax_unit_outputs is None
+        else None
+    )
+    tail_spec, tail_agi_bands = resolve_puf_capital_gains_tail_execution_inputs()
     validate_stacked_spine_frame(frame, boundary="stacked PUF pass entry")
     person_clone = frame.table("person")[support_clone_index_column("person")]
     if not person_clone.eq(0).all():
@@ -5175,12 +9850,31 @@ def _run_stacked_puf_pass_evaluate(
             "The stacked PUF pass owns clone attachment; found nonzero person "
             "support clone indices on its input."
         )
-    universe_application = apply_acs_pums_earnings_universe_zeros(
-        frame,
-        boundary="stacked PUF pass ACS earnings universe",
+    universe_metadata_key = US_LATE_ACS_EARNINGS_UNIVERSE_RECEIPT_INPUT.removeprefix(
+        "@"
     )
+    universe_application_receipt = frame.metadata.get(universe_metadata_key)
+    if not isinstance(universe_application_receipt, Mapping):
+        raise ValueError(
+            "Stacked PUF pass requires the declared "
+            f"{US_LATE_ACS_EARNINGS_UNIVERSE_STAGE!r} producer receipt before "
+            "the primary callback may run."
+        )
+    resolved_universe = resolve_acs_pums_earnings_universe(
+        frame,
+        columns=tuple(ACS_PUMS_EARNINGS_SOURCE_COLUMNS),
+        boundary="stacked PUF pass ACS earnings-universe receipt",
+    )
+    if _json_ready(universe_application_receipt) != _json_ready(
+        resolved_universe.receipt
+    ):
+        raise ValueError(
+            "Stacked PUF pass ACS earnings-universe receipt does not match "
+            "the live produced frame."
+        )
     cloned = clone_us_frame_for_puf_support(
-        universe_application.frame,
+        frame,
+        channels=(BASE_ASEC_SUPPORT_CHANNEL, PUF_TAX_DETAIL_SUPPORT_CHANNEL),
         clone_attachment_fraction=clone_attachment_fraction,
         clone_attachment_seed=clone_attachment_seed,
     )
@@ -5198,7 +9892,13 @@ def _run_stacked_puf_pass_evaluate(
         kwargs["person_outputs"] = tuple(person_outputs)
     if tax_unit_outputs is not None:
         kwargs["tax_unit_outputs"] = tuple(tax_unit_outputs)
+    primary_resource_receipts_sha256: str | None = None
     if primary_qrf_checkpoint_dir is None:
+        if primary_qrf_input_binding is not None:
+            raise ValueError(
+                "Stacked monolithic primary QRF cannot carry a checkpoint-input "
+                "binding without a checkpoint directory."
+            )
         predictor_universe_receipts: list[dict[str, object]] = []
         imputed = impute_us_puf_tax_detail_support(
             cloned,
@@ -5207,6 +9907,7 @@ def _run_stacked_puf_pass_evaluate(
             n_estimators=n_estimators,
             fit_records=fit_records,
             tail_bound_diagnostics=tail_bound_diagnostics,
+            tail_bound_quantiles=canonical_tail_bounds,
             predictor_universe_receipts=predictor_universe_receipts,
             require_complete_recipient_predictors=True,
             absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
@@ -5223,9 +9924,78 @@ def _run_stacked_puf_pass_evaluate(
             "recipient_predictor_universe": predictor_universe_receipts[0],
         }
     else:
+        _validate_stacked_late_primary_checkpoint_input_binding(
+            primary_qrf_input_binding,
+            boundary="stacked primary-QRF checkpoint entry",
+        )
+        assert isinstance(primary_qrf_input_binding, Mapping)
+        normalized_input_binding = _json_ready(primary_qrf_input_binding)
+        bound_resources = normalized_input_binding["primary_resource_receipts"]
+        assert isinstance(bound_resources, Mapping)
+        checkpoint_resource = bound_resources["tax_unit.@primary_qrf_checkpoint"]
+        assert isinstance(checkpoint_resource, Mapping)
+        checkpoint_binding = checkpoint_resource["binding"]
+        assert isinstance(checkpoint_binding, Mapping)
         checkpoint_dir = Path(primary_qrf_checkpoint_dir)
+        bound_checkpoint_identity = str(
+            checkpoint_binding["checkpoint_identity_sha256"]
+        )
+        observed_checkpoint_identity = checkpoint_dir.resolve().name
+        if observed_checkpoint_identity != bound_checkpoint_identity:
+            raise ValueError(
+                "Stacked primary-QRF checkpoint directory identity differs "
+                "from its bound late-producer resource: "
+                f"directory={observed_checkpoint_identity!r}, "
+                f"bound={bound_checkpoint_identity!r}."
+            )
+        actual_resources = stacked_late_primary_resource_receipts(
+            donor_tax_units,
+            primary_qrf_checkpoint_identity_sha256=observed_checkpoint_identity,
+            clone_attachment_fraction=clone_attachment_fraction,
+            clone_attachment_seed=clone_attachment_seed,
+            seed=seed,
+            n_estimators=n_estimators,
+            fit_records_enabled=fit_records is not None,
+            tail_bound_diagnostics_enabled=(tail_bound_diagnostics is not None),
+            predictors=predictors,
+            person_outputs=person_outputs,
+            tax_unit_outputs=tax_unit_outputs,
+            capital_gains_tail_spec=tail_spec,
+            capital_gains_tail_agi_bands=tail_agi_bands,
+        )
+        if _json_ready(actual_resources) != _json_ready(bound_resources):
+            raise ValueError(
+                "Stacked primary-QRF callback invocation disagrees with its "
+                "declared late-producer donor/config resources."
+            )
+        primary_resource_receipts_sha256 = _canonical_sha256(bound_resources)
         manifest_path = checkpoint_dir / PRIMARY_QRF_MANIFEST_FILENAME
+        input_binding_path = checkpoint_dir / _LATE_PRIMARY_QRF_INPUT_BINDING_FILENAME
         if manifest_path.exists():
+            if not input_binding_path.is_file():
+                raise ValueError(
+                    "Stacked primary QRF checkpoint has no late-producer input "
+                    f"binding: {input_binding_path}."
+                )
+            try:
+                observed_input_binding = json.loads(
+                    input_binding_path.read_text(encoding="utf-8")
+                )
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ValueError(
+                    "Stacked primary QRF checkpoint input binding is unreadable: "
+                    f"{input_binding_path}."
+                ) from exc
+            _validate_stacked_late_primary_checkpoint_input_binding(
+                observed_input_binding,
+                boundary="stacked primary-QRF checkpoint resume",
+            )
+            if observed_input_binding != normalized_input_binding:
+                raise ValueError(
+                    "Stacked primary QRF checkpoint input binding differs from "
+                    "the live late-producer donor/config resources; refusing "
+                    "stale predictions."
+                )
             resume_status = "resumed"
         else:
             if checkpoint_dir.exists() and any(checkpoint_dir.iterdir()):
@@ -5243,15 +10013,27 @@ def _run_stacked_puf_pass_evaluate(
                 absent_cells=PUF_ABSENT_CELLS_PRESERVE_NULLS,
                 **kwargs,
             )
+            input_binding_bytes = json.dumps(
+                normalized_input_binding,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+            temporary_binding_path = input_binding_path.with_name(
+                f".{input_binding_path.name}.tmp"
+            )
+            temporary_binding_path.write_bytes(input_binding_bytes)
+            temporary_binding_path.replace(input_binding_path)
             resume_status = "initialized"
         predictor_universe_receipt = (
             primary_puf_qrf_recipient_predictor_universe_receipt(checkpoint_dir)
         )
-        run_primary_puf_qrf_chain(checkpoint_dir)
+        run_primary_puf_qrf_chain(checkpoint_dir, environment={})
         imputed, weight_kind = finalize_primary_puf_qrf_chain(
             cloned,
             checkpoint_dir,
             tail_bound_diagnostics=tail_bound_diagnostics,
+            tail_bound_quantiles=canonical_tail_bounds,
         )
         if fit_records is not None:
             fit_records.append(FitWeightRecord(US_PUF_SUPPORT_FIT_NAME, weight_kind))
@@ -5259,6 +10041,7 @@ def _run_stacked_puf_pass_evaluate(
             "mode": "checkpoint_chain",
             "resume_status": resume_status,
             "checkpoint_manifest": str(manifest_path.resolve()),
+            "input_binding_sha256": normalized_input_binding["sha256"],
             "recipient_predictor_universe": predictor_universe_receipt,
         }
 
@@ -5275,6 +10058,8 @@ def _run_stacked_puf_pass_evaluate(
             imputed,
             donor_tax_units,
             seed=seed,
+            spec=tail_spec,
+            agi_bands=tail_agi_bands,
         )
         validate_puf_capital_gains_tail_manifest(tail_receipt)
         # The tail producer creates clone role 2 before its final origin
@@ -5313,6 +10098,29 @@ def _run_stacked_puf_pass_evaluate(
         output = imputed
         tail_receipt = None
         tail_status = "fixture_only_skipped"
+
+    declared_person_outputs = (
+        tuple(PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS)
+        if person_outputs is None
+        else tuple(person_outputs)
+    )
+    s_corp_rule_requested = "s_corp_income" in declared_person_outputs
+    if s_corp_rule_requested and (
+        apply_capital_gains_tail or person_outputs is not None
+    ):
+        output, s_corp_universe_receipt = _materialize_us_puf_s_corp_universe_zero(
+            output, donor_tax_units
+        )
+    else:
+        s_corp_universe_receipt = {
+            "rule": us_puf_s_corp_universe_zero_rule_identity(),
+            "status": (
+                "fixture_only_skipped"
+                if s_corp_rule_requested
+                else "output_not_requested"
+            ),
+        }
+        s_corp_universe_receipt["sha256"] = _canonical_sha256(s_corp_universe_receipt)
     validate_stacked_spine_frame(output, boundary="stacked PUF pass output")
 
     person = output.table("person")
@@ -5322,23 +10130,25 @@ def _run_stacked_puf_pass_evaluate(
         origin: int((channel.eq(origin) & clone_index.eq(1)).sum())
         for origin in sorted(channel.unique())
     }
-    return StackedPufPassResult(
-        frame=output,
-        receipt={
-            "acs_earnings_universe_application": _json_ready(
-                universe_application.receipt
-            ),
-            "clone_attachment": _json_ready(attachment),
-            "doctrines": {
-                "require_complete_recipient_predictors": True,
-                "absent_cells": PUF_ABSENT_CELLS_PRESERVE_NULLS,
+    receipt: dict[str, object] = {
+        "acs_earnings_universe_application": _json_ready(universe_application_receipt),
+        "clone_attachment": _json_ready(attachment),
+        "doctrines": {
+            "require_complete_recipient_predictors": True,
+            "absent_cells": PUF_ABSENT_CELLS_PRESERVE_NULLS,
+            "whole_pool_output_universes": {
+                "person.s_corp_income": (us_puf_s_corp_universe_zero_rule_identity()),
             },
-            "primary_puf_qrf": primary_qrf_receipt,
-            "puf_capital_gains_tail_transfer": tail_receipt,
-            "tail_status": tail_status,
-            "recipient_person_rows_by_origin": recipients_by_origin,
         },
-    )
+        "primary_puf_qrf": primary_qrf_receipt,
+        "puf_capital_gains_tail_transfer": tail_receipt,
+        "s_corp_income_universe_zero": s_corp_universe_receipt,
+        "tail_status": tail_status,
+        "recipient_person_rows_by_origin": recipients_by_origin,
+    }
+    if primary_resource_receipts_sha256 is not None:
+        receipt["primary_resource_receipts_sha256"] = primary_resource_receipts_sha256
+    return StackedPufPassResult(frame=output, receipt=receipt)
 
 
 def _bind_stacked_tail_origin_receipt(
@@ -5370,6 +10180,16 @@ def _bind_stacked_tail_origin_receipt(
 
     bound = _json_ready(tail_manifest)
     bound.pop("manifest_sha256", None)
+    overlap_ownership = _json_ready(us_late_overlap_ownership_receipt())
+    existing_overlap_ownership = bound.get("late_overlap_ownership")
+    if (
+        existing_overlap_ownership is not None
+        and existing_overlap_ownership != overlap_ownership
+    ):
+        raise ValueError(
+            "Stacked tail overlap ownership conflicts with the canonical owner matrix."
+        )
+    bound["late_overlap_ownership"] = overlap_ownership
     clone_receipt = bound.get("clone")
     if not isinstance(clone_receipt, dict):
         raise ValueError("Stacked tail clone provenance receipt is malformed.")
@@ -5435,6 +10255,19 @@ def assert_stacked_tail_cells_preserved(
 
     validate_stacked_spine_frame(frame, boundary="stacked tail preservation")
     validate_puf_capital_gains_tail_manifest(tail_manifest)
+    overlap_ownership = tail_manifest.get("late_overlap_ownership")
+    if not isinstance(overlap_ownership, Mapping):
+        raise ValueError(
+            "Stacked tail overlap ownership receipt is absent or malformed."
+        )
+    try:
+        overlap_ownership_sha256 = validate_us_late_overlap_ownership_receipt(
+            overlap_ownership
+        )
+    except (TypeError, ValueError) as error:
+        raise ValueError(
+            f"Stacked tail overlap ownership receipt is invalid: {error}"
+        ) from error
     attachment = validate_puf_clone_attachment(
         frame,
         boundary="stacked tail preservation attachment",
@@ -5844,6 +10677,7 @@ def assert_stacked_tail_cells_preserved(
         "tail_owned_state_count": len(observed_state),
         "recipient_owned_qrf_cell_count": preserved_nonowned,
         "tail_owned_cells_sha256": _canonical_sha256(observed_state),
+        "overlap_ownership_sha256": overlap_ownership_sha256,
     }
 
 
@@ -5852,7 +10686,65 @@ def assert_stacked_tail_cells_preserved(
 # ---------------------------------------------------------------------------
 
 _COMPLETENESS_GATE_NAME = "us_stacked_completeness"
+_TAIL_SUPPORT_GATE_DETAIL_KEY = "puf_capital_gains_tail_support"
 _ANY_CHANNEL = "*"
+
+
+def _frame_has_clone_two_rows(frame: Frame) -> bool:
+    """Return whether any live entity carries the tail-owned clone role."""
+
+    for entity in frame.entities:
+        table = frame.table(entity)
+        clone_column = support_clone_index_column(entity)
+        if clone_column not in table:
+            continue
+        clone_index = pd.to_numeric(table[clone_column], errors="raise")
+        if clone_index.eq(2).any():
+            return True
+    return False
+
+
+def _terminal_tail_support_gate_receipt(
+    frame: Frame,
+    tail_manifest: Mapping[str, object] | None,
+    *,
+    boundary: str,
+) -> dict[str, object] | None:
+    """Authenticate the tail support receipt against the live clone identity."""
+
+    has_clone_two = _frame_has_clone_two_rows(frame)
+    if tail_manifest is None:
+        if has_clone_two:
+            raise ValueError(
+                f"{boundary}: live clone-2 rows require the bound PUF "
+                "capital-gains-tail manifest."
+            )
+        return None
+    if not has_clone_two:
+        raise ValueError(
+            f"{boundary}: a supplied PUF capital-gains-tail manifest requires "
+            "live clone-2 rows."
+        )
+
+    validate_puf_capital_gains_tail_manifest(tail_manifest)
+    terminal_receipt = puf_capital_gains_tail_terminal_support_receipt(tail_manifest)
+    validate_puf_capital_gains_tail_terminal_support_receipt(terminal_receipt)
+
+    if has_clone_two:
+        attachment = validate_puf_clone_attachment(
+            frame,
+            boundary=f"{boundary} tail attachment",
+        )
+        transform = attachment.get("post_attachment_transform")
+        if not isinstance(transform, Mapping) or transform.get(
+            "tail_manifest_sha256"
+        ) != tail_manifest.get("manifest_sha256"):
+            raise ValueError(
+                f"{boundary}: live clone-2 attachment is not bound to the "
+                "supplied PUF capital-gains-tail manifest."
+            )
+
+    return _json_ready(terminal_receipt)
 
 
 @dataclass(frozen=True)
@@ -5954,6 +10846,7 @@ def stacked_completeness_gate(
     frame: Frame,
     *,
     absence_proofs: Sequence[AbsenceProof] = (),
+    tail_manifest: Mapping[str, object] | None = None,
 ) -> GateResult:
     """Evaluate the canonical declared surface with no caller authority."""
 
@@ -5962,6 +10855,7 @@ def stacked_completeness_gate(
         authority=_production_stacked_authority(),
         production=True,
         absence_proofs=absence_proofs,
+        tail_manifest=tail_manifest,
     )
 
 
@@ -5970,6 +10864,7 @@ def _stacked_completeness_gate_with_test_authority(
     *,
     authority: _StackedAuthority,
     absence_proofs: Sequence[AbsenceProof] = (),
+    tail_manifest: Mapping[str, object] | None = None,
 ) -> GateResult:
     """Explicit test-only completeness seam for a digested authority bundle."""
 
@@ -5979,6 +10874,7 @@ def _stacked_completeness_gate_with_test_authority(
         authority=authority,
         production=False,
         absence_proofs=absence_proofs,
+        tail_manifest=tail_manifest,
     )
 
 
@@ -5988,6 +10884,7 @@ def _stacked_completeness_gate_evaluate(
     authority: _StackedAuthority,
     production: bool,
     absence_proofs: Sequence[AbsenceProof],
+    tail_manifest: Mapping[str, object] | None = None,
     _canonical_gap_fill_plan: tuple[
         GapFillDirection, ...
     ] = CANONICAL_STACKED_GAP_FILL_PLAN,
@@ -6007,6 +10904,11 @@ def _stacked_completeness_gate_evaluate(
     that target even at the explicitly non-canonical fixture seam.
     """
 
+    tail_support_receipt = _terminal_tail_support_gate_receipt(
+        frame,
+        tail_manifest,
+        boundary="stacked completeness gate",
+    )
     authority_receipt = _authority_receipt(authority)
     declared_surface = authority.declared_surface
     declared_count = len(_surface_target_keys(declared_surface))
@@ -6022,6 +10924,11 @@ def _stacked_completeness_gate_evaluate(
                 "authority": authority_receipt,
                 "declared_targets": declared_count,
                 "targets": {},
+                **(
+                    {_TAIL_SUPPORT_GATE_DETAIL_KEY: tail_support_receipt}
+                    if tail_support_receipt is not None
+                    else {}
+                ),
             },
         )
 
@@ -6382,6 +11289,11 @@ def _stacked_completeness_gate_evaluate(
             "authority": authority_receipt,
             "declared_targets": declared_count,
             "targets": target_receipts,
+            **(
+                {_TAIL_SUPPORT_GATE_DETAIL_KEY: tail_support_receipt}
+                if tail_support_receipt is not None
+                else {}
+            ),
         },
     )
 
@@ -6453,6 +11365,8 @@ class OriginBatterySpec:
 
 def by_origin_battery(
     frame: Frame,
+    *,
+    tail_manifest: Mapping[str, object] | None = None,
 ) -> GateResult:
     """Run the canonical 131-target plus joint by-origin battery."""
 
@@ -6460,6 +11374,7 @@ def by_origin_battery(
         frame,
         authority=_production_stacked_authority(),
         production=True,
+        tail_manifest=tail_manifest,
     )
 
 
@@ -6467,6 +11382,7 @@ def _by_origin_battery_with_test_authority(
     frame: Frame,
     *,
     authority: _StackedAuthority,
+    tail_manifest: Mapping[str, object] | None = None,
 ) -> GateResult:
     """Explicit test-only battery seam for a digested authority bundle."""
 
@@ -6475,6 +11391,7 @@ def _by_origin_battery_with_test_authority(
         frame,
         authority=authority,
         production=False,
+        tail_manifest=tail_manifest,
     )
 
 
@@ -6500,6 +11417,7 @@ def _by_origin_battery_evaluate(
     *,
     authority: _StackedAuthority,
     production: bool,
+    tail_manifest: Mapping[str, object] | None = None,
     _canonical_gap_fill_plan: tuple[
         GapFillDirection, ...
     ] = CANONICAL_STACKED_GAP_FILL_PLAN,
@@ -6523,6 +11441,11 @@ def _by_origin_battery_evaluate(
     both origins carry ample support.
     """
 
+    tail_support_receipt = _terminal_tail_support_gate_receipt(
+        frame,
+        tail_manifest,
+        boundary="by-origin battery",
+    )
     authority_receipt = _authority_receipt(authority)
     specs = _battery_specs_from_metric_registry(authority.metric_registry)
     registered_targets = set(authority.metric_registry)
@@ -6576,6 +11499,11 @@ def _by_origin_battery_evaluate(
                 "tested_comparisons": 0,
                 "untestable_comparisons": [],
                 "comparisons": {},
+                **(
+                    {_TAIL_SUPPORT_GATE_DETAIL_KEY: tail_support_receipt}
+                    if tail_support_receipt is not None
+                    else {}
+                ),
             },
         )
     validate_stacked_spine_frame(frame, boundary="by-origin battery")
@@ -6832,6 +11760,11 @@ def _by_origin_battery_evaluate(
             "tested_comparisons": tested,
             "untestable_comparisons": sorted(untestable),
             "comparisons": comparisons,
+            **(
+                {_TAIL_SUPPORT_GATE_DETAIL_KEY: tail_support_receipt}
+                if tail_support_receipt is not None
+                else {}
+            ),
         },
     )
 

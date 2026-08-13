@@ -66,7 +66,14 @@ from microcosm.build.uk_runtime.terminal_gates import (
     UKReviewedExclusion,
 )
 from microcosm.build.uk_runtime.weighted_integrity import exclusion_evaluation_date
-from microcosm.frame import Frame, MassChangeRecord, WeightKind, engine_tables
+from microcosm.frame import (
+    Frame,
+    MassChangeRecord,
+    WeightKind,
+    engine_tables,
+    put_frame_table,
+    read_frame_table,
+)
 
 __all__ = [
     "UKNationalBuildResult",
@@ -191,9 +198,9 @@ def _read_uk_national_tables(
                 "UK national dataset time_period must contain exactly one value."
             )
         payload = {
-            "person": store["person"],
-            "benunit": store["benunit"],
-            "household": store["household"],
+            "person": read_frame_table(store, "person"),
+            "benunit": read_frame_table(store, "benunit"),
+            "household": read_frame_table(store, "household"),
             "time_period": str(raw_period.iloc[0]),
             "household_weight_kind": _weight_kind_from_stored(stored_kind),
             "mass_log": _mass_log_from_stored(stored_mass_log),
@@ -254,9 +261,27 @@ def _write_uk_single_year_tables(
     temporary_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp.h5")
     try:
         with pd.HDFStore(temporary_path) as store:
-            store.put("person", person, format="table", data_columns=True)
-            store.put("benunit", benunit, format="table", data_columns=True)
-            store.put("household", household, format="table", data_columns=True)
+            put_frame_table(
+                store,
+                "person",
+                person,
+                preferred_format="table",
+                data_columns=True,
+            )
+            put_frame_table(
+                store,
+                "benunit",
+                benunit,
+                preferred_format="table",
+                data_columns=True,
+            )
+            put_frame_table(
+                store,
+                "household",
+                household,
+                preferred_format="table",
+                data_columns=True,
+            )
             store.put(
                 "time_period",
                 pd.Series([time_period]),

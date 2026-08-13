@@ -50,6 +50,7 @@ from microcosm.frame.units import US_SCHEMA
 __all__ = [
     "US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS",
     "US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS",
+    "US_EDUCATION_INPUTS_OWNED_OUTPUT_COLUMNS",
     "US_EDUCATION_INPUTS_OUTPUT_COLUMNS",
     "US_EDUCATION_INPUTS_REQUIRED_SOURCE_COLUMNS",
     "US_EDUCATION_INPUTS_STAGE_NAME",
@@ -76,6 +77,13 @@ US_EDUCATION_INPUTS_OUTPUT_COLUMNS: tuple[str, ...] = (
     *US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS,
 )
 
+# Qualified tuition is produced upstream by the PUF tax-detail operator.  This
+# stage validates and consumes it, but must not claim or rewrite it.
+US_EDUCATION_INPUTS_OWNED_OUTPUT_COLUMNS: tuple[str, ...] = (
+    "educational_assistance",
+    *US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS,
+)
+
 US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS = US_EDUCATION_INPUTS_OUTPUT_COLUMNS
 
 US_EDUCATION_INPUTS_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
@@ -84,18 +92,10 @@ US_EDUCATION_INPUTS_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
 )
 
 _PERSON_WEIGHT_COLUMN = "person_weight"
-# Qualified tuition is a PUF-only tax-detail chain target: on the two-channel
-# support pool it is exactly zero on the ASEC half BY DESIGN (like every other
-# PUF-only detail column — partnership income, charitable donations, mortgage
-# interest all decompose the same way on the full-scale pool), and the PUF
-# half carries the PUF-faithful per-person rate (~0.56% weighted on the first
-# full-scale base, base-r3 ck016). The retired extended-CPS 2.64% person rate
-# is a blended post-imputation file rate and is not comparable to this
-# pre-selection pool, which is how the original [0.003, 0.05] total floor was
-# mis-set. The gate now asserts the channel invariant directly: ASEC exactly
-# zero, PUF share within band, blended total within band.
+# Qualified tuition is a PUF-owned tax-detail input. The late producer DAG
+# completes its recipient rows before this stage derives the five AOTC facts,
+# so the terminal surface is intentionally no longer channel-sparse.
 _TUITION_SHARE_BAND = (0.001, 0.05)
-_TUITION_PUF_CHANNEL_SHARE_BAND = (0.002, 0.05)
 _ASSISTANCE_SHARE_BAND = (0.005, 0.08)
 _DERIVE_EDUCATION_INPUTS_PARAMETER_KEYS = frozenset()
 
@@ -126,7 +126,7 @@ def derive_us_education_inputs_from_manifest(
     operation: SourceOperationSpec,
     _context: SourceRuntimeContext | None,
 ) -> pd.DataFrame:
-    """Derive the seven education inputs from a person source table."""
+    """Derive assistance and AOTC flags while preserving upstream tuition."""
 
     if operation.kind != "derive_education_inputs":
         raise SourceRuntimeError(
@@ -155,20 +155,31 @@ def derive_us_education_inputs_from_manifest(
             f"US education-input derivation requires source column(s): {missing}."
         )
 
+    def _strict_nonnegative(column: str) -> np.ndarray:
+        values = pd.to_numeric(frame[column], errors="coerce").to_numpy(
+            dtype=np.float64
+        )
+        nonfinite = int(np.count_nonzero(~np.isfinite(values)))
+        if nonfinite:
+            raise SourceRuntimeError(
+                f"US education-input source {column!r} contains {nonfinite} "
+                "nonnumeric or nonfinite value(s)."
+            )
+        negative = int(np.count_nonzero(values < 0.0))
+        if negative:
+            raise SourceRuntimeError(
+                f"US education-input source {column!r} contains {negative} "
+                "negative value(s)."
+            )
+        return values
+
+    tuition = _strict_nonnegative("qualified_tuition_expenses")
+    assistance = _strict_nonnegative("ED_VAL")
     result = frame.copy(deep=True)
-    tuition = (
-        pd.to_numeric(result["qualified_tuition_expenses"], errors="coerce")
-        .fillna(0.0)
-        .clip(lower=0.0)
-    )
-    assistance = (
-        pd.to_numeric(result["ED_VAL"], errors="coerce").fillna(0.0).clip(lower=0.0)
-    )
     aotc_student = tuition > 0.0
-    result["qualified_tuition_expenses"] = tuition.to_numpy(dtype=np.float64)
-    result["educational_assistance"] = assistance.to_numpy(dtype=np.float64)
+    result["educational_assistance"] = assistance
     for column in US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS:
-        result[column] = aotc_student.to_numpy(dtype=bool)
+        result[column] = aotc_student
     return result
 
 
@@ -215,7 +226,7 @@ def with_us_education_inputs(
         config=SourceRuntimeConfig(seed=int(seed), target_year=int(time_period)),
     )
     aligned = output.set_index("person_id").reindex(person["person_id"])
-    for column in US_EDUCATION_INPUTS_OUTPUT_COLUMNS:
+    for column in US_EDUCATION_INPUTS_OWNED_OUTPUT_COLUMNS:
         if aligned[column].isna().any():
             raise ValueError(
                 "US education-input stage output does not cover every person for "
@@ -223,7 +234,7 @@ def with_us_education_inputs(
             )
 
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    for column in US_EDUCATION_INPUTS_OUTPUT_COLUMNS:
+    for column in US_EDUCATION_INPUTS_OWNED_OUTPUT_COLUMNS:
         if column in US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS:
             tables["person"][column] = aligned[column].to_numpy(dtype=bool)
         else:
@@ -353,23 +364,6 @@ def us_education_inputs_signal_gate(frame: Frame) -> GateResult:
                 f"{column}: {count} rows disagree with positive qualified tuition."
             )
 
-    channels = summary.get("channels") or {}
-    if channels:
-        asec = channels.get(BASE_ASEC_SUPPORT_CHANNEL, {})
-        if int(asec.get("tuition_positive_rows", 0)):
-            failures.append(
-                "qualified_tuition_expenses is a PUF-only tax-detail column but "
-                f"{asec['tuition_positive_rows']} ASEC-channel row(s) carry it; "
-                "the support channels have cross-contaminated."
-            )
-        puf = channels.get(PUF_TAX_DETAIL_SUPPORT_CHANNEL, {})
-        puf_share = float(puf.get("tuition_positive_share", 0.0))
-        puf_low, puf_high = _TUITION_PUF_CHANNEL_SHARE_BAND
-        if not (puf_low <= puf_share <= puf_high):
-            failures.append(
-                f"puf_tax_detail qualified-tuition share {puf_share:.4f} outside "
-                f"plausibility band [{puf_low}, {puf_high}]."
-            )
     return GateResult(
         name="education_inputs_signal",
         passed=not failures,

@@ -21,6 +21,10 @@ from microcosm.build.us_runtime import housing_inputs as housing_inputs_module
 from microcosm.build.us_runtime import multispine_pool as multispine_pool_module
 from microcosm.build.us_runtime import prior_year_income as prior_year_income_module
 from microcosm.build.us_runtime import puf_support as puf_support_module
+from microcosm.build.us_runtime import stacked_spine as stacked_spine_module
+from microcosm.build.us_runtime.acs_income_universe import (
+    ACS_PUMS_EARNINGS_UNIVERSE_PERSON_INPUTS,
+)
 from microcosm.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
@@ -28,29 +32,39 @@ from microcosm.build.us_runtime.multispine_pool import (
     POOL_CHECKPOINT_STAGE_ORDER,
     POOL_DEFERRED_TRANSFER_INPUTS,
     POOL_DERIVE_OPERATOR_ORDER,
+    POOL_ENGINE_INPUT_PROJECTION_CONTRACT,
     POOL_OPERATOR_CONTRACTS,
     POOL_OPERATOR_ORDER,
     POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
     POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER,
+    POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256,
     POOL_SOURCE_OPERATOR_CONTRACTS,
     POOL_SOURCE_OPERATOR_ORDER,
     POOL_SPINE_AGREEMENT_REGISTRY,
+    POOL_SSI_DEPENDENCY_CONTRACT,
     MultispinePoolCheckpoint,
     MultispinePoolResult,
     PoolInputSurfaceEntry,
+    PoolRemainingStageInput,
     PoolStageOutput,
     _complete_schedule_d_input,
+    finalize_multispine_source_inputs,
     materialize_multispine_agreement_outputs,
     materialize_pool_deferred_transfer_inputs,
+    pool_engine_input_projection_receipt,
     pool_input_surface,
     pool_post_puf_puf_producer_target_families,
     pool_post_puf_source_producer_target_families,
     pool_post_puf_transfer_target_families,
     pool_pre_clone_gap_fill_target_families,
+    pool_remaining_stage_input_manifest,
+    pool_remaining_stage_input_manifest_receipt,
+    pool_ssi_dependency_closure,
     pool_transfer_target_families,
     prepare_multispine_puf_predictors,
     prepare_multispine_source_inputs_for_clone,
     run_multispine_pool_path,
+    run_multispine_post_clone_source_operator,
     seed_multispine_pool_inputs,
 )
 from microcosm.build.us_runtime.operator_boundary import (
@@ -84,6 +98,7 @@ from microcosm.build.us_runtime.support_provenance import (
 from microcosm.build.us_runtime.take_up_contract import load_take_up_contract
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from microcosm.frame.adapters.policyengine_us import (
+    PolicyEngineUSEngine,
     PolicyEngineUSVariableMetadataIndex,
 )
 
@@ -147,6 +162,170 @@ def _installed_variable_metadata_index() -> PolicyEngineUSVariableMetadataIndex:
         return PolicyEngineUSVariableMetadataIndex()
     except ImportError:
         pytest.skip("requires the policyengine-us [us] extra")
+
+
+def _overlap_person_table() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "person_id": np.asarray([1, 2, 3, 4, 5], dtype=np.int64),
+            "person_source_id": np.asarray([10, 10, 10, 20, 20], dtype=np.int64),
+            "person_support_channel": ["asec"] * 5,
+            "person_support_clone_index": np.asarray([0, 1, 2, 0, 1], dtype=np.int64),
+            "qualified_tuition_expenses": np.asarray(
+                [10.0, 20.0, 20.0, 30.0, 40.0], dtype=np.float64
+            ),
+            "traditional_ira_contributions_desired": np.asarray(
+                [1.0, 101.25, 999.0, 2.0, 202.5], dtype=np.float64
+            ),
+            "self_employed_pension_contributions_desired": np.asarray(
+                [3.0, -0.0, 777.0, 4.0, 404.5], dtype=np.float64
+            ),
+        }
+    )
+
+
+def test_source_overlap_finalizer_mirrors_retirement_tail_bytes() -> None:
+    before = _overlap_person_table()
+    after = before.copy(deep=True)
+
+    finalized, receipt = multispine_pool_module._finalize_source_overlap_output(
+        before,
+        after,
+        operator_name="with_us_retirement_contribution_inputs",
+    )
+
+    clone_index = finalized["person_support_clone_index"]
+    for target in (
+        "traditional_ira_contributions_desired",
+        "self_employed_pension_contributions_desired",
+    ):
+        parent = finalized.loc[clone_index.eq(1)].set_index("person_source_id")[target]
+        tail = finalized.loc[clone_index.eq(2)].set_index("person_source_id")[target]
+        expected = parent.loc[tail.index].to_numpy()
+        actual = tail.to_numpy()
+        assert actual.dtype == expected.dtype
+        assert actual.tobytes() == expected.tobytes()
+        assert receipt["targets"][f"person.{target}"]["action"] == (
+            "byte_exact_clone_1_mirror"
+        )
+        assert receipt["targets"][f"person.{target}"]["mirrored_clone_2_rows"] == 1
+    assert finalized.loc[clone_index.eq(1)].equals(after.loc[clone_index.eq(1)])
+    assert receipt["passed"] is True
+
+
+@pytest.mark.parametrize("mutation", ["value", "dtype"])
+def test_source_overlap_finalizer_rejects_education_tuition_write(
+    mutation: str,
+) -> None:
+    before = _overlap_person_table()
+    after = before.copy(deep=True)
+    if mutation == "value":
+        after.loc[0, "qualified_tuition_expenses"] += 1.0
+    else:
+        after["qualified_tuition_expenses"] = after[
+            "qualified_tuition_expenses"
+        ].astype(np.float32)
+
+    with pytest.raises(ValueError, match="qualified_tuition_expenses.*byte identity"):
+        multispine_pool_module._finalize_source_overlap_output(
+            before,
+            after,
+            operator_name="with_us_education_inputs",
+        )
+
+
+def test_postclone_chain_receipts_education_tuition_passthrough_noop() -> None:
+    asec = _source_frame()
+    asec_tables = {entity: asec.table(entity).copy() for entity in asec.entities}
+    asec_tables["person"]["PERIDNUM"] = ["asec-1", "asec-2"]
+    asec_tables["person"]["qualified_tuition_expenses"] = np.asarray(
+        [125.5, -0.0], dtype=np.float64
+    )
+    asec = Frame(
+        asec_tables,
+        asec.schema,
+        {"household": asec.weights_for("household")},
+        asec.strata,
+    )
+    acs = _source_frame(offset=100.0)
+    assembled = assemble_spines(
+        {"asec": asec, "acs": acs},
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    cloned = clone_us_frame_for_puf_support(assembled)
+
+    def education(available: Frame) -> Frame:
+        person = available.table("person").copy()
+        person["educational_assistance"] = 0.0
+        return _replace_person(available, person)
+
+    completed = multispine_pool_module._run_source_operator_chain(
+        cloned,
+        phase="post_clone",
+        operator_names=("with_us_education_inputs",),
+        operators={"with_us_education_inputs": education},
+        output_families={
+            "education_inputs": {
+                "person": frozenset({"educational_assistance"}),
+            }
+        },
+    )
+
+    source = cloned.table("person")["qualified_tuition_expenses"]
+    observed = completed.frame.table("person")["qualified_tuition_expenses"]
+    assert observed.dtype == source.dtype
+    assert observed.to_numpy().tobytes() == source.to_numpy().tobytes()
+    suboperator = completed.receipt["suboperators"][0]
+    assert suboperator["output_columns"] == {"person": ["educational_assistance"]}
+    overlap = suboperator["overlap_ownership"]
+    assert overlap["targets"]["person.qualified_tuition_expenses"]["action"] == (
+        "consume_only_byte_exact_noop"
+    )
+
+
+def test_postclone_chain_rejects_education_omitting_tuition_passthrough() -> None:
+    asec = _source_frame()
+    asec_tables = {entity: asec.table(entity).copy() for entity in asec.entities}
+    asec_tables["person"]["PERIDNUM"] = ["asec-1", "asec-2"]
+    asec_tables["person"]["qualified_tuition_expenses"] = np.asarray(
+        [125.5, -0.0], dtype=np.float64
+    )
+    asec = Frame(
+        asec_tables,
+        asec.schema,
+        {"household": asec.weights_for("household")},
+        asec.strata,
+    )
+    acs = _source_frame(offset=100.0)
+    cloned = clone_us_frame_for_puf_support(
+        assemble_spines(
+            {"asec": asec, "acs": acs},
+            household_mass_shares={"asec": 0.5, "acs": 0.5},
+        )
+    )
+
+    def education_omitting_passthrough(available: Frame) -> Frame:
+        person = available.table("person").drop(columns="qualified_tuition_expenses")
+        person["educational_assistance"] = 0.0
+        return _replace_person(available, person)
+
+    with pytest.raises(
+        ValueError,
+        match="education overlap target.*qualified_tuition_expenses.*absent",
+    ):
+        multispine_pool_module._run_source_operator_chain(
+            cloned,
+            phase="post_clone",
+            operator_names=("with_us_education_inputs",),
+            operators={
+                "with_us_education_inputs": education_omitting_passthrough,
+            },
+            output_families={
+                "education_inputs": {
+                    "person": frozenset({"educational_assistance"}),
+                }
+            },
+        )
 
 
 _EXPECTED_SOURCE_OPERATOR_WRAPPERS = {
@@ -1015,8 +1194,8 @@ def test_pool_transfer_plan_partitions_at_the_declared_producer_boundary() -> No
     assert early.isdisjoint(late)
     assert early | late == full
     assert len(puf_producers) == 43
-    assert len(source_producers) == 30
-    assert len(puf_producers & source_producers) == 3
+    assert len(source_producers) == 29
+    assert len(puf_producers & source_producers) == 2
     assert puf_producers | source_producers == late
     assert ("person", "source_operator_cps_carried", "strike_benefits") in early
     assert ("person", "model_required_boolean", "is_pregnant") in late
@@ -1035,6 +1214,11 @@ def test_pool_transfer_plan_partitions_at_the_declared_producer_boundary() -> No
         "model_required_boolean",
         "is_pregnant",
     ) in source_producers
+    assert (
+        "person",
+        "puf_tax_itemization",
+        "qualified_tuition_expenses",
+    ) not in source_producers
 
 
 def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
@@ -1151,6 +1335,359 @@ def test_pool_input_surface_rejects_primary_qrf_target_without_entity(
         match="orphan_qrf_target.*no declared entity",
     ):
         pool_input_surface()
+
+
+def test_ssi_static_dependency_closure_matches_pinned_engine_graph() -> None:
+    closure = pool_ssi_dependency_closure(_installed_variable_metadata_index())
+
+    assert closure.engine_version == POOL_SSI_DEPENDENCY_CONTRACT.engine_version
+    assert closure.root == "ssi"
+    assert len(closure.input_leaves) == 55
+    assert len(closure.formula_nodes) == 62
+    assert len(closure.edges) == 186
+    assert closure.sha256 == POOL_SSI_DEPENDENCY_CONTRACT.sha256
+    assert closure.input_leaves == (
+        "age",
+        "alimony_income",
+        "bank_account_assets",
+        "bond_assets",
+        "child_support_received",
+        "disability_benefits",
+        "employment_income_before_lsr",
+        "financial_assistance",
+        "gi_cash_assistance",
+        "immigration_status_str",
+        "is_blind",
+        "is_disabled",
+        "is_full_time_college_student",
+        "is_separated",
+        "keogh_distributions",
+        "meets_ssi_disability_criteria",
+        "non_qualified_dividend_income",
+        "own_children_in_household",
+        "qualified_dividend_income",
+        "rental_income",
+        "self_employment_income_before_lsr",
+        "social_security_dependents",
+        "social_security_disability",
+        "social_security_retirement",
+        "social_security_survivors",
+        "ssi_lives_in_another_persons_household",
+        "ssi_lives_in_medical_treatment_facility",
+        "ssi_medicaid_pays_majority_of_care",
+        "ssi_others_pay_all_meals",
+        "ssi_qualifying_quarters_earnings",
+        "ssi_receives_food_from_others",
+        "ssi_receives_outside_shelter_support",
+        "ssi_receives_shelter_from_others_in_household",
+        "ssi_shelter_support_value",
+        "sstb_self_employment_income_before_lsr",
+        "stock_assets",
+        "survivor_benefits",
+        "takes_up_ssi_if_eligible",
+        "tax_exempt_401k_distributions",
+        "tax_exempt_403b_distributions",
+        "tax_exempt_interest_income",
+        "tax_exempt_ira_distributions",
+        "tax_exempt_private_pension_income",
+        "tax_exempt_public_pension_income",
+        "tax_exempt_sep_distributions",
+        "taxable_401k_distributions",
+        "taxable_403b_distributions",
+        "taxable_interest_income",
+        "taxable_ira_distributions",
+        "taxable_private_pension_income",
+        "taxable_public_pension_income",
+        "taxable_sep_distributions",
+        "unemployment_compensation",
+        "veterans_benefits",
+        "workers_compensation",
+    )
+
+
+def test_remaining_stage_manifest_covers_every_derive_read() -> None:
+    manifest = pool_remaining_stage_input_manifest(_installed_variable_metadata_index())
+    derive = [entry for entry in manifest if entry.stage == "derive"]
+    by_consumer = {
+        consumer: {
+            (entry.entity, entry.variable)
+            for entry in derive
+            if entry.consumer == consumer
+        }
+        for consumer in {entry.consumer for entry in derive}
+    }
+
+    assert by_consumer == {
+        "prepare_stacked_tail_derivation": {
+            ("person", "person_support_clone_index"),
+            ("person", "schedule_d_capital_gain_distributions"),
+        },
+        "_complete_schedule_d_input": {
+            ("person", "long_term_capital_gains_before_response"),
+            ("person", "non_sch_d_capital_gains"),
+            ("person", "person_tax_unit_id"),
+            ("person", "schedule_d_capital_gain_distributions"),
+            ("tax_unit", "tax_unit_id"),
+        },
+        "with_us_qbi_input_reconciliation": {
+            *{("person", variable) for variable in US_QBI_OUTPUT_COLUMNS},
+            ("person", "self_employment_income_before_lsr"),
+            ("person", "partnership_income"),
+            ("person", "s_corp_income"),
+            ("person", "estate_income"),
+            ("person", "non_qualified_dividend_income"),
+            ("person", "age"),
+            ("person", "SEMP"),
+            ("person", "person_tax_unit_id"),
+            ("person", "person_support_clone_index"),
+            ("person", "person_support_channel"),
+            ("person", "person_source_id"),
+            ("person", "person_id"),
+        },
+    }
+    s_corp = next(
+        entry
+        for entry in derive
+        if entry.consumer == "with_us_qbi_input_reconciliation"
+        and entry.variable == "s_corp_income"
+    )
+    assert s_corp == PoolRemainingStageInput(
+        stage="derive",
+        consumer="with_us_qbi_input_reconciliation",
+        entity="person",
+        variable="s_corp_income",
+        execution_scope="whole_pool",
+        provision="primary_puf_exact_zero_universe",
+        available_by="transferred",
+    )
+    assert set(ACS_PUMS_EARNINGS_UNIVERSE_PERSON_INPUTS).issubset(
+        {
+            variable
+            for entity, variable in by_consumer["with_us_qbi_input_reconciliation"]
+            if entity == "person"
+        }
+    )
+
+
+def test_remaining_stage_manifest_covers_seed_programs_and_structure() -> None:
+    manifest = pool_remaining_stage_input_manifest(_installed_variable_metadata_index())
+    seed = [entry for entry in manifest if entry.stage == "seed"]
+    program_names = {program.variable for program in load_take_up_contract().programs}
+    programs = [entry for entry in seed if entry.variable in program_names]
+
+    assert len(programs) == len(program_names) == 13
+    assert {entry.variable for entry in programs} == program_names
+    assert Counter(entry.provision for entry in programs) == Counter(
+        {
+            "administrative_seed_or_preserved_input": 2,
+            "transferred_or_preserved_input": 2,
+            "preserved_input_or_disclosed_engine_default": 9,
+        }
+    )
+    structural = {
+        (entry.entity, entry.variable, entry.provision)
+        for entry in seed
+        if entry.variable not in program_names
+    }
+    assert structural == {
+        *{
+            (
+                entity,
+                f"{entity}_source_id",
+                "assembly_support_source_identity",
+            )
+            for entity in (
+                "person",
+                "household",
+                "tax_unit",
+                "spm_unit",
+                "family",
+                "marital_unit",
+            )
+        },
+        ("person", "age", "assembled_native_person_input"),
+        ("person", "person_spm_unit_id", "frame_membership"),
+        ("person", "person_tax_unit_id", "frame_membership"),
+        ("person", "source_household_id", "optional_assembled_source_identity"),
+        ("person", "source_person_id", "optional_assembled_source_identity"),
+        ("person", "source_year", "optional_assembled_source_identity"),
+        (
+            "spm_unit",
+            "<resolved_weight>",
+            "frame_resolve_weights_from_household_weight",
+        ),
+        ("spm_unit", "spm_unit_id", "frame_entity_id"),
+        (
+            "tax_unit",
+            "<resolved_weight>",
+            "frame_resolve_weights_from_household_weight",
+        ),
+        ("tax_unit", "tax_unit_id", "frame_entity_id"),
+    }
+
+
+def test_remaining_stage_manifest_provisions_every_ssi_leaf_by_seed() -> None:
+    index = _installed_variable_metadata_index()
+    manifest = pool_remaining_stage_input_manifest(index)
+    closure = pool_ssi_dependency_closure(index)
+    leaves = [
+        entry for entry in manifest if entry.consumer == "ssi_static_dependency_closure"
+    ]
+
+    assert len(leaves) == 55
+    assert tuple(sorted(entry.variable for entry in leaves)) == closure.input_leaves
+    assert Counter(entry.provision for entry in leaves) == Counter(
+        {
+            "assembled_native_person_input": 1,
+            "materialized_pool_input_surface": 32,
+            "seed_stage_program_contract": 1,
+            "declared_deferred_null_input": 3,
+            "declared_absent_engine_input": 18,
+        }
+    )
+    transferred_complete = sum(
+        entry.provision
+        in {"assembled_native_person_input", "materialized_pool_input_surface"}
+        for entry in leaves
+    )
+    deferred = sum(
+        entry.provision == "declared_deferred_null_input" for entry in leaves
+    )
+    transferred_absent = len(leaves) - transferred_complete - deferred
+    seeded_complete = transferred_complete + sum(
+        entry.provision == "seed_stage_program_contract" for entry in leaves
+    )
+    seeded_absent = len(leaves) - seeded_complete - deferred
+    assert (transferred_complete, deferred, transferred_absent) == (33, 3, 19)
+    assert (seeded_complete, deferred, seeded_absent) == (34, 3, 18)
+    assert all(
+        entry.fallback is not None
+        for entry in leaves
+        if entry.provision
+        in {
+            "seed_stage_program_contract",
+            "declared_deferred_null_input",
+            "declared_absent_engine_input",
+        }
+    )
+
+
+def test_remaining_stage_manifest_enumerates_every_simulation_projection_input() -> (
+    None
+):
+    index = _installed_variable_metadata_index()
+    manifest = pool_remaining_stage_input_manifest(index)
+    projection = [
+        entry for entry in manifest if entry.consumer == "_simulation_projection"
+    ]
+
+    assert len(projection) == POOL_ENGINE_INPUT_PROJECTION_CONTRACT.input_count == 863
+    assert {(entry.entity, entry.variable) for entry in projection} == {
+        (index.variable_metadata(variable).entity, variable)
+        for variable in index.variables()
+    }
+    assert Counter(entry.provision for entry in projection) == Counter(
+        {
+            "materialized_pool_input_surface": 123,
+            "seed_stage_program_contract": 13,
+            "declared_deferred_null_input": 3,
+            "assembled_native_engine_input": 5,
+            "frame_structural_engine_input": 10,
+            "preserved_stacked_engine_input": 4,
+            "derived_schedule_d_input": 1,
+            "declared_absent_engine_input": 704,
+        }
+    )
+    preserved = {
+        (entry.entity, entry.variable, entry.fallback)
+        for entry in projection
+        if entry.provision == "preserved_stacked_engine_input"
+    }
+    assert preserved == {
+        (
+            "person",
+            "is_related_to_head_or_spouse",
+            "ephemeral_simulation_projection_engine_default_if_present_null",
+        ),
+        (
+            "household",
+            "puma",
+            "ephemeral_simulation_projection_engine_default_for_null",
+        ),
+        (
+            "person",
+            "ssi_reported",
+            "ephemeral_simulation_projection_engine_default_for_null",
+        ),
+        (
+            "household",
+            "state_fips",
+            "ephemeral_simulation_projection_engine_default_if_present_null",
+        ),
+    }
+    assert all(entry.fallback is not None for entry in projection)
+
+
+def test_simulation_projection_defaults_match_pinned_engine_surface() -> None:
+    pytest.importorskip("policyengine_us")
+    receipt = pool_engine_input_projection_receipt(PolicyEngineUSEngine())
+
+    assert receipt == {
+        "engine_version": "1.764.6",
+        "input_count": 863,
+        "default_count": 863,
+        "defaults_sha256": (POOL_ENGINE_INPUT_PROJECTION_CONTRACT.defaults_sha256),
+    }
+
+
+def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
+    manifest = pool_remaining_stage_input_manifest(_installed_variable_metadata_index())
+
+    assert len(manifest) == 993
+    assert Counter(entry.stage for entry in manifest) == Counter(
+        {"derive": 34, "seed": 29, "simulate": 930}
+    )
+    assert len(
+        {
+            (entry.stage, entry.consumer, entry.entity, entry.variable)
+            for entry in manifest
+        }
+    ) == len(manifest)
+    assert all(entry.provision and entry.available_by for entry in manifest)
+
+    receipt = pool_remaining_stage_input_manifest_receipt(
+        _installed_variable_metadata_index()
+    )
+    assert receipt["entry_count"] == 993
+    assert receipt["stage_counts"] == {
+        "derive": 34,
+        "seed": 29,
+        "simulate": 930,
+    }
+    assert receipt["engine_input_projection_contract"] == {
+        "engine_version": "1.764.6",
+        "input_count": 863,
+        "default_count": 863,
+        "sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.sha256,
+        "defaults_sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.defaults_sha256,
+    }
+    assert receipt["manifest_sha256"] == POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256
+    assert len(receipt["sha256"]) == 64
+
+
+def test_remaining_stage_manifest_rejects_unreviewed_content_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256",
+        "0" * 64,
+    )
+
+    with pytest.raises(ValueError, match="Remaining-stage input manifest drifted"):
+        pool_remaining_stage_input_manifest_receipt(
+            _installed_variable_metadata_index()
+        )
 
 
 class _ProducerDtypeFittedQRF:
@@ -1649,7 +2186,7 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
     assert sum(calls[name] for name in POOL_SOURCE_OPERATOR_ORDER) == 22
 
 
-def test_object_backed_is_female_reaches_production_transfer_fit(
+def test_object_backed_is_female_becomes_nullable_before_production_transfer_fit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: Counter[str] = Counter()
@@ -1668,7 +2205,7 @@ def test_object_backed_is_female_reaches_production_transfer_fit(
     assert all(isinstance(value, (bool, np.bool_)) for value in assembled.dropna())
     for stage in (stages["prepared"], produced):
         is_female = stage.person["is_female"]
-        assert pd.api.types.is_object_dtype(is_female.dtype)
+        assert is_female.dtype == pd.BooleanDtype()
         assert not is_female.isna().any()
         assert all(isinstance(value, (bool, np.bool_)) for value in is_female)
 
@@ -1678,7 +2215,7 @@ def test_object_backed_is_female_reaches_production_transfer_fit(
     )
     assert role == "puf_tax_detail"
     assert len(donor.person) == 6
-    assert pd.api.types.is_object_dtype(donor.person["is_female"].dtype)
+    assert donor.person["is_female"].dtype == pd.BooleanDtype()
 
     monkeypatch.setattr(
         acs_transfer_module,
@@ -1932,9 +2469,393 @@ def test_every_source_operator_has_an_executable_clone_phase_contract() -> None:
     } == set(POOL_DERIVE_OPERATOR_ORDER)
 
 
+def test_single_post_clone_source_entrypoint_dispatches_one_operator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[tuple[str, tuple[str, ...], tuple[str, ...]]] = []
+
+    def observe_guarded_chain(
+        frame: Frame,
+        *,
+        phase: str,
+        operator_names: tuple[str, ...],
+        operators: dict[str, Callable[[Frame], Frame]],
+        **_kwargs: object,
+    ) -> PoolStageOutput:
+        observed.append((phase, operator_names, tuple(operators)))
+        return PoolStageOutput(
+            frame,
+            {
+                "phase": phase,
+                "operator_order": list(operator_names),
+                "suboperators": [{"operator": operator_names[0], "order_index": 0}],
+            },
+        )
+
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "_run_source_operator_chain",
+        observe_guarded_chain,
+    )
+
+    result = run_multispine_post_clone_source_operator(
+        _source_frame(),
+        "with_us_adult_care_inputs",
+    )
+
+    assert result.receipt["operator_order"] == ["with_us_adult_care_inputs"]
+    assert observed == [
+        (
+            "post_clone",
+            ("with_us_adult_care_inputs",),
+            ("with_us_adult_care_inputs",),
+        )
+    ]
+
+
+def test_single_post_clone_source_entrypoint_rejects_unknown_operator_before_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "_run_source_operator_chain",
+        lambda *_args, **_kwargs: pytest.fail("runner must not be called"),
+    )
+
+    with pytest.raises(ValueError, match="declared post-clone source operator"):
+        run_multispine_post_clone_source_operator(
+            _source_frame(),
+            "with_us_housing_inputs",
+        )
+
+
+def test_source_output_merge_materializes_boolean_without_numeric_coercion() -> None:
+    pool = _source_frame()
+    operated = pool.select(np.asarray([True, False]))
+    operated_person = operated.table("person").copy()
+    operated_person["fixture_flag"] = pd.Series(
+        [True],
+        index=operated_person.index,
+        dtype=bool,
+    )
+    operated = _replace_person(operated, operated_person)
+    outputs = {"person": frozenset({"fixture_flag"})}
+
+    merged, rows = multispine_pool_module._merge_source_operator_outputs(
+        pool,
+        operated,
+        outputs,
+        operator_name="fixture_boolean",
+    )
+
+    flag = merged.table("person")["fixture_flag"]
+    assert rows == {"person": 1}
+    assert pd.api.types.is_bool_dtype(flag.dtype)
+    assert flag.tolist() == [True, pd.NA]
+
+    incumbent_person = pool.table("person").copy()
+    incumbent_person["fixture_flag"] = pd.Series(
+        [pd.NA, False],
+        index=incumbent_person.index,
+        dtype=object,
+    )
+    incumbent = _replace_person(pool, incumbent_person)
+    preserved, _rows = multispine_pool_module._merge_source_operator_outputs(
+        incumbent,
+        operated,
+        outputs,
+        operator_name="fixture_boolean",
+    )
+    preserved_flag = preserved.table("person")["fixture_flag"]
+    assert pd.api.types.is_bool_dtype(preserved_flag.dtype)
+    assert preserved_flag.tolist() == [True, False]
+
+    numeric_person = pool.table("person").copy()
+    numeric_person["fixture_flag"] = np.asarray([np.nan, 0.0])
+    numeric = _replace_person(pool, numeric_person)
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"fixture_boolean.*physical booleans for person\.fixture_flag.*"
+            r"observed non-boolean values.*float64.*builtins\.float"
+        ),
+    ):
+        multispine_pool_module._merge_source_operator_outputs(
+            numeric,
+            operated,
+            outputs,
+            operator_name="fixture_boolean",
+        )
+
+
+def test_puf_allocation_basis_maps_boolean_incidence_explicitly() -> None:
+    declared_boolean_bases = (
+        puf_support_module._PERSON_OUTPUT_BOOLEAN_INCIDENCE_DISTRIBUTION_BASES
+    )
+    assert declared_boolean_bases == {
+        ("qualified_tuition_expenses", "is_full_time_college_student"),
+        ("sstb_self_employment_income_before_lsr", "business_is_sstb"),
+        ("sstb_unadjusted_basis_qualified_property", "business_is_sstb"),
+        ("sstb_w2_wages_from_qualified_business", "business_is_sstb"),
+    }
+    metric_by_column = {
+        (entity, column): metric
+        for (
+            entity,
+            _family,
+            column,
+            _clone_index,
+        ), metric in stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY.items()
+    }
+    for output_column, basis_column in declared_boolean_bases:
+        assert metric_by_column[("person", output_column)] == (
+            "monetary_sign_separated"
+        )
+        assert metric_by_column[("person", basis_column)] == "boolean_incidence"
+
+    boolean_basis = pd.Series([True, False, pd.NA], dtype="boolean")
+    np.testing.assert_array_equal(
+        puf_support_module._nonnegative_allocation_basis_values(
+            boolean_basis,
+            output_column="qualified_tuition_expenses",
+            basis_column="is_full_time_college_student",
+        ),
+        np.asarray([1.0, 0.0, 0.0]),
+    )
+    object_boolean_basis = pd.Series(
+        [np.bool_(True), None, False],
+        dtype=object,
+    )
+    np.testing.assert_array_equal(
+        puf_support_module._nonnegative_allocation_basis_values(
+            object_boolean_basis,
+            output_column="sstb_w2_wages_from_qualified_business",
+            basis_column="business_is_sstb",
+        ),
+        np.asarray([1.0, 0.0, 0.0]),
+    )
+    np.testing.assert_array_equal(
+        puf_support_module._nonnegative_allocation_basis_values(
+            pd.Series([2.5, -1.0, pd.NA], dtype="Float64"),
+            output_column="qualified_tuition_expenses",
+            basis_column="fixture_amount",
+        ),
+        np.asarray([2.5, 0.0, 0.0]),
+    )
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"qualified_tuition_expenses.*fixture_amount.*"
+            r"monetary_sign_separated.*real numeric values.*builtins\.str"
+        ),
+    ):
+        puf_support_module._nonnegative_allocation_basis_values(
+            pd.Series(["1.0"], dtype=object),
+            output_column="qualified_tuition_expenses",
+            basis_column="fixture_amount",
+        )
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"qualified_tuition_expenses.*fixture_amount.*"
+            r"monetary_sign_separated.*physical booleans"
+        ),
+    ):
+        puf_support_module._nonnegative_allocation_basis_values(
+            pd.Series([True, 1.0], dtype=object),
+            output_column="qualified_tuition_expenses",
+            basis_column="fixture_amount",
+        )
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"qualified_tuition_expenses.*is_full_time_college_student.*"
+            r"boolean_incidence.*physical booleans.*float64"
+        ),
+    ):
+        puf_support_module._nonnegative_allocation_basis_values(
+            pd.Series([0.0, 1.0], dtype=np.float64),
+            output_column="qualified_tuition_expenses",
+            basis_column="is_full_time_college_student",
+        )
+    np.testing.assert_array_equal(
+        puf_support_module._nonnegative_allocation_basis_values(
+            pd.Series([0.0, 1.0, np.nan], dtype=np.float64),
+            output_column="qualified_tuition_expenses",
+            basis_column="is_full_time_college_student",
+            allow_legacy_numeric_boolean=True,
+        ),
+        np.asarray([0.0, 1.0, 0.0]),
+    )
+    with pytest.raises(
+        ValueError,
+        match=r"legacy allocation basis.*boolean_incidence.*outside exact \{0, 1\}",
+    ):
+        puf_support_module._nonnegative_allocation_basis_values(
+            pd.Series([2.0], dtype=np.float64),
+            output_column="qualified_tuition_expenses",
+            basis_column="is_full_time_college_student",
+            allow_legacy_numeric_boolean=True,
+        )
+    with pytest.raises(
+        ValueError,
+        match=r"qualified_tuition_expenses.*fixture_amount.*1 nonfinite",
+    ):
+        puf_support_module._nonnegative_allocation_basis_values(
+            pd.Series([np.inf], dtype=np.float64),
+            output_column="qualified_tuition_expenses",
+            basis_column="fixture_amount",
+        )
+
+    person = pd.DataFrame(
+        {
+            "person_tax_unit_id": [10, 10, 20, 20],
+            "qualified_tuition_expenses": [np.nan, np.nan, np.nan, np.nan],
+            "is_full_time_college_student": pd.Series(
+                [False, True, pd.NA, False],
+                dtype="boolean",
+            ),
+        }
+    )
+    student_basis = person["is_full_time_college_student"].copy()
+    puf_support_module._write_person_tax_unit_totals(
+        person,
+        mask=pd.Series(True, index=person.index),
+        column="qualified_tuition_expenses",
+        totals=pd.Series({10: 100.0, 20: 50.0}),
+        nonnegative=True,
+        fallback_basis_columns=("is_full_time_college_student",),
+    )
+    np.testing.assert_array_equal(
+        person["qualified_tuition_expenses"].to_numpy(),
+        np.asarray([0.0, 100.0, 50.0, 0.0]),
+    )
+    pd.testing.assert_series_equal(
+        person["is_full_time_college_student"],
+        student_basis,
+    )
+
+    qbi_person = pd.DataFrame(
+        {
+            "person_tax_unit_id": [30, 30],
+            "sstb_w2_wages_from_qualified_business": [np.nan, np.nan],
+            "business_is_sstb": pd.Series([False, True], dtype="boolean"),
+        }
+    )
+    qbi_basis = qbi_person["business_is_sstb"].copy()
+    puf_support_module._write_person_tax_unit_totals(
+        qbi_person,
+        mask=pd.Series(True, index=qbi_person.index),
+        column="sstb_w2_wages_from_qualified_business",
+        totals=pd.Series({30: 60.0}),
+        nonnegative=True,
+        fallback_basis_columns=("business_is_sstb",),
+    )
+    np.testing.assert_array_equal(
+        qbi_person["sstb_w2_wages_from_qualified_business"].to_numpy(),
+        np.asarray([0.0, 60.0]),
+    )
+    pd.testing.assert_series_equal(qbi_person["business_is_sstb"], qbi_basis)
+
+
+def _single_post_clone_source_receipt(operator: str) -> dict[str, object]:
+    return {
+        "phase": "post_clone",
+        "operator_order": [operator],
+        "cps_source_evidence": {"column": "PERIDNUM", "person_rows": 4},
+        "transient_outputs_carried_through_clone": {},
+        "suboperators": [
+            {
+                "operator": operator,
+                "order_index": 0,
+                "phase": "post_clone",
+            }
+        ],
+    }
+
+
+def test_source_finalizer_requires_all_16_receipts_and_preserves_run_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution_order = tuple(reversed(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER))
+    receipts = {
+        operator: _single_post_clone_source_receipt(operator)
+        for operator in execution_order
+    }
+    deferred_calls: list[Frame] = []
+
+    def materialize_once(frame: Frame) -> PoolStageOutput:
+        deferred_calls.append(frame)
+        return PoolStageOutput(frame, {"inputs": {"fixture": {"status": "pending"}}})
+
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "materialize_pool_deferred_transfer_inputs",
+        materialize_once,
+    )
+
+    finalized = finalize_multispine_source_inputs(
+        _source_frame(),
+        operator_receipts=receipts,
+    )
+
+    assert deferred_calls == [finalized.frame]
+    assert finalized.receipt["operator_order"] == list(execution_order)
+    assert [item["order_index"] for item in finalized.receipt["suboperators"]] == list(
+        range(16)
+    )
+    assert finalized.receipt["deferred_transfer_inputs"] == {
+        "inputs": {"fixture": {"status": "pending"}}
+    }
+
+
+def test_source_finalizer_rejects_incomplete_receipts_before_deferred_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "materialize_pool_deferred_transfer_inputs",
+        lambda _frame: pytest.fail("deferred inputs must not be materialized"),
+    )
+    receipts = {
+        operator: _single_post_clone_source_receipt(operator)
+        for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER[:-1]
+    }
+
+    with pytest.raises(ValueError, match=r"exactly.*16.*missing=.*education"):
+        finalize_multispine_source_inputs(
+            _source_frame(),
+            operator_receipts=receipts,
+        )
+
+
+def test_source_finalizer_rejects_formula_owned_outputs_before_deferred_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frame = _source_frame()
+    frame.table("person")["weeks_worked"] = 52.0
+    receipts = {
+        operator: _single_post_clone_source_receipt(operator)
+        for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+    }
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "materialize_pool_deferred_transfer_inputs",
+        lambda _frame: pytest.fail("deferred inputs must not be materialized"),
+    )
+
+    with pytest.raises(ValueError, match="formula-owned source"):
+        finalize_multispine_source_inputs(
+            frame,
+            operator_receipts=receipts,
+        )
+
+
 def test_production_operator_invocations_are_total_and_guarded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    pytest.importorskip("policyengine_us")
     structural_expectations = (
         (
             multispine_pool_module.prepare_multispine_puf_predictors,
@@ -1947,14 +2868,9 @@ def test_production_operator_invocations_are_total_and_guarded(
             {"_run_source_operator_chain"},
         ),
         (
-            multispine_pool_module.complete_multispine_source_inputs,
+            multispine_pool_module._post_clone_source_operators,
             POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
-            {
-                "_assert_formula_owned_source_outputs_absent",
-                "_run_source_operator_chain",
-                "materialize_pool_deferred_transfer_inputs",
-                "PoolStageOutput",
-            },
+            set(),
         ),
         (
             multispine_pool_module.derive_multispine_pool_inputs,
@@ -1965,6 +2881,7 @@ def test_production_operator_invocations_are_total_and_guarded(
                 "bind_us_qbi_reconciliation_transition_authority",
                 "dict",
                 "list",
+                "pool_remaining_stage_input_manifest_receipt",
                 "us_qbi_reconciliation_change_receipt",
                 "validate_us_qbi_reconciliation_live_output",
                 "validate_us_qbi_reconciliation_transition",
@@ -2051,7 +2968,10 @@ def test_production_operator_invocations_are_total_and_guarded(
 
     assert observed == [
         ("pre_clone", POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER),
-        ("post_clone", POOL_POST_CLONE_SOURCE_OPERATOR_ORDER),
+        *(
+            ("post_clone", (operator,))
+            for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+        ),
         ("post_clone", POOL_DERIVE_OPERATOR_ORDER),
     ]
     observed_placements = {
@@ -2070,6 +2990,7 @@ def test_production_operator_invocations_are_total_and_guarded(
 def test_derive_stage_rejects_preclone_pool_before_kernels(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    pytest.importorskip("policyengine_us")
     assembled = assemble_spines(
         {"asec": _source_frame(), "acs": _source_frame()},
         household_mass_shares={"asec": 0.5, "acs": 0.5},
@@ -2097,6 +3018,7 @@ def test_derive_stage_rejects_preclone_pool_before_kernels(
 
 
 def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
+    pytest.importorskip("policyengine_us")
     assembled = assemble_spines(
         {"asec": _source_frame(), "acs": _source_frame()},
         household_mass_shares={"asec": 0.5, "acs": 0.5},
@@ -2116,6 +3038,12 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
     derived = result.frame.table("person")
 
     assert result.receipt["operator_order"] == list(POOL_DERIVE_OPERATOR_ORDER)
+    assert result.receipt["remaining_stage_input_manifest"]["entry_count"] == 993
+    assert result.receipt["remaining_stage_input_manifest"]["stage_counts"] == {
+        "derive": 34,
+        "seed": 29,
+        "simulate": 930,
+    }
     assert (
         result.receipt["qbi_input_reconciliation"]["recipient_source_universe"][
             "rows_excluded_from_base_self_employment_rewrite"
@@ -2156,6 +3084,7 @@ def _qbi_ready_derive_frame() -> Frame:
 def test_derive_stage_rejects_forged_qbi_kernel_receipt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    pytest.importorskip("policyengine_us")
     monkeypatch.setattr(
         multispine_pool_module,
         "us_qbi_reconciliation_change_receipt",
@@ -2174,6 +3103,7 @@ def test_derive_stage_rejects_forged_qbi_kernel_receipt(
 def test_derive_stage_rejects_mutated_qbi_output_with_fresh_receipt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    pytest.importorskip("policyengine_us")
     real_kernel = multispine_pool_module.with_us_qbi_input_reconciliation
 
     def mutate_kernel(frame: Frame) -> Frame:
@@ -2826,6 +3756,31 @@ def test_pool_asset_deferrals_are_typed_null_receipted_and_fail_when_stale() -> 
 
     with pytest.raises(ValueError, match="already exists; retire the stale deferral"):
         materialize_pool_deferred_transfer_inputs(result.frame)
+
+
+def test_pool_asset_deferrals_materialize_the_declared_physical_dtype(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    declarations = {
+        column: {**declaration, "physical_dtype": "float32"}
+        for column, declaration in POOL_DEFERRED_TRANSFER_INPUTS.items()
+    }
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "POOL_DEFERRED_TRANSFER_INPUTS",
+        declarations,
+    )
+
+    result = materialize_pool_deferred_transfer_inputs(
+        _assembled_cloned_with_partial_take_up()
+    )
+
+    person = result.frame.table("person")
+    assert all(person[column].dtype == np.dtype("float32") for column in declarations)
+    assert all(
+        receipt["physical_dtype"] == "float32"
+        for receipt in result.receipt["inputs"].values()
+    )
 
 
 def test_pool_seed_stage_preserves_inputs_and_receipts_disclosed_defaults() -> None:

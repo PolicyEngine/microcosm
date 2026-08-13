@@ -15,7 +15,6 @@ import os
 import re
 import shutil
 import uuid
-import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,7 +26,14 @@ from microcosm.build.serialization_dtypes import (
     canonicalize_frame_string_dtypes,
     canonicalize_table_string_dtypes,
 )
-from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame import (
+    Frame,
+    WeightKind,
+    Weights,
+    materialize_nullable_booleans_for_pytables,
+    put_frame_table,
+    read_frame_table,
+)
 from microcosm.frame.units import US_SCHEMA
 
 __all__ = [
@@ -35,9 +41,11 @@ __all__ = [
     "AuthenticatedPoolH5MismatchError",
     "LEGACY_NULLABLE_STAGING_ARTIFACT_KIND",
     "US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND",
+    "US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION",
     "US_MULTISPINE_POOL_H5_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION",
+    "US_STACKED_POOL_OPERATOR_ORDER",
     "load_legacy_calibrated_us_h5",
     "load_simulation_ready_us_multispine_pool",
     "load_simulation_ready_us_multispine_pool_manifest",
@@ -51,12 +59,178 @@ US_MULTISPINE_POOL_H5_ARTIFACT_KIND = "populace_us_multispine_input_pool"
 US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND = (
     "populace_us_multispine_agreement_diagnostics"
 )
-# 4 adds identity-bound stage-checkpoint provenance and an explicit always-fresh
-# terminal agreement receipt to the companion pool manifest.
-US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 4
+# 8 binds the nullable-boolean-capable physical H5 materializer in both the
+# stacked manifest receipt and the H5's frozen metadata key.
+# 7 binds the complete late-producer resource semantics and removes the PUF
+# callback's duplicate outer-order entry; the callback is a node inside the DAG.
+# 6 additionally bound the independently carried late-producer transition
+# authority and restores its immutable Frame-metadata anchor on H5 load.
+# Schema 5 can authenticate the DAG receipt's structure, but cannot prove that
+# the published receipt is the one authorized by the generating transition.
+US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 8
+US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION = 2
+"""Stacked terminal H5 materializer; version 2 handles pandas BooleanDtype."""
+_LEGACY_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 4
 _METADATA_KEY = "_populace_staging_metadata"
 _TIME_PERIOD_KEY = "_time_period"
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
+_STACKED_PIPELINE = "us-stacked-pool"
+US_STACKED_POOL_OPERATOR_ORDER = (
+    "assemble_stacked_spine",
+    "prepare_multispine_source_inputs_for_clone",
+    "gap_fill_stacked_spine",
+    "run_stacked_late_producer_dag",
+    "prepare_stacked_tail_derivation",
+    "derive_multispine_pool_inputs",
+    "seed_multispine_pool_inputs",
+    "materialize_multispine_agreement_outputs",
+    "stacked_completeness_gate",
+    "by_origin_battery",
+)
+_LEGACY_POOL_OPERATOR_ORDER = (
+    "assemble",
+    "clone",
+    "impute",
+    "derive",
+    "seed",
+    "simulate",
+    "agreement",
+)
+_LEGACY_POOL_CHECKPOINT_ARTIFACT_KIND = (
+    "populace_us_multispine_pool_checkpoint_provenance"
+)
+_LEGACY_POOL_CHECKPOINT_SCHEMA_VERSION = 1
+_LEGACY_POOL_CHECKPOINT_MATERIALIZER_VERSION = 3
+_LEGACY_REQUIRED_STAGE_RECEIPTS = frozenset({"impute", "derive", "seed", "simulate"})
+_STACKED_ONLY_MANIFEST_FIELDS = frozenset(
+    {
+        "pipeline",
+        "release_id",
+        "sampling",
+        "clone_attachment",
+        "input_pins_digest",
+        "late_producer_transition_authority_sha256",
+        "stack_manifest",
+        "terminal_gates",
+    }
+)
+_REQUIRED_STACKED_MANIFEST_FIELDS = frozenset(
+    {
+        "pipeline",
+        "operator_order",
+        "stage_receipts",
+    }
+)
+
+
+def _stacked_manifest_markers(manifest: Mapping[str, object]) -> set[str]:
+    """Return every top-level or nested field that proves stacked lineage."""
+
+    markers = set(manifest) & set(_STACKED_ONLY_MANIFEST_FIELDS)
+    operator_order = manifest.get("operator_order")
+    if isinstance(operator_order, list) and any(
+        operator
+        in {
+            "assemble_stacked_spine",
+            "run_stacked_late_producer_dag",
+            "by_origin_battery",
+        }
+        for operator in operator_order
+    ):
+        markers.add("operator_order[stacked]")
+    stage_receipts = manifest.get("stage_receipts")
+    impute = (
+        stage_receipts.get("impute") if isinstance(stage_receipts, Mapping) else None
+    )
+    if isinstance(impute, Mapping) and set(impute) & {
+        "stacked_late_producer_dag",
+        "stacked_post_puf_transfer",
+    }:
+        markers.add("stage_receipts.impute[stacked]")
+    pool_h5 = manifest.get("pool_h5")
+    if isinstance(pool_h5, Mapping) and "materializer_version" in pool_h5:
+        markers.add("pool_h5.materializer_version")
+    return markers
+
+
+def _validate_canonical_legacy_envelope(
+    manifest: Mapping[str, object],
+    *,
+    manifest_path: Path,
+) -> None:
+    """Require positive identity for the frozen schema-4 publication route."""
+
+    failures: list[str] = []
+    if manifest.get("operator_order") != list(_LEGACY_POOL_OPERATOR_ORDER):
+        failures.append("operator_order")
+    stage_receipts = manifest.get("stage_receipts")
+    if not isinstance(stage_receipts, Mapping) or not (
+        _LEGACY_REQUIRED_STAGE_RECEIPTS <= set(stage_receipts)
+    ):
+        failures.append("stage_receipts")
+    checkpoints = manifest.get("stage_checkpoints")
+    if not isinstance(checkpoints, Mapping):
+        failures.append("stage_checkpoints")
+    else:
+        expected_checkpoint_identity = {
+            "artifact_kind": _LEGACY_POOL_CHECKPOINT_ARTIFACT_KIND,
+            "schema_version": _LEGACY_POOL_CHECKPOINT_SCHEMA_VERSION,
+            "materializer_version": _LEGACY_POOL_CHECKPOINT_MATERIALIZER_VERSION,
+        }
+        if any(
+            checkpoints.get(key) != value
+            for key, value in expected_checkpoint_identity.items()
+        ):
+            failures.append("stage_checkpoints.identity")
+        stages = checkpoints.get("stages")
+        if isinstance(stages, Mapping) and any(
+            not isinstance(receipt, Mapping)
+            or receipt.get("materializer_version")
+            != _LEGACY_POOL_CHECKPOINT_MATERIALIZER_VERSION
+            for receipt in stages.values()
+        ):
+            failures.append("stage_checkpoints.stages")
+    agreement = manifest.get("agreement_gate")
+    gates = agreement.get("gates") if isinstance(agreement, Mapping) else None
+    if not isinstance(gates, Mapping) or set(gates) != {"us_spine_agreement"}:
+        failures.append("agreement_gate.us_spine_agreement")
+    if failures:
+        raise ValueError(
+            f"US multispine pool manifest {manifest_path} is not a canonical "
+            f"legacy envelope; invalid={sorted(failures)}."
+        )
+
+
+def _validated_pool_manifest_envelope(
+    manifest: Mapping[str, object],
+    *,
+    manifest_path: Path,
+) -> str:
+    """Classify only an unambiguous schema-bound legacy or stacked envelope."""
+
+    schema_version = manifest.get("schema_version")
+    markers = _stacked_manifest_markers(manifest)
+    if schema_version == US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION:
+        missing = _REQUIRED_STACKED_MANIFEST_FIELDS - set(manifest)
+        if manifest.get("pipeline") != _STACKED_PIPELINE or missing:
+            raise ValueError(
+                f"US multispine pool manifest {manifest_path} has an "
+                "ambiguous stacked envelope; "
+                f"missing={sorted(missing)}."
+            )
+        return "stacked"
+    if schema_version == _LEGACY_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION:
+        if markers:
+            raise ValueError(
+                f"US multispine pool manifest {manifest_path} legacy envelope "
+                f"carries stacked-only field(s) {sorted(markers)}."
+            )
+        _validate_canonical_legacy_envelope(manifest, manifest_path=manifest_path)
+        return "legacy"
+    raise ValueError(
+        f"US multispine pool manifest {manifest_path} has an unsupported "
+        "artifact binding."
+    )
 
 
 class AuthenticatedPoolH5MismatchError(RuntimeError):
@@ -146,17 +320,11 @@ def load_legacy_calibrated_us_h5(path: str | Path) -> Frame:
     multispine pool, whose importance-weight receipt lives in its manifest.
     """
 
-    from policyengine_us.data import USSingleYearDataset
-
-    dataset = USSingleYearDataset(file_path=str(Path(path)))
-    tables = {
-        "person": dataset.person,
-        "household": dataset.household.copy(),
-        "tax_unit": dataset.tax_unit,
-        "spm_unit": dataset.spm_unit,
-        "family": dataset.family,
-        "marital_unit": dataset.marital_unit,
-    }
+    with pd.HDFStore(Path(path), mode="r") as store:
+        tables = {
+            entity: read_frame_table(store, entity) for entity in US_SCHEMA.entities
+        }
+    tables["household"] = tables["household"].copy()
     household_weights = (
         tables["household"].pop("household_weight").to_numpy(dtype=np.float64)
     )
@@ -212,10 +380,7 @@ def _load_authenticated_us_multispine_pool_manifest(
         label="pool manifest",
         expected_sha256=expected_manifest_sha256,
     )
-    if (
-        manifest.get("artifact_kind") != US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND
-        or manifest.get("schema_version") != US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
-    ):
+    if manifest.get("artifact_kind") != US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND:
         raise ValueError(
             f"US multispine pool manifest {manifest_path} has an unsupported "
             "artifact binding."
@@ -227,6 +392,19 @@ def _load_authenticated_us_multispine_pool_manifest(
         raise ValueError(
             f"US multispine pool manifest {manifest_path} is not simulation-ready."
         )
+    envelope = _validated_pool_manifest_envelope(
+        manifest,
+        manifest_path=manifest_path,
+    )
+    expected_schema_version = (
+        US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
+        if envelope == "stacked"
+        else _LEGACY_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
+    )
+    _validate_stacked_late_dag_manifest_binding(
+        manifest,
+        manifest_path=manifest_path,
+    )
     checkpoint_provenance = _mapping(
         manifest.get("stage_checkpoints"),
         label=f"US multispine pool manifest {manifest_path}.stage_checkpoints",
@@ -285,6 +463,29 @@ def _load_authenticated_us_multispine_pool_manifest(
             f"US multispine pool H5 {pool_path} publication run ID does not "
             "match its manifest."
         )
+    if envelope == "stacked":
+        receipt_materializer = pool_receipt.get("materializer_version")
+        h5_materializer = h5_metadata.get("materializer_version")
+        if (
+            type(receipt_materializer) is not int
+            or receipt_materializer != US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION
+            or type(h5_materializer) is not int
+            or h5_materializer != US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION
+        ):
+            raise ValueError(
+                f"US stacked pool publication {manifest_path} does not bind "
+                "the current H5 materializer version in both its manifest "
+                f"receipt and H5 metadata: receipt={receipt_materializer!r}, "
+                f"h5={h5_materializer!r}, expected="
+                f"{US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION}."
+            )
+    elif (
+        "materializer_version" in pool_receipt or "materializer_version" in h5_metadata
+    ):
+        raise ValueError(
+            f"US multispine pool manifest {manifest_path} legacy envelope "
+            "carries a stacked-only H5 materializer version."
+        )
 
     diagnostics_receipt = _mapping(
         manifest.get("agreement_diagnostics"),
@@ -308,11 +509,31 @@ def _load_authenticated_us_multispine_pool_manifest(
         diagnostics_path,
         label="pool agreement diagnostics",
     )
+    diagnostics_stacked_fields = set(diagnostics) & {
+        "pipeline",
+        "semantic_kind",
+        "release_id",
+        "terminal_gates",
+    }
+    if envelope == "stacked":
+        if (
+            diagnostics.get("pipeline") != _STACKED_PIPELINE
+            or diagnostics.get("semantic_kind") != "stacked_terminal_gates"
+        ):
+            raise ValueError(
+                f"US multispine pool diagnostics {diagnostics_path} have an "
+                "ambiguous stacked envelope."
+            )
+    elif diagnostics_stacked_fields:
+        raise ValueError(
+            f"US multispine pool diagnostics {diagnostics_path} legacy "
+            "envelope carries stacked-only field(s) "
+            f"{sorted(diagnostics_stacked_fields)}."
+        )
     if (
         diagnostics.get("artifact_kind")
         != US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND
-        or diagnostics.get("schema_version")
-        != US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
+        or diagnostics.get("schema_version") != expected_schema_version
         or diagnostics.get("simulation_ready") is not True
         or diagnostics.get("publication_run_id") != publication_run_id
     ):
@@ -348,6 +569,104 @@ def _load_authenticated_us_multispine_pool_manifest(
         publication_run_id=publication_run_id,
         manifest_sha256=manifest_sha256,
     )
+
+
+def _validate_stacked_late_dag_manifest_binding(
+    manifest: Mapping[str, object],
+    *,
+    manifest_path: Path,
+) -> None:
+    """Make schema-8 stacked consumers authenticate the published DAG proof."""
+
+    if manifest.get("pipeline") != "us-stacked-pool":
+        return
+    if manifest.get("operator_order") != list(US_STACKED_POOL_OPERATOR_ORDER):
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path} does not bind the "
+            "canonical late-DAG operator order."
+        )
+    stage_receipts = manifest.get("stage_receipts")
+    impute = (
+        stage_receipts.get("impute") if isinstance(stage_receipts, Mapping) else None
+    )
+    dag = (
+        impute.get("stacked_late_producer_dag") if isinstance(impute, Mapping) else None
+    )
+    if not isinstance(dag, Mapping):
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path} has no late-producer "
+            "DAG receipt."
+        )
+    from microcosm.build.us_runtime.stacked_spine import (
+        validate_stacked_late_producer_receipt,
+    )
+
+    validate_stacked_late_producer_receipt(
+        dag,
+        boundary=f"US stacked pool manifest {manifest_path}",
+    )
+    _stacked_late_transition_binding(
+        manifest,
+        manifest_path=manifest_path,
+    )
+    transfer_alias = impute.get("stacked_post_puf_transfer")
+    source_chain = impute.get("source_operator_chain")
+    source_alias = (
+        source_chain.get("late_dag_completion")
+        if isinstance(source_chain, Mapping)
+        else None
+    )
+    if transfer_alias != dag.get("post_puf_transfer"):
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path} post-PUF transfer alias "
+            "differs from its late-DAG proof."
+        )
+    if source_alias != dag.get("source_completion"):
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path} source-completion alias "
+            "differs from its late-DAG proof."
+        )
+
+
+def _stacked_late_transition_binding(
+    manifest: Mapping[str, object],
+    *,
+    manifest_path: Path,
+) -> tuple[Mapping[str, object], Mapping[str, object], str] | None:
+    """Return the signed DAG, derived authority, and independent authority SHA."""
+
+    if manifest.get("pipeline") != "us-stacked-pool":
+        return None
+    stage_receipts = manifest.get("stage_receipts")
+    impute = (
+        stage_receipts.get("impute") if isinstance(stage_receipts, Mapping) else None
+    )
+    dag = (
+        impute.get("stacked_late_producer_dag") if isinstance(impute, Mapping) else None
+    )
+    if not isinstance(dag, Mapping):
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path} has no late-producer "
+            "DAG receipt."
+        )
+    from microcosm.build.us_runtime.stacked_spine import (
+        _late_producer_transition_authority_receipt,
+    )
+
+    derived_authority = _late_producer_transition_authority_receipt(dag)
+    expected_sha256 = derived_authority["sha256"]
+    observed_sha256 = manifest.get("late_producer_transition_authority_sha256")
+    if (
+        not isinstance(observed_sha256, str)
+        or _LOWERCASE_SHA256.fullmatch(observed_sha256) is None
+        or observed_sha256 != expected_sha256
+    ):
+        raise ValueError(
+            f"US stacked pool manifest {manifest_path} independently carried "
+            "late-producer transition authority does not match its signed DAG "
+            f"receipt; expected={expected_sha256!r}, observed={observed_sha256!r}."
+        )
+    return dag, derived_authority, observed_sha256
 
 
 def load_simulation_ready_us_multispine_pool(
@@ -405,7 +724,7 @@ def load_simulation_ready_us_multispine_pool(
             )
         tables = {
             entity: canonicalize_table_string_dtypes(
-                store[entity],
+                read_frame_table(store, entity),
                 boundary="simulation-ready US pool H5 load",
                 table_name=entity,
             )
@@ -426,6 +745,18 @@ def load_simulation_ready_us_multispine_pool(
         )
     household_weights = household.pop("household_weight").to_numpy(dtype=np.float64)
     tables["household"] = household
+    late_transition = _stacked_late_transition_binding(
+        manifest,
+        manifest_path=manifest_path,
+    )
+    frame_metadata: dict[str, object] = {}
+    if late_transition is not None:
+        _dag, transition_authority, _transition_authority_sha256 = late_transition
+        from microcosm.build.us_runtime.stacked_spine import (
+            US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY,
+        )
+
+        frame_metadata[US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY] = transition_authority
     frame = Frame(
         tables,
         US_SCHEMA,
@@ -435,7 +766,20 @@ def load_simulation_ready_us_multispine_pool(
                 WeightKind.IMPORTANCE,
             )
         },
+        metadata=frame_metadata,
     )
+    if late_transition is not None:
+        dag, _transition_authority, transition_authority_sha256 = late_transition
+        from microcosm.build.us_runtime.stacked_spine import (
+            validate_stacked_late_producer_transition_authority,
+        )
+
+        validate_stacked_late_producer_transition_authority(
+            frame,
+            dag,
+            boundary=f"US stacked pool H5 {pool_path}",
+            expected_transition_authority_sha256=transition_authority_sha256,
+        )
 
     provenance_counts = _mapping(
         manifest.get("provenance_counts"),
@@ -504,6 +848,7 @@ def write_nullable_us_h5(
     period: int,
     artifact_kind: str,
     publication_run_id: str | None = None,
+    materializer_version: int | None = None,
 ) -> None:
     """Atomically write and verify a nullable US single-year H5.
 
@@ -521,6 +866,10 @@ def write_nullable_us_h5(
         not isinstance(publication_run_id, str) or not publication_run_id.strip()
     ):
         raise ValueError("publication_run_id must be a non-empty string when set.")
+    if materializer_version is not None and (
+        type(materializer_version) is not int or materializer_version <= 0
+    ):
+        raise ValueError("materializer_version must be a positive integer when set.")
 
     for entity in US_SCHEMA.entities:
         canonicalize_table_string_dtypes(
@@ -540,6 +889,7 @@ def write_nullable_us_h5(
             period=int(period),
             artifact_kind=artifact_kind,
             publication_run_id=publication_run_id,
+            materializer_version=materializer_version,
         )
         _verify_nullable_us_h5(
             frame,
@@ -547,6 +897,7 @@ def write_nullable_us_h5(
             period=int(period),
             artifact_kind=artifact_kind,
             publication_run_id=publication_run_id,
+            materializer_version=materializer_version,
         )
         os.replace(temporary, output)
     except BaseException:
@@ -561,18 +912,19 @@ def _write_nullable_us_h5_file(
     period: int,
     artifact_kind: str,
     publication_run_id: str | None,
+    materializer_version: int | None,
 ) -> None:
     with pd.HDFStore(path, mode="w") as store:
         for entity in frame.entities:
             table = _export_table(frame, entity)
             if not len(table):
                 continue
-            # Fixed format preserves mixed bool/null object columns
-            # losslessly. Table format rejects them, which would force a
-            # fill or type rewrite.
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", pd.errors.PerformanceWarning)
-                store.put(entity, table, format="fixed")
+            put_frame_table(
+                store,
+                entity,
+                table,
+                preferred_format="fixed",
+            )
         store.put(
             _TIME_PERIOD_KEY,
             pd.Series([period]),
@@ -587,6 +939,7 @@ def _write_nullable_us_h5_file(
                             frame,
                             artifact_kind=artifact_kind,
                             publication_run_id=publication_run_id,
+                            materializer_version=materializer_version,
                         ),
                         sort_keys=True,
                     )
@@ -603,15 +956,17 @@ def _verify_nullable_us_h5(
     period: int,
     artifact_kind: str,
     publication_run_id: str | None,
+    materializer_version: int | None,
 ) -> None:
     with pd.HDFStore(path, mode="r") as store:
         for entity in frame.entities:
             expected = _export_table(frame, entity)
             if not len(expected):
                 continue
+            expected = materialize_nullable_booleans_for_pytables(expected).table
             try:
                 stored = canonicalize_table_string_dtypes(
-                    store[entity],
+                    read_frame_table(store, entity),
                     boundary="nullable US H5 verification load",
                     table_name=entity,
                 )
@@ -655,6 +1010,7 @@ def _verify_nullable_us_h5(
             frame,
             artifact_kind=artifact_kind,
             publication_run_id=publication_run_id,
+            materializer_version=materializer_version,
         )
         if stored_metadata != expected_metadata:
             raise RuntimeError(
@@ -681,7 +1037,8 @@ def _artifact_metadata(
     *,
     artifact_kind: str,
     publication_run_id: str | None,
-) -> dict[str, str]:
+    materializer_version: int | None,
+) -> dict[str, object]:
     metadata = {
         "artifact_kind": artifact_kind,
         "entity_hdf_format": "fixed_nullable",
@@ -689,6 +1046,8 @@ def _artifact_metadata(
     }
     if publication_run_id is not None:
         metadata["publication_run_id"] = publication_run_id
+    if materializer_version is not None:
+        metadata["materializer_version"] = materializer_version
     return metadata
 
 

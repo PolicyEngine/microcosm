@@ -58,7 +58,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.frame.bundle import Frame
-from microcosm.frame.materialize import engine_tables
+from microcosm.frame.materialize import engine_tables, put_frame_table, read_frame_table
 from microcosm.frame.rules import ExportContract
 from microcosm.frame.schema import EntitySchema, VariableMetadata
 
@@ -135,9 +135,11 @@ class AxiomEngine:
         self._schema = schema
         self._contract = contract if contract is not None else ExportContract.empty()
         self._defaults = dict(defaults or {})
-        self._entity_names = dict(entity_names) if entity_names is not None else {
-            entity: entity.capitalize() for entity in schema.entities
-        }
+        self._entity_names = (
+            dict(entity_names)
+            if entity_names is not None
+            else {entity: entity.capitalize() for entity in schema.entities}
+        )
         unknown = sorted(set(self._entity_names) - set(schema.entities))
         if unknown:
             raise ValueError(
@@ -441,9 +443,7 @@ class AxiomEngine:
             ) from None
         self._programs[frame_entity] = program
         if self._metadata is None:
-            self._metadata = {
-                item.name: item for item in program.derived_metadata
-            }
+            self._metadata = {item.name: item for item in program.derived_metadata}
         return program
 
     def _derived_metadata(self) -> dict[str, Any]:
@@ -579,8 +579,7 @@ class AxiomEntityTableDataset:
             return
         if tables is None or time_period is None:
             raise ValueError(
-                "AxiomEntityTableDataset needs tables and time_period (or "
-                "file_path)."
+                "AxiomEntityTableDataset needs tables and time_period (or file_path)."
             )
         self.tables = {name: table.copy() for name, table in tables.items()}
         self.time_period = int(time_period)
@@ -614,7 +613,13 @@ class AxiomEntityTableDataset:
         with pd.HDFStore(str(path)) as store:
             for name, table in self.tables.items():
                 if len(table) > 0:
-                    store.put(name, table, format="table", data_columns=True)
+                    put_frame_table(
+                        store,
+                        name,
+                        table,
+                        preferred_format="table",
+                        data_columns=True,
+                    )
             store.put(
                 self._TIME_PERIOD_KEY,
                 pd.Series([int(self.time_period)]),
@@ -633,7 +638,7 @@ class AxiomEntityTableDataset:
                 if name == cls._TIME_PERIOD_KEY:
                     time_period = int(store[key].iloc[0])
                     continue
-                tables[name] = store[key]
+                tables[name] = read_frame_table(store, key)
         if time_period is None:
             raise ValueError(f"Dataset at {path} carries no {cls._TIME_PERIOD_KEY}.")
         return tables, time_period
@@ -649,12 +654,7 @@ def _period_bounds(period: int | str) -> tuple[str, str, str]:
     text = str(period)
     if len(text) == 4 and text.isdigit():
         return f"{text}-01-01", f"{text}-12-31", "calendar_year"
-    if (
-        len(text) == 7
-        and text[4] == "-"
-        and text[:4].isdigit()
-        and text[5:].isdigit()
-    ):
+    if len(text) == 7 and text[4] == "-" and text[:4].isdigit() and text[5:].isdigit():
         year, month = int(text[:4]), int(text[5:])
         if not 1 <= month <= 12:
             raise ValueError(f"Invalid month in period {period!r}.")

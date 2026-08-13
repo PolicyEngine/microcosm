@@ -8,6 +8,7 @@ whose content identity matches what was checkpointed.
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import pandas as pd
@@ -82,6 +83,22 @@ def test_round_trip_restores_metadata_and_content(tmp_path: Path) -> None:
     predecessor = load_uk_stage_predecessor(resumed, "restore")
     assert predecessor is not None
     assert uk_time_period(predecessor.frame) == "2023"
+
+
+def test_uk_no_extension_checkpoint_keeps_its_schema_2_byte_golden(
+    tmp_path: Path,
+) -> None:
+    frame = _frame()
+    completed = _runtime(tmp_path).complete(
+        "retain",
+        frame,
+        metadata=uk_stage_metadata(frame),
+    )
+
+    assert completed.path.name == "000_retain.frame.h5"
+    assert hashlib.sha256(completed.path.read_bytes()).hexdigest() == (
+        "7fd5d25833f395b9eac57fcb0bc6537a344862a024ee981daf167949722a17ee"
+    )
 
 
 def test_checkpoint_without_frame_metadata_fails_closed(tmp_path: Path) -> None:

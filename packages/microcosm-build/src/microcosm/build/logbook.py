@@ -90,7 +90,7 @@ BUILD_DISPOSITIONS = frozenset(
 )
 _DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _BUILD_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$")
-LOGBOOK_RUNGS = frozenset({"f001", "f010", "f100"})
+LOGBOOK_RUNGS = frozenset({"f001", "f004", "f010", "f100"})
 LEDGER_API_KEY_ENV = "POPULACE_LEDGER_API_KEY"
 LOGBOOK_ROW_FIELDS = frozenset(
     {
@@ -964,7 +964,7 @@ def _normalize_timestamp(value: str | datetime, field: str) -> str:
 def _validate_rung(value: str) -> str:
     if not isinstance(value, str) or value not in LOGBOOK_RUNGS:
         raise ValueError(
-            "rung must be a #624 fraction token: 'f001', 'f010', or 'f100'."
+            "rung must be a #624 fraction token: 'f001', 'f004', 'f010', or 'f100'."
         )
     return value
 

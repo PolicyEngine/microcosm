@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from importlib.resources import files
 from typing import Any
@@ -95,11 +97,18 @@ def _band(raw: dict[str, Any]) -> PufE19200AgiBand:
     )
 
 
-def _load_source_asset() -> tuple[
+def _load_source_asset(
+    resource: Any | None = None,
+) -> tuple[
     PufE19200InterestComponents,
     tuple[PufE19200AgiBand, ...],
 ]:
-    payload = json.loads(files("microcosm.build.us").joinpath(_SOURCE_ASSET).read_text())
+    resolved_resource = (
+        files("microcosm.build.us").joinpath(_SOURCE_ASSET)
+        if resource is None
+        else resource
+    )
+    payload = json.loads(resolved_resource.read_text(encoding="utf-8"))
     source = payload.get("source", {})
     if (
         source.get("tax_year") != 2015
@@ -142,6 +151,54 @@ def _load_source_asset() -> tuple[
     return all_returns, bands
 
 
+def _component_identity(
+    row: PufE19200InterestComponents,
+) -> dict[str, object]:
+    return {
+        "source_row": row.source_row,
+        "total_interest_paid_amount": row.total_interest_paid_amount,
+        "home_mortgage_interest_amount": row.home_mortgage_interest_amount,
+        "deductible_points_amount": row.deductible_points_amount,
+        "qualified_mortgage_insurance_premiums_amount": (
+            row.qualified_mortgage_insurance_premiums_amount
+        ),
+        "investment_interest_amount": row.investment_interest_amount,
+        "non_mortgage_interest_amount": row.non_mortgage_interest_amount,
+        "source_cells": row.source_cells,
+    }
+
+
+def _agi_band_identity(band: PufE19200AgiBand) -> dict[str, object]:
+    """Return the ordered runtime semantics of one resolved SOI AGI band."""
+
+    return {
+        **_component_identity(band),
+        "label": band.label,
+        "lower_bound": band.lower_bound,
+        "upper_bound": band.upper_bound,
+        "home_mortgage_share": band.home_mortgage_share,
+    }
+
+
+def puf_e19200_interest_components_asset_identity(
+    resource: Any | None = None,
+) -> dict[str, object]:
+    """Bind the exact SOI asset bytes and resolved ordered AGI-band semantics."""
+
+    resolved_resource = (
+        files("microcosm.build.us").joinpath(_SOURCE_ASSET)
+        if resource is None
+        else resource
+    )
+    all_returns, bands = _load_source_asset(resolved_resource)
+    return {
+        "asset": f"microcosm.build.us/{_SOURCE_ASSET}",
+        "asset_sha256": hashlib.sha256(resolved_resource.read_bytes()).hexdigest(),
+        "all_returns": _component_identity(all_returns),
+        "agi_bands": [_agi_band_identity(band) for band in bands],
+    }
+
+
 (
     US_PUF_E19200_ALL_RETURNS_COMPONENTS,
     US_PUF_E19200_AGI_BANDS,
@@ -159,6 +216,34 @@ _HOME_MORTGAGE_SHARES = np.asarray(
     [band.home_mortgage_share for band in US_PUF_E19200_AGI_BANDS],
     dtype=np.float64,
 )
+
+
+def puf_e19200_agi_bands_runtime_identity(
+    bands: Sequence[PufE19200AgiBand] | None = None,
+) -> dict[str, object]:
+    """Bind the exact ordered SOI-band objects consumed by runtime code."""
+
+    resolved = tuple(US_PUF_E19200_AGI_BANDS if bands is None else bands)
+    if not resolved:
+        raise ValueError("PUF E19200 runtime AGI bands must be nonempty.")
+    if resolved[0].lower_bound is not None or resolved[-1].upper_bound is not None:
+        raise ValueError("PUF E19200 runtime AGI bands must cover the real line.")
+    for previous, following in zip(resolved[:-1], resolved[1:], strict=True):
+        if previous.upper_bound != following.lower_bound:
+            raise ValueError("PUF E19200 runtime AGI bands must be contiguous.")
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "agi_bands": [_agi_band_identity(band) for band in resolved],
+    }
+    payload["sha256"] = hashlib.sha256(
+        json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    return payload
 
 
 def split_us_puf_e19200_by_agi_band(
@@ -216,5 +301,6 @@ __all__ = [
     "PufE19200InterestComponents",
     "US_PUF_E19200_AGI_BANDS",
     "US_PUF_E19200_ALL_RETURNS_COMPONENTS",
+    "puf_e19200_interest_components_asset_identity",
     "split_us_puf_e19200_by_agi_band",
 ]

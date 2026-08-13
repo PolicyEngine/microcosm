@@ -17,7 +17,9 @@ already guarantees them. The one thing it adds is the ``household_weight``
 column, materialized from the frame's typed household weights.
 """
 
+import json
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 from functools import lru_cache
 from hashlib import sha256
 from importlib.metadata import PackageNotFoundError, distribution
@@ -37,7 +39,12 @@ from microcosm.frame.adapters._policyengine_us_source_index import (
     _index_policyengine_us_sources as _build_policyengine_us_source_index,
 )
 from microcosm.frame.bundle import Frame
-from microcosm.frame.materialize import engine_tables
+from microcosm.frame.materialize import (
+    engine_tables,
+    materialize_nullable_booleans_for_pytables,
+    put_frame_table,
+    read_frame_table,
+)
 from microcosm.frame.rules import ExportContract
 from microcosm.frame.schema import EntitySchema, VariableMetadata
 from microcosm.frame.units import US_SCHEMA
@@ -46,6 +53,7 @@ __all__ = [
     "ConsumerReceipt",
     "PolicyEngineUSEngine",
     "PolicyEngineUSVariableMetadataIndex",
+    "VariableDependencyClosure",
 ]
 
 _PERSON_TABLE = "person"
@@ -73,6 +81,26 @@ _FORMULA_OWNED_COMPAT_COLUMNS = frozenset(
         "social_security",
     }
 )
+
+
+@dataclass(frozen=True)
+class VariableDependencyClosure:
+    """Static transitive variable graph for one PolicyEngine output.
+
+    Edges are ordered ``(consumer, dependency)`` pairs and are deduplicated
+    across source-reference sites.  The digest binds the installed engine
+    version and the complete normalized graph, so a checked-in downstream
+    input manifest can fail closed on either source or dependency drift
+    without executing a microsimulation.
+    """
+
+    engine_version: str
+    root: str
+    input_leaves: tuple[str, ...]
+    formula_nodes: tuple[str, ...]
+    edges: tuple[tuple[str, str], ...]
+    sha256: str
+
 
 # PolicyEngine ``value_type`` (a Python type) → kernel dtype kind. Enum value
 # types are not listed and fall back to ``"str"`` at the call site.
@@ -273,6 +301,7 @@ class PolicyEngineUSVariableMetadataIndex:
         source_index = _installed_policyengine_us_variable_sources()
         self._definitions = source_index.definitions
         self._consumers = source_index.consumers
+        self._engine_version = distribution("policyengine-us").version
 
     def variable_metadata(self, name: str) -> VariableMetadata:
         definition = self._definitions.get(name)
@@ -294,6 +323,66 @@ class PolicyEngineUSVariableMetadataIndex:
         if name not in self._definitions:
             raise ValueError(f"Unknown PolicyEngine-US source variable {name!r}.")
         return self._consumers.get(name, ())
+
+    def variable_dependency_closure(self, name: str) -> VariableDependencyClosure:
+        """Return the statically authenticated transitive graph for ``name``.
+
+        The source index records references in the target-to-consumer
+        direction.  This method inverts those receipts, walks outward from the
+        requested output, and classifies each reachable definition exactly as
+        :meth:`variables` does.  Multiple source sites for the same reference
+        collapse to one semantic edge.
+        """
+
+        if name not in self._definitions:
+            raise ValueError(f"Unknown PolicyEngine-US source variable {name!r}.")
+
+        dependencies: dict[str, set[str]] = {}
+        for target, receipts in self._consumers.items():
+            for receipt in receipts:
+                if receipt.consumer in self._definitions:
+                    dependencies.setdefault(receipt.consumer, set()).add(target)
+
+        reachable: set[str] = set()
+        edges: set[tuple[str, str]] = set()
+        pending = [name]
+        while pending:
+            consumer = pending.pop()
+            if consumer in reachable:
+                continue
+            reachable.add(consumer)
+            for target in dependencies.get(consumer, ()):
+                edges.add((consumer, target))
+                if target not in reachable:
+                    pending.append(target)
+
+        inputs = set(self.variables())
+        input_leaves = tuple(sorted(reachable & inputs))
+        formula_nodes = tuple(sorted(reachable - inputs))
+        ordered_edges = tuple(sorted(edges))
+        payload = {
+            "engine_version": self._engine_version,
+            "root": name,
+            "input_leaves": list(input_leaves),
+            "formula_nodes": list(formula_nodes),
+            "edges": [list(edge) for edge in ordered_edges],
+        }
+        digest = sha256(
+            json.dumps(
+                payload,
+                allow_nan=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        return VariableDependencyClosure(
+            engine_version=self._engine_version,
+            root=name,
+            input_leaves=input_leaves,
+            formula_nodes=formula_nodes,
+            edges=ordered_edges,
+            sha256=digest,
+        )
 
     def formula_owned_outputs(self, names: Iterable[str]) -> set[str]:
         requested = set(names)
@@ -912,10 +1001,12 @@ class PolicyEngineUSEngine:
         period: int,
         output_path: Path,
     ) -> None:
-        """Persist tables as a ``USSingleYearDataset`` and verify the round-trip.
+        """Persist PolicyEngine-US tables and verify its dataset round-trip.
 
-        Saves the dataset, reloads it, and asserts every column from a
-        non-empty table survived (``.save`` only writes tables with rows).
+        This owns the same entity-table HDF layout as ``USSingleYearDataset``
+        while routing every Frame table through Microcosm's nullable-boolean
+        boundary. It then reloads through ``USSingleYearDataset`` and asserts
+        every column from a non-empty table survived.
 
         Raises:
             ValueError: If a column expected after reload is missing.
@@ -923,8 +1014,27 @@ class PolicyEngineUSEngine:
         from policyengine_us.data import USSingleYearDataset
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        dataset = self._build_dataset(tables, period)
-        dataset.save(str(output_path))
+        output_path.unlink(missing_ok=True)
+        materialized_tables = {
+            name: materialize_nullable_booleans_for_pytables(table).table
+            for name, table in tables.items()
+        }
+        with pd.HDFStore(str(output_path), mode="w") as store:
+            for name in (_PERSON_TABLE, *_GROUP_TABLES):
+                table = tables[name]
+                if len(table) > 0:
+                    put_frame_table(
+                        store,
+                        name,
+                        table,
+                        preferred_format="table",
+                        data_columns=True,
+                    )
+            store.put(
+                "_time_period",
+                pd.Series([int(period)]),
+                format="table",
+            )
 
         expected_columns: set[str] = set()
         for frame in tables.values():
@@ -932,12 +1042,19 @@ class PolicyEngineUSEngine:
                 expected_columns.update(frame.columns)
 
         reloaded = USSingleYearDataset(file_path=str(output_path))
+        with pd.HDFStore(str(output_path), mode="r") as store:
+            logical_tables = {
+                name: read_frame_table(store, name)
+                for name in (_PERSON_TABLE, *_GROUP_TABLES)
+                if len(tables[name]) > 0
+            }
         persisted_columns: set[str] = set()
         dtype_mismatches: list[str] = []
         for name in (_PERSON_TABLE, *_GROUP_TABLES):
-            reloaded_table = getattr(reloaded, name)
-            persisted_columns.update(reloaded_table.columns)
-            source_table = tables.get(name)
+            external_table = getattr(reloaded, name)
+            reloaded_table = logical_tables.get(name, external_table)
+            persisted_columns.update(external_table.columns)
+            source_table = materialized_tables.get(name)
             if source_table is None or len(source_table) == 0:
                 continue
             for column in source_table.columns:
