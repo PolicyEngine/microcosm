@@ -1132,6 +1132,14 @@ def test_ready_stacked_pool_cannot_be_stripped_into_legacy_shape(
     manifest["agreement_diagnostics"]["sha256"] = _sha256(diagnostics_path)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
+    # A lazy strip that misses the pool_h5 receipt's materializer_version is
+    # caught earliest, by the stacked-only-marker refusal.
+    with pytest.raises(ValueError, match="stacked-only field"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+    # Even a complete strip must still refuse at the canonical-envelope check.
+    manifest["pool_h5"].pop("materializer_version", None)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     with pytest.raises(ValueError, match="canonical legacy envelope"):
         load_simulation_ready_us_multispine_pool(manifest_path)
 
