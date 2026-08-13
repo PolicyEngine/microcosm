@@ -1,0 +1,1 @@
+Canonicalize pandas string storage at the ACS PUMS parse and ASEC raw-stage checkpoint load boundaries, and render dtype reprs in the spine-assembly refusal: pyarrow-carrying environments resolved fresh string casts to pyarrow storage, which failed shared-column dtype validation against checkpoint-restored python-storage channels with both sides printing as 'str'.

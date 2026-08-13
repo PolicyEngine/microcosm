@@ -23,6 +23,7 @@ from microcosm.build.outer_stage_runtime import (
     FrameIdentity,
     frame_identity,
 )
+from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
 from microcosm.build.us_runtime.operator_boundary import (
     assert_operator_free_source_frame,
 )
@@ -187,7 +188,16 @@ def load_asec_raw_stage_checkpoint(
         )
     metadata["identity"] = stored_identity.to_payload()
     metadata["source_construction_identity"] = source_construction_identity.to_payload()
-    return loaded.frame, metadata
+    # Canonicalize only after every identity and binding check has passed on
+    # the restored representation: this load is a serialization boundary, and
+    # downstream spine assembly requires one physical string dtype per shared
+    # column regardless of the storage the checkpoint was written under.
+    frame = canonicalize_frame_string_dtypes(
+        loaded.frame,
+        boundary="ASEC raw-stage checkpoint load",
+        in_place=True,
+    )
+    return frame, metadata
 
 
 def _validate_outer_stage_binding(
