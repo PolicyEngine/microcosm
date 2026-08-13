@@ -2,12 +2,12 @@
 
 ## State
 
-Round 13 is in progress on `tail-stratum-support-652` from the user-pinned
-starting commit `c079688f`. The supplied 1% smoke reached the terminal failed-gate
-publication and then PyTables rejected a pandas nullable-boolean `BooleanArray`.
-This round will repair that serializer and audit every production Frame-table H5
-writer under one registry-driven dtype-family round-trip contract. Battery
-metrics and tolerances are out of scope.
+The Round 13 failure and serializer inventory are complete. The supplied 1%
+smoke reached both terminal gates and wrote their receipt, then the terminal US
+H5 writer passed `person.is_female` (the first of 31 complete nullable-boolean
+columns) directly to PyTables. Eight physical production Frame/table-collection
+HDF serializers exist; the red registry-driven contract is next. Battery metrics
+and tolerances remain out of scope.
 
 ## Done
 
@@ -21,18 +21,40 @@ metrics and tolerances are out of scope.
   serializer audit will use direct source searches and call-site tracing.
 - Located the supplied smoke receipts/checkpoints and began enumerating all
   direct `HDFStore`, `to_hdf`, and PyTables use sites.
+- Traced the exact exception through `_write_stacked_outputs` ->
+  `write_nullable_us_h5` -> `_write_nullable_us_h5_file` ->
+  `store.put(entity, table, format="fixed")`. The simulated checkpoint proves
+  the first rejected block is `person.is_female`; 27 person and four SPM-unit
+  nullable booleans are complete and therefore belong on the NumPy-bool path.
+- Confirmed the 1% phase chain reached `terminal_gates` and
+  `terminal_receipt_written` but not `publication_completed`. Completeness
+  passed 131/131 targets. The battery evaluated all 132 comparisons with zero
+  untestable and failed 127 (75 incidence, 49 quantile, three dead-both-zero),
+  so its 124 metric misses are a later data question, not this code fix.
+- Exhaustively classified eight physical HDF serializers: generic Frame
+  checkpoints; shared US terminal publication; shared UK national/rowwise;
+  Axiom entity tables; PolicyEngine-US adapter export; the preserved legacy
+  two-spine writer; ACS local lean checkpoints; and fiscal target-frame
+  checkpoints.
+- Classified terminal-gate, diagnostics, and error receipts as JSON rather
+  than Frame-table serializers; classified QRF/raw-draw HDF writers and
+  attrs-only mutations as explicit non-Frame exclusions. No production
+  `to_hdf` sink or ninth Frame-table serializer exists.
+- Established version doctrine: retain the frozen US artifact kinds, HDF keys,
+  and `entity_hdf_format="fixed_nullable"`; advance stacked publication schema
+  7 -> 8 and bind a stacked-only H5 materializer version; preserve legacy
+  schema-4 bytes. Any changed fiscal checkpoint codec owns its independent
+  schema/materializer bump. Existing Frame-checkpoint schema v3 stays put.
 
 ## Next
 
-1. Read the real traceback and identify the terminal publication call chain.
-2. Build a complete production serializer registry covering terminal
-   publication, diagnostics/error receipts, UK rowwise, legacy two-spine, and
-   every other Frame-table H5 writer.
-3. Add failing registry-driven dtype-family round-trip coverage, implement the
+1. Add the production serializer/exclusion registry and failing completeness
+   plus dtype-family round-trip coverage for all eight physical sinks.
+2. Implement the
    lossless nullable-boolean representation, and bump changed serializer
    contracts without changing frozen published-artifact format identifiers.
-4. Run focused tests, the exact 495-test #583 proof, full-workspace chunked
+3. Run focused tests, the exact 495-test #583 proof, full-workspace chunked
    exact-count proof, UK byte goldens, ruff/format/diff checks, and changelog
    validation. No builds will run.
-5. Obtain an independent audit, close actionable findings, commit the final
+4. Obtain an independent audit, close actionable findings, commit the final
    ledger state, and report the gradeable 10% dev-r7 prediction.
