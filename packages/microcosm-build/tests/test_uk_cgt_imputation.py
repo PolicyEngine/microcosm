@@ -330,7 +330,7 @@ class TestStage:
         if not pinned_ods.is_file():
             pytest.skip("reviewed HMRC capital gains ODS is an optional local input")
         stage = uk_capital_gains_imputation_stage(pinned_ods, parameters=PARAMETERS)
-        incomes = [20_000.0, 45_000.0, 80_000.0, 120_000.0, 180_000.0, 400_000.0]
+        incomes = [20_000.0, 55_000.0, 80_000.0, 120_000.0, 180_000.0, 400_000.0]
         frame = _frame(
             60,
             gains=[float(5_000 * (i + 1)) for i in range(60)],
@@ -535,9 +535,20 @@ class TestRealPublishedSurface:
         rng = np.random.default_rng(7)
         gains = np.where(rng.random(rows) < 0.6, rng.lognormal(10, 1.5, rows), 0.0)
         incomes = rng.choice(
-            [20_000.0, 45_000.0, 80_000.0, 120_000.0, 180_000.0, 400_000.0], rows
+            [20_000.0, 55_000.0, 80_000.0, 120_000.0, 180_000.0, 400_000.0], rows
         )
         frame = _frame(rows, gains=gains, incomes=incomes)
+
+        proxy = uk_cgt_taxable_income_proxy(frame.table("person"), PARAMETERS)
+        visited = set(
+            np.asarray(HMRC_CGT_INCOME_BAND_LOWER_BOUNDS)[
+                np.digitize(proxy, HMRC_CGT_INCOME_BAND_LOWER_BOUNDS[1:])
+            ]
+        )
+        assert visited == set(HMRC_CGT_INCOME_BAND_LOWER_BOUNDS), (
+            "fixture incomes must reach every published income band after "
+            f"the Personal Allowance; missing {set(HMRC_CGT_INCOME_BAND_LOWER_BOUNDS) - visited}"
+        )
 
         result = impute_uk_capital_gains(frame, distribution, PARAMETERS)
 
