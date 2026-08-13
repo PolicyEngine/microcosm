@@ -355,7 +355,7 @@ ROUND_TRIP_ADAPTERS: dict[str, RoundTripAdapter] = {
     "nullable_us_h5": _round_trip_nullable_us_h5,
     "uk_single_year_h5": _round_trip_uk_single_year,
     "axiom_entity_tables": _round_trip_axiom,
-    "policyengine_us_dataset": _round_trip_policyengine_us,
+    "policyengine_us_single_year": _round_trip_policyengine_us,
     "legacy_us_two_spine": _round_trip_legacy_us,
     "acs_local_lean_checkpoint": _round_trip_acs_lean,
     "fiscal_target_frame_checkpoint": _round_trip_fiscal_checkpoint,
@@ -507,7 +507,7 @@ def test_policyengine_us_adapter_owns_its_registered_hdf_boundary() -> None:
     (spec,) = (
         candidate
         for candidate in FRAME_TABLE_SERIALIZERS
-        if candidate.serializer_id == "policyengine_us_dataset"
+        if candidate.serializer_id == "policyengine_us_single_year"
     )
     assert spec.direct_hdf_open is True
     assert spec.writer.key in _discover_writable_hdf_sites()

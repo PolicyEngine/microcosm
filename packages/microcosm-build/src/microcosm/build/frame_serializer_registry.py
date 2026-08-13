@@ -101,7 +101,7 @@ FRAME_TABLE_SERIALIZERS = (
         nullable_boolean_storage="numpy_bool_or_object_pd_na_v1",
     ),
     FrameSerializerSpec(
-        serializer_id="policyengine_us_dataset",
+        serializer_id="policyengine_us_single_year",
         writer=HdfWriteSite(
             "packages/microcosm-frame/src/microcosm/frame/adapters/policyengine_us.py",
             "_write_and_verify",

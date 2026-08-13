@@ -2057,6 +2057,7 @@ def test_publication_error_keeps_gate_receipts_and_does_not_claim_stale_h5(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    pytest.importorskip("policyengine_us")
     _order, _full_puf_rows = _install_stacked_entrypoint_stubs(
         pool_tool,
         monkeypatch,
@@ -2148,6 +2149,7 @@ def test_stacked_checkpoint_identity_binds_both_scale_controls_and_manifest(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
+    pytest.importorskip("policyengine_us")
     verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
     asec = _many_household_source_frame()
     acs = _many_household_source_frame(measured_offset=1_000.0)
@@ -2356,6 +2358,7 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    pytest.importorskip("policyengine_us")
     monkeypatch.setattr(
         pool_tool,
         "_policyengine_us_version",
@@ -2640,6 +2643,7 @@ def test_pool_envelope_v7_preserves_stacked_bank_identity_but_rejects_v6(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    pytest.importorskip("policyengine_us")
     verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
     stack = pool_tool.assemble_stacked_spine(
         _many_household_source_frame(),
@@ -2784,6 +2788,7 @@ def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
     capsys: pytest.CaptureFixture[str],
     legacy_version: int,
 ) -> None:
+    pytest.importorskip("policyengine_us")
     monkeypatch.setattr(
         pool_tool,
         "_policyengine_us_version",

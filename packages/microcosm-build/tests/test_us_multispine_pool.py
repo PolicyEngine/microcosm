@@ -1629,6 +1629,7 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
 
 
 def test_simulation_projection_defaults_match_pinned_engine_surface() -> None:
+    pytest.importorskip("policyengine_us")
     receipt = pool_engine_input_projection_receipt(PolicyEngineUSEngine())
 
     assert receipt == {
@@ -2854,6 +2855,7 @@ def test_source_finalizer_rejects_formula_owned_outputs_before_deferred_inputs(
 def test_production_operator_invocations_are_total_and_guarded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    pytest.importorskip("policyengine_us")
     structural_expectations = (
         (
             multispine_pool_module.prepare_multispine_puf_predictors,
@@ -2988,6 +2990,7 @@ def test_production_operator_invocations_are_total_and_guarded(
 def test_derive_stage_rejects_preclone_pool_before_kernels(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    pytest.importorskip("policyengine_us")
     assembled = assemble_spines(
         {"asec": _source_frame(), "acs": _source_frame()},
         household_mass_shares={"asec": 0.5, "acs": 0.5},
@@ -3015,6 +3018,7 @@ def test_derive_stage_rejects_preclone_pool_before_kernels(
 
 
 def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
+    pytest.importorskip("policyengine_us")
     assembled = assemble_spines(
         {"asec": _source_frame(), "acs": _source_frame()},
         household_mass_shares={"asec": 0.5, "acs": 0.5},
@@ -3080,6 +3084,7 @@ def _qbi_ready_derive_frame() -> Frame:
 def test_derive_stage_rejects_forged_qbi_kernel_receipt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    pytest.importorskip("policyengine_us")
     monkeypatch.setattr(
         multispine_pool_module,
         "us_qbi_reconciliation_change_receipt",
@@ -3098,6 +3103,7 @@ def test_derive_stage_rejects_forged_qbi_kernel_receipt(
 def test_derive_stage_rejects_mutated_qbi_output_with_fresh_receipt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    pytest.importorskip("policyengine_us")
     real_kernel = multispine_pool_module.with_us_qbi_input_reconciliation
 
     def mutate_kernel(frame: Frame) -> Frame:

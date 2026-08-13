@@ -1287,6 +1287,7 @@ def test_strict_recipient_predictors_require_raw_acs_universe_authority(
 
 
 def test_puf_finalize_masks_earnings_allocation_to_age_15_plus() -> None:
+    pytest.importorskip("policyengine_us")
     frame = _cloned_acs_earnings_universe_fixture()
     person = frame.table("person")
     for column in US_QBI_OUTPUT_COLUMNS:
