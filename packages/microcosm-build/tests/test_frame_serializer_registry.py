@@ -53,11 +53,19 @@ class BooleanRoundTrip:
     stored_missing_mask_dtype: np.dtype | None
 
 
-RoundTripAdapter = Callable[[Path], BooleanRoundTrip]
+RoundTripAdapter = Callable[[Path, str], BooleanRoundTrip]
 
 
-def _dtype_family_table(*, id_column: str = "person_id") -> pd.DataFrame:
+def _dtype_family_table(
+    nullable_case: str,
+    *,
+    id_column: str = "person_id",
+) -> pd.DataFrame:
     index = pd.RangeIndex(3)
+    missing_values = {
+        "mixed": [True, pd.NA, False],
+        "all_missing": [pd.NA, pd.NA, pd.NA],
+    }[nullable_case]
     return pd.DataFrame(
         {
             id_column: np.asarray([1, 2, 3], dtype=np.int64),
@@ -66,7 +74,7 @@ def _dtype_family_table(*, id_column: str = "person_id") -> pd.DataFrame:
                 [True, False, True], index=index, dtype="boolean"
             ),
             MISSING_COLUMN: pd.Series(
-                [True, pd.NA, False], index=index, dtype="boolean"
+                missing_values, index=index, dtype="boolean"
             ),
         },
         index=index,
@@ -160,9 +168,11 @@ def _checkpoint_column_group(root, *, table: str, column: str):
     return root["tables"][f"t{table_index:05d}"]["columns"][f"c{column_index:05d}"]
 
 
-def _round_trip_frame_checkpoint(tmp_path: Path) -> BooleanRoundTrip:
+def _round_trip_frame_checkpoint(
+    tmp_path: Path, nullable_case: str
+) -> BooleanRoundTrip:
     h5py = pytest.importorskip("h5py")
-    source = _dtype_family_table()
+    source = _dtype_family_table(nullable_case)
     before = source.copy(deep=True)
     frame = _small_frame(source)
     path = tmp_path / "frame-checkpoint.h5"
@@ -185,9 +195,11 @@ def _round_trip_frame_checkpoint(tmp_path: Path) -> BooleanRoundTrip:
         )
 
 
-def _round_trip_nullable_us_h5(tmp_path: Path) -> BooleanRoundTrip:
+def _round_trip_nullable_us_h5(
+    tmp_path: Path, nullable_case: str
+) -> BooleanRoundTrip:
     pytest.importorskip("tables")
-    source = _dtype_family_table()
+    source = _dtype_family_table(nullable_case)
     before = source.copy(deep=True)
     frame = _us_frame(source)
     path = tmp_path / "nullable-us.h5"
@@ -202,10 +214,10 @@ def _round_trip_nullable_us_h5(tmp_path: Path) -> BooleanRoundTrip:
     return _semantic_observation(source, before, loaded)
 
 
-def _round_trip_uk_single_year(tmp_path: Path) -> BooleanRoundTrip:
+def _round_trip_uk_single_year(tmp_path: Path, nullable_case: str) -> BooleanRoundTrip:
     pytest.importorskip("tables")
     pytest.importorskip("h5py")
-    source = _dtype_family_table()
+    source = _dtype_family_table(nullable_case)
     before = source.copy(deep=True)
     path = tmp_path / "uk-single-year.h5"
     _write_uk_single_year_tables(
@@ -228,9 +240,9 @@ def _round_trip_uk_single_year(tmp_path: Path) -> BooleanRoundTrip:
     return _semantic_observation(source, before, loaded)
 
 
-def _round_trip_axiom(tmp_path: Path) -> BooleanRoundTrip:
+def _round_trip_axiom(tmp_path: Path, nullable_case: str) -> BooleanRoundTrip:
     pytest.importorskip("tables")
-    source = _dtype_family_table()
+    source = _dtype_family_table(nullable_case)
     before = source.copy(deep=True)
     path = tmp_path / "axiom.h5"
     AxiomEntityTableDataset(tables={"person": source}, time_period=2025).save(path)
@@ -238,10 +250,12 @@ def _round_trip_axiom(tmp_path: Path) -> BooleanRoundTrip:
     return _semantic_observation(source, before, loaded)
 
 
-def _round_trip_policyengine_us(tmp_path: Path) -> BooleanRoundTrip:
+def _round_trip_policyengine_us(
+    tmp_path: Path, nullable_case: str
+) -> BooleanRoundTrip:
     pytest.importorskip("tables")
     pytest.importorskip("policyengine_us")
-    source = _dtype_family_table()
+    source = _dtype_family_table(nullable_case)
     before = source.copy(deep=True)
     frame = _us_frame(source)
     tables = {entity: frame.table(entity) for entity in frame.entities}
@@ -252,13 +266,13 @@ def _round_trip_policyengine_us(tmp_path: Path) -> BooleanRoundTrip:
     return _semantic_observation(source, before, loaded)
 
 
-def _round_trip_legacy_us(tmp_path: Path) -> BooleanRoundTrip:
+def _round_trip_legacy_us(tmp_path: Path, nullable_case: str) -> BooleanRoundTrip:
     pytest.importorskip("tables")
     legacy = _load_tool(
         "tools/_legacy/build_us_acs_multispine_base.py",
         "registry_legacy_us_builder",
     )
-    source = _dtype_family_table()
+    source = _dtype_family_table(nullable_case)
     before = source.copy(deep=True)
     path = tmp_path / "legacy-us.h5"
     legacy._write_dataset(_us_frame(source), path, period=2024)
@@ -267,13 +281,13 @@ def _round_trip_legacy_us(tmp_path: Path) -> BooleanRoundTrip:
     return _semantic_observation(source, before, loaded)
 
 
-def _round_trip_acs_lean(tmp_path: Path) -> BooleanRoundTrip:
+def _round_trip_acs_lean(tmp_path: Path, nullable_case: str) -> BooleanRoundTrip:
     pytest.importorskip("tables")
     tool = _load_tool(
         "tools/build_us_acs_local_release.py",
         "registry_acs_local_release",
     )
-    source = _dtype_family_table()
+    source = _dtype_family_table(nullable_case)
     before = source.copy(deep=True)
     ids = np.asarray([1, 2, 3], dtype=np.int64)
     person = source.copy(deep=False)
@@ -303,13 +317,15 @@ def _round_trip_acs_lean(tmp_path: Path) -> BooleanRoundTrip:
     return _semantic_observation(source, before, loaded)
 
 
-def _round_trip_fiscal_checkpoint(tmp_path: Path) -> BooleanRoundTrip:
+def _round_trip_fiscal_checkpoint(
+    tmp_path: Path, nullable_case: str
+) -> BooleanRoundTrip:
     h5py = pytest.importorskip("h5py")
     tool = _load_tool(
         "tools/build_us_fiscal_refresh_release.py",
         "registry_fiscal_refresh",
     )
-    source = _dtype_family_table()
+    source = _dtype_family_table(nullable_case)
     before = source.copy(deep=True)
     frame = _small_frame(source)
     path = tmp_path / "fiscal-target-frame.h5"
@@ -433,11 +449,15 @@ def test_round_trip_adapter_registry_exactly_matches_serializer_registry() -> No
     FRAME_TABLE_SERIALIZERS,
     ids=lambda serializer: serializer.serializer_id,
 )
+@pytest.mark.parametrize("nullable_case", ("mixed", "all_missing"))
 def test_registered_serializer_round_trips_nullable_boolean_dtype_family(
     serializer: FrameSerializerSpec,
+    nullable_case: str,
     tmp_path: Path,
 ) -> None:
-    observation = ROUND_TRIP_ADAPTERS[serializer.serializer_id](tmp_path)
+    observation = ROUND_TRIP_ADAPTERS[serializer.serializer_id](
+        tmp_path, nullable_case
+    )
 
     # Serializers may materialize a boundary copy, never rewrite the source.
     pd.testing.assert_frame_equal(

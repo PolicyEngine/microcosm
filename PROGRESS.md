@@ -10,8 +10,10 @@ Frame/table-collection HDF serializers and all seven non-Frame writable HDF
 sites now live in an executable registry guarded by a repository-wide AST
 completeness test. A shared PyTables boundary codec now implements the doctrine,
 and all six PyTables-facing serializers now consume it. The fiscal h5py
-checkpoint has the same explicit values/mask doctrine, so all eight registry
-rows are green. Stacked terminal publication now binds schema 8 to H5
+checkpoint has the same explicit values/mask doctrine. A second, degenerate
+registry pass now covers an all-missing nullable-boolean column; its red run
+showed that five PyTables routes need logical-type metadata on read even though
+their null positions survive. Stacked terminal publication now binds schema 8 to H5
 materializer 2 in both the manifest and frozen metadata key; legacy schema 4
 remains isolated. The changelog records the complete serializer closure.
 Battery metrics and tolerances remain out of scope.
@@ -100,11 +102,23 @@ Battery metrics and tolerances remain out of scope.
   materializer 2 and recorded the eight-sink nullable-boolean doctrine,
   fiscal schema 2/materializer 11, frozen identifiers, and preserved legacy
   and unaffected UK artifacts.
+- Expanded the executable dtype-family matrix to run every serializer with
+  both mixed-value and all-missing nullable booleans. The intended red proof
+  is five PyTables failures: pandas infers an all-missing object payload as a
+  string column on reload. The two h5py codecs pass because their values/mask
+  metadata already preserves logical dtype; the optional PolicyEngine-US row
+  remains skipped in this local environment.
+- Located the locked offline test environment with the repository-pinned
+  PyArrow backend. It reproduces the committed Frame schema-2 and UK
+  checkpoint byte goldens; the earlier `e55095...` observation came from a
+  dependency-incomplete environment without PyArrow, not from this change.
 
 ## Next
 
-1. Run focused tests, the exact 495-test #583 proof, full-workspace chunked
+1. Preserve all-missing BooleanDtype explicitly across the shared PyTables
+   write/read boundary and route every registered reader through it.
+2. Run focused tests, the exact 495-test #583 proof, full-workspace chunked
    exact-count proof, UK byte goldens, ruff/format/diff checks, and changelog
    validation. No builds will run.
-2. Obtain an independent audit, close actionable findings, commit the final
+3. Obtain an independent audit, close actionable findings, commit the final
    ledger state, and report the gradeable 10% dev-r7 prediction.
