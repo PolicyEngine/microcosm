@@ -7,6 +7,7 @@ Frame directly, replacing the UK-only table walkers
 flat frame column names instead of `entity.column`, so the reviewed
 enhanced-FRS input-mass reference digest was re-frozen keys-only against
 the #610 values (131 columns before and after, values byte-identical).
-Benunit weight refusals moved to the construction seam: orphan benunits
-are unrepresentable as a Frame, and only unequal-weight household spans
-are refused at totals time.
+Benunit nesting ("a benunit's members share a household") is now a
+stated UK frame invariant enforced at construction and re-proved at every
+stage seam by `validate_uk_national_frame`; orphan benunits stay
+unrepresentable at the kernel.

@@ -16,7 +16,10 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime import weighted_integrity
-from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.build.uk_runtime.national_frame import (
+    uk_national_frame,
+    validate_uk_national_frame,
+)
 from microcosm.build.uk_runtime.spi_support import (
     FRS_ONLY_SPI_FILL_PERSON_COLUMNS,
     SPI_INCOME_QRF_OUTPUT_COLUMNS,
@@ -139,11 +142,8 @@ def test_memberless_benunits_are_refused_at_frame_construction() -> None:
         )
 
 
-def test_totals_fail_closed_on_benunit_spanning_unequal_households() -> None:
-    """A benunit across differently-weighted households has no single weight
-    to inherit: ``Frame.resolve_weights`` refuses the ambiguous collapse. An
-    equal-weight span is unambiguous and totals cleanly — the seam the old
-    any-span refusal narrowed to under #611 A4."""
+def test_benunit_spans_are_refused_at_frame_construction() -> None:
+    """A benunit's members must share a household, regardless of weights."""
 
     def spanning_frame(household_weights: list[float]):
         return uk_national_frame(
@@ -165,11 +165,43 @@ def test_totals_fail_closed_on_benunit_spanning_unequal_households() -> None:
             time_period="2023",
         )
 
-    with pytest.raises(ValueError, match="unequal person-level weights"):
-        uk_input_mass_totals(spanning_frame([2.0, 3.0]))
+    for household_weights in ([2.0, 3.0], [2.0, 2.0]):
+        with pytest.raises(
+            ValueError,
+            match=(
+                r"each benunit must belong to exactly one household; "
+                r"split benunit id\(s\): \[201\]"
+            ),
+        ):
+            spanning_frame(household_weights)
 
-    totals = uk_input_mass_totals(spanning_frame([2.0, 2.0]))
-    assert totals["employment_income"] == 1.0 * 2.0 + 2.0 * 2.0
+
+def test_validate_uk_national_frame_rechecks_benunit_nesting() -> None:
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [101, 102, 103],
+                "person_household_id": [1, 1, 2],
+                "person_benunit_id": [201, 201, 202],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [201, 202]}),
+        household=pd.DataFrame(
+            {"household_id": [1, 2], "household_weight": [1.0, 1.0]}
+        ),
+        time_period="2023",
+    )
+    person = frame.table("person")
+    person.loc[1, "person_household_id"] = 2
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"each benunit must belong to exactly one household; "
+            r"split benunit id\(s\): \[201\]"
+        ),
+    ):
+        validate_uk_national_frame(frame)
 
 
 def test_zeroed_input_column_fails_by_name_at_any_tolerance() -> None:

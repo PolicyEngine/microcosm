@@ -70,6 +70,22 @@ UK_TIME_PERIOD_METADATA_KEY = "time_period"
 UK_EXPORTED_WEIGHT_COLUMNS = frozenset({"household_weight"})
 
 
+def _assert_uk_benunit_nesting(person: pd.DataFrame) -> None:
+    required = {"person_benunit_id", "person_household_id"}
+    if not required.issubset(person.columns):
+        return
+    placements = person[["person_benunit_id", "person_household_id"]].drop_duplicates()
+    split = placements.loc[
+        placements["person_benunit_id"].duplicated(keep=False),
+        "person_benunit_id",
+    ].drop_duplicates()
+    if not split.empty:
+        raise ValueError(
+            "each benunit must belong to exactly one household; split "
+            f"benunit id(s): {split.head(5).tolist()}."
+        )
+
+
 @dataclass(frozen=True)
 class _UKSourceFileFingerprint:
     """Cheap stable-file identity used to bind a prior hash to an H5 load.
@@ -130,7 +146,8 @@ def uk_national_frame(
     weights exist) so the staging H5 keeps its column order on export. The
     Frame constructor enforces the structural invariants the shadow carrier
     never checked: group ids unique and sorted ascending, membership equality
-    in both directions, global column uniqueness, and weight health.
+    in both directions, global column uniqueness, weight health, and the UK
+    invariant that a benunit's members share a household.
     """
 
     if "household_weight" not in household.columns:
@@ -147,6 +164,7 @@ def uk_national_frame(
         values=household["household_weight"].to_numpy(dtype="float64"),
         kind=weight_kind,
     )
+    _assert_uk_benunit_nesting(person)
     return Frame(
         tables={"person": person, "benunit": benunit, "household": household},
         schema=UK_NATIONAL_SCHEMA,
@@ -217,7 +235,8 @@ def validate_uk_national_frame(frame: Frame) -> None:
     contract knows — the exact export schema (person/benunit/household,
     household-only typed weights, no links), the time-period metadata,
     agreement between the persisted ``household_weight`` column and the
-    typed vector, and agreement between the weight total and the latest
+    typed vector, the UK invariant that a benunit's members share a
+    household, and agreement between the weight total and the latest
     household :class:`MassChangeRecord`.
     """
 
@@ -241,6 +260,7 @@ def validate_uk_national_frame(frame: Frame) -> None:
             "UK national frames declare no links; the staging writer "
             "persists entity tables only and would silently drop them."
         )
+    _assert_uk_benunit_nesting(frame.table("person"))
     uk_time_period(frame)
     weights = frame.weights_for("household")
     household = frame.table("household")
