@@ -8,9 +8,11 @@ H5 writer passed `person.is_female` (the first of 31 complete nullable-boolean
 columns) directly to PyTables. All eight physical production
 Frame/table-collection HDF serializers and all seven non-Frame writable HDF
 sites now live in an executable registry guarded by a repository-wide AST
-completeness test. The registry-driven nullable-boolean dtype-family matrix is
-red at exactly the seven previously unsafe sinks; the already-fixed generic
-Frame checkpoint passes. Battery metrics and tolerances remain out of scope.
+completeness test. A shared PyTables boundary codec now implements the doctrine,
+and the generic Frame checkpoint consumes its canonical values/mask primitive
+without changing either legacy or nullable checkpoint bytes. The six
+PyTables-facing sinks are next. Battery metrics and tolerances remain out of
+scope.
 
 ## Done
 
@@ -61,12 +63,24 @@ Frame checkpoint passes. Battery metrics and tolerances remain out of scope.
   failures: five PyTables BooleanArray failures, one PyTables BooleanCol
   failure shared by the two table-format routes, and the fiscal codec's
   missing-bool conversion failure. The generic Frame checkpoint is green.
+- Added the shared nullable-boolean materializer in `microcosm-frame`:
+  complete extension columns become native NumPy bool with identical logical
+  bytes; missing columns become explicit object-backed Python bool + `pd.NA`
+  and force fixed HDF format; inputs remain untouched. The common canonical
+  values/mask primitive normalizes every masked value bit to false.
+- Refactored Frame checkpoint schema v3 to use that primitive. In the locked
+  local HDF environment, both the pre-change and post-change code produced
+  identical bytes for the legacy fixture (`e55095...`) and nullable fixture
+  (`7a6502...`); all 31 non-golden checkpoint/materializer tests passed. The
+  committed legacy fixture hash (`7671ab...`) already disagrees with this
+  environment on the unmodified parent and remains to be resolved during the
+  exact golden proof rather than papered over here.
 
 ## Next
 
-1. Implement the
-   lossless nullable-boolean representation, and bump changed serializer
-   contracts without changing frozen published-artifact format identifiers.
+1. Route the six PyTables-facing sinks through the shared materializer, then
+   implement the fiscal values/mask codec and bump changed serializer contracts
+   without changing frozen published-artifact format identifiers.
 2. Run focused tests, the exact 495-test #583 proof, full-workspace chunked
    exact-count proof, UK byte goldens, ruff/format/diff checks, and changelog
    validation. No builds will run.

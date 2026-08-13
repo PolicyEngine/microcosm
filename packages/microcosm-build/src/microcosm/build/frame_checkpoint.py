@@ -31,6 +31,7 @@ from microcosm.frame import (
     MassChangeRecord,
     WeightKind,
     Weights,
+    nullable_boolean_values_and_mask,
 )
 
 __all__ = [
@@ -551,15 +552,14 @@ def _write_series(group: Any, series: pd.Series, spec: Mapping[str, object]) -> 
         _write_bytes_dataset(group, "payload", payload)
         return
     if encoding == _ENCODING_NULLABLE_BOOLEAN:
-        values = series.to_numpy(
-            dtype=np.bool_,
-            na_value=False,
-            copy=False,
-        )
+        values, null_mask = nullable_boolean_values_and_mask(series)
         _write_numpy_dataset(group, "values", values)
         if spec.get("has_null_mask") is True:
-            null_mask = series.isna().to_numpy(dtype=np.uint8, copy=False)
-            _write_numpy_dataset(group, "null_mask", null_mask)
+            _write_numpy_dataset(
+                group,
+                "null_mask",
+                null_mask.astype(np.uint8, copy=False),
+            )
         return
     raise RuntimeError(f"Unknown checkpoint series encoding {encoding!r}.")
 
