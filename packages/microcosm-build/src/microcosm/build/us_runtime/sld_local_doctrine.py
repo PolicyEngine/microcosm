@@ -10,7 +10,7 @@ A miss is support work (membership coverage, thin districts) or target work
 (fix or fence the target), never a knob.
 
 This module is the release path's solve surface. The low-level
-:func:`populace.build.us_runtime.sld_local_solver.solve_sld_district_weights`
+:func:`microcosm.build.us_runtime.sld_local_solver.solve_sld_district_weights`
 remains the research harness; the doctrine wrappers expose no bound, scale,
 or weight parameters — the refusal is structural, not a runtime flag — and
 every solve carries the populace#492 past-cap census per district.
@@ -27,7 +27,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from populace.build.us_runtime.sld_local_solver import (
+from microcosm.build.us_runtime.sld_local_solver import (
     SldChamberSolveResult,
     SldDistrictProblem,
     SldDistrictSolveResult,

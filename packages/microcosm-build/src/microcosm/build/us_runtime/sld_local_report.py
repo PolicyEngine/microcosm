@@ -34,8 +34,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from populace.build.us_runtime.sld_local_solver import SldChamberSolveResult
-from populace.build.us_runtime.sld_local_targets import (
+from microcosm.build.us_runtime.sld_local_solver import SldChamberSolveResult
+from microcosm.build.us_runtime.sld_local_targets import (
     MoneyIncomeRecipeResolution,
     SldTargetFacts,
 )

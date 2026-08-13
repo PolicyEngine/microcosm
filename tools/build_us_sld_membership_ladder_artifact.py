@@ -6,7 +6,7 @@ NationalSLDL24 — the boundary vintage the ACS 2020-2024 5-year SLD tables
 tabulate on), the 119th Congressional District BEF, the 2020 tract-to-PUMA
 relationship file, and the 2020 P.L. 94-171 geographic headers (block
 populations); runs one national block pass; and writes one NPZ carrying the
-two overlap tables :mod:`populace.build.us_runtime.sld_membership` draws
+two overlap tables :mod:`microcosm.build.us_runtime.sld_membership` draws
 from — ``tract x (SLDU, SLDL)`` and ``(PUMA, CD, county) x (SLDU, SLDL)``.
 No per-area files, the standing rule.
 
@@ -37,15 +37,15 @@ from pathlib import Path
 
 import numpy as np
 
-from populace.build.us_runtime.block_ladder_sources import (
+from microcosm.build.us_runtime.block_ladder_sources import (
     US_STATES,
     parse_national_cd_bef,
     parse_pl_geo_blocks,
 )
-from populace.build.us_runtime.puma_ladder_sources import (
+from microcosm.build.us_runtime.puma_ladder_sources import (
     parse_tract_to_puma_relationship,
 )
-from populace.build.us_runtime.sld_membership import (
+from microcosm.build.us_runtime.sld_membership import (
     assemble_us_sld_membership_ladder,
     load_us_sld_membership_ladder,
     parse_national_sld24_bef,

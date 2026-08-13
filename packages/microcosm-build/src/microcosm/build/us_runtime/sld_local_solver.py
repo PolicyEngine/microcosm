@@ -8,7 +8,7 @@ semantics. One uniform operator applied per district — never a per-district
 configuration.
 
 The solve reuses the canonical calibration internals
-(:mod:`populace.calibrate.solve`): log-weight Adam on the capped
+(:mod:`microcosm.calibrate.solve`): log-weight Adam on the capped
 relative-error loss, target-defined scales, and the hard per-record
 ``max_weight_ratio`` guard. The anchor is single-stage and declared
 (populace#493): starting weights are the artifact's calibrated household
@@ -16,7 +16,7 @@ weights restricted to the district, and the realized max ratio vs that
 anchor is recorded per district.
 
 ``past_cap_census`` mirrors
-:func:`populace.build.uk_runtime.local_solver.past_cap_census`
+:func:`microcosm.build.uk_runtime.local_solver.past_cap_census`
 (populace#492/#494): rows past the loss cap have zero gradient, so every
 district solve records which target rows sat past the cap, escaped, froze,
 or were pushed out — and the chamber roll-up names the worst districts.
@@ -33,13 +33,13 @@ import pandas as pd
 import scipy.sparse as sp
 import torch
 
-from populace.calibrate.solve import (
+from microcosm.calibrate.solve import (
     _optimize as _calibrate_optimize,
 )
-from populace.calibrate.solve import (
+from microcosm.calibrate.solve import (
     _torch_constraint_matrix as _calibrate_torch_constraint_matrix,
 )
-from populace.calibrate.solve import (
+from microcosm.calibrate.solve import (
     default_target_loss_scales,
     effective_sample_size,
     relative_error_loss,
@@ -145,7 +145,7 @@ def past_cap_census(
     """Census of target rows relative to the loss cap (populace#492).
 
     Same semantics as
-    :func:`populace.build.uk_runtime.local_solver.past_cap_census`, carried
+    :func:`microcosm.build.uk_runtime.local_solver.past_cap_census`, carried
     here so the US layer does not import the UK runtime: counts of rows past
     the cap at initialization and at the final estimates, the rows that
     escaped, the rows frozen past the cap, and the pushed-out rows listed

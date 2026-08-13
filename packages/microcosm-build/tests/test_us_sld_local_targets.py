@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from populace.build.us_runtime.sld_local_targets import (
+from microcosm.build.us_runtime.sld_local_targets import (
     SLD_ACS_MONEY_INCOME_RECIPE,
     build_sld_district_problems,
     household_acs_money_income,

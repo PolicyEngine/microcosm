@@ -8,11 +8,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from populace.build.us_runtime.sld_local_doctrine import (
+from microcosm.build.us_runtime.sld_local_doctrine import (
     US_SLD_LOCAL_SOLVE_DOCTRINE,
     solve_us_sld_chamber_under_doctrine,
 )
-from populace.build.us_runtime.sld_local_report import (
+from microcosm.build.us_runtime.sld_local_report import (
     achieved_vs_target_table,
     honest_boundaries_statement,
     median_income_validation,
@@ -21,8 +21,8 @@ from populace.build.us_runtime.sld_local_report import (
     weighted_median,
     write_sld_sidecar,
 )
-from populace.build.us_runtime.sld_local_solver import SldDistrictProblem
-from populace.build.us_runtime.sld_local_targets import (
+from microcosm.build.us_runtime.sld_local_solver import SldDistrictProblem
+from microcosm.build.us_runtime.sld_local_targets import (
     SldTargetFacts,
     resolve_money_income_recipe,
 )

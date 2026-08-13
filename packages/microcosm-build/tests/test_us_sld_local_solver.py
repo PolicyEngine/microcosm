@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from populace.build.us_runtime.sld_local_doctrine import (
+from microcosm.build.us_runtime.sld_local_doctrine import (
     US_SLD_LOCAL_MAX_WEIGHT_RATIO,
     US_SLD_LOCAL_SOLVE_DOCTRINE,
     US_SLD_LOCAL_TARGET_LOSS_CAP,
@@ -16,7 +16,7 @@ from populace.build.us_runtime.sld_local_doctrine import (
     solve_us_sld_chamber_under_doctrine,
     solve_us_sld_district_weights_under_doctrine,
 )
-from populace.build.us_runtime.sld_local_solver import (
+from microcosm.build.us_runtime.sld_local_solver import (
     SldDistrictProblem,
     past_cap_census,
     solve_sld_chamber,

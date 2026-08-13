@@ -5,7 +5,7 @@ layer is strictly downstream of the artifact build: it changes no artifact
 bytes and no national calibration anywhere — it reads the packaged
 artifact's household/person tables and calibrated weights, derives
 2024-vintage district membership, solves every district under the reviewed
-doctrine (:mod:`populace.build.us_runtime.sld_local_doctrine`), and writes
+doctrine (:mod:`microcosm.build.us_runtime.sld_local_doctrine`), and writes
 the sidecar bundle (long weights, diagnostics, achieved-vs-target,
 honest-boundaries statement) with per-file sha256s.
 
@@ -41,16 +41,16 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from populace.build.us_runtime.sld_local_doctrine import (
+from microcosm.build.us_runtime.sld_local_doctrine import (
     US_SLD_LOCAL_SOLVE_DOCTRINE,
     solve_us_sld_chamber_under_doctrine,
 )
-from populace.build.us_runtime.sld_local_report import write_sld_sidecar
-from populace.build.us_runtime.sld_local_targets import (
+from microcosm.build.us_runtime.sld_local_report import write_sld_sidecar
+from microcosm.build.us_runtime.sld_local_targets import (
     build_sld_district_problems,
     load_sld_target_facts,
 )
-from populace.build.us_runtime.sld_membership import (
+from microcosm.build.us_runtime.sld_membership import (
     assign_us_sld_membership,
     load_us_sld_membership_ladder,
     us_sld_membership_gate,
@@ -433,7 +433,7 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit("--epochs must be at least 1.")
     if args.learning_rate <= 0:
         raise SystemExit("--learning-rate must be positive.")
-    from populace.build.us_runtime.sld_local_targets import (
+    from microcosm.build.us_runtime.sld_local_targets import (
         SLD_ACS_MONEY_INCOME_RECIPE,
     )
 

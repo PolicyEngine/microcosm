@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from populace.build.us_runtime.sld_membership import (
+from microcosm.build.us_runtime.sld_membership import (
     SLD_ASSIGNMENT_METHODS,
     SLD_MEMBERSHIP_COLUMNS,
     UsSldMembershipLadder,
@@ -309,7 +309,7 @@ def test_gate_flags_excess_unassigned_share():
 
 
 def test_assemble_builds_conserved_overlap_tables():
-    from populace.build.us_runtime.sld_membership import (
+    from microcosm.build.us_runtime.sld_membership import (
         assemble_us_sld_membership_ladder,
     )
 
@@ -339,7 +339,7 @@ def test_assemble_builds_conserved_overlap_tables():
 def test_assemble_refuses_populated_block_without_puma_mapping():
     import pytest as _pytest
 
-    from populace.build.us_runtime.sld_membership import (
+    from microcosm.build.us_runtime.sld_membership import (
         assemble_us_sld_membership_ladder,
     )
 

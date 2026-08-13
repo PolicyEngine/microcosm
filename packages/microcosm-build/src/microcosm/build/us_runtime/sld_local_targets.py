@@ -35,7 +35,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from populace.build.us_runtime.sld_local_solver import SldDistrictProblem
+from microcosm.build.us_runtime.sld_local_solver import SldDistrictProblem
 
 __all__ = [
     "SLD_ACS_MONEY_INCOME_DECLARED_OMISSIONS",
@@ -521,6 +521,12 @@ def load_sld_target_facts(path: str | Path) -> SldTargetFacts:
     )
 
 
+def _group_sort_key(item: tuple) -> tuple:
+    """Sort groupby items by their (state, district) key, subscript-free."""
+    key, _frame = item
+    return key
+
+
 def _metric_sort_key(row: pd.Series) -> tuple:
     order = {"age": 0, "households": 1, "income": 2}
     metric = str(row["metric"])
@@ -665,18 +671,26 @@ def build_sld_district_problems(
         )
     person_household_position = person_household_position.astype(np.int64)
 
+    # Precompute the canonical metric ordering as sortable scalar columns —
+    # the spine-blindness guard requires statically resolvable selectors, so
+    # no dynamic .loc/lambda subscripts inside the district loop.
+    sort_keys = [_metric_sort_key(row) for _, row in chamber_facts.iterrows()]
+    chamber_facts = chamber_facts.assign(
+        _order_family=[key[0] for key in sort_keys],
+        _order_lower=[key[1] for key in sort_keys],
+        _order_metric=[key[2] for key in sort_keys],
+    )
+
     problems: list[SldDistrictProblem] = []
     zero_support: list[str] = []
-    for (state_fips, district_code), district_facts in sorted(
+    grouped = sorted(
         chamber_facts.groupby(["state_fips", "district_code"]),
-        key=lambda item: item[0],
-    ):
-        ordered = district_facts.loc[
-            sorted(
-                district_facts.index,
-                key=lambda index: _metric_sort_key(district_facts.loc[index]),
-            )
-        ]
+        key=_group_sort_key,
+    )
+    for (state_fips, district_code), district_facts in grouped:
+        ordered = district_facts.sort_values(
+            ["_order_family", "_order_lower", "_order_metric"]
+        )
         area_code = str(ordered["area_code"].iloc[0])
         indices = rows_by_district.get(f"{state_fips}:{district_code}")
         if indices is None or len(indices) == 0:
