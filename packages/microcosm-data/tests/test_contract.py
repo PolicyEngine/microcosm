@@ -3734,6 +3734,79 @@ def test_exact_k_uk_gate_battery_recomputes_shippability(tmp_path: Path) -> None
     assert "release-blocking with status 'failed'" in failures
 
 
+def test_exact_k_uk_gate_battery_rejects_passed_entry_with_failures(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_weight_ratio"]
+    entry["status"] = "failed"
+    entry["failures"] = ["seeded ratio failure"]
+    entry["status"] = "passed"
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert "passed entries cannot carry failure text" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_passed_entry_with_reason(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_weight_ratio"]
+    entry["reason"] = "seeded caveat"
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert "passed entries cannot carry a reason" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_absent_evidence_without_reason(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_input_mass_parity"]
+    entry["status"] = "evidence_absent"
+    entry["details"] = {}
+    entry["reason"] = None
+    del payload["evidence_sha256"]["uk_input_mass_parity"]
+    _rewrite_battery_report(directory, payload)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = dict(payload["evidence_sha256"])
+    build_path.write_text(json.dumps(build))
+    _refresh_terminal_manifest_hashes(directory)
+
+    failures = _battery_failures(directory)
+    assert "evidence_absent entries must carry a non-empty string reason" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_failed_entry_without_failures(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_weight_ratio"]
+    entry["status"] = "failed"
+    entry["failures"] = []
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert "failed entries must carry non-empty failure text" in failures
+
+
+def test_exact_k_uk_gate_battery_reports_details_and_failures_type_errors(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_weight_ratio"]
+    entry["details"] = []
+    entry["failures"] = "seeded failure"
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert ".details must be an object" in failures
+    assert ".failures must be a list" in failures
+
+
 def test_exact_k_uk_gate_battery_rejects_excused_absent_evidence(
     tmp_path: Path,
 ) -> None:

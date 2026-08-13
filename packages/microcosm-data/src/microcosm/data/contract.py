@@ -2220,12 +2220,43 @@ def _check_uk_gate_battery_report(
                 f"{owner} is release-blocking with status {status!r}; the "
                 "release cannot ship it."
             )
-        if not isinstance(outcome.get("details"), Mapping):
+        details = outcome.get("details")
+        failures_list = outcome.get("failures")
+        if not isinstance(details, Mapping):
             failures.append(f"{owner}.details must be an object.")
-            continue
-        if not isinstance(outcome.get("failures"), list):
+        if not isinstance(failures_list, list):
             failures.append(f"{owner}.failures must be a list.")
             continue
+        if not isinstance(details, Mapping):
+            continue
+
+        # Mirror the producer-side GateResult/GateOutcome envelope here: the
+        # data shard cannot import those build-side classes, but a signed
+        # release report must still preserve their projected invariants.
+        reason = outcome.get("reason")
+        if status == "passed":
+            if failures_list != []:
+                failures.append(f"{owner} passed entries cannot carry failure text.")
+            if reason is not None:
+                failures.append(f"{owner} passed entries cannot carry a reason.")
+        elif status == "failed":
+            if not failures_list or any(
+                not isinstance(item, str) or not item.strip() for item in failures_list
+            ):
+                failures.append(
+                    f"{owner} failed entries must carry non-empty failure text."
+                )
+            if reason is not None:
+                failures.append(f"{owner} failed entries cannot carry a reason.")
+        elif status in {"not_applicable", "evidence_absent"}:
+            if failures_list != []:
+                failures.append(f"{owner} {status} entries cannot carry failure text.")
+            if dict(details) != {}:
+                failures.append(f"{owner} {status} entries cannot carry details.")
+            if not isinstance(reason, str) or not reason.strip():
+                failures.append(
+                    f"{owner} {status} entries must carry a non-empty string reason."
+                )
         valid_gates[str(entry_id)] = outcome
 
     preflight_coverage = valid_gates.get("uk_release_input_coverage_manifest_current")
