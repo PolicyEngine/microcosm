@@ -13,7 +13,8 @@ and all six PyTables-facing serializers now consume it. The fiscal h5py
 checkpoint has the same explicit values/mask doctrine, so all eight registry
 rows are green. Stacked terminal publication now binds schema 8 to H5
 materializer 2 in both the manifest and frozen metadata key; legacy schema 4
-remains isolated. Battery metrics and tolerances remain out of scope.
+remains isolated. The changelog records the complete serializer closure.
+Battery metrics and tolerances remain out of scope.
 
 ## Done
 
@@ -95,11 +96,14 @@ remains isolated. Battery metrics and tolerances remain out of scope.
   and `entity_hdf_format="fixed_nullable"` are unchanged. Focused version,
   stacked-entrypoint, reader, and legacy-publication golden tests pass (27
   selected tests); the schema-4 legacy path carries no new field.
+- Updated the #652 changelog entry from stacked schema 7 to schema 8/H5
+  materializer 2 and recorded the eight-sink nullable-boolean doctrine,
+  fiscal schema 2/materializer 11, frozen identifiers, and preserved legacy
+  and unaffected UK artifacts.
 
 ## Next
 
-1. Update the changelog and run focused tests, the exact 495-test #583 proof,
-   full-workspace chunked
+1. Run focused tests, the exact 495-test #583 proof, full-workspace chunked
    exact-count proof, UK byte goldens, ruff/format/diff checks, and changelog
    validation. No builds will run.
 2. Obtain an independent audit, close actionable findings, commit the final
