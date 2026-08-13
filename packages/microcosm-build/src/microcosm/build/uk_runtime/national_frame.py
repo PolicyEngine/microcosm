@@ -73,6 +73,10 @@ UK_EXPORTED_WEIGHT_COLUMNS = frozenset({"household_weight"})
 def _assert_uk_benunit_nesting(person: pd.DataFrame) -> None:
     required = {"person_benunit_id", "person_household_id"}
     if not required.issubset(person.columns):
+        # Belt-and-braces, not an escape hatch: at the validator seam the
+        # Frame guarantees both membership columns exist, and at the
+        # construction seam a missing column is refused a line later by the
+        # kernel's own linkage validation, which names it.
         return
     placements = person[["person_benunit_id", "person_household_id"]].drop_duplicates()
     split = placements.loc[

@@ -14,6 +14,8 @@ import hashlib
 import hmac
 import json
 
+import pytest
+
 from microcosm.build import load_country_spec
 from microcosm.build.gate_battery import (
     GATE_BATTERY_ATTESTATION_SCHEMA_VERSION,
@@ -21,8 +23,11 @@ from microcosm.build.gate_battery import (
     GATE_BATTERY_SCHEMA_VERSION,
     EvidenceContext,
     GateBatteryRun,
+    GateOutcome,
+    GateStatus,
     gate_signing_key_env,
 )
+from microcosm.build.gates import GateResult
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.weighted_integrity import (
     UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
@@ -91,6 +96,51 @@ class TestMirrorConstants:
             entry.criticality == "release_blocking" for entry in spec.gates.gates
         )
         assert all(entry.not_applicable is None for entry in spec.gates.gates)
+
+    def test_outcome_envelope_mirrors_the_producer_construction_invariants(
+        self,
+    ) -> None:
+        # The schema-4 checker's per-status envelope (passed -> no failures,
+        # no reason; failed -> named failures, no reason; excused statuses ->
+        # no failures, empty details, a non-empty reason) is a hand-mirror of
+        # these construction invariants and of to_payload's emission shape.
+        # Hold it to actually constructed instances so a producer change
+        # breaks this test, not a release assembly.
+        entry = load_country_spec("uk").gates.gates[0]
+
+        with pytest.raises(ValueError, match="cannot pass with failures"):
+            GateResult(name=entry.gate, passed=True, failures=("caveat",))
+        with pytest.raises(ValueError, match="cannot fail without naming"):
+            GateResult(name=entry.gate, passed=False)
+        with pytest.raises(ValueError, match="requires a reason"):
+            GateOutcome(entry=entry, status=GateStatus.EVIDENCE_ABSENT)
+        with pytest.raises(ValueError, match="requires a reason"):
+            GateOutcome(entry=entry, status=GateStatus.NOT_APPLICABLE)
+
+        passed = GateOutcome(
+            entry=entry,
+            status=GateStatus.PASSED,
+            result=GateResult(name=entry.gate, passed=True),
+        ).to_payload()
+        assert passed["failures"] == []
+        assert passed["reason"] is None
+        failed = GateOutcome(
+            entry=entry,
+            status=GateStatus.FAILED,
+            result=GateResult(
+                name=entry.gate, passed=False, failures=("named failure",)
+            ),
+        ).to_payload()
+        assert failed["failures"] == ["named failure"]
+        assert failed["reason"] is None
+        absent = GateOutcome(
+            entry=entry,
+            status=GateStatus.EVIDENCE_ABSENT,
+            reason="missing evidence: fixture",
+        ).to_payload()
+        assert absent["failures"] == []
+        assert absent["details"] == {}
+        assert absent["reason"] == "missing evidence: fixture"
 
     def test_degenerate_evidence_pin_mirrors_the_committed_register(self) -> None:
         from microcosm.build.gate_battery import _canonical_sha256
