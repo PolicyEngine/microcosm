@@ -1399,3 +1399,51 @@ def test_rung_unknown_exception_still_crashes(monkeypatch, tmp_path) -> None:
     assert len(rows) == 1
     assert rows[0].disposition == "failed"
     assert rows[0].gate_verdicts["pipeline_error"]["verdict"] == "error"
+
+
+@pytest.mark.parametrize(
+    ("cli_digest", "env_value", "match"),
+    [
+        pytest.param(None, "not-a-digest", "lowercase SHA-256", id="malformed-env"),
+        pytest.param(
+            "a" * 64,
+            "b" * 64,
+            "disagrees with POPULACE_LOGBOOK_PREV_ROW_DIGEST",
+            id="cli-env-conflict",
+        ),
+    ],
+)
+def test_invalid_logbook_predecessor_refuses_before_sidecar_cleanup(
+    monkeypatch, tmp_path, cli_digest, env_value, match
+) -> None:
+    """Broken chain config aborts before any prior sidecar is unlinked.
+
+    Adversarial-review finding on #666: the predecessor used to resolve
+    after the driver deleted the previous attempt's evidence sidecars, so a
+    config typo destroyed local evidence and then crashed. Config refusals
+    must leave the output directory untouched and record no row.
+    """
+
+    builder = _load_builder_module()
+    _install_rung_abort_seams(builder, monkeypatch, _named_edge_error())
+    argv = _rung_abort_argv(tmp_path, fraction="0.10")
+    if cli_digest is not None:
+        argv += ["--logbook-prev-row-digest", cli_digest]
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.setenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", env_value)
+    staging_h5 = tmp_path / "staging.h5"
+    sidecars = [
+        staging_h5.with_suffix(".hmrc_income.json"),
+        staging_h5.with_suffix(".hmrc_replay.json"),
+        staging_h5.with_suffix(".build.json"),
+        staging_h5.with_suffix(".rung_abort.json"),
+    ]
+    for sidecar in sidecars:
+        sidecar.write_text('{"stale": true}\n')
+
+    with pytest.raises(ValueError, match=match):
+        builder.main()
+
+    for sidecar in sidecars:
+        assert sidecar.read_text() == '{"stale": true}\n'
+    assert not (tmp_path / "logbook-spool").exists()

@@ -592,7 +592,11 @@ def main(argv: list[str] | None = None) -> int:
     started_ts = datetime.now(UTC)
     rung = UK_SAMPLE_RUNG_TOKENS[args.sample_fraction]
     code_pin = "unresolved-local-git-code-pin"
-    predecessor = args.logbook_prev_row_digest
+    # Logbook chain configuration is validated before any side effect: a
+    # malformed or conflicting predecessor refuses the run here, before the
+    # build can unlink the prior attempt's sidecars (#666 adversarial-review
+    # finding). Config refusals record no row, like argparse refusals.
+    predecessor = resolve_predecessor(args.logbook_prev_row_digest)
     attempt_context: dict[str, object] = {
         "code_pin": code_pin,
         "predecessor": predecessor,
@@ -850,7 +854,6 @@ def _main_recording(
         source_pins=source_pins,
     )
     attempt_context["code_pin"] = git_code_pin(_REPOSITORY)
-    attempt_context["predecessor"] = resolve_predecessor(args.logbook_prev_row_digest)
     state.build_id = _new_national_build_id(
         rung=rung,
         sample_seed=args.sample_seed,

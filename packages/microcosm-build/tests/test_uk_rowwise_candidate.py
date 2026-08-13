@@ -476,6 +476,61 @@ def test_candidate_refusal_records_receipt_and_reraises(
     assert row.gate_verdicts["pipeline_error"]["receipt"].endswith("#/error_type")
 
 
+def test_candidate_setup_failure_records_failed_row(monkeypatch, tmp_path) -> None:
+    """A pre-solve setup failure (ladder load) still spools a failed row.
+
+    Adversarial-review finding on #666: input verification, frame/ladder
+    loading, cloning, and target binding used to run before the recording
+    envelope opened, so their failures escaped with no Logbook row.
+    """
+
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    output_dir = tmp_path / "candidate"
+    _write_staging_h5(input_h5)
+    _write_ladder(ladder_path)
+
+    def failing_ladder_load(_path):
+        raise RuntimeError("ladder artifact refused to parse")
+
+    monkeypatch.setattr(builder, "load_uk_oa_ladder", failing_ladder_load)
+
+    with pytest.raises(RuntimeError, match="ladder artifact refused to parse"):
+        builder.main(
+            [
+                "--input-h5",
+                str(input_h5),
+                "--ladder",
+                str(ladder_path),
+                "--out",
+                str(output_dir),
+                "--n-clones",
+                "2",
+                "--seed",
+                "7",
+                "--epochs",
+                "2",
+            ]
+        )
+
+    rows = _spool_rows(output_dir)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.disposition == "failed"
+    assert row.gate_verdicts["pipeline_error"]["verdict"] == "error"
+    assert row.gate_verdicts["pipeline_error"]["receipt"].endswith("#/error_type")
+    assert "inputs_pinned" in row.phases_reached
+    assert "cloned" not in row.phases_reached
+    # Real input pins were promoted before the failure; the preflight
+    # placeholder digest must not survive into the row.
+    assert row.input_pins_digest != builder.preflight_digest(
+        builder._UK_CANDIDATE_PIPELINE
+    )
+
+
 def test_candidate_refuses_separate_assignment_and_target_ladders(
     tmp_path,
 ) -> None:

@@ -259,65 +259,10 @@ def main(argv: list[str] | None = None) -> int:
             "appends no record and needs its own reviewed manifest shape "
             "before this constant may flip."
         )
-    input_h5 = _require_file(args.input_h5, label="--input-h5")
-    ladder_path = _require_file(args.ladder, label="--ladder")
-    out_dir = args.out.expanduser().resolve()
-    if out_dir.exists() and not out_dir.is_dir():
-        raise ValueError(f"--out must be a directory path, got {out_dir}.")
-
-    input_artifact = _artifact_info(input_h5)
-    ladder_artifact = _artifact_info(ladder_path)
-    national_frame, _national_provenance = load_uk_national_frame(input_h5)
-    source_year = _source_year(
-        args.source_year,
-        time_period=uk_time_period(national_frame),
-    )
-    output_paths = _output_paths(out_dir, source_year=source_year)
-    _validate_output_paths(
-        output_paths,
-        input_h5=input_h5,
-        ladder_path=ladder_path,
-    )
-    ladder = load_uk_oa_ladder(ladder_path)
-    target_provenance = ladder_target_provenance(ladder)
-
-    print("cloning through the ladder route...", file=sys.stderr, flush=True)
-    assignment = _clone_with_ladder_binding(
-        national_frame,
-        ladder,
-        n_clones=args.n_clones,
-        seed=args.seed,
-        source_year=source_year,
-        expected_constituency_vintage=args.expected_constituency_vintage,
-        source_lineage_modulus=args.source_lineage_modulus,
-    )
-    clone = assignment.result
-
-    print("binding census household targets...", file=sys.stderr, flush=True)
-    household, problem = _build_bound_problem(
-        assignment,
-        target_ladder=ladder,
-    )
-
     if args.dry_run:
-        _assert_artifacts_unchanged(
-            input_h5=input_h5,
-            input_artifact=input_artifact,
-            ladder_path=ladder_path,
-            ladder_artifact=ladder_artifact,
-        )
-        plan = _dry_run_plan(
-            args,
-            clone=clone,
-            problem=problem,
-            source_year=source_year,
-            input_artifact=input_artifact,
-            ladder_artifact=ladder_artifact,
-            target_provenance=target_provenance,
-        )
-        print(_json_text(plan), end="")
-        return 0
-
+        # Dry runs plan without solving or writing and record no Logbook
+        # row on any path, so they need no chain configuration.
+        return _run_candidate(args, attempt=None)
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
     digest = preflight_digest(_UK_CANDIDATE_PIPELINE)
@@ -333,25 +278,129 @@ def main(argv: list[str] | None = None) -> int:
             }
         },
     )
-    code_pin = "unresolved-local-git-code-pin"
-    predecessor = args.logbook_prev_row_digest
+    return _run_candidate(
+        args,
+        attempt={
+            "state": state,
+            "started_at": started_at,
+            "started_ts": started_ts,
+            "code_pin": "unresolved-local-git-code-pin",
+            # Logbook chain configuration is validated before any terminal
+            # work: a malformed or conflicting head refuses the run with no
+            # row and no side effects (#666 adversarial-review finding).
+            "predecessor": resolve_predecessor(args.logbook_prev_row_digest),
+        },
+    )
+
+
+def _run_candidate(
+    args: argparse.Namespace,
+    *,
+    attempt: dict[str, object] | None,
+) -> int:
+    """Build the candidate, recording every non-dry terminal outcome.
+
+    The recording envelope opens before input verification so that setup
+    failures — unreadable inputs, frame or ladder load errors, clone and
+    target-binding refusals — still spool a failed row (#666
+    adversarial-review finding). Dry runs pass ``attempt=None`` and record
+    nothing.
+    """
+
+    out_dir = args.out.expanduser().resolve()
     try:
-        code_pin = git_code_pin(_REPOSITORY)
-        predecessor = resolve_predecessor(args.logbook_prev_row_digest)
+        input_h5 = _require_file(args.input_h5, label="--input-h5")
+        ladder_path = _require_file(args.ladder, label="--ladder")
+        if out_dir.exists() and not out_dir.is_dir():
+            raise ValueError(f"--out must be a directory path, got {out_dir}.")
+
+        input_artifact = _artifact_info(input_h5)
+        ladder_artifact = _artifact_info(ladder_path)
         pins = {
             "dataset": _pin_from_artifact(input_artifact),
             "ladder": _pin_from_artifact(ladder_artifact),
         }
-        state.input_pins_digest = role_pins_digest(pins)
-        state.identity_digest = _candidate_identity_digest(
-            pins=pins,
-            args=args,
-            source_year=source_year,
+        state: AttemptState | None = None
+        if attempt is not None:
+            unpacked_state = attempt["state"]
+            assert isinstance(unpacked_state, AttemptState)
+            state = unpacked_state
+            attempt["code_pin"] = git_code_pin(_REPOSITORY)
+            state.input_pins_digest = role_pins_digest(pins)
+            append_phase(state, "configured")
+            append_phase(state, "inputs_pinned")
+        national_frame, _national_provenance = load_uk_national_frame(input_h5)
+        source_year = _source_year(
+            args.source_year,
+            time_period=uk_time_period(national_frame),
         )
-        append_phase(state, "configured")
-        append_phase(state, "inputs_pinned")
-        append_phase(state, "cloned")
-        append_phase(state, "targets_bound")
+        if state is not None:
+            # The identity digest waits on the frame-derived source year;
+            # earlier failures record with the preflight placeholder.
+            state.identity_digest = _candidate_identity_digest(
+                pins=pins,
+                args=args,
+                source_year=source_year,
+            )
+        output_paths = _output_paths(out_dir, source_year=source_year)
+        _validate_output_paths(
+            output_paths,
+            input_h5=input_h5,
+            ladder_path=ladder_path,
+        )
+        ladder = load_uk_oa_ladder(ladder_path)
+        target_provenance = ladder_target_provenance(ladder)
+
+        print("cloning through the ladder route...", file=sys.stderr, flush=True)
+        assignment = _clone_with_ladder_binding(
+            national_frame,
+            ladder,
+            n_clones=args.n_clones,
+            seed=args.seed,
+            source_year=source_year,
+            expected_constituency_vintage=args.expected_constituency_vintage,
+            source_lineage_modulus=args.source_lineage_modulus,
+        )
+        clone = assignment.result
+        if state is not None:
+            append_phase(state, "cloned")
+
+        print("binding census household targets...", file=sys.stderr, flush=True)
+        household, problem = _build_bound_problem(
+            assignment,
+            target_ladder=ladder,
+        )
+        if state is not None:
+            append_phase(state, "targets_bound")
+
+        if args.dry_run:
+            _assert_artifacts_unchanged(
+                input_h5=input_h5,
+                input_artifact=input_artifact,
+                ladder_path=ladder_path,
+                ladder_artifact=ladder_artifact,
+            )
+            plan = _dry_run_plan(
+                args,
+                clone=clone,
+                problem=problem,
+                source_year=source_year,
+                input_artifact=input_artifact,
+                ladder_artifact=ladder_artifact,
+                target_provenance=target_provenance,
+            )
+            print(_json_text(plan), end="")
+            return 0
+
+        assert attempt is not None
+        assert state is not None
+        started_at = attempt["started_at"]
+        started_ts = attempt["started_ts"]
+        assert isinstance(started_at, float)
+        assert isinstance(started_ts, datetime)
+        predecessor = attempt["predecessor"]
+        assert predecessor is None or isinstance(predecessor, str)
+        code_pin = str(attempt["code_pin"])
 
         print(
             f"solving {problem.matrix.shape[0]} targets x "
@@ -478,14 +527,25 @@ def main(argv: list[str] | None = None) -> int:
         print(_json_text(manifest), end="")
         return 0
     except Exception as error:
+        if attempt is None:
+            # Dry runs record no row on any path, including failures.
+            raise
+        failed_state = attempt["state"]
+        assert isinstance(failed_state, AttemptState)
+        failed_started_at = attempt["started_at"]
+        failed_started_ts = attempt["started_ts"]
+        assert isinstance(failed_started_at, float)
+        assert isinstance(failed_started_ts, datetime)
+        failed_predecessor = attempt["predecessor"]
+        assert failed_predecessor is None or isinstance(failed_predecessor, str)
         _record_candidate_error(
             error=error,
-            state=state,
-            started_at=started_at,
-            started_ts=started_ts,
+            state=failed_state,
+            started_at=failed_started_at,
+            started_ts=failed_started_ts,
             seed=args.seed,
-            code_pin=code_pin,
-            predecessor=predecessor,
+            code_pin=str(attempt["code_pin"]),
+            predecessor=failed_predecessor,
             base_dir=out_dir,
             spool_dir=out_dir / "logbook-spool",
         )

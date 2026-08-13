@@ -31,3 +31,8 @@ follow-up. The Logbook module docstring now points ownership at #665/#666
 rather than the stale #616 adoption wording, while the Logbook core behavior
 stays unchanged. The UK national pin surface also names the future
 `ledger_facts` slot for #622/#623 without inventing a placeholder pin.
+Logbook chain configuration (`--logbook-prev-row-digest` and
+`POPULACE_LOGBOOK_PREV_ROW_DIGEST`) is validated before any side effect, so a
+malformed or conflicting head refuses the run with no row and no destroyed
+sidecars, and the candidate driver's recording envelope opens before input
+verification so setup failures spool a failed row too.

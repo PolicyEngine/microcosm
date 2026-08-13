@@ -318,7 +318,11 @@ def main(argv: list[str] | None = None) -> int:
         "started_at": started_at,
         "started_ts": started_ts,
         "code_pin": "unresolved-local-git-code-pin",
-        "predecessor": args.logbook_prev_row_digest,
+        # Logbook chain configuration is validated before any side effect: a
+        # malformed or conflicting predecessor refuses the run here, before
+        # the build can unlink stale coverage/crosswalk sidecars. Config
+        # refusals record no row, like argparse refusals.
+        "predecessor": resolve_predecessor(args.logbook_prev_row_digest),
     }
     try:
         return _main_impl(args, attempt=attempt)
@@ -416,7 +420,6 @@ def _main_impl(
             "crosswalk": _pin_from_artifact(_artifact_info(crosswalk_path)),
         }
         attempt["code_pin"] = git_code_pin(_REPOSITORY)
-        attempt["predecessor"] = resolve_predecessor(args.logbook_prev_row_digest)
         state.build_id = _new_rowwise_build_id(
             route="crosswalk",
             seed=args.seed,
@@ -878,7 +881,6 @@ def _run_ladder_route(
             "ladder": _pin_from_artifact(ladder_artifact),
         }
         attempt["code_pin"] = git_code_pin(_REPOSITORY)
-        attempt["predecessor"] = resolve_predecessor(args.logbook_prev_row_digest)
         state.build_id = _new_rowwise_build_id(
             route="ladder",
             seed=args.seed,
