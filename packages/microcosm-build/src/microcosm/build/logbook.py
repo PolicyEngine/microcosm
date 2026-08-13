@@ -1,6 +1,6 @@
 """Durable, append-only Logbook client for terminal build attempts.
 
-``record_build_attempt`` is the adoption seam owned by microcosm#616. Callers
+``record_build_attempt`` is the adoption seam owned by microcosm#665/#666. Callers
 provide a complete terminal attempt receipt and the digest of the chain head
 they are extending. Logbook validates and hashes the receipt, durably writes
 ``<row_digest>.json`` beneath the caller's spool directory, and only then makes
@@ -30,8 +30,8 @@ The Supabase key must identify the migration's ``logbook_writer`` role, not
 the service role. Hosted Supabase projects should additionally provide the
 project gateway key as ``POPULACE_LEDGER_API_KEY``; single-key deployments may
 omit it. The ``logbook`` schema must also be enabled in the hosted project's
-PostgREST exposed-schema setting. This module deliberately wires no build
-tool; adoption remains in microcosm#616.
+PostgREST exposed-schema setting. The US stacked driver and the three UK
+drivers record through this seam; this module remains driver-agnostic.
 """
 
 from __future__ import annotations

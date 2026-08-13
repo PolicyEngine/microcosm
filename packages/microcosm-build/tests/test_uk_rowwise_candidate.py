@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.logbook import LOGBOOK_ROW_FIELDS, load_spool_rows
 from microcosm.build.uk_runtime import (
     assemble_uk_oa_ladder,
     ladder_target_provenance,
@@ -20,6 +21,25 @@ from microcosm.build.uk_runtime import (
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.frame import MassChangeRecord, WeightKind
+
+
+@pytest.fixture(autouse=True)
+def _spool_only_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("POPULACE_LEDGER_URL", raising=False)
+    monkeypatch.delenv("POPULACE_LEDGER_KEY", raising=False)
+    monkeypatch.delenv("POPULACE_LEDGER_API_KEY", raising=False)
+    monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
+
+
+def _spool_rows(output_dir: Path):
+    rows = load_spool_rows(output_dir / "logbook-spool")
+    for row in rows:
+        assert frozenset(row.to_mapping()) == LOGBOOK_ROW_FIELDS
+    return rows
+
+
+def _local_ref(path: Path) -> str:
+    return f"local://{path.resolve().as_posix().lstrip('/')}"
 
 
 def _load_builder_module():
@@ -313,6 +333,31 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(tmp_path) -> None:
     assert diagnostics["metric"].unique().tolist() == ["households"]
     assert len(support) == 4
     assert past_cap["n_targets"] == 4
+    rows = _spool_rows(output_dir)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.pipeline == "uk-rowwise-candidate"
+    assert row.rung == "f100"
+    assert row.seed == 7
+    assert row.disposition == "iterating"
+    assert row.artifact_location == _local_ref(candidate_h5)
+    assert row.gate_verdicts == {
+        "uk_geography_ladder_post_calibration": {
+            "verdict": "passed",
+            "receipt": f"{_local_ref(output_dir / builder.MANIFEST_FILENAME)}#/gate",
+        },
+        "uk_target_fit": {
+            "verdict": "passed",
+            "receipt": (
+                f"{_local_ref(output_dir / builder.MANIFEST_FILENAME)}"
+                "#/solve/max_abs_relative_error"
+            ),
+        },
+        "uk_area_support": {
+            "verdict": "passed",
+            "receipt": f"{_local_ref(output_dir / builder.MANIFEST_FILENAME)}#/support",
+        },
+    }
 
 
 def test_candidate_dry_run_plans_without_solve_or_write(
@@ -368,6 +413,67 @@ def test_candidate_dry_run_plans_without_solve_or_write(
     assert plan["shapes"]["local_matrix"] == [4, 8]
     assert plan["target_count"] == 4
     assert not output_dir.exists()
+    assert not (output_dir / "logbook-spool").exists()
+
+
+def test_candidate_refusal_records_receipt_and_reraises(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    builder = _load_builder_module()
+    input_h5 = tmp_path / "staging.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    output_dir = tmp_path / "candidate"
+    _write_staging_h5(input_h5)
+    _write_ladder(ladder_path)
+
+    def failing_gate(*_args, **_kwargs):
+        return builder.GateResult(
+            name="uk_geography_ladder",
+            passed=False,
+            failures=("post-calibration coverage failed",),
+            details={"minimum": 0},
+        )
+
+    monkeypatch.setattr(builder, "uk_geography_ladder_gate", failing_gate)
+
+    with pytest.raises(ValueError, match="post-calibration coverage failed"):
+        builder.main(
+            [
+                "--input-h5",
+                str(input_h5),
+                "--ladder",
+                str(ladder_path),
+                "--out",
+                str(output_dir),
+                "--n-clones",
+                "2",
+                "--seed",
+                "7",
+                "--epochs",
+                "2",
+            ]
+        )
+
+    rows = _spool_rows(output_dir)
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.disposition == "failed"
+    refusal_path = (
+        output_dir / "logbook-receipts" / row.build_id / "candidate-refusal.json"
+    )
+    assert refusal_path.exists()
+    refusal = json.loads(refusal_path.read_text())
+    assert refusal["gate"]["phase"] == "post_calibration"
+    assert refusal["gate"]["passed"] is False
+    assert row.gate_verdicts["uk_geography_ladder_post_calibration"] == {
+        "verdict": "failed",
+        "receipt": f"{_local_ref(refusal_path)}#/gate",
+    }
+    assert row.gate_verdicts["pipeline_error"]["verdict"] == "error"
+    assert row.gate_verdicts["pipeline_error"]["receipt"].endswith("#/error_type")
 
 
 def test_candidate_refuses_separate_assignment_and_target_ladders(

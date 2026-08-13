@@ -24,6 +24,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
+import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -33,6 +35,22 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import GateResult
+from microcosm.build.logbook import canonical_json_bytes
+from microcosm.build.logbook_adoption import (
+    AttemptState,
+    append_phase,
+    apply_error_verdict,
+    atomic_write_json,
+    error_receipt_path,
+    git_code_pin,
+    local_artifact_reference,
+    preflight_digest,
+    record_terminal_attempt,
+    resolve_predecessor,
+    role_pins_digest,
+    sha256_argument,
+    write_error_receipt,
+)
 from microcosm.build.uk_runtime import (
     UK_LOCAL_MAX_WEIGHT_RATIO,
     UK_LOCAL_SOLVE_DOCTRINE,
@@ -67,6 +85,8 @@ _CONSERVE_MASS = False
 _TARGET_RECORDS: int | None = None
 _L0_LAMBDA = 0.0
 _BUDGET_ITERS = 10
+_UK_CANDIDATE_PIPELINE = "uk-rowwise-candidate"
+_REPOSITORY = Path(__file__).resolve().parents[1]
 _PAST_CAP_COUNT_KEYS = (
     "n_targets",
     "past_at_init",
@@ -87,6 +107,95 @@ class _LadderAssignment:
     ) -> None:
         self.result = result
         self.ladder = ladder
+
+
+def _new_candidate_build_id(*, seed: int, timestamp: datetime) -> str:
+    instant = timestamp.astimezone(UTC)
+    return (
+        f"uk-rowwise-candidate-f100-s{seed}-"
+        f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
+    )
+
+
+def _pin_from_artifact(info: Mapping[str, Any]) -> dict[str, object]:
+    return {
+        "sha256": str(info["sha256"]),
+        "size_bytes": int(info["bytes"]),
+    }
+
+
+def _candidate_identity_digest(
+    *,
+    pins: dict[str, dict[str, object]],
+    args: argparse.Namespace,
+    source_year: int,
+) -> str:
+    payload = {
+        "build_kind": "uk_rowwise_calibrated_candidate",
+        "inputs": pins,
+        "parameters": _parameters(args, source_year=source_year),
+        "source_year": source_year,
+    }
+    return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
+
+
+def _record_candidate_attempt(
+    *,
+    state: AttemptState,
+    started_at: float,
+    started_ts: datetime,
+    seed: int,
+    code_pin: str,
+    disposition: str,
+    predecessor: str | None,
+    spool_dir: Path,
+) -> Path:
+    return record_terminal_attempt(
+        state=state,
+        started_at=started_at,
+        started_ts=started_ts,
+        pipeline=_UK_CANDIDATE_PIPELINE,
+        rung="f100",
+        seed=seed,
+        code_pin=code_pin,
+        disposition=disposition,
+        predecessor=predecessor,
+        spool_dir=spool_dir,
+    )
+
+
+def _record_candidate_error(
+    *,
+    error: BaseException,
+    state: AttemptState,
+    started_at: float,
+    started_ts: datetime,
+    seed: int,
+    code_pin: str,
+    predecessor: str | None,
+    base_dir: Path,
+    spool_dir: Path,
+) -> None:
+    error_path = write_error_receipt(
+        error_receipt_path(base_dir, build_id=state.build_id),
+        state=state,
+        pipeline=_UK_CANDIDATE_PIPELINE,
+        error=error,
+    )
+    apply_error_verdict(
+        state,
+        f"{local_artifact_reference(error_path, repository_hint=_REPOSITORY)}#/error_type",
+    )
+    _record_candidate_attempt(
+        state=state,
+        started_at=started_at,
+        started_ts=started_ts,
+        seed=seed,
+        code_pin=code_pin,
+        disposition="failed",
+        predecessor=predecessor,
+        spool_dir=spool_dir,
+    )
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -125,6 +234,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help=(
             "Print the fenced clone/matrix plan without solving or writing any file."
+        ),
+    )
+    parser.add_argument(
+        "--logbook-prev-row-digest",
+        type=sha256_argument,
+        help=(
+            "Optional current Logbook chain head. If omitted, "
+            "POPULACE_LOGBOOK_PREV_ROW_DIGEST is used, then genesis null."
         ),
     )
     return parser.parse_args(argv)
@@ -201,80 +318,178 @@ def main(argv: list[str] | None = None) -> int:
         print(_json_text(plan), end="")
         return 0
 
-    print(
-        f"solving {problem.matrix.shape[0]} targets x "
-        f"{problem.matrix.shape[1]} households under the doctrine...",
-        file=sys.stderr,
-        flush=True,
+    started_at = time.perf_counter()
+    started_ts = datetime.now(UTC)
+    digest = preflight_digest(_UK_CANDIDATE_PIPELINE)
+    state = AttemptState(
+        build_id=_new_candidate_build_id(seed=args.seed, timestamp=started_ts),
+        identity_digest=digest,
+        input_pins_digest=digest,
+        phases_reached=["attempt_started"],
+        gate_verdicts={
+            "pipeline": {
+                "verdict": "running",
+                "receipt": "pending-build-scoped-terminal-receipt",
+            }
+        },
     )
-    solve = solve_uk_rowwise_weights_under_doctrine(
-        clone.frame,
-        problem,
-        bound_families=BOUND_TARGET_FAMILIES,
-        epochs=args.epochs,
-        learning_rate=args.learning_rate,
-        conserve_mass=_CONSERVE_MASS,
-        target_records=_TARGET_RECORDS,
-        l0_lambda=_L0_LAMBDA,
-        budget_iters=_BUDGET_ITERS,
-        seed=args.seed,
-    )
-    _validate_solve_result(solve, problem=problem)
-
-    # The kernel minted the calibration mass record inside calibrate() (the
-    # CALIBRATED kind transition is enforced there too); the record names
-    # the bound families via the doctrine's mass reason.
-    calibration_record = solve.frame.mass_log[-1]
-    if "calibration" not in calibration_record.reason:
-        raise ValueError(
-            "calibrated frame's latest mass record is not the calibration "
-            f"record: {calibration_record.reason!r}."
+    code_pin = "unresolved-local-git-code-pin"
+    predecessor = args.logbook_prev_row_digest
+    try:
+        code_pin = git_code_pin(_REPOSITORY)
+        predecessor = resolve_predecessor(args.logbook_prev_row_digest)
+        pins = {
+            "dataset": _pin_from_artifact(input_artifact),
+            "ladder": _pin_from_artifact(ladder_artifact),
+        }
+        state.input_pins_digest = role_pins_digest(pins)
+        state.identity_digest = _candidate_identity_digest(
+            pins=pins,
+            args=args,
+            source_year=source_year,
         )
-    candidate_gate = uk_geography_ladder_gate(
-        solve.frame.table("household"),
-        np.asarray(solve.weights, dtype=np.float64),
-    )
-    if not candidate_gate.passed:
-        raise ValueError(
-            "UK geography ladder gate failed on calibrated candidate weights: "
-            + "; ".join(candidate_gate.failures)
+        append_phase(state, "configured")
+        append_phase(state, "inputs_pinned")
+        append_phase(state, "cloned")
+        append_phase(state, "targets_bound")
+
+        print(
+            f"solving {problem.matrix.shape[0]} targets x "
+            f"{problem.matrix.shape[1]} households under the doctrine...",
+            file=sys.stderr,
+            flush=True,
+        )
+        solve = solve_uk_rowwise_weights_under_doctrine(
+            clone.frame,
+            problem,
+            bound_families=BOUND_TARGET_FAMILIES,
+            epochs=args.epochs,
+            learning_rate=args.learning_rate,
+            conserve_mass=_CONSERVE_MASS,
+            target_records=_TARGET_RECORDS,
+            l0_lambda=_L0_LAMBDA,
+            budget_iters=_BUDGET_ITERS,
+            seed=args.seed,
+        )
+        _validate_solve_result(solve, problem=problem)
+        append_phase(state, "solved")
+
+        # The kernel minted the calibration mass record inside calibrate() (the
+        # CALIBRATED kind transition is enforced there too); the record names
+        # the bound families via the doctrine's mass reason.
+        calibration_record = solve.frame.mass_log[-1]
+        if "calibration" not in calibration_record.reason:
+            raise ValueError(
+                "calibrated frame's latest mass record is not the calibration "
+                f"record: {calibration_record.reason!r}."
+            )
+        candidate_gate = uk_geography_ladder_gate(
+            solve.frame.table("household"),
+            np.asarray(solve.weights, dtype=np.float64),
+        )
+        if not candidate_gate.passed:
+            refusal_path = (
+                out_dir / "logbook-receipts" / state.build_id / "candidate-refusal.json"
+            )
+            atomic_write_json(
+                refusal_path,
+                {"gate": _gate_payload(candidate_gate, phase="post_calibration")},
+            )
+            state.gate_verdicts["uk_geography_ladder_post_calibration"] = {
+                "verdict": "failed",
+                "receipt": (
+                    f"{local_artifact_reference(refusal_path, repository_hint=_REPOSITORY)}"
+                    "#/gate"
+                ),
+            }
+            raise ValueError(
+                "UK geography ladder gate failed on calibrated candidate weights: "
+                + "; ".join(candidate_gate.failures)
+            )
+        append_phase(state, "candidate_gated")
+
+        candidate = dataclasses.replace(
+            clone,
+            frame=solve.frame,
+            gate=candidate_gate,
+            output_path=None,
+        )
+        support = rowwise_area_support_summary(
+            problem,
+            solve.weights,
+            source_household_ids=household["source_household_id"].tolist(),
+        )
+        _validate_support_summary(support)
+        _assert_artifacts_unchanged(
+            input_h5=input_h5,
+            input_artifact=input_artifact,
+            ladder_path=ladder_path,
+            ladder_artifact=ladder_artifact,
         )
 
-    candidate = dataclasses.replace(
-        clone,
-        frame=solve.frame,
-        gate=candidate_gate,
-        output_path=None,
-    )
-    support = rowwise_area_support_summary(
-        problem,
-        solve.weights,
-        source_household_ids=household["source_household_id"].tolist(),
-    )
-    _validate_support_summary(support)
-    _assert_artifacts_unchanged(
-        input_h5=input_h5,
-        input_artifact=input_artifact,
-        ladder_path=ladder_path,
-        ladder_artifact=ladder_artifact,
-    )
-
-    manifest = _write_output_bundle(
-        args,
-        candidate=candidate,
-        clone=clone,
-        problem=problem,
-        solve=solve,
-        support=support,
-        calibration_record=calibration_record,
-        source_year=source_year,
-        output_paths=output_paths,
-        input_artifact=input_artifact,
-        ladder_artifact=ladder_artifact,
-        target_provenance=target_provenance,
-    )
-    print(_json_text(manifest), end="")
-    return 0
+        manifest = _write_output_bundle(
+            args,
+            candidate=candidate,
+            clone=clone,
+            problem=problem,
+            solve=solve,
+            support=support,
+            calibration_record=calibration_record,
+            source_year=source_year,
+            output_paths=output_paths,
+            input_artifact=input_artifact,
+            ladder_artifact=ladder_artifact,
+            target_provenance=target_provenance,
+        )
+        append_phase(state, "published")
+        manifest_path = output_paths["manifest"]
+        state.gate_verdicts = {
+            "uk_geography_ladder_post_calibration": {
+                "verdict": "passed",
+                "receipt": f"{local_artifact_reference(manifest_path, repository_hint=_REPOSITORY)}#/gate",
+            },
+            "uk_target_fit": {
+                "verdict": "passed",
+                "receipt": (
+                    f"{local_artifact_reference(manifest_path, repository_hint=_REPOSITORY)}"
+                    "#/solve/max_abs_relative_error"
+                ),
+            },
+            "uk_area_support": {
+                "verdict": "passed",
+                "receipt": f"{local_artifact_reference(manifest_path, repository_hint=_REPOSITORY)}#/support",
+            },
+        }
+        state.artifact_location = local_artifact_reference(
+            output_paths["dataset"],
+            repository_hint=_REPOSITORY,
+        )
+        spool_path = _record_candidate_attempt(
+            state=state,
+            started_at=started_at,
+            started_ts=started_ts,
+            seed=args.seed,
+            code_pin=code_pin,
+            disposition="iterating",
+            predecessor=predecessor,
+            spool_dir=out_dir / "logbook-spool",
+        )
+        print(f"Wrote Logbook row: {spool_path}", file=sys.stderr)
+        print(_json_text(manifest), end="")
+        return 0
+    except Exception as error:
+        _record_candidate_error(
+            error=error,
+            state=state,
+            started_at=started_at,
+            started_ts=started_ts,
+            seed=args.seed,
+            code_pin=code_pin,
+            predecessor=predecessor,
+            base_dir=out_dir,
+            spool_dir=out_dir / "logbook-spool",
+        )
+        raise
 
 
 def _clone_with_ladder_binding(

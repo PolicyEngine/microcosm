@@ -13,6 +13,9 @@ import argparse
 import hashlib
 import json
 import subprocess
+import sys
+import time
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -20,6 +23,21 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.build.logbook import canonical_json_bytes
+from microcosm.build.logbook_adoption import (
+    AttemptState,
+    append_phase,
+    apply_error_verdict,
+    error_receipt_path,
+    git_code_pin,
+    local_artifact_reference,
+    preflight_digest,
+    record_terminal_attempt,
+    resolve_predecessor,
+    role_pins_digest,
+    sha256_argument,
+    write_error_receipt,
+)
 from microcosm.build.uk_runtime import (
     MASS_CONSERVATION_RELATIVE_TOLERANCE,
     PERSON_ID_COLUMNS,
@@ -52,9 +70,11 @@ MANIFEST_FILENAME = "rowwise_build_manifest.json"
 COVERAGE_FILENAME = "geography_coverage_summary.csv"
 DRY_RUN_PLAN_FILENAME = "rowwise_dry_run_plan.json"
 EXPECTED_SUPPORT_BOTTOM_AREAS = 15
+_UK_ROWWISE_PIPELINE = "uk-rowwise-geography"
+_REPOSITORY = Path(__file__).resolve().parents[1]
 
 
-def _parse_args() -> argparse.Namespace:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--input-h5",
@@ -162,11 +182,166 @@ def _parse_args() -> argparse.Namespace:
             "cache is still written to --out."
         ),
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--logbook-prev-row-digest",
+        type=sha256_argument,
+        help=(
+            "Optional current Logbook chain head. If omitted, "
+            "POPULACE_LOGBOOK_PREV_ROW_DIGEST is used, then genesis null."
+        ),
+    )
+    return parser.parse_args(argv)
 
 
-def main() -> int:
-    args = _parse_args()
+def _new_rowwise_build_id(
+    *,
+    route: str,
+    seed: int,
+    timestamp: datetime,
+) -> str:
+    instant = timestamp.astimezone(UTC)
+    return (
+        f"uk-rowwise-{route}-f100-s{seed}-"
+        f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
+    )
+
+
+def _pin_from_artifact(info: dict[str, Any]) -> dict[str, object]:
+    return {
+        "sha256": str(info["sha256"]),
+        "size_bytes": int(info["bytes"]),
+    }
+
+
+def _rowwise_identity_digest(
+    *,
+    route: str,
+    pins: dict[str, dict[str, object]],
+    args: argparse.Namespace,
+    source_year: int,
+) -> str:
+    payload = {
+        "build_kind": "uk_rowwise_local_geography_dataset",
+        "route": route,
+        "inputs": pins,
+        "parameters": _parameters(args, source_year=source_year),
+        "source_year": source_year,
+    }
+    return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
+
+
+def _record_rowwise_attempt(
+    *,
+    state: AttemptState,
+    started_at: float,
+    started_ts: datetime,
+    seed: int,
+    code_pin: str,
+    disposition: str,
+    predecessor: str | None,
+    spool_dir: Path,
+) -> Path:
+    return record_terminal_attempt(
+        state=state,
+        started_at=started_at,
+        started_ts=started_ts,
+        pipeline=_UK_ROWWISE_PIPELINE,
+        rung="f100",
+        seed=seed,
+        code_pin=code_pin,
+        disposition=disposition,
+        predecessor=predecessor,
+        spool_dir=spool_dir,
+    )
+
+
+def _record_rowwise_error(
+    *,
+    error: BaseException,
+    state: AttemptState,
+    started_at: float,
+    started_ts: datetime,
+    seed: int,
+    code_pin: str,
+    predecessor: str | None,
+    base_dir: Path,
+    spool_dir: Path,
+) -> None:
+    error_path = write_error_receipt(
+        error_receipt_path(base_dir, build_id=state.build_id),
+        state=state,
+        pipeline=_UK_ROWWISE_PIPELINE,
+        error=error,
+    )
+    apply_error_verdict(
+        state,
+        f"{local_artifact_reference(error_path, repository_hint=_REPOSITORY)}#/error_type",
+    )
+    _record_rowwise_attempt(
+        state=state,
+        started_at=started_at,
+        started_ts=started_ts,
+        seed=seed,
+        code_pin=code_pin,
+        disposition="failed",
+        predecessor=predecessor,
+        spool_dir=spool_dir,
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+    if args.dry_run:
+        return _main_impl(args, attempt=None)
+
+    started_at = time.perf_counter()
+    started_ts = datetime.now(UTC)
+    digest = preflight_digest(_UK_ROWWISE_PIPELINE)
+    state = AttemptState(
+        build_id=_new_rowwise_build_id(
+            route="attempt",
+            seed=args.seed,
+            timestamp=started_ts,
+        ),
+        identity_digest=digest,
+        input_pins_digest=digest,
+        phases_reached=["attempt_started"],
+        gate_verdicts={
+            "pipeline": {
+                "verdict": "running",
+                "receipt": "pending-build-scoped-terminal-receipt",
+            }
+        },
+    )
+    attempt: dict[str, object] = {
+        "state": state,
+        "started_at": started_at,
+        "started_ts": started_ts,
+        "code_pin": "unresolved-local-git-code-pin",
+        "predecessor": args.logbook_prev_row_digest,
+    }
+    try:
+        return _main_impl(args, attempt=attempt)
+    except Exception as error:
+        _record_rowwise_error(
+            error=error,
+            state=state,
+            started_at=started_at,
+            started_ts=started_ts,
+            seed=args.seed,
+            code_pin=str(attempt["code_pin"]),
+            predecessor=attempt["predecessor"],
+            base_dir=args.out,
+            spool_dir=args.out / "logbook-spool",
+        )
+        raise
+
+
+def _main_impl(
+    args: argparse.Namespace,
+    *,
+    attempt: dict[str, object] | None,
+) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
 
     input_h5 = args.input_h5.resolve()
@@ -209,6 +384,7 @@ def main() -> int:
             output_h5=output_h5,
             base_summary=base_summary,
             source_year=source_year,
+            attempt=attempt,
         )
     crosswalk_source = _load_or_build_crosswalk(args)
     crosswalk = crosswalk_source.frame
@@ -232,6 +408,29 @@ def main() -> int:
         plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
         print(json.dumps(plan, indent=2, sort_keys=True))
         return 0
+    if attempt is not None:
+        state = attempt["state"]
+        assert isinstance(state, AttemptState)
+        pins = {
+            "dataset": _pin_from_artifact(input_artifact),
+            "crosswalk": _pin_from_artifact(_artifact_info(crosswalk_path)),
+        }
+        attempt["code_pin"] = git_code_pin(_REPOSITORY)
+        attempt["predecessor"] = resolve_predecessor(args.logbook_prev_row_digest)
+        state.build_id = _new_rowwise_build_id(
+            route="crosswalk",
+            seed=args.seed,
+            timestamp=attempt["started_ts"],
+        )
+        state.input_pins_digest = role_pins_digest(pins)
+        state.identity_digest = _rowwise_identity_digest(
+            route="crosswalk",
+            pins=pins,
+            args=args,
+            source_year=source_year,
+        )
+        append_phase(state, "configured")
+        append_phase(state, "inputs_pinned")
 
     result = clone_uk_dataset_with_rowwise_geography(
         input_h5,
@@ -246,6 +445,10 @@ def main() -> int:
         avoid_constituency_collisions=not args.allow_constituency_collisions,
         source_lineage_modulus=args.source_lineage_modulus,
     )
+    if attempt is not None:
+        state = attempt["state"]
+        assert isinstance(state, AttemptState)
+        append_phase(state, "cloned")
     rowwise_summary = _rowwise_summary(
         result,
         base_summary=base_summary,
@@ -282,6 +485,46 @@ def main() -> int:
     }
     manifest_path = args.out / MANIFEST_FILENAME
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    if attempt is not None:
+        state = attempt["state"]
+        assert isinstance(state, AttemptState)
+        append_phase(state, "manifest_written")
+        state.gate_verdicts = {
+            "uk_mass_conservation": {
+                "verdict": (
+                    "passed"
+                    if rowwise_summary["weights"]["mass_conservation"]["passed"]
+                    else "failed"
+                ),
+                "receipt": (
+                    f"{local_artifact_reference(manifest_path, repository_hint=_REPOSITORY)}"
+                    "#/rowwise_dataset/weights/mass_conservation"
+                ),
+            }
+        }
+        if coverage_artifact is not None:
+            state.gate_verdicts["uk_coverage"] = {
+                "verdict": "passed",
+                "receipt": (
+                    f"{local_artifact_reference(manifest_path, repository_hint=_REPOSITORY)}"
+                    "#/rowwise_dataset/coverage"
+                ),
+            }
+        state.artifact_location = local_artifact_reference(
+            output_h5,
+            repository_hint=_REPOSITORY,
+        )
+        spool_path = _record_rowwise_attempt(
+            state=state,
+            started_at=attempt["started_at"],
+            started_ts=attempt["started_ts"],
+            seed=args.seed,
+            code_pin=str(attempt["code_pin"]),
+            disposition="iterating",
+            predecessor=attempt["predecessor"],
+            spool_dir=args.out / "logbook-spool",
+        )
+        print(f"Wrote Logbook row: {spool_path}", file=sys.stderr)
     print(json.dumps(manifest, indent=2, sort_keys=True))
     return 0
 
@@ -604,6 +847,7 @@ def _run_ladder_route(
     output_h5: Path,
     base_summary: dict[str, Any],
     source_year: int,
+    attempt: dict[str, object] | None,
 ) -> int:
     """Build (or dry-run plan) the rowwise dataset through the OA ladder."""
 
@@ -626,6 +870,29 @@ def _run_ladder_route(
         plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
         print(json.dumps(plan, indent=2, sort_keys=True))
         return 0
+    if attempt is not None:
+        state = attempt["state"]
+        assert isinstance(state, AttemptState)
+        pins = {
+            "dataset": _pin_from_artifact(input_artifact),
+            "ladder": _pin_from_artifact(ladder_artifact),
+        }
+        attempt["code_pin"] = git_code_pin(_REPOSITORY)
+        attempt["predecessor"] = resolve_predecessor(args.logbook_prev_row_digest)
+        state.build_id = _new_rowwise_build_id(
+            route="ladder",
+            seed=args.seed,
+            timestamp=attempt["started_ts"],
+        )
+        state.input_pins_digest = role_pins_digest(pins)
+        state.identity_digest = _rowwise_identity_digest(
+            route="ladder",
+            pins=pins,
+            args=args,
+            source_year=source_year,
+        )
+        append_phase(state, "configured")
+        append_phase(state, "inputs_pinned")
 
     result = clone_uk_dataset_with_ladder_geography(
         input_h5,
@@ -637,6 +904,10 @@ def _run_ladder_route(
         expected_constituency_vintage=args.expected_constituency_vintage,
         source_lineage_modulus=args.source_lineage_modulus,
     )
+    if attempt is not None:
+        state = attempt["state"]
+        assert isinstance(state, AttemptState)
+        append_phase(state, "cloned")
     rowwise_summary = _rowwise_summary(
         result,
         base_summary=base_summary,
@@ -671,6 +942,34 @@ def _run_ladder_route(
     }
     manifest_path = args.out / MANIFEST_FILENAME
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    if attempt is not None:
+        state = attempt["state"]
+        assert isinstance(state, AttemptState)
+        append_phase(state, "manifest_written")
+        state.gate_verdicts = {
+            "uk_geography_ladder": {
+                "verdict": "passed" if result.gate.passed else "failed",
+                "receipt": (
+                    f"{local_artifact_reference(manifest_path, repository_hint=_REPOSITORY)}"
+                    "#/rowwise_dataset/gate"
+                ),
+            }
+        }
+        state.artifact_location = local_artifact_reference(
+            output_h5,
+            repository_hint=_REPOSITORY,
+        )
+        spool_path = _record_rowwise_attempt(
+            state=state,
+            started_at=attempt["started_at"],
+            started_ts=attempt["started_ts"],
+            seed=args.seed,
+            code_pin=str(attempt["code_pin"]),
+            disposition="iterating",
+            predecessor=attempt["predecessor"],
+            spool_dir=args.out / "logbook-spool",
+        )
+        print(f"Wrote Logbook row: {spool_path}", file=sys.stderr)
     print(json.dumps(manifest, indent=2, sort_keys=True))
     return 0
 
