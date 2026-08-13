@@ -44,9 +44,11 @@ from microcosm.frame import (
     MassChangeRecord,
     WeightKind,
     Weights,
+    engine_tables,
 )
 
 __all__ = [
+    "UK_EXPORTED_WEIGHT_COLUMNS",
     "UK_NATIONAL_SCHEMA",
     "UK_TIME_PERIOD_METADATA_KEY",
     "UKStagingProvenance",
@@ -59,6 +61,33 @@ __all__ = [
 UK_NATIONAL_SCHEMA = EntitySchema(group_entities=("benunit", "household"))
 
 UK_TIME_PERIOD_METADATA_KEY = "time_period"
+
+# The persisted weight columns of the materialized export contract above:
+# real columns on the tables, but plumbing rather than input mass. Consumers
+# that total column mass (the input-mass parity surface, its reference
+# emitter) must exclude them — the frame schema cannot, because the column
+# is deliberately load-bearing here.
+UK_EXPORTED_WEIGHT_COLUMNS = frozenset({"household_weight"})
+
+
+def _assert_uk_benunit_nesting(person: pd.DataFrame) -> None:
+    required = {"person_benunit_id", "person_household_id"}
+    if not required.issubset(person.columns):
+        # Belt-and-braces, not an escape hatch: at the validator seam the
+        # Frame guarantees both membership columns exist, and at the
+        # construction seam a missing column is refused a line later by the
+        # kernel's own linkage validation, which names it.
+        return
+    placements = person[["person_benunit_id", "person_household_id"]].drop_duplicates()
+    split = placements.loc[
+        placements["person_benunit_id"].duplicated(keep=False),
+        "person_benunit_id",
+    ].drop_duplicates()
+    if not split.empty:
+        raise ValueError(
+            "each benunit must belong to exactly one household; split "
+            f"benunit id(s): {split.head(5).tolist()}."
+        )
 
 
 @dataclass(frozen=True)
@@ -121,7 +150,8 @@ def uk_national_frame(
     weights exist) so the staging H5 keeps its column order on export. The
     Frame constructor enforces the structural invariants the shadow carrier
     never checked: group ids unique and sorted ascending, membership equality
-    in both directions, global column uniqueness, and weight health.
+    in both directions, global column uniqueness, weight health, and the UK
+    invariant that a benunit's members share a household.
     """
 
     if "household_weight" not in household.columns:
@@ -138,6 +168,7 @@ def uk_national_frame(
         values=household["household_weight"].to_numpy(dtype="float64"),
         kind=weight_kind,
     )
+    _assert_uk_benunit_nesting(person)
     return Frame(
         tables={"person": person, "benunit": benunit, "household": household},
         schema=UK_NATIONAL_SCHEMA,
@@ -164,6 +195,39 @@ def uk_household_weight_kind(frame: Frame) -> WeightKind:
     return frame.weights_for("household").kind
 
 
+@dataclass(frozen=True)
+class _UKGateSurface:
+    """The duck-attr evidence surface the legacy UK gate modules read.
+
+    Mirrors the national build's gate-evidence adapter: the three entity
+    tables plus the metadata gates consult (``time_period``,
+    ``household_weight_kind``, ``mass_log``). Lives here — the Frame-carrier
+    seam — as the single copy shared by the battery bindings and the legacy
+    report evaluator, neither of which may import the other.
+    """
+
+    person: pd.DataFrame
+    benunit: pd.DataFrame
+    household: pd.DataFrame
+    time_period: str
+    household_weight_kind: WeightKind
+    mass_log: tuple[MassChangeRecord, ...]
+
+
+def _uk_gate_surface(frame: Frame) -> _UKGateSurface:
+    if not isinstance(frame, Frame):
+        raise TypeError("UK gate evidence must be a Frame instance.")
+    tables = engine_tables(frame)
+    return _UKGateSurface(
+        person=tables["person"],
+        benunit=tables["benunit"],
+        household=tables["household"],
+        time_period=uk_time_period(frame),
+        household_weight_kind=uk_household_weight_kind(frame),
+        mass_log=frame.mass_log,
+    )
+
+
 def validate_uk_national_frame(frame: Frame) -> None:
     """Structural revalidation plus the UK residue, at every seam.
 
@@ -175,7 +239,8 @@ def validate_uk_national_frame(frame: Frame) -> None:
     contract knows — the exact export schema (person/benunit/household,
     household-only typed weights, no links), the time-period metadata,
     agreement between the persisted ``household_weight`` column and the
-    typed vector, and agreement between the weight total and the latest
+    typed vector, the UK invariant that a benunit's members share a
+    household, and agreement between the weight total and the latest
     household :class:`MassChangeRecord`.
     """
 
@@ -199,6 +264,7 @@ def validate_uk_national_frame(frame: Frame) -> None:
             "UK national frames declare no links; the staging writer "
             "persists entity tables only and would silently drop them."
         )
+    _assert_uk_benunit_nesting(frame.table("person"))
     uk_time_period(frame)
     weights = frame.weights_for("household")
     household = frame.table("household")

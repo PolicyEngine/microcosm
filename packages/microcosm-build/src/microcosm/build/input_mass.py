@@ -48,6 +48,11 @@ def input_mass_totals(
     Returns:
         Column name -> weighted total. The mapping is flat because the frame
         already enforces globally unique column names across entity tables.
+
+    UK national frames carry a materialized ``household_weight`` column;
+    UK callers should use
+    ``microcosm.build.uk_runtime.weighted_integrity.uk_input_mass_totals``,
+    which removes exported weight columns.
     """
 
     schema = frame.schema

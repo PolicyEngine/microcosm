@@ -187,7 +187,7 @@ _UK_INPUT_MASS_REFERENCE_IDENTITY = {
 # under the UKDS EUL; keep this in lockstep with
 # UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 in the build shard.
 _UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
-    "11b22dd439a188e32cec5d2be157dd6b65f415d4317cd304c17f5349522a3914"
+    "c36c015a60f796ad9199a4a5652706f5310909cb572b1c90092ef9df1fa7187e"
 )
 _UK_TERMINAL_GATE_DETAIL_FIELDS = {
     "uk_release_input_coverage": frozenset(
@@ -329,13 +329,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "544cb5475e355abc978b205443bbe49c3af498990fe85cfce6a2a794bf7d179e"
+    "2586535bcae393e5d09a01a47bab5a55e310089044e84780d6f5c270a077d006"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "2ae8bbf57ce0e2cda2380a8db38278752453692f3e4c0005d5a886de1e9711d3"
+    "6308ee13c1bfaeb9840524b5a70b3ecedf6db0476e1284780508e5489fa3662b"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "ee4b88f939167dc91dc99f79d5f7b8ee776731e0cbedf75bfb78a12efe8789dc"
+    "48993fd9ed4f8cc41cd6d4063026d40776e634962301ac38e6944bd1cc6927ee"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -391,7 +391,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
 # canonical hash; this pins the wrapped digest so the entry's evidence line
 # still binds the enhanced-FRS incumbent totals.
 _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "87eb7fa51d826bbe95c9b4d218d82dbd2795b3916469615d38557472209d1e4b"
+    "948b4c6a7c7d588293fda4e3f075c3e3fbb63c2317e99e686b6b79346b43f665"
 )
 # The degenerate binding's evidence payload digests the resolved exclusion
 # records; for a release that must be the committed register, so its digest
@@ -2220,12 +2220,43 @@ def _check_uk_gate_battery_report(
                 f"{owner} is release-blocking with status {status!r}; the "
                 "release cannot ship it."
             )
-        if not isinstance(outcome.get("details"), Mapping):
+        details = outcome.get("details")
+        failures_list = outcome.get("failures")
+        if not isinstance(details, Mapping):
             failures.append(f"{owner}.details must be an object.")
-            continue
-        if not isinstance(outcome.get("failures"), list):
+        if not isinstance(failures_list, list):
             failures.append(f"{owner}.failures must be a list.")
             continue
+        if not isinstance(details, Mapping):
+            continue
+
+        # Mirror the producer-side GateResult/GateOutcome envelope here: the
+        # data shard cannot import those build-side classes, but a signed
+        # release report must still preserve their projected invariants.
+        reason = outcome.get("reason")
+        if status == "passed":
+            if failures_list != []:
+                failures.append(f"{owner} passed entries cannot carry failure text.")
+            if reason is not None:
+                failures.append(f"{owner} passed entries cannot carry a reason.")
+        elif status == "failed":
+            if not failures_list or any(
+                not isinstance(item, str) or not item.strip() for item in failures_list
+            ):
+                failures.append(
+                    f"{owner} failed entries must carry non-empty failure text."
+                )
+            if reason is not None:
+                failures.append(f"{owner} failed entries cannot carry a reason.")
+        elif status in {"not_applicable", "evidence_absent"}:
+            if failures_list != []:
+                failures.append(f"{owner} {status} entries cannot carry failure text.")
+            if dict(details) != {}:
+                failures.append(f"{owner} {status} entries cannot carry details.")
+            if not isinstance(reason, str) or not reason.strip():
+                failures.append(
+                    f"{owner} {status} entries must carry a non-empty string reason."
+                )
         valid_gates[str(entry_id)] = outcome
 
     preflight_coverage = valid_gates.get("uk_release_input_coverage_manifest_current")

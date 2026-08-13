@@ -20,9 +20,10 @@ with the declared one. Any *other* unexpected name passes through
 untouched so that check keeps biting.
 
 The evidence surface handed to the legacy gate modules (the three entity
-tables plus period, weight-kind, and mass-log metadata) lives here as the
-single copy: the national build's adapter consolidated into it when the
-orchestration swapped onto the battery executor.
+tables plus period, weight-kind, and mass-log metadata) lives in
+:mod:`microcosm.build.uk_runtime.national_frame` as the single copy shared
+with the legacy report evaluator; the Frame-typed gates (input-mass parity,
+QRF tail concentration) read the frame directly and skip it.
 """
 
 from __future__ import annotations
@@ -32,18 +33,13 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime
 from typing import Any
 
-import pandas as pd
-
 from microcosm.build.gate_battery import (
     DEFAULT_REGISTRY,
     EvidenceContext,
     GateBinding,
 )
 from microcosm.build.gates import GateResult, weights_audit_gate
-from microcosm.build.uk_runtime.national_frame import (
-    uk_household_weight_kind,
-    uk_time_period,
-)
+from microcosm.build.uk_runtime.national_frame import _uk_gate_surface
 from microcosm.build.uk_runtime.release_input_coverage import (
     assert_uk_release_input_coverage_build_stages,
     assert_uk_release_input_coverage_manifest_current,
@@ -70,47 +66,16 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UKReviewedExclusion,
     _input_mass_reference_evidence_sha256,
     coerce_reviewed_exclusions,
-    uk_dataset_input_mass_totals,
     uk_input_mass_parity_gate,
+    uk_input_mass_totals,
     uk_qrf_tail_concentration_columns,
     uk_qrf_tail_concentration_gate,
 )
-from microcosm.frame import Frame, MassChangeRecord, WeightKind, engine_tables
 
 __all__ = [
     "UK_GATE_REGISTRY",
     "UKGateBinding",
 ]
-
-
-@dataclass(frozen=True)
-class _UKGateSurface:
-    """The duck-attr evidence surface the legacy UK gate modules read.
-
-    Mirrors the national build's gate-evidence adapter: the three entity
-    tables plus the metadata gates consult (``time_period``,
-    ``household_weight_kind``, ``mass_log``). Kept private here so the
-    battery path never imports the orchestration module it will replace.
-    """
-
-    person: pd.DataFrame
-    benunit: pd.DataFrame
-    household: pd.DataFrame
-    time_period: str
-    household_weight_kind: WeightKind
-    mass_log: tuple[MassChangeRecord, ...]
-
-
-def _uk_gate_surface(frame: Frame) -> _UKGateSurface:
-    tables = engine_tables(frame)
-    return _UKGateSurface(
-        person=tables["person"],
-        benunit=tables["benunit"],
-        household=tables["household"],
-        time_period=uk_time_period(frame),
-        household_weight_kind=uk_household_weight_kind(frame),
-        mass_log=frame.mass_log,
-    )
 
 
 @dataclass(frozen=True)
@@ -434,7 +399,7 @@ def _evaluate_input_mass_parity(
             f"runtime loads {UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE!r}."
         )
     return uk_input_mass_parity_gate(
-        uk_dataset_input_mass_totals(_uk_gate_surface(context.frame)),
+        uk_input_mass_totals(context.frame),
         context.artifacts["input_mass_reference"],
         policy=context.artifacts["input_mass_policy"],
         now=_exclusion_clock(context),
@@ -461,9 +426,7 @@ def _evaluate_tail_concentration(
             f"uk/gates.json names exclusion register {register!r} but the "
             f"runtime loads {UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE!r}."
         )
-    values, weights, surface = uk_qrf_tail_concentration_columns(
-        _uk_gate_surface(context.frame)
-    )
+    values, weights, surface = uk_qrf_tail_concentration_columns(context.frame)
     return uk_qrf_tail_concentration_gate(
         values,
         weights,

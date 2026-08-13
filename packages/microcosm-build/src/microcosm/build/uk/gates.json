@@ -185,7 +185,7 @@
       "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {
-        "reference_sha256": "11b22dd439a188e32cec5d2be157dd6b65f415d4317cd304c17f5349522a3914",
+        "reference_sha256": "c36c015a60f796ad9199a4a5652706f5310909cb572b1c90092ef9df1fa7187e",
         "reference_identity": {
           "filename": "enhanced_frs_2023_24.h5",
           "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
@@ -194,7 +194,7 @@
         },
         "reviewed_exclusions_resource": "input_mass_reviewed_exclusions.json"
       },
-      "notes": "Weighted input-mass parity against the frozen 131-column enhanced-FRS reference. The reference is a declared input pinned by identity and canonical digest (the totals stay uncommitted under the UKDS licence); numeric tolerances stay runtime-armed pending microcosm#630 and land here when adjudicated. Reviewed exclusions live in the named register resource of this package."
+      "notes": "Weighted input-mass parity against the frozen 131-column enhanced-FRS reference. The reference is a declared input pinned by identity and canonical digest (the totals stay uncommitted under the UKDS licence); numeric tolerances stay runtime-armed pending microcosm#630 and land here when adjudicated. Reviewed exclusions live in the named register resource of this package. Totals keys are flat frame column names since the #611 A4 dedup; that digest re-freeze was keys-only against the #610 values (identity unchanged, values byte-identical)."
     },
     {
       "id": "uk_qrf_tail_concentration",

@@ -15,6 +15,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.gates import FitWeightRecord, GateReport, GateResult
+from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.terminal_gates import (
     UK_DEFAULT_ZERO_WEIGHT_STRATA,
     UK_MAX_TO_MEDIAN_WEIGHT_RATIO,
@@ -106,6 +107,15 @@ def _coverage(*, passed: bool = True) -> GateResult:
     )
 
 
+def _frame_of(dataset):
+    return uk_national_frame(
+        person=dataset.person,
+        benunit=dataset.benunit,
+        household=dataset.household,
+        time_period="2023",
+    )
+
+
 def _report(dataset=None, **kwargs):
     # Small synthetic totals exercise battery behavior without disclosing the
     # licensed 131-column reference; trust-anchor behavior has dedicated tests.
@@ -114,7 +124,7 @@ def _report(dataset=None, **kwargs):
         return_value=None,
     ):
         return uk_terminal_gate_report(
-            _dataset() if dataset is None else dataset,
+            _frame_of(_dataset() if dataset is None else dataset),
             object(),
             release_id=TEST_UK_RELEASE_ID,
             calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
@@ -304,7 +314,7 @@ def test_immediate_nextafter_weight_ratio_fails_with_distinct_full_precision() -
 
 def test_gate_evaluation_error_does_not_mask_later_findings() -> None:
     report = uk_terminal_gate_report(
-        _dataset(signal=0.0),
+        _frame_of(_dataset(signal=0.0)),
         object(),
         release_id=TEST_UK_RELEASE_ID,
         calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
@@ -326,28 +336,27 @@ def test_gate_evaluation_error_does_not_mask_later_findings() -> None:
     assert gates["weight_ratio"]["passed"] is True
 
 
-def test_malformed_release_surface_still_returns_the_complete_named_batch() -> None:
+def test_malformed_release_surface_is_refused_before_any_gate_runs() -> None:
+    """The report takes the validated Frame carrier (#611 A4): a duck record
+    that lost its household table is unrepresentable, so the refusal happens
+    loudly at the evidence seam instead of producing the all-gates-failed
+    batch the duck-typed report used to return."""
+
     dataset = _dataset()
     del dataset.household
 
-    report = uk_terminal_gate_report(
-        dataset,
-        object(),
-        release_id=TEST_UK_RELEASE_ID,
-        calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
-        input_coverage_evaluator=lambda: _coverage(passed=False),
-    )
-    gates = _gates(report)
-
-    assert list(gates) == [
-        "uk_release_input_coverage",
-        "degenerate_release_surface",
-        "zero_weight_strata",
-        "weight_ess",
-        "weight_ratio",
-    ]
-    assert all(not gate["passed"] for gate in gates.values())
-    assert "DataFrames" in gates["weight_ratio"]["failures"][0]
+    with pytest.raises(TypeError, match="must be a Frame"):
+        uk_terminal_gate_report(
+            dataset,
+            object(),
+            release_id=TEST_UK_RELEASE_ID,
+            calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
+            input_coverage_evaluator=lambda: _coverage(passed=False),
+        )
+    orphaned = _dataset(n=2)
+    orphaned.benunit = pd.DataFrame({"benunit_id": [201, 202, 999]})
+    with pytest.raises(ValueError, match="referenced by no person"):
+        _frame_of(orphaned)
 
 
 def test_bad_optional_evidence_is_contained_by_each_named_gate() -> None:
@@ -465,7 +474,7 @@ def test_unevidenced_gates_are_omitted_not_stubbed_as_passes() -> None:
 
 def _input_mass_reference(totals=None) -> UKInputMassReference:
     return UKInputMassReference(
-        totals=({"person.employment_income": 10.0} if totals is None else totals),
+        totals=({"employment_income": 10.0} if totals is None else totals),
         filename="enhanced_frs_2023_24.h5",
         revision="655dd07e4bb9c777b00dac044949611f1feb824f",
         sha256=("584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d"),
@@ -526,7 +535,7 @@ def test_zeroed_input_column_fails_the_armed_battery_by_name() -> None:
 
     assert not report.passed
     assert gate["passed"] is False
-    assert "person.employment_income" in gate["failures"][0]
+    assert "employment_income" in gate["failures"][0]
     assert "mass is zero" in gate["failures"][0]
     assert gate["details"]["reference_identity"]["filename"] == (
         "enhanced_frs_2023_24.h5"
@@ -542,7 +551,7 @@ def test_999_permille_mass_loss_fails_the_armed_battery_by_name() -> None:
     gate = _gates(report)["input_mass_parity"]
 
     assert gate["passed"] is False
-    assert "person.employment_income" in gate["failures"][0]
+    assert "employment_income" in gate["failures"][0]
     assert "-99.9%" in gate["failures"][0]
 
 
@@ -617,7 +626,7 @@ def test_stale_weighted_integrity_exclusions_fail_the_armed_battery() -> None:
         input_mass_reference=_input_mass_reference(),
         input_mass_policy=_input_mass_policy(
             reviewed_exclusions={
-                "person.employment_income": _entry("Seeded stale entry."),
+                "employment_income": _entry("Seeded stale entry."),
             }
         ),
     )
@@ -855,7 +864,7 @@ def test_production_terminal_report_pins_policy_and_evidence_membership(
         target_relative_errors={"ons/population": 0.01},
     )
     report = uk_terminal_gate_report(
-        _dataset(),
+        _frame_of(_dataset()),
         object(),
         release_id=TEST_UK_RELEASE_ID,
         calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),
@@ -1108,7 +1117,7 @@ def test_report_seals_the_register_snapshot_it_ran_under() -> None:
         return_value=None,
     ):
         mutated = uk_terminal_gate_report(
-            _dataset(signal=7.0),
+            _frame_of(_dataset(signal=7.0)),
             object(),
             release_id=TEST_UK_RELEASE_ID,
             calibration_diagnostics_sha256=(TEST_UK_CALIBRATION_DIAGNOSTICS_SHA256),

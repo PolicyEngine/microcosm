@@ -70,7 +70,7 @@ UK_INPUT_MASS_REFERENCE_IDENTITY = {
     "vintage": "2023_24",
 }
 UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
-    "11b22dd439a188e32cec5d2be157dd6b65f415d4317cd304c17f5349522a3914"
+    "c36c015a60f796ad9199a4a5652706f5310909cb572b1c90092ef9df1fa7187e"
 )
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
@@ -101,19 +101,19 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "544cb5475e355abc978b205443bbe49c3af498990fe85cfce6a2a794bf7d179e"
+    "2586535bcae393e5d09a01a47bab5a55e310089044e84780d6f5c270a077d006"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "2ae8bbf57ce0e2cda2380a8db38278752453692f3e4c0005d5a886de1e9711d3"
+    "6308ee13c1bfaeb9840524b5a70b3ecedf6db0476e1284780508e5489fa3662b"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "ee4b88f939167dc91dc99f79d5f7b8ee776731e0cbedf75bfb78a12efe8789dc"
+    "48993fd9ed4f8cc41cd6d4063026d40776e634962301ac38e6944bd1cc6927ee"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "87eb7fa51d826bbe95c9b4d218d82dbd2795b3916469615d38557472209d1e4b"
+    "948b4c6a7c7d588293fda4e3f075c3e3fbb63c2317e99e686b6b79346b43f665"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {
@@ -739,7 +739,7 @@ def _terminal_gate_details(name: str) -> dict:
             "columns_checked": 1,
             "columns_below_reference_floor": 0,
             "candidate_only_columns": [],
-            "worst_drifts": {"person.employment_income": 0.0},
+            "worst_drifts": {"employment_income": 0.0},
             "reviewed_exclusions": {},
             "unused_reviewed_exclusions": [],
             "stale_exclusions": [],
@@ -2229,7 +2229,7 @@ def test_exact_k_uk_terminal_rejects_substituted_input_mass_totals(
         {
             "reference": {
                 "identity": dict(UK_INPUT_MASS_REFERENCE_IDENTITY),
-                "totals": {"person.employment_income": 1.0},
+                "totals": {"employment_income": 1.0},
             }
         }
     )
@@ -3732,6 +3732,79 @@ def test_exact_k_uk_gate_battery_recomputes_shippability(tmp_path: Path) -> None
 
     failures = _battery_failures(directory)
     assert "release-blocking with status 'failed'" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_passed_entry_with_failures(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_weight_ratio"]
+    entry["status"] = "failed"
+    entry["failures"] = ["seeded ratio failure"]
+    entry["status"] = "passed"
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert "passed entries cannot carry failure text" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_passed_entry_with_reason(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_weight_ratio"]
+    entry["reason"] = "seeded caveat"
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert "passed entries cannot carry a reason" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_absent_evidence_without_reason(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_input_mass_parity"]
+    entry["status"] = "evidence_absent"
+    entry["details"] = {}
+    entry["reason"] = None
+    del payload["evidence_sha256"]["uk_input_mass_parity"]
+    _rewrite_battery_report(directory, payload)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = dict(payload["evidence_sha256"])
+    build_path.write_text(json.dumps(build))
+    _refresh_terminal_manifest_hashes(directory)
+
+    failures = _battery_failures(directory)
+    assert "evidence_absent entries must carry a non-empty string reason" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_failed_entry_without_failures(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_weight_ratio"]
+    entry["status"] = "failed"
+    entry["failures"] = []
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert "failed entries must carry non-empty failure text" in failures
+
+
+def test_exact_k_uk_gate_battery_reports_details_and_failures_type_errors(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_weight_ratio"]
+    entry["details"] = []
+    entry["failures"] = "seeded failure"
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert ".details must be an object" in failures
+    assert ".failures must be a list" in failures
 
 
 def test_exact_k_uk_gate_battery_rejects_excused_absent_evidence(
