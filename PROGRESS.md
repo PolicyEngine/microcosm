@@ -1,48 +1,38 @@
-# Progress
+# Round 13 progress
 
 ## State
 
-Microcosm #516 whole-row donor outlier screen is complete on
-`mortgage-donor-outlier-screen` (rebased onto `origin/main` after the #515
-interim carve merged as #525). The `puf_tax_detail` donor now drops tax units
-whose grouped raw mortgage interest reaches $10M before the #515 carve
-(pinned-artifact effect: 3,066 rows, weight 3,684 of ~161M, removing $2.947T
-of phantom mortgage-interest mass), with the checkpoint schema bumped to v3
-so post-carve pre-screen checkpoints rebuild.
+Round 13 is in progress on `tail-stratum-support-652` from the user-pinned
+starting commit `c079688f`. The supplied 1% smoke reached the terminal failed-gate
+publication and then PyTables rejected a pandas nullable-boolean `BooleanArray`.
+This round will repair that serializer and audit every production Frame-table H5
+writer under one registry-driven dtype-family round-trip contract. Battery
+metrics and tolerances are out of scope.
 
 ## Done
 
-- Confirmed a clean starting worktree at `aef1c56`.
-- Read the repository guidance and established the #515 donor carve as the
-  screen's required downstream boundary.
-- Started source-level audits of every donor-frame consumer, checkpoint
-  validation, row-count pins, and existing donor-fact summaries.
-- Attempted the requested GitNexus impact workflow; the managed filesystem
-  denied its global registry write. Its local index also exposed a broad
-  `build/` ignore mismatch, so the completed impact audit uses direct source
-  call sites and tests.
-- Added `US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING = 10_000_000.0` with the
-  structural rationale and pinned-artifact receipts.
-- Added a whole-row screen on grouped raw person `home_mortgage_interest`
-  after tax-unit assembly, before the #515 carve, with retained-index reset.
-- Confirmed no downstream consumer pairs donor rows to the original HDF arrays
-  or carries a stale donor-length vector; values and weights always originate
-  from the same screened frame.
-- Bumped the primary QRF checkpoint schema from v2 to v3 and made the stale
-  checkpoint regression track the live constant while retaining literal-v1
-  corruptions.
-- Added regression coverage for the exact grouped boundary, whole-row removal,
-  retained/carved $5M row, raw-$10.5M pre-carve ordering, and constant.
-- Requested suites pass: PUF support/QRF 53; plan/gates 195; fiscal targets
-  139; microcosm-data 138 with 1 skip. The directly affected tail-bound suite
-  adds 12 passes. Ruff format/check and `git diff --check` are clean.
-- Wrote `SOL_516_REPORT.md` with the exact seam, consumer-by-consumer file:line
-  audit, expected 208,611-row real-artifact effect, verification results, count
-  sweep, and deliberately untouched surfaces.
+- Confirmed the worktree was clean, on `tail-stratum-support-652`, at
+  `c079688fb82e41c85d4c67bbf35c59064bd89dca`.
+- Preserved the requested branch despite its stale configured `origin/main`
+  comparison; the no-network order forbids fetching a newer base.
+- Read `CLAUDE.md`, the PolicyEngine repository standards, and the GitNexus
+  debugging workflow.
+- Confirmed GitNexus graph tools are unavailable in this session, so the
+  serializer audit will use direct source searches and call-site tracing.
+- Located the supplied smoke receipts/checkpoints and began enumerating all
+  direct `HDFStore`, `to_hdf`, and PyTables use sites.
 
 ## Next
 
-- PR #527 review cycle, then merge. After both #525 and #527: rebuild the
-  base/release; the mortgage critical-fit ratchet (0.20 -> 0.15) waits on a
-  run that holds per `us_critical_targets.py`.
-- Root record-level ETL carve stays open on microcosm#515.
+1. Read the real traceback and identify the terminal publication call chain.
+2. Build a complete production serializer registry covering terminal
+   publication, diagnostics/error receipts, UK rowwise, legacy two-spine, and
+   every other Frame-table H5 writer.
+3. Add failing registry-driven dtype-family round-trip coverage, implement the
+   lossless nullable-boolean representation, and bump changed serializer
+   contracts without changing frozen published-artifact format identifiers.
+4. Run focused tests, the exact 495-test #583 proof, full-workspace chunked
+   exact-count proof, UK byte goldens, ruff/format/diff checks, and changelog
+   validation. No builds will run.
+5. Obtain an independent audit, close actionable findings, commit the final
+   ledger state, and report the gradeable 10% dev-r7 prediction.
