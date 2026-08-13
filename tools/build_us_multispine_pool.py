@@ -287,7 +287,7 @@ _STACKED_PIPELINE = "us-stacked-pool"
 # corrected outer order (the primary PUF callback is nested inside the DAG).
 _STACKED_CHECKPOINT_MATERIALIZER_VERSION = 11
 _STACKED_RELEASE_ID_PATTERN = re.compile(
-    r"^populace-us-2024-stacked-f(?:001|010|100)-s[0-9]+-"
+    r"^populace-us-2024-stacked-f(?:001|004|010|100)-s[0-9]+-"
     r"asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
 )
 
