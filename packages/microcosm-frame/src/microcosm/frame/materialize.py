@@ -16,6 +16,7 @@ that is *added* (the entity table carried none) is appended last.
 
 from __future__ import annotations
 
+import json
 import warnings
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -32,9 +33,12 @@ __all__ = [
     "materialize_nullable_booleans_for_pytables",
     "nullable_boolean_values_and_mask",
     "put_frame_table",
+    "read_frame_table",
 ]
 
 _WEIGHT_COLUMN_SUFFIX = "_weight"
+_PYTABLES_FRAME_TABLE_CODEC_ATTR = "_microcosm_frame_table_codec"
+_PYTABLES_FRAME_TABLE_CODEC_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -167,7 +171,93 @@ def put_frame_table(
             format=hdf_format,
             **options,
         )
+    if materialized.missing_columns:
+        codec = {
+            "codec_version": _PYTABLES_FRAME_TABLE_CODEC_VERSION,
+            "nullable_boolean_columns": list(materialized.missing_columns),
+        }
+        setattr(
+            store.get_storer(key).attrs,
+            _PYTABLES_FRAME_TABLE_CODEC_ATTR,
+            json.dumps(codec, sort_keys=True, separators=(",", ":")),
+        )
     return materialized
+
+
+def read_frame_table(store: Any, key: str) -> pd.DataFrame:
+    """Read one Frame table and restore its versioned PyTables dtypes.
+
+    The table-local codec attribute is absent from older artifacts and from
+    tables that needed no explicit nullable representation. When present it
+    identifies object-backed BooleanDtype columns whose exact null positions
+    PyTables preserves but which pandas may otherwise infer as strings when
+    every value is missing.
+    """
+
+    table = store[key]
+    raw_codec = getattr(
+        store.get_storer(key).attrs,
+        _PYTABLES_FRAME_TABLE_CODEC_ATTR,
+        None,
+    )
+    if raw_codec is None:
+        return table
+    try:
+        codec = json.loads(raw_codec)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Frame table {key!r} has malformed dtype codec metadata."
+        ) from exc
+    expected_fields = {"codec_version", "nullable_boolean_columns"}
+    if not isinstance(codec, dict) or set(codec) != expected_fields:
+        raise ValueError(
+            f"Frame table {key!r} dtype codec must contain exactly "
+            f"{sorted(expected_fields)!r}."
+        )
+    if type(codec["codec_version"]) is not int or (
+        codec["codec_version"] != _PYTABLES_FRAME_TABLE_CODEC_VERSION
+    ):
+        raise ValueError(
+            f"Frame table {key!r} has unsupported dtype codec version "
+            f"{codec['codec_version']!r}."
+        )
+    columns = codec["nullable_boolean_columns"]
+    if (
+        not isinstance(columns, list)
+        or not columns
+        or any(not isinstance(column, str) or not column for column in columns)
+        or len(columns) != len(set(columns))
+    ):
+        raise ValueError(
+            f"Frame table {key!r} has invalid nullable-boolean column metadata."
+        )
+    missing_columns = sorted(set(columns) - set(table.columns))
+    if missing_columns:
+        raise ValueError(
+            f"Frame table {key!r} dtype codec names absent column(s): "
+            f"{missing_columns!r}."
+        )
+
+    restored = table.copy(deep=False)
+    for column in columns:
+        series = table[column]
+        invalid = series.notna() & ~series.map(lambda value: isinstance(value, bool))
+        if invalid.any():
+            raise ValueError(
+                f"Frame table {key!r} nullable-boolean column {column!r} "
+                "contains a non-boolean value."
+            )
+        values = series.to_numpy(dtype=object, copy=True)
+        null_mask = series.isna().to_numpy(dtype=np.bool_, copy=False)
+        values[null_mask] = pd.NA
+        restored[column] = pd.Series(
+            values,
+            index=series.index,
+            name=series.name,
+            dtype=object,
+            copy=False,
+        )
+    return restored
 
 
 def engine_tables(

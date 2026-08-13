@@ -20,6 +20,7 @@ from microcosm.frame import (
     materialize_nullable_booleans_for_pytables,
     nullable_boolean_values_and_mask,
     put_frame_table,
+    read_frame_table,
 )
 
 
@@ -188,3 +189,52 @@ def test_pytables_writer_uses_native_bool_or_fixed_explicit_na(tmp_path) -> None
     )
     assert stored_missing.dtype == np.dtype(object)
     assert stored_missing.tolist() == [True, pd.NA, False]
+
+
+def test_pytables_reader_restores_all_missing_nullable_boolean(tmp_path) -> None:
+    pytest.importorskip("tables")
+    path = tmp_path / "all-missing-nullable-boolean.h5"
+    source = pd.DataFrame({"flag": pd.Series([pd.NA, pd.NA, pd.NA], dtype="boolean")})
+
+    with pd.HDFStore(path, mode="w") as store:
+        put_frame_table(store, "person", source, preferred_format="fixed")
+
+    with pd.HDFStore(path, mode="r") as store:
+        raw = store["person"]
+        restored = read_frame_table(store, "person")
+
+    assert raw["flag"].dtype.kind in {"O", "U"}
+    assert restored["flag"].dtype == np.dtype(object)
+    assert restored["flag"].tolist() == [pd.NA, pd.NA, pd.NA]
+    pd.testing.assert_series_equal(
+        restored["flag"].astype("boolean"),
+        source["flag"],
+    )
+
+
+@pytest.mark.parametrize(
+    ("payload", "match"),
+    [
+        ("not-json", "malformed dtype codec"),
+        (
+            '{"codec_version":2,"nullable_boolean_columns":["flag"]}',
+            "unsupported dtype codec version",
+        ),
+        (
+            '{"codec_version":1,"nullable_boolean_columns":["absent"]}',
+            "names absent column",
+        ),
+    ],
+)
+def test_pytables_reader_rejects_invalid_dtype_codec(
+    tmp_path, payload: str, match: str
+) -> None:
+    pytest.importorskip("tables")
+    path = tmp_path / "invalid-codec.h5"
+    with pd.HDFStore(path, mode="w") as store:
+        store.put("person", pd.DataFrame({"flag": [True]}), format="fixed")
+        store.get_storer("person").attrs._microcosm_frame_table_codec = payload
+
+    with pd.HDFStore(path, mode="r") as store:
+        with pytest.raises(ValueError, match=match):
+            read_frame_table(store, "person")

@@ -699,13 +699,13 @@ def write_lean_checkpoint(
 
 
 def load_lean_frame(checkpoint_h5: Path):
-    from microcosm.frame import Frame, WeightKind, Weights
+    from microcosm.frame import Frame, WeightKind, Weights, read_frame_table
     from microcosm.frame.units import US_SCHEMA
 
     tables = {}
     with pd.HDFStore(checkpoint_h5, mode="r") as store:
         for key in ["household", "person"] + list(GROUP_IDS):
-            tables[key] = store[key]
+            tables[key] = read_frame_table(store, key)
     design_weights = tables["household"].pop("household_weight").to_numpy(np.float64)
     return (
         Frame(

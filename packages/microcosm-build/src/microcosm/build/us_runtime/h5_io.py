@@ -32,6 +32,7 @@ from microcosm.frame import (
     Weights,
     materialize_nullable_booleans_for_pytables,
     put_frame_table,
+    read_frame_table,
 )
 from microcosm.frame.units import US_SCHEMA
 
@@ -319,17 +320,11 @@ def load_legacy_calibrated_us_h5(path: str | Path) -> Frame:
     multispine pool, whose importance-weight receipt lives in its manifest.
     """
 
-    from policyengine_us.data import USSingleYearDataset
-
-    dataset = USSingleYearDataset(file_path=str(Path(path)))
-    tables = {
-        "person": dataset.person,
-        "household": dataset.household.copy(),
-        "tax_unit": dataset.tax_unit,
-        "spm_unit": dataset.spm_unit,
-        "family": dataset.family,
-        "marital_unit": dataset.marital_unit,
-    }
+    with pd.HDFStore(Path(path), mode="r") as store:
+        tables = {
+            entity: read_frame_table(store, entity) for entity in US_SCHEMA.entities
+        }
+    tables["household"] = tables["household"].copy()
     household_weights = (
         tables["household"].pop("household_weight").to_numpy(dtype=np.float64)
     )
@@ -729,7 +724,7 @@ def load_simulation_ready_us_multispine_pool(
             )
         tables = {
             entity: canonicalize_table_string_dtypes(
-                store[entity],
+                read_frame_table(store, entity),
                 boundary="simulation-ready US pool H5 load",
                 table_name=entity,
             )
@@ -971,7 +966,7 @@ def _verify_nullable_us_h5(
             expected = materialize_nullable_booleans_for_pytables(expected).table
             try:
                 stored = canonicalize_table_string_dtypes(
-                    store[entity],
+                    read_frame_table(store, entity),
                     boundary="nullable US H5 verification load",
                     table_name=entity,
                 )

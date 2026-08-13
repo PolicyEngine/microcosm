@@ -58,7 +58,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.frame.bundle import Frame
-from microcosm.frame.materialize import engine_tables, put_frame_table
+from microcosm.frame.materialize import engine_tables, put_frame_table, read_frame_table
 from microcosm.frame.rules import ExportContract
 from microcosm.frame.schema import EntitySchema, VariableMetadata
 
@@ -638,7 +638,7 @@ class AxiomEntityTableDataset:
                 if name == cls._TIME_PERIOD_KEY:
                     time_period = int(store[key].iloc[0])
                     continue
-                tables[name] = store[key]
+                tables[name] = read_frame_table(store, key)
         if time_period is None:
             raise ValueError(f"Dataset at {path} carries no {cls._TIME_PERIOD_KEY}.")
         return tables, time_period

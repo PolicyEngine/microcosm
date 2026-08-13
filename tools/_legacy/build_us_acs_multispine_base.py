@@ -52,7 +52,13 @@ from microcosm.build.us_runtime.puma_ladder import (
     UsPumaLadder,
     load_us_puma_ladder,
 )
-from microcosm.frame import Frame, WeightKind, Weights, put_frame_table
+from microcosm.frame import (
+    Frame,
+    WeightKind,
+    Weights,
+    put_frame_table,
+    read_frame_table,
+)
 from microcosm.frame.units import US_SCHEMA
 
 PERIOD = 2024
@@ -964,17 +970,11 @@ def _spine_totals(frame: Frame) -> dict[str, dict[str, Any]]:
 def _load_base_frame(path: Path) -> Frame:
     """Load the dense donor H5 without importing PolicyEngine-US at tool import."""
 
-    from policyengine_us.data import USSingleYearDataset
-
-    dataset = USSingleYearDataset(file_path=str(path))
-    tables = {
-        "person": dataset.person,
-        "household": dataset.household,
-        "tax_unit": dataset.tax_unit,
-        "spm_unit": dataset.spm_unit,
-        "family": dataset.family,
-        "marital_unit": dataset.marital_unit,
-    }
+    with pd.HDFStore(path, mode="r") as store:
+        tables = {
+            entity: read_frame_table(store, entity) for entity in US_SCHEMA.entities
+        }
+    tables["household"] = tables["household"].copy()
     household_weights = (
         tables["household"].pop("household_weight").to_numpy(dtype=np.float64)
     )
@@ -1044,7 +1044,7 @@ def _write_dataset(
                 expected = frame.table(entity)
                 if not len(expected):
                     continue
-                stored = store[entity]
+                stored = read_frame_table(store, entity)
                 expected_columns = list(expected.columns)
                 if entity == "household":
                     expected_columns.append("household_weight")

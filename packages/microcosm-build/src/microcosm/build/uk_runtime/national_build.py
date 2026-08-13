@@ -72,6 +72,7 @@ from microcosm.frame import (
     WeightKind,
     engine_tables,
     put_frame_table,
+    read_frame_table,
 )
 
 __all__ = [
@@ -197,9 +198,9 @@ def _read_uk_national_tables(
                 "UK national dataset time_period must contain exactly one value."
             )
         payload = {
-            "person": store["person"],
-            "benunit": store["benunit"],
-            "household": store["household"],
+            "person": read_frame_table(store, "person"),
+            "benunit": read_frame_table(store, "benunit"),
+            "household": read_frame_table(store, "household"),
             "time_period": str(raw_period.iloc[0]),
             "household_weight_kind": _weight_kind_from_stored(stored_kind),
             "mass_log": _mass_log_from_stored(stored_mass_log),

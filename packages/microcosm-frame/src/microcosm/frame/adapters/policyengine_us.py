@@ -43,6 +43,7 @@ from microcosm.frame.materialize import (
     engine_tables,
     materialize_nullable_booleans_for_pytables,
     put_frame_table,
+    read_frame_table,
 )
 from microcosm.frame.rules import ExportContract
 from microcosm.frame.schema import EntitySchema, VariableMetadata
@@ -1041,11 +1042,18 @@ class PolicyEngineUSEngine:
                 expected_columns.update(frame.columns)
 
         reloaded = USSingleYearDataset(file_path=str(output_path))
+        with pd.HDFStore(str(output_path), mode="r") as store:
+            logical_tables = {
+                name: read_frame_table(store, name)
+                for name in (_PERSON_TABLE, *_GROUP_TABLES)
+                if len(tables[name]) > 0
+            }
         persisted_columns: set[str] = set()
         dtype_mismatches: list[str] = []
         for name in (_PERSON_TABLE, *_GROUP_TABLES):
-            reloaded_table = getattr(reloaded, name)
-            persisted_columns.update(reloaded_table.columns)
+            external_table = getattr(reloaded, name)
+            reloaded_table = logical_tables.get(name, external_table)
+            persisted_columns.update(external_table.columns)
             source_table = materialized_tables.get(name)
             if source_table is None or len(source_table) == 0:
                 continue

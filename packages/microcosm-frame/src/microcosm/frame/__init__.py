@@ -22,6 +22,7 @@ from microcosm.frame.materialize import (
     materialize_nullable_booleans_for_pytables,
     nullable_boolean_values_and_mask,
     put_frame_table,
+    read_frame_table,
 )
 from microcosm.frame.rules import ExportContract, RulesEngine
 from microcosm.frame.schema import EntitySchema, LinkSpec, VariableMetadata
@@ -68,6 +69,7 @@ __all__ = [
     "materialize_nullable_booleans_for_pytables",
     "nullable_boolean_values_and_mask",
     "put_frame_table",
+    "read_frame_table",
     "wmean",
     "wmedian",
     "wquantile",

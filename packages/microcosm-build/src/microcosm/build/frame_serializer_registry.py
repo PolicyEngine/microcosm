@@ -72,7 +72,7 @@ FRAME_TABLE_SERIALIZERS = (
             "US L0 refit export",
         ),
         version_owner="US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION",
-        nullable_boolean_storage="numpy_bool_or_object_pd_na",
+        nullable_boolean_storage="numpy_bool_or_object_pd_na_v1",
     ),
     FrameSerializerSpec(
         serializer_id="uk_single_year_h5",
@@ -87,7 +87,7 @@ FRAME_TABLE_SERIALIZERS = (
             "UK ladder-rowwise publication",
         ),
         version_owner="UK single-year payload contract",
-        nullable_boolean_storage="numpy_bool_or_object_pd_na",
+        nullable_boolean_storage="numpy_bool_or_object_pd_na_v1",
     ),
     FrameSerializerSpec(
         serializer_id="axiom_entity_tables",
@@ -98,7 +98,7 @@ FRAME_TABLE_SERIALIZERS = (
         backend="pandas.HDFStore table",
         routes=("Axiom adapter entity-table dataset",),
         version_owner="AxiomEntityTableDataset payload contract",
-        nullable_boolean_storage="numpy_bool_or_object_pd_na",
+        nullable_boolean_storage="numpy_bool_or_object_pd_na_v1",
     ),
     FrameSerializerSpec(
         serializer_id="policyengine_us_dataset",
@@ -109,7 +109,7 @@ FRAME_TABLE_SERIALIZERS = (
         backend="pandas.HDFStore table",
         routes=("PolicyEngine-US adapter export",),
         version_owner="PolicyEngineUSAdapter payload contract",
-        nullable_boolean_storage="numpy_bool_or_object_pd_na",
+        nullable_boolean_storage="numpy_bool_or_object_pd_na_v1",
     ),
     FrameSerializerSpec(
         serializer_id="legacy_us_two_spine",
@@ -120,7 +120,7 @@ FRAME_TABLE_SERIALIZERS = (
         backend="pandas.HDFStore fixed",
         routes=("preserved directly executable legacy two-spine builder",),
         version_owner="legacy schema-4 publication contract",
-        nullable_boolean_storage="numpy_bool_or_object_pd_na",
+        nullable_boolean_storage="numpy_bool_or_object_pd_na_v1",
     ),
     FrameSerializerSpec(
         serializer_id="acs_local_lean_checkpoint",
@@ -131,7 +131,7 @@ FRAME_TABLE_SERIALIZERS = (
         backend="pandas.HDFStore fixed",
         routes=("US ACS local lean target-frame checkpoint",),
         version_owner="ACS local checkpoint payload contract",
-        nullable_boolean_storage="numpy_bool_or_object_pd_na",
+        nullable_boolean_storage="numpy_bool_or_object_pd_na_v1",
     ),
     FrameSerializerSpec(
         serializer_id="fiscal_target_frame_checkpoint",

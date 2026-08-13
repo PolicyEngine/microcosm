@@ -20,7 +20,10 @@ from microcosm.build.frame_serializer_registry import (
     HDF_WRITE_EXCLUSIONS,
     FrameSerializerSpec,
 )
-from microcosm.build.uk_runtime.national_build import _write_uk_single_year_tables
+from microcosm.build.uk_runtime.national_build import (
+    _read_uk_national_tables,
+    _write_uk_single_year_tables,
+)
 from microcosm.build.us_runtime.h5_io import write_nullable_us_h5
 from microcosm.frame import (
     US_SCHEMA,
@@ -28,6 +31,7 @@ from microcosm.frame import (
     Frame,
     WeightKind,
     Weights,
+    read_frame_table,
 )
 from microcosm.frame.adapters.axiom import AxiomEntityTableDataset
 from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
@@ -73,9 +77,7 @@ def _dtype_family_table(
             COMPLETE_COLUMN: pd.Series(
                 [True, False, True], index=index, dtype="boolean"
             ),
-            MISSING_COLUMN: pd.Series(
-                missing_values, index=index, dtype="boolean"
-            ),
+            MISSING_COLUMN: pd.Series(missing_values, index=index, dtype="boolean"),
         },
         index=index,
     )
@@ -195,9 +197,7 @@ def _round_trip_frame_checkpoint(
         )
 
 
-def _round_trip_nullable_us_h5(
-    tmp_path: Path, nullable_case: str
-) -> BooleanRoundTrip:
+def _round_trip_nullable_us_h5(tmp_path: Path, nullable_case: str) -> BooleanRoundTrip:
     pytest.importorskip("tables")
     source = _dtype_family_table(nullable_case)
     before = source.copy(deep=True)
@@ -210,7 +210,7 @@ def _round_trip_nullable_us_h5(
         artifact_kind="registry_dtype_family_fixture",
     )
     with pd.HDFStore(path, mode="r") as store:
-        loaded = store["person"]
+        loaded = read_frame_table(store, "person")
     return _semantic_observation(source, before, loaded)
 
 
@@ -235,8 +235,7 @@ def _round_trip_uk_single_year(tmp_path: Path, nullable_case: str) -> BooleanRou
         mass_log=(),
         path=path,
     )
-    with pd.HDFStore(path, mode="r") as store:
-        loaded = store["person"]
+    loaded = _read_uk_national_tables(path)[0]["person"]
     return _semantic_observation(source, before, loaded)
 
 
@@ -250,9 +249,7 @@ def _round_trip_axiom(tmp_path: Path, nullable_case: str) -> BooleanRoundTrip:
     return _semantic_observation(source, before, loaded)
 
 
-def _round_trip_policyengine_us(
-    tmp_path: Path, nullable_case: str
-) -> BooleanRoundTrip:
+def _round_trip_policyengine_us(tmp_path: Path, nullable_case: str) -> BooleanRoundTrip:
     pytest.importorskip("tables")
     pytest.importorskip("policyengine_us")
     source = _dtype_family_table(nullable_case)
@@ -262,7 +259,7 @@ def _round_trip_policyengine_us(
     path = tmp_path / "policyengine-us.h5"
     PolicyEngineUSEngine()._write_and_verify(tables, period=2024, output_path=path)
     with pd.HDFStore(path, mode="r") as store:
-        loaded = store["person"]
+        loaded = read_frame_table(store, "person")
     return _semantic_observation(source, before, loaded)
 
 
@@ -277,7 +274,7 @@ def _round_trip_legacy_us(tmp_path: Path, nullable_case: str) -> BooleanRoundTri
     path = tmp_path / "legacy-us.h5"
     legacy._write_dataset(_us_frame(source), path, period=2024)
     with pd.HDFStore(path, mode="r") as store:
-        loaded = store["person"]
+        loaded = read_frame_table(store, "person")
     return _semantic_observation(source, before, loaded)
 
 
@@ -298,7 +295,7 @@ def _round_trip_acs_lean(tmp_path: Path, nullable_case: str) -> BooleanRoundTrip
         "person": person,
         "groups": {
             entity: pd.DataFrame({US_SCHEMA.id_column(entity): ids})
-            for entity in US_SCHEMA.group_entities
+            for entity in tool.GROUP_IDS
         },
         "weights": np.asarray([1.0, 2.0, 3.0]),
     }
@@ -312,8 +309,7 @@ def _round_trip_acs_lean(tmp_path: Path, nullable_case: str) -> BooleanRoundTrip
         [],
         tmp_path / "acs-lean",
     )
-    with pd.HDFStore(path, mode="r") as store:
-        loaded = store["person"]
+    loaded = tool.load_lean_frame(path)[0].table("person")
     return _semantic_observation(source, before, loaded)
 
 
@@ -455,9 +451,7 @@ def test_registered_serializer_round_trips_nullable_boolean_dtype_family(
     nullable_case: str,
     tmp_path: Path,
 ) -> None:
-    observation = ROUND_TRIP_ADAPTERS[serializer.serializer_id](
-        tmp_path, nullable_case
-    )
+    observation = ROUND_TRIP_ADAPTERS[serializer.serializer_id](tmp_path, nullable_case)
 
     # Serializers may materialize a boundary copy, never rewrite the source.
     pd.testing.assert_frame_equal(
@@ -502,7 +496,7 @@ def test_registered_serializer_round_trips_nullable_boolean_dtype_family(
     if serializer.nullable_boolean_storage == "bool_values_optional_uint8_mask":
         assert observation.stored_missing_mask_dtype == np.dtype(np.uint8)
     else:
-        assert serializer.nullable_boolean_storage == "numpy_bool_or_object_pd_na"
+        assert serializer.nullable_boolean_storage == "numpy_bool_or_object_pd_na_v1"
         assert loaded[COMPLETE_COLUMN].dtype == np.dtype(np.bool_)
         assert loaded[MISSING_COLUMN].dtype == np.dtype(object)
         missing_scalars = loaded.loc[loaded[MISSING_COLUMN].isna(), MISSING_COLUMN]
