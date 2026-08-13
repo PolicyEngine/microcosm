@@ -71,7 +71,7 @@ FRAME_TABLE_SERIALIZERS = (
             "US ACS calibrated release",
             "US L0 refit export",
         ),
-        version_owner="STACKED_POOL_H5_MATERIALIZER_VERSION",
+        version_owner="US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION",
         nullable_boolean_storage="numpy_bool_or_object_pd_na",
     ),
     FrameSerializerSpec(

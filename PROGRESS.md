@@ -11,8 +11,9 @@ sites now live in an executable registry guarded by a repository-wide AST
 completeness test. A shared PyTables boundary codec now implements the doctrine,
 and all six PyTables-facing serializers now consume it. The fiscal h5py
 checkpoint has the same explicit values/mask doctrine, so all eight registry
-rows are green. Stacked terminal publication version binding remains. Battery
-metrics and tolerances remain out of scope.
+rows are green. Stacked terminal publication now binds schema 8 to H5
+materializer 2 in both the manifest and frozen metadata key; legacy schema 4
+remains isolated. Battery metrics and tolerances remain out of scope.
 
 ## Done
 
@@ -87,14 +88,19 @@ metrics and tolerances remain out of scope.
   misaligned masks, hidden true bits, malformed metadata, and schema-1 files.
   The full eight-sink registry matrix plus focused fiscal identity/corruption
   tests now passes (24 selected tests).
+- Advanced only the stacked terminal envelope to manifest schema 8 and bound
+  H5 materializer 2 in the terminal H5 metadata and `pool_h5` receipt. The
+  reader requires exact, non-boolean integer agreement at both locations and
+  rejects the version on legacy envelopes. The frozen artifact kind, HDF keys,
+  and `entity_hdf_format="fixed_nullable"` are unchanged. Focused version,
+  stacked-entrypoint, reader, and legacy-publication golden tests pass (27
+  selected tests); the schema-4 legacy path carries no new field.
 
 ## Next
 
-1. Bind a stacked-only terminal-H5 materializer version into schema-8
-   manifests/H5 metadata/readers without changing frozen published-artifact
-   format identifiers or legacy schema-4 bytes.
-2. Run focused tests, the exact 495-test #583 proof, full-workspace chunked
+1. Update the changelog and run focused tests, the exact 495-test #583 proof,
+   full-workspace chunked
    exact-count proof, UK byte goldens, ruff/format/diff checks, and changelog
    validation. No builds will run.
-3. Obtain an independent audit, close actionable findings, commit the final
+2. Obtain an independent audit, close actionable findings, commit the final
    ledger state, and report the gradeable 10% dev-r7 prediction.

@@ -40,6 +40,7 @@ __all__ = [
     "AuthenticatedPoolH5MismatchError",
     "LEGACY_NULLABLE_STAGING_ARTIFACT_KIND",
     "US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND",
+    "US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION",
     "US_MULTISPINE_POOL_H5_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION",
@@ -57,13 +58,17 @@ US_MULTISPINE_POOL_H5_ARTIFACT_KIND = "populace_us_multispine_input_pool"
 US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND = (
     "populace_us_multispine_agreement_diagnostics"
 )
+# 8 binds the nullable-boolean-capable physical H5 materializer in both the
+# stacked manifest receipt and the H5's frozen metadata key.
 # 7 binds the complete late-producer resource semantics and removes the PUF
 # callback's duplicate outer-order entry; the callback is a node inside the DAG.
 # 6 additionally bound the independently carried late-producer transition
 # authority and restores its immutable Frame-metadata anchor on H5 load.
 # Schema 5 can authenticate the DAG receipt's structure, but cannot prove that
 # the published receipt is the one authorized by the generating transition.
-US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 7
+US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 8
+US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION = 2
+"""Stacked terminal H5 materializer; version 2 handles pandas BooleanDtype."""
 _LEGACY_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION = 4
 _METADATA_KEY = "_populace_staging_metadata"
 _TIME_PERIOD_KEY = "_time_period"
@@ -141,6 +146,9 @@ def _stacked_manifest_markers(manifest: Mapping[str, object]) -> set[str]:
         "stacked_post_puf_transfer",
     }:
         markers.add("stage_receipts.impute[stacked]")
+    pool_h5 = manifest.get("pool_h5")
+    if isinstance(pool_h5, Mapping) and "materializer_version" in pool_h5:
+        markers.add("pool_h5.materializer_version")
     return markers
 
 
@@ -460,6 +468,29 @@ def _load_authenticated_us_multispine_pool_manifest(
             f"US multispine pool H5 {pool_path} publication run ID does not "
             "match its manifest."
         )
+    if envelope == "stacked":
+        receipt_materializer = pool_receipt.get("materializer_version")
+        h5_materializer = h5_metadata.get("materializer_version")
+        if (
+            type(receipt_materializer) is not int
+            or receipt_materializer != US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION
+            or type(h5_materializer) is not int
+            or h5_materializer != US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION
+        ):
+            raise ValueError(
+                f"US stacked pool publication {manifest_path} does not bind "
+                "the current H5 materializer version in both its manifest "
+                f"receipt and H5 metadata: receipt={receipt_materializer!r}, "
+                f"h5={h5_materializer!r}, expected="
+                f"{US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION}."
+            )
+    elif (
+        "materializer_version" in pool_receipt or "materializer_version" in h5_metadata
+    ):
+        raise ValueError(
+            f"US multispine pool manifest {manifest_path} legacy envelope "
+            "carries a stacked-only H5 materializer version."
+        )
 
     diagnostics_receipt = _mapping(
         manifest.get("agreement_diagnostics"),
@@ -550,7 +581,7 @@ def _validate_stacked_late_dag_manifest_binding(
     *,
     manifest_path: Path,
 ) -> None:
-    """Make schema-7 stacked consumers authenticate the published DAG proof."""
+    """Make schema-8 stacked consumers authenticate the published DAG proof."""
 
     if manifest.get("pipeline") != "us-stacked-pool":
         return
@@ -822,6 +853,7 @@ def write_nullable_us_h5(
     period: int,
     artifact_kind: str,
     publication_run_id: str | None = None,
+    materializer_version: int | None = None,
 ) -> None:
     """Atomically write and verify a nullable US single-year H5.
 
@@ -839,6 +871,10 @@ def write_nullable_us_h5(
         not isinstance(publication_run_id, str) or not publication_run_id.strip()
     ):
         raise ValueError("publication_run_id must be a non-empty string when set.")
+    if materializer_version is not None and (
+        type(materializer_version) is not int or materializer_version <= 0
+    ):
+        raise ValueError("materializer_version must be a positive integer when set.")
 
     for entity in US_SCHEMA.entities:
         canonicalize_table_string_dtypes(
@@ -858,6 +894,7 @@ def write_nullable_us_h5(
             period=int(period),
             artifact_kind=artifact_kind,
             publication_run_id=publication_run_id,
+            materializer_version=materializer_version,
         )
         _verify_nullable_us_h5(
             frame,
@@ -865,6 +902,7 @@ def write_nullable_us_h5(
             period=int(period),
             artifact_kind=artifact_kind,
             publication_run_id=publication_run_id,
+            materializer_version=materializer_version,
         )
         os.replace(temporary, output)
     except BaseException:
@@ -879,6 +917,7 @@ def _write_nullable_us_h5_file(
     period: int,
     artifact_kind: str,
     publication_run_id: str | None,
+    materializer_version: int | None,
 ) -> None:
     with pd.HDFStore(path, mode="w") as store:
         for entity in frame.entities:
@@ -905,6 +944,7 @@ def _write_nullable_us_h5_file(
                             frame,
                             artifact_kind=artifact_kind,
                             publication_run_id=publication_run_id,
+                            materializer_version=materializer_version,
                         ),
                         sort_keys=True,
                     )
@@ -921,6 +961,7 @@ def _verify_nullable_us_h5(
     period: int,
     artifact_kind: str,
     publication_run_id: str | None,
+    materializer_version: int | None,
 ) -> None:
     with pd.HDFStore(path, mode="r") as store:
         for entity in frame.entities:
@@ -974,6 +1015,7 @@ def _verify_nullable_us_h5(
             frame,
             artifact_kind=artifact_kind,
             publication_run_id=publication_run_id,
+            materializer_version=materializer_version,
         )
         if stored_metadata != expected_metadata:
             raise RuntimeError(
@@ -1000,7 +1042,8 @@ def _artifact_metadata(
     *,
     artifact_kind: str,
     publication_run_id: str | None,
-) -> dict[str, str]:
+    materializer_version: int | None,
+) -> dict[str, object]:
     metadata = {
         "artifact_kind": artifact_kind,
         "entity_hdf_format": "fixed_nullable",
@@ -1008,6 +1051,8 @@ def _artifact_metadata(
     }
     if publication_run_id is not None:
         metadata["publication_run_id"] = publication_run_id
+    if materializer_version is not None:
+        metadata["materializer_version"] = materializer_version
     return metadata
 
 

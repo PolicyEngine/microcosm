@@ -1707,6 +1707,14 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         )
         assert manifest["schema_version"] == pool_tool.POOL_MANIFEST_SCHEMA_VERSION
         assert manifest["pipeline"] == "us-stacked-pool"
+        assert manifest["pool_h5"]["materializer_version"] == (
+            pool_tool.US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION
+        )
+        with pd.HDFStore(manifest["pool_h5"]["path"], mode="r") as store:
+            h5_metadata = json.loads(str(store["_populace_staging_metadata"].iloc[0]))
+        assert h5_metadata["materializer_version"] == (
+            pool_tool.US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION
+        )
         published_dag = manifest["stage_receipts"]["impute"][
             "stacked_late_producer_dag"
         ]
@@ -3217,10 +3225,11 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
     outputs = pool_tool._output_paths(output, checkpoint_root=checkpoint_root)
     manifest = pool_tool._read_json_object(outputs.manifest)
     diagnostics = pool_tool._read_json_object(outputs.agreement_diagnostics)
-    assert pool_tool.POOL_MANIFEST_SCHEMA_VERSION == 7
+    assert pool_tool.POOL_MANIFEST_SCHEMA_VERSION == 8
     assert pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION == 7
     assert manifest["schema_version"] == 4
     assert diagnostics["schema_version"] == 4
+    assert "materializer_version" not in manifest["pool_h5"]
     assert manifest["stage_checkpoints"]["materializer_version"] == 3
     assert {
         receipt["materializer_version"]
@@ -5454,6 +5463,7 @@ def test_red_outputs_preserve_receipts_and_exclude_simulation_output(
         assert "ssi" not in store["person"].columns
         metadata = json.loads(str(store["_populace_staging_metadata"].iloc[0]))
     assert metadata["publication_run_id"] == manifest["publication_run_id"]
+    assert "materializer_version" not in metadata
 
 
 def test_ready_reader_binds_manifest_h5_and_diagnostics_to_one_run(

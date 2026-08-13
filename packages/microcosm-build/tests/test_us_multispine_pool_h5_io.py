@@ -22,6 +22,7 @@ from microcosm.build.serialization_dtypes import (
 from microcosm.build.us_runtime.h5_io import (
     US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
+    US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION,
     US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
     US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
     US_STACKED_POOL_OPERATOR_ORDER,
@@ -274,6 +275,26 @@ def test_pool_export_rejects_ambiguous_object_strings_before_replacement(
     assert output.read_bytes() == b"previous-good-pool"
 
 
+@pytest.mark.parametrize("materializer_version", (True, 0, -1, 1.5, "2"))
+def test_pool_export_rejects_invalid_materializer_versions_before_replacement(
+    tmp_path: Path,
+    materializer_version: object,
+) -> None:
+    output = tmp_path / "existing.pool.h5"
+    output.write_bytes(b"previous-good-pool")
+
+    with pytest.raises(ValueError, match="positive integer"):
+        write_nullable_us_h5(
+            _pool_frame(),
+            output,
+            period=2024,
+            artifact_kind=US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
+            materializer_version=materializer_version,  # type: ignore[arg-type]
+        )
+
+    assert output.read_bytes() == b"previous-good-pool"
+
+
 def test_pool_export_rejects_untyped_all_missing_objects_before_replacement(
     tmp_path: Path,
 ) -> None:
@@ -386,6 +407,9 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
         period=2024,
         artifact_kind=US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
         publication_run_id=run_id,
+        materializer_version=(
+            US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION if stacked else None
+        ),
     )
     diagnostics = {
         "artifact_kind": (US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND),
@@ -472,6 +496,9 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
                     }
                 },
             }
+        )
+        manifest["pool_h5"]["materializer_version"] = (
+            US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION
         )
     manifest_path.write_text(
         json.dumps(manifest),
@@ -838,10 +865,14 @@ def test_ready_legacy_pool_loader_accepts_pre_653_schema_four_envelope(
     assert written_manifest["schema_version"] == 4
     assert written_diagnostics["schema_version"] == 4
     assert loaded_manifest["schema_version"] == 4
+    assert "materializer_version" not in written_manifest["pool_h5"]
+    assert "materializer_version" not in h5_io.read_nullable_us_h5_metadata(
+        written_manifest["pool_h5"]["path"]
+    )
     assert frame.n("household") == 3
 
 
-def test_ready_legacy_pool_loader_rejects_schema_seven_envelope(
+def test_ready_legacy_pool_loader_rejects_current_stacked_envelope(
     tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")
@@ -962,6 +993,17 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
     frame, manifest, _ = load_simulation_ready_us_multispine_pool(manifest_path)
 
     assert manifest["terminal_gates"] == manifest["agreement_gate"]
+    assert manifest["schema_version"] == 8
+    assert (
+        manifest["pool_h5"]["materializer_version"]
+        == US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION
+    )
+    assert (
+        h5_io.read_nullable_us_h5_metadata(manifest["pool_h5"]["path"])[
+            "materializer_version"
+        ]
+        == US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION
+    )
     transition_authority = frame.metadata[
         stacked_spine_module.US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY
     ]
@@ -971,7 +1013,43 @@ def test_ready_stacked_pool_loader_binds_terminal_gate_aliases(
     )
 
 
-def test_ready_stacked_pool_loader_requires_schema_seven_late_dag_proof(
+@pytest.mark.parametrize("location", ("manifest", "h5"))
+@pytest.mark.parametrize("value", (None, 1, True))
+def test_ready_stacked_pool_loader_requires_exact_h5_materializer_binding(
+    tmp_path: Path,
+    location: str,
+    value: object,
+) -> None:
+    pytest.importorskip("tables")
+    manifest_path = _write_ready_pool(tmp_path, stacked=True)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if location == "manifest":
+        if value is None:
+            del manifest["pool_h5"]["materializer_version"]
+        else:
+            manifest["pool_h5"]["materializer_version"] = value
+    else:
+        pool_path = Path(manifest["pool_h5"]["path"])
+        with pd.HDFStore(pool_path, mode="a") as store:
+            metadata = json.loads(str(store["_populace_staging_metadata"].iloc[0]))
+            if value is None:
+                del metadata["materializer_version"]
+            else:
+                metadata["materializer_version"] = value
+            store.put(
+                "_populace_staging_metadata",
+                pd.Series([json.dumps(metadata, sort_keys=True)]),
+                format="table",
+            )
+        manifest["pool_h5"]["sha256"] = _sha256(pool_path)
+        manifest["pool_h5"]["size_bytes"] = pool_path.stat().st_size
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="current H5 materializer version"):
+        load_simulation_ready_us_multispine_pool(manifest_path)
+
+
+def test_ready_stacked_pool_loader_requires_current_late_dag_proof(
     tmp_path: Path,
 ) -> None:
     pytest.importorskip("tables")

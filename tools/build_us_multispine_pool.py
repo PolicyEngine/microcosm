@@ -95,6 +95,7 @@ from microcosm.build.us_runtime.asec_checkpoint import (
 from microcosm.build.us_runtime.h5_io import (
     US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
+    US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION,
     US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
     US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION,
     US_STACKED_POOL_OPERATOR_ORDER,
@@ -3485,6 +3486,7 @@ def _stacked_manifest_payload(
             "size_bytes": outputs.pool_h5.stat().st_size,
             "artifact_kind": POOL_H5_ARTIFACT_KIND,
             "publication_run_id": publication_run_id,
+            "materializer_version": US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION,
             "nullable": True,
             "input_only": True,
             "formula_outputs_persisted": False,
@@ -3528,6 +3530,7 @@ def _stacked_publication_tombstone(
             "path": str(outputs.pool_h5.resolve()),
             "artifact_kind": POOL_H5_ARTIFACT_KIND,
             "publication_run_id": publication_run_id,
+            "materializer_version": US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION,
         },
         "agreement_diagnostics": {
             "path": str(outputs.agreement_diagnostics.resolve()),
@@ -3721,6 +3724,7 @@ def _write_stacked_outputs(
             period=POOL_TIME_PERIOD,
             artifact_kind=POOL_H5_ARTIFACT_KIND,
             publication_run_id=publication_run_id,
+            materializer_version=US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION,
         )
         _atomic_write_json(temporary_diagnostics, diagnostics)
         os.replace(temporary_h5, outputs.pool_h5)
