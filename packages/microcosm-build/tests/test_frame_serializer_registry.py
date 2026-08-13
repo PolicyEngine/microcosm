@@ -57,7 +57,7 @@ RoundTripAdapter = Callable[[Path], BooleanRoundTrip]
 
 
 def _dtype_family_table(*, id_column: str = "person_id") -> pd.DataFrame:
-    index = pd.RangeIndex(3, name="fixture_row")
+    index = pd.RangeIndex(3)
     return pd.DataFrame(
         {
             id_column: np.asarray([1, 2, 3], dtype=np.int64),

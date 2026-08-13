@@ -9,9 +9,10 @@ columns) directly to PyTables. All eight physical production
 Frame/table-collection HDF serializers and all seven non-Frame writable HDF
 sites now live in an executable registry guarded by a repository-wide AST
 completeness test. A shared PyTables boundary codec now implements the doctrine,
-and all six PyTables-facing serializers now consume it. Seven of eight
-registry rows are green; only the fiscal h5py codec remains. Battery metrics
-and tolerances remain out of scope.
+and all six PyTables-facing serializers now consume it. The fiscal h5py
+checkpoint has the same explicit values/mask doctrine, so all eight registry
+rows are green. Stacked terminal publication version binding remains. Battery
+metrics and tolerances remain out of scope.
 
 ## Done
 
@@ -80,11 +81,18 @@ and tolerances remain out of scope.
   and still reloads it with `USSingleYearDataset`, closing the external
   `.save()` bypass. The registry matrix passes seven rows, and 152 focused
   writer/reader tests pass (with expected optional-engine skips).
+- Advanced fiscal target-frame checkpoints to schema 2/materializer 11 and
+  stored nullable booleans as canonical bool values plus an optional uint8
+  mask. The reader fails closed on missing, unexpected, nonbinary, empty, or
+  misaligned masks, hidden true bits, malformed metadata, and schema-1 files.
+  The full eight-sink registry matrix plus focused fiscal identity/corruption
+  tests now passes (24 selected tests).
 
 ## Next
 
-1. Implement the fiscal values/mask codec and bump changed serializer contracts
-   without changing frozen published-artifact format identifiers.
+1. Bind a stacked-only terminal-H5 materializer version into schema-8
+   manifests/H5 metadata/readers without changing frozen published-artifact
+   format identifiers or legacy schema-4 bytes.
 2. Run focused tests, the exact 495-test #583 proof, full-workspace chunked
    exact-count proof, UK byte goldens, ruff/format/diff checks, and changelog
    validation. No builds will run.
