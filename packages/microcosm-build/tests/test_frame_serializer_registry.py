@@ -489,27 +489,14 @@ def test_registered_serializer_round_trips_nullable_boolean_dtype_family(
         assert all(value is pd.NA for value in missing_scalars)
 
 
-def test_indirect_policyengine_us_sink_remains_a_dataset_save_call() -> None:
+def test_policyengine_us_adapter_owns_its_registered_hdf_boundary() -> None:
     (spec,) = (
         candidate
         for candidate in FRAME_TABLE_SERIALIZERS
         if candidate.serializer_id == "policyengine_us_dataset"
     )
-    path = REPOSITORY_ROOT / spec.writer.path
-    tree = ast.parse(path.read_text())
-    save_functions: set[str] = set()
-    parents: dict[ast.AST, ast.AST] = {}
-    for parent in ast.walk(tree):
-        for child in ast.iter_child_nodes(parent):
-            parents[child] = parent
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        if not isinstance(node.func, ast.Attribute) or node.func.attr != "save":
-            continue
-        save_functions.add(_enclosing_function(node, parents))
-    assert spec.direct_hdf_open is False
-    assert spec.writer.function in save_functions
+    assert spec.direct_hdf_open is True
+    assert spec.writer.key in _discover_writable_hdf_sites()
 
 
 def test_no_production_dataframe_to_hdf_sink_bypasses_registry() -> None:

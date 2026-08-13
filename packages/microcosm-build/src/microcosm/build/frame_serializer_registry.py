@@ -106,11 +106,10 @@ FRAME_TABLE_SERIALIZERS = (
             "packages/microcosm-frame/src/microcosm/frame/adapters/policyengine_us.py",
             "_write_and_verify",
         ),
-        backend="external USSingleYearDataset.save",
+        backend="pandas.HDFStore table",
         routes=("PolicyEngine-US adapter export",),
         version_owner="PolicyEngineUSAdapter payload contract",
         nullable_boolean_storage="numpy_bool_or_object_pd_na",
-        direct_hdf_open=False,
     ),
     FrameSerializerSpec(
         serializer_id="legacy_us_two_spine",

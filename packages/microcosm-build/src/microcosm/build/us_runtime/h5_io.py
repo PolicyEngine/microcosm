@@ -15,7 +15,6 @@ import os
 import re
 import shutil
 import uuid
-import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,7 +26,13 @@ from microcosm.build.serialization_dtypes import (
     canonicalize_frame_string_dtypes,
     canonicalize_table_string_dtypes,
 )
-from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame import (
+    Frame,
+    WeightKind,
+    Weights,
+    materialize_nullable_booleans_for_pytables,
+    put_frame_table,
+)
 from microcosm.frame.units import US_SCHEMA
 
 __all__ = [
@@ -880,12 +885,12 @@ def _write_nullable_us_h5_file(
             table = _export_table(frame, entity)
             if not len(table):
                 continue
-            # Fixed format preserves mixed bool/null object columns
-            # losslessly. Table format rejects them, which would force a
-            # fill or type rewrite.
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", pd.errors.PerformanceWarning)
-                store.put(entity, table, format="fixed")
+            put_frame_table(
+                store,
+                entity,
+                table,
+                preferred_format="fixed",
+            )
         store.put(
             _TIME_PERIOD_KEY,
             pd.Series([period]),
@@ -922,6 +927,7 @@ def _verify_nullable_us_h5(
             expected = _export_table(frame, entity)
             if not len(expected):
                 continue
+            expected = materialize_nullable_booleans_for_pytables(expected).table
             try:
                 stored = canonicalize_table_string_dtypes(
                     store[entity],

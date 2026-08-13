@@ -9,10 +9,9 @@ columns) directly to PyTables. All eight physical production
 Frame/table-collection HDF serializers and all seven non-Frame writable HDF
 sites now live in an executable registry guarded by a repository-wide AST
 completeness test. A shared PyTables boundary codec now implements the doctrine,
-and the generic Frame checkpoint consumes its canonical values/mask primitive
-without changing either legacy or nullable checkpoint bytes. The six
-PyTables-facing sinks are next. Battery metrics and tolerances remain out of
-scope.
+and all six PyTables-facing serializers now consume it. Seven of eight
+registry rows are green; only the fiscal h5py codec remains. Battery metrics
+and tolerances remain out of scope.
 
 ## Done
 
@@ -75,11 +74,16 @@ scope.
   committed legacy fixture hash (`7671ab...`) already disagrees with this
   environment on the unmodified parent and remains to be resolved during the
   exact golden proof rather than papered over here.
+- Routed shared US terminal H5, UK national/rowwise, Axiom, PolicyEngine-US,
+  preserved legacy two-spine, and ACS lean-checkpoint writers through the
+  shared boundary. PolicyEngine-US now owns the compatible HDF layout locally
+  and still reloads it with `USSingleYearDataset`, closing the external
+  `.save()` bypass. The registry matrix passes seven rows, and 152 focused
+  writer/reader tests pass (with expected optional-engine skips).
 
 ## Next
 
-1. Route the six PyTables-facing sinks through the shared materializer, then
-   implement the fiscal values/mask codec and bump changed serializer contracts
+1. Implement the fiscal values/mask codec and bump changed serializer contracts
    without changing frozen published-artifact format identifiers.
 2. Run focused tests, the exact 495-test #583 proof, full-workspace chunked
    exact-count proof, UK byte goldens, ruff/format/diff checks, and changelog

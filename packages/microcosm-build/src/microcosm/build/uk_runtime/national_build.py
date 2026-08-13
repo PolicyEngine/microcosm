@@ -66,7 +66,13 @@ from microcosm.build.uk_runtime.terminal_gates import (
     UKReviewedExclusion,
 )
 from microcosm.build.uk_runtime.weighted_integrity import exclusion_evaluation_date
-from microcosm.frame import Frame, MassChangeRecord, WeightKind, engine_tables
+from microcosm.frame import (
+    Frame,
+    MassChangeRecord,
+    WeightKind,
+    engine_tables,
+    put_frame_table,
+)
 
 __all__ = [
     "UKNationalBuildResult",
@@ -254,9 +260,27 @@ def _write_uk_single_year_tables(
     temporary_path = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp.h5")
     try:
         with pd.HDFStore(temporary_path) as store:
-            store.put("person", person, format="table", data_columns=True)
-            store.put("benunit", benunit, format="table", data_columns=True)
-            store.put("household", household, format="table", data_columns=True)
+            put_frame_table(
+                store,
+                "person",
+                person,
+                preferred_format="table",
+                data_columns=True,
+            )
+            put_frame_table(
+                store,
+                "benunit",
+                benunit,
+                preferred_format="table",
+                data_columns=True,
+            )
+            put_frame_table(
+                store,
+                "household",
+                household,
+                preferred_format="table",
+                data_columns=True,
+            )
             store.put(
                 "time_period",
                 pd.Series([time_period]),

@@ -39,7 +39,11 @@ from microcosm.frame.adapters._policyengine_us_source_index import (
     _index_policyengine_us_sources as _build_policyengine_us_source_index,
 )
 from microcosm.frame.bundle import Frame
-from microcosm.frame.materialize import engine_tables
+from microcosm.frame.materialize import (
+    engine_tables,
+    materialize_nullable_booleans_for_pytables,
+    put_frame_table,
+)
 from microcosm.frame.rules import ExportContract
 from microcosm.frame.schema import EntitySchema, VariableMetadata
 from microcosm.frame.units import US_SCHEMA
@@ -996,10 +1000,12 @@ class PolicyEngineUSEngine:
         period: int,
         output_path: Path,
     ) -> None:
-        """Persist tables as a ``USSingleYearDataset`` and verify the round-trip.
+        """Persist PolicyEngine-US tables and verify its dataset round-trip.
 
-        Saves the dataset, reloads it, and asserts every column from a
-        non-empty table survived (``.save`` only writes tables with rows).
+        This owns the same entity-table HDF layout as ``USSingleYearDataset``
+        while routing every Frame table through Microcosm's nullable-boolean
+        boundary. It then reloads through ``USSingleYearDataset`` and asserts
+        every column from a non-empty table survived.
 
         Raises:
             ValueError: If a column expected after reload is missing.
@@ -1007,8 +1013,27 @@ class PolicyEngineUSEngine:
         from policyengine_us.data import USSingleYearDataset
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        dataset = self._build_dataset(tables, period)
-        dataset.save(str(output_path))
+        output_path.unlink(missing_ok=True)
+        materialized_tables = {
+            name: materialize_nullable_booleans_for_pytables(table).table
+            for name, table in tables.items()
+        }
+        with pd.HDFStore(str(output_path), mode="w") as store:
+            for name in (_PERSON_TABLE, *_GROUP_TABLES):
+                table = tables[name]
+                if len(table) > 0:
+                    put_frame_table(
+                        store,
+                        name,
+                        table,
+                        preferred_format="table",
+                        data_columns=True,
+                    )
+            store.put(
+                "_time_period",
+                pd.Series([int(period)]),
+                format="table",
+            )
 
         expected_columns: set[str] = set()
         for frame in tables.values():
@@ -1021,7 +1046,7 @@ class PolicyEngineUSEngine:
         for name in (_PERSON_TABLE, *_GROUP_TABLES):
             reloaded_table = getattr(reloaded, name)
             persisted_columns.update(reloaded_table.columns)
-            source_table = tables.get(name)
+            source_table = materialized_tables.get(name)
             if source_table is None or len(source_table) == 0:
                 continue
             for column in source_table.columns:

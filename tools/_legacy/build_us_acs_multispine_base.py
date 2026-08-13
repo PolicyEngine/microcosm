@@ -15,7 +15,6 @@ import gc
 import hashlib
 import json
 import os
-import warnings
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -53,7 +52,7 @@ from microcosm.build.us_runtime.puma_ladder import (
     UsPumaLadder,
     load_us_puma_ladder,
 )
-from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame import Frame, WeightKind, Weights, put_frame_table
 from microcosm.frame.units import US_SCHEMA
 
 PERIOD = 2024
@@ -1010,12 +1009,12 @@ def _write_dataset(
                     table = table.copy()
                     table["household_weight"] = frame.weights_for("household").values
                 if len(table):
-                    # Fixed format preserves mixed bool/null object columns
-                    # losslessly. Table format rejects them, which would force
-                    # an unauthorized fill or type rewrite on base-only inputs.
-                    with warnings.catch_warnings():
-                        warnings.simplefilter("ignore", pd.errors.PerformanceWarning)
-                        store.put(entity, table, format="fixed")
+                    put_frame_table(
+                        store,
+                        entity,
+                        table,
+                        preferred_format="fixed",
+                    )
             store.put(
                 "_time_period",
                 pd.Series([int(period)]),
