@@ -276,6 +276,7 @@ _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
 _BANK_IDENTITY_SIBLING_SCAN_LIMIT = 64
 _STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
     0.01: "f001",
+    0.04: "f004",
     0.10: "f010",
     1.00: "f100",
 }
@@ -1002,7 +1003,7 @@ def _stacked_rung(sample_fraction: float) -> str:
         return _STACKED_SAMPLE_RUNG_TOKENS[float(sample_fraction)]
     except KeyError as exc:
         raise ValueError(
-            "Stacked sample_fraction must be one standard rung: 0.01, 0.10, or 1.0."
+            "Stacked sample_fraction must be one standard rung: 0.01, 0.04, 0.10, or 1.0."
         ) from exc
 
 
