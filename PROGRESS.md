@@ -5,9 +5,11 @@
 The Round 13 failure and serializer inventory are complete. The supplied 1%
 smoke reached both terminal gates and wrote their receipt, then the terminal US
 H5 writer passed `person.is_female` (the first of 31 complete nullable-boolean
-columns) directly to PyTables. Eight physical production Frame/table-collection
-HDF serializers exist; the red registry-driven contract is next. Battery metrics
-and tolerances remain out of scope.
+columns) directly to PyTables. All eight physical production
+Frame/table-collection HDF serializers and all seven non-Frame writable HDF
+sites now live in an executable registry guarded by a repository-wide AST
+completeness test. The red dtype-family round-trip matrix is next. Battery
+metrics and tolerances remain out of scope.
 
 ## Done
 
@@ -45,11 +47,17 @@ and tolerances remain out of scope.
   7 -> 8 and bind a stacked-only H5 materializer version; preserve legacy
   schema-4 bytes. Any changed fiscal checkpoint codec owns its independent
   schema/materializer bump. Existing Frame-checkpoint schema v3 stays put.
+- Added `FRAME_TABLE_SERIALIZERS`, with exactly eight logical sinks and their
+  routes/version owners, plus seven explicit raw-array/attrs-only HDF
+  exclusions. Its source scanner fails on any new writable production
+  `HDFStore`/`h5py.File` site or any production `DataFrame.to_hdf` bypass.
+- Proved the four registry/completeness tests pass in the dependency-complete
+  local environment, without syncing or downloading packages.
 
 ## Next
 
-1. Add the production serializer/exclusion registry and failing completeness
-   plus dtype-family round-trip coverage for all eight physical sinks.
+1. Add failing registry-driven dtype-family round-trip coverage for all eight
+   physical sinks.
 2. Implement the
    lossless nullable-boolean representation, and bump changed serializer
    contracts without changing frozen published-artifact format identifiers.
