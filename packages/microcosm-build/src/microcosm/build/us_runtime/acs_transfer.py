@@ -367,10 +367,13 @@ _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = 
             "is_disabled",
             "is_full_time_college_student",
             "is_pregnant",
-            # WICYN's adult-female reporter is only a physical carrier for an
-            # SPM-unit receipt fact. Engine consumers are separately guarded
-            # to aggregate receives_wic at SPM-unit grain (microcosm#591).
-            "receives_wic",
+            # NOT YET: receives_wic (WICYN's adult-female reporter as the
+            # physical carrier for an SPM-unit receipt fact, microcosm#591).
+            # The #600 enrollment leaves postdate the newest certified
+            # release (buildp, 2026-07-28), so the certified donor cannot
+            # supply them and the donor-coverage gate would refuse the whole
+            # build. Restore receives_wic here the moment a #600-era release
+            # certifies — the gate holds the plan honest in both directions.
         ),
         "model_required_discrete": ("own_children_in_household",),
     },
@@ -394,9 +397,11 @@ _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = 
         # Housing-assistance receipt is source-observed in the raw pool. Other
         # takes_up_* leaves are runtime-owned draws and are not donor targets.
         "benefit_participation": ("takes_up_housing_assistance_if_eligible",),
-        # Reported TANF/SNAP receipt is produced from annual ASEC amounts before
-        # cloning and transferred like the person-level required booleans.
-        "model_required_boolean": ("is_tanf_enrolled", "receives_snap"),
+        # NOT YET: is_tanf_enrolled + receives_snap (reported TANF/SNAP
+        # receipt from annual ASEC amounts, microcosm#591/#600). Like
+        # receives_wic above, these postdate the newest certified release
+        # (buildp) and the certified donor carries only the runtime-owned
+        # takes_up_* draws; restore both when a #600-era release certifies.
         "model_required_numeric": ("spm_unit_pre_subsidy_childcare_expenses",),
     },
 }
