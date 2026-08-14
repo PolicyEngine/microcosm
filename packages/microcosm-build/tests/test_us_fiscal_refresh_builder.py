@@ -11037,3 +11037,96 @@ def test_evidence_release_is_incompatible_with_exact_k(
     with pytest.raises(SystemExit, match="2"):
         builder._parse_args()
     assert "incompatible with --exact-k" in capsys.readouterr().err
+
+
+def test_evidence_mode_conversion_is_pinned_structurally() -> None:
+    """microcosm#506 control-flow guard (the #443/#568 AST pattern): in
+    main(), every terminal 'Release gates failed' raise after the #548
+    accumulator forms must be conditioned on --evidence-release (the
+    conversion sites), every one BEFORE it must be unconditional (preflight
+    and mid-build gates never convert), the all-green evidence refusal must
+    sit before the manifest write, and _build_manifests must receive the
+    owned failure record."""
+    import ast
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    tree = ast.parse(source)
+    main_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "main"
+    )
+
+    parents: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(main_fn):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+
+    def _ancestor_if_tests(node: ast.AST) -> list[str]:
+        tests = []
+        cursor = node
+        while cursor in parents:
+            cursor = parents[cursor]
+            if isinstance(cursor, ast.If):
+                tests.append(ast.unparse(cursor.test))
+        return tests
+
+    accumulator = next(
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "terminal_gate_failures"
+    )
+
+    gate_raises = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Raise)
+        and "Release gates failed: " in (ast.get_source_segment(source, node) or "")
+    ]
+    assert gate_raises, "main() lost its release-gate raises"
+    for raise_node in gate_raises:
+        conditioned = any(
+            "args.evidence_release" in test or "evidence_refusal" in test
+            for test in _ancestor_if_tests(raise_node)
+        )
+        if raise_node.lineno > accumulator.lineno:
+            assert conditioned, (
+                f"terminal raise at line {raise_node.lineno} is not "
+                "conditioned on --evidence-release; the conversion site "
+                "regressed"
+            )
+        else:
+            assert not conditioned, (
+                f"pre-terminal raise at line {raise_node.lineno} is "
+                "conditioned on --evidence-release; preflight/mid-build "
+                "gates must abort in both modes"
+            )
+
+    refusals = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Raise)
+        and "Evidence release refused: every terminal gate passed"
+        in (ast.get_source_segment(source, node) or "")
+    ]
+    assert len(refusals) == 1, "the all-green evidence refusal must exist once"
+    assert any(
+        test == "args.evidence_release" for test in _ancestor_if_tests(refusals[0])
+    )
+
+    manifest_calls = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_build_manifests"
+    ]
+    assert len(manifest_calls) == 1
+    assert refusals[0].lineno < manifest_calls[0].lineno, (
+        "the all-green refusal must precede the manifest write"
+    )
+    keywords = {keyword.arg for keyword in manifest_calls[0].keywords}
+    assert "evidence_known_failures" in keywords

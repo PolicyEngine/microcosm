@@ -285,6 +285,21 @@ def publish_release(
                 f"extra release file {filename!r} not found in {release_dir}."
             )
     root_artifacts = _release_manifest_root_artifacts(release_dir)
+    # Root artifacts upload at their manifest-declared repo paths — the one
+    # surface where a manifest author could smuggle a pointer write past the
+    # tier's pointer selection (an artifact literally named latest.json or
+    # latest-evidence.json). Both pointer paths are reserved on BOTH tiers:
+    # pointers move only via the publisher's own pointer operation.
+    pointer_collisions = sorted(
+        {LATEST_POINTER_PATH, LATEST_EVIDENCE_POINTER_PATH} & set(root_artifacts)
+    )
+    if pointer_collisions:
+        raise ValueError(
+            "release_manifest.json declares root artifact(s) at reserved "
+            f"pointer path(s) {pointer_collisions}; latest.json and "
+            "latest-evidence.json are written only by the publisher itself, "
+            "never as release artifacts."
+        )
     artifact_revisions = _release_manifest_artifact_revisions(release_dir)
     tag = tag_name or release_id
     if release_id in artifact_revisions and not create_tag:
@@ -708,17 +723,17 @@ def latest_release(repo_id: str, *, api=None) -> LatestPointer:
 
     Raises:
         ValueError: If the pointer is malformed, its schema version is newer
-            than this library understands, or it names a non-certified tier
-            (an evidence payload in ``latest.json`` is a publication bug and
-            must never be consumed as the certified default).
+            than this library understands, or it carries a ``tier`` field at
+            all — the certified payload predates tiers and no certified
+            producer writes one, so any tier field (even ``"certified"``) is
+            foreign and must never be consumed as the certified default.
     """
     payload = _read_pointer(repo_id, api, pointer_path=LATEST_POINTER_PATH)
-    tier = payload.get("tier")
-    if tier not in (None, RELEASE_TIER_CERTIFIED):
+    if "tier" in payload:
         raise ValueError(
-            f"{LATEST_POINTER_PATH} in {repo_id} declares tier {tier!r}; the "
-            "certified pointer must never name another tier — evidence "
-            f"releases live at {LATEST_EVIDENCE_POINTER_PATH}."
+            f"{LATEST_POINTER_PATH} in {repo_id} carries a 'tier' field "
+            f"({payload.get('tier')!r}); the certified pointer never does — "
+            f"evidence releases live at {LATEST_EVIDENCE_POINTER_PATH}."
         )
     return LatestPointer(
         release_id=str(payload["release_id"]),

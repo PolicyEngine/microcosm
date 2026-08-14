@@ -11162,7 +11162,21 @@ def main(argv: Sequence[str] | None = None) -> None:
     # internally, and both require the written H5 / export artifacts that a
     # gate-failed run must not produce.
     if terminal_gate_failures:
-        if not args.evidence_release:
+        # Evidence tier (microcosm#506): owners are resolved NOW so an
+        # unowned failure refuses the export before the H5 and manifest work
+        # below. A refused evidence attempt then falls through to the SAME
+        # failed-run path as a certified gate failure — #568 weight-evidence
+        # sidecar included — so no failed run ever loses its record-level
+        # weight evidence.
+        evidence_refusal: RuntimeError | None = None
+        if args.evidence_release:
+            try:
+                _evidence_known_failures(
+                    terminal_gate_failures, evidence_failure_owner_patterns
+                )
+            except RuntimeError as error:
+                evidence_refusal = error
+        if not args.evidence_release or evidence_refusal is not None:
             # Gate-failure path ONLY (microcosm#568 review): a batched
             # pre-export failure mints no H5, so the exact calibrated weight
             # vector — with the ordered household ids it aligns to, bound to
@@ -11183,18 +11197,14 @@ def main(argv: Sequence[str] | None = None) -> None:
                 failures=terminal_gate_failures,
                 force_upload=True,
             )
+            if evidence_refusal is not None:
+                raise evidence_refusal
             raise RuntimeError(
                 "Release gates failed: " + "; ".join(terminal_gate_failures)
             )
-        # Evidence tier (microcosm#506): the recorded terminal failures ride
-        # into the release manifest's known_failures block instead of
-        # aborting the export. Owners are resolved NOW so an unowned failure
-        # refuses the export before the H5 and manifest work below; the H5
-        # itself carries the calibrated weights, so the #568 weight-evidence
-        # sidecar is not written on this path.
-        _evidence_known_failures(
-            terminal_gate_failures, evidence_failure_owner_patterns
-        )
+        # The owned failures ride into the release manifest's known_failures
+        # block instead of aborting the export; the H5 written below carries
+        # the calibrated weights, so the sidecar is not written on this path.
         terminal_batch_telemetry.stage(
             "release_gates",
             status="failed",

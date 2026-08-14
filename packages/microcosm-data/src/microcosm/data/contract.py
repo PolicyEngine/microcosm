@@ -3366,6 +3366,79 @@ def validate_release_dir(release_dir: Path | str) -> None:
 _ISSUE_REF_RE = re.compile(r"#\d+|github\.com/\S+/(?:issues|pull)/\d+")
 
 
+#: First quoted token in a contract-recomputed critical-fit failure — the
+#: target name (or requirement id) the breach is about, used to bind the
+#: breach to its ``known_failures`` acknowledgment.
+_QUOTED_TOKEN_RE = re.compile(r"'([^']+)'")
+
+
+def _check_evidence_known_failures_binding(
+    *,
+    release_manifest: Mapping | None,
+    build_manifest: Mapping | None,
+    recomputed_critical_failures: list[str],
+    failures: list[str],
+) -> None:
+    """Bind ``known_failures`` to what the artifact itself records.
+
+    The evidence tier's honesty cannot rest on trusting the manifest author:
+    everything a local validator can recompute or read back must be
+    acknowledged. Two bindings (a hand-edited record that softens or drops a
+    recorded failure fails here):
+
+    - every failure string the build manifest records under
+      ``gates.calibration.failures`` must appear in ``known_failures``
+      verbatim;
+    - every critical-target breach recomputed from
+      ``calibration_diagnostics.json`` (the same check the certified
+      contract enforces as a hard refusal) must be acknowledged by name in
+      some ``known_failures`` entry.
+
+    The converse direction is deliberately open: ``known_failures`` may
+    carry entries beyond what is locally recomputable (post-battery gate
+    groups record into side artifacts, not contract files), so the tier can
+    over-disclose but never under-disclose.
+    """
+    if release_manifest is None:
+        return
+    known_failures = release_manifest.get("known_failures")
+    if not isinstance(known_failures, list):
+        return  # the shape failure is already recorded
+    recorded_texts = [
+        entry.get("failure")
+        for entry in known_failures
+        if isinstance(entry, Mapping) and isinstance(entry.get("failure"), str)
+    ]
+    combined = "\n".join(recorded_texts)
+    if build_manifest is not None:
+        gates = build_manifest.get("gates")
+        calibration = gates.get("calibration") if isinstance(gates, Mapping) else None
+        recorded_gate_failures = (
+            calibration.get("failures") if isinstance(calibration, Mapping) else None
+        )
+        if isinstance(recorded_gate_failures, list):
+            missing = [
+                failure
+                for failure in recorded_gate_failures
+                if isinstance(failure, str) and failure not in recorded_texts
+            ]
+            if missing:
+                failures.append(
+                    "release_manifest.json known_failures must carry every "
+                    "build_manifest.json gates.calibration failure verbatim; "
+                    f"missing {_sample_values(missing)}."
+                )
+    for recomputed in recomputed_critical_failures:
+        match = _QUOTED_TOKEN_RE.search(recomputed)
+        token = match.group(1) if match else None
+        if token is None or token not in combined:
+            failures.append(
+                "release_manifest.json known_failures must acknowledge the "
+                f"critical-target breach naming {token or recomputed!r}; the "
+                "evidence tier records failures, it never hides them."
+            )
+
+
 def _check_evidence_release_manifest(manifest: Mapping, failures: list[str]) -> None:
     """Evidence-only manifest requirements: the tier marker and the honest
     non-empty ``known_failures`` record."""
@@ -3454,6 +3527,15 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
             "not name its tier."
         )
 
+    if not release_id.startswith("populace-us-"):
+        # Without the US prefix every country-specific requirement above the
+        # generic three files silently deactivates — an out-of-scope id must
+        # not buy a weaker contract.
+        failures.append(
+            "the evidence tier is scoped to US national releases "
+            f"(microcosm#506); release id {release_id!r} is out of scope."
+        )
+
     if _is_uk_exact_k_release_id(release_id):
         raise ReleaseContractError(
             release_dir,
@@ -3514,14 +3596,28 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
             )
             _check_evidence_release_manifest(manifest, failures)
 
+    recomputed_critical_failures: list[str] = []
     calibration_diagnostics_path = release_dir / "calibration_diagnostics.json"
     if calibration_diagnostics_path.is_file():
         diagnostics = _load_json(calibration_diagnostics_path, failures)
         if diagnostics is not None:
             calibration_diagnostics = diagnostics
             _check_calibration_diagnostics(diagnostics, failures)
-            # No _check_us_critical_target_fit here: critical-fit breaches are
-            # the evidence tier's known_failures, not contract violations.
+            # Critical-fit breaches are permitted at the evidence tier — but
+            # never silently. Recompute the certified verdicts into a scratch
+            # list and require each breach to be acknowledged in
+            # known_failures (binding check below).
+            if release_id.startswith("populace-us-"):
+                _check_us_critical_target_fit(
+                    diagnostics, recomputed_critical_failures
+                )
+
+    _check_evidence_known_failures_binding(
+        release_manifest=release_manifest,
+        build_manifest=build_manifest,
+        recomputed_critical_failures=recomputed_critical_failures,
+        failures=failures,
+    )
 
     _check_cross_manifest_consistency(
         build_manifest,

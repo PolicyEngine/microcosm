@@ -1447,3 +1447,59 @@ def test_certified_publish_never_touches_the_evidence_pointer(
     )
     assert any(path == LATEST_POINTER_PATH for path, _ in hub.uploads)
     assert all(path != LATEST_EVIDENCE_POINTER_PATH for path, _ in hub.uploads)
+
+
+def test_latest_release_refuses_any_tier_field(hub: FakeHub) -> None:
+    """No certified producer writes a tier field; even 'certified' or null is
+    foreign and refused rather than consumed as the default."""
+    for tier_value in ("certified", None):
+        payload = latest_pointer_payload(RELEASE_ID)
+        payload["tier"] = tier_value
+        hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(payload).encode())
+        with pytest.raises(ValueError, match="tier"):
+            latest_release("policyengine/populace-us", api=hub)
+
+
+def _declare_root_artifact(release_dir: Path, *, key: str, path: str) -> None:
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"][key] = {
+        "kind": "diagnostics",
+        "path": path,
+        "repo_id": "policyengine/populace-us",
+        "revision": release_dir.name,
+        "sha256": "1" * 64,
+    }
+    manifest_path.write_text(json.dumps(manifest))
+
+
+def test_publish_refuses_root_artifacts_at_pointer_paths(
+    hub: FakeHub, release_dir: Path, evidence_release_dir: Path, artifact_root: Path
+) -> None:
+    """A manifest-declared root artifact must not be able to smuggle a
+    pointer write past the tier's pointer selection — in either direction."""
+    _declare_root_artifact(
+        evidence_release_dir, key="smuggled_pointer", path=LATEST_POINTER_PATH
+    )
+    with pytest.raises(ValueError, match="reserved"):
+        publish_release(
+            evidence_release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+            update_latest=False,
+            evidence=True,
+        )
+    assert hub.uploads == []
+
+    _declare_root_artifact(
+        release_dir, key="smuggled_pointer", path=LATEST_EVIDENCE_POINTER_PATH
+    )
+    with pytest.raises(ValueError, match="reserved"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+        )
+    assert hub.uploads == []

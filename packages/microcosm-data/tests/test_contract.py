@@ -3723,20 +3723,20 @@ def test_evidence_release_rejects_certified_schema_version(
     assert f"{EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION!r}" in failures
 
 
-def test_evidence_release_tolerates_critical_target_breaches(
-    evidence_release_dir: Path,
-) -> None:
-    """The tier's point: the Build N medical-class breach ships as evidence,
-    carried in known_failures, instead of blocking the artifact."""
+BREACHED_CRITICAL_TARGET = (
+    "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount@2024"
+)
+
+
+def _breach_critical_target(evidence_release_dir: Path) -> None:
+    """Push the federal income-tax row far past its blocking tolerance (the
+    same breach the certified suite uses to prove a hard refusal)."""
     diagnostics = _calibration_diagnostics()
     target = next(
-        row
-        for row in diagnostics["targets"]
-        if row["name"] == "irs_soi.ty2022.historic_table_2.us.all."
-        "medical_dental_expense_amount@2024"
+        row for row in diagnostics["targets"] if row["name"] == BREACHED_CRITICAL_TARGET
     )
-    target["final_estimate"] = target["target"] * 1.21
-    target["relative_error"] = 0.21
+    target["final_estimate"] = 735_173_331_468.564
+    target["relative_error"] = -0.6508063496056629
     _write_json_and_refresh_manifest_hash(
         evidence_release_dir,
         filename="calibration_diagnostics.json",
@@ -3744,10 +3744,98 @@ def test_evidence_release_tolerates_critical_target_breaches(
         payload=diagnostics,
     )
 
+
+def test_evidence_release_requires_breaches_to_be_acknowledged(
+    evidence_release_dir: Path,
+) -> None:
+    """A critical breach the known_failures record does not name is refused:
+    the tier records failures, it never hides them."""
+    _breach_critical_target(evidence_release_dir)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(evidence_release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "must acknowledge the critical-target breach" in failures
+    assert BREACHED_CRITICAL_TARGET in failures
+
+
+def test_evidence_release_tolerates_acknowledged_critical_breaches(
+    evidence_release_dir: Path,
+) -> None:
+    """The tier's point: the Build N-class breach ships as evidence once
+    known_failures names it, instead of blocking the artifact — while the
+    certified contract still refuses the same directory."""
+    _breach_critical_target(evidence_release_dir)
+    _rewrite_evidence_manifest(
+        evidence_release_dir,
+        lambda manifest: manifest.update(
+            known_failures=[
+                *manifest["known_failures"],
+                {
+                    "failure": (
+                        "Fiscal critical target "
+                        f"'{BREACHED_CRITICAL_TARGET}' breached its blocking "
+                        "tolerance with relative_error=-0.6508."
+                    ),
+                    "owner": "PolicyEngine/microcosm#487",
+                },
+            ]
+        ),
+    )
+
     validate_evidence_release_dir(evidence_release_dir)
 
     with pytest.raises(ReleaseContractError):
         validate_release_dir(evidence_release_dir)
+
+
+def test_evidence_release_requires_recorded_gate_failures_verbatim(
+    evidence_release_dir: Path,
+) -> None:
+    """Every failure the build manifest records must ride into known_failures
+    unmodified — a softened or dropped copy is refused."""
+    recorded = (
+        "SOI Table 1.4 national dollar fit failed: target "
+        "'irs_soi.ty2023.table_1_4.all.capital_gain_distributions_amount@2024' "
+        "has relative_error=-0.302, exceeding 0.25."
+    )
+    build_manifest = _build_manifest(EVIDENCE_RELEASE_ID)
+    build_manifest["gates"]["calibration"] = {"passed": False, "failures": [recorded]}
+    (evidence_release_dir / "build_manifest.json").write_text(
+        json.dumps(build_manifest)
+    )
+
+    # The default fixture's first entry IS that verbatim string, so the
+    # binding holds as-is.
+    validate_evidence_release_dir(evidence_release_dir)
+
+    # Softening one character of the recorded string breaks the binding.
+    _rewrite_evidence_manifest(
+        evidence_release_dir,
+        lambda manifest: manifest.update(
+            known_failures=[
+                {
+                    "failure": recorded.replace("-0.302", "-0.03"),
+                    "owner": "PolicyEngine/microcosm#487",
+                }
+            ]
+        ),
+    )
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(evidence_release_dir)
+    failures = "\n".join(excinfo.value.failures)
+    assert "gates.calibration failure verbatim" in failures
+
+
+def test_evidence_release_scope_requires_the_us_prefix(tmp_path: Path) -> None:
+    """A generic id with the segment must not buy a weaker contract by
+    deactivating the US-specific requirements."""
+    directory = tmp_path / "releases" / "acme-evidence-build"
+    directory.mkdir(parents=True)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_evidence_release_dir(directory)
+    assert "out of scope" in "\n".join(excinfo.value.failures)
 
 
 def test_evidence_release_tolerates_failed_source_coverage_gate(
