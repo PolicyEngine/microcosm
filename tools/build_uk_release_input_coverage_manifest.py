@@ -867,6 +867,7 @@ def _cgt_family_coverage_contract(
         "rank_preserving_allocation",
         "within_band_draws",
         "sub_aea_remainder",
+        "record_mass_conservation_receipt",
         "classify_cgt_band_facts_with_reviewed_fence",
     }
     missing_operations = sorted(required_operations - set(operations))
@@ -906,10 +907,9 @@ def _cgt_family_coverage_contract(
             "hmrc_surface": str(surface["vintage"]),
             "mapped_build_period": str(surface["mapped_build_period"]),
         },
-        "output_weight_kind": "design",
-        "required_mass_change_reason": (
-            "Amounts-only replacement: household weights pass through "
-            "unchanged, so no mass change occurs and none is permitted."
+        "output_weight_kind": str(stage["output_weight_kind"]),
+        "required_mass_change_reason": str(
+            operations["record_mass_conservation_receipt"]["reason"]
         ),
         "calibration_permitted": bool(fence["calibration_permitted"]),
         "fact_fence_id": str(fence["fact_fence_id"]),

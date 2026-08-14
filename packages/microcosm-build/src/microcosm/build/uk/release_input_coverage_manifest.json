@@ -465,13 +465,13 @@
    "effective_mass_requirements": {},
    "fact_fence_id": "cgt_band_facts_policy_endogenous_proxy_conditioned",
    "fenced_fact_count": 76,
-   "output_weight_kind": "design",
+   "output_weight_kind": "importance",
    "outputs": [
     "capital_gains"
    ],
-   "required_mass_change_reason": "Amounts-only replacement: household weights pass through unchanged, so no mass change occurs and none is permitted.",
+   "required_mass_change_reason": "Amounts-only capital gains redraw: household weights pass through unchanged and total household mass is conserved.",
    "source_manifest": "cgt_source_stages.json",
-   "source_manifest_sha256": "e9c22a262b3fb8f3f26c9661e65e803169708f6d237f8c666dcf2994559e80a1",
+   "source_manifest_sha256": "8847b51c33a78c43678dc5a7a425b893c2df47d4e4741c6ac447dd3fa113dbd1",
    "source_vintages": {
     "hmrc_surface": "2023-24",
     "mapped_build_period": "2023"

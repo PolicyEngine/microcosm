@@ -113,6 +113,13 @@
           "rationale": "Table 3 covers only individuals with a CGT liability; remaining gainers are treated as sub-AEA gainers rather than invented into the liability distribution or deleted."
         },
         {
+          "kind": "record_mass_conservation_receipt",
+          "entity": "household",
+          "reason": "Amounts-only capital gains redraw: household weights pass through unchanged and total household mass is conserved.",
+          "declared_factor": 1.0,
+          "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this reason."
+        },
+        {
           "kind": "classify_cgt_band_facts_with_reviewed_fence",
           "calibration_permitted": false,
           "fact_fence_id": "cgt_band_facts_policy_endogenous_proxy_conditioned",
@@ -127,7 +134,9 @@
       "outputs": [
         "capital_gains"
       ],
-      "notes": "Amounts-only replacement: who has gains comes from the candidate, how much they have comes from the published joint distribution, and household weights pass through unchanged, so the weight kind and mass log carry through and no mass change occurs. The stage runs after hmrc_spi_income so the taxable-income proxy sees the restored income surface. Requires the microcosm-build uk extra at build time for the policy_parameters artifact."
+      "notes": "Amounts-only replacement: who has gains comes from the candidate, how much they have comes from the published joint distribution, and household weights pass through unchanged, so the weight kind and mass log carry through and no mass change occurs. The stage runs after hmrc_spi_income so the taxable-income proxy sees the restored income surface. Requires the microcosm-build uk extra at build time for the policy_parameters artifact.",
+      "output_weight_kind": "importance",
+      "output_weight_kind_rationale": "The stage preserves whatever kind it receives; it runs after hmrc_spi_income, whose prior allocation establishes importance-kind household weights, so the final frame carries importance."
     }
   ]
 }
