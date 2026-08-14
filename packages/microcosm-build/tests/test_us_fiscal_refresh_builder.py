@@ -10803,3 +10803,237 @@ def test_calibration_diagnostics_schema_lockstep() -> None:
     )
 
     assert WRITER_SCHEMA_VERSION == CONTRACT_SCHEMA_VERSION
+
+
+# ---------------------------------------------------------------------------
+# Evidence-tier builder mode (microcosm#506)
+# ---------------------------------------------------------------------------
+
+
+def test_evidence_release_id_reserves_the_segment_for_the_tier() -> None:
+    builder = _load_builder_module()
+
+    builder._assert_us_release_id(
+        "populace-us-2024-evidence-abc1234-20260812T000000Z",
+        evidence_release=True,
+    )
+    builder._assert_us_release_id("populace-us-2024-abc1234-20260812T000000Z")
+
+    with pytest.raises(ValueError, match="must carry"):
+        builder._assert_us_release_id(
+            "populace-us-2024-abc1234-20260812T000000Z",
+            evidence_release=True,
+        )
+    with pytest.raises(ValueError, match="reserved for --evidence-release"):
+        builder._assert_us_release_id(
+            "populace-us-2024-evidence-abc1234-20260812T000000Z"
+        )
+
+
+def test_default_release_id_carries_the_evidence_segment() -> None:
+    builder = _load_builder_module()
+    from datetime import UTC, datetime
+
+    stamp = datetime(2026, 8, 12, 1, 2, 3, tzinfo=UTC)
+    certified = builder._default_release_id(
+        SimpleNamespace(exact_k=None, evidence_release=False),
+        digest="abcdef0",
+        commit="123456789abc",
+        build_timestamp=stamp,
+    )
+    evidence = builder._default_release_id(
+        SimpleNamespace(exact_k=None, evidence_release=True),
+        digest="abcdef0",
+        commit="123456789abc",
+        build_timestamp=stamp,
+    )
+    assert certified == "populace-us-2024-abcdef0-123456789abc-20260812T010203Z"
+    assert evidence == "populace-us-2024-evidence-abcdef0-123456789abc-20260812T010203Z"
+    # The two ids differ ONLY by the tier segment, and each passes its own
+    # tier's assertion while failing the other's.
+    assert evidence.replace("-evidence-", "-") == certified
+    builder._assert_us_release_id(certified)
+    builder._assert_us_release_id(evidence, evidence_release=True)
+
+
+def test_evidence_known_failures_map_the_adjudicated_owner_register() -> None:
+    builder = _load_builder_module()
+    failures = [
+        (
+            "SOI Table 1.4 national dollar fit failed: target "
+            "'irs_soi.ty2023.table_1_4.all.capital_gain_distributions_amount"
+            "@2024' has relative_error=-0.302, exceeding 0.25."
+        ),
+        (
+            "QRF tail concentration failed: 7 sparse QRF-imputed columns "
+            "past the top-k share bound."
+        ),
+    ]
+
+    entries = builder._evidence_known_failures(
+        failures, builder.US_EVIDENCE_FAILURE_OWNERS
+    )
+
+    assert [entry["failure"] for entry in entries] == failures
+    assert entries[0]["owner"] == "PolicyEngine/microcosm#487"
+    assert "PolicyEngine/microcosm#481" in entries[1]["owner"]
+
+
+def test_evidence_known_failures_refuse_unowned_failures() -> None:
+    builder = _load_builder_module()
+    with pytest.raises(RuntimeError, match="match no\\s+owner") as excinfo:
+        builder._evidence_known_failures(
+            ["Some novel gate failed: it broke."],
+            builder.US_EVIDENCE_FAILURE_OWNERS,
+        )
+    # The refusal names the unowned failure verbatim so the operator can
+    # adjudicate exactly what the run recorded.
+    assert "Some novel gate failed: it broke." in str(excinfo.value)
+
+
+def test_evidence_failure_owner_file_takes_precedence(tmp_path) -> None:
+    builder = _load_builder_module()
+    owners_path = tmp_path / "owners.json"
+    owners_path.write_text(
+        json.dumps(
+            {
+                "QRF tail concentration failed:": "PolicyEngine/microcosm#900",
+                "Input coverage failed:": "PolicyEngine/microcosm#368",
+            }
+        )
+    )
+
+    patterns = builder._load_evidence_failure_owner_patterns(owners_path)
+    entries = builder._evidence_known_failures(
+        [
+            "QRF tail concentration failed: whatever.",
+            "Input coverage failed: tip_income missing.",
+        ],
+        patterns,
+    )
+
+    assert entries[0]["owner"] == "PolicyEngine/microcosm#900"
+    assert entries[1]["owner"] == "PolicyEngine/microcosm#368"
+
+
+def test_evidence_failure_owner_file_requires_issue_refs(tmp_path) -> None:
+    builder = _load_builder_module()
+    owners_path = tmp_path / "owners.json"
+    owners_path.write_text(json.dumps({"Input coverage failed:": "Max"}))
+    with pytest.raises(ValueError, match="issue reference"):
+        builder._load_evidence_failure_owner_patterns(owners_path)
+
+    owners_path.write_text(json.dumps({" ": "PolicyEngine/microcosm#1"}))
+    with pytest.raises(ValueError, match="empty pattern"):
+        builder._load_evidence_failure_owner_patterns(owners_path)
+
+
+def test_evidence_manifest_fields_are_structurally_uncertifiable() -> None:
+    """The flag can never mint a certified-shape manifest: the fields carry
+    the evidence schema marker, which the certified contract rejects, and an
+    empty failure record is refused outright."""
+    builder = _load_builder_module()
+    from microcosm.data.contract import (
+        EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
+        RELEASE_MANIFEST_SCHEMA_VERSION,
+    )
+
+    entries = [
+        {"failure": "SOI Table 1.4 national dollar fit failed: x.", "owner": "#487"}
+    ]
+    fields = builder._evidence_release_manifest_fields(entries)
+
+    assert fields["schema_version"] == EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION
+    assert fields["schema_version"] != RELEASE_MANIFEST_SCHEMA_VERSION
+    assert fields["tier"] == "evidence"
+    assert fields["known_failures"] == entries
+
+    with pytest.raises(ValueError, match="all-green artifact"):
+        builder._evidence_release_manifest_fields([])
+
+
+def test_evidence_release_flags_parse(monkeypatch, tmp_path) -> None:
+    builder = _load_builder_module()
+    owners_path = tmp_path / "owners.json"
+    owners_path.write_text("{}")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+    args = builder._parse_args()
+    assert args.evidence_release is False
+    assert args.evidence_failure_owners is None
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--evidence-release",
+            "--evidence-failure-owners",
+            str(owners_path),
+        ],
+    )
+    args = builder._parse_args()
+    assert args.evidence_release is True
+    assert args.evidence_failure_owners == owners_path
+
+
+def test_evidence_owner_file_without_evidence_release_is_refused(
+    monkeypatch, capsys, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    owners_path = tmp_path / "owners.json"
+    owners_path.write_text("{}")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            str(tmp_path),
+            "--evidence-failure-owners",
+            str(owners_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="2"):
+        builder._parse_args()
+    assert "requires --evidence-release" in capsys.readouterr().err
+
+
+def test_evidence_release_is_incompatible_with_exact_k(
+    monkeypatch, capsys, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            str(tmp_path),
+            "--evidence-release",
+            "--exact-k",
+            "20000",
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="2"):
+        builder._parse_args()
+    assert "incompatible with --exact-k" in capsys.readouterr().err

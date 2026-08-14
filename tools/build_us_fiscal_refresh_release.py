@@ -36,6 +36,7 @@ import importlib.metadata
 import json
 import math
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -273,6 +274,10 @@ from microcosm.calibrate import (
 from microcosm.calibrate.diagnostics import (
     diagnostics_payload,
     write_calibration_diagnostics,
+)
+from microcosm.data.contract import (
+    EVIDENCE_RELEASE_ID_SEGMENT,
+    EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
 )
 from microcosm.data.us_critical_targets import (
     US_CRITICAL_TARGET_IMPROVEMENT_MAX_ABS_RELATIVE_ERROR,
@@ -1061,6 +1066,38 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--evidence-release",
+        action="store_true",
+        help=(
+            "Build an EVIDENCE-tier release (microcosm#506): on terminal-gate "
+            "failure, continue to write the H5 and full manifests with the "
+            "recorded failures carried verbatim in the release manifest's "
+            "known_failures block (each with an owner issue), instead of "
+            "refusing to export. NOT a gate bypass: the release id carries an "
+            "'-evidence-' segment, the release manifest declares the evidence "
+            "schema marker the certified contract structurally rejects, and a "
+            "run whose terminal gates all pass is refused under this flag "
+            "(rerun without it). Preflight and mid-build source-stage gates, "
+            "artifact-integrity assertions (e.g. --audit-export-targets), and "
+            "the dirty-worktree refusal still abort: the evidence tier "
+            "relaxes terminal gate verdicts, never artifact auditability. "
+            "Incompatible with --exact-k (the ladder candidate lane has its "
+            "own tag-only publication contract)."
+        ),
+    )
+    parser.add_argument(
+        "--evidence-failure-owners",
+        type=Path,
+        help=(
+            "JSON file mapping failure-substring patterns to owner issue refs "
+            '(e.g. {"Input coverage failed:": "PolicyEngine/microcosm#368"}) '
+            "for --evidence-release. Checked ahead of the standing "
+            "US_EVIDENCE_FAILURE_OWNERS register; a recorded failure matching "
+            "neither refuses the evidence export — every shipped failure "
+            "needs an owner."
+        ),
+    )
+    parser.add_argument(
         "--epochs",
         type=int,
         default=DEFAULT_US_FISCAL_CALIBRATION_EPOCHS,
@@ -1505,6 +1542,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error(
             "--refit-l2-lambda requires the sparse L0+refit default dataset; "
             "--dense-default-dataset has no refit stage (use --l2-lambda)."
+        )
+    if args.evidence_failure_owners is not None and not args.evidence_release:
+        parser.error("--evidence-failure-owners requires --evidence-release.")
+    if args.evidence_release and args.exact_k is not None:
+        parser.error(
+            "--evidence-release is incompatible with --exact-k: ladder "
+            "candidates publish tag-only under their own contract; the "
+            "evidence tier (microcosm#506) covers the national artifact."
         )
     ladder_values = (
         args.exact_k,
@@ -7278,6 +7323,7 @@ def _build_manifests(
     calibration_key: str = "populace_us_2024_calibration",
     calibration_filename: str = CALIBRATION_FILENAME,
     exact_k_ladder: Mapping[str, object] | None = None,
+    evidence_known_failures: Sequence[Mapping[str, str]] | None = None,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
@@ -7723,6 +7769,14 @@ def _build_manifests(
             ),
         },
     }
+    if evidence_known_failures is not None:
+        # Evidence tier (microcosm#506): replace the certified schema marker
+        # with the evidence one and carry the owned failure record. The
+        # certified branch (evidence_known_failures None) writes the exact
+        # dict above, byte-identical to a build without the flag.
+        release_manifest.update(
+            _evidence_release_manifest_fields(evidence_known_failures)
+        )
     (release_dir / "release_manifest.json").write_text(
         json.dumps(release_manifest, indent=1, allow_nan=False)
     )
@@ -7851,11 +7905,157 @@ def _fiscal_target_source_provenance(
     }
 
 
-def _assert_us_release_id(release_id: str) -> None:
+#: Standing failure-pattern -> owner register for --evidence-release
+#: (microcosm#506). Only owner-adjudicated families belong here: the two dense
+#: blockers named in the #506 brief — the SOI Table 1.4 dollar blanket (the
+#: −30.2% capital-gain-distributions row, PUF donor uprating, #487) and the
+#: dense QRF tail-concentration set (bootstrap seed-lottery tail draws, #481,
+#: with the #487 uprating interaction). Any other recorded failure needs a
+#: per-run adjudication via --evidence-failure-owners; an unowned failure
+#: refuses the evidence export.
+US_EVIDENCE_FAILURE_OWNERS: tuple[tuple[str, str], ...] = (
+    (
+        "SOI Table 1.4 national dollar fit failed:",
+        "PolicyEngine/microcosm#487",
+    ),
+    (
+        "QRF tail concentration failed:",
+        "PolicyEngine/microcosm#481, PolicyEngine/microcosm#487",
+    ),
+)
+
+# Kept in lockstep with microcosm.data.contract._ISSUE_REF_RE; the evidence
+# publish contract re-validates every owner ref, so drift here fails at
+# publish rather than silently.
+_EVIDENCE_ISSUE_REF_RE = re.compile(r"#\d+|github\.com/\S+/(?:issues|pull)/\d+")
+
+
+def _load_evidence_failure_owner_patterns(
+    path: Path | None,
+) -> tuple[tuple[str, str], ...]:
+    """Failure-pattern -> owner pairs: per-run adjudications first, then the
+    standing register, so a run-specific entry can sharpen a standing owner."""
+    per_run: list[tuple[str, str]] = []
+    if path is not None:
+        payload = json.loads(path.read_text())
+        if not isinstance(payload, dict):
+            raise ValueError(
+                f"--evidence-failure-owners {path} must be a JSON object of "
+                "failure-substring pattern -> owner issue ref."
+            )
+        for pattern, owner in payload.items():
+            if not isinstance(pattern, str) or not pattern.strip():
+                raise ValueError(
+                    f"--evidence-failure-owners {path} has an empty pattern key."
+                )
+            if not isinstance(owner, str) or not _EVIDENCE_ISSUE_REF_RE.search(owner):
+                raise ValueError(
+                    f"--evidence-failure-owners {path} owner for pattern "
+                    f"{pattern!r} must carry an issue reference (e.g. "
+                    f"'PolicyEngine/microcosm#487'), got {owner!r}."
+                )
+            per_run.append((pattern, owner))
+    return (*per_run, *US_EVIDENCE_FAILURE_OWNERS)
+
+
+def _evidence_known_failures(
+    failures: Sequence[str],
+    owner_patterns: Sequence[tuple[str, str]],
+) -> list[dict[str, str]]:
+    """Recorded gate failures -> owned known_failures entries, verbatim.
+
+    Every failure string must match an owner pattern (substring, first match
+    wins); an unowned failure refuses the evidence export — the tier ships
+    failures only when somewhere is accountable for fixing them.
+    """
+    entries: list[dict[str, str]] = []
+    unowned: list[str] = []
+    for failure in failures:
+        owner = next(
+            (owner for pattern, owner in owner_patterns if pattern in failure),
+            None,
+        )
+        if owner is None:
+            unowned.append(failure)
+        else:
+            entries.append({"failure": failure, "owner": owner})
+    if unowned:
+        raise RuntimeError(
+            "Evidence release refused: recorded gate failure(s) match no "
+            "owner in the standing US_EVIDENCE_FAILURE_OWNERS register or "
+            "the --evidence-failure-owners file. Adjudicate an owner issue "
+            "for each before shipping (microcosm#506): " + "; ".join(unowned)
+        )
+    return entries
+
+
+def _evidence_release_manifest_fields(
+    evidence_known_failures: Sequence[Mapping[str, str]],
+) -> dict[str, object]:
+    """The release-manifest fields that mark the evidence tier.
+
+    The schema marker is the structural guarantee (microcosm#506): the
+    certified contract rejects any manifest carrying it, so no flag-plumbing
+    bug can mint a certified-shape manifest from an evidence build. An empty
+    failure record is refused here too — the tier exists to carry failures,
+    and an all-green run belongs on the certified path.
+    """
+    if not evidence_known_failures:
+        raise ValueError(
+            "an evidence release manifest requires at least one known "
+            "failure; an all-green artifact belongs on the certified path."
+        )
+    return {
+        "schema_version": EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
+        "tier": "evidence",
+        "known_failures": [dict(entry) for entry in evidence_known_failures],
+    }
+
+
+def _default_release_id(
+    args: argparse.Namespace,
+    *,
+    digest: str,
+    commit: str,
+    build_timestamp: datetime,
+) -> str:
+    """The auto-generated release id for a run without --release-id.
+
+    Exact-k candidates carry the k segment; evidence-tier builds carry the
+    ``evidence`` segment (microcosm#506) so the tier is visible in every tag
+    and download path; certified national builds keep the historical shape.
+    """
+    if args.exact_k is not None:
+        return (
+            f"populace-us-2024-k{args.exact_k}-{digest}-{commit}-"
+            f"{build_timestamp:%Y%m%dT%H%M%SZ}"
+        )
+    if args.evidence_release:
+        return (
+            f"populace-us-2024-evidence-{digest}-{commit}-"
+            f"{build_timestamp:%Y%m%dT%H%M%SZ}"
+        )
+    return f"populace-us-2024-{digest}-{commit}-{build_timestamp:%Y%m%dT%H%M%SZ}"
+
+
+def _assert_us_release_id(release_id: str, *, evidence_release: bool = False) -> None:
     if not release_id.startswith("populace-us-"):
         raise ValueError(
             "US fiscal refresh release ids must start with 'populace-us-' so "
             "the US release contract requires source coverage diagnostics."
+        )
+    if evidence_release and EVIDENCE_RELEASE_ID_SEGMENT not in release_id:
+        raise ValueError(
+            "--evidence-release ids must carry the "
+            f"{EVIDENCE_RELEASE_ID_SEGMENT!r} segment (e.g. "
+            "populace-us-2024-evidence-<sha>-<date>) so the tier is visible "
+            "in every tag and download path."
+        )
+    if not evidence_release and EVIDENCE_RELEASE_ID_SEGMENT in release_id:
+        raise ValueError(
+            f"release ids containing {EVIDENCE_RELEASE_ID_SEGMENT!r} are "
+            "reserved for --evidence-release builds; a certified build must "
+            "not squat the evidence namespace."
         )
 
 
@@ -8107,6 +8307,15 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = _parse_args(argv)
     if _git_dirty():
         raise SystemExit("Refusing to build a release from a dirty git worktree.")
+    # Loaded (and validated) up front so a malformed owners file dies in
+    # seconds, not after the multi-hour build. The flag-combination rules
+    # (--evidence-failure-owners requires the tier flag; --exact-k is
+    # incompatible with it) live in _parse_args with the other combos.
+    evidence_failure_owner_patterns = (
+        _load_evidence_failure_owner_patterns(args.evidence_failure_owners)
+        if args.evidence_release
+        else ()
+    )
     build_started = time.perf_counter()
     timing: dict[str, float] = {}
 
@@ -8170,13 +8379,13 @@ def main(argv: Sequence[str] | None = None) -> None:
     build_timestamp = datetime.now(UTC)
     full_commit = _git_output("rev-parse", "HEAD")
     commit = _git_output("rev-parse", "--short=12", "HEAD")
-    release_id = args.release_id or (
-        f"populace-us-2024-k{args.exact_k}-{digest}-{commit}-"
-        f"{build_timestamp:%Y%m%dT%H%M%SZ}"
-        if args.exact_k is not None
-        else (f"populace-us-2024-{digest}-{commit}-{build_timestamp:%Y%m%dT%H%M%SZ}")
+    release_id = args.release_id or _default_release_id(
+        args,
+        digest=digest,
+        commit=commit,
+        build_timestamp=build_timestamp,
     )
-    _assert_us_release_id(release_id)
+    _assert_us_release_id(release_id, evidence_release=args.evidence_release)
     if args.exact_k is not None:
         _assert_exact_k_release_id(release_id, args.exact_k)
         # The immutable release id is the dataset's exact-count name. Keep the
@@ -10953,33 +11162,55 @@ def main(argv: Sequence[str] | None = None) -> None:
     # internally, and both require the written H5 / export artifacts that a
     # gate-failed run must not produce.
     if terminal_gate_failures:
-        # Gate-failure path ONLY (microcosm#568 review): a batched pre-export
-        # failure mints no H5, so the exact calibrated weight vector — with
-        # the ordered household ids it aligns to, bound to the target-frame
-        # identity — is persisted here as the run's only record-level weight
-        # evidence. Green runs never write these files (the certified H5
-        # carries the weights); late gates (reform smoke, take-up contract)
-        # raise after the H5 write, so their failed runs retain weights in
-        # the written dataset itself.
-        _write_final_household_weight_evidence(
-            release_dir,
-            export_frame,
-            identity=target_frame_checkpoint_identity,
+        if not args.evidence_release:
+            # Gate-failure path ONLY (microcosm#568 review): a batched
+            # pre-export failure mints no H5, so the exact calibrated weight
+            # vector — with the ordered household ids it aligns to, bound to
+            # the target-frame identity — is persisted here as the run's only
+            # record-level weight evidence. Green runs never write these files
+            # (the certified H5 carries the weights); late gates (reform
+            # smoke, take-up contract) raise after the H5 write, so their
+            # failed runs retain weights in the written dataset itself.
+            _write_final_household_weight_evidence(
+                release_dir,
+                export_frame,
+                identity=target_frame_checkpoint_identity,
+            )
+            terminal_batch_telemetry.stage(
+                "release_gates",
+                status="failed",
+                message="Release gates failed (batched pre-export report).",
+                failures=terminal_gate_failures,
+                force_upload=True,
+            )
+            raise RuntimeError(
+                "Release gates failed: " + "; ".join(terminal_gate_failures)
+            )
+        # Evidence tier (microcosm#506): the recorded terminal failures ride
+        # into the release manifest's known_failures block instead of
+        # aborting the export. Owners are resolved NOW so an unowned failure
+        # refuses the export before the H5 and manifest work below; the H5
+        # itself carries the calibrated weights, so the #568 weight-evidence
+        # sidecar is not written on this path.
+        _evidence_known_failures(
+            terminal_gate_failures, evidence_failure_owner_patterns
         )
         terminal_batch_telemetry.stage(
             "release_gates",
             status="failed",
-            message="Release gates failed (batched pre-export report).",
+            message=(
+                "Release gates failed; --evidence-release continues to "
+                "export with the failures recorded (microcosm#506)."
+            ),
             failures=terminal_gate_failures,
             force_upload=True,
         )
-        raise RuntimeError("Release gates failed: " + "; ".join(terminal_gate_failures))
     # A green run must not inherit a prior failed attempt's weight evidence
     # (microcosm#568 round 2): with --out/--release-id reuse, stale evidence
     # files would coexist with a certified release whose manifest knows
-    # nothing about them. The batched gates have passed, so any evidence
-    # present here belongs to a superseded attempt — remove it before the
-    # certified artifacts are written.
+    # nothing about them. The batched gates have passed (or --evidence-release
+    # is recording their failures), so any evidence present here belongs to a
+    # superseded attempt — remove it before the release artifacts are written.
     for stale_evidence in (
         release_dir / FINAL_HOUSEHOLD_WEIGHTS_FILENAME,
         release_dir / FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME,
@@ -11045,12 +11276,18 @@ def main(argv: Sequence[str] | None = None) -> None:
                     failures=list(reform_coverage_smoke_gate.failures),
                     force_upload=True,
                 )
-            raise RuntimeError(
-                "Release gates failed: "
-                + "; ".join(
-                    f"Reform coverage smoke failed: {failure}"
-                    for failure in reform_coverage_smoke_gate.failures
-                )
+            smoke_failures = [
+                f"Reform coverage smoke failed: {failure}"
+                for failure in reform_coverage_smoke_gate.failures
+            ]
+            if not args.evidence_release:
+                raise RuntimeError("Release gates failed: " + "; ".join(smoke_failures))
+            # Evidence tier: the smoke verdict joins the recorded terminal
+            # set (owner-checked immediately, so an unowned failure aborts
+            # before further export work).
+            terminal_gate_failures.extend(smoke_failures)
+            _evidence_known_failures(
+                terminal_gate_failures, evidence_failure_owner_patterns
             )
     if args.audit_export_targets:
         if telemetry is not None:
@@ -11186,10 +11423,20 @@ def main(argv: Sequence[str] | None = None) -> None:
         and row.get("ships_at_engine_default")
     ]
     if stale_count_calibrated:
-        raise RuntimeError(
-            "Release gates failed: count-calibrated take-up column(s) "
+        stale_count_calibrated_failure = (
+            "count-calibrated take-up column(s) "
             f"{stale_count_calibrated} ship at the engine default on the "
             "export frame despite the stage having run."
+        )
+        if not args.evidence_release:
+            raise RuntimeError(
+                "Release gates failed: " + stale_count_calibrated_failure
+            )
+        # Evidence tier: recorded like every other terminal verdict, with
+        # the same immediate owner check.
+        terminal_gate_failures.append(stale_count_calibrated_failure)
+        _evidence_known_failures(
+            terminal_gate_failures, evidence_failure_owner_patterns
         )
     if telemetry is not None:
         telemetry.attach_artifact(
@@ -11210,6 +11457,19 @@ def main(argv: Sequence[str] | None = None) -> None:
         )
         telemetry.stage("manifests", message="Writing release manifests.")
     timing["total_build_seconds"] = time.perf_counter() - build_started
+    evidence_known_failures = None
+    if args.evidence_release:
+        if not terminal_gate_failures:
+            raise RuntimeError(
+                "Evidence release refused: every terminal gate passed. This "
+                "artifact qualifies for the certified path — rerun without "
+                "--evidence-release (the flag cannot mint a certified-shape "
+                "manifest, and an evidence manifest with no known failures "
+                "is invalid by contract)."
+            )
+        evidence_known_failures = _evidence_known_failures(
+            terminal_gate_failures, evidence_failure_owner_patterns
+        )
     _build_manifests(
         release_id=release_id,
         release_dir=release_dir,
@@ -11247,6 +11507,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         calibration_key=calibration_key,
         calibration_filename=calibration_filename,
         exact_k_ladder=exact_k_ladder_provenance,
+        evidence_known_failures=evidence_known_failures,
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")
