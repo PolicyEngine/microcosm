@@ -1,0 +1,1 @@
+The CGT imputation stage passes the candidate's net losses (negative capital_gains) through byte-identical instead of rejecting the build; the non-negativity guard now covers only redrawn gainer amounts.
