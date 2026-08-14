@@ -4305,7 +4305,7 @@ def test_adult_care_group_projects_its_declared_clone_zero_donor(
         )
 
 
-def test_whole_surface_transfer_dispatches_each_declared_group_donor(
+def test_whole_surface_transfer_isolates_only_the_adult_care_donor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     complete = _fill_late_contract_surface(
@@ -4315,34 +4315,33 @@ def test_whole_surface_transfer_dispatches_each_declared_group_donor(
         ),
         include_outputs=True,
     )
-    observed: list[tuple[str, int]] = []
-    schedule_d_groups: list[str] = []
+    observed: list[dict[str, object]] = []
 
-    def transfer_group(
+    def transfer_leg(
         frame: Frame,
         *,
-        group: object,
+        donor_clone_index: int,
         target_bank: object,
+        target_families: Mapping[str, Mapping[str, tuple[str, ...]]],
         derive_schedule_d: bool,
-        execution_contract: Mapping[str, object],
+        execution_contract: Mapping[str, object] | None,
         **_kwargs: object,
     ) -> stacked_spine_module.StackedPostPufTransferResult:
-        assert isinstance(
-            group,
-            stacked_spine_module.TransferProducerGroup,
-        )
         assert target_bank is None
-        expected_schedule_d = "non_sch_d_capital_gains" in group.targets
-        assert derive_schedule_d is expected_schedule_d
-        assert execution_contract == (
-            acs_transfer_module.acs_transfer_execution_contract_identity(
-                targets=group.targets,
-                derive_schedule_d=expected_schedule_d,
-            )
+        targets = {
+            f"{entity}/{family}/{target}"
+            for entity, families in target_families.items()
+            for family, columns in families.items()
+            for target in columns
+        }
+        observed.append(
+            {
+                "donor_clone_index": donor_clone_index,
+                "targets": targets,
+                "derive_schedule_d": derive_schedule_d,
+                "execution_contract": execution_contract,
+            }
         )
-        observed.append((group.name, group.donor_clone_index))
-        if derive_schedule_d:
-            schedule_d_groups.append(group.name)
         transfer_result = AcsTransferResult(
             frame,
             resolved_donor_channel=stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL,
@@ -4350,19 +4349,14 @@ def test_whole_surface_transfer_dispatches_each_declared_group_donor(
         return stacked_spine_module.StackedPostPufTransferResult(
             frame,
             {
-                "producer": group.name,
-                "ordered_targets": list(group.targets),
                 "donor_selection": (
                     "owner_projection_of_asec_origin_clone_"
-                    f"{group.donor_clone_index}"
+                    f"{donor_clone_index}"
                 ),
                 "donor_channel": stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL,
-                "donor_clone_index": group.donor_clone_index,
+                "donor_clone_index": donor_clone_index,
                 "targets": {
-                    f"{group.entity}/{group.family}/{target}": {
-                        "residual_null_rows": 0,
-                    }
-                    for target in group.targets
+                    target: {"residual_null_rows": 0} for target in targets
                 },
             },
             transfer_result,
@@ -4370,27 +4364,53 @@ def test_whole_surface_transfer_dispatches_each_declared_group_donor(
 
     monkeypatch.setattr(
         stacked_spine_module,
-        "_transfer_stacked_post_puf_group_evaluate",
-        transfer_group,
+        "_transfer_stacked_post_puf_inputs_evaluate",
+        transfer_leg,
     )
     result = transfer_stacked_post_puf_inputs(complete)
-    expected_order = [
-        producer
-        for producer in stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
-        if producer.startswith("transfer:")
-    ]
+    adult_targets = {
+        "person/adult_care/is_incapable_of_self_care",
+        "person/adult_care/pre_subsidy_care_expenses",
+    }
 
-    assert [name for name, _clone in observed] == expected_order
-    assert dict(observed)["transfer:person/adult_care"] == 0
-    assert {
-        clone_index
-        for name, clone_index in observed
-        if name != "transfer:person/adult_care"
-    } == {1}
-    assert schedule_d_groups == ["transfer:person/puf_tax_itemization__batch_1"]
+    assert len(observed) == 2
+    assert observed[0]["donor_clone_index"] == 0
+    assert observed[0]["targets"] == adult_targets
+    assert observed[0]["derive_schedule_d"] is False
+    assert observed[0]["execution_contract"] == (
+        acs_transfer_module.acs_transfer_execution_contract_identity(
+            targets=(
+                "is_incapable_of_self_care",
+                "pre_subsidy_care_expenses",
+            ),
+            derive_schedule_d=False,
+        )
+    )
+    assert observed[1]["donor_clone_index"] == 1
+    assert adult_targets.isdisjoint(observed[1]["targets"])
+    assert len(observed[1]["targets"]) == 68
+    assert observed[1]["derive_schedule_d"] is True
+    assert observed[1]["execution_contract"] is None
     assert result.receipt["donor_projections"]["transfer:person/adult_care"][
         "donor_clone_index"
     ] == 0
+    assert result.receipt["execution_scope"] == (
+        "adult_care_then_remaining_late_transfer_surface"
+    )
+    assert result.receipt["transfer_legs"] == {
+        "adult_care": {
+            "donor_selection": "owner_projection_of_asec_origin_clone_0",
+            "donor_clone_index": 0,
+            "target_count": 2,
+        },
+        "remaining_late_transfer_surface": {
+            "donor_selection": "owner_projection_of_asec_origin_clone_1",
+            "donor_clone_index": 1,
+            "target_count": 68,
+        },
+    }
+    assert "producer_schedule" not in result.receipt
+    assert "producer_execution_order" not in result.receipt
 
 
 def test_canonical_group_refuses_schedule_d_compatibility_contract() -> None:

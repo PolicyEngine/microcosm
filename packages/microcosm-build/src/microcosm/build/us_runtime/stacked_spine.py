@@ -8695,12 +8695,12 @@ def transfer_stacked_post_puf_inputs(
     max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     target_bank: AcsTransferTargetBank | None = None,
 ) -> StackedPostPufTransferResult:
-    """Transfer every bounded family after callers complete source producers.
+    """Transfer the adult-care family and the unchanged remaining surface.
 
     The production DAG remains the canonical orchestrator. This compatibility
-    entry point preserves the former whole-surface API by dispatching its one
-    durable bank as disjoint target-index slices while each family selects its
-    own declared donor clone.
+    entry point isolates only adult care on its clone-0 owner, then transfers
+    the remaining surface together from the established clone-1 owner. Its one
+    durable bank remains globally indexed across those two legs.
     """
 
     authority = _production_stacked_authority()
@@ -8708,94 +8708,95 @@ def transfer_stacked_post_puf_inputs(
         late_producer_schedule=authority.late_producer_schedule,
         boundary="whole-surface post-PUF transfer declaration",
     )
-    groups_by_name = {group.name: group for group in bound_groups}
-    ordered_groups = tuple(
-        groups_by_name[producer]
-        for producer in CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
-        if producer in groups_by_name
-    )
-    target_counts = {
-        group.name: len(acs_transfer_runtime._model_target_names(group.targets))
+    adult_group = next(
+        group
         for group in bound_groups
-    }
-    total_targets = sum(target_counts.values())
-    offsets: dict[str, int] = {}
-    offset = 0
-    for group in bound_groups:
-        offsets[group.name] = offset
-        offset += target_counts[group.name]
-
-    current = frame
-    group_results: dict[
-        str,
-        tuple[
-            Mapping[str, object],
-            tuple[object, ...],
-            tuple[FitWeightRecord, ...],
-            tuple[str, ...],
-            str | None,
-        ],
-    ] = {}
-    for group in ordered_groups:
-        legacy_execution_contract = (
-            acs_transfer_runtime.acs_transfer_execution_contract_identity(
-                targets=group.targets,
-                derive_schedule_d=True,
-            )
-        )
-        post_transfer_structure = legacy_execution_contract[
-            "post_transfer_structure"
-        ]
-        assert isinstance(post_transfer_structure, Mapping)
-        schedule_d_contract = post_transfer_structure[
-            "schedule_d_capital_gain_distributions"
-        ]
-        assert isinstance(schedule_d_contract, Mapping)
-        derive_schedule_d = schedule_d_contract["enabled"] is True
-        if not derive_schedule_d:
-            legacy_execution_contract = (
-                acs_transfer_runtime.acs_transfer_execution_contract_identity(
-                    targets=group.targets,
-                    derive_schedule_d=False,
-                )
-            )
-        group_bank = (
-            None
-            if target_bank is None
-            else _OffsetAcsTransferTargetBank(
-                target_bank,
-                target_offset=offsets[group.name],
-                total_targets=total_targets,
-            )
-        )
-        result = _transfer_stacked_post_puf_group_evaluate(
-            current,
-            authority=authority,
-            group=group,
-            seed=seed,
-            n_estimators=n_estimators,
-            max_targets_per_fit=max_targets_per_fit,
-            target_bank=group_bank,
-            derive_schedule_d=derive_schedule_d,
-            execution_contract=legacy_execution_contract,
-        )
-        current = result.frame
-        group_results[group.name] = (
-            result.receipt,
-            result.transfer_result.imputed_inputs,
-            result.transfer_result.fit_records,
-            result.transfer_result.deferred_inputs,
-            result.transfer_result.resolved_donor_channel,
-        )
-    execution_order = tuple(
-        producer
-        for producer in CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
-        if producer != US_LATE_PRIMARY_PUF_STAGE
+        if group.entity == "person" and group.family == "adult_care"
     )
-    return _aggregate_late_transfer_result(
-        current,
-        group_results=group_results,
-        execution_order=execution_order,
+    remaining_groups = tuple(
+        group for group in bound_groups if group.name != adult_group.name
+    )
+    remaining_clone_indexes = {
+        group.donor_clone_index for group in remaining_groups
+    }
+    if remaining_clone_indexes != {PUF_TAX_DETAIL_CLONE_INDEX}:
+        raise ValueError(
+            "Whole-surface late transfer supports the declared adult-care leg "
+            "plus one canonical remaining-surface donor; got remaining clone "
+            f"indexes {sorted(remaining_clone_indexes)}."
+        )
+    remaining_surface = _freeze_target_families(
+        {
+            entity: {
+                family: targets
+                for family, targets in families.items()
+                if (entity, family) != (adult_group.entity, adult_group.family)
+            }
+            for entity, families in authority.post_puf_transfer_surface.items()
+        }
+    )
+    adult_target_count = len(
+        acs_transfer_runtime._model_target_names(adult_group.targets)
+    )
+    total_targets = sum(
+        len(acs_transfer_runtime._model_target_names(group.targets))
+        for group in bound_groups
+    )
+    adult_bank = (
+        None
+        if target_bank is None
+        else _OffsetAcsTransferTargetBank(
+            target_bank,
+            target_offset=0,
+            total_targets=total_targets,
+        )
+    )
+    remaining_bank = (
+        None
+        if target_bank is None
+        else _OffsetAcsTransferTargetBank(
+            target_bank,
+            target_offset=adult_target_count,
+            total_targets=total_targets,
+        )
+    )
+    adult_result = _transfer_stacked_post_puf_inputs_evaluate(
+        frame,
+        authority=authority,
+        production=True,
+        donor_clone_index=adult_group.donor_clone_index,
+        seed=seed,
+        n_estimators=n_estimators,
+        max_targets_per_fit=max_targets_per_fit,
+        target_bank=adult_bank,
+        target_families=adult_group.target_families,
+        derive_schedule_d=False,
+        execution_contract=(
+            acs_transfer_runtime.acs_transfer_execution_contract_identity(
+                targets=adult_group.targets,
+                derive_schedule_d=False,
+            )
+        ),
+    )
+    remaining_result = _transfer_stacked_post_puf_inputs_evaluate(
+        adult_result.frame,
+        authority=authority,
+        production=True,
+        donor_clone_index=PUF_TAX_DETAIL_CLONE_INDEX,
+        seed=seed,
+        n_estimators=n_estimators,
+        max_targets_per_fit=max_targets_per_fit,
+        target_bank=remaining_bank,
+        target_families=remaining_surface,
+        derive_schedule_d=True,
+        execution_contract=None,
+    )
+    return _aggregate_whole_surface_transfer_result(
+        remaining_result.frame,
+        adult_group=adult_group,
+        bound_groups=bound_groups,
+        adult_result=adult_result,
+        remaining_result=remaining_result,
     )
 
 
@@ -9711,6 +9712,165 @@ def _aggregate_late_transfer_result(
         receipt,
         boundary="US late-transfer DAG finalization",
     )
+    return StackedPostPufTransferResult(frame, receipt, aggregate)
+
+
+def _aggregate_whole_surface_transfer_result(
+    frame: Frame,
+    *,
+    adult_group: TransferProducerGroup,
+    bound_groups: Sequence[TransferProducerGroup],
+    adult_result: StackedPostPufTransferResult,
+    remaining_result: StackedPostPufTransferResult,
+) -> StackedPostPufTransferResult:
+    """Aggregate two compatibility legs without claiming full-DAG execution."""
+
+    authority = _production_stacked_authority()
+    canonical_groups = _late_transfer_groups_bound_to_schedule(
+        late_producer_schedule=authority.late_producer_schedule,
+        boundary="whole-surface transfer finalization declaration",
+    )
+    if tuple(bound_groups) != canonical_groups or adult_group not in canonical_groups:
+        raise ValueError(
+            "Whole-surface late-transfer legs differ from the canonical "
+            "schedule-bound declarations."
+        )
+    expected_adult_selection = (
+        f"owner_projection_of_asec_origin_clone_{adult_group.donor_clone_index}"
+    )
+    expected_remaining_selection = (
+        f"owner_projection_of_asec_origin_clone_{PUF_TAX_DETAIL_CLONE_INDEX}"
+    )
+    for result, selection, clone_index, label in (
+        (
+            adult_result,
+            expected_adult_selection,
+            adult_group.donor_clone_index,
+            "adult-care",
+        ),
+        (
+            remaining_result,
+            expected_remaining_selection,
+            PUF_TAX_DETAIL_CLONE_INDEX,
+            "remaining-surface",
+        ),
+    ):
+        if any(
+            result.receipt.get(key) != value
+            for key, value in {
+                "donor_selection": selection,
+                "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
+                "donor_clone_index": clone_index,
+            }.items()
+        ):
+            raise ValueError(
+                f"Whole-surface {label} receipt disagrees with its declared "
+                "donor projection."
+            )
+    expected_target_labels = {
+        f"{entity}/{family}/{target}"
+        for entity, families in authority.post_puf_transfer_surface.items()
+        for family, targets in families.items()
+        for target in targets
+    }
+    adult_targets = adult_result.receipt.get("targets")
+    remaining_targets = remaining_result.receipt.get("targets")
+    if not isinstance(adult_targets, Mapping) or not isinstance(
+        remaining_targets, Mapping
+    ):
+        raise ValueError("Whole-surface late-transfer legs require target receipts.")
+    overlap = set(adult_targets) & set(remaining_targets)
+    aggregate_targets = {**remaining_targets, **adult_targets}
+    if overlap or set(aggregate_targets) != expected_target_labels:
+        raise ValueError(
+            "Whole-surface late-transfer target partition drifted; "
+            f"overlap={sorted(overlap)}, "
+            f"missing={sorted(expected_target_labels - set(aggregate_targets))}, "
+            f"extra={sorted(set(aggregate_targets) - expected_target_labels)}."
+        )
+    residual_null_rows = sum(
+        len(frame.table(entity))
+        if target not in frame.table(entity)
+        else int(frame.table(entity)[target].isna().sum())
+        for entity, families in authority.post_puf_transfer_surface.items()
+        for targets in families.values()
+        for target in targets
+    )
+    if residual_null_rows:
+        raise ValueError(
+            "Whole-surface late-transfer finalization found "
+            f"{residual_null_rows} residual null target cell(s); zero are allowed."
+        )
+    resolved_channels = {
+        adult_result.transfer_result.resolved_donor_channel,
+        remaining_result.transfer_result.resolved_donor_channel,
+    }
+    if len(resolved_channels) != 1:
+        raise ValueError(
+            "Whole-surface late-transfer legs disagree on resolved donor "
+            f"channel: {sorted(map(str, resolved_channels))}."
+        )
+    aggregate = AcsTransferResult(
+        frame=frame,
+        imputed_inputs=(
+            *adult_result.transfer_result.imputed_inputs,
+            *remaining_result.transfer_result.imputed_inputs,
+        ),
+        fit_records=(
+            *adult_result.transfer_result.fit_records,
+            *remaining_result.transfer_result.fit_records,
+        ),
+        deferred_inputs=tuple(
+            dict.fromkeys(
+                (
+                    *adult_result.transfer_result.deferred_inputs,
+                    *remaining_result.transfer_result.deferred_inputs,
+                )
+            )
+        ),
+        resolved_donor_channel=next(iter(resolved_channels)),
+    )
+    donor_projections = {
+        group.name: {
+            "donor_selection": (
+                f"owner_projection_of_asec_origin_clone_{group.donor_clone_index}"
+            ),
+            "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
+            "donor_clone_index": group.donor_clone_index,
+        }
+        for group in canonical_groups
+    }
+    receipt = {
+        "authority": _authority_receipt(authority),
+        "execution_scope": "adult_care_then_remaining_late_transfer_surface",
+        "donor_selection": "per_group_owner_projection_of_asec_origin_clone",
+        "donor_projections": donor_projections,
+        "recipient_selection": "target_specific_complement_of_declared_producer_rows",
+        "resolved_donor_channel": aggregate.resolved_donor_channel,
+        "transfer_legs": {
+            "adult_care": {
+                "donor_selection": expected_adult_selection,
+                "donor_clone_index": adult_group.donor_clone_index,
+                "target_count": len(adult_targets),
+            },
+            "remaining_late_transfer_surface": {
+                "donor_selection": expected_remaining_selection,
+                "donor_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+                "target_count": len(remaining_targets),
+            },
+        },
+        "targets": dict(aggregate_targets),
+        "fit_records": [
+            {"fit_name": record.fit_name, "weight_kind": record.weight_kind}
+            for record in aggregate.fit_records
+        ],
+        "completion": {
+            "status": "whole_surface_complete",
+            "leg_count": 2,
+            "target_count": len(aggregate_targets),
+            "residual_null_rows": 0,
+        },
+    }
     return StackedPostPufTransferResult(frame, receipt, aggregate)
 
 
