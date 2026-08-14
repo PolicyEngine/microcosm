@@ -96,7 +96,19 @@ class TestUKSourceStagesManifest:
 
         expected_artifacts = copy.deepcopy(frozen_stage["artifacts"])
         expected_artifacts[0]["reviewed_source"] = _expected_reviewed_source()
-        assert stage2["outputs"] == frozen_stage["outputs"]
+        # Declared output-name correction (licensed-data acceptance finding):
+        # the frozen original listed the SPI concept "state_pension", but the
+        # stage writes the auxiliary column SPI_HMRC_STATE_PENSION_INCOME_COLUMN
+        # ("hmrc_spi_state_pension_income") — the model input state_pension is
+        # formula-owned and never a frame column here. Outputs became
+        # load-bearing when country_stage_plan compiled them into
+        # StagePlan.produces, so the copy declares the persisted truth. The
+        # operation payloads keep the concept name unchanged.
+        expected_outputs = [
+            "hmrc_spi_state_pension_income" if name == "state_pension" else name
+            for name in frozen_stage["outputs"]
+        ]
+        assert stage2["outputs"] == expected_outputs
         assert stage2["grain"] == frozen_stage["grain"]
         assert stage2["artifacts"] == expected_artifacts
         _assert_no_forbidden_dependency(stage2["artifacts"])

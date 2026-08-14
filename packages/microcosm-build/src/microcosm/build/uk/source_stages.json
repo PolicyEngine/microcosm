@@ -725,7 +725,7 @@
       "outputs": [
         "employment_income",
         "self_employment_income",
-        "state_pension",
+        "hmrc_spi_state_pension_income",
         "private_pension_income",
         "property_income",
         "savings_interest_income",
