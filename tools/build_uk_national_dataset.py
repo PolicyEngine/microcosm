@@ -6,13 +6,31 @@ import argparse
 import hashlib
 import json
 import re
+import sys
+import time
 import uuid
+from datetime import UTC, datetime
 from itertools import combinations
 from pathlib import Path
 
 import pandas as pd
 
 from microcosm.build.gate_battery import GateBatteryBlockedError
+from microcosm.build.logbook import canonical_json_bytes
+from microcosm.build.logbook_adoption import (
+    AttemptState,
+    append_phase,
+    apply_error_verdict,
+    error_receipt_path,
+    git_code_pin,
+    local_artifact_reference,
+    preflight_digest,
+    record_terminal_attempt,
+    resolve_predecessor,
+    role_pins_digest,
+    sha256_argument,
+    write_error_receipt,
+)
 from microcosm.build.uk_runtime.frs_hmrc_leaves import (
     UKFRSHMRCRetainedLeavesStageTransform,
 )
@@ -74,6 +92,8 @@ _UK_JUNE_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 #: loudly, so the receipt path can never absorb a real defect.
 _RUNG_NAMED_EDGE_SIGNATURE = "The least populated classes in y have only 1 member"
 _RUNG_ABORT_EXIT_CODE = 3
+_UK_NATIONAL_PIPELINE = "uk-national-staging"
+_REPOSITORY = Path(__file__).resolve().parents[1]
 
 
 def _rung_sample_fraction(value: str) -> float:
@@ -92,7 +112,7 @@ def _rung_sample_fraction(value: str) -> float:
     return fraction
 
 
-def _parse_args() -> argparse.Namespace:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--input-h5",
@@ -310,7 +330,15 @@ def _parse_args() -> argparse.Namespace:
             "honestly and continues."
         ),
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--logbook-prev-row-digest",
+        type=sha256_argument,
+        help=(
+            "Optional current Logbook chain head. If omitted, "
+            "POPULACE_LOGBOOK_PREV_ROW_DIGEST is used, then genesis null."
+        ),
+    )
+    args = parser.parse_args(argv)
     if args.release_candidate and args.sample_fraction != 1.0:
         parser.error(
             "--release-candidate is refused on a sampled rung; a rung build "
@@ -403,8 +431,319 @@ def _weighted_integrity_arguments(args: argparse.Namespace) -> dict[str, object]
     return arguments
 
 
-def main() -> int:
-    args = _parse_args()
+def _new_national_attempt_id(*, timestamp: datetime) -> str:
+    instant = timestamp.astimezone(UTC)
+    return (
+        "uk-national-attempt-"
+        f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
+    )
+
+
+def _new_national_build_id(
+    *,
+    rung: str,
+    sample_seed: int,
+    seed: int,
+    timestamp: datetime,
+) -> str:
+    instant = timestamp.astimezone(UTC)
+    return (
+        f"uk-national-{rung}-ss{sample_seed}-s{seed}-"
+        f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
+    )
+
+
+def _artifact_pin(path: str | Path) -> dict[str, object]:
+    info = _artifact_info(path)
+    return {"sha256": info["sha256"], "size_bytes": info["size_bytes"]}
+
+
+def _source_pins(
+    *,
+    candidate: object,
+    retained_leaves_transform: UKFRSHMRCRetainedLeavesStageTransform,
+    hmrc_transform: UKHMRCIncomeStageTransform,
+) -> dict[str, dict[str, object]]:
+    # ``ledger_facts`` joins this pin surface when #622/#623 land.
+    return {
+        "certified_candidate": {
+            "sha256": str(candidate.sha256),
+            "size_bytes": int(candidate.size_bytes),
+        },
+        "adult_tab": _artifact_pin(retained_leaves_transform.adult_tab_path),
+        "benefits_tab": _artifact_pin(retained_leaves_transform.benefits_tab_path),
+        "spi_tab": _artifact_pin(hmrc_transform.spi_tab_path),
+        "hmrc_ods": _artifact_pin(hmrc_transform.hmrc_ods_path),
+    }
+
+
+def _gate_verdicts_from_report(
+    report: dict[str, object],
+    *,
+    gate_output_path: Path,
+) -> dict[str, dict[str, object]]:
+    gates = report.get("gates")
+    if not isinstance(gates, dict):
+        raise ValueError("terminal gate report must contain a gates object.")
+    reference = local_artifact_reference(gate_output_path, repository_hint=_REPOSITORY)
+    return {
+        str(entry_id): {
+            "verdict": str(entry["status"]),
+            "receipt": f"{reference}#/gates/{entry_id}",
+        }
+        for entry_id, entry in gates.items()
+        if isinstance(entry, dict) and "status" in entry
+    }
+
+
+def _record_national_attempt(
+    *,
+    state: AttemptState,
+    started_at: float,
+    started_ts: datetime,
+    rung: str,
+    seed: int | None,
+    code_pin: str,
+    disposition: str,
+    predecessor: str | None,
+    spool_dir: Path,
+) -> Path:
+    return record_terminal_attempt(
+        state=state,
+        started_at=started_at,
+        started_ts=started_ts,
+        pipeline=_UK_NATIONAL_PIPELINE,
+        rung=rung,
+        seed=seed,
+        code_pin=code_pin,
+        disposition=disposition,
+        predecessor=predecessor,
+        spool_dir=spool_dir,
+    )
+
+
+def _record_failed_exception(
+    *,
+    error: BaseException,
+    state: AttemptState,
+    started_at: float,
+    started_ts: datetime,
+    rung: str,
+    seed: int | None,
+    code_pin: str,
+    predecessor: str | None,
+    receipt_base_dir: Path,
+    spool_dir: Path,
+) -> None:
+    error_path = write_error_receipt(
+        error_receipt_path(receipt_base_dir, build_id=state.build_id),
+        state=state,
+        pipeline=_UK_NATIONAL_PIPELINE,
+        error=error,
+    )
+    apply_error_verdict(
+        state,
+        f"{local_artifact_reference(error_path, repository_hint=_REPOSITORY)}#/error_type",
+    )
+    _record_national_attempt(
+        state=state,
+        started_at=started_at,
+        started_ts=started_ts,
+        rung=rung,
+        seed=seed,
+        code_pin=code_pin,
+        disposition="failed",
+        predecessor=predecessor,
+        spool_dir=spool_dir,
+    )
+
+
+def _rung_abort_receipt(
+    args: argparse.Namespace,
+    *,
+    rung: str,
+    error: BaseException,
+) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "artifact_kind": "uk_rung_abort_receipt",
+        "build_kind": "uk_national_staging_dataset",
+        "release_id": str(args.release_id),
+        "sampling": {
+            "sample_fraction": float(args.sample_fraction),
+            "sample_seed": int(args.sample_seed),
+            "rung_token": rung,
+        },
+        "seed": int(args.seed),
+        "named_edge": "spi_split_singleton_class",
+        "stage": "hmrc_spi_income",
+        "error": str(error),
+        "disposition": "aborted_with_receipt",
+        "remedy": (
+            "Re-roll --seed; accepted dev-scale statistical edge "
+            "(microcosm#657, closed). The computation is never altered to avoid it."
+        ),
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+    started_at = time.perf_counter()
+    started_ts = datetime.now(UTC)
+    rung = UK_SAMPLE_RUNG_TOKENS[args.sample_fraction]
+    code_pin = "unresolved-local-git-code-pin"
+    # Logbook chain configuration is validated before any side effect: a
+    # malformed or conflicting predecessor refuses the run here, before the
+    # build can unlink the prior attempt's sidecars (#666 adversarial-review
+    # finding). Config refusals record no row, like argparse refusals.
+    predecessor = resolve_predecessor(args.logbook_prev_row_digest)
+    attempt_context: dict[str, object] = {
+        "code_pin": code_pin,
+        "predecessor": predecessor,
+    }
+    stage_context: dict[str, object] = {}
+    logbook_seed: int | None = args.sample_seed
+    receipt_base_dir = args.staging_h5.parent
+    spool_dir = args.staging_h5.parent / "logbook-spool"
+    digest = preflight_digest(_UK_NATIONAL_PIPELINE)
+    state = AttemptState(
+        build_id=_new_national_attempt_id(timestamp=started_ts),
+        identity_digest=digest,
+        input_pins_digest=digest,
+        phases_reached=["attempt_started"],
+        gate_verdicts={
+            "pipeline": {
+                "verdict": "running",
+                "receipt": "pending-build-scoped-terminal-receipt",
+            }
+        },
+    )
+    try:
+        return _main_recording(
+            args=args,
+            state=state,
+            started_at=started_at,
+            started_ts=started_ts,
+            rung=rung,
+            logbook_seed=logbook_seed,
+            attempt_context=attempt_context,
+            stage_context=stage_context,
+            spool_dir=spool_dir,
+        )
+    except ValueError as error:
+        if args.sample_fraction != 1.0 and _RUNG_NAMED_EDGE_SIGNATURE in str(error):
+            rung_abort_path = args.staging_h5.with_suffix(".rung_abort.json")
+            receipt = _rung_abort_receipt(
+                args,
+                rung=rung,
+                error=error,
+            )
+            _write_json(rung_abort_path, receipt)
+            state.gate_verdicts = {
+                "uk_rung_abort": {
+                    "verdict": "aborted",
+                    "receipt": (
+                        f"{local_artifact_reference(rung_abort_path, repository_hint=_REPOSITORY)}"
+                        "#/named_edge"
+                    ),
+                }
+            }
+            append_phase(state, "rung_aborted")
+            _record_national_attempt(
+                state=state,
+                started_at=started_at,
+                started_ts=started_ts,
+                rung=rung,
+                seed=logbook_seed,
+                code_pin=str(attempt_context["code_pin"]),
+                disposition="discarded",
+                predecessor=attempt_context["predecessor"],
+                spool_dir=spool_dir,
+            )
+            print(json.dumps(receipt, indent=2, sort_keys=True))
+            return _RUNG_ABORT_EXIT_CODE
+        _record_failed_exception(
+            error=error,
+            state=state,
+            started_at=started_at,
+            started_ts=started_ts,
+            rung=rung,
+            seed=logbook_seed,
+            code_pin=str(attempt_context["code_pin"]),
+            predecessor=attempt_context["predecessor"],
+            receipt_base_dir=receipt_base_dir,
+            spool_dir=spool_dir,
+        )
+        raise
+    except GateBatteryBlockedError as error:
+        retained_leaves_transform = stage_context.get("retained_leaves_transform")
+        hmrc_transform = stage_context.get("hmrc_transform")
+        candidate = stage_context.get("candidate")
+        evidence_path = stage_context.get("evidence_path")
+        replay_path = stage_context.get("replay_path")
+        if (
+            error.phase == "terminal"
+            and retained_leaves_transform is not None
+            and hmrc_transform is not None
+            and candidate is not None
+            and evidence_path is not None
+            and replay_path is not None
+            and retained_leaves_transform.last_result is not None
+            and hmrc_transform.last_result is not None
+        ):
+            _write_stage_reports(
+                evidence_path=evidence_path,
+                replay_path=replay_path,
+                candidate=candidate,
+                retained_leaves_transform=retained_leaves_transform,
+                hmrc_transform=hmrc_transform,
+            )
+        gate_report = json.loads(error.report_path.read_text(encoding="utf-8"))
+        state.gate_verdicts = _gate_verdicts_from_report(
+            gate_report,
+            gate_output_path=error.report_path,
+        )
+        append_phase(state, "gate_battery_blocked")
+        _record_national_attempt(
+            state=state,
+            started_at=started_at,
+            started_ts=started_ts,
+            rung=rung,
+            seed=logbook_seed,
+            code_pin=str(attempt_context["code_pin"]),
+            disposition="failed",
+            predecessor=attempt_context["predecessor"],
+            spool_dir=spool_dir,
+        )
+        raise
+    except Exception as error:
+        _record_failed_exception(
+            error=error,
+            state=state,
+            started_at=started_at,
+            started_ts=started_ts,
+            rung=rung,
+            seed=logbook_seed,
+            code_pin=str(attempt_context["code_pin"]),
+            predecessor=attempt_context["predecessor"],
+            receipt_base_dir=receipt_base_dir,
+            spool_dir=spool_dir,
+        )
+        raise
+
+
+def _main_recording(
+    *,
+    args: argparse.Namespace,
+    state: AttemptState,
+    started_at: float,
+    started_ts: datetime,
+    rung: str,
+    logbook_seed: int | None,
+    attempt_context: dict[str, object],
+    stage_context: dict[str, object],
+    spool_dir: Path,
+) -> int:
     legacy_input_coverage_path = args.input_coverage_json
     terminal_gate_path = (
         None
@@ -424,6 +763,12 @@ def main() -> int:
     )
     build_record_path = args.build_record_json or args.staging_h5.with_suffix(
         ".build.json"
+    )
+    stage_context.update(
+        {
+            "evidence_path": evidence_path,
+            "replay_path": replay_path,
+        }
     )
     rung_abort_path = args.staging_h5.with_suffix(".rung_abort.json")
     retained_leaves_transform = (
@@ -489,96 +834,78 @@ def main() -> int:
         qrf_estimators=args.qrf_estimators,
         sampled_rung=args.sample_fraction != 1.0,
     )
-    try:
-        # This staging path performs no calibration and therefore has no real
-        # target-surface or target-fit evidence. Leave parity_evidence absent;
-        # the terminal report omits that trio instead of inventing passes.
-        # The weighted-integrity pair (#609) follows the same rule: it joins
-        # the battery only when the caller arms it with a frozen reference
-        # and measured thresholds.
-        gate_path_argument = (
-            {"input_coverage_path": legacy_input_coverage_path}
-            if legacy_input_coverage_path is not None
-            else {"terminal_gate_path": terminal_gate_path}
-        )
-        checkpoint_arguments: dict[str, object] = {}
-        if args.checkpoint_dir is not None:
-            checkpoint_arguments = {
-                "checkpoint_dir": args.checkpoint_dir,
-                "run_config": _staging_run_config(
-                    args,
-                    candidate=candidate,
-                    retained_leaves_transform=retained_leaves_transform,
-                    hmrc_transform=hmrc_transform,
-                ),
-            }
-        result = build_uk_national_dataset(
-            input_h5=args.input_h5,
-            staging_h5=args.staging_h5,
-            release_id=args.release_id,
-            calibration_diagnostics_sha256=args.calibration_diagnostics_sha256,
-            reviewed_degenerate_exclusions=reviewed_degenerate_exclusions,
-            stages=(
-                UKNationalStage(
-                    name="frs_hmrc_retained_leaves",
-                    transform=retained_leaves_transform,
-                ),
-                UKNationalStage(
-                    name="hmrc_spi_income",
-                    transform=hmrc_transform,
-                ),
+    stage_context.update(
+        {
+            "retained_leaves_transform": retained_leaves_transform,
+            "hmrc_transform": hmrc_transform,
+            "candidate": candidate,
+        }
+    )
+    source_pins = _source_pins(
+        candidate=candidate,
+        retained_leaves_transform=retained_leaves_transform,
+        hmrc_transform=hmrc_transform,
+    )
+    run_config = _staging_run_config(
+        args,
+        candidate=candidate,
+        retained_leaves_transform=retained_leaves_transform,
+        hmrc_transform=hmrc_transform,
+        source_pins=source_pins,
+    )
+    attempt_context["code_pin"] = git_code_pin(_REPOSITORY)
+    state.build_id = _new_national_build_id(
+        rung=rung,
+        sample_seed=args.sample_seed,
+        seed=args.seed,
+        timestamp=started_ts,
+    )
+    state.input_pins_digest = role_pins_digest(source_pins)
+    state.identity_digest = hashlib.sha256(canonical_json_bytes(run_config)).hexdigest()
+    append_phase(state, "configured")
+    append_phase(state, "candidate_verified")
+    append_phase(state, "inputs_pinned")
+    # This staging path performs no calibration and therefore has no real
+    # target-surface or target-fit evidence. Leave parity_evidence absent;
+    # the terminal report omits that trio instead of inventing passes.
+    # The weighted-integrity pair (#609) follows the same rule: it joins
+    # the battery only when the caller arms it with a frozen reference
+    # and measured thresholds.
+    gate_path_argument = (
+        {"input_coverage_path": legacy_input_coverage_path}
+        if legacy_input_coverage_path is not None
+        else {"terminal_gate_path": terminal_gate_path}
+    )
+    checkpoint_arguments: dict[str, object] = {}
+    if args.checkpoint_dir is not None:
+        checkpoint_arguments = {
+            "checkpoint_dir": args.checkpoint_dir,
+            "run_config": run_config,
+        }
+    result = build_uk_national_dataset(
+        input_h5=args.input_h5,
+        staging_h5=args.staging_h5,
+        release_id=args.release_id,
+        calibration_diagnostics_sha256=args.calibration_diagnostics_sha256,
+        reviewed_degenerate_exclusions=reviewed_degenerate_exclusions,
+        stages=(
+            UKNationalStage(
+                name="frs_hmrc_retained_leaves",
+                transform=retained_leaves_transform,
             ),
-            **gate_path_argument,
-            **weighted_integrity_arguments,
-            **checkpoint_arguments,
-            sample_fraction=args.sample_fraction,
-            sample_seed=args.sample_seed,
-            release_candidate=args.release_candidate,
-        )
-    except ValueError as error:
-        if args.sample_fraction != 1.0 and _RUNG_NAMED_EDGE_SIGNATURE in str(error):
-            receipt = {
-                "schema_version": 1,
-                "artifact_kind": "uk_rung_abort_receipt",
-                "build_kind": "uk_national_staging_dataset",
-                "release_id": str(args.release_id),
-                "sampling": {
-                    "sample_fraction": float(args.sample_fraction),
-                    "sample_seed": int(args.sample_seed),
-                    "rung_token": UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
-                },
-                "seed": int(args.seed),
-                "named_edge": "spi_split_singleton_class",
-                "stage": "hmrc_spi_income",
-                "error": str(error),
-                "disposition": "aborted_with_receipt",
-                "remedy": (
-                    "Re-roll --seed; accepted dev-scale statistical edge "
-                    "(microcosm#657, closed). The computation is never "
-                    "altered to avoid it."
-                ),
-            }
-            _write_json(rung_abort_path, receipt)
-            print(json.dumps(receipt, indent=2, sort_keys=True))
-            return _RUNG_ABORT_EXIT_CODE
-        raise
-    except GateBatteryBlockedError as error:
-        # Only the terminal block leaves completed stage evidence behind; a
-        # preflight block ran no stage, and any other RuntimeError is a
-        # stage failure that must not be dressed in aggregate reports.
-        if (
-            error.phase == "terminal"
-            and retained_leaves_transform.last_result is not None
-            and hmrc_transform.last_result is not None
-        ):
-            _write_stage_reports(
-                evidence_path=evidence_path,
-                replay_path=replay_path,
-                candidate=candidate,
-                retained_leaves_transform=retained_leaves_transform,
-                hmrc_transform=hmrc_transform,
-            )
-        raise
+            UKNationalStage(
+                name="hmrc_spi_income",
+                transform=hmrc_transform,
+            ),
+        ),
+        **gate_path_argument,
+        **weighted_integrity_arguments,
+        **checkpoint_arguments,
+        sample_fraction=args.sample_fraction,
+        sample_seed=args.sample_seed,
+        release_candidate=args.release_candidate,
+    )
+    append_phase(state, "build_completed")
     _write_stage_reports(
         evidence_path=evidence_path,
         replay_path=replay_path,
@@ -586,6 +913,7 @@ def main() -> int:
         retained_leaves_transform=retained_leaves_transform,
         hmrc_transform=hmrc_transform,
     )
+    append_phase(state, "stage_reports_written")
     assert hmrc_transform.last_result is not None  # guarded by report writer
     hmrc_evidence = {
         "passed": True,
@@ -615,6 +943,7 @@ def main() -> int:
         degenerate_exclusions_override=args.degenerate_exclusions is not None,
     )
     _write_json(build_record_path, build_record)
+    append_phase(state, "build_record_written")
     payload = {
         "schema_version": 5,
         "build_kind": "uk_national_staging_dataset",
@@ -636,7 +965,27 @@ def main() -> int:
         },
         "hmrc_replay": hmrc_evidence,
     }
+    state.gate_verdicts = _gate_verdicts_from_report(
+        dict(result.gate_report),
+        gate_output_path=gate_output_path,
+    )
+    state.artifact_location = local_artifact_reference(
+        result.staging_h5,
+        repository_hint=_REPOSITORY,
+    )
+    spool_path = _record_national_attempt(
+        state=state,
+        started_at=started_at,
+        started_ts=started_ts,
+        rung=rung,
+        seed=logbook_seed,
+        code_pin=str(attempt_context["code_pin"]),
+        disposition="iterating",
+        predecessor=attempt_context["predecessor"],
+        spool_dir=spool_dir,
+    )
     print(json.dumps(payload, indent=2, sort_keys=True))
+    print(f"Wrote Logbook row: {spool_path}", file=sys.stderr)
     return 0
 
 
@@ -646,6 +995,7 @@ def _staging_run_config(
     candidate: object,
     retained_leaves_transform: UKFRSHMRCRetainedLeavesStageTransform,
     hmrc_transform: UKHMRCIncomeStageTransform,
+    source_pins: dict[str, dict[str, object]] | None = None,
 ) -> dict[str, object]:
     """The content-addressed identity of a checkpointed staging run.
 
@@ -662,9 +1012,11 @@ def _staging_run_config(
 
     from microcosm.build.code_identity import builder_code_identity
 
-    def _digest(path: str | Path) -> dict[str, object]:
-        info = _artifact_info(path)
-        return {"sha256": info["sha256"], "size_bytes": info["size_bytes"]}
+    pins = source_pins or _source_pins(
+        candidate=candidate,
+        retained_leaves_transform=retained_leaves_transform,
+        hmrc_transform=hmrc_transform,
+    )
 
     return {
         "build_kind": "uk_national_staging_dataset",
@@ -681,15 +1033,12 @@ def _staging_run_config(
             "sample_seed": int(args.sample_seed),
             "rung_token": UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
         },
-        "certified_candidate": {
-            "sha256": str(candidate.sha256),
-            "size_bytes": int(candidate.size_bytes),
-        },
+        "certified_candidate": dict(pins["certified_candidate"]),
         "sources": {
-            "adult_tab": _digest(retained_leaves_transform.adult_tab_path),
-            "benefits_tab": _digest(retained_leaves_transform.benefits_tab_path),
-            "spi_tab": _digest(hmrc_transform.spi_tab_path),
-            "hmrc_ods": _digest(hmrc_transform.hmrc_ods_path),
+            "adult_tab": dict(pins["adult_tab"]),
+            "benefits_tab": dict(pins["benefits_tab"]),
+            "spi_tab": dict(pins["spi_tab"]),
+            "hmrc_ods": dict(pins["hmrc_ods"]),
         },
         "code_identity": builder_code_identity(
             Path(__file__).resolve().parents[1],
