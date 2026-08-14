@@ -108,7 +108,16 @@ ALLOWED_GATE_CRITICALITIES = frozenset({"release_blocking", "diagnostic"})
 #: extension) would run the gate on defaults while the declared intent
 #: vanished from ``policy_sha256`` — an unattested threshold.
 _GATE_ENTRY_KEYS = frozenset(
-    {"id", "gate", "phase", "criticality", "parameters", "not_applicable", "notes"}
+    {
+        "id",
+        "gate",
+        "phase",
+        "criticality",
+        "parameters",
+        "not_applicable",
+        "evidence_absent_blocks",
+        "notes",
+    }
 )
 
 #: Build phases a gate selection may bind to — the shared vocabulary that
@@ -392,6 +401,13 @@ class GateSelectionSpec:
             it appears in every report as ``not_applicable`` and never
             evaluates. Mutually exclusive with ``parameters`` — an excused
             gate with tuned thresholds is a contradiction.
+        evidence_absent_blocks: When true, an ``evidence_absent`` outcome on
+            this entry blocks the build in every posture, not only under the
+            release-candidate posture. For entries whose declared intent is
+            that absence is never excusable (e.g. "an absent audit is not a
+            passing audit") — the outcome stays honestly ``evidence_absent``
+            in the report; only the enforcement changes. Meaningless on an
+            excused entry, so mutually exclusive with ``not_applicable``.
         notes: Free-text rationale.
     """
 
@@ -401,6 +417,7 @@ class GateSelectionSpec:
     criticality: str
     parameters: Mapping[str, Any] = field(default_factory=dict)
     not_applicable: str | None = None
+    evidence_absent_blocks: bool = False
     notes: str = ""
 
     def __post_init__(self) -> None:
@@ -408,6 +425,11 @@ class GateSelectionSpec:
             raise TypeError(
                 "GateSelectionSpec parameters must be a mapping, got "
                 f"{type(self.parameters).__name__}."
+            )
+        if not isinstance(self.evidence_absent_blocks, bool):
+            raise TypeError(
+                "GateSelectionSpec evidence_absent_blocks must be a bool, got "
+                f"{type(self.evidence_absent_blocks).__name__}."
             )
         object.__setattr__(
             self,
@@ -478,6 +500,18 @@ class GateSelectionSpec:
                     "mutually exclusive — an excused gate with tuned "
                     "thresholds is a contradiction."
                 )
+        evidence_absent_blocks = raw.get("evidence_absent_blocks", False)
+        if not isinstance(evidence_absent_blocks, bool):
+            raise ValueError(
+                f"gate {gate_id!r}: evidence_absent_blocks must be a JSON "
+                f"boolean, got {evidence_absent_blocks!r}."
+            )
+        if evidence_absent_blocks and not_applicable is not None:
+            raise ValueError(
+                f"gate {gate_id!r}: evidence_absent_blocks and not_applicable "
+                "are mutually exclusive — an excused entry never evaluates, "
+                "so demanding its absence block is a contradiction."
+            )
         return cls(
             id=gate_id,
             gate=gate,
@@ -485,6 +519,7 @@ class GateSelectionSpec:
             criticality=criticality,
             parameters=dict(parameters),
             not_applicable=not_applicable,
+            evidence_absent_blocks=evidence_absent_blocks,
             notes=str(raw.get("notes", "")),
         )
 

@@ -190,6 +190,14 @@ def _gates_manifest_payload(gates: GatesManifest) -> dict[str, object]:
                 "criticality": entry.criticality,
                 "parameters": _json_safe(entry.parameters),
                 "not_applicable": entry.not_applicable,
+                # Present iff armed: a true flag must ride the policy hash,
+                # while the false default stays out so unflagged entries
+                # (and the US manifest) keep their serialized form.
+                **(
+                    {"evidence_absent_blocks": True}
+                    if entry.evidence_absent_blocks
+                    else {}
+                ),
                 "notes": entry.notes,
             }
             for entry in gates.gates
@@ -487,7 +495,11 @@ class GatePhaseReport:
         build without, say, an incumbent parity snapshot gets an honest
         non-shippable report instead of a crash, while a release build
         cannot excuse missing evidence — a missing frozen reference is not
-        a passing gate. Diagnostic entries never block.
+        a passing gate. An entry declaring ``evidence_absent_blocks`` opts
+        out of that dev-posture leniency: its absence blocks every posture
+        (the legacy UK weights-audit strictness, ported during the #654
+        schema-3 retirement — "an absent audit is not a passing audit").
+        Diagnostic entries never block.
         """
 
         blocking = []
@@ -496,7 +508,9 @@ class GatePhaseReport:
                 continue
             if outcome.status is GateStatus.FAILED:
                 blocking.append(outcome)
-            elif outcome.status is GateStatus.EVIDENCE_ABSENT and release_candidate:
+            elif outcome.status is GateStatus.EVIDENCE_ABSENT and (
+                release_candidate or outcome.entry.evidence_absent_blocks
+            ):
                 blocking.append(outcome)
         return tuple(blocking)
 
@@ -916,6 +930,14 @@ class GateBatteryRun:
                     "criticality": entry.criticality,
                     "parameters": _json_safe(dict(entry.parameters)),
                     "not_applicable": entry.not_applicable,
+                    # Enforcement policy rides the policy hash when armed;
+                    # the false default stays out so unflagged entries keep
+                    # their digest.
+                    **(
+                        {"evidence_absent_blocks": True}
+                        if entry.evidence_absent_blocks
+                        else {}
+                    ),
                 }
                 for entry in sorted(self._gates.gates, key=lambda e: e.id)
             ]

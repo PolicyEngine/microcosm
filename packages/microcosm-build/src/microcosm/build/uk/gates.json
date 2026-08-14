@@ -98,7 +98,8 @@
       "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {},
-      "notes": "Every fit-produced weight column carries a completed audit record. Armed by the SPI income stage; an absent audit is not a passing audit."
+      "evidence_absent_blocks": true,
+      "notes": "Every fit-produced weight column carries a completed audit record. Armed by the SPI income stage; an absent audit is not a passing audit — and blocks every posture, not only release candidates: the legacy schema-3 path's strictness, ported during the #654 retirement (microcosm#691 review)."
     },
     {
       "id": "uk_export_surface",

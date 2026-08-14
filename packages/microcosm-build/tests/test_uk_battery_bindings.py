@@ -299,7 +299,10 @@ class TestBatteryRegressions:
 
 
 class TestUnevidencedArms:
-    """Missing evidence is explicit and blocks release candidates only."""
+    """Missing evidence is explicit; it blocks release candidates, plus any
+    entry whose manifest declares absence non-excusable in every posture
+    (``uk_weights_audit`` — "an absent audit is not a passing audit", the
+    legacy strictness ported during the #654 retirement)."""
 
     def test_battery_records_evidence_absent(self, uk_gates) -> None:
         battery = _run_battery(_tables(), armed=False)
@@ -320,7 +323,12 @@ class TestUnevidencedArms:
         for reason in absent.values():
             assert reason.startswith("missing evidence: ")
 
-        assert battery.blocking_outcomes(release_candidate=False) == ()
+        # The audit's absence blocks even the default posture — its status
+        # stays honestly evidence_absent; only the enforcement is strict.
+        default_blocked = {
+            o.entry.id for o in battery.blocking_outcomes(release_candidate=False)
+        }
+        assert default_blocked == {"uk_weights_audit"}
         blocked = {
             o.entry.id for o in battery.blocking_outcomes(release_candidate=True)
         }

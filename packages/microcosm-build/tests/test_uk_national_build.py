@@ -65,10 +65,23 @@ def _toy_gate_registry() -> dict[str, UKGateBinding]:
     manifest preflight are pass-throughs (both have their own tests) and
     every gate without a binding is a named ``evidence_absent`` gap —
     non-blocking off the release-candidate posture, exactly the legacy
-    fixture's effect of reporting only the coverage verdict.
+    fixture's effect of reporting only the coverage verdict. The one
+    exception is the weights audit: its manifest entry declares
+    ``evidence_absent_blocks`` (an absent audit is not a passing audit,
+    in every posture), so the seam registry binds it as a pass-through —
+    the strict-absence behavior has its own tests.
     """
 
     return {
+        "weights_audit": UKGateBinding(
+            name="weights_audit",
+            evaluator=lambda context, parameters: GateResult(
+                name="weights_audit",
+                passed=True,
+                details={"toy_audit": True},
+            ),
+            needs_frame=False,
+        ),
         "release_input_coverage": UKGateBinding(
             name="release_input_coverage",
             evaluator=_toy_coverage_evaluator,
@@ -847,6 +860,10 @@ def test_national_build_real_terminal_batch_passes_before_staging(
     result = _run_national_build(
         input_h5=input_h5,
         staging_h5=staging_h5,
+        # The audit's absence blocks every posture (evidence_absent_blocks),
+        # so a healthy staging pass needs the HMRC stage's audit evidence —
+        # exactly what the real pipeline supplies.
+        stages=(UKNationalStage("hmrc_spi_income", _RecordedFitStage()),),
         coverage_engine=object(),
         terminal_gate_path=terminal_json,
         gate_registry=None,  # the real UK registry
@@ -867,9 +884,9 @@ def test_national_build_real_terminal_batch_passes_before_staging(
         "uk_zero_weight_strata": "passed",
         "uk_weight_ess": "passed",
         "uk_weight_ratio": "passed",
+        "uk_weights_audit": "passed",
         # The legacy report omitted unevidenced gates; the battery names
         # every gap — non-blocking off the release-candidate posture.
-        "uk_weights_audit": "evidence_absent",
         "uk_export_surface": "evidence_absent",
         "uk_target_surface": "evidence_absent",
         "uk_target_fit": "evidence_absent",
