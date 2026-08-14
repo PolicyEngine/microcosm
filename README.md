@@ -128,6 +128,25 @@ by its explicit release id or tag until a separate promotion updates
 `latest.json`. Because Slack alerts are coupled to that production pointer
 update, tag-only publication sends no release alert.
 
+Evidence-tier releases (microcosm#506) are the third lane: the best available
+artifact when terminal gates failed, built with
+`tools/build_us_fiscal_refresh_release.py --evidence-release` (which records
+every gate failure with an owner issue in the release manifest's
+`known_failures` block, or refuses) and published with
+
+```bash
+tools/publish_release.sh releases/<id> --repo-id policyengine/populace-us --evidence
+```
+
+The `--evidence` flag validates against the evidence release contract — a
+certified-shape release is refused under it and vice versa — tags the
+immutable release as usual, and moves only `latest-evidence.json`; the
+certified `latest.json` pointer and the pe.py certification path never see
+evidence artifacts. Each evidence publish supersedes the last, so
+`latest-evidence.json` always names the best current evidence artifact
+(consumers: `microcosm.data.latest_evidence_release`). Its Slack alert is
+labeled as an evidence-tier publish.
+
 The alert is a **no-op unless the channel's incoming-webhook URL is set**, so
 configure it once on the build machine:
 
