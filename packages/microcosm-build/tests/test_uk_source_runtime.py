@@ -94,12 +94,12 @@ def _operation() -> SourceOperationSpec:
     )
 
 
-def _context(*, engine: object, country: str = "uk") -> SourceRuntimeContext:
+def _context(*, engine: object, country: str | None = "uk") -> SourceRuntimeContext:
+    extra: dict[str, object] = {"frame": _frame(), "rules_engine": engine}
+    if country is not None:
+        extra["country"] = country
     return SourceRuntimeContext(
-        config=SourceRuntimeConfig(
-            target_year=2023,
-            extra={"frame": _frame(), "rules_engine": engine, "country": country},
-        ),
+        config=SourceRuntimeConfig(target_year=2023, extra=extra),
         tables={},
     )
 
@@ -137,3 +137,27 @@ def test_materialize_rules_engine_predictors_refuses_country_mismatch() -> None:
 
     with pytest.raises(SourceRuntimeError, match="does not match dataset country"):
         handler(None, _operation(), _context(engine=engine))
+
+
+def test_materialize_rules_engine_predictors_asserts_country_without_extra() -> None:
+    # Regression for the adversarial-review bypass: an absent ``country``
+    # extra must not skip the engine assertion — the UK handler map serves
+    # country "uk" by construction, so a wrong-country engine is refused
+    # even when the caller forgets the optional extra.
+    handler = uk_source_operation_handlers()["materialize_rules_engine_predictors"]
+    engine = StubRulesEngine()
+    engine.country = "us"
+
+    with pytest.raises(SourceRuntimeError, match="does not match dataset country"):
+        handler(None, _operation(), _context(engine=engine, country=None))
+
+
+def test_materialize_rules_engine_predictors_refuses_non_uk_context() -> None:
+    handler = uk_source_operation_handlers()["materialize_rules_engine_predictors"]
+
+    with pytest.raises(SourceRuntimeError, match="only serve country 'uk'"):
+        handler(
+            None,
+            _operation(),
+            _context(engine=StubRulesEngine(), country="us"),
+        )

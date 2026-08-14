@@ -60,7 +60,7 @@ def materialize_uk_rules_engine_predictors_from_manifest(
         )
     frame = _extra(context, "frame", Frame)
     engine = _extra(context, "rules_engine", object)
-    country = _optional_country(context)
+    country = _require_uk_country(context)
     period = context.config.extra.get("period", context.config.target_year)
     if period is None:
         raise SourceRuntimeError(
@@ -101,13 +101,19 @@ def _extra(
     return value
 
 
-def _optional_country(context: SourceRuntimeContext) -> str | None:
-    country = context.config.extra.get("country")
-    if country is None:
-        return None
-    if not isinstance(country, str) or not country:
+def _require_uk_country(context: SourceRuntimeContext) -> str:
+    """Fail closed: this is the UK handler map, so the dataset country is UK.
+
+    An absent ``country`` extra must not skip the engine assertion (the
+    shared materializer only asserts when a country is supplied), and a
+    context claiming another country must never reach a UK handler.
+    """
+
+    country = context.config.extra.get("country", "uk")
+    if country != "uk":
         raise SourceRuntimeError(
-            "materialize_rules_engine_predictors context country must be a "
-            "non-empty string."
+            "materialize_rules_engine_predictors ran through the UK handler "
+            f"map but the runtime context declares country {country!r}; UK "
+            "handlers only serve country 'uk'."
         )
     return country
