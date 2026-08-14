@@ -3,6 +3,7 @@
   "country": "uk",
   "policy": "spec-only country package; Python execution lives in shared runtime modules",
   "resources": [
+    "cgt_source_stages.json",
     "degenerate_reviewed_exclusions.json",
     "efrs_parity_known_gaps.json",
     "efrs_parity_reference.json",

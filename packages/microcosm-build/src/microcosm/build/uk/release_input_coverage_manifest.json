@@ -458,6 +458,27 @@
   "weight_source": "household_weight"
  },
  "family_coverage": {
+  "hmrc_cgt_gains": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "calibration_permitted": false,
+   "effective_mass_requirements": {},
+   "fact_fence_id": "cgt_band_facts_policy_endogenous_proxy_conditioned",
+   "fenced_fact_count": 76,
+   "output_weight_kind": "design",
+   "outputs": [
+    "capital_gains"
+   ],
+   "required_mass_change_reason": "Amounts-only replacement: household weights pass through unchanged, so no mass change occurs and none is permitted.",
+   "source_manifest": "cgt_source_stages.json",
+   "source_manifest_sha256": "e9c22a262b3fb8f3f26c9661e65e803169708f6d237f8c666dcf2994559e80a1",
+   "source_vintages": {
+    "hmrc_surface": "2023-24",
+    "mapped_build_period": "2023"
+   },
+   "stage": "hmrc_cgt_gains",
+   "status": "required_at_build"
+  },
   "hmrc_spi_income": {
    "band_measure": "hmrc_spi_assessable_income",
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",

@@ -13,6 +13,9 @@ from pathlib import Path
 import pandas as pd
 
 from microcosm.build.gate_battery import GateBatteryBlockedError
+from microcosm.build.uk_runtime.cgt_imputation import (
+    uk_capital_gains_imputation_stage,
+)
 from microcosm.build.uk_runtime.frs_hmrc_leaves import (
     UKFRSHMRCRetainedLeavesStageTransform,
 )
@@ -139,6 +142,15 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         required=True,
         help="Official HMRC Personal Incomes 2023-24 collated ODS.",
+    )
+    parser.add_argument(
+        "--cgt-ods",
+        type=Path,
+        required=True,
+        help=(
+            "Official HMRC Capital Gains Tax statistics table 3 ODS (size of "
+            "gain by taxable income); fingerprint-verified before it is read."
+        ),
     )
     gate_output = parser.add_mutually_exclusive_group()
     gate_output.add_argument(
@@ -443,6 +455,7 @@ def main() -> int:
         staging_h5=args.staging_h5,
         spi_tab=args.spi_tab,
         hmrc_ods=args.hmrc_ods,
+        cgt_ods=args.cgt_ods,
         adult_tab=retained_leaves_transform.adult_tab_path,
         benefits_tab=retained_leaves_transform.benefits_tab_path,
         build_record_path=build_record_path,
@@ -527,6 +540,9 @@ def main() -> int:
                     name="hmrc_spi_income",
                     transform=hmrc_transform,
                 ),
+                # Runs after the SPI restoration so the taxable-income proxy
+                # sees the restored income surface.
+                uk_capital_gains_imputation_stage(args.cgt_ods),
             ),
             **gate_path_argument,
             **weighted_integrity_arguments,
@@ -920,6 +936,7 @@ def _validate_distinct_paths(
     staging_h5: Path,
     spi_tab: Path,
     hmrc_ods: Path,
+    cgt_ods: Path,
     adult_tab: Path,
     benefits_tab: Path,
     build_record_path: Path,
@@ -934,6 +951,7 @@ def _validate_distinct_paths(
         "--staging-h5": staging_h5.resolve(),
         "--spi-tab": spi_tab.resolve(),
         "--hmrc-ods": hmrc_ods.resolve(),
+        "--cgt-ods": cgt_ods.resolve(),
         "--frs-raw-dir/adult.tab": adult_tab.resolve(),
         "--frs-raw-dir/benefits.tab": benefits_tab.resolve(),
         "--build-record-json": build_record_path.resolve(),

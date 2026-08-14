@@ -54,6 +54,7 @@ _PATH_ARGUMENTS = (
     "staging_h5",
     "spi_tab",
     "hmrc_ods",
+    "cgt_ods",
     "adult_tab",
     "benefits_tab",
     "build_record_path",
@@ -120,6 +121,7 @@ def test_national_build_driver_uses_standalone_national_seam(
     staging_h5 = tmp_path / "staging.h5"
     spi_tab = tmp_path / "put2223uk.tab"
     hmrc_ods = tmp_path / "hmrc.ods"
+    cgt_ods = tmp_path / "cgt.ods"
     frs_raw_dir = tmp_path / "frs_2023_24"
     build_record_path = tmp_path / "national_staging_build_record.json"
     adult_tab = frs_raw_dir / "adult.tab"
@@ -128,6 +130,7 @@ def test_national_build_driver_uses_standalone_national_seam(
     input_h5.write_bytes(b"base")
     spi_tab.write_bytes(b"spi")
     hmrc_ods.write_bytes(b"hmrc")
+    cgt_ods.write_bytes(b"cgt")
     adult_tab.write_bytes(b"adult")
     benefits_tab.write_bytes(b"benefits")
     calls = []
@@ -200,6 +203,8 @@ def test_national_build_driver_uses_standalone_national_seam(
             str(spi_tab),
             "--hmrc-ods",
             str(hmrc_ods),
+            "--cgt-ods",
+            str(cgt_ods),
             "--build-record-json",
             str(build_record_path),
         ],
@@ -212,7 +217,7 @@ def test_national_build_driver_uses_standalone_national_seam(
     assert calls[0]["staging_h5"] == staging_h5
     assert calls[0]["release_id"] == "populace-uk-2023-frs-k535080"
     assert calls[0]["calibration_diagnostics_sha256"] == "c" * 64
-    assert len(calls[0]["stages"]) == 2
+    assert len(calls[0]["stages"]) == 3
     assert calls[0]["stages"][0].name == "frs_hmrc_retained_leaves"
     retained_transform = calls[0]["stages"][0].transform
     assert retained_transform.adult_tab_path == adult_tab
@@ -223,6 +228,7 @@ def test_national_build_driver_uses_standalone_national_seam(
     assert hmrc_transform.hmrc_ods_path == hmrc_ods
     assert hmrc_transform.certified_candidate.revision == "test-revision"
     assert hmrc_transform.retained_leaves_transform is retained_transform
+    assert calls[0]["stages"][2].name == "hmrc_cgt_gains"
     assert calls[0]["terminal_gate_path"] == staging_h5.with_suffix(
         ".terminal_gates.json"
     )
@@ -291,12 +297,14 @@ def test_national_driver_writes_aggregate_reports_before_reraising_final_gate(
     staging_h5 = tmp_path / "staging.h5"
     spi_tab = tmp_path / "put2223uk.tab"
     hmrc_ods = tmp_path / "hmrc.ods"
+    cgt_ods = tmp_path / "cgt.ods"
     frs_raw_dir = tmp_path / "frs_2023_24"
     frs_raw_dir.mkdir()
     for path, content in (
         (input_h5, b"base"),
         (spi_tab, b"spi"),
         (hmrc_ods, b"hmrc"),
+        (cgt_ods, b"cgt"),
         (frs_raw_dir / "adult.tab", b"adult"),
         (frs_raw_dir / "benefits.tab", b"benefits"),
     ):
@@ -359,6 +367,8 @@ def test_national_driver_writes_aggregate_reports_before_reraising_final_gate(
             str(spi_tab),
             "--hmrc-ods",
             str(hmrc_ods),
+            "--cgt-ods",
+            str(cgt_ods),
         ],
     )
 
@@ -389,6 +399,7 @@ def test_national_driver_writes_no_stage_reports_for_a_preflight_block(
     staging_h5 = tmp_path / "staging.h5"
     spi_tab = tmp_path / "put2223uk.tab"
     hmrc_ods = tmp_path / "hmrc.ods"
+    cgt_ods = tmp_path / "cgt.ods"
     frs_raw_dir = tmp_path / "frs_2023_24"
     frs_raw_dir.mkdir()
     for path in (
@@ -442,6 +453,8 @@ def test_national_driver_writes_no_stage_reports_for_a_preflight_block(
             str(spi_tab),
             "--hmrc-ods",
             str(hmrc_ods),
+            "--cgt-ods",
+            str(cgt_ods),
         ],
     )
 
@@ -462,6 +475,7 @@ def test_national_driver_does_not_write_reports_for_stage_failure(
     staging_h5 = tmp_path / "staging.h5"
     spi_tab = tmp_path / "put2223uk.tab"
     hmrc_ods = tmp_path / "hmrc.ods"
+    cgt_ods = tmp_path / "cgt.ods"
     frs_raw_dir = tmp_path / "frs_2023_24"
     frs_raw_dir.mkdir()
     for path in (
@@ -513,6 +527,8 @@ def test_national_driver_does_not_write_reports_for_stage_failure(
             str(spi_tab),
             "--hmrc-ods",
             str(hmrc_ods),
+            "--cgt-ods",
+            str(cgt_ods),
         ],
     )
 
@@ -584,6 +600,7 @@ def test_national_driver_rejects_source_sidecar_collision_before_unlink(
     staging_h5 = tmp_path / "staging.h5"
     spi_tab = tmp_path / "put2223uk.tab"
     hmrc_ods = tmp_path / "hmrc.ods"
+    cgt_ods = tmp_path / "cgt.ods"
     frs_raw_dir = tmp_path / "frs_2023_24"
     evidence = tmp_path / "evidence.json"
     frs_raw_dir.mkdir()
@@ -620,6 +637,8 @@ def test_national_driver_rejects_source_sidecar_collision_before_unlink(
             str(spi_tab),
             "--hmrc-ods",
             str(hmrc_ods),
+            "--cgt-ods",
+            str(cgt_ods),
             "--input-coverage-json",
             str(spi_tab),
             "--hmrc-evidence-json",
@@ -659,6 +678,8 @@ def test_national_driver_accepts_legacy_input_coverage_path_alias(
             "put2223uk.tab",
             "--hmrc-ods",
             "hmrc.ods",
+            "--cgt-ods",
+            "cgt.ods",
             "--input-coverage-json",
             str(legacy_path),
         ],
@@ -709,6 +730,8 @@ def test_national_driver_forwards_legacy_output_to_compatibility_serializer(
             str(tmp_path / "put2223uk.tab"),
             "--hmrc-ods",
             str(tmp_path / "hmrc.ods"),
+            "--cgt-ods",
+            str(tmp_path / "cgt.ods"),
             "--input-coverage-json",
             str(legacy_path),
         ],
@@ -743,6 +766,8 @@ def test_national_driver_rejects_both_terminal_gate_cli_names(
             "put2223uk.tab",
             "--hmrc-ods",
             "hmrc.ods",
+            "--cgt-ods",
+            "cgt.ods",
             "--terminal-gates-json",
             str(tmp_path / "terminal.json"),
             "--input-coverage-json",
@@ -785,6 +810,8 @@ def test_national_driver_rejects_unreviewed_release_overrides(
             "put2223uk.tab",
             "--hmrc-ods",
             "hmrc.ods",
+            "--cgt-ods",
+            "cgt.ods",
             removed_flag,
             "10",
         ],
@@ -889,6 +916,8 @@ def test_national_driver_rejects_non_rung_sample_fractions(monkeypatch) -> None:
             "put2223uk.tab",
             "--hmrc-ods",
             "hmrc.ods",
+            "--cgt-ods",
+            "cgt.ods",
             "--sample-fraction",
             "0.2",
         ],
@@ -921,6 +950,8 @@ def test_national_driver_refuses_canonical_release_ids_for_rung_builds(
             "put2223uk.tab",
             "--hmrc-ods",
             "hmrc.ods",
+            "--cgt-ods",
+            "cgt.ods",
             "--sample-fraction",
             "0.01",
         ],
@@ -954,6 +985,8 @@ def test_national_driver_refuses_release_candidate_on_a_rung(
             "put2223uk.tab",
             "--hmrc-ods",
             "hmrc.ods",
+            "--cgt-ods",
+            "cgt.ods",
             "--sample-fraction",
             "0.10",
             "--release-candidate",
@@ -985,6 +1018,8 @@ def test_national_driver_refuses_release_candidate_with_the_legacy_alias(
             "put2223uk.tab",
             "--hmrc-ods",
             "hmrc.ods",
+            "--cgt-ods",
+            "cgt.ods",
             "--input-coverage-json",
             "coverage.json",
             "--release-candidate",
@@ -1048,7 +1083,7 @@ def _rung_abort_argv(tmp_path: Path, *, fraction: str) -> list[str]:
     frs_raw_dir.mkdir(exist_ok=True)
     for name in ("adult.tab", "benefits.tab"):
         (frs_raw_dir / name).write_bytes(b"x")
-    for name in ("base.h5", "put2223uk.tab", "hmrc.ods"):
+    for name in ("base.h5", "put2223uk.tab", "hmrc.ods", "cgt.ods"):
         (tmp_path / name).write_bytes(b"x")
     return [
         "build_uk_national_dataset.py",
@@ -1066,6 +1101,8 @@ def _rung_abort_argv(tmp_path: Path, *, fraction: str) -> list[str]:
         str(tmp_path / "put2223uk.tab"),
         "--hmrc-ods",
         str(tmp_path / "hmrc.ods"),
+        "--cgt-ods",
+        str(tmp_path / "cgt.ods"),
         "--sample-fraction",
         fraction,
     ]
