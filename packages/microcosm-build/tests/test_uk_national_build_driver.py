@@ -1033,7 +1033,7 @@ def test_national_driver_refuses_release_candidate_with_the_legacy_alias(
 
 def test_staging_run_config_pins_the_sampling_identity(monkeypatch, tmp_path) -> None:
     builder = _load_builder_module()
-    for name in ("adult.tab", "benefits.tab", "put2223uk.tab", "hmrc.ods"):
+    for name in ("adult.tab", "benefits.tab", "put2223uk.tab", "hmrc.ods", "cgt.ods"):
         (tmp_path / name).write_bytes(b"x")
     import microcosm.build.code_identity as code_identity_module
 
@@ -1049,6 +1049,7 @@ def test_staging_run_config_pins_the_sampling_identity(monkeypatch, tmp_path) ->
         qrf_estimators=100,
         sample_fraction=0.01,
         sample_seed=7,
+        cgt_ods=tmp_path / "cgt.ods",
     )
     retained = SimpleNamespace(
         adult_tab_path=tmp_path / "adult.tab",

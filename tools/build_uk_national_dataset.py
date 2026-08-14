@@ -706,6 +706,7 @@ def _staging_run_config(
             "benefits_tab": _digest(retained_leaves_transform.benefits_tab_path),
             "spi_tab": _digest(hmrc_transform.spi_tab_path),
             "hmrc_ods": _digest(hmrc_transform.hmrc_ods_path),
+            "cgt_ods": _digest(args.cgt_ods),
         },
         "code_identity": builder_code_identity(
             Path(__file__).resolve().parents[1],
