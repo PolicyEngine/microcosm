@@ -160,10 +160,11 @@ def test_national_build_driver_uses_standalone_national_seam(
 
     def fake_build(**kwargs):
         calls.append(kwargs)
-        kwargs["stages"][0].transform.last_result = SimpleNamespace(
+        stages = kwargs["stages"]
+        stages[0].transform.last_result = SimpleNamespace(
             evidence=lambda: {"stage": "frs_hmrc_retained_leaves"}
         )
-        kwargs["stages"][1].transform.last_result = SimpleNamespace(
+        stages[1].transform.last_result = SimpleNamespace(
             evidence=lambda: {"stage": "hmrc_spi_income"},
             replay_report=SimpleNamespace(summary={"excluded_with_fence": 208}),
         )
@@ -239,13 +240,14 @@ def test_national_build_driver_uses_standalone_national_seam(
     assert calls[0]["staging_h5"] == staging_h5
     assert calls[0]["release_id"] == "populace-uk-2023-frs-k535080"
     assert calls[0]["calibration_diagnostics_sha256"] == "c" * 64
-    assert len(calls[0]["stages"]) == 3
-    assert calls[0]["stages"][0].name == "frs_hmrc_retained_leaves"
-    retained_transform = calls[0]["stages"][0].transform
+    stages = calls[0]["stages"]
+    assert len(stages) == 3
+    assert stages[0].name == "frs_hmrc_retained_leaves"
+    retained_transform = stages[0].transform
     assert retained_transform.adult_tab_path == adult_tab
     assert retained_transform.benefits_tab_path == benefits_tab
-    assert calls[0]["stages"][1].name == "hmrc_spi_income"
-    hmrc_transform = calls[0]["stages"][1].transform
+    assert stages[1].name == "hmrc_spi_income"
+    hmrc_transform = stages[1].transform
     assert hmrc_transform.spi_tab_path == spi_tab
     assert hmrc_transform.hmrc_ods_path == hmrc_ods
     assert hmrc_transform.certified_candidate.revision == "test-revision"
@@ -465,10 +467,11 @@ def test_national_driver_writes_aggregate_reports_before_reraising_final_gate(
     replay_report = object()
 
     def fake_build(**kwargs):
-        kwargs["stages"][0].transform.last_result = SimpleNamespace(
+        stages = kwargs["stages"]
+        stages[0].transform.last_result = SimpleNamespace(
             evidence=lambda: {"stage": "frs_hmrc_retained_leaves"}
         )
-        kwargs["stages"][1].transform.last_result = SimpleNamespace(
+        stages[1].transform.last_result = SimpleNamespace(
             evidence=lambda: {"stage": "hmrc_spi_income"},
             replay_report=replay_report,
         )

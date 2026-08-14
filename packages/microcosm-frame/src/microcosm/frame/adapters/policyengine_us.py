@@ -505,6 +505,8 @@ class PolicyEngineUSEngine:
     ``policyengine_us``.
     """
 
+    country = "us"
+
     def __init__(
         self,
         contract: ExportContract | None = None,

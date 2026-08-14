@@ -15,6 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.gate_battery import GateBatteryBlockedError
 from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.logbook_adoption import (
@@ -42,10 +43,7 @@ from microcosm.build.uk_runtime.hmrc_restoration import (
     UKHMRCIncomeStageTransform,
     verify_certified_uk_candidate,
 )
-from microcosm.build.uk_runtime.national_build import (
-    UKNationalStage,
-    build_uk_national_dataset,
-)
+from microcosm.build.uk_runtime.national_build import build_uk_national_dataset
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_time_period,
@@ -55,6 +53,7 @@ from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_SEED_DEFAULT,
 )
 from microcosm.build.uk_runtime.release_identity import UK_RELEASE_TIERS
+from microcosm.build.uk_runtime.source_runtime import uk_stage_implementations
 from microcosm.build.uk_runtime.terminal_gates import (
     uk_default_degenerate_reviewed_exclusions,
 )
@@ -905,16 +904,17 @@ def _main_recording(
         calibration_diagnostics_sha256=args.calibration_diagnostics_sha256,
         reviewed_degenerate_exclusions=reviewed_degenerate_exclusions,
         stages=(
-            UKNationalStage(
-                name="frs_hmrc_retained_leaves",
-                transform=retained_leaves_transform,
-            ),
-            UKNationalStage(
-                name="hmrc_spi_income",
-                transform=hmrc_transform,
-            ),
+            *country_stage_plan(
+                load_country_spec("uk"),
+                uk_stage_implementations(
+                    retained_leaves_transform=retained_leaves_transform,
+                    hmrc_income_transform=hmrc_transform,
+                ),
+            ).stages,
             # Runs after the SPI restoration so the taxable-income proxy
-            # sees the restored income surface.
+            # sees the restored income surface. Declared today in the
+            # bespoke uk/cgt_source_stages.json; absorbing it into the
+            # canonical source_stages.json is WS-E follow-up work.
             uk_capital_gains_imputation_stage(args.cgt_ods),
         ),
         **gate_path_argument,
