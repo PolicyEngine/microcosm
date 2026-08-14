@@ -9802,10 +9802,14 @@ def _aggregate_whole_surface_transfer_result(
             f"{residual_null_rows} residual null target cell(s); zero are allowed."
         )
     resolved_channels = {
-        adult_result.transfer_result.resolved_donor_channel,
-        remaining_result.transfer_result.resolved_donor_channel,
+        channel
+        for channel in (
+            adult_result.transfer_result.resolved_donor_channel,
+            remaining_result.transfer_result.resolved_donor_channel,
+        )
+        if channel is not None
     }
-    if len(resolved_channels) != 1:
+    if len(resolved_channels) > 1:
         raise ValueError(
             "Whole-surface late-transfer legs disagree on resolved donor "
             f"channel: {sorted(map(str, resolved_channels))}."
@@ -9828,7 +9832,7 @@ def _aggregate_whole_surface_transfer_result(
                 )
             )
         ),
-        resolved_donor_channel=next(iter(resolved_channels)),
+        resolved_donor_channel=next(iter(resolved_channels), None),
     )
     donor_projections = {
         group.name: {

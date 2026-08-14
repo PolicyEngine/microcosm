@@ -4305,8 +4305,10 @@ def test_adult_care_group_projects_its_declared_clone_zero_donor(
         )
 
 
+@pytest.mark.parametrize("active_clone_index", (0, 1, None))
 def test_whole_surface_transfer_isolates_only_the_adult_care_donor(
     monkeypatch: pytest.MonkeyPatch,
+    active_clone_index: int | None,
 ) -> None:
     complete = _fill_late_contract_surface(
         _post_puf_transfer_fixture(),
@@ -4342,9 +4344,14 @@ def test_whole_surface_transfer_isolates_only_the_adult_care_donor(
                 "execution_contract": execution_contract,
             }
         )
+        resolved_channel = (
+            stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL
+            if donor_clone_index == active_clone_index
+            else None
+        )
         transfer_result = AcsTransferResult(
             frame,
-            resolved_donor_channel=stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL,
+            resolved_donor_channel=resolved_channel,
         )
         return stacked_spine_module.StackedPostPufTransferResult(
             frame,
@@ -4411,6 +4418,11 @@ def test_whole_surface_transfer_isolates_only_the_adult_care_donor(
     }
     assert "producer_schedule" not in result.receipt
     assert "producer_execution_order" not in result.receipt
+    assert result.transfer_result.resolved_donor_channel == (
+        None
+        if active_clone_index is None
+        else stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL
+    )
 
 
 def test_canonical_group_refuses_schedule_d_compatibility_contract() -> None:
