@@ -75,7 +75,18 @@ def git_code_pin(repository: Path) -> str:
 
 
 def local_artifact_reference(path: Path, *, repository_hint: Path) -> str:
-    """Render one exportable artifact reference without host-absolute paths."""
+    """Render one exportable artifact reference, repo- or home-relative
+    where possible.
+
+    Recorded rows export to a public archive, so references anchor to the
+    owning checkout first, then to the home directory (which anonymizes
+    local usernames). A path under neither root falls back to the absolute
+    path without its leading slash — an honest, host-specific reference
+    rather than a refusal, because recording must never turn a completed
+    build into a failure over reference formatting. Operators producing
+    rows intended for export should keep build outputs under the checkout
+    or the home directory so this fallback never fires.
+    """
 
     resolved = Path(path).resolve()
     try:
@@ -266,11 +277,12 @@ def _sha256(payload: Mapping[str, object]) -> str:
 
 def _json_ready(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return {
-            _json_ready(key): _json_ready(item)
-            for key, item in value.items()
-            if item is not None
-        }
+        if any(not isinstance(key, str) for key in value):
+            raise ValueError("Build receipt mappings must use string JSON keys.")
+        # Null values are preserved deliberately: receipts are immutable
+        # audit artifacts, and an explicit null must stay distinguishable
+        # from a never-set key. This matches the US driver's writer.
+        return {key: _json_ready(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_json_ready(item) for item in value]
     if isinstance(value, Path):

@@ -11,8 +11,10 @@ dev-rung SPI singleton abort keeps its existing `uk_rung_abort_receipt`
 payload while recording the Logbook disposition as `discarded`. Dry-runs are
 intentionally excluded from Logbook on both success and failure paths.
 
-The UK rows anchor every terminal verdict into a durable local receipt rather
-than host-absolute paths: national terminal-gate rows point into the schema-4
+The UK rows anchor every terminal verdict into a durable local receipt whose
+reference is checkout- or home-relative where possible (paths under neither
+root fall back to the absolute path without its leading slash — see the
+`local_artifact_reference` docstring): national terminal-gate rows point into the schema-4
 gate report, rung aborts point at the named-edge receipt, rowwise crosswalk
 and ladder builds point into their manifests, and calibrated candidates point
 at the published manifest's post-calibration gate, target-fit, and support
@@ -26,8 +28,8 @@ resolution, git code pins, exportable local artifact references, normalized
 role-pin digests, atomic JSON receipts, pipeline-error verdict attachment, and
 the record-once terminal write wrapper. The US stacked driver deliberately
 keeps its local copy in this PR because its large monkeypatch-heavy contract
-suite pins those seams; migrating it onto the shared module is the named
-follow-up. The Logbook module docstring now points ownership at #665/#666
+suite pins those seams; migrating it onto the shared module is load-bearing
+convergence work tracked as #689. The Logbook module docstring now points ownership at #665/#666
 rather than the stale #616 adoption wording, while the Logbook core behavior
 stays unchanged. The UK national pin surface also names the future
 `ledger_facts` slot for #622/#623 without inventing a placeholder pin.

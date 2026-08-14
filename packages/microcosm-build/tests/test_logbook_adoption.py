@@ -290,6 +290,29 @@ def test_preflight_digest_and_atomic_write_json_are_canonical(tmp_path: Path) ->
     )
 
 
+def test_atomic_write_json_preserves_nulls_and_rejects_non_string_keys(
+    tmp_path: Path,
+) -> None:
+    """Receipts are audit artifacts: an explicit null must survive.
+
+    Review finding on #666 (PR #670): the extracted writer silently dropped
+    None-valued keys, so "explicitly null" and "never set" became
+    indistinguishable in immutable receipts. The US driver's writer keeps
+    nulls and rejects non-string keys; the shared module must match.
+    """
+
+    path = tmp_path / "receipt.json"
+    atomic_write_json(
+        path,
+        {"gate": {"verdict": "failed", "reason": None}},
+    )
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["gate"] == {"verdict": "failed", "reason": None}
+
+    with pytest.raises(ValueError, match="string JSON keys"):
+        atomic_write_json(tmp_path / "bad.json", {"gate": {1: "x"}})
+
+
 def test_sha256_argument_message() -> None:
     with pytest.raises(argparse.ArgumentTypeError, match="lowercase SHA-256"):
         sha256_argument("1" * 63)
