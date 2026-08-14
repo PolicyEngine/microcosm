@@ -944,8 +944,8 @@ def _family_build_state_diagnostics(
             if not valid_matches:
                 failures.append(
                     f"{family_name}: final dataset lacks the reviewed, "
-                    "mass-conserving household MassChangeRecord for its SPI "
-                    "prior allocation."
+                    "mass-conserving household MassChangeRecord carrying its "
+                    f"declared reason: {required_reason!r}."
                 )
 
         diagnostics[family_name] = details
