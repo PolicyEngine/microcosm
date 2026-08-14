@@ -4107,8 +4107,12 @@ def test_late_transfer_rejects_identityless_bank_before_dispatch() -> None:
         )
 
 
-def test_late_transfer_resources_bind_all_callback_controls() -> None:
-    group = stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS[0]
+def test_adult_care_late_transfer_donor_matches_battery_comparator() -> None:
+    group = next(
+        item
+        for item in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+        if item.name == "transfer:person/adult_care"
+    )
     resources = stacked_spine_module._late_transfer_resource_receipts(
         group_name=group.name,
         entity=group.entity,
@@ -4128,9 +4132,46 @@ def test_late_transfer_resources_bind_all_callback_controls() -> None:
     assert model["donor_selection"] == ("all_rows_from_post_puf_asec_origin_projection")
     assert model["donor_projection"] == {
         "support_channel": stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL,
-        "support_clone_index": stacked_spine_module.PUF_TAX_DETAIL_CLONE_INDEX,
+        "support_clone_index": 0,
     }
-    assert model["schema_version"] == 3
+    assert model["schema_version"] == 4
+    schedule_group = next(
+        item
+        for item in stacked_spine_module.us_late_producer_schedule_receipt()[
+            "transfer_groups"
+        ]
+        if item["name"] == group.name
+    )
+    authority_group = next(
+        item
+        for item in stacked_spine_module.stacked_spine_authority_receipt()[
+            "components"
+        ]["post_puf_transfer_surface"]["donor_projections"]
+        if item["producer"] == group.name
+    )
+    comparator_legs = {
+        target: {
+            clone_index
+            for entity, family, column, clone_index in (
+                stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+            )
+            if entity == group.entity
+            and family == group.family
+            and column == target
+        }
+        for target in group.targets
+    }
+
+    assert group.donor_clone_index == (
+        stacked_spine_module.US_ADULT_CARE_DONOR_COMPARATOR_CLONE_INDEX
+    )
+    assert group.donor_clone_index == schedule_group["donor_clone_index"] == 0
+    assert authority_group["donor_clone_index"] == group.donor_clone_index
+    assert authority_group["targets"] == list(group.targets)
+    assert comparator_legs == {
+        "is_incapable_of_self_care": {group.donor_clone_index},
+        "pre_subsidy_care_expenses": {group.donor_clone_index},
+    }
     assert model["transfer_execution_contract"] == (
         acs_transfer_module.acs_transfer_execution_contract_identity(
             targets=group.targets,
@@ -4147,6 +4188,309 @@ def test_late_transfer_resources_bind_all_callback_controls() -> None:
         "preserve_preexisting_nonnull": True,
         "share_asset": None,
     }
+
+    other_group = next(
+        item
+        for item in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+        if item.name == "transfer:person/model_required_boolean"
+    )
+    other_resources = stacked_spine_module._late_transfer_resource_receipts(
+        group_name=other_group.name,
+        entity=other_group.entity,
+        family=other_group.family,
+        targets=other_group.targets,
+        seed=0,
+        n_estimators=100,
+        max_targets_per_fit=(
+            stacked_spine_module.DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT
+        ),
+        target_bank=None,
+    )
+    other_model = other_resources[
+        f"{other_group.entity}.@late_transfer_model_config"
+    ]["binding"]
+    assert other_group.donor_clone_index == (
+        stacked_spine_module.PUF_TAX_DETAIL_CLONE_INDEX
+    )
+    assert other_model["donor_projection"]["support_clone_index"] == (
+        other_group.donor_clone_index
+    )
+
+
+def test_adult_care_late_transfer_refuses_mismatched_donor_declaration() -> None:
+    schedule = deepcopy(
+        dict(stacked_spine_module.us_late_producer_schedule_receipt())
+    )
+    adult_group = next(
+        item
+        for item in schedule["transfer_groups"]
+        if item["name"] == "transfer:person/adult_care"
+    )
+    adult_group["donor_clone_index"] = 1
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"(?s)Adult-care donor/comparator clone mismatch.*"
+            r"is_incapable_of_self_care.*pre_subsidy_care_expenses"
+        ),
+    ):
+        stacked_spine_module._validate_late_transfer_donor_comparator_alignment(
+            late_producer_schedule=schedule,
+            metric_registry=(
+                stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+            ),
+            boundary="forged adult-care donor declaration",
+        )
+
+
+def test_production_refuses_runtime_groups_rebound_away_from_bound_schedule(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rebound_groups = tuple(
+        replace(group, donor_clone_index=1)
+        if group.name == "transfer:person/adult_care"
+        else group
+        for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+    )
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "CANONICAL_US_LATE_TRANSFER_GROUPS",
+        rebound_groups,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Live late-transfer groups differ from the hash-bound late-producer",
+    ):
+        stacked_spine_module.stacked_spine_authority_receipt()
+
+
+def test_adult_care_group_projects_its_declared_clone_zero_donor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    group = next(
+        item
+        for item in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+        if item.name == "transfer:person/adult_care"
+    )
+    contract = stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY[group.name]
+    complete = _fill_late_contract_surface(
+        _post_puf_transfer_fixture(),
+        contracts=(contract,),
+        include_outputs=False,
+    )
+
+    class DonorObservedError(Exception):
+        pass
+
+    def observe_donor(
+        _recipient: Frame,
+        donor: Frame,
+        **_kwargs: object,
+    ) -> AcsTransferResult:
+        person = donor.table("person")
+        assert set(person[support_channel_column("person")].astype(str)) == {"asec"}
+        assert set(person[support_clone_index_column("person")]) == {
+            group.donor_clone_index
+        }
+        raise DonorObservedError
+
+    monkeypatch.setattr(stacked_spine_module, "transfer_acs_inputs", observe_donor)
+
+    with pytest.raises(DonorObservedError):
+        stacked_spine_module.transfer_stacked_post_puf_group(
+            complete,
+            group_name=group.name,
+        )
+
+
+def test_whole_surface_transfer_dispatches_each_declared_group_donor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    complete = _fill_late_contract_surface(
+        _post_puf_transfer_fixture(),
+        contracts=tuple(
+            stacked_spine_module.CANONICAL_US_LATE_PRODUCER_REGISTRY.values()
+        ),
+        include_outputs=True,
+    )
+    observed: list[tuple[str, int]] = []
+    schedule_d_groups: list[str] = []
+
+    def transfer_group(
+        frame: Frame,
+        *,
+        group: object,
+        target_bank: object,
+        derive_schedule_d: bool,
+        execution_contract: Mapping[str, object],
+        **_kwargs: object,
+    ) -> stacked_spine_module.StackedPostPufTransferResult:
+        assert isinstance(
+            group,
+            stacked_spine_module.TransferProducerGroup,
+        )
+        assert target_bank is None
+        expected_schedule_d = "non_sch_d_capital_gains" in group.targets
+        assert derive_schedule_d is expected_schedule_d
+        assert execution_contract == (
+            acs_transfer_module.acs_transfer_execution_contract_identity(
+                targets=group.targets,
+                derive_schedule_d=expected_schedule_d,
+            )
+        )
+        observed.append((group.name, group.donor_clone_index))
+        if derive_schedule_d:
+            schedule_d_groups.append(group.name)
+        transfer_result = AcsTransferResult(
+            frame,
+            resolved_donor_channel=stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL,
+        )
+        return stacked_spine_module.StackedPostPufTransferResult(
+            frame,
+            {
+                "producer": group.name,
+                "ordered_targets": list(group.targets),
+                "donor_selection": (
+                    "owner_projection_of_asec_origin_clone_"
+                    f"{group.donor_clone_index}"
+                ),
+                "donor_channel": stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL,
+                "donor_clone_index": group.donor_clone_index,
+                "targets": {
+                    f"{group.entity}/{group.family}/{target}": {
+                        "residual_null_rows": 0,
+                    }
+                    for target in group.targets
+                },
+            },
+            transfer_result,
+        )
+
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "_transfer_stacked_post_puf_group_evaluate",
+        transfer_group,
+    )
+    result = transfer_stacked_post_puf_inputs(complete)
+    expected_order = [
+        producer
+        for producer in stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
+        if producer.startswith("transfer:")
+    ]
+
+    assert [name for name, _clone in observed] == expected_order
+    assert dict(observed)["transfer:person/adult_care"] == 0
+    assert {
+        clone_index
+        for name, clone_index in observed
+        if name != "transfer:person/adult_care"
+    } == {1}
+    assert schedule_d_groups == ["transfer:person/puf_tax_itemization__batch_1"]
+    assert result.receipt["donor_projections"]["transfer:person/adult_care"][
+        "donor_clone_index"
+    ] == 0
+
+
+def test_canonical_group_refuses_schedule_d_compatibility_contract() -> None:
+    group = next(
+        item
+        for item in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+        if item.name == "transfer:person/puf_tax_itemization__batch_1"
+    )
+    compatibility_contract = (
+        acs_transfer_module.acs_transfer_execution_contract_identity(
+            targets=group.targets,
+            derive_schedule_d=True,
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Canonical late-transfer group execution contract requires",
+    ):
+        stacked_spine_module.transfer_stacked_post_puf_group(
+            _post_puf_transfer_fixture(),
+            group_name=group.name,
+            execution_contract=compatibility_contract,
+        )
+
+
+def test_whole_surface_target_bank_offsets_group_indexes() -> None:
+    class RecordingBank:
+        def __init__(self) -> None:
+            self.loaded: dict[str, object] | None = None
+            self.written: acs_transfer_module.AcsTransferTargetCheckpoint | None = None
+
+        def load_target(self, **kwargs: object):
+            self.loaded = dict(kwargs)
+            return acs_transfer_module.AcsTransferTargetCheckpoint(
+                target_index=int(kwargs["target_index"]),
+                total_targets=int(kwargs["total_targets"]),
+                entity=str(kwargs["entity"]),
+                family=str(kwargs["family"]),
+                family_targets=tuple(kwargs["family_targets"]),
+                model_targets=tuple(kwargs["model_targets"]),
+                model_target=str(kwargs["model_target"]),
+                exported_targets=tuple(kwargs["exported_targets"]),
+                raw_draw=np.asarray([1.0, 2.0], dtype=np.float64),
+                pattern_steps=(),
+            )
+
+        def write_target(
+            self,
+            checkpoint: acs_transfer_module.AcsTransferTargetCheckpoint,
+        ) -> None:
+            self.written = checkpoint
+
+    groups = stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+    selected_group = groups[-1]
+    selected_model_targets = acs_transfer_module._model_target_names(
+        selected_group.targets
+    )
+    total_targets = sum(
+        len(acs_transfer_module._model_target_names(group.targets))
+        for group in groups
+    )
+    target_offset = sum(
+        len(acs_transfer_module._model_target_names(group.targets))
+        for group in groups[:-1]
+    )
+    assert total_targets == 69
+    assert len(selected_model_targets) == 1
+
+    bank = RecordingBank()
+    sliced = stacked_spine_module._OffsetAcsTransferTargetBank(
+        bank,
+        target_offset=target_offset,
+        total_targets=total_targets,
+    )
+    resumed = sliced.load_target(
+        target_index=0,
+        total_targets=len(selected_model_targets),
+        entity=selected_group.entity,
+        family=selected_group.family,
+        family_targets=selected_group.targets,
+        model_targets=selected_model_targets,
+        model_target=selected_model_targets[0],
+        exported_targets=selected_group.targets,
+        recipient_rows=2,
+        expected_states={},
+    )
+
+    assert bank.loaded is not None
+    assert bank.loaded["target_index"] == target_offset
+    assert bank.loaded["total_targets"] == total_targets
+    assert resumed is not None
+    assert resumed.target_index == 0
+    assert resumed.total_targets == len(selected_model_targets)
+
+    sliced.write_target(resumed)
+
+    assert bank.written is not None
+    assert bank.written.target_index == target_offset
+    assert bank.written.total_targets == total_targets
 
 
 def test_late_transfer_refuses_a_stale_bound_execution_contract(
@@ -4821,6 +5165,12 @@ def _run_real_late_executor_fixture(
             {
                 "producer": group.name,
                 "ordered_targets": list(group.targets),
+                "donor_selection": (
+                    "owner_projection_of_asec_origin_clone_"
+                    f"{group.donor_clone_index}"
+                ),
+                "donor_channel": stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL,
+                "donor_clone_index": group.donor_clone_index,
                 "targets": {
                     f"{group.entity}/{group.family}/{target}": {
                         "residual_null_rows": 0,
@@ -5358,6 +5708,7 @@ def test_post_puf_transfer_preserves_complete_asec_source_producers() -> None:
     result = stacked_spine_module._transfer_stacked_post_puf_inputs_with_test_authority(
         frame,
         authority=authority,
+        donor_clone_index=stacked_spine_module.PUF_TAX_DETAIL_CLONE_INDEX,
         seed=578,
         n_estimators=10,
     )
@@ -5419,6 +5770,7 @@ def test_post_puf_transfer_rejects_incomplete_source_producer(
         stacked_spine_module._transfer_stacked_post_puf_inputs_with_test_authority(
             incomplete,
             authority=authority,
+            donor_clone_index=stacked_spine_module.PUF_TAX_DETAIL_CLONE_INDEX,
             seed=578,
             n_estimators=10,
         )
@@ -5462,6 +5814,7 @@ def test_post_puf_transfer_preserves_every_live_puf_clone_producer() -> None:
     result = stacked_spine_module._transfer_stacked_post_puf_inputs_with_test_authority(
         frame,
         authority=authority,
+        donor_clone_index=stacked_spine_module.PUF_TAX_DETAIL_CLONE_INDEX,
         seed=578,
         n_estimators=10,
     )
@@ -5516,6 +5869,7 @@ def test_post_puf_transfer_rejects_incomplete_acs_puf_clone_producer() -> None:
         stacked_spine_module._transfer_stacked_post_puf_inputs_with_test_authority(
             incomplete,
             authority=authority,
+            donor_clone_index=stacked_spine_module.PUF_TAX_DETAIL_CLONE_INDEX,
             seed=578,
             n_estimators=10,
         )
@@ -6961,7 +7315,7 @@ def test_self_digested_partial_authority_cannot_forge_production_identity() -> N
         GateReport((result,)).to_manifest()
 
 
-@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6, 7, 8, 9))
+@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
 def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     stale_version: int,
 ) -> None:
@@ -6981,7 +7335,7 @@ def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     )
     stale_receipt = stacked_spine_module._authority_receipt(stale)
 
-    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 10
+    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 11
     assert stale_receipt["version"] == stale_version
     assert stale_receipt["integrity_valid"] is True
     assert stale_receipt["digest_matches_declared"] is True
@@ -7000,7 +7354,7 @@ def test_stacked_authority_binds_import_validated_late_producer_schedule() -> No
     receipt = stacked_spine_module.stacked_spine_authority_receipt()
     component = receipt["components"]["late_producer_schedule"]
 
-    assert receipt["version"] == 10
+    assert receipt["version"] == 11
     assert component["producer_count"] == 38
     assert component["schedule_sha256"] == (
         stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE.sha256

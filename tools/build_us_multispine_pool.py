@@ -2616,6 +2616,7 @@ def _stacked_late_producer_bank_identity(
     entity: str,
     family: str,
     ordered_targets: tuple[str, ...],
+    donor_clone_index: int,
 ) -> dict[str, object]:
     schedule = us_late_producer_schedule_receipt()
     return {
@@ -2628,6 +2629,7 @@ def _stacked_late_producer_bank_identity(
             "entity": entity,
             "family": family,
             "ordered_targets": list(ordered_targets),
+            "donor_clone_index": donor_clone_index,
         },
     }
 
@@ -3009,6 +3011,7 @@ def build_stacked_pool(
                     entity=group.entity,
                     family=group.family,
                     ordered_targets=group.targets,
+                    donor_clone_index=group.donor_clone_index,
                 ),
             )
             for group in CANONICAL_US_LATE_TRANSFER_GROUPS

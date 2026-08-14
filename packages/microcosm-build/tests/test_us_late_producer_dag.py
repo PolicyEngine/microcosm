@@ -784,9 +784,22 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
 
     assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
     receipt = us_late_producer_schedule_receipt()
-    assert receipt["schema_version"] == 16
+    assert receipt["schema_version"] == 17
+    donor_clone_by_group = {
+        group["name"]: group["donor_clone_index"]
+        for group in receipt["transfer_groups"]
+    }
+    assert set(donor_clone_by_group) == {
+        group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS
+    }
+    assert donor_clone_by_group["transfer:person/adult_care"] == 0
+    assert {
+        clone_index
+        for group_name, clone_index in donor_clone_by_group.items()
+        if group_name != "transfer:person/adult_care"
+    } == {1}
     assert receipt["execution_receipt_contract"] == {
-        "version": 3,
+        "version": 4,
         "row_binding": (
             "declared_globally_reconciled_input_and_scope_exact_output_source_"
             "and_primary_callback_resource_receipt_and_previous_execution_sha256"

@@ -58,6 +58,9 @@ from microcosm.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
 )
+from microcosm.build.us_runtime.support_provenance import (
+    PUF_TAX_DETAIL_CLONE_INDEX,
+)
 from microcosm.build.us_runtime.us_late_overlap_ownership import (
     US_LATE_OVERLAP_OWNERSHIP_TARGETS,
     US_LATE_SOURCE_CALLBACK_PASSTHROUGH_OUTPUTS,
@@ -93,13 +96,16 @@ __all__ = [
     "US_LATE_TRANSFER_INPUT_INVENTORIES",
     "US_LATE_TRANSFER_MODEL_CONFIG_INPUT",
     "US_LATE_TRANSFER_TARGET_BANK_INPUT",
+    "US_ADULT_CARE_DONOR_COMPARATOR_CLONE_INDEX",
     "source_producer_name",
     "transfer_producer_name",
     "us_late_producer_schedule_payload",
     "us_late_producer_schedule_receipt",
 ]
 
-# v16 declares person.s_corp_income as a whole-pool primary-PUF output: its
+# v17 declares each late-transfer group's donor clone so the adult-care family
+# can use the same clone-0 owner projection as its by-origin comparator. v16
+# declares person.s_corp_income as a whole-pool primary-PUF output: its
 # certified combined-source semantics are carried by partnership_income, while
 # the separate S-corporation leaf is an exact-zero universe. v15 content-binds
 # the complete late dual-producer ownership matrix and
@@ -122,12 +128,16 @@ __all__ = [
 # implicit. Receipt v3 reconciles repeated physical evidence and scope
 # cardinalities across each execution row, binds source-receipt outputs to the
 # callback receipt, and requires the primary callback to report the exact
-# resources it consumed. Receipt v2 introduced exact virtual-resource payloads.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 16
-US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 3
+# resources it consumed. Receipt v4 binds each transfer group's donor projection
+# and the aggregate per-group donor map. Receipt v2 introduced exact
+# virtual-resource payloads.
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 17
+US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 4
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID = "us_stacked_late_producer_transition"
+US_ADULT_CARE_DONOR_COMPARATOR_CLONE_INDEX = 0
+"""One clone leg shared by adult-care's donor and origin comparator."""
 US_LATE_PRIMARY_PUF_STAGE = "primary_puf_qrf"
 US_LATE_ACS_EARNINGS_UNIVERSE_STAGE = "acs_pums_earnings_universe"
 US_LATE_SOURCE_FINALIZER_STAGE = "source_finalizer"
@@ -289,6 +299,7 @@ class TransferProducerGroup:
     entity: str
     family: str
     targets: tuple[str, ...]
+    donor_clone_index: int
     target_families: TargetFamilies
 
     def __post_init__(self) -> None:
@@ -304,6 +315,15 @@ class TransferProducerGroup:
             )
         if len(set(targets)) != len(targets):
             raise ValueError(f"Transfer producer group {self.name!r} repeats targets.")
+        if (
+            isinstance(self.donor_clone_index, bool)
+            or not isinstance(self.donor_clone_index, int)
+            or self.donor_clone_index < 0
+        ):
+            raise ValueError(
+                f"Transfer producer group {self.name!r} requires a non-negative "
+                f"integer donor_clone_index, got {self.donor_clone_index!r}."
+            )
         expected = {self.entity: {self.family: targets}}
         materialized = {
             entity: {family: tuple(columns) for family, columns in families.items()}
@@ -1384,6 +1404,11 @@ def _bounded_transfer_groups(
                     entity=entity,
                     family=bounded_family,
                     targets=batch,
+                    donor_clone_index=(
+                        US_ADULT_CARE_DONOR_COMPARATOR_CLONE_INDEX
+                        if entity == "person" and family == "adult_care"
+                        else PUF_TAX_DETAIL_CLONE_INDEX
+                    ),
                     target_families=target_families,
                 )
             )
@@ -2083,6 +2108,7 @@ def us_late_producer_schedule_payload() -> dict[str, object]:
                 "entity": group.entity,
                 "family": group.family,
                 "targets": list(group.targets),
+                "donor_clone_index": group.donor_clone_index,
             }
             for group in CANONICAL_US_LATE_TRANSFER_GROUPS
         ],

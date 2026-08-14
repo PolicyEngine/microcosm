@@ -553,6 +553,12 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
             "entity": group.entity,
             "family": group.family,
             "ordered_targets": list(group.targets),
+            "donor_selection": (
+                "owner_projection_of_asec_origin_clone_"
+                f"{group.donor_clone_index}"
+            ),
+            "donor_channel": stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL,
+            "donor_clone_index": group.donor_clone_index,
             "targets": {
                 f"{group.entity}/{group.family}/{target}": {
                     "residual_null_rows": 0,
@@ -591,6 +597,18 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
             for producer in schedule.order
             if producer != stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
         ],
+        "donor_selection": "per_group_owner_projection_of_asec_origin_clone",
+        "donor_projections": {
+            group.name: {
+                "donor_selection": (
+                    "owner_projection_of_asec_origin_clone_"
+                    f"{group.donor_clone_index}"
+                ),
+                "donor_channel": stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL,
+                "donor_clone_index": group.donor_clone_index,
+            }
+            for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+        },
         "groups": group_receipts,
         "targets": aggregate_targets,
         "completion": {
