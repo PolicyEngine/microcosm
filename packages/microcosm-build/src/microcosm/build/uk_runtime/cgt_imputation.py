@@ -9,8 +9,9 @@ bands. See PolicyEngine/microcosm#552 for the measured gap.
 
 The stage owns amounts, not incidence and not weights. Who has gains comes
 from the candidate; how much they have comes from the published distribution;
-household weights pass through untouched, so the weight kind and mass log
-carry through unchanged. Whether the published band facts also become calibration targets is a
+household weights pass through untouched, so the weight kind carries
+through and the stage appends a mass-conservation receipt the terminal
+family gate requires. Whether the published band facts also become calibration targets is a
 separate adjudication (see the fence discussion on the issue), and nothing
 here assumes it.
 
@@ -70,10 +71,11 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
-from microcosm.frame import Frame
+from microcosm.frame import Frame, MassChangeRecord
 
 __all__ = [
     "UK_CGT_IMPUTATION_SEED",
+    "UK_CGT_MASS_CONSERVATION_REASON",
     "UK_CGT_IMPUTATION_STAGE_NAME",
     "UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS",
     "UKCGTImputationSummary",
@@ -86,6 +88,15 @@ __all__ = [
 ]
 
 UK_CGT_IMPUTATION_STAGE_NAME = "hmrc_cgt_gains"
+
+#: The reviewed mass-conservation receipt this stage records. The terminal
+#: family gate requires a valid mass-conserving MassChangeRecord carrying
+#: exactly this reason, so a build whose CGT stage silently moved household
+#: mass — or never ran — fails by name.
+UK_CGT_MASS_CONSERVATION_REASON = (
+    "Amounts-only capital gains redraw: household weights pass through "
+    "unchanged and total household mass is conserved."
+)
 
 #: Base seed for the stage's draws. Combined with the build period so two
 #: periods draw differently while each build is reproducible.
@@ -513,15 +524,29 @@ def impute_uk_capital_gains(
 
     new_person = person.copy()
     new_person["capital_gains"] = new_gains
-    # Person-only replacement: mass is untouched, so the kind and mass log
-    # carry through unchanged; Frame construction re-runs linkage validation.
+    # Person-only replacement: mass is untouched and the kind carries
+    # through; the appended record is a conservation receipt, not a change —
+    # the terminal family gate requires it, so a build whose CGT stage moved
+    # mass or never ran fails by name.
+    household_mass = float(
+        pd.to_numeric(
+            frame.table("household")["household_weight"], errors="raise"
+        ).sum()
+    )
+    receipt = MassChangeRecord(
+        entity="household",
+        old_total=household_mass,
+        new_total=household_mass,
+        declared_factor=1.0,
+        reason=UK_CGT_MASS_CONSERVATION_REASON,
+    )
     result_frame = uk_national_frame(
         person=new_person,
         benunit=frame.table("benunit"),
         household=frame.table("household"),
         time_period=time_period,
         weight_kind=uk_household_weight_kind(frame),
-        mass_log=frame.mass_log,
+        mass_log=(*frame.mass_log, receipt),
     )
     validate_uk_national_frame(result_frame)
     return result_frame

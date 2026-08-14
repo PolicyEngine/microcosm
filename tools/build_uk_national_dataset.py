@@ -31,6 +31,9 @@ from microcosm.build.logbook_adoption import (
     sha256_argument,
     write_error_receipt,
 )
+from microcosm.build.uk_runtime.cgt_imputation import (
+    uk_capital_gains_imputation_stage,
+)
 from microcosm.build.uk_runtime.frs_hmrc_leaves import (
     UKFRSHMRCRetainedLeavesStageTransform,
 )
@@ -159,6 +162,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         required=True,
         help="Official HMRC Personal Incomes 2023-24 collated ODS.",
+    )
+    parser.add_argument(
+        "--cgt-ods",
+        type=Path,
+        required=True,
+        help=(
+            "Official HMRC Capital Gains Tax statistics table 3 ODS (size of "
+            "gain by taxable income); fingerprint-verified before it is read."
+        ),
     )
     gate_output = parser.add_mutually_exclusive_group()
     gate_output.add_argument(
@@ -463,6 +475,7 @@ def _source_pins(
     candidate: object,
     retained_leaves_transform: UKFRSHMRCRetainedLeavesStageTransform,
     hmrc_transform: UKHMRCIncomeStageTransform,
+    cgt_ods_path: Path,
 ) -> dict[str, dict[str, object]]:
     # ``ledger_facts`` joins this pin surface when #622/#623 land.
     return {
@@ -474,6 +487,7 @@ def _source_pins(
         "benefits_tab": _artifact_pin(retained_leaves_transform.benefits_tab_path),
         "spi_tab": _artifact_pin(hmrc_transform.spi_tab_path),
         "hmrc_ods": _artifact_pin(hmrc_transform.hmrc_ods_path),
+        "cgt_ods": _artifact_pin(cgt_ods_path),
     }
 
 
@@ -788,6 +802,7 @@ def _main_recording(
         staging_h5=args.staging_h5,
         spi_tab=args.spi_tab,
         hmrc_ods=args.hmrc_ods,
+        cgt_ods=args.cgt_ods,
         adult_tab=retained_leaves_transform.adult_tab_path,
         benefits_tab=retained_leaves_transform.benefits_tab_path,
         build_record_path=build_record_path,
@@ -845,6 +860,7 @@ def _main_recording(
         candidate=candidate,
         retained_leaves_transform=retained_leaves_transform,
         hmrc_transform=hmrc_transform,
+        cgt_ods_path=args.cgt_ods,
     )
     run_config = _staging_run_config(
         args,
@@ -897,6 +913,9 @@ def _main_recording(
                 name="hmrc_spi_income",
                 transform=hmrc_transform,
             ),
+            # Runs after the SPI restoration so the taxable-income proxy
+            # sees the restored income surface.
+            uk_capital_gains_imputation_stage(args.cgt_ods),
         ),
         **gate_path_argument,
         **weighted_integrity_arguments,
@@ -1016,6 +1035,7 @@ def _staging_run_config(
         candidate=candidate,
         retained_leaves_transform=retained_leaves_transform,
         hmrc_transform=hmrc_transform,
+        cgt_ods_path=args.cgt_ods,
     )
 
     return {
@@ -1039,6 +1059,7 @@ def _staging_run_config(
             "benefits_tab": dict(pins["benefits_tab"]),
             "spi_tab": dict(pins["spi_tab"]),
             "hmrc_ods": dict(pins["hmrc_ods"]),
+            "cgt_ods": dict(pins["cgt_ods"]),
         },
         "code_identity": builder_code_identity(
             Path(__file__).resolve().parents[1],
@@ -1269,6 +1290,7 @@ def _validate_distinct_paths(
     staging_h5: Path,
     spi_tab: Path,
     hmrc_ods: Path,
+    cgt_ods: Path,
     adult_tab: Path,
     benefits_tab: Path,
     build_record_path: Path,
@@ -1283,6 +1305,7 @@ def _validate_distinct_paths(
         "--staging-h5": staging_h5.resolve(),
         "--spi-tab": spi_tab.resolve(),
         "--hmrc-ods": hmrc_ods.resolve(),
+        "--cgt-ods": cgt_ods.resolve(),
         "--frs-raw-dir/adult.tab": adult_tab.resolve(),
         "--frs-raw-dir/benefits.tab": benefits_tab.resolve(),
         "--build-record-json": build_record_path.resolve(),

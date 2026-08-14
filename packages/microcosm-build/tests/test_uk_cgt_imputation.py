@@ -6,6 +6,7 @@ import pytest
 
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_IMPUTATION_STAGE_NAME,
+    UK_CGT_MASS_CONSERVATION_REASON,
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
     UKCGTPolicyParameters,
     _band_plans,
@@ -241,7 +242,14 @@ class TestImputation:
         pd.testing.assert_frame_equal(
             result.table("household"), frame.table("household")
         )
-        assert result.mass_log == frame.mass_log
+        # The appended record is a conservation receipt for the terminal
+        # family gate, not a mass change.
+        assert result.mass_log[:-1] == frame.mass_log
+        receipt = result.mass_log[-1]
+        assert receipt.entity == "household"
+        assert receipt.reason == UK_CGT_MASS_CONSERVATION_REASON
+        assert receipt.old_total == receipt.new_total
+        assert receipt.declared_factor == 1.0
 
     def test_remainder_keeps_existing_amounts_capped_at_the_aea(self) -> None:
         # One income band holds far more gainer mass than the published
