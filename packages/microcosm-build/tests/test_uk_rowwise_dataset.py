@@ -16,23 +16,6 @@ from microcosm.frame import MassChangeRecord, WeightKind
 
 class FakeUKDataset:
     time_period = "2023"
-    # In-memory datasets must declare their weight kind explicitly; only H5
-    # inputs keep the attribute-less design default.
-    household_weight_kind = WeightKind.DESIGN
-
-    def __init__(
-        self,
-        *,
-        person: pd.DataFrame,
-        benunit: pd.DataFrame,
-        household: pd.DataFrame,
-    ):
-        self.person = person
-        self.benunit = benunit
-        self.household = household
-
-
-class FakeUKDatasetWithoutPeriod:
     household_weight_kind = WeightKind.DESIGN
 
     def __init__(
@@ -170,23 +153,20 @@ def test_clone_uk_dataset_tables_assigns_geography_and_remaps_links() -> None:
     )
 
 
-def test_clone_uk_dataset_object_uses_dataset_time_period() -> None:
+def test_clone_uk_dataset_rejects_duck_typed_object() -> None:
     dataset = FakeUKDataset(
         person=person_frame(),
         benunit=benunit_frame(),
         household=household_frame(),
     )
 
-    result = clone_uk_dataset_with_rowwise_geography(
-        dataset,
-        crosswalk_frame(),
-        n_clones=1,
-        seed=1,
-    )
-
-    assert result.time_period == "2023"
-    assert result.household["household_id"].tolist() == [1, 2]
-    assert result.person["person_household_id"].tolist() == [1, 2, 2]
+    with pytest.raises(TypeError, match="duck-typed in-memory carrier retired"):
+        clone_uk_dataset_with_rowwise_geography(
+            dataset,
+            crosswalk_frame(),
+            n_clones=1,
+            seed=1,
+        )
 
 
 def test_clone_uk_dataset_accepts_a_frame_without_downgrading_kind() -> None:
@@ -221,23 +201,6 @@ def test_clone_uk_dataset_accepts_a_frame_without_downgrading_kind() -> None:
     assert len(result.mass_log) == 2
     assert result.household["household_id"].tolist() == [1, 2]
     assert result.person["person_household_id"].tolist() == [1, 2, 2]
-
-
-def test_clone_uk_dataset_object_can_use_source_year_as_period() -> None:
-    dataset = FakeUKDatasetWithoutPeriod(
-        person=person_frame(),
-        benunit=benunit_frame(),
-        household=household_frame(),
-    )
-
-    result = clone_uk_dataset_with_rowwise_geography(
-        dataset,
-        crosswalk_frame(),
-        source_year=2024,
-    )
-
-    assert result.time_period == "2024"
-    assert result.household["source_household_key"].tolist() == ["2024:1", "2024:2"]
 
 
 def test_validate_uk_rowwise_dataset_tables_rejects_broken_household_link() -> None:

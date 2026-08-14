@@ -418,6 +418,7 @@ def test_candidate_clone_identity_mismatch_fails_closed(tmp_path: Path) -> None:
         benunit=dataset.table("benunit"),
         household=household,
         time_period="2023",
+        household_weights=dataset.weights_for("household").values,
     )
 
     with pytest.raises(ValueError, match="person IDs do not reverse"):

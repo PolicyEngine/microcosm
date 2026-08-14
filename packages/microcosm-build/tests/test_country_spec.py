@@ -299,15 +299,12 @@ class TestUKGatesManifest:
         assert by_id["uk_qrf_tail_concentration"] == "tail_concentration"
         assert not any(name.startswith("uk_") for name in by_id.values())
 
-    def test_thresholds_match_the_legacy_module_constants(self, manifest) -> None:
+    def test_thresholds_match_the_schema4_manifest(self, manifest) -> None:
         params = {gate.id: gate.parameters for gate in manifest.gates}
-        assert (
-            params["uk_weight_ess"]["minimum_ess_fraction"]
-            == terminal_gates.UK_MIN_ESS_FRACTION
-        )
+        assert params["uk_weight_ess"]["minimum_ess_fraction"] == 0.01
         assert (
             params["uk_weight_ratio"]["maximum_max_to_median_ratio"]
-            == terminal_gates.UK_MAX_TO_MEDIAN_WEIGHT_RATIO
+            == 1_151.2542195939373
         )
         assert (
             params["uk_target_fit"]["max_abs_relative_error"]

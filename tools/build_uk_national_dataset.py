@@ -13,8 +13,6 @@ from datetime import UTC, datetime
 from itertools import combinations
 from pathlib import Path
 
-import pandas as pd
-
 from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.gate_battery import GateBatteryBlockedError
 from microcosm.build.logbook import canonical_json_bytes
@@ -881,11 +879,10 @@ def _main_recording(
     append_phase(state, "candidate_verified")
     append_phase(state, "inputs_pinned")
     # This staging path performs no calibration and therefore has no real
-    # target-surface or target-fit evidence. Leave parity_evidence absent;
-    # the terminal report omits that trio instead of inventing passes.
-    # The weighted-integrity pair (#609) follows the same rule: it joins
-    # the battery only when the caller arms it with a frozen reference
-    # and measured thresholds.
+    # target-surface or target-fit evidence; the schema-4 battery records
+    # the missing evidence explicitly. The weighted-integrity pair (#609)
+    # joins only when the caller arms it with a frozen reference and
+    # measured thresholds.
     gate_path_argument = (
         {"input_coverage_path": legacy_input_coverage_path}
         if legacy_input_coverage_path is not None
@@ -1128,9 +1125,6 @@ def _aggregate_build_record(
         }
         for record in result.frame.mass_log
     ]
-    household_weights = pd.to_numeric(
-        result.frame.table("household")["household_weight"], errors="raise"
-    )
     release_evidence = dict(result.gate_report["release_evidence"])
     return {
         "schema_version": 3,
@@ -1165,7 +1159,9 @@ def _aggregate_build_record(
                 "household": len(result.frame.table("household")),
             },
             "household_weight_kind": uk_household_weight_kind(result.frame).value,
-            "household_weight_total": float(household_weights.sum()),
+            "household_weight_total": float(
+                result.frame.weights_for("household").total
+            ),
             "mass_changes": mass_changes,
         },
         "source_rows": {

@@ -29,7 +29,6 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.build.uk_runtime.release_input_coverage import (
     uk_release_input_coverage_gate,
 )
-from microcosm.build.uk_runtime.terminal_gates import UKReleaseParityEvidence
 from microcosm.frame import Frame, MassChangeRecord, WeightKind
 
 TEST_UK_RELEASE_ID = "populace-uk-2023-frs-k535080"
@@ -111,6 +110,7 @@ def _replace_person(frame: Frame, person: pd.DataFrame) -> Frame:
         household=frame.table("household"),
         time_period=uk_time_period(frame),
         weight_kind=uk_household_weight_kind(frame),
+        household_weights=frame.weights_for("household").values,
         mass_log=frame.mass_log,
     )
 
@@ -286,35 +286,36 @@ def test_driver_validates_the_uk_residue_after_each_stage(
 ) -> None:
     """The driver's post-stage validate is load-bearing, not decorative.
 
-    A stage returning ``frame.with_weights(...)`` with a stale exported
-    ``household_weight`` column constructs a perfectly valid Frame — the
-    kernel permits the column when typed weights exist — so only the
-    driver's ``validate_uk_national_frame`` call can stop the wrong weights
-    from shipping. The stage-side rejection tests all raise inside the
-    stage's own frame construction; this one can only fail at the driver
-    seam.
+    A stage can directly construct a kernel-valid Frame carrying the exported
+    ``household_weight`` column. Only the driver's
+    ``validate_uk_national_frame`` call can stop that column from returning
+    to the in-build carrier.
     """
 
     pytest.importorskip("tables")
-    from microcosm.frame import CONSERVE_MASS, Weights
 
     input_h5 = tmp_path / "base.h5"
     _write_two_row_h5(input_h5)
 
-    def redistribute_without_refreshing_column(frame: Frame) -> Frame:
-        weights = frame.weights_for("household")
-        return frame.with_weights(
-            "household",
-            Weights(values=weights.values[::-1].copy(), kind=weights.kind),
-            mass=CONSERVE_MASS,
+    def return_export_column(frame: Frame) -> Frame:
+        return Frame(
+            {
+                "person": frame.table("person"),
+                "benunit": frame.table("benunit"),
+                "household": frame.table("household").assign(household_weight=999.0),
+            },
+            frame.schema,
+            {"household": frame.weights_for("household")},
+            metadata=frame.metadata,
+            mass_log=frame.mass_log,
         )
 
-    with pytest.raises(ValueError, match="refresh the exported column"):
+    with pytest.raises(ValueError, match="must not persist exported weight"):
         _run_national_build(
             input_h5=input_h5,
             staging_h5=tmp_path / "staging.h5",
             stages=(
-                UKNationalStage("stale_column", redistribute_without_refreshing_column),
+                UKNationalStage("export_column", return_export_column),
             ),
             coverage_engine=object(),
         )
@@ -424,7 +425,7 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
     staged, staged_provenance = load_uk_national_frame(staging_h5)
     assert staged_provenance.source_h5 == staging_h5.resolve()
     assert staged.person["employment_income"].tolist() == [50_000.0]
-    assert staged.table("household")["household_weight"].tolist() == [2.0]
+    assert staged.weights_for("household").values.tolist() == [2.0]
     diagnostic = json.loads(coverage_json.read_text())
     assert diagnostic["enforced"] is True
     assert diagnostic["input_coverage"]["passed"] is True
@@ -932,7 +933,7 @@ def test_national_build_real_terminal_batch_writes_all_findings_before_raise(
     assert not staging_h5.exists()
 
 
-def test_national_build_parity_trio_evaluates_with_evidence_absent_without(
+def test_national_build_parity_trio_is_evidence_absent(
     monkeypatch,
     tmp_path,
 ) -> None:
@@ -941,43 +942,22 @@ def test_national_build_parity_trio_evaluates_with_evidence_absent_without(
     input_h5 = tmp_path / "healthy.h5"
     _write_two_row_h5(input_h5)
     _stub_real_coverage(monkeypatch, _passing_gate)
-    parity = UKReleaseParityEvidence(
-        candidate_columns=("person.employment_income",),
-        reference_columns=("person.employment_income",),
-        candidate_targets=("population",),
-        reference_targets=("population",),
-        target_relative_errors={"population": 0.0},
-    )
 
-    with_evidence = _run_national_build(
+    result = _run_national_build(
         input_h5=input_h5,
         staging_h5=tmp_path / "staging.h5",
         stages=(UKNationalStage("hmrc_spi_income", _RecordedFitStage()),),
         coverage_engine=object(),
-        parity_evidence=parity,
         terminal_gate_path=tmp_path / "terminal_gates.json",
-        gate_registry=None,  # the real UK registry
+        gate_registry=None,
     )
 
-    gates = with_evidence.gate_report["gates"]
+    gates = result.gate_report["gates"]
     assert gates["uk_weights_audit"]["status"] == "passed"
     assert gates["uk_weights_audit"]["details"]["resolved_weight_kinds"] == {
         "uk_frs_only_spi_fill": "importance",
         "uk_spi_2022_23_income": "design",
     }
-    for entry_id in ("uk_export_surface", "uk_target_surface", "uk_target_fit"):
-        assert gates[entry_id]["status"] == "passed", entry_id
-
-    without_evidence = _run_national_build(
-        input_h5=input_h5,
-        staging_h5=tmp_path / "staging2.h5",
-        stages=(UKNationalStage("hmrc_spi_income", _RecordedFitStage()),),
-        coverage_engine=object(),
-        terminal_gate_path=tmp_path / "terminal_gates2.json",
-        gate_registry=None,
-    )
-
-    gates = without_evidence.gate_report["gates"]
     for entry_id in ("uk_export_surface", "uk_target_surface", "uk_target_fit"):
         assert gates[entry_id]["status"] == "evidence_absent", entry_id
         assert gates[entry_id]["reason"] == "missing evidence: parity_evidence"
@@ -1133,6 +1113,7 @@ def test_national_build_rejects_stage_that_breaks_entity_links(tmp_path) -> None
                 benunit=frame.table("benunit"),
                 household=frame.table("household"),
                 time_period=None,
+                household_weights=frame.weights_for("household").values,
             ),
             "time_period must be a non-empty string",
         ),
@@ -1216,6 +1197,7 @@ def test_national_staging_h5_loads_through_policyengine_uk(tmp_path) -> None:
         household=frame.table("household"),
         time_period=uk_time_period(frame),
         weight_kind=WeightKind.IMPORTANCE,
+        household_weights=frame.weights_for("household").values,
         mass_log=(
             MassChangeRecord(
                 entity="household",

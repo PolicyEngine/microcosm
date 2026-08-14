@@ -64,10 +64,11 @@ from microcosm.build.uk_runtime.terminal_gates import (
     UKInputMassParityPolicy,
     UKInputMassReference,
     UKQRFTailConcentrationPolicy,
-    UKReleaseParityEvidence,
-    UKReviewedExclusion,
 )
-from microcosm.build.uk_runtime.weighted_integrity import exclusion_evaluation_date
+from microcosm.build.uk_runtime.weighted_integrity import (
+    UKReviewedExclusion,
+    exclusion_evaluation_date,
+)
 from microcosm.frame import (
     Frame,
     MassChangeRecord,
@@ -346,7 +347,6 @@ def build_uk_national_dataset(
     calibration_diagnostics_sha256: str,
     stages: Sequence[UKNationalStage | PlanStage] | StagePlan = (),
     coverage_engine: Any | None = None,
-    parity_evidence: UKReleaseParityEvidence | None = None,
     input_mass_reference: UKInputMassReference | None = None,
     input_mass_policy: UKInputMassParityPolicy | None = None,
     qrf_tail_policy: UKQRFTailConcentrationPolicy | None = None,
@@ -537,8 +537,6 @@ def build_uk_national_dataset(
     fit_weight_records = _stage_fit_weight_records(materialized_stages)
     if fit_weight_records is not None:
         artifacts["fit_weight_records"] = fit_weight_records
-    if parity_evidence is not None:
-        artifacts["parity_evidence"] = parity_evidence
     if input_mass_reference is not None:
         artifacts["input_mass_reference"] = input_mass_reference
         artifacts["input_mass_policy"] = input_mass_policy

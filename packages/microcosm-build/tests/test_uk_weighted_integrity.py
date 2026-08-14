@@ -732,10 +732,10 @@ def test_uk_totals_are_the_shared_helper_minus_exported_weight_columns() -> None
     """The UK wrapper must not reinvent the shared numeric semantics.
 
     One frame through both helpers: per-column weighted totals must be
-    identical, except that the wrapper removes the exported weight column —
-    ``household_weight`` is a real, engine-known column on the UK frame
-    (the materialized export contract), so the shared helper totals its
-    squared mass and only the wrapper can say it is plumbing, not mass.
+    identical. The in-build UK carrier no longer persists the exported
+    ``household_weight`` column, so the wrapper's removal is a compatibility
+    no-op on carrier Frames; export materialization remains the boundary that
+    writes the column from the typed vector.
     Anchored to a hand computation once, so the wrapper is pinned to the
     shared semantics rather than merely to itself.
     """
@@ -768,14 +768,9 @@ def test_uk_totals_are_the_shared_helper_minus_exported_weight_columns() -> None
     shared_totals = input_mass_totals(frame)
     uk_totals = uk_input_mass_totals(frame)
 
-    # The wrapper exists exactly for this key: sum of squared weights is not
-    # input mass.
-    assert shared_totals["household_weight"] == 2.0**2 + 5.0**2
-    assert uk_totals == {
-        name: total
-        for name, total in shared_totals.items()
-        if name != "household_weight"
-    }
+    assert "household_weight" not in frame.table("household")
+    assert "household_weight" not in shared_totals
+    assert uk_totals == shared_totals
     # NaN fills to 0, booleans total weighted True mass, weights broadcast
     # through membership — asserted against hand computation once.
     assert uk_totals["employment_income"] == 30_000.0 * 2.0 + 12_000.0 * 5.0

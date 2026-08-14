@@ -160,7 +160,7 @@ def test_ladder_clone_assigns_gates_and_conserves(toy_ladder, tmp_path) -> None:
     assert len(frame_household) == 8
     assert len(frame_person) == 10
     assert len(frame_benunit) == 8
-    assert frame_household["household_weight"].sum() == pytest.approx(33.0)
+    assert result.frame.weights_for("household").total == pytest.approx(33.0)
     assert frame_household["household_id"].is_unique
     # In-memory carrier: per-entity clone-index names (Frame's flattening
     # rule forbids one shared name across entity tables).
@@ -212,9 +212,9 @@ def test_ladder_clone_assigns_gates_and_conserves(toy_ladder, tmp_path) -> None:
         assert household["household_id"].is_unique
         assert person["person_id"].is_unique
         assert set(person["person_household_id"]) <= set(household["household_id"])
-        # Export payload schema is unchanged by the Frame carrier: the
-        # artifact clone column keeps its legacy name and position on all
-        # three tables, and no per-entity name leaks into the H5.
+        # The artifact clone column keeps its legacy name and position on all
+        # three tables, no per-entity name leaks into the H5, and typed
+        # household weights are materialized into the export payload.
         for table in (person, benunit, household):
             assert "clone_index" in table.columns
         assert not any(
@@ -229,14 +229,14 @@ def test_ladder_clone_assigns_gates_and_conserves(toy_ladder, tmp_path) -> None:
             "clone_index",
         ]
         assert benunit.columns.tolist() == ["benunit_id", "clone_index"]
-        assert household.columns.tolist()[:6] == [
+        assert household.columns.tolist()[:5] == [
             "household_id",
-            "household_weight",
             "region",
             "source_household_id",
             "source_household_key",
             "clone_index",
         ]
+        assert household["household_weight"].sum() == pytest.approx(33.0)
 
 
 def test_ladder_clone_refuses_vintage_mismatch(toy_ladder) -> None:
@@ -495,13 +495,15 @@ def test_ladder_clone_pins_per_copy_weights_and_fk_alignment(toy_ladder) -> None
     ladder, _ = toy_ladder
     result = clone_uk_dataset_with_ladder_geography(_seam_frame(), ladder, n_clones=2)
     household = result.frame.table("household")
+    household_weights = result.frame.weights_for("household").values
     person = result.frame.table("person")
     household_clone_column = ladder_clone_index_column("household")
     # Every source copy carries exactly its divided weight.
     for clone_index in (0, 1):
-        copy = household[household[household_clone_column] == clone_index]
+        mask = household[household_clone_column] == clone_index
+        copy = household[mask]
         weights = dict(
-            zip(copy["source_household_id"], copy["household_weight"], strict=True)
+            zip(copy["source_household_id"], household_weights[mask], strict=True)
         )
         assert weights == {
             1: pytest.approx(1.5),

@@ -97,7 +97,7 @@ def test_uk_no_extension_checkpoint_keeps_its_schema_2_byte_golden(
 
     assert completed.path.name == "000_retain.frame.h5"
     assert hashlib.sha256(completed.path.read_bytes()).hexdigest() == (
-        "7fd5d25833f395b9eac57fcb0bc6537a344862a024ee981daf167949722a17ee"
+        "65952080dbebd4149051659c0b367a5384ff5ad9206a6f8d90b1dba89ff5b631"
     )
 
 
@@ -154,9 +154,7 @@ def test_nested_frame_metadata_round_trips_through_the_stage_record(
                 }
             ),
             "benunit": pd.DataFrame({"benunit_id": [11]}),
-            "household": pd.DataFrame(
-                {"household_id": [101], "household_weight": [10.0]}
-            ),
+            "household": pd.DataFrame({"household_id": [101]}),
         },
         EntitySchema(group_entities=("benunit", "household")),
         {"household": Weights(np.array([10.0], dtype=np.float64), WeightKind.DESIGN)},
@@ -203,9 +201,7 @@ def test_set_metadata_round_trips_with_an_unchanged_content_identity(
                 }
             ),
             "benunit": pd.DataFrame({"benunit_id": [11]}),
-            "household": pd.DataFrame(
-                {"household_id": [101], "household_weight": [10.0]}
-            ),
+            "household": pd.DataFrame({"household_id": [101]}),
         },
         EntitySchema(group_entities=("benunit", "household")),
         {"household": Weights(np.array([10.0], dtype=np.float64), WeightKind.DESIGN)},
