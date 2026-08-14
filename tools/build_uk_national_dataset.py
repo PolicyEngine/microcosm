@@ -910,6 +910,9 @@ def _main_recording(
                     retained_leaves_transform=retained_leaves_transform,
                     hmrc_income_transform=hmrc_transform,
                 ),
+                # The manifest also declares the frs_spine pipeline root;
+                # the national staging pipeline selects its own stages.
+                stage_names=("frs_hmrc_retained_leaves", "hmrc_spi_income"),
             ).stages,
             # Runs after the SPI restoration so the taxable-income proxy
             # sees the restored income surface. Declared today in the

@@ -58,15 +58,17 @@ class TestUKSourceStagesManifest:
         assert manifest.country == "uk"
         assert manifest.version == 1
         assert [stage.stage for stage in manifest.stages] == [
+            "frs_spine",
             "frs_hmrc_retained_leaves",
             "hmrc_spi_income",
         ]
 
-    def test_country_spec_declares_two_uk_source_stages(self) -> None:
+    def test_country_spec_declares_three_uk_source_stages(self) -> None:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
         assert [stage.stage for stage in spec.sources.stages] == [
+            "frs_spine",
             "frs_hmrc_retained_leaves",
             "hmrc_spi_income",
         ]
@@ -77,7 +79,7 @@ class TestUKSourceStagesManifest:
         frozen = _load_json(FROZEN_SOURCE_STAGES)
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
         frozen_stage = frozen["stages"][0]
-        stage1, stage2 = canonical["stages"]
+        _, stage1, stage2 = canonical["stages"]
 
         expected_operations = copy.deepcopy(frozen_stage["operations"])
         predictor_note = expected_operations[6]["reviewed_absent_predictors"][
@@ -119,7 +121,7 @@ class TestUKSourceStagesManifest:
 
         assert digest == FROZEN_SOURCE_STAGES_SHA256
 
-    def test_country_stage_plan_assembles_two_uk_stages(self) -> None:
+    def test_country_stage_plan_assembles_two_uk_national_stages(self) -> None:
         spec = load_country_spec("uk")
         plan = country_stage_plan(
             spec,
@@ -127,6 +129,7 @@ class TestUKSourceStagesManifest:
                 "frs_hmrc_retained_leaves": _identity,
                 "hmrc_spi_income": _identity,
             },
+            stage_names=("frs_hmrc_retained_leaves", "hmrc_spi_income"),
         )
 
         assert [stage.name for stage in plan.stages] == [
@@ -140,6 +143,7 @@ class TestUKSourceStagesManifest:
             ({"frs_hmrc_retained_leaves": _identity}, "missing"),
             (
                 {
+                    "frs_spine": _identity,
                     "frs_hmrc_retained_leaves": _identity,
                     "hmrc_spi_income": _identity,
                     "hmrc_spi_income_fallback": _identity,
