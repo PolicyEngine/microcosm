@@ -1431,3 +1431,19 @@ def test_certified_latest_pointer_keeps_its_certified_shape(hub: FakeHub) -> Non
     hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(payload).encode())
     pointer = latest_release("policyengine/populace-us", api=hub)
     assert pointer.tier == "certified"
+
+
+def test_certified_publish_never_touches_the_evidence_pointer(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
+    """The converse of the evidence-pointer isolation: a certified publish
+    moves latest.json only, never latest-evidence.json."""
+    publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        updated_at="2026-06-11T13:53:15+00:00",
+    )
+    assert any(path == LATEST_POINTER_PATH for path, _ in hub.uploads)
+    assert all(path != LATEST_EVIDENCE_POINTER_PATH for path, _ in hub.uploads)
