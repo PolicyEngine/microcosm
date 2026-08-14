@@ -208,6 +208,7 @@ def test_driver_dry_run_writes_plan_only(monkeypatch, tmp_path) -> None:
     assert plan_path.exists()
     assert not (output_dir / "populace_uk_2023_rowwise.h5").exists()
     assert not (output_dir / builder.MANIFEST_FILENAME).exists()
+    assert not (output_dir / "logbook-spool").exists()
 
     plan = json.loads(plan_path.read_text())
     assert plan["build_kind"] == "uk_rowwise_local_geography_dry_run"
