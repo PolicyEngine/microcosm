@@ -278,6 +278,7 @@ _STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
     0.01: "f001",
     0.04: "f004",
     0.10: "f010",
+    0.25: "f025",
     1.00: "f100",
 }
 _STACKED_PIPELINE = "us-stacked-pool"
@@ -287,7 +288,7 @@ _STACKED_PIPELINE = "us-stacked-pool"
 # corrected outer order (the primary PUF callback is nested inside the DAG).
 _STACKED_CHECKPOINT_MATERIALIZER_VERSION = 11
 _STACKED_RELEASE_ID_PATTERN = re.compile(
-    r"^populace-us-2024-stacked-f(?:001|004|010|100)-s[0-9]+-"
+    r"^populace-us-2024-stacked-f(?:001|004|010|025|100)-s[0-9]+-"
     r"asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
 )
 
@@ -379,11 +380,11 @@ def _standard_sample_fraction(value: str) -> float:
         fraction = float(value)
     except ValueError as exc:
         raise argparse.ArgumentTypeError(
-            "sample fraction must be one of 0.01, 0.10, or 1.0."
+            "sample fraction must be one of 0.01, 0.04, 0.10, 0.25, or 1.0."
         ) from exc
     if fraction not in _STACKED_SAMPLE_RUNG_TOKENS:
         raise argparse.ArgumentTypeError(
-            "sample fraction must be one of 0.01, 0.10, or 1.0."
+            "sample fraction must be one of 0.01, 0.04, 0.10, 0.25, or 1.0."
         )
     return fraction
 
@@ -495,7 +496,7 @@ def _parser() -> argparse.ArgumentParser:
         "--sample-fraction",
         type=_standard_sample_fraction,
         default=1.0,
-        help="Uniform survey-arm rung: 0.01 smoke, 0.10 dev, or 1.0 full.",
+        help="Uniform survey-arm rung: 0.01/0.04 smoke, 0.10 dev, 0.25 probe, or 1.0 full.",
     )
     parser.add_argument(
         "--sample-seed",
