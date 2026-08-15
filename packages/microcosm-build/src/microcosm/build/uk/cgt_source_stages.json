@@ -134,7 +134,7 @@
       "outputs": [
         "capital_gains"
       ],
-      "notes": "Amounts-only replacement: who has gains comes from the candidate, how much they have comes from the published joint distribution, and household weights pass through unchanged, the weight kind carries through, and the stage appends the mass-conservation receipt the terminal family gate requires. The stage runs after hmrc_spi_income so the taxable-income proxy sees the restored income surface. Requires the microcosm-build uk extra at build time for the policy_parameters artifact.",
+      "notes": "Amounts-only replacement: who has gains comes from the candidate, how much they have comes from the published joint distribution, and household weights pass through unchanged, the weight kind carries through, and the stage appends the mass-conservation receipt the terminal family gate requires. Only persons with positive existing gains are redrawn; the candidate's net losses (negative amounts) and zeros pass through byte-identical, since Table 3 covers only individuals with a liability and says nothing about losses. The stage runs after hmrc_spi_income so the taxable-income proxy sees the restored income surface. Requires the microcosm-build uk extra at build time for the policy_parameters artifact.",
       "output_weight_kind": "importance",
       "output_weight_kind_rationale": "The stage preserves whatever kind it receives; it runs after hmrc_spi_income, whose prior allocation establishes importance-kind household weights, so the final frame carries importance."
     }

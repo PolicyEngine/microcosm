@@ -47,6 +47,11 @@ Three documented approximations, in order of consequence:
    with a CGT liability, so the candidate's remaining gainers are treated as
    sub-AEA gainers rather than being invented into the liability
    distribution or deleted.
+
+Only persons with positive existing gains are gainers. The certified
+candidate also carries net losses (negative amounts) and zeros; both pass
+through byte-identical — Table 3 describes taxpayers with a liability and
+says nothing about losses, so the stage neither redraws nor zeroes them.
 """
 
 from __future__ import annotations
@@ -519,8 +524,14 @@ def impute_uk_capital_gains(
 
     if not np.isfinite(new_gains).all():
         raise ValueError("Imputed capital gains contain non-finite values.")
-    if (new_gains < 0).any():
-        raise ValueError("Imputed capital gains contain negative values.")
+    # Only gainers are redrawn; loss-makers and zero-gain persons pass
+    # through byte-identical. The certified candidate carries net losses
+    # (negative amounts), and Table 3 says nothing about them — a blanket
+    # non-negativity guard here would reject every real build.
+    if (new_gains[is_gainer] < 0).any():
+        raise ValueError("Redrawn capital gains contain negative values.")
+    if (new_gains[~is_gainer] != existing[~is_gainer]).any():
+        raise ValueError("Non-gainer capital gains were modified by the redraw.")
 
     new_person = person.copy()
     new_person["capital_gains"] = new_gains

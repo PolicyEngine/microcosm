@@ -251,6 +251,29 @@ class TestImputation:
         assert receipt.old_total == receipt.new_total
         assert receipt.declared_factor == 1.0
 
+    def test_loss_makers_pass_through_byte_identical(self) -> None:
+        # The certified candidate carries net losses: 49,640 of 1,157,100
+        # person rows hold negative capital_gains (min -£72,374). The first
+        # gated build failed on a blanket non-negativity guard over the whole
+        # column; losses are legitimate pass-through content the published
+        # surface says nothing about.
+        distribution = _distribution()
+        losses = [-72_374.0, -1_000.0, -0.5]
+        frame = _frame(
+            6,
+            gains=[*losses, 0.0, 50_000.0, 20_000.0],
+            incomes=[10_000.0] * 6,
+        )
+
+        result = impute_uk_capital_gains(frame, distribution, PARAMETERS)
+
+        drawn = result.table("person")["capital_gains"].to_numpy()
+        assert drawn[:3] == pytest.approx(losses)
+        assert drawn[3] == 0.0
+        assert (drawn[4:] > 0.0).all()
+        receipt = result.mass_log[-1]
+        assert receipt.reason == UK_CGT_MASS_CONSERVATION_REASON
+
     def test_remainder_keeps_existing_amounts_capped_at_the_aea(self) -> None:
         # One income band holds far more gainer mass than the published
         # taxpayers, so the ranking's tail lands in the sub-AEA remainder.
