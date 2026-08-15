@@ -638,6 +638,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pandas" },
     { name = "pyarrow" },
+    { name = "pyyaml" },
     { name = "scipy" },
 ]
 
@@ -675,6 +676,7 @@ requires-dist = [
     { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.88" },
     { name = "policyengine-us", marker = "extra == 'us'", specifier = ">=1.745.0,<2" },
     { name = "pyarrow", specifier = ">=15" },
+    { name = "pyyaml", specifier = ">=6" },
     { name = "scipy", specifier = ">=1.13" },
     { name = "tables", marker = "extra == 'uk'", specifier = ">=3" },
     { name = "tables", marker = "extra == 'us'", specifier = ">=3" },

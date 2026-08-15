@@ -17,6 +17,9 @@ dependencies = [
     # Parquet is the artifact format for the us_trade margin and entry
     # tables; pandas>=3 pulls pyarrow anyway, but the dependency is real.
     "pyarrow>=15",
+    # The imputation lineage spec (specs/*.yaml) is the source of truth for
+    # predictor sets and model attributes; the conformance test reads it.
+    "pyyaml>=6",
 ]
 
 [project.optional-dependencies]
