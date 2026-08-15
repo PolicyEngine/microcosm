@@ -1,0 +1,1 @@
+Add specs/us_imputation_lineage.yaml — the source-of-truth declaration of every imputed variable's stage, family, predictor set, and model attributes — with a conformance test that fails CI when code drifts from the spec, and tools/emit_lineage_dashboard.py to publish it to microcosm.institute.
