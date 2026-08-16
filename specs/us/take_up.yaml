@@ -1,12 +1,13 @@
 # DRAFT FOR REVIEW — schema only; rows populated from the #697 lane's
 # code trace (each entry cites its kernel + parameter source).
 status: draft-for-review
+naming_rule: takes_up_{program}{treatment_suffix}
 draws:
-  - variable: takes_up_snap_if_eligible
-    entity: spm_unit
+  - program: snap                # key = contract row; column + entity DERIVED
     kernel: kernel:snap_state_take_up
-    probability_source: {contract: take_up_contract, program: snap, grain: state}
+    probability_source: {contract: take_up_contract, grain: state}
     conditioning: eligibility_interaction
     seed: derive
     calibration_status: none
-  # … one entry per takes_up_* column (12+), from the closure lane's trace
+    # derived+asserted: column=takes_up_snap_if_eligible, entity=spm_unit
+  # … one entry per program, from the closure lane's trace

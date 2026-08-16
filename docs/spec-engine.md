@@ -42,6 +42,13 @@ what, with what*.
 6. **The dashboard reads the same bundle the build reads.** Drift between
    page and build becomes impossible by construction, ending the
    emitter-regeneration step.
+7. **Derive, don't declare.** A field that is a deterministic function of
+   another authority — engine variable metadata, a naming rule, the block
+   geoid, a contract row — is derived by the loader and asserted, never
+   independently declared. Every independent second copy is a future
+   drift. (Examples: take-up column names and entities derive from the
+   program + contract; county/tract/PUMA derive from the block; the
+   assertion failing is a load refusal.)
 
 ## Bundle layout
 
@@ -194,15 +201,27 @@ computed_producers:
 
 Populated by the #697 lane's code trace; schema:
 
+Entries key by **program**, not by flag column (Max, 2026-08-16). The
+column name derives from a declared naming rule and the entity derives
+from the take-up contract's engine metadata (`TakeUpProgram.entity`, which
+the engine's own variable definition sourced) — both derived-and-asserted,
+never independently declared, so neither can drift from the program.
+
 ```yaml
+naming_rule: takes_up_{program}{treatment_suffix}   # suffix from contract
+                                                    # treatment kind; legacy
+                                                    # irregulars regularized
+                                                    # at the flip
 draws:
-  - variable: takes_up_snap_if_eligible
-    entity: spm_unit
+  - program: snap                       # the key — a contract row
     kernel: kernel:snap_state_take_up
-    probability_source: {contract: take_up_contract, program: snap, grain: state}
+    probability_source: {contract: take_up_contract, grain: state}
     conditioning: eligibility_interaction
     seed: derive
-    calibration_status: none            # visible debt, like post_draw_calibration was
+    calibration_status: none            # visible debt
+    # derived + asserted (loader refuses on mismatch):
+    #   column: takes_up_snap_if_eligible   (naming_rule)
+    #   entity: spm_unit                    (contract -> engine metadata)
 ```
 
 ### battery.yaml / calibration.yaml / selection.yaml / publication.yaml
