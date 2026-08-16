@@ -79,16 +79,24 @@
       "value",
       "normative"
      ],
-     "description": "PROVISIONAL pending D6 - excluded from spec_sha256 (normative:false).",
+     "description": "D6 RULED (Max 2026-08-16): microcosm-us-2024-* is the spec-engine-era line; NORMATIVE (hashed into spec_sha256). Readers accept both prefixes; populace-* rows stay valid-historical.",
      "properties": {
       "value": {
-       "type": "string"
+       "type": "string",
+       "pattern": "^microcosm-[a-z]{2}-[0-9]{4}$"
       },
       "normative": {
-       "const": false
+       "const": true
       },
       "note": {
        "type": "string"
+      },
+      "legacy_prefixes": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       },
+       "description": "Prefixes readers must still accept (valid-historical rows)."
       }
      }
     },

@@ -2,9 +2,10 @@
 
 Status: **v3 — APPROVED by Max 2026-08-16** ("sure i approve") after two
 rounds of cross-family review. Sign-off covers the schema shape, the
-P→F0→F3 phasing, and the schema set in `specs/schema/`. D6 (release-line
-rename) remains a separate open ruling; the line stays provisional and
-non-normative until then.
+P→F0→F3 phasing, and the schema set in `specs/schema/`. D6 RULED same day:
+**`microcosm-us-2024-*`** is the spec-engine-era release line (Max,
+2026-08-16); `populace-us-*` rows stay valid-historical in the chain; the
+HF dataset destination is unchanged and outside this ruling.
 Nothing here is wired; excerpts below are **non-normative pseudocode until
 the committed schemas and the complete US bundle exist** (both reviews
 correctly rejected "schema-conforming" as a label for drafts).
@@ -632,7 +633,7 @@ consumers; and the CountrySpec row is labeled replacement-through-seam.
 | D3 | spec_sha256 joins identity | both: amend | As `run_provenance_identity` (with the restored triad + `identity_generation` on concrete fields); provenance never gates node reuse |
 | D4 | Frozen-behavior gate | both: amend | Four cold builds; plan-derived vector incl. publication + banks; concrete resume predicate; adversarial fixtures |
 | D5 | Seed streams | both: split stands | `legacy-v1` enforced by the RNG broker + draw-site ledger; `derived-v2` at F3 |
-| D6 | Release line rename | Pro: don't freeze it unresolved | **Open — Max**; provisional/non-normative, excluded from `spec_sha256`, until ruled; HF destination separate explicit ruling |
+| D6 | Release line rename | Pro: don't freeze it unresolved | **RULED (Max, 2026-08-16): `microcosm-us-2024-*`** at the flip; the line becomes normative in publication.yaml at F0 (release regex + rung grammar; readers accept both prefixes; populace-* rows valid-historical); HF destination unchanged, separate explicit ruling |
 
 ## Review provenance
 
