@@ -1,43 +1,18 @@
-# DRAFT FOR REVIEW — the spec-engine root manifest (docs/spec-engine.md v2).
-# Nothing reads this yet; shapes are the review surface.
+# DRAFT (v3) — pseudocode until schemas land.
 #
-# PACKAGING (sol MAJOR 10): this drafting location is temporary. At
-# implementation the bundle lives as PACKAGE DATA under the country
-# package (microcosm/build/us/…), declared in country_package.json as new
-# CountrySpec resource kinds — one loader, one composition binding, wheel-
-# safe. specs/us_imputation_lineage.yaml and its emitter retire at the flip.
-schema_version: 1
-canonicalizer_version: 1
+# Round 2 (sol M10 / Pro): country_package.json becomes THE single typed
+# resource manifest ({path, kind, schema_id} rows replacing bare
+# filenames) — this file no longer carries a second file inventory.
+# Bundle-level settings only. Root specs/ is a drafting location; the
+# bundle ships as package data through the CountrySpec seam.
 country: us
-status: draft-for-review
-seed_protocol: legacy-v1        # named-stream map pinning today's literal
-                                # seeds exactly; derived-v2 is an F3 edit
-files:
-  - sources.yaml
-  - spine.yaml
-  - geography.yaml
-  - imputation.yaml             # includes producer_graph (lossless late DAG)
-  - take_up.yaml                # absorbs take_up_contract.json + source rows
-  - battery.yaml
-  - calibration.yaml
-  - selection.yaml
-  - publication.yaml
-  - vintages.yaml               # period semantics: survey/tax years, geo
-                                # vintages, engine pin
-  - catalogs.yaml               # entity/artifact/column catalogs (human rows)
-  # column_lineage.yaml is GONE as an authored file (Max 2026-08-16):
-  # whole-column closure DERIVES from declared outputs; authored remnants =
-  # inventory fixture (cross-check), time-limited waivers, catalogs.
-emitted:                        # compiler outputs, receipted, never authored
-  - bundle.lock.json            # file hashes + schema/canonicalizer versions
-  - plan.lock.json              # typed IR: stage DAG, resolved params,
-                                # kernel pins, per-node keys
-identity:
-  binds: spec_binding           # namespaced: {country, schema_id,
-                                # schema_version, canonicalizer_version,
-                                # spec_sha256} — one of FOUR jointly
-                                # required classes (grammar, configuration,
-                                # code, serialization); resume requires
-                                # equality of all four
-  note: joins checkpoint identity and every logbook row after successful
-    resolution; failure rows carry spec_binding_status, never a partial hash
+identity_generation: 1
+seed_protocol: legacy-v1        # enforced via the RNG broker + draw-site
+                                # ledger; derived-v2 is an F3 edit
+status: draft-v3-pseudocode
+# Emitted (never authored): bundle.lock.json, plan.lock.json,
+# engine_abi.lock.json. Generated locks are reproducible from their
+# authorities and rejected if hand-edited.
+# Identity: run_provenance_identity (records) vs node_reuse_key (reuse) —
+# see docs/spec-engine.md "Identity". The release line in publication is
+# PROVISIONAL/non-normative pending D6 (excluded from spec_sha256).
