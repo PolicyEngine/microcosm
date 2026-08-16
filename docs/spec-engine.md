@@ -242,8 +242,15 @@ targets:
 # selection.yaml
 exact_k: {kernel: kernel:sampford_exact_k, k: 50000, support_assertions: on}
 # publication.yaml
-release: {pattern: "populace-us-2024-stacked-f{rung}-s{seed}-…",
-          rungs: [f001, f004, f010, f025, f100]}
+release:
+  # D6 (open, Max): the flip is the natural rename boundary — spec-engine-era
+  # artifacts adopt the microcosm-* line; populace-* rows stay valid-historical
+  # in the chain. HF destination is a separate named decision (never changed
+  # implicitly).
+  line: microcosm-us-2024            # proposed; was populace-us-2024 (frozen v1)
+  pattern: "{line}-stacked-f{rung}-s{seed}-…"
+  rungs: [f001, f004, f010, f025, f100]
+distribution: hf:policyengine/populace-us   # unchanged until explicit ruling
 logbook: {chain: strict_linear, store: supabase:logbook}
 ```
 
