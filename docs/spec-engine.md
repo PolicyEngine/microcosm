@@ -159,6 +159,14 @@ models:
     # gate/magnitude/weighting/chaining live in the kernel's contract doc;
     # every knob a family may override is a declared param here.
 
+chaining:                       # chain semantics are DECLARED, not accidental
+  order: declared               # the family's target list IS the chain order
+  max_targets_per_fit: 8        # chains split greedily at this width
+  cross_batch: independent_given_predictors   # split chains share only base
+  keep_together:                # joint-critical targets must share one chain
+    - [ssn_card_type, immigration_status_str]   # existing joint codec
+    # coverage booleans, etc. — declared per family as needed
+
 families:
   - id: gap_fill/asec_survey_to_acs/person/benefit_participation
     stage: early_gap_fill
