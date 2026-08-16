@@ -1,20 +1,43 @@
-# DRAFT FOR REVIEW — the spec-engine root manifest (docs/spec-engine.md).
+# DRAFT FOR REVIEW — the spec-engine root manifest (docs/spec-engine.md v2).
 # Nothing reads this yet; shapes are the review surface.
+#
+# PACKAGING (sol MAJOR 10): this drafting location is temporary. At
+# implementation the bundle lives as PACKAGE DATA under the country
+# package (microcosm/build/us/…), declared in country_package.json as new
+# CountrySpec resource kinds — one loader, one composition binding, wheel-
+# safe. specs/us_imputation_lineage.yaml and its emitter retire at the flip.
 schema_version: 1
+canonicalizer_version: 1
 country: us
 status: draft-for-review
-root_seed: 578
+seed_protocol: legacy-v1        # named-stream map pinning today's literal
+                                # seeds exactly; derived-v2 is an F3 edit
 files:
   - sources.yaml
   - spine.yaml
   - geography.yaml
-  - imputation.yaml
-  - take_up.yaml
+  - imputation.yaml             # includes producer_graph (lossless late DAG)
+  - take_up.yaml                # absorbs take_up_contract.json + source rows
   - battery.yaml
   - calibration.yaml
   - selection.yaml
   - publication.yaml
-  - column_lineage.yaml
+  - vintages.yaml               # period semantics: survey/tax years, geo
+                                # vintages, engine pin
+  - catalogs.yaml               # entity/artifact/column catalogs (human rows)
+  # column_lineage.yaml is GONE as an authored file (Max 2026-08-16):
+  # whole-column closure DERIVES from declared outputs; authored remnants =
+  # inventory fixture (cross-check), time-limited waivers, catalogs.
+emitted:                        # compiler outputs, receipted, never authored
+  - bundle.lock.json            # file hashes + schema/canonicalizer versions
+  - plan.lock.json              # typed IR: stage DAG, resolved params,
+                                # kernel pins, per-node keys
 identity:
-  binds: [spec_sha256, schema_version]
-  note: joins checkpoint identity and every logbook row
+  binds: spec_binding           # namespaced: {country, schema_id,
+                                # schema_version, canonicalizer_version,
+                                # spec_sha256} — one of FOUR jointly
+                                # required classes (grammar, configuration,
+                                # code, serialization); resume requires
+                                # equality of all four
+  note: joins checkpoint identity and every logbook row after successful
+    resolution; failure rows carry spec_binding_status, never a partial hash

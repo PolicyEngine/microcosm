@@ -1,13 +1,51 @@
-# DRAFT FOR REVIEW — schema only; rows populated from the #697 lane's
-# code trace (each entry cites its kernel + parameter source).
+# DRAFT FOR REVIEW — discriminated programs, honest mechanisms (v2).
+#
+# v1's shape (one per-flag draw + contract as external "parameter source")
+# was factually false for SNAP (sol MAJOR 9): the real system is a curated
+# contract + per-program source stages, where SNAP is out_of_scope for
+# generic seeding because a national prior stage is followed by a dedicated
+# STATE ANCHORED COUNT-CALIBRATION stage that overwrites the flag, with an
+# eligible-only calibration domain distinct from the assignment universe.
+# v2 ABSORBS take_up_contract.json + the relevant source_stages.json rows
+# into this file — no second authority survives the flip.
 status: draft-for-review
 naming_rule: takes_up_{program}{treatment_suffix}
-draws:
-  - program: snap                # key = contract row; column + entity DERIVED
-    kernel: kernel:snap_state_take_up
-    probability_source: {contract: take_up_contract, grain: state}
-    conditioning: eligibility_interaction
-    seed: derive
-    calibration_status: none
+# column + entity are DERIVED (naming rule + engine metadata via the
+# absorbed contract) and asserted at load — never independently declared
+# (Max 2026-08-16). Coverage is asserted against installed engine metadata.
+#
+# treatment enum (closed): measured | imputed_transferred | seeded_rate |
+#   batched_seeded | anchored_count_calibrated | engine_default_with_debt |
+#   near_universal | dedicated_stage
+# Output ownership is separate from kernel invocation: one kernel may own
+# many flags; one flag may have multiple pipeline stages with exactly one
+# final_owner.
+programs:
+  - id: snap
+    treatment: anchored_count_calibrated
+    pipeline:                            # ORDERED; final_owner overwrites
+      - stage: national_prior
+        kernel: kernel:take_up_seed_national
+        rate_source: source:take_up_reported_anchor
+      - stage: state_count_calibration
+        kernel: kernel:snap_state_take_up
+        anchor: source:fns_state_participation_counts
+        domain: eligible_only            # calibration domain ≠ assignment universe
+        assignment: unmasked_stable_source_id
+        prior: runtime_target_over_weighted_modeled_eligibles
+        saturation: cap_at_universe
+        final_owner: true
     # derived+asserted: column=takes_up_snap_if_eligible, entity=spm_unit
-  # … one entry per program, from the closure lane's trace
+  - id: wic
+    treatment: batched_seeded            # generic seeder: one kernel, many flags
+    rate_source: contract:take_up
+  - id: eitc
+    treatment: batched_seeded
+    rate_source: contract:take_up
+    special_case: filer_conditioning     # today's seeder special-case, declared
+  - id: social_security
+    treatment: measured                  # ASEC-native; no draw, no kernel
+  # … full inventory generated from the absorbed contract at F0: every
+  # program row is a discriminated entry with its true treatment — the
+  # measured / transferred / count-calibrated / defaulted / near-universal /
+  # dedicated-stage split the contract already encodes.
