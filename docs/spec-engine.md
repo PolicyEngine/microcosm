@@ -1,6 +1,10 @@
 # The spec engine: one declared bundle drives the build
 
-Status: **v3 — after two rounds of cross-family review** (2026-08-16).
+Status: **v3 — APPROVED by Max 2026-08-16** ("sure i approve") after two
+rounds of cross-family review. Sign-off covers the schema shape, the
+P→F0→F3 phasing, and the schema set in `specs/schema/`. D6 (release-line
+rename) remains a separate open ruling; the line stays provisional and
+non-normative until then.
 Nothing here is wired; excerpts below are **non-normative pseudocode until
 the committed schemas and the complete US bundle exist** (both reviews
 correctly rejected "schema-conforming" as a label for drafts).
