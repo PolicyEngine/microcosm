@@ -1,0 +1,134 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "geography.schema.json",
+ "title": "Geography assignment (block-first form is PHASE F3; the flip encodes legacy)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "phase",
+  "assignment"
+ ],
+ "properties": {
+  "phase": {
+   "enum": [
+    "legacy",
+    "f3"
+   ]
+  },
+  "status": {
+   "type": "string"
+  },
+  "assignment": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "anchor",
+    "order",
+    "kernels",
+    "draw",
+    "derive",
+    "assertions",
+    "ladder_source",
+    "seed"
+   ],
+   "properties": {
+    "anchor": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "order": {
+     "enum": [
+      "before_gap_fill",
+      "legacy_post_transfer"
+     ]
+    },
+    "kernels": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "assign",
+      "validate"
+     ],
+     "properties": {
+      "assign": {
+       "$ref": "defs.schema.json#/$defs/kernel_ref"
+      },
+      "validate": {
+       "$ref": "defs.schema.json#/$defs/kernel_ref"
+      }
+     }
+    },
+    "draw": {
+     "type": "object",
+     "additionalProperties": {
+      "oneOf": [
+       {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "universe",
+         "weight"
+        ],
+        "properties": {
+         "universe": {
+          "$ref": "defs.schema.json#/$defs/identifier"
+         },
+         "weight": {
+          "$ref": "defs.schema.json#/$defs/identifier"
+         }
+        }
+       },
+       {
+        "type": "object",
+        "additionalProperties": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "universe",
+          "weight"
+         ],
+         "properties": {
+          "universe": {
+           "$ref": "defs.schema.json#/$defs/identifier"
+          },
+          "weight": {
+           "$ref": "defs.schema.json#/$defs/identifier"
+          }
+         }
+        },
+        "minProperties": 1
+       }
+      ]
+     }
+    },
+    "identified_county_source": {
+     "$ref": "defs.schema.json#/$defs/source_ref"
+    },
+    "derive": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     }
+    },
+    "assertions": {
+     "type": "array",
+     "items": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     }
+    },
+    "ladder_source": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "seed": {
+     "$ref": "defs.schema.json#/$defs/stream_ref"
+    },
+    "validation": {
+     "type": "array",
+     "items": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     }
+    }
+   }
+  }
+ }
+}

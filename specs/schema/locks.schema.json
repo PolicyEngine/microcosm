@@ -1,0 +1,232 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "locks.schema.json",
+ "title": "EMITTED artifacts (never authored; reproducible-or-rejected)",
+ "$defs": {
+  "bundle_lock": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "grammar_receipt",
+    "files",
+    "spec_sha256"
+   ],
+   "properties": {
+    "grammar_receipt": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "schema_version",
+      "canonicalizer_version",
+      "migration_chain"
+     ],
+     "properties": {
+      "schema_version": {
+       "type": "integer"
+      },
+      "canonicalizer_version": {
+       "type": "integer"
+      },
+      "migration_chain": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "id",
+         "sha256"
+        ],
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "sha256": {
+          "$ref": "defs.schema.json#/$defs/sha256"
+         }
+        }
+       }
+      }
+     }
+    },
+    "files": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "sha256",
+       "byte_size"
+      ],
+      "properties": {
+       "sha256": {
+        "$ref": "defs.schema.json#/$defs/sha256"
+       },
+       "byte_size": {
+        "type": "integer"
+       }
+      }
+     }
+    },
+    "spec_sha256": {
+     "$ref": "defs.schema.json#/$defs/sha256"
+    }
+   }
+  },
+  "plan_lock": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "compiler_ir_abi",
+    "nodes"
+   ],
+   "properties": {
+    "compiler_ir_abi": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "version",
+      "sha256"
+     ],
+     "properties": {
+      "version": {
+       "type": "integer"
+      },
+      "sha256": {
+       "$ref": "defs.schema.json#/$defs/sha256"
+      }
+     }
+    },
+    "nodes": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "id",
+       "node_key",
+       "kernel",
+       "depends_on",
+       "inputs",
+       "outputs",
+       "seed_streams"
+      ],
+      "properties": {
+       "id": {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       },
+       "node_key": {
+        "$ref": "defs.schema.json#/$defs/sha256"
+       },
+       "kernel": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "ref",
+         "implementation_sha256"
+        ],
+        "properties": {
+         "ref": {
+          "$ref": "defs.schema.json#/$defs/kernel_ref"
+         },
+         "implementation_sha256": {
+          "$ref": "defs.schema.json#/$defs/sha256"
+         }
+        }
+       },
+       "depends_on": {
+        "type": "array",
+        "items": {
+         "$ref": "defs.schema.json#/$defs/identifier"
+        }
+       },
+       "inputs": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "outputs": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       },
+       "seed_streams": {
+        "type": "array",
+        "items": {
+         "$ref": "defs.schema.json#/$defs/stream_ref"
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "engine_abi_lock": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "engine",
+    "programs"
+   ],
+   "properties": {
+    "engine": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "package",
+      "version"
+     ],
+     "properties": {
+      "package": {
+       "type": "string"
+      },
+      "version": {
+       "type": "string"
+      }
+     }
+    },
+    "programs": {
+     "type": "object",
+     "description": "Generated from the single engine pin; CI compares a fresh derivation BEFORE bundle compilation; bumps fail closed. Total-and-injective program->variable mapping asserted.",
+     "additionalProperties": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "variable",
+       "entity",
+       "value_type",
+       "default",
+       "engine_class"
+      ],
+      "properties": {
+       "variable": {
+        "type": "string"
+       },
+       "entity": {
+        "$ref": "defs.schema.json#/$defs/entity"
+       },
+       "value_type": {
+        "enum": [
+         "bool",
+         "float",
+         "int"
+        ]
+       },
+       "default": {},
+       "engine_class": {
+        "type": "string"
+       },
+       "consumers": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}

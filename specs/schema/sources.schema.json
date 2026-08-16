@@ -1,0 +1,50 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "sources.schema.json",
+ "title": "External inputs: logical ids + content pins. NO paths (operational); NO engine pin (vintages).",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "sources"
+ ],
+ "properties": {
+  "sources": {
+   "type": "array",
+   "minItems": 1,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "role",
+     "sha256",
+     "loader"
+    ],
+    "properties": {
+     "id": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     },
+     "role": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     },
+     "sha256": {
+      "$ref": "defs.schema.json#/$defs/sha256"
+     },
+     "byte_size": {
+      "type": "integer",
+      "minimum": 1
+     },
+     "loader": {
+      "$ref": "defs.schema.json#/$defs/kernel_ref"
+     },
+     "vintages": {
+      "type": "array",
+      "items": {
+       "$ref": "defs.schema.json#/$defs/vintage_ref"
+      }
+     }
+    }
+   }
+  }
+ }
+}

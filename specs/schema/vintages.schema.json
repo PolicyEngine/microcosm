@@ -1,0 +1,56 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "vintages.schema.json",
+ "title": "Typed vintage/reference records; the engine pin appears here EXACTLY ONCE",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "records"
+ ],
+ "properties": {
+  "records": {
+   "type": "array",
+   "minItems": 1,
+   "description": "Other files refer by vintage: ref; CI rejects duplicate literal authorities.",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "kind",
+     "value"
+    ],
+    "properties": {
+     "id": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     },
+     "kind": {
+      "enum": [
+       "tax_period",
+       "survey_period",
+       "target_period",
+       "geography_vintage",
+       "policy_engine_surface",
+       "release_series"
+      ]
+     },
+     "value": {
+      "type": [
+       "string",
+       "integer"
+      ]
+     },
+     "source": {
+      "$ref": "defs.schema.json#/$defs/source_ref"
+     },
+     "compatible_with": {
+      "type": "array",
+      "items": {
+       "$ref": "defs.schema.json#/$defs/vintage_ref"
+      }
+     }
+    }
+   }
+  }
+ }
+}

@@ -1,0 +1,30 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "bundle.schema.json",
+ "title": "Bundle-level settings (no file inventory - that is country_package.json)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "country",
+  "identity_generation",
+  "seed_protocol"
+ ],
+ "properties": {
+  "country": {
+   "$ref": "defs.schema.json#/$defs/identifier"
+  },
+  "identity_generation": {
+   "type": "integer",
+   "minimum": 1
+  },
+  "seed_protocol": {
+   "enum": [
+    "legacy-v1",
+    "derived-v2"
+   ]
+  },
+  "status": {
+   "type": "string"
+  }
+ }
+}

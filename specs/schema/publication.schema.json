@@ -1,0 +1,144 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "publication.schema.json",
+ "title": "Publication: attempt events, atomic promotion, audit chain != release graph",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "attempts",
+  "promotion",
+  "release",
+  "audit_chain",
+  "release_graph"
+ ],
+ "properties": {
+  "attempts": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "model",
+    "terminal_states"
+   ],
+   "properties": {
+    "model": {
+     "const": "append_only_events_then_terminal_seal"
+    },
+    "terminal_states": {
+     "type": "array",
+     "items": {
+      "enum": [
+       "landed",
+       "failed",
+       "expired"
+      ]
+     }
+    }
+   }
+  },
+  "promotion": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "latest_flip",
+    "idempotency",
+    "recovery"
+   ],
+   "properties": {
+    "latest_flip": {
+     "const": "human_gate"
+    },
+    "idempotency": {
+     "const": "required_key"
+    },
+    "recovery": {
+     "type": "array",
+     "items": {
+      "enum": [
+       "seal_ok_append_fail",
+       "append_ok_alias_fail",
+       "orphan_reconciliation",
+       "expiry_reconciliation"
+      ]
+     }
+    }
+   }
+  },
+  "release": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "line",
+    "pattern",
+    "rungs"
+   ],
+   "properties": {
+    "line": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "value",
+      "normative"
+     ],
+     "description": "PROVISIONAL pending D6 - excluded from spec_sha256 (normative:false).",
+     "properties": {
+      "value": {
+       "type": "string"
+      },
+      "normative": {
+       "const": false
+      },
+      "note": {
+       "type": "string"
+      }
+     }
+    },
+    "pattern": {
+     "type": "string"
+    },
+    "rungs": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "string",
+      "pattern": "^f[0-9]{3}$"
+     }
+    }
+   }
+  },
+  "audit_chain": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kind"
+   ],
+   "properties": {
+    "kind": {
+     "const": "strict_linear"
+    },
+    "store": {
+     "type": "string",
+     "description": "OPERATIONAL binding; never hashed."
+    }
+   }
+  },
+  "release_graph": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "relations"
+   ],
+   "properties": {
+    "relations": {
+     "type": "array",
+     "items": {
+      "enum": [
+       "derived_from",
+       "supersedes",
+       "revokes"
+      ]
+     }
+    }
+   }
+  }
+ }
+}

@@ -1,0 +1,108 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "spine.schema.json",
+ "title": "Channels (ORDERED - structural), assembly, support roles",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "channels",
+  "assembly",
+  "support_roles"
+ ],
+ "properties": {
+  "channels": {
+   "type": "array",
+   "minItems": 1,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "source",
+     "observed_geography"
+    ],
+    "properties": {
+     "id": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     },
+     "source": {
+      "oneOf": [
+       {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       },
+       {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+         "$ref": "defs.schema.json#/$defs/identifier"
+        }
+       }
+      ]
+     },
+     "observed_geography": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     }
+    }
+   }
+  },
+  "assembly": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "mass_anchor_channel",
+    "shared_dtype_policy"
+   ],
+   "properties": {
+    "mass_anchor_channel": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "shared_dtype_policy": {
+     "const": "canonical_string_storage"
+    }
+   }
+  },
+  "support_roles": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "kind"
+    ],
+    "properties": {
+     "id": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     },
+     "kind": {
+      "enum": [
+       "puf_attachment",
+       "synthetic_prior_replacement",
+       "none"
+      ]
+     },
+     "clone_index": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "tail_support": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "strata",
+       "policy"
+      ],
+      "properties": {
+       "strata": {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       },
+       "policy": {
+        "const": "declared_min_support_with_receipt"
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}

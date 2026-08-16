@@ -1,0 +1,172 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "calibration.schema.json",
+ "title": "Calibration: the full mathematical contract (no library defaults)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "solver",
+  "targets"
+ ],
+ "properties": {
+  "solver": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kernel",
+    "loss",
+    "target_scaling",
+    "row_weighting",
+    "zero_negative_target_policy",
+    "objective_aggregation",
+    "mass_constraints",
+    "initialization",
+    "optimizer",
+    "stopping",
+    "infeasibility_policy",
+    "target_priority",
+    "max_weight_ratio",
+    "l0"
+   ],
+   "properties": {
+    "kernel": {
+     "$ref": "defs.schema.json#/$defs/kernel_ref"
+    },
+    "loss": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "formula_id"
+     ],
+     "properties": {
+      "formula_id": {
+       "$ref": "defs.schema.json#/$defs/identifier"
+      },
+      "params": {
+       "type": "object"
+      }
+     }
+    },
+    "target_scaling": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "row_weighting": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "zero_negative_target_policy": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "objective_aggregation": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "mass_constraints": {
+     "type": "array",
+     "items": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     }
+    },
+    "initialization": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "optimizer": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "name",
+      "dtype"
+     ],
+     "properties": {
+      "name": {
+       "$ref": "defs.schema.json#/$defs/identifier"
+      },
+      "schedule": {
+       "type": "object"
+      },
+      "dtype": {
+       "enum": [
+        "float32",
+        "float64"
+       ]
+      }
+     }
+    },
+    "stopping": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "max_epochs"
+     ],
+     "properties": {
+      "max_epochs": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "tolerance": {
+       "type": "number"
+      },
+      "patience": {
+       "type": "integer"
+      }
+     }
+    },
+    "infeasibility_policy": {
+     "enum": [
+      "refuse",
+      "report_and_continue"
+     ]
+    },
+    "target_priority": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "max_weight_ratio": {
+     "type": "number",
+     "exclusiveMinimum": 1
+    },
+    "l0": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "mode"
+     ],
+     "properties": {
+      "mode": {
+       "enum": [
+        "exact_k_projection",
+        "none"
+       ]
+      }
+     }
+    }
+   }
+  },
+  "targets": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "source",
+    "geography_layers",
+    "cd_policy"
+   ],
+   "properties": {
+    "source": {
+     "const": "chronicle_facts"
+    },
+    "geography_layers": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "enum": [
+       "national",
+       "state",
+       "congressional_district",
+       "county"
+      ]
+     }
+    },
+    "cd_policy": {
+     "const": "always_present_report_attainment"
+    }
+   }
+  }
+ }
+}

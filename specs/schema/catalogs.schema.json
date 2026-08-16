@@ -1,0 +1,95 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "catalogs.schema.json",
+ "title": "Column catalog: normative contract + docs overlay; lineage is COMPILER-EMITTED, never authored",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "columns"
+ ],
+ "x-forbidden-fields": [
+  "owner",
+  "lineage_class"
+ ],
+ "properties": {
+  "columns": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "key",
+     "contract"
+    ],
+    "properties": {
+     "key": {
+      "type": "string",
+      "description": "Compiler-derived stable column key; authored rows must match a compiled key or fail."
+     },
+     "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "entity",
+       "dtype",
+       "period",
+       "nullable",
+       "stability"
+      ],
+      "properties": {
+       "entity": {
+        "$ref": "defs.schema.json#/$defs/entity"
+       },
+       "dtype": {
+        "enum": [
+         "float64",
+         "float32",
+         "int64",
+         "int32",
+         "bool",
+         "string",
+         "category"
+        ]
+       },
+       "unit": {
+        "type": "string"
+       },
+       "period": {
+        "$ref": "defs.schema.json#/$defs/vintage_ref"
+       },
+       "nullable": {
+        "type": "boolean"
+       },
+       "domain": {
+        "type": "string"
+       },
+       "stability": {
+        "enum": [
+         "public_stable",
+         "public_experimental",
+         "internal"
+        ]
+       }
+      }
+     },
+     "docs": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Non-normative; hashed into the documentation digest, NOT spec_sha256.",
+      "properties": {
+       "description": {
+        "type": "string"
+       },
+       "citations": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}

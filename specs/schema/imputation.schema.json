@@ -1,0 +1,539 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "imputation.schema.json",
+ "title": "Predictor blocks, models, chaining, concepts, families, producer graph",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "predictor_blocks",
+  "models",
+  "chaining",
+  "concepts",
+  "families",
+  "producer_graph"
+ ],
+ "properties": {
+  "predictor_blocks": {
+   "type": "object",
+   "additionalProperties": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "columns"
+    ],
+    "properties": {
+     "columns": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+       "$ref": "defs.schema.json#/$defs/identifier"
+      }
+     },
+     "tags": {
+      "type": "array",
+      "items": {
+       "$ref": "defs.schema.json#/$defs/identifier"
+      }
+     },
+     "availability": {
+      "enum": [
+       "observed",
+       "always"
+      ]
+     },
+     "provides_concepts": {
+      "type": "array",
+      "items": {
+       "$ref": "defs.schema.json#/$defs/identifier"
+      }
+     }
+    }
+   }
+  },
+  "models": {
+   "type": "object",
+   "additionalProperties": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "kernel",
+     "params"
+    ],
+    "properties": {
+     "kernel": {
+      "$ref": "defs.schema.json#/$defs/kernel_ref"
+     },
+     "params": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "SCHEMA-COMPLETE: every build-facing parameter explicit; library defaults never reach a build.",
+      "required": [
+       "n_estimators",
+       "max_samples_leaf",
+       "zero_atol"
+      ],
+      "properties": {
+       "n_estimators": {
+        "type": "integer",
+        "minimum": 1
+       },
+       "max_samples_leaf": {
+        "type": [
+         "integer",
+         "null"
+        ],
+        "minimum": 1
+       },
+       "zero_atol": {
+        "type": "number",
+        "exclusiveMinimum": 0
+       }
+      }
+     }
+    }
+   }
+  },
+  "chaining": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "order",
+    "splits",
+    "memory_policy"
+   ],
+   "properties": {
+    "order": {
+     "const": "declared"
+    },
+    "splits": {
+     "const": "declared_only"
+    },
+    "split_after": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "family",
+       "after_target",
+       "reason"
+      ],
+      "properties": {
+       "family": {
+        "type": "string"
+       },
+       "after_target": {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       },
+       "reason": {
+        "type": "string",
+        "minLength": 10
+       }
+      }
+     }
+    },
+    "memory_policy": {
+     "const": "release_after_draw"
+    },
+    "keep_together": {
+     "type": "array",
+     "items": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+       "$ref": "defs.schema.json#/$defs/identifier"
+      }
+     }
+    }
+   }
+  },
+  "concepts": {
+   "type": "object",
+   "description": "Concept registry: named concept -> predictor columns.",
+   "additionalProperties": {
+    "type": "array",
+    "minItems": 1,
+    "items": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    }
+   }
+  },
+  "families": {
+   "type": "array",
+   "minItems": 1,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "stage",
+     "donor",
+     "model",
+     "predictors",
+     "targets"
+    ],
+    "properties": {
+     "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_/]+$"
+     },
+     "stage": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     },
+     "donor": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "maxProperties": 1,
+      "properties": {
+       "channel": {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       },
+       "support_role": {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       }
+      }
+     },
+     "recipient": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+       "channel": {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       }
+      }
+     },
+     "model": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     },
+     "predictors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+       "$ref": "defs.schema.json#/$defs/identifier"
+      }
+     },
+     "targets": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Participation targets carry TARGET-SPECIFIC concept sets; coverage failure fails the LOAD.",
+      "items": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "name"
+       ],
+       "properties": {
+        "name": {
+         "$ref": "defs.schema.json#/$defs/identifier"
+        },
+        "requires_concepts": {
+         "type": "array",
+         "items": {
+          "$ref": "defs.schema.json#/$defs/identifier"
+         }
+        },
+        "value_kind": {
+         "enum": [
+          "amount",
+          "flag",
+          "count",
+          "category"
+         ]
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "producer_graph": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "external_stages",
+    "nodes",
+    "ownership_matrix"
+   ],
+   "properties": {
+    "external_stages": {
+     "type": "array",
+     "items": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     }
+    },
+    "ordering": {
+     "const": "deterministic_total",
+     "description": "Incomparable nodes must commute or occupy disjoint write scopes; the compiler emits one total order."
+    },
+    "nodes": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "id",
+       "kernel",
+       "inputs",
+       "outputs"
+      ],
+      "properties": {
+       "id": {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       },
+       "kernel": {
+        "$ref": "defs.schema.json#/$defs/kernel_ref"
+       },
+       "depends_on": {
+        "type": "array",
+        "items": {
+         "$ref": "defs.schema.json#/$defs/identifier"
+        }
+       },
+       "inputs": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "entity",
+          "column",
+          "required_scope",
+          "producing_stage",
+          "absence"
+         ],
+         "properties": {
+          "entity": {
+           "$ref": "defs.schema.json#/$defs/entity"
+          },
+          "column": {
+           "$ref": "defs.schema.json#/$defs/identifier"
+          },
+          "value_kind": {
+           "enum": [
+            "amount",
+            "flag",
+            "count",
+            "category",
+            "weight"
+           ]
+          },
+          "required_scope": {
+           "$ref": "defs.schema.json#/$defs/row_scope"
+          },
+          "producing_stage": {
+           "$ref": "defs.schema.json#/$defs/identifier"
+          },
+          "absence": {
+           "type": "object",
+           "additionalProperties": false,
+           "required": [
+            "policy"
+           ],
+           "properties": {
+            "policy": {
+             "enum": [
+              "fatal",
+              "tolerated_with_receipt"
+             ]
+            },
+            "receipt_ids": {
+             "type": "array",
+             "items": {
+              "$ref": "defs.schema.json#/$defs/identifier"
+             }
+            }
+           }
+          },
+          "alternatives": {
+           "type": "array",
+           "description": "Ordered OR-of-AND with declared precedence; predicates disjoint + exhaustive.",
+           "items": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+             "type": "object",
+             "additionalProperties": false,
+             "required": [
+              "entity",
+              "column"
+             ],
+             "properties": {
+              "entity": {
+               "$ref": "defs.schema.json#/$defs/entity"
+              },
+              "column": {
+               "$ref": "defs.schema.json#/$defs/identifier"
+              },
+              "value_kind": {
+               "enum": [
+                "amount",
+                "flag",
+                "count",
+                "category",
+                "weight"
+               ]
+              }
+             }
+            }
+           }
+          }
+         }
+        }
+       },
+       "outputs": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "entity",
+          "column",
+          "coverage_scope",
+          "presence"
+         ],
+         "properties": {
+          "entity": {
+           "$ref": "defs.schema.json#/$defs/entity"
+          },
+          "column": {
+           "$ref": "defs.schema.json#/$defs/identifier"
+          },
+          "coverage_scope": {
+           "$ref": "defs.schema.json#/$defs/row_scope"
+          },
+          "presence": {
+           "enum": [
+            "required",
+            "forbidden",
+            "predicated"
+           ]
+          },
+          "predicate": {
+           "$ref": "defs.schema.json#/$defs/row_scope"
+          },
+          "temporary": {
+           "type": "boolean"
+          },
+          "validation_only": {
+           "type": "boolean"
+          }
+         }
+        }
+       },
+       "virtual_resources": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": [
+          "id",
+          "kind"
+         ],
+         "properties": {
+          "id": {
+           "$ref": "defs.schema.json#/$defs/identifier"
+          },
+          "kind": {
+           "enum": [
+            "manifest",
+            "resolved_weights",
+            "execution_config",
+            "transition_receipt",
+            "producer_receipt",
+            "target_bank"
+           ]
+          },
+          "digest_rule": {
+           "$ref": "defs.schema.json#/$defs/identifier"
+          }
+         }
+        }
+       },
+       "structural_delta": {
+        "enum": [
+         "none",
+         "filter",
+         "expand",
+         "join",
+         "relink",
+         "reorder",
+         "reweight"
+        ]
+       },
+       "retry_safety": {
+        "enum": [
+         "idempotent",
+         "attempt_scoped",
+         "nonretryable"
+        ]
+       }
+      }
+     }
+    },
+    "transfer_groups": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "id",
+       "members"
+      ],
+      "properties": {
+       "id": {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       },
+       "members": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+         "$ref": "defs.schema.json#/$defs/identifier"
+        }
+       }
+      }
+     }
+    },
+    "ownership_matrix": {
+     "type": "array",
+     "description": "The full conditional ownership matrix (18 rows today), keyed target x origin x clone role.",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "target",
+       "origin",
+       "clone_role",
+       "owner",
+       "non_owner_action"
+      ],
+      "properties": {
+       "target": {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       },
+       "origin": {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       },
+       "clone_role": {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       },
+       "owner": {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       },
+       "finalizes": {
+        "type": "boolean"
+       },
+       "non_owner_action": {
+        "enum": [
+         "preserve",
+         "fill_missing_only",
+         "forbidden_write"
+        ]
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}

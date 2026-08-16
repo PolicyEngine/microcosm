@@ -1,0 +1,315 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "take_up.schema.json",
+ "title": "Take-up: orthogonal ownership x ordered typed steps; facts bind via engine_abi.lock",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "programs"
+ ],
+ "properties": {
+  "status": {
+   "type": "string"
+  },
+  "programs": {
+   "type": "array",
+   "minItems": 1,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "ownership"
+    ],
+    "oneOf": [
+     {
+      "required": [
+       "pipeline"
+      ]
+     },
+     {
+      "required": [
+       "segments"
+      ]
+     }
+    ],
+    "properties": {
+     "id": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     },
+     "ownership": {
+      "enum": [
+       "measured",
+       "transferred",
+       "modeled",
+       "engine",
+       "mixed"
+      ]
+     },
+     "pipeline": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "kind"
+       ],
+       "properties": {
+        "kind": {
+         "enum": [
+          "probability_seed",
+          "count_calibration",
+          "delivery_gate",
+          "assignment",
+          "measured_map",
+          "engine_default",
+          "imputed_transfer"
+         ]
+        },
+        "kernel": {
+         "$ref": "defs.schema.json#/$defs/kernel_ref"
+        },
+        "rate_source": {
+         "type": "string"
+        },
+        "targets": {
+         "$ref": "defs.schema.json#/$defs/source_ref"
+        },
+        "domain": {
+         "enum": [
+          "eligible_only",
+          "all_rows"
+         ]
+        },
+        "assignment": {
+         "enum": [
+          "unmasked_stable_source_id",
+          "masked"
+         ]
+        },
+        "prior": {
+         "$ref": "defs.schema.json#/$defs/identifier"
+        },
+        "method": {
+         "$ref": "defs.schema.json#/$defs/identifier"
+        },
+        "saturation": {
+         "enum": [
+          "cap_at_universe",
+          "observed_rate_fallback"
+         ]
+        },
+        "gate": {
+         "$ref": "defs.schema.json#/$defs/identifier"
+        },
+        "source_column": {
+         "type": "string"
+        },
+        "propagation": {
+         "$ref": "defs.schema.json#/$defs/identifier"
+        },
+        "training": {
+         "$ref": "defs.schema.json#/$defs/source_ref"
+        },
+        "model": {
+         "$ref": "defs.schema.json#/$defs/identifier"
+        },
+        "debt": {
+         "$ref": "defs.schema.json#/$defs/identifier"
+        }
+       }
+      }
+     },
+     "segments": {
+      "type": "array",
+      "minItems": 2,
+      "description": "Mixed row-scope programs declare disjoint, exhaustive segments.",
+      "items": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "row_scope",
+        "ownership",
+        "pipeline"
+       ],
+       "properties": {
+        "row_scope": {
+         "$ref": "defs.schema.json#/$defs/row_scope"
+        },
+        "ownership": {
+         "enum": [
+          "measured",
+          "transferred",
+          "modeled",
+          "engine"
+         ]
+        },
+        "pipeline": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "kind"
+          ],
+          "properties": {
+           "kind": {
+            "enum": [
+             "probability_seed",
+             "count_calibration",
+             "delivery_gate",
+             "assignment",
+             "measured_map",
+             "engine_default",
+             "imputed_transfer"
+            ]
+           },
+           "kernel": {
+            "$ref": "defs.schema.json#/$defs/kernel_ref"
+           },
+           "rate_source": {
+            "type": "string"
+           },
+           "targets": {
+            "$ref": "defs.schema.json#/$defs/source_ref"
+           },
+           "domain": {
+            "enum": [
+             "eligible_only",
+             "all_rows"
+            ]
+           },
+           "assignment": {
+            "enum": [
+             "unmasked_stable_source_id",
+             "masked"
+            ]
+           },
+           "prior": {
+            "$ref": "defs.schema.json#/$defs/identifier"
+           },
+           "method": {
+            "$ref": "defs.schema.json#/$defs/identifier"
+           },
+           "saturation": {
+            "enum": [
+             "cap_at_universe",
+             "observed_rate_fallback"
+            ]
+           },
+           "gate": {
+            "$ref": "defs.schema.json#/$defs/identifier"
+           },
+           "source_column": {
+            "type": "string"
+           },
+           "propagation": {
+            "$ref": "defs.schema.json#/$defs/identifier"
+           },
+           "training": {
+            "$ref": "defs.schema.json#/$defs/source_ref"
+           },
+           "model": {
+            "$ref": "defs.schema.json#/$defs/identifier"
+           },
+           "debt": {
+            "$ref": "defs.schema.json#/$defs/identifier"
+           }
+          }
+         }
+        }
+       }
+      }
+     },
+     "dependence": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+       "group": {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       }
+      }
+     },
+     "final_owner_stage": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     }
+    }
+   }
+  }
+ },
+ "$defs": {
+  "step": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kind"
+   ],
+   "properties": {
+    "kind": {
+     "enum": [
+      "probability_seed",
+      "count_calibration",
+      "delivery_gate",
+      "assignment",
+      "measured_map",
+      "engine_default",
+      "imputed_transfer"
+     ]
+    },
+    "kernel": {
+     "$ref": "defs.schema.json#/$defs/kernel_ref"
+    },
+    "rate_source": {
+     "type": "string"
+    },
+    "targets": {
+     "$ref": "defs.schema.json#/$defs/source_ref"
+    },
+    "domain": {
+     "enum": [
+      "eligible_only",
+      "all_rows"
+     ]
+    },
+    "assignment": {
+     "enum": [
+      "unmasked_stable_source_id",
+      "masked"
+     ]
+    },
+    "prior": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "method": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "saturation": {
+     "enum": [
+      "cap_at_universe",
+      "observed_rate_fallback"
+     ]
+    },
+    "gate": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "source_column": {
+     "type": "string"
+    },
+    "propagation": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "training": {
+     "$ref": "defs.schema.json#/$defs/source_ref"
+    },
+    "model": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "debt": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    }
+   }
+  }
+ }
+}

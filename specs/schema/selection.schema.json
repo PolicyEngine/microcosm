@@ -1,0 +1,72 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "selection.schema.json",
+ "title": "Sparse selection: exact-k (validity gates are KERNEL CONTRACT, not config)",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "exact_k"
+ ],
+ "properties": {
+  "exact_k": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kernel",
+    "k",
+    "pi_hi",
+    "group_ids",
+    "on_infeasible",
+    "post_selection_weights"
+   ],
+   "properties": {
+    "kernel": {
+     "$ref": "defs.schema.json#/$defs/kernel_ref"
+    },
+    "k": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "default",
+      "surface"
+     ],
+     "description": "k is a run-request knob; the bundle declares only a default with explicit precedence.",
+     "properties": {
+      "default": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "surface": {
+       "const": "run_request"
+      },
+      "precedence": {
+       "const": "run_request_overrides_default"
+      }
+     }
+    },
+    "pi_hi": {
+     "type": "number",
+     "exclusiveMinimum": 0,
+     "maximum": 1
+    },
+    "group_ids": {
+     "oneOf": [
+      {
+       "const": "none"
+      },
+      {
+       "$ref": "defs.schema.json#/$defs/identifier"
+      }
+     ]
+    },
+    "on_infeasible": {
+     "const": "refuse"
+    },
+    "post_selection_weights": {
+     "const": "selected_keep_calibrated",
+     "description": "Selected records carry calibrated weights unchanged; non-selected absent; no re-normalization unless declared."
+    }
+   }
+  }
+ }
+}
