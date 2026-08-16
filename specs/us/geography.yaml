@@ -4,8 +4,19 @@ assignment:
   anchor: census_block_2020
   order: before_gap_fill
   draw:
-    acs:  {universe: observed_puma, weight: block_population_2020}
-    asec: {universe: identified_county_else_state, weight: block_population_2020}
+    acs: {universe: observed_puma, weight: block_population_2020}
+    asec:
+      county_identified: {universe: that_county, weight: block_population_2020}
+      # County identification is a disclosure property of the county (whole
+      # counties are on or off the CPS list), so an unidentified household is
+      # KNOWN not to live in any identified county: its universe is the
+      # state's complement, never the whole state (Max ruling 2026-08-16).
+      county_unidentified: {universe: state_minus_identified_counties,
+                            weight: block_population_2020}
+  identified_county_set:
+    preferred: official_cps_geography_availability_list
+    fallback: derived_from_pooled_file   # documented approximation
+    caveat: CPS PSU design — complement is the disclosure-correct universe
   derive:
     tract_geoid: structural_prefix
     county_fips: structural_prefix
