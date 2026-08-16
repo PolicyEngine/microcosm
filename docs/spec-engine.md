@@ -239,8 +239,20 @@ targets:
   source: chronicle_facts               # sum-only doctrine
   geography_layers: [national, state, congressional_district, county]
   cd_policy: always_present_report_attainment   # Max 8/15 ruling
-# selection.yaml
-exact_k: {kernel: kernel:sampford_exact_k, k: 50000, support_assertions: on}
+# selection.yaml — knobs only; validity gates are KERNEL CONTRACT, not config
+exact_k:
+  kernel: kernel:sampford_exact_k     # contract: exact-k cardinality gate
+                                      # (len==k never clamped, unique, in-pool,
+                                      # sorted; real exceptions, never assert),
+                                      # pi in [0,1] finite, PCG64(seed) isolated,
+                                      # ulp-corrected inclusion probs + 6-scalar
+                                      # receipt. "support" here = index validity;
+                                      # renamed cardinality_gate to avoid clash
+                                      # with donor support.
+  k: 50000
+  pi_hi: <boundary parameter>
+  group_ids: <declared semantics or none>
+  on_infeasible: refuse
 # publication.yaml
 release:
   # D6 (open, Max): the flip is the natural rename boundary — spec-engine-era
