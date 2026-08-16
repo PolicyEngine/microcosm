@@ -1,0 +1,21 @@
+# DRAFT FOR REVIEW — block-first assignment (Max's 2026-08-15 ruling, #696).
+status: draft-for-review
+assignment:
+  anchor: census_block_2020
+  order: before_gap_fill
+  draw:
+    acs:  {universe: observed_puma, weight: block_population_2020}
+    asec: {universe: identified_county_else_state, weight: block_population_2020}
+  derive:
+    tract_geoid: structural_prefix
+    county_fips: structural_prefix
+    state_fips: structural_prefix
+    puma: {rule: tract_relationship, assert: equals_observed_for_acs}
+    congressional_district_geoid: {rule: block_equivalency, vintage: cd119}
+    place_fips: {rule: block_crosswalk}
+    sldu: {rule: block_crosswalk}
+    sldl: {rule: block_crosswalk}
+    cbsa_code: {rule: block_crosswalk}
+  ladder_source: us_block_ladder_2020
+  seed: derive
+  validation: [puma_cd_overlap_consistency, vintage_refusal]

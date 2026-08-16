@@ -1,0 +1,20 @@
+# DRAFT FOR REVIEW — the spec-engine root manifest (docs/spec-engine.md).
+# Nothing reads this yet; shapes are the review surface.
+schema_version: 1
+country: us
+status: draft-for-review
+root_seed: 578
+files:
+  - sources.yaml
+  - spine.yaml
+  - geography.yaml
+  - imputation.yaml
+  - take_up.yaml
+  - battery.yaml
+  - calibration.yaml
+  - selection.yaml
+  - publication.yaml
+  - column_lineage.yaml
+identity:
+  binds: [spec_sha256, schema_version]
+  note: joins checkpoint identity and every logbook row
