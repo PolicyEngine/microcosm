@@ -1,0 +1,9 @@
+country: be
+identity_generation: 1
+seed_protocol: legacy-v1
+dataset_run:
+  target_period: 2023
+status: >-
+  Compatibility bundle for compiler-front-end expressibility. Execution still
+  requires licensed BE-SILC tables, the commune-assignment runtime, and a
+  rulespec-be Axiom module.

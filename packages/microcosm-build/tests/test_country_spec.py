@@ -73,6 +73,12 @@ class TestBelgianPackage:
     def test_loads_with_every_declared_resource(self, spec) -> None:
         assert spec.country == "be"
         assert set(spec.resources) == {
+            "spec/bundle.yaml",
+            "spec/catalogs.yaml",
+            "spec/geography.yaml",
+            "spec/sources.yaml",
+            "spec/spine.yaml",
+            "spec/vintages.yaml",
             "source_stages.json",
             "geography_spine.json",
             "target_references.json",
@@ -241,6 +247,12 @@ class TestExistingPackagesGeneralize:
         spec = load_country_spec("uk")
         assert spec.country == "uk"
         assert spec.resources == (
+            "spec/bundle.yaml",
+            "spec/catalogs.yaml",
+            "spec/geography.yaml",
+            "spec/sources.yaml",
+            "spec/spine.yaml",
+            "spec/vintages.yaml",
             "cgt_source_stages.json",
             "degenerate_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
@@ -261,14 +273,24 @@ class TestResolvedCountrySpecSeam:
     def test_country_spec_is_the_exact_resolved_alias(self) -> None:
         assert CountrySpec is ResolvedCountrySpec
 
-    def test_legacy_filenames_become_explicit_typed_rows(self) -> None:
+    def test_generation_one_rows_retain_explicit_legacy_evidence(self) -> None:
         spec = load_country_spec("be")
         assert spec.resources == tuple(row.path for row in spec.resource_rows)
+        typed = [row for row in spec.resource_rows if row.kind != "legacy_json"]
+        legacy = [row for row in spec.resource_rows if row.kind == "legacy_json"]
+        assert {row.kind for row in typed} == {
+            "bundle",
+            "catalogs",
+            "geography",
+            "sources",
+            "spine",
+            "vintages",
+        }
         assert all(
             row.kind == "legacy_json" and row.schema_id == "legacy_json"
-            for row in spec.resource_rows
+            for row in legacy
         )
-        assert spec.resolved_spec is None
+        assert spec.resolved_spec is not None
 
     def test_resource_rows_are_frozen(self) -> None:
         row = CountryResourceRow(

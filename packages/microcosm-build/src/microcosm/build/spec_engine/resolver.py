@@ -33,28 +33,62 @@ class SpecResolutionError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class KernelRegistry:
+    """Closed kernel-reference namespace with explicit implementation status.
+
+    ``ids`` contains every contract id accepted during cross-reference
+    resolution.  ``implemented_ids`` is the strict subset allowed to back an
+    executable producer node.  Contract-only ids let a walking-skeleton bundle
+    prove schema expressibility without pretending that F0 has an executor
+    binding for the named kernel.
+    """
+
     ids: frozenset[str]
+    implemented_ids: frozenset[str]
     implementation_sha256: str
 
     @classmethod
-    def from_ids(cls, ids: Iterable[str]) -> KernelRegistry:
-        normalized = frozenset(_strip_prefix(item, "kernel") for item in ids)
-        digest = hashlib.sha256(canonical_json_bytes(sorted(normalized))).hexdigest()
-        return cls(normalized, digest)
+    def from_ids(
+        cls,
+        ids: Iterable[str],
+        *,
+        contract_only_ids: Iterable[str] = (),
+    ) -> KernelRegistry:
+        """Build a registry, treating ``ids`` as implemented by default."""
+
+        implemented = frozenset(_strip_prefix(item, "kernel") for item in ids)
+        contract_only = frozenset(
+            _strip_prefix(item, "kernel") for item in contract_only_ids
+        )
+        overlap = sorted(implemented & contract_only)
+        if overlap:
+            raise ValueError(
+                "kernel ids cannot be both implemented and contract-only: "
+                f"{overlap!r}"
+            )
+        digest = hashlib.sha256(canonical_json_bytes(sorted(implemented))).hexdigest()
+        return cls(implemented | contract_only, implemented, digest)
 
     def contains(self, value: str) -> bool:
         return _strip_prefix(value, "kernel") in self.ids
+
+    def has_implementation(self, value: str) -> bool:
+        """Return whether ``value`` has an executable F0 implementation pin."""
+
+        return _strip_prefix(value, "kernel") in self.implemented_ids
+
+    @property
+    def contract_only_ids(self) -> frozenset[str]:
+        """Accepted references that cannot back executable producer nodes."""
+
+        return self.ids - self.implemented_ids
 
 
 # The implementation namespace is compiler-owned code inventory, not country
 # configuration.  Keeping it explicit and independent of bundle contents is
 # what makes an unknown ``kernel:`` reference fail closed: a bundle cannot
-# make a misspelling valid merely by declaring it.  These are the named
-# generation-0 kernels referenced by the packaged F0 country bundles.  UK and
-# BE currently use no kernel references in their compatibility packages; when
-# their typed bundles land they must select names from this registry (or add a
-# reviewed implementation here).
-F0_KERNEL_IDS = frozenset(
+# make a misspelling valid merely by declaring it.  These are the implemented
+# generation-0 kernels referenced by the packaged US F0 bundle.
+F0_IMPLEMENTED_KERNEL_IDS = frozenset(
     {
         "acs_pums_earnings_universe",
         "acs_transfer",
@@ -115,6 +149,26 @@ F0_KERNEL_IDS = frozenset(
     }
 )
 
+# UK and BE use these reviewed ids to prove that their shared-core bundle
+# shapes resolve through the same compiler.  F0 does not yet bind them into the
+# generic executor: the Belgian implementations are absent, and the existing
+# UK functions have no compiler-owned producer binding or per-kernel
+# implementation attestation.  They therefore close references but must never
+# be presented as executable producer kernels.
+F0_CONTRACT_ONLY_KERNEL_IDS = frozenset(
+    {
+        "assign_uk_geography_ladder",
+        "be_commune_geography_gate",
+        "clone_assign_communes",
+        "load_uk_national_frame",
+        "silc_load",
+        "uk_geography_ladder_gate",
+    }
+)
+
+# Compatibility name: every kernel contract accepted by the F0 resolver.
+F0_KERNEL_IDS = F0_IMPLEMENTED_KERNEL_IDS | F0_CONTRACT_ONLY_KERNEL_IDS
+
 
 @dataclass(frozen=True, slots=True)
 class ResolutionResult:
@@ -134,7 +188,10 @@ def _strip_prefix(value: str, namespace: str) -> str:
     return value[len(prefix) :] if value.startswith(prefix) else value
 
 
-F0_KERNEL_REGISTRY = KernelRegistry.from_ids(F0_KERNEL_IDS)
+F0_KERNEL_REGISTRY = KernelRegistry.from_ids(
+    F0_IMPLEMENTED_KERNEL_IDS,
+    contract_only_ids=F0_CONTRACT_ONLY_KERNEL_IDS,
+)
 
 
 def _mapping(value: object, location: str) -> Mapping[str, object]:

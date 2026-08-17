@@ -1,0 +1,10 @@
+channels:
+- id: silc
+  source: be_silc_contract
+  observed_geography: nuts1
+assembly:
+  mass_anchor_channel: silc
+  shared_dtype_policy: canonical_string_storage
+support_roles:
+- id: silc_base
+  kind: none

@@ -1,0 +1,8 @@
+country: uk
+identity_generation: 1
+seed_protocol: legacy-v1
+dataset_run:
+  target_period: 2023
+status: >-
+  Compiler walking skeleton over the pinned UK national candidate. It does not
+  replace the generation-0 national, HMRC, calibration, or release drivers.

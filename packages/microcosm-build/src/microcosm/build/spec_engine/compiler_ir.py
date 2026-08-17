@@ -999,6 +999,11 @@ def _compile_producer_graph(resources: Mapping[str, object]) -> ProducerGraphIR:
             raise CompilerIRError(
                 f"{node_id}/kernel: not pinned by the F0 kernel registry: {kernel!r}"
             )
+        if not F0_KERNEL_REGISTRY.has_implementation(kernel):
+            raise CompilerIRError(
+                f"{node_id}/kernel: contract-only F0 kernel has no producer "
+                f"implementation pin: {kernel!r}"
+            )
         input_rows = tuple(
             _frozen_mapping(value, location=f"{node_id}/inputs")
             for value in _array(node.get("inputs", []), location=f"{node_id}/inputs")

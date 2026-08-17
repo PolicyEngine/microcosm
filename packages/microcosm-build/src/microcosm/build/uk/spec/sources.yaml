@@ -1,0 +1,36 @@
+sources:
+- id: uk_national_candidate_2023
+  role: uk_national_candidate
+  sha256: f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833
+  byte_size: 1315880118
+  loader: kernel:load_uk_national_frame
+  vintages:
+  - vintage:uk_candidate_2023
+  vintage_authorities:
+  - id: uk_candidate_2023
+    kind: survey_period
+    value: 2023
+stage_manifest:
+  version: 1
+  country: uk
+  policy: >-
+    Walking-skeleton source stage over the byte-pinned generation-0 UK
+    national candidate; existing HMRC and CGT stage manifests remain retained
+    compatibility evidence.
+stages:
+- stage: uk_national_frame
+  survey: Family Resources Survey derived national candidate
+  source: policyengine/populace-uk
+  grain: person_benunit_household
+  operations:
+  - kind: read_table
+    table: uk_national_candidate_2023
+  outputs:
+  - person_id
+  - benunit_id
+  - household_id
+  - region
+  notes: >-
+    This stage describes the smallest already-runnable UK carrier load. It is
+    a compile-time expressibility proof and does not retarget the current UK
+    build driver to plan execution.

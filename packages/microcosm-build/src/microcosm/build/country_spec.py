@@ -1052,6 +1052,138 @@ def _select_compatibility_payload(
     return projection
 
 
+def _attest_be_typed_geography_compatibility(
+    *,
+    resolved_spec: object,
+    legacy_manifest: GeographySpineManifest,
+) -> None:
+    """Fail closed when typed and generation-0 geography facts drift.
+
+    The F0 Belgian bundle is deliberately minimal.  Its typed geography domain
+    can represent the assignment kernel, geography level, derived code column,
+    layer-vintage binding, and exact-vintage refusal posture, so those shared
+    facts are equality-attested here.  The generation-0 ``method``, clone count,
+    collision guard, and detailed assignment-source citation have no field in
+    the approved geography schema.  They remain read-only compatibility facts
+    in ``geography_spine.json`` until a later schema migration; this check must
+    not pretend they were compiled from YAML.
+    """
+
+    try:
+        domain = resolved_spec.domain("geography")  # type: ignore[attr-defined]
+    except KeyError:
+        return
+    geography = _require_mapping(domain.to_wire(), context="geography")
+    assignment = _require_mapping(
+        geography.get("assignment"), context="geography.assignment"
+    )
+    kernels = _require_mapping(
+        assignment.get("kernels"), context="geography.assignment.kernels"
+    )
+    layer_vintages = _require_mapping(
+        assignment.get("layer_vintages", {}),
+        context="geography.assignment.layer_vintages",
+    )
+    spine = legacy_manifest.geography_spine
+
+    mismatches: list[str] = []
+
+    def require_equal(field: str, typed: object, legacy: object) -> None:
+        if typed != legacy:
+            mismatches.append(f"{field}: typed={typed!r}, legacy={legacy!r}")
+
+    require_equal("phase", geography.get("phase"), "legacy")
+    require_equal(
+        "assignment/kernels/assign <-> geography_spine/stage",
+        kernels.get("assign"),
+        f"kernel:{spine.stage}",
+    )
+    require_equal(
+        "assignment/anchor <-> geography_spine/geography_level",
+        assignment.get("anchor"),
+        spine.geography_level,
+    )
+
+    derive = assignment.get("derive")
+    typed_derives_code = isinstance(derive, list) and spine.code_column in derive
+    require_equal(
+        "assignment/derive <-> geography_spine/code_column membership",
+        typed_derives_code,
+        True,
+    )
+
+    code_system = spine.code_system
+    country_prefix = f"{legacy_manifest.country}_"
+    qualified_code_system = (
+        code_system
+        if code_system.startswith(country_prefix)
+        else f"{legacy_manifest.country}_{code_system}"
+    )
+    expected_vintage_ref = f"vintage:{qualified_code_system}_{spine.vintage}"
+    require_equal(
+        "assignment/layer_vintages <-> geography_spine/code_system+vintage",
+        layer_vintages.get(spine.geography_level),
+        expected_vintage_ref,
+    )
+
+    assertions = assignment.get("assertions")
+    validation = assignment.get("validation")
+    typed_exact = (
+        isinstance(assertions, list) and "geography_vintage_exact" in assertions
+    )
+    typed_refuses = isinstance(validation, list) and "vintage_refusal" in validation
+    legacy_refuses = spine.vintage_policy == "error"
+    require_equal(
+        "assignment/assertions/geography_vintage_exact "
+        "<-> geography_spine/vintage_policy",
+        typed_exact,
+        legacy_refuses,
+    )
+    require_equal(
+        "assignment/validation/vintage_refusal <-> geography_spine/vintage_policy",
+        typed_refuses,
+        legacy_refuses,
+    )
+
+    draw = assignment.get("draw")
+    typed_draws_anchor = isinstance(draw, Mapping) and spine.geography_level in draw
+    require_equal(
+        "assignment/draw anchor <-> geography_spine/geography_level",
+        typed_draws_anchor,
+        True,
+    )
+    draw_row = draw.get(spine.geography_level) if isinstance(draw, Mapping) else None
+    draw_contract = draw_row if isinstance(draw_row, Mapping) else {}
+    if spine.constrain_to_column == "region_nuts1":
+        require_equal(
+            "assignment/draw/universe <-> geography_spine/constrain_to_column",
+            draw_contract.get("universe"),
+            f"{spine.geography_level}_within_nuts1",
+        )
+        typed_preserves_constraint = (
+            isinstance(assertions, list) and "source_nuts1_preserved" in assertions
+        )
+        require_equal(
+            "assignment/assertions/source_nuts1_preserved "
+            "<-> geography_spine/constrain_to_column",
+            typed_preserves_constraint,
+            True,
+        )
+    else:
+        mismatches.append(
+            "geography_spine/constrain_to_column: typed BE compatibility "
+            f"has no projection for legacy={spine.constrain_to_column!r}"
+        )
+
+    if mismatches:
+        details = "\n".join(f"- {mismatch}" for mismatch in mismatches)
+        raise ValueError(
+            "geography_spine.json: typed geography compatibility drift; "
+            "generation-1 shared facts must match generation-0 evidence:\n"
+            f"{details}"
+        )
+
+
 def _compile_typed_take_up_compatibility_projection(
     take_up: Mapping[str, Any],
     sources: Mapping[str, Any],
@@ -1383,6 +1515,15 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
         if "geography_spine.json" in payloads
         else None
     )
+    if (
+        declared_country == "be"
+        and resolved_spec is not None
+        and geography_spine is not None
+    ):
+        _attest_be_typed_geography_compatibility(
+            resolved_spec=resolved_spec,
+            legacy_manifest=geography_spine,
+        )
     target_references = (
         _validate_target_references(
             payloads["target_references.json"], country=declared_country

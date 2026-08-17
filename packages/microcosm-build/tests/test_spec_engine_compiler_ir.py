@@ -20,6 +20,7 @@ from microcosm.build.spec_engine.model import (
     ResourceKind,
     freeze_json,
 )
+from microcosm.build.spec_engine.resolver import F0_CONTRACT_ONLY_KERNEL_IDS
 
 US_SCHEDULE_SHA256 = (
     "b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5"
@@ -201,6 +202,24 @@ def test_dangling_compiler_dependency_refuses(resolved_us: ResolvedSpec) -> None
 
     mutated = _mutate_domain(resolved_us, ResourceKind.IMPUTATION, mutation)
     with pytest.raises(CompilerIRError, match="dangling producer"):
+        compile_spec(mutated)
+
+
+def test_contract_only_kernel_cannot_back_a_producer(
+    resolved_us: ResolvedSpec,
+) -> None:
+    contract_only_kernel = min(F0_CONTRACT_ONLY_KERNEL_IDS)
+
+    def mutation(value: dict[str, Any]) -> None:
+        value["producer_graph"]["nodes"][0]["kernel"] = (
+            f"kernel:{contract_only_kernel}"
+        )
+
+    mutated = _mutate_domain(resolved_us, ResourceKind.IMPUTATION, mutation)
+    with pytest.raises(
+        CompilerIRError,
+        match=r"contract-only F0 kernel has no producer implementation pin",
+    ):
         compile_spec(mutated)
 
 
