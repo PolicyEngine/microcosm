@@ -1,0 +1,1 @@
+Allocate the UK SPI prior from each reviewed replacement stratum's incoming mass and spread its SPI share evenly over that stratum's sampled quota, preventing extreme calibrated donor lineages from propagating once per selected clone while preserving national and cell mass (microcosm#630).
