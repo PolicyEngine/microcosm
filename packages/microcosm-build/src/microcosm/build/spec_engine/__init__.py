@@ -73,6 +73,11 @@ from .plan_lock import (
     plan_lock_bytes,
     plan_lock_payload,
 )
+from .reemission import (
+    canonical_yaml_bytes,
+    emit_resolved_bundle,
+    resolved_bundle_bytes,
+)
 from .resolver import (
     F0_KERNEL_IDS,
     F0_KERNEL_REGISTRY,
@@ -134,6 +139,7 @@ __all__ = [
     "SurfaceObjects",
     "bundle_lock_bytes",
     "bundle_lock_payload",
+    "canonical_yaml_bytes",
     "canonical_json_bytes",
     "compile_spec",
     "compile_to_legacy_payload",
@@ -143,6 +149,7 @@ __all__ = [
     "emit_engine_abi_lock",
     "emit_bundle_lock",
     "emit_plan_lock",
+    "emit_resolved_bundle",
     "engine_abi_lock_bytes",
     "engine_abi_lock_bytes_from_domains",
     "engine_abi_lock_payload",
@@ -156,6 +163,7 @@ __all__ = [
     "project_legacy_take_up_identity",
     "project_legacy_calibration_contract",
     "resolve_calibration_tail_contracts",
+    "resolved_bundle_bytes",
     "assert_legacy_payload_equal",
     "assert_plan_lock_current",
     "plan_lock_bytes",
