@@ -7,11 +7,13 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.gate_battery import (
     GateBatteryBlockedError,
     gate_signing_key_env,
 )
 from microcosm.build.gates import FitWeightRecord, GateResult
+from microcosm.build.plan import Stage, StagePlan
 from microcosm.build.uk_runtime.battery_bindings import UKGateBinding
 from microcosm.build.uk_runtime.national_build import (
     UKNationalStage,
@@ -111,6 +113,30 @@ def _replace_person(frame: Frame, person: pd.DataFrame) -> Frame:
         weight_kind=uk_household_weight_kind(frame),
         mass_log=frame.mass_log,
     )
+
+
+def _assert_same_frame_payload(left: Frame, right: Frame) -> None:
+    assert left.schema == right.schema
+    assert left.entities == right.entities
+    for entity in left.entities:
+        pd.testing.assert_frame_equal(
+            left.table(entity),
+            right.table(entity),
+            check_exact=True,
+            check_dtype=True,
+        )
+    assert left.weighted_entities == right.weighted_entities
+    for entity in left.weighted_entities:
+        assert left.weights_for(entity).kind is right.weights_for(entity).kind
+        pd.testing.assert_series_equal(
+            pd.Series(left.weights_for(entity).values),
+            pd.Series(right.weights_for(entity).values),
+            check_exact=True,
+            check_dtype=True,
+        )
+    pd.testing.assert_series_equal(left.strata, right.strata, check_exact=True)
+    assert left.mass_log == right.mass_log
+    assert left.metadata == right.metadata
 
 
 @pytest.fixture(autouse=True)
@@ -402,6 +428,92 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
     diagnostic = json.loads(coverage_json.read_text())
     assert diagnostic["enforced"] is True
     assert diagnostic["input_coverage"]["passed"] is True
+
+
+def test_national_build_accepts_stage_plan_and_records_stage_evidence(
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+
+    input_h5 = tmp_path / "base.h5"
+    staging_h5 = tmp_path / "staging.h5"
+    _write_toy_h5(input_h5)
+
+    def add_bonus(frame: Frame) -> Frame:
+        person = frame.table("person").copy()
+        person["bonus_income"] = [125.0]
+        return _replace_person(frame, person)
+
+    result = _run_national_build(
+        input_h5=input_h5,
+        staging_h5=staging_h5,
+        stages=StagePlan(
+            (
+                Stage(
+                    name="income",
+                    transform=add_bonus,
+                    produces=("bonus_income",),
+                ),
+            )
+        ),
+        coverage_engine=object(),
+        gate_registry=_registry_with_coverage(_passing_gate),
+    )
+
+    assert result.stage_names == ("income",)
+    assert [record.stage for record in result.stage_records] == ["income"]
+    assert result.stage_records[0].produced == ("bonus_income",)
+    assert result.stage_records[0].nonzero_share == {"bonus_income": 1.0}
+
+
+def test_deprecated_shim_and_country_stage_plan_paths_are_payload_identical(
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+
+    input_h5 = tmp_path / "base.h5"
+    _write_toy_h5(input_h5, employment_income=40_000.0)
+    spec = load_country_spec("uk")
+    retained_outputs = spec.sources.stages[0].outputs
+    hmrc_outputs = spec.sources.stages[1].outputs
+
+    def retained(frame: Frame) -> Frame:
+        person = frame.table("person").copy()
+        for index, column in enumerate(retained_outputs, start=1):
+            person[column] = float(index)
+        return _replace_person(frame, person)
+
+    def hmrc(frame: Frame) -> Frame:
+        person = frame.table("person").copy()
+        for index, column in enumerate(hmrc_outputs, start=1):
+            person[column] = float(index * 10)
+        return _replace_person(frame, person)
+
+    legacy = _run_national_build(
+        input_h5=input_h5,
+        staging_h5=tmp_path / "legacy.h5",
+        stages=(
+            UKNationalStage("frs_hmrc_retained_leaves", retained),
+            UKNationalStage("hmrc_spi_income", hmrc),
+        ),
+        coverage_engine=object(),
+        gate_registry=_registry_with_coverage(_passing_gate),
+    )
+    shared = _run_national_build(
+        input_h5=input_h5,
+        staging_h5=tmp_path / "shared.h5",
+        stages=country_stage_plan(
+            spec,
+            {
+                "frs_hmrc_retained_leaves": retained,
+                "hmrc_spi_income": hmrc,
+            },
+        ),
+        coverage_engine=object(),
+        gate_registry=_registry_with_coverage(_passing_gate),
+    )
+
+    _assert_same_frame_payload(legacy.frame, shared.frame)
 
 
 def _write_clone_family_h5(path: Path) -> None:

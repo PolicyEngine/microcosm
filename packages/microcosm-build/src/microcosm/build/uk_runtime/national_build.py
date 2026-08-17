@@ -43,6 +43,8 @@ from microcosm.build.gate_battery import (
     GatePhaseReport,
 )
 from microcosm.build.gates import GateResult
+from microcosm.build.plan import Stage as PlanStage
+from microcosm.build.plan import StagePlan, StageRecord
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.national_frame import (
     UKStagingProvenance,
@@ -102,7 +104,14 @@ _uk_source_file_fingerprint = _national_frame._uk_source_file_fingerprint
 
 @dataclass(frozen=True)
 class UKNationalStage:
-    """One named, deterministic ``Frame -> Frame`` national transform."""
+    """Deprecated shim for one named ``Frame -> Frame`` national transform.
+
+    UK national builds now execute shared :class:`microcosm.build.plan.Stage`
+    entries assembled into a :class:`microcosm.build.plan.StagePlan`. This
+    wrapper remains for one release so existing callers can pass a stage name
+    and transform; :func:`build_uk_national_dataset` converts it internally to
+    a shared stage with empty consumes/produces and no donor.
+    """
 
     name: str
     transform: Callable[[Frame], Frame]
@@ -141,6 +150,8 @@ class UKNationalBuildResult:
     #: alias; this field always carries the full battery payload).
     gate_report: Mapping[str, object]
     terminal_gate_path: Path
+    #: Shared stage evidence records, one per national build stage.
+    stage_records: tuple[StageRecord, ...] = ()
     #: The #627 rung receipt; ``None`` on a full-scale (fraction 1.0) build.
     sampling_receipt: Mapping[str, object] | None = None
 
@@ -333,7 +344,7 @@ def build_uk_national_dataset(
     staging_h5: str | Path,
     release_id: str,
     calibration_diagnostics_sha256: str,
-    stages: Sequence[UKNationalStage] = (),
+    stages: Sequence[UKNationalStage | PlanStage] | StagePlan = (),
     coverage_engine: Any | None = None,
     parity_evidence: UKReleaseParityEvidence | None = None,
     input_mass_reference: UKInputMassReference | None = None,
@@ -413,7 +424,8 @@ def build_uk_national_dataset(
             "terminal_gate_path must differ from the input and staging H5 paths."
         )
 
-    materialized_stages = tuple(stages)
+    stage_plan = _coerce_stage_plan(stages)
+    materialized_stages = stage_plan.stages
     _validate_stages(materialized_stages)
     # Invariant: no destructive step precedes argument validation. Every
     # configuration refusal sits above the sidecar unlinks and the battery,
@@ -507,11 +519,9 @@ def build_uk_national_dataset(
         if callable(binder):
             binder(provenance, frame)
     if checkpoint_dir is None:
-        for stage in materialized_stages:
-            frame = stage.run(frame)
-            validate_uk_national_frame(frame)
+        frame, stage_records = _validating_stage_plan(stage_plan).run(frame)
     else:
-        frame = _run_stages_checkpointed(
+        frame, stage_records = _run_stages_checkpointed(
             materialized_stages,
             frame=frame,
             checkpoint_dir=Path(checkpoint_dir),
@@ -594,17 +604,18 @@ def build_uk_national_dataset(
         ),
         gate_report=gate_report,
         terminal_gate_path=diagnostic_path,
+        stage_records=stage_records,
         sampling_receipt=sampling_receipt,
     )
 
 
 def _run_stages_checkpointed(
-    stages: tuple[UKNationalStage, ...],
+    stages: tuple[PlanStage, ...],
     *,
     frame: Frame,
     checkpoint_dir: Path,
     run_config: Mapping[str, object],
-) -> Frame:
+) -> tuple[Frame, tuple[StageRecord, ...]]:
     """Run the national stages through the outer stage runtime.
 
     Each boundary persists a lossless Frame checkpoint (frame metadata rides
@@ -636,6 +647,7 @@ def _run_stages_checkpointed(
     )
     runtime = StageRuntime(checkpoint_dir, pipeline, run_config=dict(run_config))
     completed = set(runtime.context.completed)
+    records: list[StageRecord] = []
     for stage in stages:
         if stage.name in completed:
             loaded = load_uk_stage_checkpoint(runtime, stage.name)
@@ -647,10 +659,12 @@ def _run_stages_checkpointed(
                     if key != UK_FRAME_METADATA_KEY
                 }
                 resume(extra, loaded.frame)
-            frame = loaded.frame
+            frame, stage_records = _resume_stage_record(stage, frame, loaded.frame)
+            validate_uk_national_frame(frame)
+            records.extend(stage_records)
             continue
-        frame = stage.run(frame)
-        validate_uk_national_frame(frame)
+        frame, stage_records = _validating_stage_plan(StagePlan((stage,))).run(frame)
+        records.extend(stage_records)
         extra_metadata: dict[str, object] = {}
         hook = getattr(stage.transform, "checkpoint_metadata", None)
         if callable(hook):
@@ -660,15 +674,84 @@ def _run_stages_checkpointed(
             frame,
             metadata=uk_stage_metadata(frame, extra=extra_metadata),
         )
-    return frame
+    return frame, tuple(records)
 
 
-def _validate_stages(stages: tuple[UKNationalStage, ...]) -> None:
+def _coerce_stage_plan(
+    stages: Sequence[UKNationalStage | PlanStage] | StagePlan,
+) -> StagePlan:
+    """Normalize legacy UK stages and shared stages to one StagePlan."""
+
+    if isinstance(stages, StagePlan):
+        return stages
+    materialized = tuple(_coerce_stage(stage) for stage in stages)
+    names: set[str] = set()
+    for stage in materialized:
+        if stage.name in names:
+            raise ValueError(f"Duplicate UK national stage {stage.name!r}.")
+        names.add(stage.name)
+    return StagePlan(materialized)
+
+
+def _coerce_stage(stage: UKNationalStage | PlanStage) -> PlanStage:
+    if isinstance(stage, PlanStage):
+        return stage
+    if isinstance(stage, UKNationalStage):
+        return PlanStage(name=stage.name, transform=stage.transform)
+    raise TypeError(
+        "UK national stages must be shared Stage or UKNationalStage instances, "
+        f"got {type(stage).__name__}."
+    )
+
+
+def _validating_stage_plan(plan: StagePlan) -> StagePlan:
+    """Return a plan whose stages validate the UK national frame after each run."""
+
+    return StagePlan(_validating_stage(stage) for stage in plan.stages)
+
+
+def _validating_stage(stage: PlanStage) -> PlanStage:
+    def transform(frame: Frame) -> Frame:
+        result = stage.transform(frame)
+        if not isinstance(result, Frame):
+            return result
+        validate_uk_national_frame(result)
+        return result
+
+    return PlanStage(
+        name=stage.name,
+        transform=transform,
+        produces=stage.produces,
+        consumes=stage.consumes,
+        donor=stage.donor,
+    )
+
+
+def _resume_stage_record(
+    stage: PlanStage,
+    previous: Frame,
+    loaded: Frame,
+) -> tuple[Frame, tuple[StageRecord, ...]]:
+    plan = StagePlan(
+        (
+            PlanStage(
+                name=stage.name,
+                transform=lambda _frame: loaded,
+                produces=stage.produces,
+                consumes=stage.consumes,
+                donor=stage.donor,
+            ),
+        )
+    )
+    return plan.run(previous)
+
+
+def _validate_stages(stages: tuple[PlanStage, ...]) -> None:
     names: set[str] = set()
     for stage in stages:
-        if not isinstance(stage, UKNationalStage):
+        if not isinstance(stage, PlanStage):
             raise TypeError(
-                "UK national stages must be UKNationalStage instances, "
+                "UK national stages must be shared Stage instances, "
                 f"got {type(stage).__name__}."
             )
         if stage.name in names:
@@ -677,7 +760,7 @@ def _validate_stages(stages: tuple[UKNationalStage, ...]) -> None:
 
 
 def _stage_fit_weight_records(
-    stages: tuple[UKNationalStage, ...],
+    stages: tuple[PlanStage, ...],
 ) -> tuple[object, ...] | None:
     """The weights-audit evidence artifact: present iff the HMRC stage is.
 
