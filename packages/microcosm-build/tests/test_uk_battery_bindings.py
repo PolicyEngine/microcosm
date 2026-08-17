@@ -209,6 +209,26 @@ class TestUKSurfaceAdapter:
         assert surface.household_weight_kind is uk_household_weight_kind(frame)
         assert surface.mass_log == frame.mass_log
 
+    def test_nonnegative_binding_reads_manifest_declared_columns(self) -> None:
+        person, benunit, household = _tables()
+        person["employment_income"] = [1.0, -1.0, 2.0, 3.0]
+        frame = uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household,
+            time_period="2023",
+        )
+        binding = UK_GATE_REGISTRY["nonnegative_columns"]
+
+        result = binding.evaluate(EvidenceContext(frame=frame), {})
+
+        assert result.name == "nonnegative_columns"
+        assert result.passed is False
+        assert (
+            "employment_income: 1 finite value(s) below zero"
+            in result.failures[0]
+        )
+
 
 class TestUKCompatibility:
     """The BE plumbing test, run over the UK spec: an empty evidence context
@@ -263,7 +283,9 @@ class TestBatteryRegressions:
         passed = [
             entry_id for entry_id, o in by_id.items() if o.status is GateStatus.PASSED
         ]
-        assert len(passed) == 10
+        # 11 with uk_nonnegative_columns: the synthetic frame's declared
+        # nonnegative columns are all clean, so the new gate passes here.
+        assert len(passed) == 11
         qrf = by_id["uk_qrf_tail_concentration"]
         assert qrf.status is GateStatus.FAILED
         assert "declared QRF output is absent" in qrf.result.failures[0]

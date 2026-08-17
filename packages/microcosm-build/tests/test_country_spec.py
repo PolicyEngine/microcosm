@@ -320,6 +320,7 @@ class TestUKGatesManifest:
             "uk_weight_ess",
             "uk_weight_ratio",
             "uk_weights_audit",
+            "uk_nonnegative_columns",
             "uk_export_surface",
             "uk_target_surface",
             "uk_target_fit",

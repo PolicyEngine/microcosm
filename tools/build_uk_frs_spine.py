@@ -26,16 +26,37 @@ from microcosm.build.logbook_adoption import (
     sha256_argument,
     write_error_receipt,
 )
+from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTransform
+from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
+from microcosm.build.uk_runtime.frs_education import UKFRSEducationStageTransform
+from microcosm.build.uk_runtime.frs_education_grants import (
+    FRS_EDUCATION_GRANT_REWRITES,
+    UKFRSEducationGrantSplitStageTransform,
+)
+from microcosm.build.uk_runtime.frs_employment import UKFRSEmploymentStageTransform
+from microcosm.build.uk_runtime.frs_legacy_proxies import (
+    UKFRSLegacyProxiesStageTransform,
+)
 from microcosm.build.uk_runtime.frs_spine import (
     UKFRSSpineStageTransform,
     uk_frs_spine_seed_frame,
 )
 from microcosm.build.uk_runtime.national_build import write_uk_national_frame
 from microcosm.build.uk_runtime.national_frame import uk_household_weight_kind
+from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
 _PIPELINE = "uk-frs-spine"
 _RUNG = "f100"
 _REPOSITORY = Path(__file__).resolve().parents[1]
+_STAGE_NAMES = (
+    "frs_spine",
+    "frs_employment",
+    "frs_council_tax",
+    "frs_disability",
+    "frs_education",
+    "frs_legacy_proxies",
+    "frs_education_grant_split",
+)
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -98,16 +119,33 @@ def _validate_args(args: argparse.Namespace) -> None:
         resolved[target] = label
 
 
-def _artifact_pins(stage) -> dict[str, dict[str, object]]:
+def _artifact_pins(stages) -> dict[str, dict[str, object]]:
     pins = {}
-    for artifact in stage.artifacts:
-        table = str(artifact["table"])
-        pins[table] = {
+    for stage in stages:
+        for artifact in stage.artifacts:
+            table = str(artifact["table"])
+            pin = {
+                "locator": str(artifact["locator"]),
+                "sha256": str(artifact["sha256"]),
+                "size_bytes": int(artifact["size_bytes"]),
+            }
+            if table in pins and pins[table] != pin:
+                raise ValueError(
+                    f"FRS tab {table!r} has inconsistent artifact pins across stages."
+                )
+            pins[table] = pin
+    return dict(sorted(pins.items()))
+
+
+def _stage_artifact_pins(stage) -> dict[str, dict[str, object]]:
+    return {
+        str(artifact["table"]): {
             "locator": str(artifact["locator"]),
             "sha256": str(artifact["sha256"]),
             "size_bytes": int(artifact["size_bytes"]),
         }
-    return dict(sorted(pins.items()))
+        for artifact in stage.artifacts
+    }
 
 
 def _role_pins(pins: dict[str, dict[str, object]]) -> dict[str, dict[str, object]]:
@@ -124,17 +162,42 @@ def _entity_row_counts(frame) -> dict[str, int]:
     return {entity: int(len(frame.table(entity))) for entity in frame.entities}
 
 
-def _build_sidecar(*, frame, stage, records, artifact_pins) -> dict[str, object]:
+def _rules_engine() -> PolicyEngineUKEngine:
+    try:
+        import policyengine_uk  # noqa: F401
+    except ImportError as exc:
+        raise ImportError(
+            "build_uk_frs_spine requires the microcosm-build 'uk' extra "
+            "(policyengine-uk). Run: uv sync --all-packages --extra uk"
+        ) from exc
+    return PolicyEngineUKEngine()
+
+
+def _rules_engine_provenance() -> dict[str, str]:
+    try:
+        import policyengine_uk
+    except ImportError:
+        return {"package": "policyengine-uk", "version": "unavailable"}
+    return {
+        "package": "policyengine-uk",
+        "version": str(getattr(policyengine_uk, "__version__", "unknown")),
+    }
+
+
+def _build_sidecar(*, frame, stages, records, artifact_pins) -> dict[str, object]:
     household_weight = frame.weights_for("household")
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "pipeline": _PIPELINE,
-        "stage": "frs_spine",
+        "stages": [stage.stage for stage in stages],
         "time_period": str(frame.metadata["time_period"]),
         "household_weight_kind": uk_household_weight_kind(frame).value,
         "household_weight_total": float(household_weight.values.sum()),
         "entity_row_counts": _entity_row_counts(frame),
         "artifact_pins": artifact_pins,
+        "stage_artifact_pins": {
+            stage.stage: _stage_artifact_pins(stage) for stage in stages
+        },
         "stage_records": [
             {
                 "stage": record.stage,
@@ -144,8 +207,28 @@ def _build_sidecar(*, frame, stage, records, artifact_pins) -> dict[str, object]
             }
             for record in records
         ],
-        "operations": [operation.kind for operation in stage.operations],
+        "operations": {
+            stage.stage: [operation.kind for operation in stage.operations]
+            for stage in stages
+        },
+        "rules_engine": _rules_engine_provenance(),
     }
+
+
+def _nonzero_shares(frame, columns: list[str]) -> dict[str, float]:
+    shares: dict[str, float] = {}
+    for column in columns:
+        for entity in frame.entities:
+            table = frame.table(entity)
+            if column not in table.columns:
+                continue
+            values = table[column]
+            if values.dtype == object:
+                shares[column] = float(values.astype(str).ne("").mean())
+            else:
+                shares[column] = float((values != 0).mean())
+            break
+    return shares
 
 
 def _new_build_id(timestamp: datetime) -> str:
@@ -203,12 +286,13 @@ def main(argv: list[str] | None = None) -> int:
         spec = load_country_spec("uk")
         if spec.sources is None:
             raise ValueError("UK country spec has no source stages.")
-        stage = spec.sources.stage_map()["frs_spine"]
-        artifact_pins = _artifact_pins(stage)
+        stages_by_name = spec.sources.stage_map()
+        stages = [stages_by_name[name] for name in _STAGE_NAMES]
+        artifact_pins = _artifact_pins(stages)
         state.input_pins_digest = role_pins_digest(_role_pins(artifact_pins))
         run_config = {
             "pipeline": _PIPELINE,
-            "stage": "frs_spine",
+            "stages": list(_STAGE_NAMES),
             "artifact_pins_digest": state.input_pins_digest,
             "spine_h5": str(args.spine_h5),
         }
@@ -216,15 +300,42 @@ def main(argv: list[str] | None = None) -> int:
             canonical_json_bytes(run_config)
         ).hexdigest()
         append_phase(state, "inputs_pinned")
+        engine = _rules_engine()
         plan = country_stage_plan(
             spec,
             {
                 "frs_spine": UKFRSSpineStageTransform(
                     args.frs_raw_dir,
-                    stage=stage,
-                )
+                    stage=stages_by_name["frs_spine"],
+                ),
+                "frs_employment": UKFRSEmploymentStageTransform(
+                    args.frs_raw_dir,
+                    stage=stages_by_name["frs_employment"],
+                ),
+                "frs_council_tax": UKFRSCouncilTaxStageTransform(
+                    args.frs_raw_dir,
+                    stage=stages_by_name["frs_council_tax"],
+                ),
+                "frs_disability": UKFRSDisabilityStageTransform(
+                    stage=stages_by_name["frs_disability"],
+                ),
+                "frs_education": UKFRSEducationStageTransform(
+                    args.frs_raw_dir,
+                    stage=stages_by_name["frs_education"],
+                ),
+                "frs_legacy_proxies": UKFRSLegacyProxiesStageTransform(
+                    args.frs_raw_dir,
+                    stage=stages_by_name["frs_legacy_proxies"],
+                    engine=engine,
+                ),
+                "frs_education_grant_split": (
+                    UKFRSEducationGrantSplitStageTransform(
+                        stage=stages_by_name["frs_education_grant_split"],
+                        engine=engine,
+                    )
+                ),
             },
-            stage_names=("frs_spine",),
+            stage_names=_STAGE_NAMES,
         )
         frame, records = plan.run(uk_frs_spine_seed_frame())
         append_phase(state, "spine_built")
@@ -237,14 +348,32 @@ def main(argv: list[str] | None = None) -> int:
         sidecar_path = output.with_suffix(".build.json")
         sidecar = _build_sidecar(
             frame=frame,
-            stage=stage,
+            stages=stages,
             records=records,
             artifact_pins=artifact_pins,
         )
         atomic_write_json(sidecar_path, sidecar)
         append_phase(state, "build_sidecar_written")
         if args.emit_nonzero_shares is not None:
-            atomic_write_json(args.emit_nonzero_shares, dict(records[0].nonzero_share))
+            final_columns = list(
+                dict.fromkeys(
+                    [
+                        column
+                        for record in records
+                        for column in record.produced
+                    ]
+                    + list(FRS_EDUCATION_GRANT_REWRITES)
+                )
+            )
+            atomic_write_json(
+                args.emit_nonzero_shares,
+                {
+                    "stages": {
+                        record.stage: dict(record.nonzero_share) for record in records
+                    },
+                    "final": _nonzero_shares(frame, final_columns),
+                },
+            )
             append_phase(state, "nonzero_shares_written")
         state.artifact_location = local_artifact_reference(
             output,

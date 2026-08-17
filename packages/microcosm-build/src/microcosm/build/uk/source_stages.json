@@ -311,6 +311,269 @@
       "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage."
     },
     {
+      "stage": "frs_employment",
+      "survey": "Family Resources Survey 2023-24",
+      "source": "Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9252 local licensed tabs.",
+      "grain": "person",
+      "artifacts": [
+        {
+          "role": "frs_table",
+          "table": "adult",
+          "kind": "licensed_microdata",
+          "format": "tab",
+          "vintage": "2023_24",
+          "locator": "adult.tab",
+          "sha256": "e09f9647d03585c81a528636028b2ed495f8f1fbcf64c5e7b4fe521b67367e06",
+          "size_bytes": 35323384,
+          "runtime_sha256_required": true
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_tables",
+          "format": "tab",
+          "delimiter": "\t",
+          "lowercase_columns": true,
+          "numeric_errors": "coerce",
+          "runtime_sha256_required": true
+        },
+        {
+          "kind": "map_coded_amounts",
+          "scope": "empstati employment status, mjobsect sector, and raw SIC division"
+        }
+      ],
+      "outputs": [
+        "employment_status",
+        "employment_sector",
+        "sic_industry_division"
+      ],
+      "nonnegative_outputs": [
+        "sic_industry_division"
+      ],
+      "notes": "Ports FRS employment derivations. empstati code 11 preserves the incumbent truncated-map artifact as LONG_TERM_DISABLED, so OTHER_INACTIVE is not emitted; mjobsect and sic are direct-indexed and fail loudly if absent."
+    },
+    {
+      "stage": "frs_council_tax",
+      "survey": "Family Resources Survey 2023-24",
+      "source": "Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9252 local licensed tabs.",
+      "grain": "household",
+      "artifacts": [
+        {
+          "role": "frs_table",
+          "table": "househol",
+          "kind": "licensed_microdata",
+          "format": "tab",
+          "vintage": "2023_24",
+          "locator": "househol.tab",
+          "sha256": "5fd26b8b675f33b3b30c9ac789a18da17de734790f77e00ded287d1c3a187b30",
+          "size_bytes": 12387117,
+          "runtime_sha256_required": true
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_tables",
+          "format": "tab",
+          "delimiter": "\t",
+          "lowercase_columns": true,
+          "numeric_errors": "coerce",
+          "runtime_sha256_required": true
+        },
+        {
+          "kind": "impute_cell_means",
+          "cells": [
+            "gvtregno",
+            "ctband",
+            "adulth == 1"
+          ],
+          "donor_filter": "raw ctannual > 0",
+          "missing": "raw ctannual < 0 or NaN",
+          "value": "Scottish-water-netted CTANNUAL"
+        }
+      ],
+      "outputs": [
+        "council_tax"
+      ],
+      "nonnegative_outputs": [
+        "council_tax"
+      ],
+      "notes": "Re-reads raw househol.tab because spine council_tax_reported clips missing values. Scottish Water charges are netted before cell means; no-donor cells impute zero. The dead ct_mean.replace(-1, ...) branch is intentionally dropped."
+    },
+    {
+      "stage": "frs_disability",
+      "survey": "Family Resources Survey 2023-24",
+      "source": "Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9252 local licensed tabs plus policyengine-uk DWP parameters.",
+      "grain": "person",
+      "artifacts": [],
+      "operations": [
+        {
+          "kind": "derive",
+          "parameters": "disability category thresholds from baseline.gov.dwp at Jan-1"
+        },
+        {
+          "kind": "derive",
+          "parameters": "disability flags from gov.dwp at Jan-1"
+        }
+      ],
+      "outputs": [
+        "aa_category",
+        "dla_sc_category",
+        "dla_m_category",
+        "pip_m_category",
+        "pip_dl_category",
+        "is_disabled_for_benefits",
+        "is_enhanced_disabled_for_benefits",
+        "is_severely_disabled_for_benefits"
+      ],
+      "notes": "Consumes E2 reported disability amount carriers. The five internal amount carriers are retained through E7 and stripped at E10; export allowlists stay fail-closed."
+    },
+    {
+      "stage": "frs_education",
+      "survey": "Family Resources Survey 2023-24",
+      "source": "Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9252 local licensed tabs.",
+      "grain": "person",
+      "artifacts": [
+        {
+          "role": "frs_table",
+          "table": "adult",
+          "kind": "licensed_microdata",
+          "format": "tab",
+          "vintage": "2023_24",
+          "locator": "adult.tab",
+          "sha256": "e09f9647d03585c81a528636028b2ed495f8f1fbcf64c5e7b4fe521b67367e06",
+          "size_bytes": 35323384,
+          "runtime_sha256_required": true
+        },
+        {
+          "role": "frs_table",
+          "table": "child",
+          "kind": "licensed_microdata",
+          "format": "tab",
+          "vintage": "2023_24",
+          "locator": "child.tab",
+          "sha256": "b5dc84fe8b002ee925e61fae23fed27b11537af9fb174f1d07d9cc1748b9702e",
+          "size_bytes": 2913156,
+          "runtime_sha256_required": true
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_tables",
+          "format": "tab",
+          "delimiter": "\t",
+          "lowercase_columns": true,
+          "numeric_errors": "coerce",
+          "runtime_sha256_required": true
+        },
+        {
+          "kind": "derive",
+          "scope": "current/highest education, QYP inputs, EMA cell-mean degenerate fills, and benefits-in-own-right flag"
+        },
+        {
+          "kind": "impute_cell_means",
+          "cells": [
+            "single cell"
+          ],
+          "value": "EMA weekly amount annualized with 365.25 / 7"
+        }
+      ],
+      "outputs": [
+        "current_education",
+        "highest_education",
+        "is_in_non_advanced_education",
+        "is_in_approved_training",
+        "age_started_or_accepted_current_education_or_training",
+        "is_before_universal_credit_qualifying_young_person_terminal_date",
+        "adult_ema",
+        "child_ema",
+        "receives_benefits_in_own_right"
+      ],
+      "nonnegative_outputs": [
+        "adult_ema",
+        "child_ema",
+        "age_started_or_accepted_current_education_or_training"
+      ],
+      "notes": "Ports the incumbent education cascade including its unreachable POST_SECONDARY branch order. EDUCQUAL_MAP is a swappable constant pending licensed UKDS data-dictionary verification; EMA uses the shared weeks-in-year constant."
+    },
+    {
+      "stage": "frs_legacy_proxies",
+      "survey": "Family Resources Survey 2023-24",
+      "source": "Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9252 local licensed tabs plus policyengine-uk DWP parameters.",
+      "grain": "person",
+      "artifacts": [
+        {
+          "role": "frs_table",
+          "table": "adult",
+          "kind": "licensed_microdata",
+          "format": "tab",
+          "vintage": "2023_24",
+          "locator": "adult.tab",
+          "sha256": "e09f9647d03585c81a528636028b2ed495f8f1fbcf64c5e7b4fe521b67367e06",
+          "size_bytes": 35323384,
+          "runtime_sha256_required": true
+        }
+      ],
+      "operations": [
+        {
+          "kind": "read_tables",
+          "format": "tab",
+          "delimiter": "\t",
+          "lowercase_columns": true,
+          "numeric_errors": "coerce",
+          "runtime_sha256_required": true
+        },
+        {
+          "kind": "materialize_rules_engine_predictors",
+          "predictors": [
+            "state_pension_age"
+          ],
+          "consumed_only": true
+        },
+        {
+          "kind": "derive",
+          "scope": "legacy JSA and ESA claimant-state proxies"
+        }
+      ],
+      "outputs": [
+        "legacy_jobseeker_proxy",
+        "esa_health_condition_proxy",
+        "esa_support_group_proxy"
+      ],
+      "notes": "The proxies are labels, not entitlement determinations. JSA hours compare against 16 * (365.25 / 7) on the E2 spine hours scale; state_pension_age is consumed but not persisted."
+    },
+    {
+      "stage": "frs_education_grant_split",
+      "survey": "Family Resources Survey 2023-24",
+      "source": "Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9252 local licensed tabs plus policyengine-uk DfE grant parameters.",
+      "grain": "person",
+      "artifacts": [],
+      "operations": [
+        {
+          "kind": "materialize_rules_engine_predictors",
+          "predictors": [
+            "childcare_grant",
+            "parents_learning_allowance",
+            "adult_dependants_grant"
+          ],
+          "consumed_only": true
+        },
+        {
+          "kind": "derive",
+          "scope": "proportional split of aggregate education_grants and DSA residual capacity"
+        }
+      ],
+      "outputs": [
+        "disabled_students_allowance_eligible_expenses"
+      ],
+      "rewrites": [
+        "education_grants"
+      ],
+      "nonnegative_outputs": [
+        "disabled_students_allowance_eligible_expenses"
+      ],
+      "notes": "Runs before BRMA and always runs; both are signed inert differences for 2023-24. Pre-2025 DSA capacity is an aligned zero vector rather than an engine shape-sizing read."
+    },
+    {
       "stage": "frs_hmrc_retained_leaves",
       "survey": "Family Resources Survey 2023-24",
       "source": "Department for Work and Pensions Family Resources Survey 2023-24 raw adult.tab and benefits.tab, caller-supplied local input",
@@ -1011,7 +1274,7 @@
           "support_channel_column": "person_support_channel",
           "required_support_channel": "spi",
           "mass_share_denominator": "all_person_effective_mass",
-          "minimum_nondefault_mass_share": 1e-06,
+          "minimum_nondefault_mass_share": 0.000001,
           "fail_below_floor": true
         }
       ],

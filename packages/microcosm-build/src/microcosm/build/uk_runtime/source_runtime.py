@@ -17,23 +17,59 @@ from microcosm.frame import Frame
 from microcosm.frame.rules import materialize_rules_engine_predictors
 
 __all__ = [
+    "UK_NONNEGATIVE_SOURCE_OUTPUTS",
     "materialize_uk_rules_engine_predictors_from_manifest",
     "uk_source_operation_handlers",
     "uk_stage_implementations",
 ]
 
 
+def _uk_nonnegative_source_outputs() -> tuple[str, ...]:
+    from microcosm.build.country_spec import load_country_spec
+
+    spec = load_country_spec("uk")
+    if spec.sources is None:
+        return ()
+    columns: list[str] = []
+    for stage in spec.sources.stages:
+        columns.extend(stage.nonnegative_outputs)
+    return tuple(dict.fromkeys(columns))
+
+
+UK_NONNEGATIVE_SOURCE_OUTPUTS = _uk_nonnegative_source_outputs()
+
+
 def uk_stage_implementations(
     *,
     retained_leaves_transform: Callable[[Frame], Frame],
     hmrc_income_transform: Callable[[Frame], Frame],
+    frs_spine_transform: Callable[[Frame], Frame] | None = None,
+    frs_employment_transform: Callable[[Frame], Frame] | None = None,
+    frs_council_tax_transform: Callable[[Frame], Frame] | None = None,
+    frs_disability_transform: Callable[[Frame], Frame] | None = None,
+    frs_education_transform: Callable[[Frame], Frame] | None = None,
+    frs_legacy_proxies_transform: Callable[[Frame], Frame] | None = None,
+    frs_education_grant_split_transform: Callable[[Frame], Frame] | None = None,
 ) -> dict[str, Callable[[Frame], Frame]]:
     """Return the whole-stage implementation map for the UK source plan."""
 
-    return {
+    implementations = {
         "frs_hmrc_retained_leaves": retained_leaves_transform,
         "hmrc_spi_income": hmrc_income_transform,
     }
+    optional = {
+        "frs_spine": frs_spine_transform,
+        "frs_employment": frs_employment_transform,
+        "frs_council_tax": frs_council_tax_transform,
+        "frs_disability": frs_disability_transform,
+        "frs_education": frs_education_transform,
+        "frs_legacy_proxies": frs_legacy_proxies_transform,
+        "frs_education_grant_split": frs_education_grant_split_transform,
+    }
+    implementations.update(
+        {name: transform for name, transform in optional.items() if transform is not None}
+    )
+    return implementations
 
 
 def uk_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:

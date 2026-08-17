@@ -1018,6 +1018,7 @@ class TestUsSources:
                 ".git" in path.parts
                 or ".venv" in path.parts
                 or ".claude" in path.parts
+                or ".codex-work" in path.parts
                 or "out" in path.parts
                 # Run scaffolding and staged run outputs (launchers, base-rebuild
                 # summaries) are not shipped source and may record the incumbent
