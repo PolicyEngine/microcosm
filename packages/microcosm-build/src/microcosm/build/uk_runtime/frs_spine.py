@@ -37,19 +37,28 @@ FRS_SPINE_TABLES = (
 WEEKS_IN_YEAR = 365.25 / 7
 TIME_PERIOD = "2023"
 
+# FRS GVTREGNO uses skip-3 coding: code 3 (the retired Merseyside code) is
+# absent from the domain, so the real codes are [1, 2, 4..13] with
+# 12 = Scotland and 13 = Northern Ireland — matching the incumbent's
+# ``[1, 2] + range(4, 15)`` categorical and its ``SCOTLAND_GVTREGNO = 12``
+# water-charge branch below. Verified on the 2023-24 tabs: zero code-3
+# households, 1,844 code-13 (Northern Ireland) households. A contiguous
+# 1-12 map shifts every label from Yorkshire up by one region and drops
+# Northern Ireland to UNKNOWN (#692 review). The SPI tape's GORCODE is a
+# different coding with its own history — do not import lessons across.
 REGION_MAP = {
     1: "NORTH_EAST",
     2: "NORTH_WEST",
-    3: "YORKSHIRE",
-    4: "EAST_MIDLANDS",
-    5: "WEST_MIDLANDS",
-    6: "EAST_OF_ENGLAND",
-    7: "LONDON",
-    8: "SOUTH_EAST",
-    9: "SOUTH_WEST",
-    10: "WALES",
-    11: "SCOTLAND",
-    12: "NORTHERN_IRELAND",
+    4: "YORKSHIRE",
+    5: "EAST_MIDLANDS",
+    6: "WEST_MIDLANDS",
+    7: "EAST_OF_ENGLAND",
+    8: "LONDON",
+    9: "SOUTH_EAST",
+    10: "SOUTH_WEST",
+    11: "WALES",
+    12: "SCOTLAND",
+    13: "NORTHERN_IRELAND",
 }
 
 TENURE_MAP = {

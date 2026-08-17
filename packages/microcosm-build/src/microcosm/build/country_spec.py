@@ -939,7 +939,12 @@ def country_stage_plan(
             selected stage.
         stage_names: Optional declared-stage names to run. Selection is
             validated against the manifest, and execution order remains the
-            manifest order regardless of this tuple's order.
+            manifest order regardless of this tuple's order. Implementations
+            for declared-but-unselected stages are deliberately tolerated —
+            pipelines sharing one implementations map may each select their
+            own subset — so an extra entry for an unselected stage is a
+            silent no-op, not an error; only implementations for stages the
+            manifest never declares are refused.
 
     Returns:
         The validated plan, each stage carrying its manifest citation as

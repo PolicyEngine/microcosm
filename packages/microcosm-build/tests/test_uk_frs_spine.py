@@ -458,7 +458,9 @@ def test_household_and_benunit_mapping_values_are_ported(tmp_path: Path) -> None
     household = frame.table("household").set_index("household_id")
     benunit = frame.table("benunit").set_index("benunit_id")
 
-    assert household.loc[1, "region"] == "NORTHERN_IRELAND"
+    # GVTREGNO=12 is Scotland in the skip-3 FRS coding — consistent with the
+    # Scottish water-charge treatment this same household receives below.
+    assert household.loc[1, "region"] == "SCOTLAND"
     assert household.loc[1, "tenure_type"] == "OWNED_WITH_MORTGAGE"
     assert household.loc[1, "accommodation_type"] == "FLAT"
     assert household.loc[1, "num_bedrooms"] == 2
@@ -490,19 +492,24 @@ def test_household_and_benunit_mapping_values_are_ported(tmp_path: Path) -> None
 
 
 def test_region_code_map_covers_all_twelve_regions() -> None:
+    # FRS GVTREGNO skip-3 coding: no code 3 (retired Merseyside), Scotland
+    # is 12 (the water-charge branch reads the same code), Northern Ireland
+    # is 13. Verified against the 2023-24 tabs in the #692 review: zero
+    # code-3 households, 1,844 code-13 households.
+    assert 3 not in REGION_MAP
     assert REGION_MAP == {
         1: "NORTH_EAST",
         2: "NORTH_WEST",
-        3: "YORKSHIRE",
-        4: "EAST_MIDLANDS",
-        5: "WEST_MIDLANDS",
-        6: "EAST_OF_ENGLAND",
-        7: "LONDON",
-        8: "SOUTH_EAST",
-        9: "SOUTH_WEST",
-        10: "WALES",
-        11: "SCOTLAND",
-        12: "NORTHERN_IRELAND",
+        4: "YORKSHIRE",
+        5: "EAST_MIDLANDS",
+        6: "WEST_MIDLANDS",
+        7: "EAST_OF_ENGLAND",
+        8: "LONDON",
+        9: "SOUTH_EAST",
+        10: "SOUTH_WEST",
+        11: "WALES",
+        12: "SCOTLAND",
+        13: "NORTHERN_IRELAND",
     }
 
 

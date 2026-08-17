@@ -229,7 +229,6 @@ def main(argv: list[str] | None = None) -> int:
         frame, records = plan.run(uk_frs_spine_seed_frame())
         append_phase(state, "spine_built")
         output = write_uk_national_frame(frame, args.spine_h5)
-        output = write_uk_national_frame(frame, output)
         append_phase(state, "spine_written")
         if args.checkpoint_dir is not None:
             args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
