@@ -621,3 +621,235 @@ these inventory surfaces without a bundle home is a failing report.
   and sparse-tensor warnings.  The generator `--check`, Ruff, production
   forbidden-import sweep, JSON-schema parse, and `git diff --check` were rerun
   immediately before the commit.
+
+## 5. Host-reboot continuation and D4 revalidation
+
+### Preserved-state audit
+
+- Continuation resumed on 2026-08-17 after the host OOM reboot.  Commits
+  `4f1b251f`, `01c056d2`, `f85c2484`, and `1f6066ea` remain the D1--D4
+  checkpoints.  Every preserved tracked and untracked change was inspected;
+  the tree is a coherent, unfinished D5--D8 draft, so none of it was discarded
+  or stashed.
+- The named `dispatch_f0_compiler.md` artifact is not present in this
+  worktree, its index, or reachable history.  Work therefore continues under
+  the quoted continuation charter, this root journal, and RFC v3 in
+  `docs/spec-engine.md`.
+- Before the untouched-tree suite, `vm_stat` reported 4,550,121 free 16-KiB
+  pages (about 69.4 GiB), above the 20-GiB floor.  The exact serial command
+  `.venv/bin/python -m pytest -q` reached 100% and exited 0; a separate
+  collection pass counted **6,601 tests across 258 files**.  No xdist worker
+  or concurrent suite was used.  Warnings were limited to the same numerical,
+  pandas, and sparse-tensor families recorded at D4.
+
+### Revalidated D4 byte gate
+
+- The focused command
+  `.venv/bin/python -m pytest -q packages/microcosm-build/tests/test_spec_engine_legacy_adapter.py::test_compiled_gate_is_byte_identical_to_constants_era_payloads`
+  exited 0 against the preserved continuation tree.
+- Independent canonical serialization reproduced aggregate SHA-256
+  `fefccb6a0c10cdfd7c4b21ef2957cf77891f300d357ce61223ef2f34b5bcdeb3`.
+  The compiled bundle is therefore still byte-identical to the selected live
+  constants-era payloads before any continuation edits.
+
+## 6. Complete US F0 coverage attestation
+
+### Exact normative-field disposition
+
+- The generated D5 ledger covers **41,380/41,380** configuration leaves:
+  **32,161 authored normative fields** and **9,219 resolved bindings**, with
+  zero unused fields and zero multiple-primary-use fields.  Its 47 reviewed
+  claims pin both an exact pointer count and pointer-inventory SHA-256; a new
+  field, a widened wildcard, or an overlapping claim refuses generation
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/field_usage.py`).
+- Primary-use modes are **13,245 legacy behavior**, **27,661 compiler
+  semantic**, **346 front-end validation**, and **128 identity-only**.
+  Generation-0 effects are **37,718 legacy behavior** and **3,662 explicitly
+  no-generation-0-effect**.  Source pins and spine channels are now described
+  honestly as schema/reference validation; the assembly contract is split
+  into the live mass anchor, live household mass shares, and the closed
+  canonical-string policy instead of treating normalized storage as runtime
+  evidence (`field_usage.py:710` and `:770`).
+- The named `spine_assembly` adapter surface makes both household shares
+  leaf-exact compatibility sinks.  A valid `0.6/0.4` mutation changes the
+  named adapter paths and the D8 live equality gate refuses it
+  (`spec_engine/legacy_adapter.py:244` and
+  `packages/microcosm-build/tests/test_spec_engine_field_usage.py`).
+
+### Structure-exact D1 inventory
+
+- The compact evidence report now passes **40/40 required inventory checks**.
+  Its reviewed diagnostic vector includes 13 adapter surfaces, 8 authority
+  components, 13/48 early families/targets, 1/65 primary family/targets,
+  19/70 late groups/targets, 5/37 itemization batches/targets, 38 producer
+  nodes, 2,742 inputs, 92 authored and 227 compiled outputs, 75 virtual
+  resources, 18 ownership rows, 16 source operators, 37 source stages, 13
+  take-up programs with 24 steps, 934 tail-control fields, 53 seed sites with
+  112 owner bindings and 54 owner rows, 5 release rungs, 84 artifacts, 173
+  columns, 8 entities, 7 scopes, and 318 resolved references
+  (`spec_engine/inventory_coverage.py:397`).
+- Every declared bundle home is resolved as a real JSON pointer, including
+  wildcard segments, and a zero-match home becomes an item failure
+  (`inventory_coverage.py:470`).  The report validators recompute item status,
+  missing/covered summaries, claim totals, mode/effect totals, bindings, ABI,
+  and closed field sets; a self-consistent 39/40 report now refuses instead of
+  carrying a false `pass` label (`inventory_coverage.py:1872` and
+  `tools/spec_engine_coverage.py:138`).
+- The previously missing dynamic `_stacked_checkpoint_base_identity` vector
+  is pinned with sorted `alpha`/`zeta` inputs, nondefault `f025` sampling,
+  Unicode receipt content, and `0.4`/`991` clone attachment.  Its 12-component
+  canonical SHA-256 is
+  `ff21484d152b0aa923798a832ee788cea07296d13dd60124f617df6f46ff5df9`;
+  the nested primary-resource binding carries the same run-bound attachment
+  (`inventory_coverage.py:1450`).
+- Regeneration command `.venv/bin/python tools/spec_engine_coverage.py`
+  completed with `41380/41380 configuration fields; 40/40 inventory checks`.
+  The committed artifact is
+  `docs/evidence/spec-engine/us-f0-coverage.json`.
+
+### Expanded live compatibility evidence
+
+- The adapter now exposes 13 named surfaces, adding the full spine assembly.
+  The byte gate also includes the complete projected battery contract, built
+  from a runtime-only extractor that reads the thresholds, gate identities,
+  metric registry, joint registry, and support profile used by live terminal
+  gates without importing the compiler
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_battery_contract.py:59`).
+  The retained one-shot generator delegates to that extractor and then retains
+  its existing derived-view validation, so generated bundle bytes remain
+  checkable rather than acquiring a second battery implementation.
+
+## 7. UK and Belgian shared-core compilation
+
+### Typed country bundles and seam
+
+- UK and Belgium now each package the same six shared-core typed resources:
+  bundle, sources, spine, geography, vintages, and catalogs.  Both load once
+  through `load_bundle()`, bind through `load_country_spec()`, and compile to
+  the closed IR without a country-specific compiler branch
+  (`packages/microcosm-build/src/microcosm/build/country_spec.py:1375`).
+  Reviewed spec SHA-256 values are
+  `c2a63c9c7d5cd7a776e1d9938686a3c864a268d2da54a6db01b86334b91064f9`
+  for UK and
+  `3193b05152a09afce267007639085fdcb30bd8309878bb1737f22f04893b1e2b`
+  for Belgium.
+- The bundles deliberately exercise distinct shapes: UK has person,
+  household, and benefit-unit entities plus a synthetic-prior replacement
+  support; Belgium has person and household entities, no replacement support,
+  and a NUTS1-to-commune geography contract.  Their normalized source and
+  geography declarations compile, while their executable producer graphs are
+  intentionally empty rather than acquiring US imputation defaults
+  (`packages/microcosm-build/tests/test_spec_engine_country_bundles.py:30`).
+- The CountrySpec seam retains generation-0 compatibility evidence and checks
+  typed source/geography facts against it.  Eight Belgian geography mutations
+  prove kernel, anchor, derive, vintage, assertion, refusal, universe, and
+  source-region drift are rejected (`test_spec_engine_country_bundles.py:149`).
+
+### Contract-only kernel integrity
+
+- Six UK/BE names close the compiler's reference namespace but are explicitly
+  contract-only.  The registry hashes only the original implemented US set,
+  so adding walking-skeleton contracts cannot perturb the implementation
+  digest folded into existing US node keys
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/resolver.py:34`
+  and `:152`).  A contract-only name is rejected if it is placed on an
+  executable producer node (`spec_engine/compiler_ir.py:994`).
+- The focused D6 command covering country bundles, compiler IR, and the
+  CountrySpec seam completed at 100% with exit 0.  It proves all six names
+  resolve, none claims an implementation, the implemented-only digest is
+  unchanged, and a producer cannot use a contract-only kernel.
+
+### Belgian smoke status
+
+- **No Belgian data smoke was run, and none is claimed.**  The typed Belgian
+  bundle compiles, then `country_stage_plan(spec, {})` refuses the missing
+  `silc_load` and `clone_assign_communes` bindings with the shared no-stub,
+  no-fallback error (`test_spec_engine_country_bundles.py:206`).
+- The precise external blockers are: licensed Statbel/Eurostat BE-SILC tables
+  are unavailable in this worktree; there is no shared `be_runtime` providing
+  those two stage implementations; the non-PyPI Axiom engine is not installed;
+  and no `POPULACE_RULESPEC_BE` checkout is bound.  The latter requirements are
+  the explicit opt-in gates in
+  `packages/microcosm-frame/tests/test_axiom_adapter.py:1` and `:450`.
+
+## 8. Deterministic round-trip and mutation gates
+
+- `resolved_bundle_bytes()` serializes normalized typed resources rather than
+  source text, emits an alias-free strict-YAML subset, recomputes authored file
+  receipts and `bundle.lock.json`, derives `plan.lock.json`, and carries the
+  already verified generated engine ABI lock without adding generated locks to
+  the typed manifest
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/reemission.py:53`
+  and `:141`).
+- Re-emission is deterministic in memory and on disk.  Fresh UK, Belgian, and
+  US outputs all reload to the same normative SHA, documentation SHA, surfaces,
+  generated authorities, descriptors, and normalized domains; their emitted
+  bundle and plan locks validate against the reloaded bundle.  YAML token scans
+  prove no anchor or alias is emitted
+  (`packages/microcosm-build/tests/test_spec_engine_reemission.py:47`).
+- A schema-valid calibration mutation changes the normative hash and names both
+  legacy `max_epochs` sink paths.  A documentation-only take-up note changes
+  only the documentation hash.  Separate refusal tests protect nonempty
+  destinations and resource-path traversal, leaving existing files untouched
+  (`test_spec_engine_reemission.py:99`).
+- The seven-case focused D7 suite completed at 100% with exit 0; Ruff also
+  passed for the implementation and test module.
+
+## 9. Fixture-scale constants-adapter wiring
+
+- The stacked tool now accepts `--config-authority constants` (the unchanged
+  default) or `constants_adapter`.  Adapter mode loads and compiles the
+  packaged US bundle, then performs one field-complete equality assertion over
+  the 14 compact live execution surfaces before continuing through the same
+  constants-era constructors
+  (`tools/build_us_multispine_pool.py:3886` and `:4046`).  There is no
+  bundle-mode executor in F0.
+- The equality gate includes full battery thresholds/registries, source and
+  support manifests, take-up contract and identity, spine assembly household
+  shares, sampling channels/defaults/rungs/seed/exact-count rule, legacy
+  publication prefix/regex/rungs, stacked authority, early and late schedules,
+  overlap ownership, and all nine static checkpoint components.  Valid
+  mutations to a battery threshold, household share, release regex, or sample
+  default each refuse with the exact changed pointer
+  (`packages/microcosm-build/tests/test_us_multispine_pool_tool.py:1949`).
+- The spec binding is receipt-only.  Successful adapter runs record
+  `spec_binding_status=resolved`; a pre-resolution failure records
+  `resolution_pending`, an equality/load failure records `resolution_failed`
+  without a false spec SHA, and a later pipeline failure retains the resolved
+  binding
+  (`tools/build_us_multispine_pool.py:4416` and `:4664`).  Adapter mode is
+  refused for the retiring two-spine pipeline.
+- The fixture E2E runs both authorities through the stacked entrypoint and
+  proves all assembled, transferred, and simulated checkpoint bytes are
+  identical.  Only the run-configuration receipt differs; configured and
+  checkpoint identities contain no spec binding
+  (`test_us_multispine_pool_tool.py:2095`).
+- The focused adapter selection, drift, failure-provenance, checkpoint-byte,
+  battery, legacy-adapter, and runtime-architecture tests completed at 100%
+  with exit 0.  The new live battery extractor is classified narrowly as a
+  data-only authority module, not as a population operator.
+
+## 10. Final continuation gate and packaging
+
+- After the two runtime-architecture expectations affected by the new
+  data-only battery extractor were updated and passed their focused checks,
+  the exact serial command `.venv/bin/python -m pytest -q` was rerun alone.
+  It reached 100% and exited 0.  A final collection pass counted **6,627 tests
+  across 258 files**.  Warnings remained limited to the pre-existing
+  numerical, pandas fragmentation/chained-assignment, and sparse-tensor
+  families; no xdist workers or concurrent suite were used.
+- Final deterministic gates all exited 0: Ruff, the generated-US-bundle
+  `--check` (spec SHA-256
+  `c78c1ce8c951e5f745d7a03c3e887e151f8fcfa0bd3adeafb12cf73f2983acac`),
+  the D5 evidence `--check` (**41,380/41,380 fields and 40/40 inventory
+  checks**), JSON parsing for all 15 schemas and three country manifests, and
+  `git diff --check`.
+- Immediately before packaging, `vm_stat` reported 3,890,890 free 16-KiB
+  pages (about 59.4 GiB), above the 20-GiB floor.  All five shard wheels then
+  built sequentially and offline.  The build wheel contains all 15 schemas,
+  both UK/Belgian manifests, and all 12 UK/Belgian YAML resources.
+- All five wheels were extracted into one isolated installation prefix and
+  all five shard modules imported from that prefix.  The packaged UK and
+  Belgian bundles loaded and compiled to their pinned hashes; the 15-case
+  country-bundle contract suite also passed against that wheel prefix.  No
+  pipeline build beyond fixture scale was run.
