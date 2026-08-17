@@ -88,11 +88,25 @@ def test_disability_flag_operator_asymmetry_and_afcs() -> None:
     assert result["is_severely_disabled_for_benefits"].tolist() == [True, True]
 
 
-def test_dwp_baseline_reader_uses_january_first_instant() -> None:
-    # The reader constructs the real engine's parameter tree; the wheel gate
+def test_dwp_reader_split_is_value_bearing() -> None:
+    # The readers construct the real engine's parameter tree; the wheel gate
     # and the us-extra CI lane run without policyengine-uk, so skip there.
+    # The baseline-vs-plain split carries different VALUES, not just
+    # provenance: the baseline clone escapes policyengine-uk's fiscal-year
+    # conversion (April-2022-era weekly rates at build period 2023), while
+    # the plain tree the incumbent's flags read is fiscal-2023-24. A licensed
+    # head-to-head against the incumbent's own output caught the one-row
+    # flag divergence when both readers used the raw-file January values.
     pytest.importorskip("policyengine_uk")
+    from microcosm.build.uk_runtime.frs_disability import (
+        uk_dwp_disability_flag_rates,
+    )
+
     rates = uk_dwp_baseline_disability_rates(2023)
+    flag_rates = uk_dwp_disability_flag_rates(2023)
 
     assert rates.instant == "2023-01-01"
     assert np.isfinite(rates.aa_lower)
+    assert rates.aa_higher == pytest.approx(92.40)
+    assert flag_rates.aa_higher == pytest.approx(101.75)
+    assert flag_rates.dla_sc_higher > rates.dla_sc_higher

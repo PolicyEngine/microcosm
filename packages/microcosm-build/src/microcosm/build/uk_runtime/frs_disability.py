@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -48,7 +47,7 @@ FRS_DISABILITY_OUTPUT_COLUMNS = (
 
 @dataclass(frozen=True)
 class UKDWPBaselineDisabilityRates:
-    """Baseline DWP weekly rates read at 1 January of the build year."""
+    """The incumbent categories' rates: the pre-fiscal-conversion baseline subtree."""
 
     aa_lower: float
     aa_higher: float
@@ -67,7 +66,7 @@ class UKDWPBaselineDisabilityRates:
 
 @dataclass(frozen=True)
 class UKDWPDisabilityFlagRates:
-    """Plain DWP weekly flag rates read at 1 January of the build year."""
+    """The incumbent flags' rates: the fiscal-converted plain tree."""
 
     aa_higher: float
     dla_sc_higher: float
@@ -107,11 +106,14 @@ class UKFRSDisabilityStageTransform:
 def uk_dwp_baseline_disability_rates(
     build_period: int | str,
 ) -> UKDWPBaselineDisabilityRates:
-    """Read baseline DWP disability rates at ``{year}-01-01``.
+    """Read the incumbent categories' rates: the ``.baseline`` subtree.
 
-    This intentionally differs from the CGT reader's June instant: the
-    incumbent's ``parameters(year)`` resolves at January 1, before April
-    DWP uprating.
+    The baseline-vs-plain split in the incumbent is value-bearing, not just
+    provenance: the ``baseline`` clone is created before policyengine-uk's
+    fiscal-year parameter conversion, so at build period 2023 it carries the
+    April-2022-era weekly rates (e.g. 92.40) that the incumbent's category
+    thresholds actually use, while the plain tree (the flags reader below)
+    carries the fiscal-2023-24 values (e.g. 101.75).
     """
 
     try:
@@ -148,27 +150,36 @@ def uk_dwp_baseline_disability_rates(
 def uk_dwp_disability_flag_rates(
     build_period: int | str,
 ) -> UKDWPDisabilityFlagRates:
-    """Read plain DWP disability flag rates at ``{year}-01-01``."""
+    """Read the incumbent flags' rates: the plain (fiscal-converted) tree.
+
+    The incumbent's flag thresholds come from ``parameters(year).gov.dwp``
+    on the model system, whose parameter tree policyengine-uk converts to
+    fiscal-year snapshots at load — at build period 2023 that is the
+    fiscal-2023-24 weekly rates (e.g. 101.75), NOT the raw dated files'
+    January-1 values (92.40). Reading the raw files here produced a
+    single-row flag divergence against the incumbent's own output, caught
+    by the licensed head-to-head receipt.
+    """
 
     try:
         import policyengine_uk
-        from policyengine_core.parameters import ParameterNode
     except ImportError as exc:
         raise ImportError(
             "UK DWP disability parameters require `uv sync --all-packages --extra uk`."
         ) from exc
 
-    parameters = ParameterNode(
-        directory_path=str(Path(policyengine_uk.__file__).parent / "parameters")
-    )
     instant = f"{int(build_period)}-01-01"
-    dwp = parameters.gov.dwp
+    dwp = (
+        policyengine_uk.CountryTaxBenefitSystem()
+        .parameters(int(build_period))
+        .gov.dwp
+    )
     return UKDWPDisabilityFlagRates(
-        aa_higher=float(dwp.attendance_allowance.higher(instant)),
-        dla_sc_higher=float(dwp.dla.self_care.higher(instant)),
-        pip_dl_enhanced=float(dwp.pip.daily_living.enhanced(instant)),
+        aa_higher=_parameter_value(dwp.attendance_allowance.higher, instant),
+        dla_sc_higher=_parameter_value(dwp.dla.self_care.higher, instant),
+        pip_dl_enhanced=_parameter_value(dwp.pip.daily_living.enhanced, instant),
         instant=instant,
-        source="policyengine-uk parameters "
+        source="policyengine-uk parameters (fiscal-converted plain tree) "
         f"{getattr(policyengine_uk, '__version__', 'unknown')}",
     )
 
