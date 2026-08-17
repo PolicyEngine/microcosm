@@ -359,6 +359,17 @@ class TestUKGatesManifest:
             == 1_151.2542195939373
         )
         assert (
+            params["uk_input_mass_parity"]["relative_tolerance"]
+            == 4.521811483823806
+        )
+        assert params["uk_input_mass_parity"]["minimum_reference_total"] == 0.0
+        assert params["uk_qrf_tail_concentration"]["top_k"] == 100
+        assert (
+            params["uk_qrf_tail_concentration"]["max_top_share"]
+            == 0.9970712395200448
+        )
+        assert params["uk_qrf_tail_concentration"]["min_nonzero_records"] == 274
+        assert (
             params["uk_target_fit"]["max_abs_relative_error"]
             == terminal_gates.UK_MAX_TARGET_ABS_RELATIVE_ERROR
         )
@@ -395,13 +406,14 @@ class TestUKGatesManifest:
         # register are declared per-country inputs, never implicit code.
         params = {gate.id: gate.parameters for gate in manifest.gates}
         input_mass = params["uk_input_mass_parity"]
-        assert (
-            input_mass["reference_sha256"]
-            == weighted_integrity.UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256
-        )
-        assert dict(input_mass["reference_identity"]) == dict(
-            weighted_integrity._UK_INPUT_MASS_REFERENCE_IDENTITY
-        )
+        assert input_mass["reference"] in input_mass["reference_registry"]
+        expected_registry = {
+            name: descriptor.spec_payload()
+            for name, descriptor in (
+                weighted_integrity.UK_INPUT_MASS_REFERENCE_REGISTRY.items()
+            )
+        }
+        assert input_mass["reference_registry"] == expected_registry
         assert (
             input_mass["reviewed_exclusions_resource"]
             == weighted_integrity.UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE

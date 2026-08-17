@@ -30,7 +30,10 @@ from microcosm.build.gate_battery import (
 from microcosm.build.gates import GateResult
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.weighted_integrity import (
+    UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
+    UK_INPUT_MASS_REFERENCE_REGISTRY,
+    uk_default_input_mass_reviewed_exclusions,
 )
 from microcosm.data import contract as data_contract
 
@@ -163,11 +166,55 @@ class TestMirrorConstants:
     def test_input_mass_evidence_pin_mirrors_the_wrapped_reference(self) -> None:
         from microcosm.build.gate_battery import _canonical_sha256
 
+        reference = "efrs-post-calibration"
+        records = uk_default_input_mass_reviewed_exclusions()[reference]
         assert data_contract._UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 == (
             _canonical_sha256(
-                {"reference_evidence_sha256": (UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256)}
+                {
+                    "reference": reference,
+                    "reference_evidence_sha256": (
+                        UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256
+                    ),
+                    "exclusions_policy": "committed",
+                    "reviewed_exclusions": {
+                        name: record.policy_payload()
+                        for name, record in sorted(records.items())
+                    },
+                }
             )
         )
+
+    def test_numeric_threshold_mirrors_match_the_committed_spec(self) -> None:
+        spec = load_country_spec("uk")
+        params = {entry.id: entry.parameters for entry in spec.gates.gates}
+        input_mass = params["uk_input_mass_parity"]
+        reference = input_mass["reference"]
+
+        assert data_contract._UK_MAX_TO_MEDIAN_WEIGHT_RATIO == (
+            params["uk_weight_ratio"]["maximum_max_to_median_ratio"]
+        )
+        assert data_contract._UK_MIN_ESS_FRACTION == (
+            params["uk_weight_ess"]["minimum_ess_fraction"]
+        )
+        assert data_contract._UK_MAX_TARGET_ABS_RELATIVE_ERROR == (
+            params["uk_target_fit"]["max_abs_relative_error"]
+        )
+        assert data_contract._UK_INPUT_MASS_ACTIVE_REFERENCE == reference
+        assert (
+            data_contract._UK_INPUT_MASS_REFERENCE_IDENTITY
+            == input_mass["reference_registry"][reference]["identity"]
+        )
+        assert data_contract._UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 == (
+            input_mass["reference_registry"][reference]["totals_sha256"]
+        )
+        assert input_mass["reviewed_exclusions_resource"] == (
+            UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE
+        )
+        expected_registry = {
+            name: descriptor.spec_payload()
+            for name, descriptor in UK_INPUT_MASS_REFERENCE_REGISTRY.items()
+        }
+        assert input_mass["reference_registry"] == expected_registry
 
 
 class TestProducerRoundTrip:

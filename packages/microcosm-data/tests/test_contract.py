@@ -72,6 +72,28 @@ UK_INPUT_MASS_REFERENCE_IDENTITY = {
 UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
     "c36c015a60f796ad9199a4a5652706f5310909cb572b1c90092ef9df1fa7187e"
 )
+UK_INPUT_MASS_ACTIVE_REFERENCE = "efrs-post-calibration"
+UK_INPUT_MASS_REFERENCE_SCOPE_NOTE = (
+    "Post-calibration eFRS production incumbent; structurally lacks the SPI "
+    "clone channel, so SPI-channel-exclusive columns are comparable only "
+    "through per-reference reviewed exclusions."
+)
+UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
+    "charitable_investment_gifts": {
+        "reason": (
+            "SPI-channel-exclusive column on a channel-blind reference: the "
+            "efrs-post-calibration incumbent structurally lacks the SPI clone "
+            "channel, so its reference mass is survey-side scraps while the "
+            "staged candidate's mass is the admin-captured SPI channel "
+            "functioning as designed (microcosm#630 case 2). Compared "
+            "normally against any future channel-aware reference."
+        ),
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#630",
+        "approved_on": "2026-08-17",
+        "expires_on": "2027-02-17",
+    }
+}
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
 CALIBRATION_SHA = "a" * 64
@@ -113,7 +135,7 @@ UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "948b4c6a7c7d588293fda4e3f075c3e3fbb63c2317e99e686b6b79346b43f665"
+    "a77111e4acecd3945d69f77f58209bf6a58eb72d39a47de9cb01e5b73d2592f4"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {
@@ -751,7 +773,7 @@ def _terminal_gate_details(name: str) -> dict:
         return {
             "candidate_name": "uk_release_candidate",
             "reference_name": UK_INPUT_MASS_REFERENCE_IDENTITY["filename"],
-            "relative_tolerance": 0.5,
+            "relative_tolerance": 4.521811483823806,
             "minimum_reference_total": 0.0,
             "columns_checked": 1,
             "columns_below_reference_floor": 0,
@@ -764,16 +786,18 @@ def _terminal_gate_details(name: str) -> dict:
             "expired_exclusions": [],
             "premature_exclusions": [],
             "exclusions_evaluated_on": "2026-08-11",
+            "reference": UK_INPUT_MASS_ACTIVE_REFERENCE,
+            "reference_scope_note": UK_INPUT_MASS_REFERENCE_SCOPE_NOTE,
             "reference_identity": dict(UK_INPUT_MASS_REFERENCE_IDENTITY),
         }
     if name == "qrf_tail_concentration":
         return {
             "columns_checked": 1,
-            "top_k": 1,
-            "max_top_share": 0.75,
-            "min_nonzero_records": 2,
+            "top_k": 100,
+            "max_top_share": 0.9970712395200448,
+            "min_nonzero_records": 274,
             "top_share": {"self_employment_income": 0.5},
-            "carrier_counts": {"self_employment_income": 10},
+            "carrier_counts": {"self_employment_income": 274},
             "thin_columns": {},
             "reviewed_exclusions": {},
             "stale_exclusions": [],
@@ -2242,7 +2266,7 @@ def test_exact_k_uk_terminal_rejects_unreviewed_input_mass_identity(
         validate_release_dir(directory)
 
     failures = "\n".join(excinfo.value.failures)
-    assert "reference_identity must match the reviewed" in failures
+    assert "reference_identity must match the active reviewed" in failures
 
 
 def test_exact_k_uk_terminal_rejects_substituted_input_mass_totals(
@@ -3716,7 +3740,12 @@ def test_uk_gate_battery_pins_are_in_lockstep_with_the_contract() -> None:
         == UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256
     )
     assert UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 == _canonical_sha256(
-        {"reference_evidence_sha256": UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256}
+        {
+            "reference": UK_INPUT_MASS_ACTIVE_REFERENCE,
+            "reference_evidence_sha256": UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
+            "exclusions_policy": "committed",
+            "reviewed_exclusions": UK_INPUT_MASS_REVIEWED_EXCLUSIONS,
+        }
     )
 
 
@@ -3849,7 +3878,7 @@ def test_exact_k_uk_gate_battery_rejects_excused_absent_evidence(
     entry = payload["gates"]["uk_input_mass_parity"]
     entry["status"] = "evidence_absent"
     entry["details"] = {}
-    entry["reason"] = "missing evidence: input_mass_policy"
+    entry["reason"] = "missing evidence: input_mass_reference"
     del payload["evidence_sha256"]["uk_input_mass_parity"]
     _rewrite_battery_report(directory, payload)
     build_path = directory / "build_manifest.json"

@@ -149,6 +149,8 @@ def test_payload_loads_as_a_gate_reference(
 
     from microcosm.build.uk_runtime import weighted_integrity
     from microcosm.build.uk_runtime.weighted_integrity import (
+        UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
+        UK_INPUT_MASS_REFERENCE_REGISTRY,
         UKInputMassParityPolicy,
         load_uk_input_mass_reference,
         uk_input_mass_parity_gate,
@@ -162,13 +164,15 @@ def test_payload_loads_as_a_gate_reference(
     # The reviewed 131-column digest is covered by the runtime regressions.
     monkeypatch.setattr(
         weighted_integrity,
-        "_validate_input_mass_reference",
-        lambda _reference: None,
+        "_input_mass_reference_evidence_sha256",
+        lambda _reference: UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
     )
+    descriptor = UK_INPUT_MASS_REFERENCE_REGISTRY["efrs-post-calibration"]
     reference = load_uk_input_mass_reference(path)
     identical = uk_input_mass_parity_gate(
         dict(reference.totals),
         reference,
+        descriptor=descriptor,
         policy=UKInputMassParityPolicy(
             relative_tolerance=0.0,
             minimum_reference_total=0.0,
@@ -177,6 +181,7 @@ def test_payload_loads_as_a_gate_reference(
     zeroed = uk_input_mass_parity_gate(
         {name: 0.0 for name in reference.totals},
         reference,
+        descriptor=descriptor,
         policy=UKInputMassParityPolicy(
             relative_tolerance=0.0,
             minimum_reference_total=0.0,

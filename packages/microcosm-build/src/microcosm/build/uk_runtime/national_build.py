@@ -60,12 +60,8 @@ from microcosm.build.uk_runtime.national_sampling import (
 from microcosm.build.uk_runtime.release_input_coverage import (
     PolicyEngineUKCoverageEngine,
 )
-from microcosm.build.uk_runtime.terminal_gates import (
-    UKInputMassParityPolicy,
-    UKInputMassReference,
-    UKQRFTailConcentrationPolicy,
-)
 from microcosm.build.uk_runtime.weighted_integrity import (
+    UKInputMassReference,
     UKReviewedExclusion,
     exclusion_evaluation_date,
 )
@@ -348,8 +344,10 @@ def build_uk_national_dataset(
     stages: Sequence[UKNationalStage | PlanStage] | StagePlan = (),
     coverage_engine: Any | None = None,
     input_mass_reference: UKInputMassReference | None = None,
-    input_mass_policy: UKInputMassParityPolicy | None = None,
-    qrf_tail_policy: UKQRFTailConcentrationPolicy | None = None,
+    reviewed_input_mass_exclusions: (
+        Mapping[str, Mapping[str, UKReviewedExclusion]] | None
+    ) = None,
+    reviewed_qrf_tail_exclusions: Mapping[str, UKReviewedExclusion] | None = None,
     reviewed_degenerate_exclusions: Mapping[str, UKReviewedExclusion] | None = None,
     terminal_gate_path: str | Path | None = None,
     input_coverage_path: str | Path | None = None,
@@ -460,12 +458,6 @@ def build_uk_national_dataset(
             "candidate must keep its signed schema-4 report, so the two "
             "are mutually exclusive."
         )
-    if (input_mass_reference is None) != (input_mass_policy is None):
-        raise ValueError(
-            "input_mass_parity arms with a frozen reference and reviewed "
-            "thresholds together; supply both or neither."
-        )
-
     engine = (
         coverage_engine
         if coverage_engine is not None
@@ -554,9 +546,10 @@ def build_uk_national_dataset(
         artifacts["fit_weight_records"] = fit_weight_records
     if input_mass_reference is not None:
         artifacts["input_mass_reference"] = input_mass_reference
-        artifacts["input_mass_policy"] = input_mass_policy
-    if qrf_tail_policy is not None:
-        artifacts["qrf_tail_policy"] = qrf_tail_policy
+    if reviewed_input_mass_exclusions is not None:
+        artifacts["reviewed_input_mass_exclusions"] = reviewed_input_mass_exclusions
+    if reviewed_qrf_tail_exclusions is not None:
+        artifacts["reviewed_qrf_tail_exclusions"] = reviewed_qrf_tail_exclusions
     if reviewed_degenerate_exclusions is not None:
         artifacts["reviewed_degenerate_exclusions"] = reviewed_degenerate_exclusions
     terminal = battery.run_phase(

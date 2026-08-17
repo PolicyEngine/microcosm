@@ -1,5 +1,15 @@
 {
- "schema_version": 2,
- "description": "Reviewed input-mass parity exclusions for the UK terminal battery (#609). Each entry is a complete approval receipt (schema 2 per #610: reason, approver, adjudication reference, approval date, expiry) documenting why that column is allowed to drift or disappear against the frozen reference. The gate reports dormant entries (columns outside the audited surface) and FAILS stale ones (columns now within tolerance) and FAILS expired ones until the adjudication is renewed, so this register cannot rot. Empty until an incident or adjudication earns an entry.",
- "exclusions": {}
+ "schema_version": 3,
+ "description": "Reviewed input-mass parity exclusions for the UK terminal battery, scoped per named comparison reference (microcosm#630): an exclusion suppresses only when its reference is the armed one, so a column excluded on a channel-blind reference is compared normally against a channel-aware one with no register change. Each entry is a complete approval receipt (schema-2 fields per #610). The gate reports dormant entries, FAILS stale ones, and FAILS expired ones until the adjudication is renewed, so this register cannot rot.",
+ "references": {
+  "efrs-post-calibration": {
+   "charitable_investment_gifts": {
+    "reason": "SPI-channel-exclusive column on a channel-blind reference: the efrs-post-calibration incumbent structurally lacks the SPI clone channel, so its reference mass is survey-side scraps while the staged candidate's mass is the admin-captured SPI channel functioning as designed (microcosm#630 case 2). Compared normally against any future channel-aware reference.",
+    "approved_by": "juaristi22",
+    "adjudication": "microcosm#630",
+    "approved_on": "2026-08-17",
+    "expires_on": "2027-02-17"
+   }
+  }
+ }
 }
