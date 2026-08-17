@@ -1,0 +1,1 @@
+Scope the UK input-mass reviewed-exclusion register per named comparison reference (schema 3), landing the receipted `charitable_investment_gifts` exclusion on the channel-blind `efrs-post-calibration` reference — the column compares normally against any future channel-aware reference with no register change.
