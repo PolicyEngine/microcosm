@@ -135,6 +135,8 @@ def _artifact_pins(stages) -> dict[str, dict[str, object]]:
     pins = {}
     for stage in stages:
         for artifact in stage.artifacts:
+            if "table" not in artifact:
+                continue
             table = str(artifact["table"])
             pin = {
                 "locator": str(artifact["locator"]),
@@ -157,7 +159,32 @@ def _stage_artifact_pins(stage) -> dict[str, dict[str, object]]:
             "size_bytes": int(artifact["size_bytes"]),
         }
         for artifact in stage.artifacts
+        if "table" in artifact
     }
+
+
+def _resource_pins(stages, spec) -> dict[str, str]:
+    """Country-package resources the selected stages declare as inputs.
+
+    Non-tab artifacts reference committed resources by filename; their bytes
+    are hashed by load_country_spec, so the pin is the spec's recorded sha.
+    """
+
+    pins: dict[str, str] = {}
+    for stage in stages:
+        for artifact in stage.artifacts:
+            if "resource" not in artifact:
+                continue
+            resource = str(artifact["resource"])
+            sha256 = spec.resource_hashes.get(resource)
+            if sha256 is None:
+                raise ValueError(
+                    f"stage {stage.stage!r} declares resource artifact "
+                    f"{resource!r} which is not a declared country-package "
+                    "resource."
+                )
+            pins[resource] = str(sha256)
+    return dict(sorted(pins.items()))
 
 
 def _role_pins(pins: dict[str, dict[str, object]]) -> dict[str, dict[str, object]]:
@@ -208,7 +235,13 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
 
 
 def _build_sidecar(
-    *, frame, stages, records, artifact_pins, stochastic_contract_sha256: str
+    *,
+    frame,
+    stages,
+    records,
+    artifact_pins,
+    resource_pins: dict[str, str],
+    stochastic_contract_sha256: str,
 ) -> dict[str, object]:
     household_weight = frame.weights_for("household")
     return {
@@ -220,6 +253,7 @@ def _build_sidecar(
         "household_weight_total": float(household_weight.values.sum()),
         "entity_row_counts": _entity_row_counts(frame),
         "artifact_pins": artifact_pins,
+        "resource_pins": resource_pins,
         "stage_artifact_pins": {
             stage.stage: _stage_artifact_pins(stage) for stage in stages
         },
@@ -316,6 +350,7 @@ def main(argv: list[str] | None = None) -> int:
         stages_by_name = spec.sources.stage_map()
         stages = [stages_by_name[name] for name in _STAGE_NAMES]
         artifact_pins = _artifact_pins(stages)
+        resource_pins = _resource_pins(stages, spec)
         state.input_pins_digest = role_pins_digest(_role_pins(artifact_pins))
         run_config = {
             "pipeline": _PIPELINE,
@@ -395,6 +430,7 @@ def main(argv: list[str] | None = None) -> int:
             stages=stages,
             records=records,
             artifact_pins=artifact_pins,
+            resource_pins=resource_pins,
             stochastic_contract_sha256=stochastic_contract.resource_sha256,
         )
         atomic_write_json(sidecar_path, sidecar)

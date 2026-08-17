@@ -357,10 +357,12 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
         nonnegative_outputs: tuple[str, ...] = (),
         rewrites: tuple[str, ...] = (),
         grain: str = "person",
+        extra_artifacts: tuple[dict[str, object], ...] = (),
     ) -> SourceStageSpec:
         artifacts = [
-            artifact for artifact in stage.artifacts if artifact["table"] in tables
+            artifact for artifact in stage.artifacts if artifact.get("table") in tables
         ]
+        artifacts.extend(extra_artifacts)
         payload = {
             "stage": name,
             "survey": "Synthetic FRS",
@@ -604,10 +606,21 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         },
                     ],
                     outputs=("brma",),
+                    # Mirrors the real manifest's non-tab resource artifact so
+                    # the driver's pin split is exercised without licensed data.
+                    extra_artifacts=(
+                        {
+                            "role": "count_resource",
+                            "resource": "brma_rent_counts.json",
+                            "kind": "public_aggregated_counts",
+                            "format": "json",
+                        },
+                    ),
                 ),
             ),
         ),
         geography_spine=None,
+        resource_hashes={"brma_rent_counts.json": "f" * 64},
     )
 
 
@@ -960,6 +973,7 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     assert sidecar["declared_seeds"]["frs_take_up"]["would_claim_child_benefit"] == 0
     assert sidecar["declared_seeds"]["frs_brma"] == {"brma": 0}
     assert len(sidecar["stochastic_contract_sha256"]) == 64
+    assert sidecar["resource_pins"] == {"brma_rent_counts.json": "f" * 64}
     assert sidecar["rules_engine"]["version"] == metadata.version("policyengine-uk")
     share_payload = json.loads(shares.read_text())
     assert share_payload["stages"]["frs_spine"]["employment_income"] == pytest.approx(
