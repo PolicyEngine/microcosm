@@ -101,13 +101,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "b147b50369e1f8b851f843e89b4a490b0a8c3b6a92e32b6bdb7bf40ca454cd0c"
+    "a852b3de381376ea401b55f4ed98c59f01c2335b0f8483c6ca5b9337c1cbce32"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "6a98915343a7add9f469e9adebde5a9c85fdcbb3ecefee870df7b77c2b658e81"
+    "22e3b51e5886d8cf8bfb9a8a67b84fc99b112fbfd3dd7119fcff8bf79411924c"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "da0039af7d84d0dd7c5bac2016aa94dee938c787ff2400743e1b875cb81adfc6"
+    "63e7977a2fdcaaed2fe167ef5703e66f8ce90b2a0f0fc98c1645212266bc7c55"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
@@ -137,6 +137,11 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_weight_ess": ("weight_ess", "terminal", "weight_ess"),
     "uk_weight_ratio": ("weight_ratio", "terminal", "weight_ratio"),
     "uk_weights_audit": ("weights_audit", "terminal", "weights_audit"),
+    "uk_nonnegative_columns": (
+        "nonnegative_columns",
+        "terminal",
+        "nonnegative_columns",
+    ),
     "uk_export_surface": ("export_surface", "terminal", "export_surface"),
     "uk_target_surface": ("target_surface", "terminal", "target_surface"),
     "uk_target_fit": ("target_fit", "terminal", "target_fit"),
@@ -708,6 +713,16 @@ def _terminal_gate_details(name: str) -> dict:
             "unweighted_fits": [],
             "allowed_unweighted": {},
             "unused_allowed_unweighted": [],
+        }
+    if name == "nonnegative_columns":
+        return {
+            "columns_checked": 1,
+            "negative_counts": {},
+            "minima": {"employment_income": 1.0},
+            "reviewed_exclusions": {},
+            "unused_reviewed_exclusions": [],
+            "atol": 0.0,
+            "chunk_size": 1_000_000,
         }
     if name == "export_surface":
         return {

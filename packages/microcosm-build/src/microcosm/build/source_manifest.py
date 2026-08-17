@@ -96,6 +96,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "impute_child_support_to_puf_support",
         "impute_disability_benefits_to_puf_support",
         "impute_energy_subsidy_to_puf_support",
+        "impute_cell_means",
         "impute_housing_assistance_to_puf_support",
         "impute_other_health_insurance_premiums_to_puf_support",
         "impute_prior_year_income_to_puf_support",
@@ -192,6 +193,7 @@ class SourceStageSpec:
     operations: tuple[SourceOperationSpec, ...]
     outputs: tuple[str, ...]
     nonnegative_outputs: tuple[str, ...] = ()
+    rewrites: tuple[str, ...] = ()
     notes: str = ""
 
     @classmethod
@@ -217,6 +219,9 @@ class SourceStageSpec:
                 key="nonnegative_outputs",
             )
         )
+        rewrites = tuple(
+            _require_string_sequence(raw.get("rewrites", ()), key="rewrites")
+        )
         unknown_nonnegative = sorted(set(nonnegative_outputs) - set(outputs))
         if unknown_nonnegative:
             raise ValueError(
@@ -237,6 +242,7 @@ class SourceStageSpec:
             operations=operations,
             outputs=outputs,
             nonnegative_outputs=nonnegative_outputs,
+            rewrites=rewrites,
             notes=notes,
         )
 

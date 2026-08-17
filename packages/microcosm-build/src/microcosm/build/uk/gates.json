@@ -102,6 +102,14 @@
       "notes": "Every fit-produced weight column carries a completed audit record. Armed by the SPI income stage; an absent audit is not a passing audit — and blocks every posture, not only release candidates: the legacy schema-3 path's strictness, ported during the #654 retirement (microcosm#691 review)."
     },
     {
+      "id": "uk_nonnegative_columns",
+      "gate": "nonnegative_columns",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "notes": "Every UK source-stage column declared in source_stages.json nonnegative_outputs must be finite and non-negative on the terminal frame; this makes the shared nonnegative column gate live for UK."
+    },
+    {
       "id": "uk_export_surface",
       "gate": "export_surface",
       "phase": "terminal",
