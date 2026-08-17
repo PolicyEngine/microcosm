@@ -538,6 +538,9 @@ def test_shuffled_household_fixture_produces_identical_output(tmp_path: Path) ->
 def test_driver_writes_spine_h5_sidecars_and_logbook(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # The driver writes the spine H5 through the shared writer, which needs
+    # pytables — an extra the packaging-gate wheels venv deliberately lacks.
+    pytest.importorskip("tables")
     raw_dir = tmp_path / "raw"
     stage = _write_fixture(raw_dir)
     output = tmp_path / "spine.h5"
@@ -589,6 +592,9 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
 def test_driver_writes_payload_identical_h5s(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # The driver writes the spine H5 through the shared writer, which needs
+    # pytables — an extra the packaging-gate wheels venv deliberately lacks.
+    pytest.importorskip("tables")
     raw_dir = tmp_path / "raw"
     stage = _write_fixture(raw_dir)
     output = tmp_path / "spine.h5"
