@@ -5,6 +5,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 
@@ -155,27 +156,48 @@ def test_e4_identity_receipt_survives_permutation_on_synthetic_frame() -> None:
     }
 
 
-def test_brma_distribution_masks_small_counts() -> None:
+def test_brma_cell_distribution_masks_small_counts_and_reports_z() -> None:
     tool = _load_tool("emit_uk_brma_distribution")
-    household = pd.DataFrame(
+    benunit = pd.DataFrame(
         {
-            "household_id": [1, 2, 3, 4],
-            "region": ["LONDON", "LONDON", "LONDON", "LONDON"],
-            "brma": ["A", "A", "A", "B"],
+            "benunit_id": [10, 20, 30, 40],
+            "region": ["LONDON"] * 4,
+            "LHA_category": ["A"] * 4,
+            "brma": ["CENTRAL", "CENTRAL", "CENTRAL", "OUTER"],
         }
     )
-    resource = {"cells": {"LONDON": {"A": {"A": 3, "B": 1}}}}
+    resource = {"cells": {"LONDON": {"A": {"CENTRAL": 1, "OUTER": 1}}}}
 
-    payload = tool.brma_distribution(
-        household,
+    payload = tool.brma_cell_distribution(
+        benunit,
         count_resource=resource,
         minimum_count=3,
     )
 
     rows = {row["brma"]: row for row in payload["rows"]}
-    assert rows["A"]["built_count"] == 3
-    assert rows["B"]["built_count"] == "<3"
-    assert rows["B"]["built_share"] is None
+    assert rows["CENTRAL"]["built_count"] == 3
+    assert rows["CENTRAL"]["cell_n"] == 4
+    assert rows["CENTRAL"]["z"] is not None
+    assert rows["OUTER"]["built_count"] == "<3"
+    assert rows["OUTER"]["built_share"] is None
+    assert rows["OUTER"]["z"] is None
+    assert payload["max_abs_z"] > 0
+
+
+def test_brma_cell_distribution_fails_closed_on_missing_cell() -> None:
+    tool = _load_tool("emit_uk_brma_distribution")
+    benunit = pd.DataFrame(
+        {
+            "benunit_id": [10],
+            "region": ["LONDON"],
+            "LHA_category": ["B"],
+            "brma": ["CENTRAL"],
+        }
+    )
+    resource = {"cells": {"LONDON": {"A": {"CENTRAL": 1}}}}
+
+    with pytest.raises(KeyError, match="LHA_category"):
+        tool.brma_cell_distribution(benunit, count_resource=resource)
 
 
 def _frame():
