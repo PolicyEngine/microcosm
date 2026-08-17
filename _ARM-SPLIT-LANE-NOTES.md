@@ -89,3 +89,13 @@ that owns each arm.
 - Pre-build verification: `python -m pytest` passed 6,239 tests with 68 skips
   in 3,580.97 seconds; `python -m ruff check .` and `git diff --check` passed.
   The targeted transfer, lineage, and participation-order tests also passed.
+- Guard incident (excluded from evidence): a 20:21:21Z launch used an invalid
+  reclaimable-memory calculation instead of literal `vm_stat` `Pages free`.
+  The attempted stop left its detached build child alive; this was discovered
+  from the unchanged supervisor start record plus live `lsof` writers.  A
+  reversible write barrier on only that arm-local checkpoint tree forced the
+  orphan to exit at 23:30:54Z, before any artifact was accepted.  Its complete
+  3.6 GiB output directory was removed.  The first clean post-containment guard
+  read 4,094,042 free 16-KiB pages (62.47 GiB) at 23:31:29Z, below the fixed
+  5,570,560-page (85 GiB) threshold.  Every reported build and gate below is
+  from a later clean launch that passed the literal-free-pages guard.
