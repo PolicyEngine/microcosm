@@ -39,37 +39,60 @@ BENEFITS_IN_OWN_RIGHT_REPORTED_COLUMNS = (
     "esa_contrib_reported",
     "esa_income_reported",
 )
+# FRS ADT EDUCQUAL value labels, verified against the 2023-24 raw tabs
+# (signed difference vs the incumbent, whose map was inverted: it read the
+# low codes as school-level and 17-21 as degrees. The raw aggregates are
+# decisive — code 1 is 1.8% of adults with the highest mean earnings
+# [Doctorate], codes 18/19 are near-empty niche baccalaureates, and the
+# GCSE-band codes 36/38 carry the mass the inverted map put elsewhere.)
+# Code 87 (no qualification data) is deliberately unmapped: it falls to the
+# UPPER_SECONDARY fillna default, as the incumbent's default did.
 EDUCQUAL_MAP = {
-    1: "NOT_COMPLETED_PRIMARY",
-    2: "LOWER_SECONDARY",
-    3: "LOWER_SECONDARY",
-    4: "UPPER_SECONDARY",
-    5: "UPPER_SECONDARY",
-    6: "UPPER_SECONDARY",
-    7: "UPPER_SECONDARY",
-    8: "LOWER_SECONDARY",
-    9: "UPPER_SECONDARY",
-    10: "UPPER_SECONDARY",
-    11: "POST_SECONDARY",
-    12: "POST_SECONDARY",
-    13: "UPPER_SECONDARY",
-    14: "POST_SECONDARY",
-    15: "UPPER_SECONDARY",
-    16: "POST_SECONDARY",
-    17: "TERTIARY",
-    18: "TERTIARY",
-    19: "TERTIARY",
-    20: "TERTIARY",
-    21: "TERTIARY",
-    66: "UPPER_SECONDARY",
-    67: "UPPER_SECONDARY",
-    68: "UPPER_SECONDARY",
-    69: "POST_SECONDARY",
-    70: "TERTIARY",
-    **{code: "POST_SECONDARY" for code in range(22, 66)},
-    **{code: "POST_SECONDARY" for code in range(71, 86)},
-    86: "UPPER_SECONDARY",
-    87: "UPPER_SECONDARY",
+    # Degree level and above (TERTIARY)
+    1: "TERTIARY",  # Doctorate or MPhil
+    2: "TERTIARY",  # Masters, PGCE or other postgrad
+    3: "TERTIARY",  # Degree inc foundation degree
+    4: "TERTIARY",  # Teaching qualification (excl PGCE)
+    5: "TERTIARY",  # Foreign qualification at degree level
+    6: "TERTIARY",  # Other work-related qual at degree level
+    7: "TERTIARY",  # Other professional qual at degree level
+    # Higher education below degree (POST_SECONDARY)
+    8: "POST_SECONDARY",  # Other HE qualification below degree
+    9: "POST_SECONDARY",  # Nursing or other medical
+    10: "POST_SECONDARY",  # Diploma in higher education
+    11: "POST_SECONDARY",  # HNC/HND
+    12: "POST_SECONDARY",  # BTEC higher level
+    13: "POST_SECONDARY",  # SCOTVEC higher level
+    14: "POST_SECONDARY",  # NVQ/SVQ Level 4
+    15: "POST_SECONDARY",  # NVQ/SVQ Level 5
+    16: "POST_SECONDARY",  # RSA higher diploma / OCR Level 4
+    # A-level equivalent (UPPER_SECONDARY)
+    17: "UPPER_SECONDARY",  # A-Level or equivalent
+    18: "UPPER_SECONDARY",  # Welsh Baccalaureate Advanced
+    19: "UPPER_SECONDARY",  # Scottish Baccalaureate
+    20: "UPPER_SECONDARY",  # International Baccalaureate
+    21: "UPPER_SECONDARY",  # AS-level or equivalent
+    22: "UPPER_SECONDARY",  # Certificate of 6th Year Studies
+    23: "UPPER_SECONDARY",  # Access to Higher Education
+    24: "UPPER_SECONDARY",  # Scottish Higher/Intermediate
+    25: "UPPER_SECONDARY",  # Skills for work Higher
+    26: "POST_SECONDARY",  # ONC/OND
+    27: "POST_SECONDARY",  # BTEC National level
+    28: "POST_SECONDARY",  # SCOTVEC National level
+    29: "UPPER_SECONDARY",  # New Diploma Advanced
+    30: "UPPER_SECONDARY",  # New Diploma Progression
+    31: "UPPER_SECONDARY",  # NVQ/SVQ Level 3
+    32: "UPPER_SECONDARY",  # GNVQ Advanced
+    33: "UPPER_SECONDARY",  # RSA advanced diploma / OCR Level 3
+    34: "UPPER_SECONDARY",  # City and Guilds advanced craft
+    35: "UPPER_SECONDARY",  # Welsh Baccalaureate Intermediate
+    # GCSE/O-level equivalent and below-GCSE (LOWER_SECONDARY)
+    **{code: "LOWER_SECONDARY" for code in range(36, 83)},
+    # Entry-level / basic skills
+    83: "NOT_COMPLETED_PRIMARY",  # Basic Skills (literacy/numeracy)
+    84: "NOT_COMPLETED_PRIMARY",  # Entry Level Qualifications
+    85: "NOT_COMPLETED_PRIMARY",  # Award/Certificate at entry level
+    86: "LOWER_SECONDARY",  # Other professional/vocational/foreign
 }
 FRS_EDUCATION_OUTPUT_COLUMNS = (
     "current_education",
