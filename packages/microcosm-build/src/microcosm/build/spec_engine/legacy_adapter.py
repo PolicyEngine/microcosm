@@ -244,6 +244,13 @@ def _support_spine(spine: Mapping[str, object]) -> dict[str, object]:
     }
 
 
+def _spine_assembly(spine: Mapping[str, object]) -> dict[str, object]:
+    """Return the complete constants-era stacked assembly configuration."""
+
+    assembly = _mapping(spine.get("assembly"), location="spine/assembly")
+    return deepcopy(dict(assembly))
+
+
 def _engine_abi_lock(spec: ResolvedSpec) -> dict[str, object]:
     generated = thaw_json(spec.generated_authorities)
     if not isinstance(generated, dict):  # pragma: no cover - model invariant
@@ -318,6 +325,7 @@ def compile_to_legacy_payload(spec: ResolvedSpec) -> dict[str, object]:
             authority_receipt=authority_receipt,
         ),
         "publication_release": project_publication_legacy_release(publication),
+        "spine_assembly": _spine_assembly(spine),
         "spine_sampling": project_spine_legacy_sampling(
             spine,
             publication=publication,

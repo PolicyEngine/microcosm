@@ -15,6 +15,9 @@ from microcosm.build.spec_engine.battery_semantics import (
     project_battery_legacy_contract,
 )
 from microcosm.build.spec_engine.errors import SpecValidationError
+from microcosm.build.us_runtime.stacked_battery_contract import (
+    build_live_stacked_battery_contract,
+)
 from microcosm.build.us_runtime.stacked_spine import (
     CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY,
     CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY,
@@ -111,8 +114,10 @@ def test_battery_legacy_projection_survives_resolved_normalization(
         battery,
         authority_receipt=authority,
     )
+    live_contract = build_live_stacked_battery_contract()
+    assert build_battery_contract() == live_contract
     raw_projection = project_battery_legacy_contract(
-        build_battery_contract(),
+        live_contract,
         authority_receipt=authority,
     )
     assert projected == raw_projection

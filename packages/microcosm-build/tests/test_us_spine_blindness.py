@@ -250,6 +250,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "sources.py",
         "spine_agreement.py",
         "spine_assembly.py",
+        # Data-only live battery authority extraction; never reads or mutates Frames.
+        "stacked_battery_contract.py",
         "spm_resources.py",
         "stacked_spine.py",  # Provenance owner (#578 revision); see owners list.
         "support_provenance.py",
@@ -3276,8 +3278,8 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 64, (
-            f"{tool.name} must reach the pinned 64-module runtime graph; "
+        assert len(runtime_graph) == 65, (
+            f"{tool.name} must reach the pinned 65-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

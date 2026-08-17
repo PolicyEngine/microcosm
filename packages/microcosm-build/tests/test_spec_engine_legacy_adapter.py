@@ -10,6 +10,9 @@ from pathlib import Path
 import pytest
 
 from microcosm.build.spec_engine import ResolvedSpec, load_bundle
+from microcosm.build.spec_engine.battery_semantics import (
+    project_battery_legacy_contract,
+)
 from microcosm.build.spec_engine.canonical import canonical_json_bytes
 from microcosm.build.spec_engine.legacy_adapter import (
     LegacyPayloadMismatchError,
@@ -17,10 +20,17 @@ from microcosm.build.spec_engine.legacy_adapter import (
     compile_to_legacy_payload,
     diff_legacy_payloads,
 )
+from microcosm.build.us_runtime.multispine_pool import POOL_HOUSEHOLD_MASS_SHARES
+from microcosm.build.us_runtime.stacked_battery_contract import (
+    build_live_stacked_battery_contract,
+)
 from microcosm.build.us_runtime.stacked_spine import (
     stacked_gap_fill_plan,
     stacked_gap_fill_producer_schedule_receipt,
     stacked_spine_authority_receipt,
+)
+from microcosm.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
 )
 from microcosm.build.us_runtime.take_up_contract import take_up_contract_identity
 from microcosm.build.us_runtime.us_late_overlap_ownership import (
@@ -114,6 +124,7 @@ def test_compiler_adapter_covers_all_named_legacy_surfaces(
         "imputation",
         "publication_release",
         "source_manifest",
+        "spine_assembly",
         "spine_sampling",
         "stacked_authority_receipt",
         "stacked_checkpoint_static_components",
@@ -129,7 +140,9 @@ def test_compiled_gate_is_byte_identical_to_constants_era_payloads(
     imputation = legacy_payload["imputation"]
     assert isinstance(imputation, dict)
     compiled_gate = {
+        "battery_contract": legacy_payload["battery_contract"],
         "source_manifest": legacy_payload["source_manifest"],
+        "spine_assembly": legacy_payload["spine_assembly"],
         "support_spine": legacy_payload["support_spine"],
         "take_up_contract": legacy_payload["take_up_contract"],
         "take_up_contract_identity": legacy_payload["take_up_contract_identity"],
@@ -144,6 +157,10 @@ def test_compiled_gate_is_byte_identical_to_constants_era_payloads(
         "overlap_ownership": imputation["overlap_ownership"],
     }
     live_gate = {
+        "battery_contract": project_battery_legacy_contract(
+            build_live_stacked_battery_contract(),
+            authority_receipt=stacked_spine_authority_receipt(),
+        ),
         "source_manifest": json.loads(
             (US_PACKAGE / "source_stages.json").read_text(encoding="utf-8")
         ),
@@ -163,6 +180,11 @@ def test_compiled_gate_is_byte_identical_to_constants_era_payloads(
             us_late_producer_schedule_receipt()
         ),
         "overlap_ownership": _json_ready(us_late_overlap_ownership_receipt()),
+        "spine_assembly": {
+            "mass_anchor_channel": BASE_ASEC_SUPPORT_CHANNEL,
+            "shared_dtype_policy": "canonical_string_storage",
+            "household_mass_shares": dict(POOL_HOUSEHOLD_MASS_SHARES),
+        },
     }
 
     assert_legacy_payload_equal(live_gate, compiled_gate)
