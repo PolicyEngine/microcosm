@@ -2409,6 +2409,45 @@ def test_exact_k_uk_terminal_report_rejects_uncertified_policy(
         validate_release_dir(directory)
 
 
+def test_uk_weight_ratio_parameter_must_be_a_receipted_reviewed_bound(
+    tmp_path: Path,
+) -> None:
+    """An arbitrary loosened fence still fails; only minted bounds pass."""
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / UK_TERMINAL_GATE_REPORT_FILE
+    payload = json.loads(path.read_text())
+    payload["gates"]["weight_ratio"]["details"]["maximum_max_to_median_ratio"] = 9_999.0
+    _refresh_terminal_gate_attestation(payload)
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    with pytest.raises(ReleaseContractError, match="receipted reviewed"):
+        validate_release_dir(directory)
+
+
+def test_uk_weight_ratio_accepts_the_rebaselined_2026_08_bound(
+    tmp_path: Path,
+) -> None:
+    """The 2026-08-17 staging re-baseline (microcosm#630) is a minted bound."""
+    directory = _write_uk_release_dir(
+        tmp_path,
+        UK_EXACT_K_RELEASE_ID,
+        tier="frs",
+    )
+    path = directory / UK_TERMINAL_GATE_REPORT_FILE
+    payload = json.loads(path.read_text())
+    payload["gates"]["weight_ratio"]["details"]["maximum_max_to_median_ratio"] = (
+        1_590.5346779161957
+    )
+    _refresh_terminal_gate_attestation(payload)
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+    validate_release_dir(directory)
+
+
 @pytest.mark.parametrize(
     ("failed_field", "match"),
     [

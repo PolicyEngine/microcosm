@@ -170,7 +170,16 @@ _UK_WEIGHT_SUMMARY_FIELDS = (
     "top_1pct_weight_share",
 )
 _UK_MIN_ESS_FRACTION = 0.01
-_UK_MAX_TO_MEDIAN_WEIGHT_RATIO = 1_151.2542195939373
+# Reviewed weight-ratio bounds, one per certified generation. Only values
+# minted through the receipted re-baseline process pass; an arbitrary
+# loosened parameter still fails. 1151.25… is the certified June 2023
+# candidate's own ratio (pre-SPI-restoration); 1590.53… is the 2026-08-17
+# receipted full-scale staging re-baseline closing microcosm#630. Keep in
+# lockstep with microcosm.build's uk/gates.json uk_weight_ratio parameter.
+_UK_REVIEWED_MAX_TO_MEDIAN_WEIGHT_RATIOS = (
+    1_151.2542195939373,
+    1_590.5346779161957,
+)
 _UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
 # Independent publication pin for the reviewed reference source. The data
 # shard cannot import the build shard, so keep this in lockstep with
@@ -1418,14 +1427,16 @@ def _check_uk_terminal_gate_observables(
             f"minimum_ess_fraction must equal {_UK_MIN_ESS_FRACTION}."
         )
     ratio = _uk_terminal_gate_details(gates, "weight_ratio")
-    if ratio is not None and not _uk_terminal_observable_matches(
-        ratio.get("maximum_max_to_median_ratio"),
-        _UK_MAX_TO_MEDIAN_WEIGHT_RATIO,
+    if ratio is not None and not any(
+        _uk_terminal_observable_matches(
+            ratio.get("maximum_max_to_median_ratio"), reviewed
+        )
+        for reviewed in _UK_REVIEWED_MAX_TO_MEDIAN_WEIGHT_RATIOS
     ):
         failures.append(
             f"{_UK_TERMINAL_GATE_REPORT_FILE} weight_ratio.details."
-            "maximum_max_to_median_ratio must equal the certified June bound "
-            f"{_UK_MAX_TO_MEDIAN_WEIGHT_RATIO}."
+            "maximum_max_to_median_ratio must equal a receipted reviewed "
+            f"bound: {_UK_REVIEWED_MAX_TO_MEDIAN_WEIGHT_RATIOS}."
         )
 
     zero = _uk_terminal_gate_details(gates, "zero_weight_strata")

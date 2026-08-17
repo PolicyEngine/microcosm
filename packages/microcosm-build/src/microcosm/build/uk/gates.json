@@ -88,9 +88,9 @@
       "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {
-        "maximum_max_to_median_ratio": 1151.2542195939373
+        "maximum_max_to_median_ratio": 1590.5346779161957
       },
-      "notes": "Exact certified June measurement (max positive weight over positive median), an acceptance fence with no discretionary headroom. The microcosm#630 receipted full-scale re-baseline replaces this number as a reviewed parameter edit, never a loosen-to-pass."
+      "notes": "Receipted full-scale re-baseline of 2026-08-17 closing microcosm#630 finding 2: the post-hmrc_spi_income staging measurement at the canonical driver seed (42) on the certified June candidate (f17306cc\u2026), max positive weight 15,705.02 over positive median 9.8741. Structural evidence: full-scale seed pair 1590.5346779161957 (seed 42) / 1582.1518933580 (seed 137, 0.53% spread) plus the f010 seed triplet on #630; value bit-stable across the Frame carrier, ordering train, string canonicalization, Logbook, and CGT-family changes. Supersedes the June candidate's own ratio 1151.2542195939373, which measured the input artifact before the SPI restoration stage existed. An acceptance fence with no discretionary headroom: the next re-baseline is another reviewed parameter edit with receipts, never a loosen-to-pass."
     },
     {
       "id": "uk_weights_audit",
@@ -99,7 +99,7 @@
       "criticality": "release_blocking",
       "parameters": {},
       "evidence_absent_blocks": true,
-      "notes": "Every fit-produced weight column carries a completed audit record. Armed by the SPI income stage; an absent audit is not a passing audit — and blocks every posture, not only release candidates: the legacy schema-3 path's strictness, ported during the #654 retirement (microcosm#691 review)."
+      "notes": "Every fit-produced weight column carries a completed audit record. Armed by the SPI income stage; an absent audit is not a passing audit \u2014 and blocks every posture, not only release candidates: the legacy schema-3 path's strictness, ported during the #654 retirement (microcosm#691 review)."
     },
     {
       "id": "uk_export_surface",

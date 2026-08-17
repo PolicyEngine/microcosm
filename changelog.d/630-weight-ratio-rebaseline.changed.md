@@ -1,0 +1,1 @@
+The uk_weight_ratio terminal fence re-baselines to the receipted 2026-08-17 full-scale staging measurement (1590.5346779161957, seed-pair evidence on microcosm#630), superseding the June candidate's pre-staging ratio; the data contract accepts either receipted generation's bound and continues to reject unreviewed parameters.

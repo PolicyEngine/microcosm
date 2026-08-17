@@ -351,7 +351,7 @@ class TestUKGatesManifest:
         assert params["uk_weight_ess"]["minimum_ess_fraction"] == 0.01
         assert (
             params["uk_weight_ratio"]["maximum_max_to_median_ratio"]
-            == 1_151.2542195939373
+            == 1_590.5346779161957
         )
         assert (
             params["uk_target_fit"]["max_abs_relative_error"]
