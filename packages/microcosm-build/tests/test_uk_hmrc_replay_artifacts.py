@@ -163,9 +163,7 @@ def test_promoted_145_column_gate_passes_with_required_spi_support() -> None:
         assert diagnostic["effective_signal_mass_share"] >= (
             DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE
         )
-        family_diagnostic = details["family_effective_mass"]["hmrc_spi_income"][
-            column
-        ]
+        family_diagnostic = details["family_effective_mass"]["hmrc_spi_income"][column]
         assert family_diagnostic["required_support_channel"] == "spi"
         assert family_diagnostic["effective_signal_mass_share"] >= (
             DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE
@@ -181,10 +179,36 @@ def test_national_staging_record_is_aggregate_and_binds_green_artifacts() -> Non
 
     assert record["build_kind"] == "uk_national_staging_dataset"
     assert record["status"] == "passed"
+    assert record["schema_version"] == 3
     assert record["stages"] == [
         "frs_hmrc_retained_leaves",
         "hmrc_spi_income",
+        "hmrc_cgt_gains",
     ]
+    # The microcosm#630 confirmation run that cut this record: full scale,
+    # the certified seed pair, no sampling, no register override.
+    assert record["parameters"] == {
+        "degenerate_exclusions_override_supplied": False,
+        "qrf_estimators": 100,
+        "rung_token": "f100",
+        "sample_fraction": 1.0,
+        "sample_seed": 578,
+        "seed": 42,
+    }
+    assert record["sampling"] is None
+    assert record["dataset"]["household_weight_total"] == 28840551.182180054
+    # The embedded signed report and the record must agree on the
+    # diagnostics digest the run was armed with.
+    assert (
+        record["calibration_diagnostics_sha256"]
+        == (
+            record["terminal_gates"]["release_evidence"][
+                "calibration_diagnostics_sha256"
+            ]
+        )
+    )
+    assert record["terminal_gates"]["shippable"] is False
+    assert record["terminal_gates"]["blocked_at_phase"] is None
     assert record["input_coverage"]["passed"] is True
     assert record["input_coverage"]["required_columns"] == 145
     assert record["input_coverage"]["reviewed_exclusion_columns"] == 0
