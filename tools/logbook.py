@@ -1,8 +1,16 @@
-"""Export, validate, and render the append-only Logbook build archive.
+"""Export, validate, and render the append-only Logbook build archives.
+
+Archives are scoped: ``logbook/<country>/<scope>.jsonl`` holds one hash
+chain, and chains are never merged across scopes — see ``logbook/README.md``
+for why the boundary is permanent once a chain is born. ``export`` extends
+exactly one named chain; ``validate`` and ``render`` accept either a single
+archive or a directory of them, reporting chain by chain.
 
 Remote export uses a distinct, read-only ``logbook_exporter`` JWT supplied
 as ``POPULACE_LEDGER_EXPORT_KEY`` plus the hosted project's gateway key in
 ``POPULACE_LEDGER_API_KEY``.  It never reuses the insert-only writer key.
+The live store is row-oriented and carries every attempt across all scopes;
+the per-scope split is an archive convention, not a database partition.
 """
 
 from __future__ import annotations
@@ -29,8 +37,14 @@ from microcosm.build.logbook import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_ARCHIVE = ROOT / "logbook.jsonl"
-DEFAULT_SOURCE = ROOT / "logbook-spool"
+#: Archives live at ``logbook/<country>/<scope>.jsonl`` — one hash chain per
+#: file, never merged. A row's digest covers its predecessor, so a chain can
+#: only ever be extended: rows cannot be re-rooted into another archive after
+#: the fact without recomputing digests, which is exactly the tampering the
+#: chain exists to detect. Scope boundaries are therefore chosen once, when a
+#: chain is born, and country is the outermost one.
+DEFAULT_ARCHIVE_ROOT = ROOT / "logbook"
+DEFAULT_SPOOL_ROOT = ROOT / "logbook-spool"
 REMOTE_EXPORT_KEY_ENV = "POPULACE_LEDGER_EXPORT_KEY"
 REMOTE_API_KEY_ENV = "POPULACE_LEDGER_API_KEY"
 REMOTE_PAGE_SIZE = 500
@@ -44,21 +58,27 @@ def _parser() -> argparse.ArgumentParser:
 
     export = subparsers.add_parser(
         "export",
-        help="Append a verified chain suffix to the git archive.",
+        help="Append a verified chain suffix to one scope's git archive.",
     )
     export.add_argument(
         "--archive",
         type=Path,
-        default=DEFAULT_ARCHIVE,
-        help=f"Logbook JSONL archive (default: {DEFAULT_ARCHIVE}).",
+        required=True,
+        help=(
+            "The scope archive to extend, e.g. "
+            "logbook/uk/<epic>.jsonl. Required and never defaulted: an "
+            "export appends to exactly one chain, so which chain a run "
+            "belongs to is the operator's declaration, not an inference."
+        ),
     )
     source = export.add_mutually_exclusive_group()
     source.add_argument(
         "--source",
         type=Path,
         help=(
-            "Completed spool directory or genesis-rooted Logbook JSONL source "
-            f"(default: {DEFAULT_SOURCE})."
+            "Completed spool directory or genesis-rooted Logbook JSONL source. "
+            "Build spools land beside the run's output artifact, so this is "
+            "normally an explicit path."
         ),
     )
     source.add_argument(
@@ -78,8 +98,11 @@ def _parser() -> argparse.ArgumentParser:
     validate.add_argument(
         "--archive",
         type=Path,
-        default=DEFAULT_ARCHIVE,
-        help=f"Logbook JSONL archive (default: {DEFAULT_ARCHIVE}).",
+        default=DEFAULT_ARCHIVE_ROOT,
+        help=(
+            "One scope archive, or a directory of them validated chain by "
+            f"chain (default: {DEFAULT_ARCHIVE_ROOT})."
+        ),
     )
 
     render = subparsers.add_parser(
@@ -89,8 +112,11 @@ def _parser() -> argparse.ArgumentParser:
     render.add_argument(
         "--archive",
         type=Path,
-        default=DEFAULT_ARCHIVE,
-        help=f"Logbook JSONL archive (default: {DEFAULT_ARCHIVE}).",
+        default=DEFAULT_ARCHIVE_ROOT,
+        help=(
+            "One scope archive, or a directory of them rendered as a section "
+            f"per chain (default: {DEFAULT_ARCHIVE_ROOT})."
+        ),
     )
     render.add_argument(
         "--rung",
@@ -108,6 +134,42 @@ def _source_rows(path: Path) -> tuple[LogbookRow, ...]:
     if path.is_dir():
         return load_spool_rows(path)
     return load_logbook_file(path)
+
+
+def _archive_files(path: Path) -> tuple[Path, ...]:
+    """Resolve an archive argument to the chain files it names.
+
+    A directory holds one archive per scope, each an independent chain;
+    read commands walk them all so every country's history is visible in
+    one invocation without ever merging the chains themselves.
+    """
+
+    if not path.is_dir():
+        return (path,)
+    files = tuple(sorted(path.rglob("*.jsonl")))
+    if not files:
+        raise ValueError(f"No Logbook scope archives found under {path}.")
+    return files
+
+
+def _scope_label(archive: Path, root: Path | None = None) -> str:
+    """Name a chain by its scope path (``us/pool``), not its filename.
+
+    Relative to the directory the command was pointed at, so the country
+    stays in the label wherever a set of chains lives; the ratified root is
+    the fallback for a single archive named directly.
+    """
+
+    resolved = archive.resolve()
+    for candidate in (root, DEFAULT_ARCHIVE_ROOT):
+        if candidate is None:
+            continue
+        try:
+            relative = resolved.relative_to(candidate.resolve())
+        except ValueError:
+            continue
+        return str(relative.with_suffix(""))
+    return resolved.stem
 
 
 def _remote_rows() -> tuple[LogbookRow, ...]:
@@ -213,36 +275,60 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         if args.command == "validate":
-            rows = load_logbook_file(args.archive)
-            noun = "row" if len(rows) == 1 else "rows"
-            tail = rows[-1].row_digest if rows else "none"
-            print(f"validated {len(rows)} Logbook {noun}; tail={tail}")
+            archives = _archive_files(args.archive)
+            root = args.archive if args.archive.is_dir() else None
+            for archive in archives:
+                rows = load_logbook_file(archive)
+                noun = "row" if len(rows) == 1 else "rows"
+                tail = rows[-1].row_digest if rows else "none"
+                scope = _scope_label(archive, root)
+                print(f"validated {len(rows)} Logbook {noun} in {scope}; tail={tail}")
             return 0
 
         if args.command == "render":
-            rows = load_logbook_file(args.archive)
+            archives = _archive_files(args.archive)
+            root = args.archive if args.archive.is_dir() else None
             dispositions = (
                 set(args.disposition) if args.disposition is not None else None
             )
-            print(
-                render_markdown(
+            for position, archive in enumerate(archives):
+                rows = load_logbook_file(archive)
+                table = render_markdown(
                     rows,
                     rung=args.rung,
                     dispositions=dispositions,
-                ),
-                end="",
-            )
+                )
+                if len(archives) == 1:
+                    print(table, end="")
+                    continue
+                # Chains are independent, so they are shown as separate
+                # sections: one table spanning scopes would imply an
+                # ordering across them that the archives do not assert.
+                if position:
+                    print()
+                print(f"## {_scope_label(archive, root)}\n")
+                print(table, end="")
             return 0
 
         if args.command == "export":
+            if args.archive.is_dir():
+                raise ValueError(
+                    f"--archive {args.archive} is a directory; an export "
+                    "extends exactly one scope chain, so name its archive "
+                    "file (e.g. logbook/uk/<epic>.jsonl)."
+                )
+            if args.source is None and not args.remote:
+                raise ValueError(
+                    "export needs --source (the completed spool beside the "
+                    "run's artifact) or --remote."
+                )
             candidates = (
-                _remote_rows()
-                if args.remote
-                else _source_rows(args.source or DEFAULT_SOURCE)
+                _remote_rows() if args.remote else _source_rows(args.source)
             )
             receipt = export_rows(args.archive, candidates)
             print(
-                f"exported {receipt.appended} new Logbook rows "
+                f"exported {receipt.appended} new Logbook rows into "
+                f"{_scope_label(args.archive)} "
                 f"({receipt.existing} already archived); "
                 f"tail={receipt.tail_digest or 'none'}"
             )

@@ -96,8 +96,78 @@ def _load_cli() -> ModuleType:
 def test_cli_defaults_to_the_ratified_root_paths() -> None:
     cli = _load_cli()
 
-    assert cli.DEFAULT_ARCHIVE == ROOT / "logbook.jsonl"
-    assert cli.DEFAULT_SOURCE == ROOT / "logbook-spool"
+    assert cli.DEFAULT_ARCHIVE_ROOT == ROOT / "logbook"
+    assert cli.DEFAULT_SPOOL_ROOT == ROOT / "logbook-spool"
+
+
+def test_committed_archives_are_scoped_by_country() -> None:
+    # One chain per country: the US pool lineage and the UK migration
+    # chain never share an archive (microcosm#665).
+    archives = sorted(
+        path.relative_to(ROOT / "logbook").as_posix()
+        for path in (ROOT / "logbook").rglob("*.jsonl")
+    )
+    assert archives == ["us.jsonl"]
+    assert (ROOT / "logbook" / "README.md").is_file()
+
+
+def test_render_sections_each_scope_separately(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Independent chains render as separate sections; merging them into one
+    # table would imply an ordering across scopes the archives never assert.
+    us = tmp_path / "us.jsonl"
+    uk = tmp_path / "uk.jsonl"
+    _write_jsonl(us, _chain())
+    _write_jsonl(uk, _chain())
+    cli = _load_cli()
+
+    assert cli.main(["render", "--archive", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "## us" in out
+    assert "## uk" in out
+
+
+def test_validate_walks_every_scope_chain(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    us = tmp_path / "us.jsonl"
+    uk = tmp_path / "uk.jsonl"
+    _write_jsonl(us, _chain())
+    _write_jsonl(uk, _chain())
+    cli = _load_cli()
+
+    assert cli.main(["validate", "--archive", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "validated 3 Logbook rows in us;" in out
+    assert "validated 3 Logbook rows in uk;" in out
+
+
+def test_export_refuses_a_directory_archive(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # An export extends exactly one chain, so the scope must be named.
+    spool = tmp_path / "spool"
+    spool.mkdir()
+    cli = _load_cli()
+
+    assert (
+        cli.main(["export", "--archive", str(tmp_path), "--source", str(spool)]) == 1
+    )
+    assert "extends exactly one scope chain" in capsys.readouterr().err
+
+
+def test_export_requires_a_named_source(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _load_cli()
+
+    assert cli.main(["export", "--archive", str(tmp_path / "uk.jsonl")]) == 1
+    assert "needs --source" in capsys.readouterr().err
 
 
 def test_cli_validate_and_filtered_render(
