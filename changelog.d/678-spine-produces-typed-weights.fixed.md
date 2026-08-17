@@ -1,0 +1,1 @@
+The FRS spine stage no longer declares the kernel-owned household_weight column in its produces contract; its weights land as the frame's typed household weights, which the post-stage produces check cannot (and should not) find on an entity table. Restores main to green after the #691/#692 cross-merge.

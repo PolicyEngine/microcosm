@@ -263,7 +263,6 @@
         "is_married",
         "dependent_children",
         "household_id",
-        "household_weight",
         "region",
         "tenure_type",
         "accommodation_type",
@@ -283,7 +282,6 @@
         "external_child_payments"
       ],
       "nonnegative_outputs": [
-        "household_weight",
         "age",
         "hours_worked",
         "employment_income",
@@ -308,7 +306,7 @@
         "housing_service_charges",
         "external_child_payments"
       ],
-      "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage."
+      "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage. The spine's household weights land as the frame's typed weights, not an entity-table column, so the kernel-owned household_weight name appears in no output contract."
     },
     {
       "stage": "frs_hmrc_retained_leaves",

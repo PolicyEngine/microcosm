@@ -189,7 +189,10 @@ OUTPUT_COLUMNS = (
     "is_married",
     "dependent_children",
     "household_id",
-    "household_weight",
+    # household_weight is deliberately absent: {entity}_weight names belong
+    # to the kernel, and the spine's weights land as the frame's typed
+    # household weights (uk_national_frame absorbs the legacy column), so
+    # the produces check would never find them on an entity table.
     "region",
     "tenure_type",
     "accommodation_type",
