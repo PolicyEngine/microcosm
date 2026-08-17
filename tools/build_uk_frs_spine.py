@@ -7,6 +7,7 @@ import hashlib
 import sys
 import time
 from datetime import UTC, datetime
+from importlib import metadata
 from pathlib import Path
 
 from microcosm.build.country_spec import country_stage_plan, load_country_spec
@@ -26,6 +27,7 @@ from microcosm.build.logbook_adoption import (
     sha256_argument,
     write_error_receipt,
 )
+from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
 from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTransform
 from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
 from microcosm.build.uk_runtime.frs_education import UKFRSEducationStageTransform
@@ -34,15 +36,21 @@ from microcosm.build.uk_runtime.frs_education_grants import (
     UKFRSEducationGrantSplitStageTransform,
 )
 from microcosm.build.uk_runtime.frs_employment import UKFRSEmploymentStageTransform
+from microcosm.build.uk_runtime.frs_household_draws import (
+    UKFRSHouseholdDrawsStageTransform,
+)
 from microcosm.build.uk_runtime.frs_legacy_proxies import (
     UKFRSLegacyProxiesStageTransform,
 )
+from microcosm.build.uk_runtime.frs_person_draws import UKFRSPersonDrawsStageTransform
 from microcosm.build.uk_runtime.frs_spine import (
     UKFRSSpineStageTransform,
     uk_frs_spine_seed_frame,
 )
+from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
 from microcosm.build.uk_runtime.national_build import write_uk_national_frame
 from microcosm.build.uk_runtime.national_frame import uk_household_weight_kind
+from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
 _PIPELINE = "uk-frs-spine"
@@ -56,6 +64,10 @@ _STAGE_NAMES = (
     "frs_education",
     "frs_legacy_proxies",
     "frs_education_grant_split",
+    "frs_take_up",
+    "frs_person_draws",
+    "frs_household_draws",
+    "frs_brma",
 )
 
 
@@ -175,16 +187,29 @@ def _rules_engine() -> PolicyEngineUKEngine:
 
 def _rules_engine_provenance() -> dict[str, str]:
     try:
-        import policyengine_uk
-    except ImportError:
+        version = metadata.version("policyengine-uk")
+    except metadata.PackageNotFoundError:
         return {"package": "policyengine-uk", "version": "unavailable"}
-    return {
-        "package": "policyengine-uk",
-        "version": str(getattr(policyengine_uk, "__version__", "unknown")),
-    }
+    return {"package": "policyengine-uk", "version": version}
 
 
-def _build_sidecar(*, frame, stages, records, artifact_pins) -> dict[str, object]:
+def _declared_seeds(stages) -> dict[str, dict[str, int]]:
+    declared: dict[str, dict[str, int]] = {}
+    for stage in stages:
+        stage_seeds: dict[str, int] = {}
+        for operation in stage.operations:
+            output = operation.parameters.get("output")
+            seed = operation.parameters.get("seed")
+            if isinstance(output, str) and isinstance(seed, int):
+                stage_seeds[output] = seed
+        if stage_seeds:
+            declared[stage.stage] = stage_seeds
+    return declared
+
+
+def _build_sidecar(
+    *, frame, stages, records, artifact_pins, stochastic_contract_sha256: str
+) -> dict[str, object]:
     household_weight = frame.weights_for("household")
     return {
         "schema_version": 2,
@@ -211,6 +236,8 @@ def _build_sidecar(*, frame, stages, records, artifact_pins) -> dict[str, object
             stage.stage: [operation.kind for operation in stage.operations]
             for stage in stages
         },
+        "declared_seeds": _declared_seeds(stages),
+        "stochastic_contract_sha256": stochastic_contract_sha256,
         "rules_engine": _rules_engine_provenance(),
     }
 
@@ -301,6 +328,7 @@ def main(argv: list[str] | None = None) -> int:
         ).hexdigest()
         append_phase(state, "inputs_pinned")
         engine = _rules_engine()
+        stochastic_contract = load_uk_take_up_contract()
         plan = country_stage_plan(
             spec,
             {
@@ -334,6 +362,22 @@ def main(argv: list[str] | None = None) -> int:
                         engine=engine,
                     )
                 ),
+                "frs_take_up": UKFRSTakeUpStageTransform(
+                    contract=stochastic_contract,
+                    stage=stages_by_name["frs_take_up"],
+                ),
+                "frs_person_draws": UKFRSPersonDrawsStageTransform(
+                    contract=stochastic_contract,
+                    stage=stages_by_name["frs_person_draws"],
+                ),
+                "frs_household_draws": UKFRSHouseholdDrawsStageTransform(
+                    contract=stochastic_contract,
+                    stage=stages_by_name["frs_household_draws"],
+                ),
+                "frs_brma": UKFRSBRMAStageTransform(
+                    stage=stages_by_name["frs_brma"],
+                    engine=engine,
+                ),
             },
             stage_names=_STAGE_NAMES,
         )
@@ -351,17 +395,14 @@ def main(argv: list[str] | None = None) -> int:
             stages=stages,
             records=records,
             artifact_pins=artifact_pins,
+            stochastic_contract_sha256=stochastic_contract.resource_sha256,
         )
         atomic_write_json(sidecar_path, sidecar)
         append_phase(state, "build_sidecar_written")
         if args.emit_nonzero_shares is not None:
             final_columns = list(
                 dict.fromkeys(
-                    [
-                        column
-                        for record in records
-                        for column in record.produced
-                    ]
+                    [column for record in records for column in record.produced]
                     + list(FRS_EDUCATION_GRANT_REWRITES)
                 )
             )

@@ -184,7 +184,6 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.esa_support_group_proxy",
     "person.employment_sector",
     "person.gift_aid",
-    "person.higher_earner_tie_break",
     "person.highest_education",
     "person.is_before_universal_credit_qualifying_young_person_terminal_date",
     "person.is_in_non_advanced_education",

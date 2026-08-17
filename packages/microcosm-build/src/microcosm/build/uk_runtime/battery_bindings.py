@@ -40,9 +40,11 @@ from microcosm.build.gate_battery import (
 )
 from microcosm.build.gates import (
     GateResult,
+    enum_domain_gate,
     nonnegative_columns_gate,
     weights_audit_gate,
 )
+from microcosm.build.uk_runtime.frs_take_up import uk_take_up_signal_gate
 from microcosm.build.uk_runtime.national_frame import _uk_gate_surface
 from microcosm.build.uk_runtime.release_input_coverage import (
     assert_uk_release_input_coverage_build_stages,
@@ -224,6 +226,31 @@ def _evaluate_nonnegative_columns(
     return nonnegative_columns_gate(
         column_values,
         required,
+    )
+
+
+def _evaluate_take_up_signal(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    return uk_take_up_signal_gate(context.frame, **dict(parameters))
+
+
+def _evaluate_brma_enum_domain(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    columns = tuple(parameters.get("columns", ()))
+    if columns != ("brma",):
+        raise ValueError("uk_brma_enum_domain must declare columns ['brma'].")
+    domain = context.artifacts.get("brma_enum_domain")
+    if domain is None:
+        engine = context.artifacts["rules_engine"]
+        variable = engine._variable("brma")
+        domain = getattr(variable, "possible_values", None)
+    if domain is None:
+        raise ValueError("brma enum domain could not be resolved from evidence.")
+    return enum_domain_gate(
+        {"brma": context.frame.table("household")["brma"]},
+        {"brma": domain},
     )
 
 
@@ -516,6 +543,16 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         name="nonnegative_columns",
         evaluator=_evaluate_nonnegative_columns,
         artifact_keys=frozenset({"build_stage_names"}),
+    ),
+    "take_up_signal": UKGateBinding(
+        name="take_up_signal",
+        evaluator=_evaluate_take_up_signal,
+        parameter_keys=frozenset({"maximum_share_deviation"}),
+    ),
+    "enum_domain": UKGateBinding(
+        name="enum_domain",
+        evaluator=_evaluate_brma_enum_domain,
+        parameter_keys=frozenset({"columns"}),
     ),
     "degenerate_release_surface": UKGateBinding(
         name="degenerate_release_surface",

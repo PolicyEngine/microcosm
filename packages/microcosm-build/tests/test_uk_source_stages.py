@@ -26,9 +26,16 @@ E3_STAGE_NAMES = [
     "frs_legacy_proxies",
     "frs_education_grant_split",
 ]
+E4_STAGE_NAMES = [
+    "frs_take_up",
+    "frs_person_draws",
+    "frs_household_draws",
+    "frs_brma",
+]
 UK_SOURCE_STAGE_NAMES = [
     "frs_spine",
     *E3_STAGE_NAMES,
+    *E4_STAGE_NAMES,
     "frs_hmrc_retained_leaves",
     "hmrc_spi_income",
 ]
@@ -156,6 +163,10 @@ class TestUKSourceStagesManifest:
                     "frs_education": _identity,
                     "frs_legacy_proxies": _identity,
                     "frs_education_grant_split": _identity,
+                    "frs_take_up": _identity,
+                    "frs_person_draws": _identity,
+                    "frs_household_draws": _identity,
+                    "frs_brma": _identity,
                     "frs_hmrc_retained_leaves": _identity,
                     "hmrc_spi_income": _identity,
                     "hmrc_spi_income_fallback": _identity,
@@ -198,6 +209,7 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert stage1.outputs == tuple(FRS_HMRC_RETAINED_LEAF_COLUMNS)
 
     def test_e3_outputs_are_backed_by_runtime_written_columns(self) -> None:
+        from microcosm.build.uk_runtime.frs_brma import FRS_BRMA_OUTPUT_COLUMNS
         from microcosm.build.uk_runtime.frs_council_tax import (
             FRS_COUNCIL_TAX_OUTPUT_COLUMNS,
         )
@@ -214,8 +226,19 @@ class TestDeclaredOutputsAreWrittenColumns:
         from microcosm.build.uk_runtime.frs_employment import (
             FRS_EMPLOYMENT_OUTPUT_COLUMNS,
         )
+        from microcosm.build.uk_runtime.frs_household_draws import (
+            FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS,
+        )
         from microcosm.build.uk_runtime.frs_legacy_proxies import (
             FRS_LEGACY_PROXY_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.frs_person_draws import (
+            FRS_PERSON_DRAW_NONNEGATIVE_OUTPUT_COLUMNS,
+            FRS_PERSON_DRAW_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.frs_take_up import (
+            FRS_TAKE_UP_NONNEGATIVE_OUTPUT_COLUMNS,
+            FRS_TAKE_UP_OUTPUT_COLUMNS,
         )
 
         spec = load_country_spec("uk")
@@ -225,17 +248,28 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert stages["frs_council_tax"].outputs == FRS_COUNCIL_TAX_OUTPUT_COLUMNS
         assert stages["frs_disability"].outputs == FRS_DISABILITY_OUTPUT_COLUMNS
         assert stages["frs_education"].outputs == FRS_EDUCATION_OUTPUT_COLUMNS
-        assert (
-            stages["frs_legacy_proxies"].outputs == FRS_LEGACY_PROXY_OUTPUT_COLUMNS
-        )
+        assert stages["frs_legacy_proxies"].outputs == FRS_LEGACY_PROXY_OUTPUT_COLUMNS
         assert (
             stages["frs_education_grant_split"].outputs
             == FRS_EDUCATION_GRANT_OUTPUT_COLUMNS
         )
         assert (
-            stages["frs_education_grant_split"].rewrites
-            == FRS_EDUCATION_GRANT_REWRITES
+            stages["frs_education_grant_split"].rewrites == FRS_EDUCATION_GRANT_REWRITES
         )
+        assert stages["frs_take_up"].outputs == FRS_TAKE_UP_OUTPUT_COLUMNS
+        assert (
+            stages["frs_take_up"].nonnegative_outputs
+            == FRS_TAKE_UP_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert stages["frs_person_draws"].outputs == FRS_PERSON_DRAW_OUTPUT_COLUMNS
+        assert (
+            stages["frs_person_draws"].nonnegative_outputs
+            == FRS_PERSON_DRAW_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert (
+            stages["frs_household_draws"].outputs == FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS
+        )
+        assert stages["frs_brma"].outputs == FRS_BRMA_OUTPUT_COLUMNS
 
 
 class TestE3ManifestLockstep:
@@ -285,11 +319,40 @@ class TestE3ManifestLockstep:
             "materialize_rules_engine_predictors",
             "derive",
         ]
-        assert [
-            op.kind for op in stages["frs_education_grant_split"].operations
-        ] == ["materialize_rules_engine_predictors", "derive"]
+        assert [op.kind for op in stages["frs_education_grant_split"].operations] == [
+            "materialize_rules_engine_predictors",
+            "derive",
+        ]
+        assert [op.kind for op in stages["frs_take_up"].operations] == [
+            "aggregate_person_to_benunit",
+            "assign_binary_with_anchored_residual",
+            "assign_binary_from_rate",
+            "assign_binary_with_anchored_residual",
+            "assign_binary_with_anchored_residual",
+            "assign_binary_from_rate",
+            "assign_binary_from_rate",
+            "assign_binary_from_rate",
+            "assign_binary_from_rate",
+            "assign_clipped_normal",
+        ]
+        assert [op.kind for op in stages["frs_person_draws"].operations] == [
+            "assign_binary_from_rate",
+            "assign_binary_from_banded_rates",
+            "assign_uniform_draw",
+        ]
+        assert [op.kind for op in stages["frs_household_draws"].operations] == [
+            "assign_binary_from_rate",
+            "assign_binary_from_rate",
+            "assign_binary_from_rate",
+            "assign_binary_from_rate",
+        ]
+        assert [op.kind for op in stages["frs_brma"].operations] == [
+            "materialize_rules_engine_predictors",
+            "sample_categorical_from_count_table",
+        ]
 
     def test_engine_predictor_and_rewrite_constants_match_manifest(self) -> None:
+        from microcosm.build.uk_runtime.frs_brma import UK_BRMA_PREDICTORS
         from microcosm.build.uk_runtime.frs_education_grants import (
             FRS_EDUCATION_GRANT_REWRITES,
             UK_EDUCATION_GRANT_CAPACITY_PREDICTORS,
@@ -297,22 +360,86 @@ class TestE3ManifestLockstep:
         from microcosm.build.uk_runtime.frs_legacy_proxies import (
             UK_LEGACY_PROXY_PREDICTORS,
         )
+        from microcosm.build.uk_runtime.frs_take_up import (
+            UK_TAKE_UP_ANCHOR_AGGREGATES,
+        )
 
         spec = load_country_spec("uk")
         stages = {stage.stage: stage for stage in spec.sources.stages}
 
-        legacy_predictors = stages["frs_legacy_proxies"].operations[1].parameters[
-            "predictors"
-        ]
-        grant_predictors = stages["frs_education_grant_split"].operations[
-            0
-        ].parameters["predictors"]
+        legacy_predictors = (
+            stages["frs_legacy_proxies"].operations[1].parameters["predictors"]
+        )
+        grant_predictors = (
+            stages["frs_education_grant_split"].operations[0].parameters["predictors"]
+        )
         assert tuple(legacy_predictors) == UK_LEGACY_PROXY_PREDICTORS
         assert tuple(grant_predictors) == UK_EDUCATION_GRANT_CAPACITY_PREDICTORS
         assert (
-            stages["frs_education_grant_split"].rewrites
-            == FRS_EDUCATION_GRANT_REWRITES
+            stages["frs_education_grant_split"].rewrites == FRS_EDUCATION_GRANT_REWRITES
         )
+        assert (
+            stages["frs_take_up"].operations[0].parameters["aggregates"]
+            == UK_TAKE_UP_ANCHOR_AGGREGATES
+        )
+        assert (
+            tuple(stages["frs_brma"].operations[0].parameters["predictors"])
+            == UK_BRMA_PREDICTORS
+        )
+        rate_keys = [
+            op.parameters["rate_key"]
+            for stage_name in (
+                "frs_take_up",
+                "frs_person_draws",
+                "frs_household_draws",
+            )
+            for op in stages[stage_name].operations
+            if "rate_key" in op.parameters
+        ]
+        assert rate_keys == [
+            "child_benefit",
+            "child_benefit_opts_out_rate",
+            "pension_credit",
+            "universal_credit",
+            "tax_free_childcare",
+            "extended_childcare",
+            "universal_childcare",
+            "targeted_childcare",
+            "marriage_allowance",
+            "tv_ownership_rate",
+            "tv_licence_evasion_rate",
+            "first_time_buyer_rate",
+            "property_purchase_rate",
+        ]
+        scp_bands = stages["frs_person_draws"].operations[1].parameters["bands"]
+        assert [band["rate_key"] for band in scp_bands] == [
+            "scp_under_6",
+            "scp_6_plus",
+        ]
+
+    def test_every_e4_stochastic_operation_declares_integer_seed(self) -> None:
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+        for stage_name in E4_STAGE_NAMES:
+            for operation in stages[stage_name].operations:
+                if operation.kind in {
+                    "assign_binary_with_anchored_residual",
+                    "assign_binary_from_rate",
+                    "assign_binary_from_banded_rates",
+                    "assign_uniform_draw",
+                    "assign_clipped_normal",
+                    "sample_categorical_from_count_table",
+                }:
+                    assert isinstance(operation.parameters.get("seed"), int)
+
+    def test_full_uk_source_stage_plan_compiles_with_e4_stages(self) -> None:
+        spec = load_country_spec("uk")
+        implementations = {name: _identity for name in UK_SOURCE_STAGE_NAMES}
+
+        driver_stage_names = tuple(UK_SOURCE_STAGE_NAMES[:-1])
+        plan = country_stage_plan(spec, implementations, stage_names=driver_stage_names)
+
+        assert [stage.name for stage in plan.stages] == list(driver_stage_names)
 
     def test_internal_disability_carriers_stay_out_of_export_registers(self) -> None:
         from microcosm.build.uk_runtime.frs_disability import (

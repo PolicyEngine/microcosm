@@ -1,7 +1,7 @@
 {
   "version": 1,
   "country": "uk",
-  "policy": "The certified June UK national battery declared as data (microcosm#611): the two build preflights plus the eleven-gate terminal battery, thresholds carried as entry parameters at their exact certified values with no discretionary headroom. The input-mass and QRF-tail entries stay runtime-armed pending the microcosm#630 adjudication, whose receipted values land here as parameter edits. A delivered-take-up gate is deferred until the shared gate vocabulary grows a take-up name; every gate the UK runs today is declared below.",
+  "policy": "The certified June UK national battery declared as data (microcosm#611): the two build preflights plus the terminal battery, thresholds carried as entry parameters at their exact certified values with no discretionary headroom. The input-mass and QRF-tail entries stay runtime-armed pending the microcosm#630 adjudication, whose receipted values land here as parameter edits. The #680 stochastic layer delivers the take-up signal gate; every gate the UK runs today is declared below.",
   "phases": [
     "preflight",
     "terminal"
@@ -146,7 +146,6 @@
           "person.esa_support_group_proxy",
           "person.employment_sector",
           "person.gift_aid",
-          "person.higher_earner_tie_break",
           "person.highest_education",
           "person.is_before_universal_credit_qualifying_young_person_terminal_date",
           "person.is_in_non_advanced_education",
@@ -169,6 +168,28 @@
         }
       },
       "notes": "Reviewed candidate-only fields from the June UK prototype (source provenance or genuine additional model inputs, not incumbent-surface losses) plus the one reviewed reference-side exclusion. The two hard-required columns that may never be waived stay a code-level guard, per the microcosm#327 rule that a parity comparison's registers are declared inputs. During the migration window the runtime merges the exclusion register with the legacy constant and the spec-pin tests hold the two equal; the register becomes solely load-bearing when the constant retires."
+    },
+    {
+      "id": "uk_take_up_signal",
+      "gate": "take_up_signal",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "maximum_share_deviation": 0.05
+      },
+      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target."
+    },
+    {
+      "id": "uk_brma_enum_domain",
+      "gate": "enum_domain",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "columns": [
+          "brma"
+        ]
+      },
+      "notes": "The household BRMA assignment must remain inside the PolicyEngine-UK brma enum domain."
     },
     {
       "id": "uk_target_surface",
