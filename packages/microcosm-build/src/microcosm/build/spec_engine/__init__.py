@@ -8,11 +8,17 @@ from .calibration_semantics import (
     CALIBRATION_SUMMARY_ALIASES,
     derive_calibration_summary_aliases,
     project_legacy_calibration_contract,
+    resolve_calibration_tail_contracts,
 )
 from .canonical import (
     CANONICALIZER_ID,
     CANONICALIZER_VERSION,
     canonical_json_bytes,
+)
+from .compiler_ir import (
+    CompiledSpecIR,
+    CompilerIRError,
+    compile_spec,
 )
 from .engine_abi import (
     ENGINE_ABI_LOCK_FILENAME,
@@ -29,6 +35,13 @@ from .errors import (
     SpecParseError,
     SpecSchemaError,
     SpecValidationError,
+)
+from .legacy_adapter import (
+    LegacyFieldDiff,
+    LegacyPayloadMismatchError,
+    assert_legacy_payload_equal,
+    compile_to_legacy_payload,
+    diff_legacy_payloads,
 )
 from .loader import (
     GENERATED_LOCK_FILENAMES,
@@ -53,6 +66,13 @@ from .model import (
     Surface,
     SurfaceObjects,
 )
+from .plan_lock import (
+    PlanLockError,
+    assert_plan_lock_current,
+    emit_plan_lock,
+    plan_lock_bytes,
+    plan_lock_payload,
+)
 from .resolver import (
     F0_KERNEL_IDS,
     F0_KERNEL_REGISTRY,
@@ -69,6 +89,7 @@ from .seeds import (
 )
 from .take_up_semantics import (
     project_legacy_take_up_contract,
+    project_legacy_take_up_identity,
     validate_take_up_semantics,
 )
 from .yaml12 import load_yaml12, load_yaml12_file
@@ -79,6 +100,8 @@ __all__ = [
     "CANONICALIZER_VERSION",
     "CALIBRATION_SUMMARY_ALIASES",
     "ColumnSpec",
+    "CompiledSpecIR",
+    "CompilerIRError",
     "DrawSiteProtocol",
     "EntitySpec",
     "ENGINE_ABI_LOCK_FILENAME",
@@ -89,6 +112,9 @@ __all__ = [
     "KernelRegistry",
     "KernelAttestation",
     "LEGACY_V1_PROTOCOL",
+    "LegacyFieldDiff",
+    "LegacyPayloadMismatchError",
+    "PlanLockError",
     "ResolvedSpec",
     "ResourceDescriptor",
     "ResourceKind",
@@ -109,10 +135,14 @@ __all__ = [
     "bundle_lock_bytes",
     "bundle_lock_payload",
     "canonical_json_bytes",
+    "compile_spec",
+    "compile_to_legacy_payload",
+    "diff_legacy_payloads",
     "derive_calibration_summary_aliases",
     "assert_engine_abi_lock_current",
     "emit_engine_abi_lock",
     "emit_bundle_lock",
+    "emit_plan_lock",
     "engine_abi_lock_bytes",
     "engine_abi_lock_bytes_from_domains",
     "engine_abi_lock_payload",
@@ -123,7 +153,13 @@ __all__ = [
     "load_yaml12",
     "load_yaml12_file",
     "project_legacy_take_up_contract",
+    "project_legacy_take_up_identity",
     "project_legacy_calibration_contract",
+    "resolve_calibration_tail_contracts",
+    "assert_legacy_payload_equal",
+    "assert_plan_lock_current",
+    "plan_lock_bytes",
+    "plan_lock_payload",
     "validate_take_up_semantics",
     "validate_seed_protocol_wire",
 ]

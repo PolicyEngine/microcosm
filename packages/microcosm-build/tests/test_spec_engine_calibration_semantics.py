@@ -13,12 +13,16 @@ from pathlib import Path
 
 import pytest
 
+from microcosm.build.country_spec import load_country_spec
 from microcosm.build.spec_engine import (
     CALIBRATION_SUMMARY_ALIASES,
     SpecValidationError,
     load_schema_registry,
     project_legacy_calibration_contract,
     scoped_take_up_manifest_program_bindings,
+)
+from microcosm.build.spec_engine.calibration_semantics import (
+    resolve_calibration_tail_contracts,
 )
 from microcosm.build.spec_engine.canonical import canonical_json_bytes
 
@@ -49,6 +53,9 @@ def _load_contract_builder():
 
 
 build_calibration_contract = _load_contract_builder().build_calibration_contract
+resolve_calibration_tail_contracts_oracle = (
+    _load_contract_builder().resolve_calibration_tail_contracts
+)
 
 
 def _bootstrap_bindings() -> Iterator[tuple[str, str, str]]:
@@ -162,3 +169,47 @@ def test_retired_summary_alias_cannot_be_reintroduced(
         project_legacy_calibration_contract(mutated)
     with pytest.raises(SpecValidationError, match="max_weight_ratio"):
         load_schema_registry().validate(mutated, "calibration.schema.json")
+
+
+def test_tail_references_compile_to_the_constants_era_object() -> None:
+    resolved = load_country_spec("us").resolved_spec
+    assert resolved is not None
+    calibration_document = resolved.domain("calibration").to_wire()
+    spine_document = resolved.domain("spine").to_wire()
+    imputation_document = resolved.domain("imputation").to_wire()
+    before = copy.deepcopy(calibration_document)
+
+    actual = resolve_calibration_tail_contracts(
+        calibration_document,
+        spine_document=spine_document,
+        imputation_document=imputation_document,
+    )
+    expected = resolve_calibration_tail_contracts_oracle(
+        calibration_document,
+        spine_document=spine_document,
+        imputation_document=imputation_document,
+    )
+
+    assert actual == expected
+    assert calibration_document == before
+    puf = actual["puf_capital_gains_tail"]
+    assert "support_contract_ref" not in puf
+    assert "execution_binding_ref" not in puf
+    assert puf["support_contract"]["version"] == 1
+    assert puf["soi_e19200_agi_bands"]["runtime_sha256"]
+
+
+def test_tail_reference_mutation_is_refused() -> None:
+    resolved = load_country_spec("us").resolved_spec
+    assert resolved is not None
+    calibration_document = resolved.domain("calibration").to_wire()
+    calibration_document["tail_contracts"]["puf_capital_gains_tail"][
+        "support_contract_ref"
+    ]["support_role"] = "invented"
+
+    with pytest.raises(SpecValidationError, match="expected reviewed typed reference"):
+        resolve_calibration_tail_contracts(
+            calibration_document,
+            spine_document=resolved.domain("spine").to_wire(),
+            imputation_document=resolved.domain("imputation").to_wire(),
+        )

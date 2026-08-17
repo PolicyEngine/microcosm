@@ -26,6 +26,17 @@ from importlib import resources as importlib_resources
 from pathlib import Path
 from typing import Any
 
+from microcosm.build.spec_engine.publication_semantics import (
+    compile_publication_regex,
+    publication_rung_rows,
+)
+from microcosm.build.spec_engine.publication_semantics import (
+    project_publication_legacy_release as _project_publication_legacy_release,
+)
+from microcosm.build.spec_engine.publication_semantics import (
+    project_spine_legacy_sampling as _project_spine_legacy_sampling,
+)
+
 __all__ = [
     "build_bundle",
     "build_catalogs",
@@ -172,46 +183,7 @@ def _rung_rows() -> list[dict[str, int | float | str]]:
 def _publication_rung_rows(
     publication: Mapping[str, Any],
 ) -> list[dict[str, int | float | str]]:
-    release = publication.get("release")
-    if not isinstance(release, Mapping):
-        raise ValueError("Publication contract has no release object.")
-    rows = release.get("rung_fractions")
-    if not isinstance(rows, list) or not rows:
-        raise ValueError("Publication release must declare rung_fractions.")
-    result: list[dict[str, int | float | str]] = []
-    seen_tokens: set[str] = set()
-    seen_fractions: set[float] = set()
-    for index, value in enumerate(rows):
-        if not isinstance(value, Mapping):
-            raise ValueError(f"Publication rung_fractions[{index}] must be an object.")
-        token = str(value.get("token"))
-        fraction = float(value.get("fraction"))
-        basis_points = int(value.get("percent_basis_points"))
-        if token not in {"f001", "f004", "f010", "f025", "f100"}:
-            raise ValueError(f"Invalid publication rung token {token!r}.")
-        if token in seen_tokens or fraction in seen_fractions:
-            raise ValueError("Publication rung tokens and fractions must be unique.")
-        token_percent = int(token[1:])
-        if fraction != token_percent / 100 or basis_points != token_percent * 100:
-            raise ValueError(
-                f"Publication rung {token!r} has inconsistent basis points."
-            )
-        seen_tokens.add(token)
-        seen_fractions.add(fraction)
-        result.append(
-            {
-                "fraction": fraction,
-                "token": token,
-                "percent_basis_points": basis_points,
-            }
-        )
-    expected_tokens = {"f001", "f004", "f010", "f025", "f100"}
-    if seen_tokens != expected_tokens:
-        raise ValueError(
-            "Publication release must declare exactly the five approved rungs."
-        )
-    return result
-
+    return publication_rung_rows(publication)
 
 def _compiled_publication_regex(
     *,
@@ -219,87 +191,23 @@ def _compiled_publication_regex(
     line: str,
     rung_tokens: list[str],
 ) -> str:
-    if re.fullmatch(r"[a-z0-9-]+", line) is None:
-        raise ValueError(f"Publication release line {line!r} is not literal-safe.")
-    if any(not token.startswith("f") for token in rung_tokens):
-        raise ValueError("Publication rung grammar requires f-prefixed tokens.")
-    rung_pattern = f"f(?:{'|'.join(re.escape(token[1:]) for token in rung_tokens)})"
-    try:
-        body = pattern.format(
-            line=line,
-            rung=rung_pattern,
-            seed="[0-9]+",
-            asec_households="[0-9]+",
-            acs_households="[0-9]+",
-            timestamp="[0-9]{8}T[0-9]{6}Z",
-            nonce="[0-9a-f]{8}",
-        )
-    except (IndexError, KeyError, ValueError) as error:
-        raise ValueError("Publication pattern has unsupported placeholders.") from error
-    return f"^{body}$"
-
+    return compile_publication_regex(
+        pattern=pattern,
+        line=line,
+        rung_tokens=rung_tokens,
+    )
 
 def project_publication_legacy_release(
     publication: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Inflate rungs and reader regexes from the sole rung-fraction table."""
-
-    release = publication.get("release")
-    if not isinstance(release, Mapping):
-        raise ValueError("Publication contract has no release object.")
-    line = release.get("line")
-    if not isinstance(line, Mapping):
-        raise ValueError("Publication release has no line object.")
-    line_value = str(line.get("value"))
-    legacy_prefixes = line.get("legacy_prefixes")
-    if not isinstance(legacy_prefixes, list) or not all(
-        isinstance(value, str) for value in legacy_prefixes
-    ):
-        raise ValueError("Publication legacy_prefixes must be an array of strings.")
-    pattern = str(release.get("pattern"))
-    rung_rows = _publication_rung_rows(publication)
-    rung_tokens = [str(row["token"]) for row in rung_rows]
-    result = copy.deepcopy(dict(release))
-    result["rungs"] = rung_tokens
-    result["compiled_regex"] = _compiled_publication_regex(
-        pattern=pattern,
-        line=line_value,
-        rung_tokens=rung_tokens,
-    )
-    result["legacy_compiled_regexes"] = [
-        _compiled_publication_regex(
-            pattern=pattern,
-            line=prefix,
-            rung_tokens=rung_tokens,
-        )
-        for prefix in legacy_prefixes
-    ]
-    return result
-
+    return _project_publication_legacy_release(publication)
 
 def project_spine_legacy_sampling(
     spine: Mapping[str, Any],
     *,
     publication: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Resolve the spine sampling rung reference for constants-era consumers."""
-
-    sampling = spine.get("sampling")
-    if not isinstance(sampling, Mapping):
-        raise ValueError("Spine contract has no sampling object.")
-    result = copy.deepcopy(dict(sampling))
-    fraction = result.get("fraction")
-    if not isinstance(fraction, dict):
-        raise ValueError("Spine sampling fraction must be an object.")
-    reference = fraction.pop("rungs_ref", None)
-    expected = {"domain": "publication", "pointer": "/release/rung_fractions"}
-    if reference != expected:
-        raise ValueError(
-            f"Spine sampling has unsupported rung reference {reference!r}."
-        )
-    fraction["rungs"] = _publication_rung_rows(publication)
-    return result
-
+    return _project_spine_legacy_sampling(spine, publication=publication)
 
 def _source_stage_compatibility() -> dict[str, Any]:
     from microcosm.build.source_manifest import SourceManifest

@@ -534,3 +534,90 @@ these inventory surfaces without a bundle home is a failing report.
   reached 100% with exit 0 and no failures.  The generator `--check`, Ruff,
   `git diff --check`, raw resource hashes, and source/wheel identity parity are
   rerun immediately before the commit.
+
+## 4. Compiled IR and constants-era adapter
+
+### Compiler boundary and emitted plan
+
+- `compile_spec()` is a pure `ResolvedSpec -> CompiledSpecIR` boundary; it
+  compiles and revalidates graph closure without importing or invoking an
+  executor (`packages/microcosm-build/src/microcosm/build/spec_engine/compiler_ir.py:1414`).
+  The IR retains the six physically separated surfaces, typed
+  entities/artifacts/scopes/columns/references, generated and vintage
+  authorities, the normalized domain inventory, and the compiler ABI
+  (`compiler_ir.py:401`).
+- The US plan contains **38 nodes, 71 edges, 6 deterministic waves, 227
+  compiled outputs, and all 18 conditional-ownership cells**.  Its selected
+  `legacy-v1` map contains **53 sites, 112 site-to-owner bindings, and 54
+  distinct typed owners** (`compiler_ir.py:198`, `:312`, and `:1414`).  A
+  shared-core bundle without an imputation graph compiles to the same closed
+  types with an empty executable graph rather than acquiring a US-specific
+  default.
+- `plan.lock.json` is emitted canonically and reproducibly, validated against
+  the closed draft-2020-12 plan-lock definition, and refused with pointer-level
+  differences after hand editing
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/plan_lock.py:54`
+  and `:164`; `specs/schema/locks.schema.json:277`).  The lock schema adds only
+  emitted compiler objects; the existing bundle-lock and engine-lock
+  definitions remain closed and unchanged.
+
+### One-way compatibility compilation
+
+- `compile_to_legacy_payload()` first compiles the IR and then returns the
+  complete named constants-era projections: source manifest, support spine,
+  all seven imputation objects, take-up raw contract and identity, calibration
+  and resolved tail contracts, battery contract, publication/rung grammar,
+  spine sampling, stacked authority, and the static checkpoint identity
+  components (`packages/microcosm-build/src/microcosm/build/spec_engine/legacy_adapter.py:261`).
+  It accepts only a normalized US `ResolvedSpec`, imports no executor, and
+  leaves `spec_binding.attestation=mirror-attested`.
+- The seven imputation payloads are projected from the normalized bundle in
+  production code, including the declared 5/37 split, 19/70 late ledger,
+  primary 65-target chain, exact resource semantics, and 18-row ownership
+  matrix (`spec_engine/imputation_semantics.py:1810`).  The retained migration
+  generator delegates to these projectors; it no longer owns a duplicate
+  semantic projection.
+- Battery registry views and legacy gates derive from the 131 scalar plus one
+  joint registry (`spec_engine/battery_semantics.py:136`).  The publication
+  projector derives the exact five rung tokens and both current/historical
+  reader regexes (`spec_engine/publication_semantics.py:152` and `:188`).
+  Calibration tail references resolve to the PUF support role and primary
+  virtual resource rather than copying constants
+  (`spec_engine/calibration_semantics.py:151`), and the compiled take-up
+  identity hashes the generated 13-program contract
+  (`spec_engine/take_up_semantics.py:797`).
+- The eight-component stacked receipt and the complete
+  `_stacked_checkpoint_base_identity` projection are rebuilt only from the
+  resolved bundle and generated ABI lock
+  (`spec_engine/stacked_authority_semantics.py:494`, `:940`, and `:1128`).
+  Full nondefault input-pin/run-request vectors compare field-for-field and
+  byte-for-byte with generation 0; F0 does not construct bundle-mode
+  authority.
+
+### Byte-identity gate
+
+- The integrated adapter gate compares canonical JSON bytes against the live
+  source/support/take-up payloads, `_authority_receipt`, gap-fill schedule,
+  late producer schedule, and overlap ownership
+  (`packages/microcosm-build/tests/test_spec_engine_legacy_adapter.py:126`).
+  Result: **PASS**, aggregate gate SHA-256
+  `fefccb6a0c10cdfd7c4b21ef2957cf77891f300d357ce61223ef2f34b5bcdeb3`.
+- Generation-0 identities are unchanged: stacked authority
+  `f0b676f6508dbf6bb2b787c42e6b85331bacc57c6649ac7ad15fdaa5884a1b2d`,
+  late schedule
+  `b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5`,
+  ownership
+  `5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356`,
+  resource semantics
+  `b23c74dcfaaa5780d09caadec2cd110e6b9e268e31057b8584ae814f866bfe17`,
+  and take-up resource
+  `495dc6ed195eae372a6ba098c6fb894323638a4a7dce1b4fe7efaaf6beb69446`.
+  The direct live oracles also compare canonical bytes for every stacked
+  authority component and the full checkpoint base identity
+  (`test_spec_engine_stacked_authority_semantics.py:62` and `:104`).
+- Final D4 repository gate: **6,567 tests collected**;
+  `.venv/bin/python -m pytest -q` reached 100% with exit 0.  The only warnings
+  were the pre-existing numerical, pandas fragmentation/chained-assignment,
+  and sparse-tensor warnings.  The generator `--check`, Ruff, production
+  forbidden-import sweep, JSON-schema parse, and `git diff --check` were rerun
+  immediately before the commit.

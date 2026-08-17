@@ -25,6 +25,12 @@ from functools import lru_cache
 from importlib.resources import files
 from typing import Any
 
+from microcosm.build.spec_engine.battery_semantics import (
+    derive_battery_registry_views as _derive_battery_registry_views,
+)
+from microcosm.build.spec_engine.battery_semantics import (
+    project_battery_legacy_contract as _project_battery_legacy_contract,
+)
 from microcosm.build.spec_engine.typed_closure import take_up_scope_registry_wire
 
 __all__ = [
@@ -1033,101 +1039,17 @@ def build_take_up() -> dict[str, object]:
 def derive_battery_registry_views(
     document: Mapping[str, object],
 ) -> dict[str, object]:
-    """Derive counts and the declared surface from the sole metric registries."""
-
-    registry = [
-        _mapping_like(value, "battery metric registry row")
-        for value in _array_like(document["metric_registry"], "battery metric registry")
-    ]
-    joint_registry = [
-        _mapping_like(value, "battery joint metric registry row")
-        for value in _array_like(
-            document["joint_metric_registry"], "battery joint metric registry"
-        )
-    ]
-    surface: dict[str, dict[str, list[str]]] = {}
-    seen: set[tuple[str, str, str, int]] = set()
-    for row in registry:
-        key = (
-            str(row["entity"]),
-            str(row["family"]),
-            str(row["column"]),
-            int(row["clone_index"]),
-        )
-        if key in seen:
-            raise RuntimeError(f"Battery metric registry repeats {key!r}.")
-        seen.add(key)
-        if key[3] != 0:
-            raise RuntimeError(
-                "Generation-0 declared surface only supports clone_index zero."
-            )
-        surface.setdefault(key[0], {}).setdefault(key[1], []).append(key[2])
-    metric_counts = dict(
-        sorted(Counter(str(row["metric"]) for row in registry).items())
-    )
-    return {
-        "completeness": {
-            "targets": len(registry),
-            "source": "declared_surface",
-        },
-        "metric_counts": metric_counts,
-        "declared_surface": surface,
-        "required_scalar_targets": len(registry),
-        "required_joint_targets": len(joint_registry),
-    }
-
+    return _derive_battery_registry_views(document)
 
 def project_battery_legacy_contract(
     document: Mapping[str, object],
     *,
     authority_receipt: Mapping[str, object],
 ) -> dict[str, object]:
-    """Inflate compiler-derived battery fields for constants-era consumers."""
-
-    result = deepcopy(dict(document))
-    derived = derive_battery_registry_views(document)
-    result["completeness"] = derived["completeness"]
-    result["metric_counts"] = derived["metric_counts"]
-    result["declared_surface"] = derived["declared_surface"]
-    scalar_count = int(derived["required_scalar_targets"])
-    joint_count = int(derived["required_joint_targets"])
-    for gate in _array_like(result["gates"], "battery gates"):
-        gate_row = _mapping_like(gate, "battery gate")
-        metric = _mapping_like(gate_row["metric"], "battery gate metric")
-        params = _mapping_like(metric["params"], "battery gate metric params")
-        params["required_scalar_targets"] = scalar_count
-        params["required_joint_targets"] = (
-            joint_count
-            if gate_row["id"] == "by_origin_battery"
-            else 0
-        )
-        reference = _mapping_like(gate_row["reference"], "battery gate reference")
-        if dict(reference) != {
-            "kind": "compiled_authority",
-            "authority_ref": "authority_binding",
-        }:
-            raise RuntimeError("Battery gate has an unsupported authority reference.")
-        gate_row["reference"] = {
-            "kind": "data_digest",
-            "sha256": authority_receipt["sha256"],
-        }
-    binding = _mapping_like(result["authority_binding"], "battery authority binding")
-    if (
-        binding["authority_id"] != authority_receipt["authority_id"]
-        or binding["version"] != authority_receipt["version"]
-    ):
-        raise RuntimeError("Battery authority identity differs from its projection.")
-    binding["expected_sha256"] = authority_receipt["sha256"]
-    binding["components"] = [
-        {"id": component_id, "expected_sha256": component["sha256"]}
-        for component_id, component in sorted(
-            _mapping_like(
-                authority_receipt["components"], "battery authority components"
-            ).items()
-        )
-    ]
-    return result
-
+    return _project_battery_legacy_contract(
+        document,
+        authority_receipt=authority_receipt,
+    )
 
 def build_battery_contract() -> dict[str, object]:
     """Build the complete stacked registry, support, threshold, and receipt."""

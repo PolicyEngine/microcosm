@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 
-from .canonical import canonical_json_bytes
+from .canonical import canonical_json_bytes, sha256_json
 from .errors import SpecValidationError
 
 _OWNERSHIP_KINDS = frozenset({"measured", "transferred", "modeled", "engine", "mixed"})
@@ -794,4 +794,47 @@ def project_legacy_take_up_contract(
     }
 
 
-__all__ = ["project_legacy_take_up_contract", "validate_take_up_semantics"]
+def project_legacy_take_up_identity(
+    legacy_contract: Mapping[str, object],
+) -> dict[str, object]:
+    """Project the exact constants-era identity from the compiled contract."""
+
+    version = legacy_contract.get("version")
+    country = legacy_contract.get("country")
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        raise SpecValidationError(
+            "take_up legacy projection/version: positive integer required"
+        )
+    if not isinstance(country, str) or not country:
+        raise SpecValidationError(
+            "take_up legacy projection/country: identifier required"
+        )
+    asserted = _mapping(
+        legacy_contract.get("asserted_engine"),
+        location="take_up legacy projection/asserted_engine",
+    )
+    programs = _array(
+        legacy_contract.get("programs"),
+        location="take_up legacy projection/programs",
+    )
+    if not all(isinstance(program, Mapping) for program in programs):
+        raise SpecValidationError(
+            "take_up legacy projection/programs: object rows required"
+        )
+    return {
+        "version": version,
+        "country": country,
+        "resource_sha256": sha256_json(legacy_contract),
+        "asserted_constraint": str(asserted.get("constraint", "")),
+        "inventory_built_against": str(
+            asserted.get("inventory_built_against", "")
+        ),
+        "programs": [deepcopy(dict(program)) for program in programs],
+    }
+
+
+__all__ = [
+    "project_legacy_take_up_contract",
+    "project_legacy_take_up_identity",
+    "validate_take_up_semantics",
+]
