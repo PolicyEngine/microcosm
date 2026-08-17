@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,6 +14,11 @@ import pytest
 from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.logbook import load_spool_rows
 from microcosm.build.source_manifest import SourceManifest, SourceStageSpec
+from microcosm.build.uk_runtime import (
+    frs_disability,
+    frs_education_grants,
+    frs_legacy_proxies,
+)
 from microcosm.build.uk_runtime.frs_spine import (
     FRS_SPINE_TABLES,
     REGION_MAP,
@@ -680,6 +686,66 @@ def test_shuffled_household_fixture_produces_identical_output(tmp_path: Path) ->
         )
 
 
+def _stub_policy_readers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make the driver run engine-hermetic.
+
+    The us-extra CI lane and the wheel-gate venv have no policyengine-uk,
+    so the driver tests stub the three deferred parameter readers and then
+    block the engine import outright — a regression to eager engine use
+    fails loudly in every environment, not just engine-less ones.
+    """
+
+    monkeypatch.setattr(
+        frs_disability,
+        "uk_dwp_baseline_disability_rates",
+        lambda period: frs_disability.UKDWPBaselineDisabilityRates(
+            aa_lower=68.1,
+            aa_higher=101.75,
+            dla_sc_lower=26.9,
+            dla_sc_middle=68.1,
+            dla_sc_higher=101.75,
+            dla_m_lower=26.9,
+            dla_m_higher=71.0,
+            pip_m_standard=26.9,
+            pip_m_enhanced=71.0,
+            pip_dl_standard=68.1,
+            pip_dl_enhanced=101.75,
+            instant=f"{period}-01-01",
+            source="test stub",
+        ),
+    )
+    monkeypatch.setattr(
+        frs_disability,
+        "uk_dwp_disability_flag_rates",
+        lambda period: frs_disability.UKDWPDisabilityFlagRates(
+            aa_higher=101.75,
+            dla_sc_higher=101.75,
+            pip_dl_enhanced=101.75,
+            instant=f"{period}-01-01",
+            source="test stub",
+        ),
+    )
+    monkeypatch.setattr(
+        frs_legacy_proxies,
+        "uk_legacy_jsa_policy",
+        lambda period: frs_legacy_proxies.UKLegacyJSAPolicy(
+            max_weekly_hours_single=16.0,
+            instant=f"{period}-01-01",
+            source="test stub",
+        ),
+    )
+    monkeypatch.setattr(
+        frs_education_grants,
+        "uk_dsa_policy",
+        lambda period: frs_education_grants.UKDSAPolicy(
+            maximum=0.0,
+            instant=f"{period}-01-01",
+            source="test stub",
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "policyengine_uk", None)
+
+
 def test_driver_writes_spine_h5_sidecars_and_logbook(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -695,6 +761,7 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
     monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
     monkeypatch.delenv("POPULACE_LEDGER_URL", raising=False)
     monkeypatch.delenv("POPULACE_LEDGER_KEY", raising=False)
     monkeypatch.delenv("POPULACE_LEDGER_API_KEY", raising=False)
@@ -754,6 +821,7 @@ def test_driver_writes_payload_identical_h5s(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
     monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
     monkeypatch.delenv("POPULACE_LEDGER_URL", raising=False)
     monkeypatch.delenv("POPULACE_LEDGER_KEY", raising=False)
     monkeypatch.delenv("POPULACE_LEDGER_API_KEY", raising=False)
