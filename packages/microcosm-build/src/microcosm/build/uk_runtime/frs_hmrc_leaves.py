@@ -434,6 +434,7 @@ def retain_uk_frs_hmrc_leaves(
         household=frame.table("household"),
         time_period=time_period,
         weight_kind=uk_household_weight_kind(frame),
+        household_weights=frame.weights_for("household").values,
         mass_log=frame.mass_log,
     )
     validate_uk_national_frame(result_frame)

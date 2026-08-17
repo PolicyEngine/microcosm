@@ -1,22 +1,15 @@
 """The UK consumer half of the gate battery (microcosm#611 increment 1).
 
-The behaviour-preservation contract: ``evaluate_phase`` over ``uk/gates.json``
-with ``UK_GATE_REGISTRY`` must reproduce the legacy ``uk_terminal_gate_report``
-verdicts gate for gate over identical synthetic evidence — same ``passed``,
-same failure lines, same details — with exactly two result names re-minted
-onto the shared vocabulary. Where the two paths deliberately differ (the
-legacy report *omits* unevidenced gates; the battery records them as
-``evidence_absent`` and blocks release candidates only), the difference is
-asserted here as a positive statement, not papered over.
-
-Fixtures are synthetic throughout: no UKDS unit records, same discipline as
-the legacy battery tests.
+Fixtures are synthetic throughout: no UKDS unit records. The schema-3
+aggregator retired in #654; these tests pin the battery-side behavior that
+survived the differential receipt.
 """
 
 from __future__ import annotations
 
 import base64
 from datetime import date, datetime
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import numpy as np
@@ -56,24 +49,14 @@ from microcosm.build.uk_runtime.terminal_gates import (
     UKInputMassParityPolicy,
     UKInputMassReference,
     UKQRFTailConcentrationPolicy,
-    UKReleaseParityEvidence,
-    uk_terminal_gate_report,
 )
 from microcosm.frame import engine_tables
 
 KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
-RELEASE_ID = "populace-uk-2023-frs-k535080"
-DIAGNOSTICS_SHA256 = "c" * 64
 #: The shared exclusion-expiry clock, fixed inside the committed register's
 #: validity window (approved 2026-08-10, expires 2027-02-10) so the suite
 #: never drifts across an expiry boundary.
 CLOCK = date(2026, 9, 1)
-
-#: Neutral declared name -> the legacy result name the bindings re-mint.
-LEGACY_NAMES = {
-    "release_input_coverage": "uk_release_input_coverage",
-    "tail_concentration": "qrf_tail_concentration",
-}
 
 VALIDATE_REFERENCE = (
     "microcosm.build.uk_runtime.weighted_integrity._validate_input_mass_reference"
@@ -122,7 +105,7 @@ def _coverage() -> GateResult:
     )
 
 
-def _parity(**overrides) -> UKReleaseParityEvidence:
+def _parity(**overrides) -> SimpleNamespace:
     fields = {
         "candidate_columns": {"person.age"},
         "reference_columns": {"person.age"},
@@ -131,7 +114,7 @@ def _parity(**overrides) -> UKReleaseParityEvidence:
         "target_relative_errors": {"ons/population": 0.01},
     }
     fields.update(overrides)
-    return UKReleaseParityEvidence(**fields)
+    return SimpleNamespace(**fields)
 
 
 def _reference() -> UKInputMassReference:
@@ -156,9 +139,9 @@ def _qrf_policy() -> UKQRFTailConcentrationPolicy:
 
 def _fixture_coverage_registry():
     """The UK registry with the coverage gate fed by the same fixture the
-    legacy tests inject, so both differential sides see identical coverage
-    evidence (the real coverage gate has its own dedicated tests). The
-    fixture mints the legacy name, so the re-minting path stays exercised."""
+    differential harness used before retiring schema 3. The real coverage
+    gate has its own dedicated tests. The fixture mints the legacy name, so
+    the re-minting path stays exercised."""
 
     return {
         **UK_GATE_REGISTRY,
@@ -172,16 +155,7 @@ def _fixture_coverage_registry():
     }
 
 
-def _run_both(tables, *, parity=None, fit_records=None, armed=True, clock=CLOCK):
-    """Run the legacy battery and the declared battery over one evidence set.
-
-    Both sides are built from the same tables and the same evidence objects
-    in one place — evidence asymmetry between the sides would read as a
-    false differential failure. That includes the exclusion-expiry clock:
-    the legacy aggregator threads ``now`` and the battery threads the
-    ``exclusions_evaluated_on`` artifact, both set to the same date here.
-    """
-
+def _run_battery(tables, *, parity=None, fit_records=None, armed=True, clock=CLOCK):
     person, benunit, household = tables
     frame = uk_national_frame(
         person=person, benunit=benunit, household=household, time_period="2023"
@@ -190,13 +164,10 @@ def _run_both(tables, *, parity=None, fit_records=None, armed=True, clock=CLOCK)
         "coverage_engine": object(),
         "exclusions_evaluated_on": clock,
     }
-    legacy_kwargs: dict[str, object] = {"now": clock}
     if fit_records is not None:
         artifacts["fit_weight_records"] = fit_records
-        legacy_kwargs["fit_weight_records"] = fit_records
     if parity is not None:
         artifacts["parity_evidence"] = parity
-        legacy_kwargs["parity_evidence"] = parity
     if armed:
         reference = _reference()
         input_mass_policy = _input_mass_policy()
@@ -204,50 +175,17 @@ def _run_both(tables, *, parity=None, fit_records=None, armed=True, clock=CLOCK)
         artifacts["input_mass_reference"] = reference
         artifacts["input_mass_policy"] = input_mass_policy
         artifacts["qrf_tail_policy"] = qrf_policy
-        legacy_kwargs["input_mass_reference"] = reference
-        legacy_kwargs["input_mass_policy"] = input_mass_policy
-        legacy_kwargs["qrf_tail_policy"] = qrf_policy
     # Small synthetic totals exercise battery behavior without disclosing
     # the licensed 131-column reference (same patch as the legacy tests);
     # the binding's declared-pin check compares spec to runtime constant and
     # needs no patching.
     with patch(VALIDATE_REFERENCE, return_value=None):
-        legacy = uk_terminal_gate_report(
-            frame,
-            object(),
-            release_id=RELEASE_ID,
-            calibration_diagnostics_sha256=DIAGNOSTICS_SHA256,
-            input_coverage_evaluator=_coverage,
-            **legacy_kwargs,
-        )
-        battery = evaluate_phase(
+        return evaluate_phase(
             load_country_spec("uk").gates,
             "terminal",
             EvidenceContext(frame=frame, artifacts=artifacts),
             registry=_fixture_coverage_registry(),
         )
-    return legacy, battery
-
-
-def _assert_identical_verdicts(legacy, battery) -> None:
-    legacy_by_name = {result.name: result for result in legacy.results}
-    evaluated = [
-        outcome
-        for outcome in battery.outcomes
-        if outcome.status in (GateStatus.PASSED, GateStatus.FAILED)
-    ]
-    assert [LEGACY_NAMES.get(o.entry.gate, o.entry.gate) for o in evaluated] == [
-        result.name for result in legacy.results
-    ]
-    for outcome in evaluated:
-        legacy_result = legacy_by_name[
-            LEGACY_NAMES.get(outcome.entry.gate, outcome.entry.gate)
-        ]
-        result = outcome.result
-        assert result.name == outcome.entry.gate
-        assert result.passed == legacy_result.passed, outcome.entry.id
-        assert result.failures == legacy_result.failures, outcome.entry.id
-        assert dict(result.details) == dict(legacy_result.details), outcome.entry.id
 
 
 class TestUKSurfaceAdapter:
@@ -313,54 +251,44 @@ class TestUKCompatibility:
         )
 
 
-class TestDifferentialAgainstLegacyBattery:
-    def test_fully_armed_battery_matches_gate_for_gate(self) -> None:
-        legacy, battery = _run_both(
+class TestBatteryRegressions:
+    def test_fully_armed_battery_evaluates_gate_for_gate(self) -> None:
+        battery = _run_battery(
             _tables(),
             parity=_parity(),
             fit_records=(FitWeightRecord("spi_qrf", "importance"),),
         )
 
-        _assert_identical_verdicts(legacy, battery)
         by_id = {o.entry.id: o for o in battery.outcomes}
         passed = [
             entry_id for entry_id, o in by_id.items() if o.status is GateStatus.PASSED
         ]
         assert len(passed) == 10
-        # The armed QRF gate fails identically on both sides: the tiny
-        # synthetic frame carries none of the declared QRF output columns.
-        # Failure-text parity over a real failure, for free.
         qrf = by_id["uk_qrf_tail_concentration"]
         assert qrf.status is GateStatus.FAILED
-        assert qrf.result.failures == (
-            legacy.results[-1].failures  # qrf is the last legacy gate
-        )
+        assert "declared QRF output is absent" in qrf.result.failures[0]
 
-    def test_empty_fit_records_fail_identically(self) -> None:
+    def test_empty_fit_records_fail_closed(self) -> None:
         # Present-but-empty is not absent: a fit stage that ran and emitted
-        # nothing is a failed audit on both sides, never a vacuous pass
-        # (the shared binding alone would pass it; the UK override keeps
-        # the legacy guard).
-        legacy, battery = _run_both(_tables(), fit_records=())
+        # nothing is a failed audit, never a vacuous pass.
+        battery = _run_battery(_tables(), fit_records=())
 
-        _assert_identical_verdicts(legacy, battery)
         audit = {o.entry.id: o for o in battery.outcomes}["uk_weights_audit"]
         assert audit.status is GateStatus.FAILED
         assert "an absent audit is not a passing audit" in (audit.result.failures[0])
 
-    def test_seeded_defects_fail_identically(self) -> None:
+    def test_seeded_defects_fail_the_expected_gates(self) -> None:
         blown = _tables(weights=[1.0, 1.0, 1.0, 1.0e9])
         seeded_parity = _parity(
             candidate_columns={"person.age", "person.unreviewed_extra"},
             target_relative_errors={"ons/population": -0.40},
         )
-        legacy, battery = _run_both(
+        battery = _run_battery(
             blown,
             parity=seeded_parity,
             fit_records=(FitWeightRecord("spi_qrf", "none"),),
         )
 
-        _assert_identical_verdicts(legacy, battery)
         failed = {o.entry.id for o in battery.outcomes if o.status is GateStatus.FAILED}
         assert {
             "uk_weight_ratio",
@@ -371,28 +299,14 @@ class TestDifferentialAgainstLegacyBattery:
 
 
 class TestUnevidencedArms:
-    """The chartered semantic difference, stated as a positive assertion.
+    """Missing evidence is explicit; it blocks release candidates, plus any
+    entry whose manifest declares absence non-excusable in every posture
+    (``uk_weights_audit`` — "an absent audit is not a passing audit", the
+    legacy strictness ported during the #654 retirement)."""
 
-    The legacy report *omits* gates whose evidence is absent (sealed by its
-    membership contract); the battery lists every declared entry and records
-    the gap as ``evidence_absent`` with the missing keys named — blocking
-    release candidates only. The A2 orchestration swap inherits exactly this
-    delta."""
+    def test_battery_records_evidence_absent(self, uk_gates) -> None:
+        battery = _run_battery(_tables(), armed=False)
 
-    def test_legacy_omits_where_the_battery_records_evidence_absent(
-        self, uk_gates
-    ) -> None:
-        legacy, battery = _run_both(_tables(), armed=False)
-
-        legacy_names = {result.name for result in legacy.results}
-        assert legacy_names == {
-            "uk_release_input_coverage",
-            "degenerate_release_surface",
-            "zero_weight_strata",
-            "weight_ess",
-            "weight_ratio",
-        }
-        _assert_identical_verdicts(legacy, battery)
         absent = {
             o.entry.id: o.reason
             for o in battery.outcomes
@@ -409,32 +323,22 @@ class TestUnevidencedArms:
         for reason in absent.values():
             assert reason.startswith("missing evidence: ")
 
-        assert battery.blocking_outcomes(release_candidate=False) == ()
+        # The audit's absence blocks even the default posture — its status
+        # stays honestly evidence_absent; only the enforcement is strict.
+        default_blocked = {
+            o.entry.id for o in battery.blocking_outcomes(release_candidate=False)
+        }
+        assert default_blocked == {"uk_weights_audit"}
         blocked = {
             o.entry.id for o in battery.blocking_outcomes(release_candidate=True)
         }
         assert blocked == set(absent)
 
-    def test_absent_but_required_fit_evidence_is_the_named_delta(self) -> None:
-        # Legacy: a production fit stage without records is an explicit
-        # failure. Battery: the absent artifact is a named evidence gap that
-        # blocks release candidates. Same shipping decision, different
-        # taxonomy — asserted so the A2 review can lean on it.
+    def test_absent_fit_evidence_is_named(self) -> None:
         person, benunit, household = _tables()
         frame = uk_national_frame(
             person=person, benunit=benunit, household=household, time_period="2023"
         )
-        legacy = uk_terminal_gate_report(
-            frame,
-            object(),
-            release_id=RELEASE_ID,
-            calibration_diagnostics_sha256=DIAGNOSTICS_SHA256,
-            input_coverage_evaluator=_coverage,
-            require_fit_weight_records=True,
-        )
-        legacy_audit = {r.name: r for r in legacy.results}["weights_audit"]
-        assert legacy_audit.passed is False
-
         battery = evaluate_phase(
             load_country_spec("uk").gates,
             "terminal",
@@ -456,7 +360,7 @@ class TestExclusionDiscipline:
     )
 
     def test_every_exclusion_gate_shares_the_injected_clock(self) -> None:
-        _legacy, battery = _run_both(
+        battery = _run_battery(
             _tables(),
             parity=_parity(),
             fit_records=(FitWeightRecord("spi_qrf", "importance"),),
@@ -468,17 +372,19 @@ class TestExclusionDiscipline:
         }
         assert set(stamps.values()) == {CLOCK.isoformat()}, stamps
 
-    def test_an_expired_register_behaves_identically_on_both_sides(self) -> None:
-        # Past the committed register's expiry the exclusion is out of
-        # force on both paths; whatever the verdict, it must be the same
-        # verdict — the differential contract holds at every clock value.
-        legacy, battery = _run_both(
+    def test_an_expired_register_fails_closed(self) -> None:
+        battery = _run_battery(
             _tables(),
             parity=_parity(),
             fit_records=(FitWeightRecord("spi_qrf", "importance"),),
             clock=date(2027, 3, 1),
         )
-        _assert_identical_verdicts(legacy, battery)
+        failed = {o.entry.id for o in battery.outcomes if o.status is GateStatus.FAILED}
+        assert {
+            "uk_degenerate_release_surface",
+            "uk_qrf_tail_concentration",
+        } <= failed
+        assert "uk_input_mass_parity" not in failed
 
     def test_review_override_is_loud_in_the_evidence_payload(self) -> None:
         binding = UK_GATE_REGISTRY["degenerate_release_surface"]

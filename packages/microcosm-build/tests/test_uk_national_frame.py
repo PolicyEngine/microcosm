@@ -106,6 +106,7 @@ def test_construction_accessors_and_residue_validation() -> None:
     np.testing.assert_array_equal(
         frame.weights_for("household").values, np.array([10.0, 20.0, 30.0])
     )
+    assert "household_weight" not in frame.table("household")
     validate_uk_national_frame(frame)
 
 
@@ -130,10 +131,9 @@ def test_construction_enforces_frame_linkage_invariants() -> None:
         _frame(benunit=orphaned)
 
 
-def test_validate_rejects_column_vector_disagreement() -> None:
-    # Construct a frame whose persisted column and typed vector disagree —
-    # only reachable by direct Frame construction, which is the point: the
-    # residue validation catches drift the constructor helper cannot produce.
+def test_validate_rejects_exported_weight_column_on_the_carrier() -> None:
+    # Only reachable by direct Frame construction; the canonical constructor
+    # consumes household_weight into the typed vector and strips the column.
     frame = Frame(
         tables={
             "person": person_frame(),
@@ -148,7 +148,7 @@ def test_validate_rejects_column_vector_disagreement() -> None:
         },
         metadata={"time_period": "2023"},
     )
-    with pytest.raises(ValueError, match="disagrees with the frame's typed weights"):
+    with pytest.raises(ValueError, match="must not persist exported weight"):
         validate_uk_national_frame(frame)
 
 
@@ -226,19 +226,16 @@ def test_validate_rejects_non_household_typed_weights() -> None:
         validate_uk_national_frame(frame)
 
 
-def test_weight_only_update_must_refresh_the_exported_column() -> None:
+def test_weight_only_update_keeps_the_carrier_columnless() -> None:
     frame = _frame()
 
-    # Same total, different distribution: the kernel accepts the conserving
-    # replacement, but the persisted household_weight column is now stale —
-    # the UK residue validation refuses to let it ship.
     updated = frame.with_weights(
         "household",
         Weights(values=np.array([20.0, 10.0, 30.0]), kind=WeightKind.DESIGN),
         mass=CONSERVE_MASS,
     )
-    with pytest.raises(ValueError, match="refresh the exported column"):
-        validate_uk_national_frame(updated)
+    assert "household_weight" not in updated.table("household")
+    validate_uk_national_frame(updated)
 
 
 def test_write_load_round_trip_with_provenance(tmp_path: Path) -> None:

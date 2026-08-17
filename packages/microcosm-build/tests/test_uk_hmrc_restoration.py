@@ -109,6 +109,7 @@ def _tampered_dataset() -> Frame:
         benunit=frame.table("benunit"),
         household=frame.table("household"),
         time_period=HMRC_SPI_BUILD_PERIOD,
+        household_weights=frame.weights_for("household").values,
     )
 
 
@@ -229,7 +230,7 @@ def _support_and_imputation(
     benunit = pd.DataFrame({"benunit_id": np.arange(1, row_count + 1)})
     mass_record = MassChangeRecord(
         entity="household",
-        old_total=float(dataset.table("household")["household_weight"].sum()),
+        old_total=float(dataset.weights_for("household").total),
         new_total=float(sum(household_weights)),
         declared_factor=1.0,
         reason="reviewed test allocation to one positive-mass SPI channel",
@@ -509,6 +510,7 @@ def test_restoration_binds_loaded_candidate_bytes_before_source_io(
         benunit=base.table("benunit"),
         household=base.table("household"),
         time_period=HMRC_SPI_BUILD_PERIOD,
+        household_weights=base.weights_for("household").values,
     )
     write_uk_national_frame(replacement, candidate_path)
     loaded_replacement, replacement_provenance = load_uk_national_frame(candidate_path)

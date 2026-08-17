@@ -443,9 +443,11 @@ def impute_uk_capital_gains(
     if "capital_gains" not in person.columns:
         raise ValueError("Person table has no capital_gains column to redraw.")
 
-    weights_by_household = frame.table("household").set_index("household_id")[
-        "household_weight"
-    ]
+    household = frame.table("household")
+    weights_by_household = pd.Series(
+        frame.weights_for("household").values,
+        index=household["household_id"],
+    )
     missing_households = set(person["person_household_id"]) - set(
         weights_by_household.index
     )
@@ -539,11 +541,8 @@ def impute_uk_capital_gains(
     # through; the appended record is a conservation receipt, not a change —
     # the terminal family gate requires it, so a build whose CGT stage moved
     # mass or never ran fails by name.
-    household_mass = float(
-        pd.to_numeric(
-            frame.table("household")["household_weight"], errors="raise"
-        ).sum()
-    )
+    weights = frame.weights_for("household")
+    household_mass = float(weights.total)
     receipt = MassChangeRecord(
         entity="household",
         old_total=household_mass,
@@ -557,6 +556,7 @@ def impute_uk_capital_gains(
         household=frame.table("household"),
         time_period=time_period,
         weight_kind=uk_household_weight_kind(frame),
+        household_weights=weights.values,
         mass_log=(*frame.mass_log, receipt),
     )
     validate_uk_national_frame(result_frame)
@@ -577,9 +577,11 @@ def summarize_uk_cgt_imputation(
     calibration adjudication's question.
     """
     person = after.table("person").reset_index(drop=True)
-    weights_by_household = after.table("household").set_index("household_id")[
-        "household_weight"
-    ]
+    household = after.table("household")
+    weights_by_household = pd.Series(
+        after.weights_for("household").values,
+        index=household["household_id"],
+    )
     weight = (
         person["person_household_id"].map(weights_by_household).to_numpy(dtype=float)
     )

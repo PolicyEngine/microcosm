@@ -149,6 +149,11 @@ def _with(
         household=frame.table("household") if household is None else household,
         time_period=uk_time_period(frame) if time_period is None else time_period,
         weight_kind=uk_household_weight_kind(frame),
+        household_weights=(
+            None
+            if household is not None and "household_weight" in household
+            else frame.weights_for("household").values
+        ),
         mass_log=frame.mass_log,
     )
 
@@ -298,6 +303,7 @@ def test_materialization_fails_closed_when_one_component_has_no_band_support() -
 def test_materialization_requires_strictly_positive_household_prior() -> None:
     dataset, targets = _feasible_dataset_and_targets()
     household = dataset.table("household").copy()
+    household["household_weight"] = dataset.weights_for("household").values
     household.loc[0, "household_weight"] = 0.0
     broken = _with(dataset, household=household)
 

@@ -570,7 +570,7 @@ def _attach_source_lineage(
 
 
 def clone_uk_dataset_with_rowwise_geography(
-    dataset: Any | str | Path,
+    dataset: Frame | str | Path,
     crosswalk: pd.DataFrame,
     *,
     output_path: str | Path | None = None,
@@ -588,16 +588,22 @@ def clone_uk_dataset_with_rowwise_geography(
     avoid_constituency_collisions: bool = True,
     source_lineage_modulus: int | None = None,
 ) -> UKRowwiseDatasetResult:
-    """Clone a UK single-year dataset object or H5 path with row-wise geography.
+    """Clone a UK national frame or H5 path with row-wise geography.
 
-    The input's weight kind and mass log are carried, never overridden. An H5
-    supplies them via the national metadata attrs; an attr-less H5 defaults to
-    ``WeightKind.DESIGN`` and an empty log, exactly as the national loader
-    reads it. An in-memory dataset object must declare
-    ``household_weight_kind``; its absent ``mass_log`` defaults to an empty
-    history.
+    The input's weight kind and mass log are carried, never overridden. A
+    frame supplies them through its typed weights and mass log; an H5 supplies
+    them via the national metadata attrs, with an attr-less H5 retaining the
+    loader's documented ``WeightKind.DESIGN`` and empty-log semantics. The
+    duck-typed in-memory carrier retired with the #612 Frame migration — an
+    in-memory input must be a microcosm ``Frame``.
     """
 
+    if not isinstance(dataset, Frame | str | Path):
+        raise TypeError(
+            "rowwise clone requires a microcosm Frame or a UK single-year H5 "
+            f"path, got {type(dataset).__name__}; the duck-typed in-memory "
+            "carrier retired with the #612 Frame migration."
+        )
     tables = _dataset_tables(dataset, source_year=source_year)
     result = clone_uk_dataset_tables_with_rowwise_geography(
         person=tables["person"],
@@ -772,7 +778,7 @@ def read_uk_single_year_weight_metadata(
 
 
 def _dataset_tables(
-    dataset: Any | str | Path,
+    dataset: Frame | str | Path,
     *,
     source_year: int | None,
 ) -> dict[str, Any]:
@@ -794,37 +800,11 @@ def _dataset_tables(
             "household_weight_kind": uk_household_weight_kind(dataset),
             "mass_log": dataset.mass_log,
         }
-    missing = [
-        name
-        for name in ("person", "benunit", "household")
-        if not hasattr(dataset, name)
-    ]
-    if missing:
-        raise ValueError(f"dataset is missing table attribute(s): {missing}.")
-    time_period = getattr(dataset, "time_period", None)
-    if not hasattr(dataset, "household_weight_kind"):
-        raise TypeError(
-            "dataset.household_weight_kind is required on in-memory datasets; "
-            "defaulting an absent kind would silently downgrade importance or "
-            "calibrated weights to design. Declare the kind explicitly "
-            "(H5 paths keep their documented attribute-less design default)."
-        )
-    weight_kind = dataset.household_weight_kind
-    mass_log = getattr(dataset, "mass_log", ())
-    if mass_log is None:
-        raise TypeError(
-            "dataset.mass_log must be a tuple of MassChangeRecord, not None; "
-            "omit the attribute entirely for an empty history."
-        )
-    mass_log = tuple(mass_log)
-    return {
-        "person": dataset.person.copy(),
-        "benunit": dataset.benunit.copy(),
-        "household": dataset.household.copy(),
-        "time_period": _normalise_time_period(time_period, source_year=source_year),
-        "household_weight_kind": weight_kind,
-        "mass_log": mass_log,
-    }
+    raise TypeError(
+        "UK dataset table extraction requires a microcosm Frame or a UK "
+        f"single-year H5 path, got {type(dataset).__name__}; the duck-typed "
+        "in-memory carrier retired with the #612 Frame migration."
+    )
 
 
 def _read_uk_single_year_h5(path: str | Path) -> dict[str, Any]:
