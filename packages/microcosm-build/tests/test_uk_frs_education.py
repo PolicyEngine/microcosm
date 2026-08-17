@@ -30,11 +30,13 @@ def test_current_education_cascade_keeps_dead_post_secondary_shadowed() -> None:
 
 def test_educqual_map_pins_the_corrected_frs_value_labels() -> None:
     # Signed difference vs the incumbent, whose map was inverted (it read
-    # low codes as school-level and 17-21 as degrees). Verified against the
-    # FRS 2023-24 raw aggregates: code 1 (Doctorate) is ~1.8% of adults at
-    # the highest mean earnings; 18/19 are near-empty niche baccalaureates;
-    # the GCSE band (36-82) carries the mass. Code 87 (no qualification
-    # data) is deliberately unmapped and falls to the fillna default.
+    # low codes as school-level and 17-21 as degrees). Labels verified
+    # against the FRS 2023-24 data dictionary (UKDS SN 9367, DOI
+    # 10.5255/UKDA-SN-9367-2, adult table) and corroborated by the raw
+    # aggregates: code 1 (Doctorate) is ~1.8% of adults at the highest mean
+    # earnings; 18/19 are near-empty baccalaureates; the GCSE band (36-82)
+    # carries the mass. Code 87 is undocumented in the dictionary and is
+    # deliberately unmapped, falling to the fillna default.
     assert EDUCQUAL_MAP[1] == "TERTIARY"
     assert EDUCQUAL_MAP[3] == "TERTIARY"
     assert EDUCQUAL_MAP[11] == "POST_SECONDARY"

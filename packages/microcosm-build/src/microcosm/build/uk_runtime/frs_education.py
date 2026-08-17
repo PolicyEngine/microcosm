@@ -39,13 +39,15 @@ BENEFITS_IN_OWN_RIGHT_REPORTED_COLUMNS = (
     "esa_contrib_reported",
     "esa_income_reported",
 )
-# FRS ADT EDUCQUAL value labels, verified against the 2023-24 raw tabs
-# (signed difference vs the incumbent, whose map was inverted: it read the
-# low codes as school-level and 17-21 as degrees. The raw aggregates are
-# decisive — code 1 is 1.8% of adults with the highest mean earnings
-# [Doctorate], codes 18/19 are near-empty niche baccalaureates, and the
-# GCSE-band codes 36/38 carry the mass the inverted map put elsewhere.)
-# Code 87 (no qualification data) is deliberately unmapped: it falls to the
+# FRS EDUCQUAL value labels per the official data dictionary: FRS 2023-24,
+# UK Data Service SN 9367, DOI 10.5255/UKDA-SN-9367-2, adult table, EDUCQUAL
+# (every mapped label below matches the dictionary verbatim). A signed
+# difference vs the incumbent, whose map was inverted (low codes read as
+# school-level, 17-21 as degrees); the raw aggregates corroborate — code 1
+# is 1.8% of adults with the highest mean earnings (Doctorate), 18/19 are
+# near-empty niche baccalaureates, and the GCSE band carries the mass.
+# Code 87 is undocumented in the dictionary (no value label) yet carried by
+# ~13% of adults; it is deliberately unmapped and falls to the
 # UPPER_SECONDARY fillna default, as the incumbent's default did.
 EDUCQUAL_MAP = {
     # Degree level and above (TERTIARY)

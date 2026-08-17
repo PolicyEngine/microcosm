@@ -6,7 +6,7 @@
     {
       "stage": "frs_spine",
       "survey": "Family Resources Survey 2023-24",
-      "source": "Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service series, local licensed 2023_24 tabs; vintage DOI was not found in the local reference metadata reviewed for this port.",
+      "source": "Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9367, DOI 10.5255/UKDA-SN-9367-2; local licensed 2023_24 tabs.",
       "grain": "household",
       "artifacts": [
         {
@@ -493,7 +493,7 @@
         "child_ema",
         "age_started_or_accepted_current_education_or_training"
       ],
-      "notes": "Ports the incumbent education cascade including its unreachable POST_SECONDARY branch order. EDUCQUAL_MAP carries the corrected harmonised highest-qualification codeframe (1 = Doctorate, descending), verified against the FRS 2023-24 raw aggregates and adopted as a signed difference (PR #703); an upstream defect report records the incumbent inversion. EMA uses the shared weeks-in-year constant."
+      "notes": "Ports the incumbent education cascade including its unreachable POST_SECONDARY branch order. EDUCQUAL_MAP carries the corrected highest-qualification codeframe (1 = Doctorate, descending) per the FRS 2023-24 data dictionary (UK Data Service SN 9367, DOI 10.5255/UKDA-SN-9367-2, adult table), corroborated against the raw aggregates and adopted as a signed difference (PR #703); an upstream defect report records the incumbent inversion. Code 87 is undocumented in the dictionary and falls to the default. EMA uses the shared weeks-in-year constant."
     },
     {
       "stage": "frs_legacy_proxies",
