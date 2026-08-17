@@ -62,3 +62,30 @@ is not needed in that minimal arm.
 
 Arm implementation, test, build, and gate receipts are appended on the branch
 that owns each arm.
+
+### `arm-order`
+
+- Scope: reorder only the early
+  `person/model_required_boolean` participation chain.  The declared sequence
+  puts `is_blind` and `is_disabled` first and CHAMPVA third
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/multispine_pool.py:637`),
+  and the reorder is applied only while constructing the pre-clone gap-fill
+  plan (`packages/microcosm-build/src/microcosm/build/us_runtime/multispine_pool.py:797`).
+- Isolation: the baseline three required plus seven optional person predictors
+  remain unchanged
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:101`
+  and `:159`); no loader or runtime transfer call changed.  In particular, the
+  late transfer still receives no explicit predictor set
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8437`).
+  A receipt replay against the held baseline found the same 13 early family
+  keys with only this target order changed, and the live authority comparison
+  changed only the `gap_fill_plan` component.
+- Mirror/gate support: `specs/us_imputation_lineage.yaml` follows the reordered
+  early family and the live baseline ACS predictor surface for all late
+  families.  The #695 conformance tests cover both.  The copied gate was
+  initially byte-identical to round 1 at SHA-256
+  `25295af61fece0e124a2658eed469ce1b5ecf9abd0c8e6b622807df8d4d69fe8`;
+  only candidate receipt bindings will be refreshed after the build.
+- Pre-build verification: `python -m pytest` passed 6,239 tests with 68 skips
+  in 3,580.97 seconds; `python -m ruff check .` and `git diff --check` passed.
+  The targeted transfer, lineage, and participation-order tests also passed.

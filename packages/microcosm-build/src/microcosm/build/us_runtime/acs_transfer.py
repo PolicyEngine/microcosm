@@ -59,15 +59,18 @@ __all__ = [
     "ACS_PERSON_TRANSFER_PREDICTORS",
     "ASEC_PUF_DONOR_SPINE",
     "AcsImputedInput",
+    "AcsPredictorSet",
     "AcsTransferBankPatternStep",
     "AcsTransferPattern",
     "AcsTransferResult",
     "AcsTransferTargetBank",
     "AcsTransferTargetCheckpoint",
     "TargetFamilies",
+    "PredictorSets",
     "acs_transfer_donor_requirements",
     "acs_transfer_execution_contract_identity",
     "assert_acs_transfer_targets_are_input_leaves",
+    "declared_acs_transfer_predictor_sets",
     "declared_acs_transfer_target_families",
     "default_acs_transfer_target_families",
     "ACS_DERIVED_TRANSFER_INPUTS",
@@ -301,6 +304,82 @@ def acs_transfer_execution_contract_identity(
 
 
 type TargetFamilies = Mapping[str, Mapping[str, Sequence[str]]]
+
+
+@dataclass(frozen=True)
+class AcsPredictorSet:
+    """One family's ordered required and row-optional transfer features."""
+
+    required: tuple[str, ...]
+    optional: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        required = tuple(self.required)
+        optional = tuple(self.optional)
+        names = (*required, *optional)
+        if not required:
+            raise ValueError("ACS predictor sets require at least one required feature.")
+        bad = [name for name in names if not isinstance(name, str) or not name.strip()]
+        if bad:
+            raise ValueError(f"ACS predictor sets contain invalid feature names: {bad}.")
+        duplicates = sorted({name for name in names if names.count(name) > 1})
+        if duplicates:
+            raise ValueError(f"ACS predictor sets repeat feature(s): {duplicates}.")
+        object.__setattr__(self, "required", required)
+        object.__setattr__(self, "optional", optional)
+
+
+type PredictorSets = Mapping[str, Mapping[str, AcsPredictorSet]]
+
+
+def _legacy_predictor_set(
+    *,
+    entity: str,
+    targets: Sequence[str],
+) -> AcsPredictorSet:
+    """Describe the historical shared predictor surface without changing it."""
+
+    if entity == "person":
+        required = ACS_PERSON_TRANSFER_PREDICTORS
+        optional = ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS
+        if _HOUSING_TRANSFER_TARGETS.intersection(targets):
+            required = (*required, _HEAD_FEATURE, _TENURE_FEATURE)
+            optional = tuple(
+                name for name in optional if name not in {_HEAD_FEATURE, _TENURE_FEATURE}
+            )
+        return AcsPredictorSet(required=required, optional=optional)
+    return AcsPredictorSet(
+        required=ACS_GROUP_TRANSFER_PREDICTORS,
+        optional=tuple(_GROUP_OPTIONAL_NAMES.values()),
+    )
+
+
+def declared_acs_transfer_predictor_sets(
+    target_families: TargetFamilies,
+) -> dict[str, dict[str, AcsPredictorSet]]:
+    """Describe the live early surface after unavailable investment is dropped.
+
+    This is a receipt/gate adapter for the historical shared-tuple runtime.  It
+    does not opt the transfer into the rejected branch's explicit per-family
+    execution path.
+    """
+
+    result: dict[str, dict[str, AcsPredictorSet]] = {}
+    for entity, families in target_families.items():
+        for family, targets in families.items():
+            legacy = _legacy_predictor_set(entity=entity, targets=targets)
+            person_investment = _INVESTMENT_FEATURE
+            group_investment = _GROUP_OPTIONAL_NAMES[_INVESTMENT_FEATURE]
+            predictor_set = AcsPredictorSet(
+                required=legacy.required,
+                optional=tuple(
+                    name
+                    for name in legacy.optional
+                    if name not in {person_investment, group_investment}
+                ),
+            )
+            result.setdefault(entity, {})[family] = predictor_set
+    return result
 
 # The production QRF surface is an ACS-transfer contract, not the release
 # export-coverage contract.  Runtime-owned leaves (take-up draws, immigration,
@@ -1817,6 +1896,8 @@ def _transfer_feature_surface(
     *,
     entity: str,
     targets: Sequence[str],
+    predictor_set: AcsPredictorSet | None = None,
+    require_all_predictors: bool = False,
 ) -> _FeatureSurface:
     if entity == donor.schema.person_entity:
         surface = _person_feature_surface(donor, recipient)
@@ -1824,22 +1905,45 @@ def _transfer_feature_surface(
         surface = _group_feature_surface(donor, recipient, entity=entity)
 
     housing = bool(_HOUSING_TRANSFER_TARGETS.intersection(targets))
-    if not housing:
-        return surface
-    if entity != donor.schema.person_entity:
-        raise ValueError("pre_subsidy_rent must be transferred on the person entity.")
-    mandatory = (_HEAD_FEATURE, _TENURE_FEATURE)
-    missing = [name for name in mandatory if name not in surface.optional]
-    if missing:
-        raise ValueError(
-            "pre_subsidy_rent transfer requires head and tenure predictors on "
-            f"both donor and recipient; missing temporary feature(s): {missing}."
+    if housing:
+        if entity != donor.schema.person_entity:
+            raise ValueError("pre_subsidy_rent must be transferred on the person entity.")
+        mandatory = (_HEAD_FEATURE, _TENURE_FEATURE)
+        missing = [name for name in mandatory if name not in surface.optional]
+        if missing:
+            raise ValueError(
+                "pre_subsidy_rent transfer requires head and tenure predictors on "
+                f"both donor and recipient; missing temporary feature(s): {missing}."
+            )
+        surface = _FeatureSurface(
+            donor=surface.donor,
+            recipient=surface.recipient,
+            required=(*surface.required, *mandatory),
+            optional=tuple(name for name in surface.optional if name not in mandatory),
         )
+
+    if predictor_set is None:
+        return surface
+    available = set(surface.donor).intersection(surface.recipient)
+    missing_required = sorted(set(predictor_set.required) - available)
+    if missing_required:
+        raise ValueError(
+            "ACS transfer predictor set has unmapped required feature(s): "
+            f"{missing_required}."
+        )
+    missing_optional = sorted(set(predictor_set.optional) - available)
+    if require_all_predictors and missing_optional:
+        raise ValueError(
+            "ACS transfer predictor set has unmapped optional feature(s): "
+            f"{missing_optional}."
+        )
+    optional = tuple(name for name in predictor_set.optional if name in available)
+    columns = [*predictor_set.required, *optional]
     return _FeatureSurface(
-        donor=surface.donor,
-        recipient=surface.recipient,
-        required=(*surface.required, *mandatory),
-        optional=tuple(name for name in surface.optional if name not in mandatory),
+        donor=surface.donor.loc[:, columns],
+        recipient=surface.recipient.loc[:, columns],
+        required=predictor_set.required,
+        optional=optional,
     )
 
 
@@ -1964,6 +2068,29 @@ def _complete_component_sum(
         .sum(axis=1)
     )
     return pd.Series(values, index=person.index, name=feature)
+
+
+def _complete_numeric_component_sum(
+    frame: Frame,
+    components: Sequence[str],
+    *,
+    feature: str,
+) -> pd.Series | None:
+    """Sum a complete survey-native numeric surface without changing it."""
+
+    person = frame.table(frame.schema.person_entity)
+    if any(component not in person.columns for component in components):
+        return None
+    encoded = np.column_stack(
+        [
+            _numeric_source(
+                person[component],
+                context=f"donor analog {feature!r} component {component!r}",
+            )
+            for component in components
+        ]
+    )
+    return pd.Series(encoded.sum(axis=1), index=person.index, name=feature)
 
 
 def _person_head_feature(frame: Frame) -> pd.Series | None:

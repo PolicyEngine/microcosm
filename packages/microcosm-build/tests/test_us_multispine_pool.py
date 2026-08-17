@@ -1221,6 +1221,18 @@ def test_pool_transfer_plan_partitions_at_the_declared_producer_boundary() -> No
     ) not in source_producers
 
 
+def test_early_participation_chain_draws_disability_before_champva() -> None:
+    targets = pool_pre_clone_gap_fill_target_families()["person"][
+        "model_required_boolean"
+    ]
+
+    assert targets[:3] == (
+        "is_blind",
+        "is_disabled",
+        "has_champva_health_coverage_at_interview",
+    )
+
+
 def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
     surface = pool_input_surface()
     by_name = {entry.variable: entry for entry in surface}

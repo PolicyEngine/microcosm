@@ -631,6 +631,24 @@ _SOURCE_OPERATOR_FAMILIES: Mapping[str, str] = {
     name: contract.family for name, contract in POOL_OPERATOR_CONTRACTS.items()
 }
 _FORMULA_OWNED_SOURCE_OUTPUTS = FORMULA_OWNED_SOURCE_COLUMNS
+# Put the two drawn disability indicators ahead of the coverage-participation
+# targets in the bounded early chain.  The legacy transfer declaration keeps
+# its historical order; only the early stacked gap fill applies this policy.
+_PARTICIPATION_GAP_FILL_CHAIN_ORDER = (
+    "is_blind",
+    "is_disabled",
+    "has_champva_health_coverage_at_interview",
+    "has_indian_health_service_coverage_at_interview",
+    "has_medicaid_health_coverage_at_interview",
+    "has_other_means_tested_health_coverage_at_interview",
+    "has_tricare_health_coverage_at_interview",
+    "has_va_health_coverage_at_interview",
+    "is_full_time_college_student",
+    "has_esi",
+    "has_marketplace_health_coverage_at_interview",
+    "has_non_marketplace_direct_purchase_health_coverage_at_interview",
+    "receives_wic",
+)
 _POOL_NATIVE_COMPLETE_OUTPUTS: Mapping[str, frozenset[str]] = {
     "person": frozenset(
         {
@@ -782,6 +800,20 @@ def pool_pre_clone_gap_fill_target_families() -> TargetFamilies:
     early, _late = _partition_pool_transfer_target_families(
         pool_transfer_target_families()
     )
+    participation = early.get("person", {}).get("model_required_boolean")
+    if participation is not None:
+        declared = set(participation)
+        ordered = tuple(
+            target
+            for target in _PARTICIPATION_GAP_FILL_CHAIN_ORDER
+            if target in declared
+        )
+        remainder = tuple(
+            target
+            for target in participation
+            if target not in _PARTICIPATION_GAP_FILL_CHAIN_ORDER
+        )
+        early["person"]["model_required_boolean"] = (*ordered, *remainder)
     return early
 
 

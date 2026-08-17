@@ -90,9 +90,11 @@ from microcosm.build.us_runtime.acs_income_universe import (
 from microcosm.build.us_runtime.acs_transfer import (
     ASEC_PUF_DONOR_SPINE,
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    AcsPredictorSet,
     AcsTransferResult,
     AcsTransferTargetBank,
     TargetFamilies,
+    _legacy_predictor_set,
     transfer_acs_inputs,
 )
 from microcosm.build.us_runtime.late_producer_dag import (
@@ -239,6 +241,7 @@ __all__ = [
     "assemble_stacked_spine",
     "assert_stacked_tail_cells_preserved",
     "by_origin_battery",
+    "declared_stacked_post_puf_predictor_sets",
     "gap_fill_stacked_spine",
     "run_stacked_puf_pass",
     "run_stacked_late_producer_dag",
@@ -8195,6 +8198,20 @@ def _verify_gap_fill_outcome(
 # ---------------------------------------------------------------------------
 # Post-PUF transfer of outputs that do not exist at the early gap-fill stage
 # ---------------------------------------------------------------------------
+
+
+def declared_stacked_post_puf_predictor_sets(
+    target_families: TargetFamilies,
+) -> dict[str, dict[str, AcsPredictorSet]]:
+    """Describe the live baseline shared predictor tuple for late families."""
+
+    return {
+        entity: {
+            family: _legacy_predictor_set(entity=entity, targets=targets)
+            for family, targets in families.items()
+        }
+        for entity, families in target_families.items()
+    }
 
 
 @dataclass(frozen=True)
