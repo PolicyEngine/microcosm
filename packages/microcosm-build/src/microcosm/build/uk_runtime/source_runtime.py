@@ -17,6 +17,7 @@ from microcosm.frame import Frame
 from microcosm.frame.rules import materialize_rules_engine_predictors
 
 __all__ = [
+    "UK_NONNEGATIVE_OUTPUTS_BY_STAGE",
     "UK_NONNEGATIVE_SOURCE_OUTPUTS",
     "materialize_uk_rules_engine_predictors_from_manifest",
     "uk_source_operation_handlers",
@@ -24,19 +25,26 @@ __all__ = [
 ]
 
 
-def _uk_nonnegative_source_outputs() -> tuple[str, ...]:
+def _uk_nonnegative_outputs_by_stage() -> dict[str, tuple[str, ...]]:
     from microcosm.build.country_spec import load_country_spec
 
     spec = load_country_spec("uk")
     if spec.sources is None:
-        return ()
-    columns: list[str] = []
-    for stage in spec.sources.stages:
-        columns.extend(stage.nonnegative_outputs)
-    return tuple(dict.fromkeys(columns))
+        return {}
+    return {
+        stage.stage: tuple(stage.nonnegative_outputs)
+        for stage in spec.sources.stages
+    }
 
 
-UK_NONNEGATIVE_SOURCE_OUTPUTS = _uk_nonnegative_source_outputs()
+UK_NONNEGATIVE_OUTPUTS_BY_STAGE = _uk_nonnegative_outputs_by_stage()
+UK_NONNEGATIVE_SOURCE_OUTPUTS = tuple(
+    dict.fromkeys(
+        column
+        for columns in UK_NONNEGATIVE_OUTPUTS_BY_STAGE.values()
+        for column in columns
+    )
+)
 
 
 def uk_stage_implementations(

@@ -533,6 +533,10 @@ def build_uk_national_dataset(
     artifacts: dict[str, object] = {
         "coverage_engine": engine,
         "exclusions_evaluated_on": evaluation_date,
+        # The nonnegative gate derives its required columns from the stages
+        # this build actually scheduled (same roster the preflight coverage
+        # gate attests).
+        "build_stage_names": tuple(stage.name for stage in materialized_stages),
     }
     fit_weight_records = _stage_fit_weight_records(materialized_stages)
     if fit_weight_records is not None:
