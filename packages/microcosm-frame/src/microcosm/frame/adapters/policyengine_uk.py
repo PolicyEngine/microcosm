@@ -148,7 +148,7 @@ class PolicyEngineUKEngine:
             person=tables["person"].copy(),
             benunit=tables["benunit"].copy(),
             household=tables["household"].copy(),
-            time_period=str(period),
+            fiscal_year=int(period),
         )
 
 
