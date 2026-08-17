@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,6 +14,11 @@ import pytest
 from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.logbook import load_spool_rows
 from microcosm.build.source_manifest import SourceManifest, SourceStageSpec
+from microcosm.build.uk_runtime import (
+    frs_disability,
+    frs_education_grants,
+    frs_legacy_proxies,
+)
 from microcosm.build.uk_runtime.frs_spine import (
     FRS_SPINE_TABLES,
     REGION_MAP,
@@ -101,6 +107,15 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "HRPID": 1,
         "UPERSON": 1,
         "MARITAL": 1,
+        "EMPSTATI": 5,
+        "MJOBSECT": 1,
+        "SIC": 84,
+        "FTED": 2,
+        "TYPEED2": 0,
+        "EDUCQUAL": 17,
+        "TRAIN": 10,
+        "EMAAMT": 0.0,
+        "CHEMAAMT": 0.0,
         "INEARNS": 10.0,
         "SEINCAM2": 3.0,
         "MNTUS1": 2,
@@ -141,6 +156,12 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "HRPID": 0,
         "UPERSON": 0,
         "MARITAL": 2,
+        "FTED": 1,
+        "TYPEED2": 2,
+        "EDUCQUAL": 86,
+        "TRAIN": 9,
+        "EMAAMT": 0.0,
+        "CHEMAAMT": 1.0,
     }
     return {
         "adult": [adult_2, adult_1],
@@ -326,16 +347,146 @@ def _manifest_stage() -> SourceStageSpec:
 
 
 def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
+    def source_stage(
+        name: str,
+        *,
+        tables: tuple[str, ...] = (),
+        outputs: tuple[str, ...],
+        operations: list[dict[str, object]] | None = None,
+        nonnegative_outputs: tuple[str, ...] = (),
+        rewrites: tuple[str, ...] = (),
+    ) -> SourceStageSpec:
+        artifacts = [
+            artifact for artifact in stage.artifacts if artifact["table"] in tables
+        ]
+        payload = {
+            "stage": name,
+            "survey": "Synthetic FRS",
+            "source": "local fabricated rows",
+            "grain": "person",
+            "artifacts": artifacts,
+            "operations": operations or [{"kind": "derive"}],
+            "outputs": list(outputs),
+            "nonnegative_outputs": list(nonnegative_outputs),
+        }
+        if rewrites:
+            payload["rewrites"] = list(rewrites)
+        return SourceStageSpec.from_mapping(payload)
+
     return SimpleNamespace(
         country="uk",
         sources=SourceManifest(
             country="uk",
             version=1,
             policy="Synthetic FRS spine spec.",
-            stages=(stage,),
+            stages=(
+                stage,
+                source_stage(
+                    "frs_employment",
+                    tables=("adult",),
+                    operations=[{"kind": "read_tables"}, {"kind": "map_coded_amounts"}],
+                    outputs=(
+                        "employment_status",
+                        "employment_sector",
+                        "sic_industry_division",
+                    ),
+                    nonnegative_outputs=("sic_industry_division",),
+                ),
+                source_stage(
+                    "frs_council_tax",
+                    tables=("househol",),
+                    operations=[{"kind": "read_tables"}, {"kind": "impute_cell_means"}],
+                    outputs=("council_tax",),
+                    nonnegative_outputs=("council_tax",),
+                ),
+                source_stage(
+                    "frs_disability",
+                    outputs=(
+                        "aa_category",
+                        "dla_sc_category",
+                        "dla_m_category",
+                        "pip_m_category",
+                        "pip_dl_category",
+                        "is_disabled_for_benefits",
+                        "is_enhanced_disabled_for_benefits",
+                        "is_severely_disabled_for_benefits",
+                    ),
+                ),
+                source_stage(
+                    "frs_education",
+                    tables=("adult", "child"),
+                    operations=[{"kind": "read_tables"}, {"kind": "derive"}],
+                    outputs=(
+                        "current_education",
+                        "highest_education",
+                        "is_in_non_advanced_education",
+                        "is_in_approved_training",
+                        "age_started_or_accepted_current_education_or_training",
+                        "is_before_universal_credit_qualifying_young_person_terminal_date",
+                        "adult_ema",
+                        "child_ema",
+                        "receives_benefits_in_own_right",
+                    ),
+                    nonnegative_outputs=(
+                        "adult_ema",
+                        "child_ema",
+                        "age_started_or_accepted_current_education_or_training",
+                    ),
+                ),
+                source_stage(
+                    "frs_legacy_proxies",
+                    tables=("adult",),
+                    operations=[
+                        {"kind": "read_tables"},
+                        {
+                            "kind": "materialize_rules_engine_predictors",
+                            "predictors": ["state_pension_age"],
+                        },
+                        {"kind": "derive"},
+                    ],
+                    outputs=(
+                        "legacy_jobseeker_proxy",
+                        "esa_health_condition_proxy",
+                        "esa_support_group_proxy",
+                    ),
+                ),
+                source_stage(
+                    "frs_education_grant_split",
+                    operations=[
+                        {
+                            "kind": "materialize_rules_engine_predictors",
+                            "predictors": [
+                                "childcare_grant",
+                                "parents_learning_allowance",
+                                "adult_dependants_grant",
+                            ],
+                        },
+                        {"kind": "derive"},
+                    ],
+                    outputs=("disabled_students_allowance_eligible_expenses",),
+                    rewrites=("education_grants",),
+                    nonnegative_outputs=(
+                        "disabled_students_allowance_eligible_expenses",
+                    ),
+                ),
+            ),
         ),
         geography_spine=None,
     )
+
+
+class _FakeUKEngine:
+    country = "uk"
+
+    def materialize(self, frame, variables, period):
+        person_count = len(frame.table("person"))
+        values = {}
+        for variable in variables:
+            if variable == "state_pension_age":
+                values[variable] = np.full(person_count, 66.0)
+            else:
+                values[variable] = np.zeros(person_count)
+        return values
 
 
 def test_manifest_stage_and_runtime_agree_on_artifacts_and_operations() -> None:
@@ -535,6 +686,66 @@ def test_shuffled_household_fixture_produces_identical_output(tmp_path: Path) ->
         )
 
 
+def _stub_policy_readers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make the driver run engine-hermetic.
+
+    The us-extra CI lane and the wheel-gate venv have no policyengine-uk,
+    so the driver tests stub the three deferred parameter readers and then
+    block the engine import outright — a regression to eager engine use
+    fails loudly in every environment, not just engine-less ones.
+    """
+
+    monkeypatch.setattr(
+        frs_disability,
+        "uk_dwp_baseline_disability_rates",
+        lambda period: frs_disability.UKDWPBaselineDisabilityRates(
+            aa_lower=68.1,
+            aa_higher=101.75,
+            dla_sc_lower=26.9,
+            dla_sc_middle=68.1,
+            dla_sc_higher=101.75,
+            dla_m_lower=26.9,
+            dla_m_higher=71.0,
+            pip_m_standard=26.9,
+            pip_m_enhanced=71.0,
+            pip_dl_standard=68.1,
+            pip_dl_enhanced=101.75,
+            instant=f"{period}-01-01",
+            source="test stub",
+        ),
+    )
+    monkeypatch.setattr(
+        frs_disability,
+        "uk_dwp_disability_flag_rates",
+        lambda period: frs_disability.UKDWPDisabilityFlagRates(
+            aa_higher=101.75,
+            dla_sc_higher=101.75,
+            pip_dl_enhanced=101.75,
+            instant=f"{period}-01-01",
+            source="test stub",
+        ),
+    )
+    monkeypatch.setattr(
+        frs_legacy_proxies,
+        "uk_legacy_jsa_policy",
+        lambda period: frs_legacy_proxies.UKLegacyJSAPolicy(
+            max_weekly_hours_single=16.0,
+            instant=f"{period}-01-01",
+            source="test stub",
+        ),
+    )
+    monkeypatch.setattr(
+        frs_education_grants,
+        "uk_dsa_policy",
+        lambda period: frs_education_grants.UKDSAPolicy(
+            maximum=0.0,
+            instant=f"{period}-01-01",
+            source="test stub",
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "policyengine_uk", None)
+
+
 def test_driver_writes_spine_h5_sidecars_and_logbook(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -549,6 +760,8 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
     monkeypatch.delenv("POPULACE_LEDGER_URL", raising=False)
     monkeypatch.delenv("POPULACE_LEDGER_KEY", raising=False)
     monkeypatch.delenv("POPULACE_LEDGER_API_KEY", raising=False)
@@ -574,6 +787,8 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     assert len(frame.table("household")) == 2
     sidecar = json.loads(output.with_suffix(".build.json").read_text())
     assert sidecar["pipeline"] == "uk-frs-spine"
+    assert sidecar["schema_version"] == 2
+    assert sidecar["stages"] == list(tool._STAGE_NAMES)
     assert sidecar["entity_row_counts"] == {
         "person": 3,
         "benunit": 2,
@@ -582,7 +797,10 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     assert sidecar["household_weight_total"] == 30.0
     assert set(sidecar["artifact_pins"]) == set(FRS_SPINE_TABLES)
     share_payload = json.loads(shares.read_text())
-    assert share_payload["employment_income"] == pytest.approx(2 / 3)
+    assert share_payload["stages"]["frs_spine"]["employment_income"] == pytest.approx(
+        2 / 3
+    )
+    assert "education_grants" in share_payload["final"]
     rows = load_spool_rows(tmp_path / "logbook-spool")
     assert len(rows) == 1
     assert rows[0].pipeline == "uk-frs-spine"
@@ -602,6 +820,8 @@ def test_driver_writes_payload_identical_h5s(
     monkeypatch.setattr(
         tool, "load_country_spec", lambda country: _synthetic_spec(stage)
     )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
     monkeypatch.delenv("POPULACE_LEDGER_URL", raising=False)
     monkeypatch.delenv("POPULACE_LEDGER_KEY", raising=False)
     monkeypatch.delenv("POPULACE_LEDGER_API_KEY", raising=False)

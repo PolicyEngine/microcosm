@@ -38,13 +38,18 @@ from microcosm.build.gate_battery import (
     EvidenceContext,
     GateBinding,
 )
-from microcosm.build.gates import GateResult, weights_audit_gate
+from microcosm.build.gates import (
+    GateResult,
+    nonnegative_columns_gate,
+    weights_audit_gate,
+)
 from microcosm.build.uk_runtime.national_frame import _uk_gate_surface
 from microcosm.build.uk_runtime.release_input_coverage import (
     assert_uk_release_input_coverage_build_stages,
     assert_uk_release_input_coverage_manifest_current,
     uk_release_input_coverage_gate,
 )
+from microcosm.build.uk_runtime.source_runtime import UK_NONNEGATIVE_OUTPUTS_BY_STAGE
 from microcosm.build.uk_runtime.terminal_gates import (
     UKZeroWeightStratumDeclaration,
     _household_weights,
@@ -186,6 +191,39 @@ def _evaluate_source_coverage(
         name="source_coverage",
         passed=True,
         details={"stage_names": stage_names},
+    )
+
+
+def _evaluate_nonnegative_columns(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    if parameters:
+        raise ValueError(
+            "uk_nonnegative_columns takes no parameters; the checked columns "
+            "come from source_stages.json nonnegative_outputs."
+        )
+    # The required set is every nonnegative output declared by a stage the
+    # build actually scheduled — absence of a scheduled stage's declared
+    # column is a failure (the shared gate's missing-column path), while
+    # unscheduled stages' columns are not demanded. Never pre-filter to
+    # present columns: that would let a frame missing every declared output
+    # pass with columns_required=0.
+    stage_names = tuple(context.artifacts["build_stage_names"])
+    required = tuple(
+        dict.fromkeys(
+            column
+            for stage in stage_names
+            for column in UK_NONNEGATIVE_OUTPUTS_BY_STAGE.get(str(stage), ())
+        )
+    )
+    column_values: dict[str, Any] = {}
+    for entity in context.frame.entities:
+        table = context.frame.table(entity)
+        for column in table.columns:
+            column_values.setdefault(str(column), table[column])
+    return nonnegative_columns_gate(
+        column_values,
+        required,
     )
 
 
@@ -473,6 +511,11 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         artifact_keys=frozenset({"build_stage_names"}),
         needs_frame=False,
         evidence=_stage_names_evidence,
+    ),
+    "nonnegative_columns": UKGateBinding(
+        name="nonnegative_columns",
+        evaluator=_evaluate_nonnegative_columns,
+        artifact_keys=frozenset({"build_stage_names"}),
     ),
     "degenerate_release_surface": UKGateBinding(
         name="degenerate_release_surface",

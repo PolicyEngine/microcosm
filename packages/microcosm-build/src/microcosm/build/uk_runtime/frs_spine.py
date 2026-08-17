@@ -17,6 +17,26 @@ from microcosm.build.uk_runtime.national_frame import (
 )
 from microcosm.frame import Frame, WeightKind
 
+__all__ = [
+    "FRS_SPINE_TABLES",
+    "OUTPUT_COLUMNS",
+    "REGION_MAP",
+    "TIME_PERIOD",
+    "WEEKS_IN_YEAR",
+    "UKFRSSpineStageTransform",
+    "artifact_by_table",
+    "build_uk_frs_spine_frame",
+    "map_codes",
+    "normalize_ids",
+    "number",
+    "positive",
+    "raw_number",
+    "read_pinned_tab",
+    "reject_nan",
+    "sum_to_entity",
+    "uk_frs_spine_seed_frame",
+]
+
 FRS_SPINE_TABLES = (
     "accounts",
     "adult",
@@ -189,7 +209,6 @@ OUTPUT_COLUMNS = (
     "is_married",
     "dependent_children",
     "household_id",
-    "household_weight",
     "region",
     "tenure_type",
     "accommodation_type",
@@ -790,3 +809,14 @@ def _reject_nan(frame: pd.DataFrame, entity: str) -> None:
     if frame.isna().any().any():
         bad = sorted(frame.columns[frame.isna().any()].tolist())
         raise ValueError(f"FRS spine {entity} produced NaN column(s): {bad}.")
+
+
+artifact_by_table = _artifact_by_table
+read_pinned_tab = _read_pinned_tab
+normalize_ids = _normalize_ids
+sum_to_entity = _sum_to_entity
+map_codes = _map_codes
+number = _number
+raw_number = _raw_number
+positive = _positive
+reject_nan = _reject_nan

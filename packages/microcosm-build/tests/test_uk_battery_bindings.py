@@ -163,6 +163,9 @@ def _run_battery(tables, *, parity=None, fit_records=None, armed=True, clock=CLO
     artifacts: dict[str, object] = {
         "coverage_engine": object(),
         "exclusions_evaluated_on": clock,
+        # The staging pipeline's two scheduled stages declare no nonnegative
+        # outputs, so the nonnegative gate passes with zero required columns.
+        "build_stage_names": ("frs_hmrc_retained_leaves", "hmrc_spi_income"),
     }
     if fit_records is not None:
         artifacts["fit_weight_records"] = fit_records
@@ -208,6 +211,79 @@ class TestUKSurfaceAdapter:
         assert surface.time_period == "2023"
         assert surface.household_weight_kind is uk_household_weight_kind(frame)
         assert surface.mass_log == frame.mass_log
+
+    def _nonnegative_frame(self, *, sic: list[float] | None):
+        person, benunit, household = _tables()
+        if sic is not None:
+            person["sic_industry_division"] = sic
+        return uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household,
+            time_period="2023",
+        )
+
+    def test_nonnegative_binding_requires_scheduled_stage_columns(self) -> None:
+        # frs_employment declares sic_industry_division nonnegative; a build
+        # that scheduled the stage but lost the column must fail — the
+        # missing-column path is the reason the required set is never
+        # pre-filtered to present columns.
+        binding = UK_GATE_REGISTRY["nonnegative_columns"]
+        context = EvidenceContext(
+            frame=self._nonnegative_frame(sic=None),
+            artifacts={"build_stage_names": ("frs_employment",)},
+        )
+
+        result = binding.evaluate(context, {})
+
+        assert result.passed is False
+        assert "sic_industry_division" in result.failures[0]
+
+    def test_nonnegative_binding_fails_on_negative_values(self) -> None:
+        binding = UK_GATE_REGISTRY["nonnegative_columns"]
+        context = EvidenceContext(
+            frame=self._nonnegative_frame(sic=[1.0, -2.0, 3.0, 4.0]),
+            artifacts={"build_stage_names": ("frs_employment",)},
+        )
+
+        result = binding.evaluate(context, {})
+
+        assert result.name == "nonnegative_columns"
+        assert result.passed is False
+        assert (
+            "sic_industry_division: 1 finite value(s) below zero"
+            in result.failures[0]
+        )
+
+    def test_nonnegative_binding_passes_clean_scheduled_columns(self) -> None:
+        binding = UK_GATE_REGISTRY["nonnegative_columns"]
+        context = EvidenceContext(
+            frame=self._nonnegative_frame(sic=[1.0, 0.0, 3.0, 4.0]),
+            artifacts={"build_stage_names": ("frs_employment",)},
+        )
+
+        result = binding.evaluate(context, {})
+
+        assert result.passed is True
+
+    def test_nonnegative_binding_does_not_demand_unscheduled_stages(self) -> None:
+        # The national staging build schedules only the two HMRC stages,
+        # which declare no nonnegative outputs — the gate passes honestly
+        # with zero required columns rather than by silent pre-filtering.
+        binding = UK_GATE_REGISTRY["nonnegative_columns"]
+        context = EvidenceContext(
+            frame=self._nonnegative_frame(sic=None),
+            artifacts={
+                "build_stage_names": (
+                    "frs_hmrc_retained_leaves",
+                    "hmrc_spi_income",
+                )
+            },
+        )
+
+        result = binding.evaluate(context, {})
+
+        assert result.passed is True
 
 
 class TestUKCompatibility:
@@ -263,7 +339,9 @@ class TestBatteryRegressions:
         passed = [
             entry_id for entry_id, o in by_id.items() if o.status is GateStatus.PASSED
         ]
-        assert len(passed) == 10
+        # 11 with uk_nonnegative_columns: the scheduled stages declare no
+        # nonnegative outputs, so the gate passes with zero required columns.
+        assert len(passed) == 11
         qrf = by_id["uk_qrf_tail_concentration"]
         assert qrf.status is GateStatus.FAILED
         assert "declared QRF output is absent" in qrf.result.failures[0]

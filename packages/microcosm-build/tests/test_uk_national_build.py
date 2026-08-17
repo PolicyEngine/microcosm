@@ -890,6 +890,7 @@ def test_national_build_real_terminal_batch_passes_before_staging(
         "uk_weight_ess": "passed",
         "uk_weight_ratio": "passed",
         "uk_weights_audit": "passed",
+        "uk_nonnegative_columns": "passed",
         # The legacy report omitted unevidenced gates; the battery names
         # every gap — non-blocking off the release-candidate posture.
         "uk_export_surface": "evidence_absent",
