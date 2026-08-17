@@ -7,7 +7,7 @@ import re
 from pathlib import Path, PurePosixPath
 
 from microcosm.build.country_spec import ALLOWED_COUNTRY_RESOURCE_KINDS
-from microcosm.build.spec_engine import load_yaml12
+from microcosm.build.spec_engine import GENERATED_LOCK_FILENAMES, load_yaml12
 
 ROOT = Path(__file__).resolve().parents[3]
 COUNTRY_PACKAGE_ROOT = ROOT / "packages/microcosm-build/src/microcosm/build"
@@ -77,12 +77,17 @@ def test__given_country_package_manifests__then_resources_are_local_specs() -> N
             offenders.append(f"{country}: country mismatch")
         resource_rows = _resource_rows(manifest, country, offenders)
         resources = {path for path, _, _ in resource_rows}
-        expected_files = resources | {"country_package.json"}
         actual_files = {
             path.relative_to(root).as_posix()
             for path in root.rglob("*")
             if path.is_file()
         }
+        generated_locks = actual_files & GENERATED_LOCK_FILENAMES
+        expected_files = resources | {"country_package.json"} | generated_locks
+        for generated_lock in sorted(resources & GENERATED_LOCK_FILENAMES):
+            offenders.append(
+                f"{country}: generated lock is an authored resource {generated_lock}"
+            )
         for extra in sorted(actual_files - expected_files):
             offenders.append(f"{country}: unlisted resource {extra}")
         for resource, kind, schema_id in sorted(resource_rows):
@@ -164,7 +169,22 @@ def _collect_executable_content(
     if isinstance(value, dict):
         for key, child in value.items():
             child_location = f"{location}.{key}"
-            if _is_executable_key(key):
+            declared_kernel_loader = (
+                key == "loader"
+                and isinstance(child, str)
+                and child.startswith("kernel:")
+                and not _looks_like_python_entrypoint(child)
+            )
+            compiler_identity_field = _is_compiler_identity_field(
+                key=key,
+                value=child,
+                location=location,
+            )
+            if (
+                _is_executable_key(key)
+                and not declared_kernel_loader
+                and not compiler_identity_field
+            ):
                 offenders.append(child_location)
             _collect_executable_content(child, child_location, offenders)
     elif isinstance(value, list):
@@ -236,3 +256,29 @@ def _looks_like_python_entrypoint(value: str) -> bool:
             value,
         )
     )
+
+
+def _is_compiler_identity_field(*, key: str, value: object, location: str) -> bool:
+    """Admit inert legacy-identity fields inside the typed compiler surface.
+
+    F0 must reproduce the generation-0 resource-semantics receipt exactly, so
+    the imputation IR carries its historical ``module``/``callable`` labels.
+    They are data consumed by the constants adapter, never country entrypoints:
+    only a node's schema-bound virtual-resource record may contain them.  The
+    narrow location check preserves this test's refusal everywhere else.
+    """
+
+    virtual_resource_label = (
+        key in {"module", "callable"}
+        and isinstance(value, str)
+        and bool(value)
+        and re.search(r"\.virtual_resources(?:\.|\[)", location) is not None
+    )
+    generated_lock_count = (
+        key == "entry_count"
+        and type(value) is int
+        and location.endswith(
+            "engine_abi.lock.json.remaining_stage_input_manifest.receipt"
+        )
+    )
+    return virtual_resource_label or generated_lock_count

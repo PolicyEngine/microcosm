@@ -105,6 +105,15 @@ def _branch_valid(
     base_schema_id: str,
     registry: object,
 ) -> bool:
+    # Branch-local references need an explicit base document when evaluated
+    # outside the root validator.  Resolving them here avoids treating two
+    # failed ``$ref`` evaluations as two matches in the conservative fallback.
+    while "$ref" in branch:
+        branch, base_schema_id = _resolve_ref(
+            str(branch["$ref"]),
+            base_schema_id=base_schema_id,
+            registry=registry,
+        )
     checker = getattr(registry, "is_valid", None)
     if checker is not None:
         try:
@@ -292,8 +301,9 @@ def spec_envelope(
     country: str,
     schema_version: int,
     normative_files: Mapping[str, object],
+    resolved_bindings: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    return {
+    envelope: dict[str, object] = {
         "domain": SPEC_DOMAIN,
         "canonicalizer": {
             "id": CANONICALIZER_ID,
@@ -303,6 +313,9 @@ def spec_envelope(
         "country": country,
         "files": dict(normative_files),
     }
+    if resolved_bindings is not None:
+        envelope["resolved_bindings"] = dict(resolved_bindings)
+    return envelope
 
 
 def documentation_envelope(
@@ -321,4 +334,3 @@ def documentation_envelope(
         "country": country,
         "files": dict(documentation_files),
     }
-

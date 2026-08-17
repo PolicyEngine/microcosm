@@ -17,6 +17,7 @@ from .canonical import (
     sha256_json,
     spec_envelope,
 )
+from .engine_abi import ENGINE_ABI_LOCK_FILENAME, assert_engine_abi_lock_current
 from .errors import SpecValidationError
 from .model import (
     DOMAIN_TYPE_BY_KIND,
@@ -33,7 +34,7 @@ from .model import (
     freeze_json,
     thaw_json,
 )
-from .resolver import KernelRegistry, resolve_cross_references
+from .resolver import F0_KERNEL_REGISTRY, KernelRegistry, resolve_cross_references
 from .schemas import (
     SCHEMA_FILENAMES,
     SchemaRegistry,
@@ -45,7 +46,6 @@ from .yaml12 import load_yaml12
 SUPPORTED_SCHEMA_VERSION = 1
 BUNDLE_LOCK_FILENAME = "bundle.lock.json"
 PLAN_LOCK_FILENAME = "plan.lock.json"
-ENGINE_ABI_LOCK_FILENAME = "engine_abi.lock.json"
 GENERATED_LOCK_FILENAMES = frozenset(
     {BUNDLE_LOCK_FILENAME, PLAN_LOCK_FILENAME, ENGINE_ABI_LOCK_FILENAME}
 )
@@ -56,7 +56,6 @@ _AUTHORED_KINDS = frozenset(
     for kind in ResourceKind
     if kind not in {ResourceKind.SCHEMA, ResourceKind.LEGACY_JSON}
 )
-_EMPTY_KERNEL_REGISTRY = KernelRegistry.from_ids(())
 
 
 def _sha256_bytes(value: bytes) -> str:
@@ -67,7 +66,9 @@ def _read_bytes(resource: Traversable | Path, *, label: str) -> bytes:
     try:
         return resource.read_bytes()
     except OSError as error:
-        raise SpecValidationError(f"unable to read resource: {error}", source=label) from error
+        raise SpecValidationError(
+            f"unable to read resource: {error}", source=label
+        ) from error
 
 
 def _decode_utf8(raw: bytes, *, label: str) -> str:
@@ -77,7 +78,9 @@ def _decode_utf8(raw: bytes, *, label: str) -> str:
         raise SpecValidationError("resource is not UTF-8", source=label) from error
 
 
-def _resource_child(root: Traversable | Path, relative: PurePosixPath) -> Traversable | Path:
+def _resource_child(
+    root: Traversable | Path, relative: PurePosixPath
+) -> Traversable | Path:
     child: Traversable | Path = root
     for part in relative.parts:
         child = child.joinpath(part)
@@ -102,14 +105,18 @@ def _normalized_resource_path(value: object, *, row: int) -> PurePosixPath:
     if not isinstance(value, str) or not value:
         raise SpecValidationError(f"{location}: non-empty string required")
     if not _PATH_PATTERN.fullmatch(value) or "\\" in value:
-        raise SpecValidationError(f"{location}: invalid portable resource path {value!r}")
+        raise SpecValidationError(
+            f"{location}: invalid portable resource path {value!r}"
+        )
     path = PurePosixPath(value)
     if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
         raise SpecValidationError(f"{location}: path must be normalized and relative")
     if path.as_posix() != value:
         raise SpecValidationError(f"{location}: path is not normalized")
     if path.name in GENERATED_LOCK_FILENAMES:
-        raise SpecValidationError(f"{location}: generated locks cannot be authored resources")
+        raise SpecValidationError(
+            f"{location}: generated locks cannot be authored resources"
+        )
     return path
 
 
@@ -149,17 +156,29 @@ def _descriptors(manifest: Mapping[str, object]) -> tuple[ResourceDescriptor, ..
             )
         if kind in _AUTHORED_KINDS:
             seen_singletons.add(kind)
-        expected_suffix = ".json" if kind in {ResourceKind.SCHEMA, ResourceKind.LEGACY_JSON} else ".yaml"
-        if path.suffix not in ({".yaml", ".yml"} if expected_suffix == ".yaml" else {".json", ".jsonld"}):
+        expected_suffix = (
+            ".json"
+            if kind in {ResourceKind.SCHEMA, ResourceKind.LEGACY_JSON}
+            else ".yaml"
+        )
+        if path.suffix not in (
+            {".yaml", ".yml"} if expected_suffix == ".yaml" else {".json", ".jsonld"}
+        ):
             raise SpecValidationError(
                 f"country_package.json/resources/{index}/path: {kind.value} "
                 f"resource must use {expected_suffix}"
             )
         seen_paths.add(path)
-        descriptors.append(ResourceDescriptor(path=path, kind=kind, schema_id=schema_id))
+        descriptors.append(
+            ResourceDescriptor(path=path, kind=kind, schema_id=schema_id)
+        )
     if ResourceKind.BUNDLE not in seen_singletons:
-        raise SpecValidationError("country_package.json: exactly one bundle resource is required")
-    return tuple(sorted(descriptors, key=lambda row: (row.kind.value, row.path.as_posix())))
+        raise SpecValidationError(
+            "country_package.json: exactly one bundle resource is required"
+        )
+    return tuple(
+        sorted(descriptors, key=lambda row: (row.kind.value, row.path.as_posix()))
+    )
 
 
 def _actual_files(root: Traversable | Path) -> frozenset[str]:
@@ -206,10 +225,7 @@ def _assert_file_closure(
 
 
 def _grammar_receipt(registry: SchemaRegistry, schema_version: int) -> GrammarReceipt:
-    schema_set = {
-        name: registry.schemas[name]
-        for name in sorted(SCHEMA_FILENAMES)
-    }
+    schema_set = {name: registry.schemas[name] for name in sorted(SCHEMA_FILENAMES)}
     schema_digest = _sha256_bytes(canonical_json_bytes(schema_set))
     normalizer_digest = _sha256_bytes(
         canonical_json_bytes(
@@ -249,7 +265,9 @@ def load_bundle(
         source="country_package.json",
     )
     if not isinstance(manifest_value, Mapping):
-        raise SpecValidationError("manifest root must be an object", source="country_package.json")
+        raise SpecValidationError(
+            "manifest root must be an object", source="country_package.json"
+        )
     registry.validate(manifest_value, "resource_manifest.schema.json")
     manifest = registry.validate_and_inject_defaults(
         manifest_value, "resource_manifest.schema.json"
@@ -294,7 +312,9 @@ def load_bundle(
         path_text = descriptor.path.as_posix()
         resource = _resource_child(root, descriptor.path)
         if not resource.is_file():
-            raise SpecValidationError("declared resource is not a regular file", source=path_text)
+            raise SpecValidationError(
+                "declared resource is not a regular file", source=path_text
+            )
         raw = _read_bytes(resource, label=path_text)
         text = _decode_utf8(raw, label=path_text)
         parsed = load_yaml12(text, source=path_text)
@@ -302,22 +322,30 @@ def load_bundle(
             # Schema resources are grammar inputs and validated when the
             # registry is built; a country bundle does not normally repeat
             # them, but the manifest kind remains closed and meaningful.
-            if not isinstance(parsed, Mapping) or parsed.get("$id") != descriptor.schema_id:
-                raise SpecValidationError("schema resource $id mismatch", source=path_text)
+            if (
+                not isinstance(parsed, Mapping)
+                or parsed.get("$id") != descriptor.schema_id
+            ):
+                raise SpecValidationError(
+                    "schema resource $id mismatch", source=path_text
+                )
             normalized = freeze_json(parsed)
             projections = freeze_json(
-                {surface.value: (parsed if surface is Surface.NORMATIVE else {}) for surface in Surface}
+                {
+                    surface.value: (parsed if surface is Surface.NORMATIVE else {})
+                    for surface in Surface
+                }
             )
         elif descriptor.kind is ResourceKind.LEGACY_JSON:
             # Generation-0 compatibility data is transport-visible but is not
             # silently promoted into generation-1 semantic authority.
             normalized = freeze_json(parsed)
-            projections = freeze_json(
-                {surface.value: {} for surface in Surface}
-            )
+            projections = freeze_json({surface.value: {} for surface in Surface})
         else:
             registry.validate(parsed, descriptor.schema_id)
-            defaulted = registry.validate_and_inject_defaults(parsed, descriptor.schema_id)
+            defaulted = registry.validate_and_inject_defaults(
+                parsed, descriptor.schema_id
+            )
             normalized, projections = normalize_and_project(
                 defaulted,
                 schema_id=descriptor.schema_id,
@@ -333,7 +361,9 @@ def load_bundle(
                 descriptor=descriptor,
                 domain=domain,
                 file_receipt=receipt,
-                projections=projections if isinstance(projections, FrozenMap) else freeze_json(projections),  # type: ignore[arg-type]
+                projections=projections
+                if isinstance(projections, FrozenMap)
+                else freeze_json(projections),  # type: ignore[arg-type]
             )
         )
         projection_wire = thaw_json(projections)  # type: ignore[arg-type]
@@ -343,6 +373,15 @@ def load_bundle(
             if fragment != {}:
                 projections_by_surface[surface][path_text] = fragment
 
+    # Generated engine facts are reviewed evidence, not authored authority.
+    # Verify the fresh installed ABI against its pin and committed lock before
+    # cross-reference resolution compiles any part of the bundle.
+    engine_abi_lock = assert_engine_abi_lock_current(
+        root,
+        normalized_by_kind,
+        schema_registry=registry,
+    )
+
     bundle_country = _mapping_country(normalized_by_kind.get("bundle"))
     if bundle_country != country:
         raise SpecValidationError(
@@ -350,7 +389,14 @@ def load_bundle(
         )
     resolution = resolve_cross_references(
         normalized_by_kind,
-        kernel_registry=kernel_registry or _EMPTY_KERNEL_REGISTRY,
+        kernel_registry=(
+            F0_KERNEL_REGISTRY if kernel_registry is None else kernel_registry
+        ),
+        generated_authorities=(
+            {"engine_abi_lock": engine_abi_lock}
+            if engine_abi_lock is not None
+            else None
+        ),
     )
     grammar_receipt = _grammar_receipt(registry, schema_version)
     normative_files = projections_by_surface[Surface.NORMATIVE]
@@ -360,6 +406,14 @@ def load_bundle(
             country=country,
             schema_version=schema_version,
             normative_files=normative_files,
+            resolved_bindings={
+                "generated_authorities": thaw_json(resolution.generated_authorities),
+                "seed_protocol": resolution.seed_protocol.to_wire(),
+                "seed_site_bindings": [
+                    binding.to_wire() for binding in resolution.seed_site_bindings
+                ],
+                "vintage_authorities": thaw_json(resolution.vintage_authorities),
+            },
         )
     )
     documentation_hash = sha256_json(
@@ -394,6 +448,10 @@ def load_bundle(
         scopes=resolution.scopes,
         columns=resolution.columns,
         references=resolution.references,
+        vintage_authorities=resolution.vintage_authorities,
+        generated_authorities=resolution.generated_authorities,
+        seed_protocol=resolution.seed_protocol,
+        seed_site_bindings=resolution.seed_site_bindings,
         file_receipts=file_receipts,
         package_fingerprint=package_fingerprint,
         spec_sha256=spec_hash,
@@ -414,6 +472,12 @@ def bundle_lock_payload(spec: ResolvedSpec) -> dict[str, object]:
     return {
         "grammar_receipt": spec.grammar_receipt.to_wire(),
         "files": thaw_json(spec.file_receipts),
+        "generated_authorities": thaw_json(spec.generated_authorities),
+        "seed_protocol": spec.seed_protocol.to_wire(),
+        "seed_site_bindings": [
+            binding.to_wire() for binding in spec.seed_site_bindings
+        ],
+        "vintage_authorities": thaw_json(spec.vintage_authorities),
         "spec_sha256": spec.spec_sha256,
     }
 
@@ -439,4 +503,3 @@ __all__ = [
     "emit_bundle_lock",
     "load_bundle",
 ]
-

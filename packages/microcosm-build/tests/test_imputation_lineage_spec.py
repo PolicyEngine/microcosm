@@ -1,19 +1,12 @@
-"""The imputation lineage spec is the source of truth; the code must conform.
-
-``specs/us_imputation_lineage.yaml`` declares, per target family, which
-predictor set and which model draw every imputed variable, plus the model's
-attributes. These tests hold the running code to that declaration so a
-predictor set, target list, or model default can never change without the
-spec (and therefore the dashboard) changing with it.
-"""
+"""The dashboard and migration gates consume the one US imputation bundle."""
 
 from __future__ import annotations
 
-from pathlib import Path
+from collections import Counter
 
 import pytest
-import yaml
 
+from microcosm.build.spec_engine.typed_closure import compile_producer_outputs
 from microcosm.build.us_runtime.acs_transfer import (
     ACS_GROUP_TRANSFER_PREDICTORS,
     ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS,
@@ -27,78 +20,82 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_TRANSFER_GROUPS,
 )
 from microcosm.fit.qrf import DEFAULT_N_ESTIMATORS, DEFAULT_ZERO_ATOL
-
-SPEC_PATH = Path(__file__).resolve().parents[3] / "specs" / "us_imputation_lineage.yaml"
+from tools.emit_lineage_dashboard import emit
+from tools.us_bundle_generation.imputation import build_imputation
 
 
 @pytest.fixture(scope="module")
-def spec() -> dict:
-    return yaml.safe_load(SPEC_PATH.read_text(encoding="utf-8"))
+def spec() -> dict[str, object]:
+    return build_imputation()
 
 
-def _clean(name: str) -> str:
-    return name.replace("__acs_transfer_", "")
-
-
-def test_spec_declares_every_stage_family_and_target(spec: dict) -> None:
-    declared = {f["id"]: f for f in spec["imputed_families"]}
-
+def test_bundle_declares_every_legacy_transfer_family_and_target(
+    spec: dict[str, object],
+) -> None:
+    declared = {family["id"]: family for family in spec["families"]}
     live: dict[str, list[str]] = {}
     for direction in stacked_gap_fill_plan():
         for entity, families in dict(direction.target_families).items():
             for family, targets in families.items():
-                live[f"gap_fill/{direction.name}/{entity}/{family}"] = list(targets)
+                live[f"early/{direction.name}/{entity}/{family}"] = list(targets)
     for group in CANONICAL_US_LATE_TRANSFER_GROUPS:
-        live[f"late_transfer/{group.name}"] = list(group.targets)
+        live[f"late/{group.entity}/{group.family}"] = list(group.targets)
 
-    assert set(declared) == set(live), (
-        "spec families != live families; regenerate or amend the spec: "
-        f"missing={sorted(set(live) - set(declared))} "
-        f"stale={sorted(set(declared) - set(live))}"
-    )
+    assert set(live) <= set(declared)
     for family_id, targets in live.items():
-        assert declared[family_id]["targets"] == targets, family_id
+        assert [row["name"] for row in declared[family_id]["targets"]] == targets
 
 
-def test_every_imputed_family_names_a_declared_predictor_set_and_model(
-    spec: dict,
+def test_every_imputed_family_names_declared_predictors_and_model(
+    spec: dict[str, object],
 ) -> None:
-    sets = spec["predictor_sets"]
+    blocks = spec["predictor_blocks"]
     models = spec["models"]
-    for family in spec["imputed_families"]:
-        assert family["predictor_set"] in sets, family["id"]
+    for family in spec["families"]:
         assert family["model"] in models, family["id"]
+        assert family["predictors"], family["id"]
+        assert set(family["predictors"]) <= set(blocks), family["id"]
 
 
-def test_predictor_sets_match_the_code(spec: dict) -> None:
-    sets = spec["predictor_sets"]
-    assert sets["acs_person_transfer"]["required"] == [
-        _clean(c) for c in ACS_PERSON_TRANSFER_PREDICTORS
-    ]
-    assert sets["acs_person_transfer"]["optional"] == [
-        _clean(c) for c in ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS
-    ]
-    assert sets["acs_group_transfer"]["required"] == [
-        _clean(c) for c in ACS_GROUP_TRANSFER_PREDICTORS
-    ]
-    assert sets["puf_tax_detail"]["required"] == list(PUF_TAX_DETAIL_DEFAULT_PREDICTORS)
+def test_predictor_blocks_match_constants_era_oracle(spec: dict[str, object]) -> None:
+    blocks = spec["predictor_blocks"]
+    assert blocks["acs_person_required"]["columns"] == list(
+        ACS_PERSON_TRANSFER_PREDICTORS
+    )
+    assert blocks["acs_person_optional_income"]["columns"] + blocks[
+        "acs_person_optional_structure"
+    ]["columns"] == list(ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS)
+    assert blocks["acs_group_required"]["columns"] == list(
+        ACS_GROUP_TRANSFER_PREDICTORS
+    )
+    assert blocks["puf_tax_detail"]["columns"] == list(
+        PUF_TAX_DETAIL_DEFAULT_PREDICTORS
+    )
 
 
-def test_model_attributes_match_the_code(spec: dict) -> None:
-    model = spec["models"]["regime_gated_qrf"]
-    assert model["n_estimators"] == DEFAULT_N_ESTIMATORS
-    assert model["zero_atol"] == DEFAULT_ZERO_ATOL
-    assert model["implementation"] == "microcosm.fit.qrf.RegimeGatedQRF"
-    for family in spec["imputed_families"]:
-        if family["stage"] == "early_gap_fill":
+def test_model_and_split_attributes_match_constants_era_oracle(
+    spec: dict[str, object],
+) -> None:
+    params = spec["models"]["regime_gated_qrf"]["params"]
+    assert params["n_estimators"] == DEFAULT_N_ESTIMATORS
+    assert params["zero_atol"] == DEFAULT_ZERO_ATOL
+    for family in spec["families"]:
+        if family["stage"] == "gap_fill_stacked_spine":
             assert (
                 family["max_targets_per_fit"]
                 == DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT
             ), family["id"]
 
 
-def test_computed_producers_match_the_registry(spec: dict) -> None:
-    declared = {p["producer"]: p for p in spec["computed_producers"]}
+def test_non_transfer_producers_match_constants_era_registry(
+    spec: dict[str, object],
+) -> None:
+    compiled_outputs = compile_producer_outputs({"imputation": spec})
+    declared = {
+        node["name"]: node
+        for node in spec["producer_graph"]["nodes"]
+        if node["kind"] != "late_transfer"
+    }
     live = {
         name: producer
         for name, producer in CANONICAL_US_LATE_PRODUCER_REGISTRY.items()
@@ -106,19 +103,44 @@ def test_computed_producers_match_the_registry(spec: dict) -> None:
     }
     assert set(declared) == set(live)
     for name, producer in live.items():
-        assert declared[name]["outputs"] == [
-            getattr(o, "column", None) or getattr(o, "name", None) or str(o)
-            for o in producer.outputs
+        assert [row["column"] for row in compiled_outputs[name]] == [
+            getattr(output, "column", None)
+            or getattr(output, "name", None)
+            or str(output)
+            for output in producer.outputs
         ], name
 
 
-def test_every_target_appears_exactly_once(spec: dict) -> None:
-    seen: dict[str, str] = {}
-    for family in spec["imputed_families"]:
-        for target in family["targets"]:
-            key = f"{family['entity']}/{target}"
-            assert key not in seen, (
-                f"{key} declared by both {seen[key]} and {family['id']}"
-            )
-            seen[key] = family["id"]
-    assert len(seen) == 118
+def test_complete_bundle_family_inventory(spec: dict[str, object]) -> None:
+    counts = Counter(family["stage"] for family in spec["families"])
+    targets = Counter(
+        family["stage"] for family in spec["families"] for _target in family["targets"]
+    )
+    assert counts == {
+        "gap_fill_stacked_spine": 13,
+        "primary_puf_qrf": 1,
+        "late_producer_dag": 19,
+    }
+    assert targets == {
+        "gap_fill_stacked_spine": 48,
+        "primary_puf_qrf": 65,
+        "late_producer_dag": 70,
+    }
+    for family in spec["families"]:
+        keys = [(target["entity"], target["name"]) for target in family["targets"]]
+        assert len(keys) == len(set(keys)), family["id"]
+
+
+def test_dashboard_compiles_the_packaged_bundle_without_a_mirror_spec() -> None:
+    payload = emit()
+    assert payload["spec_binding"]["spec_sha256"] == payload["spec_sha256"]
+    assert payload["counts"] == {
+        "imputed_variables": 183,
+        "families": 33,
+        "computed_producers": 38,
+        "boolean": 45,
+        "amount": 132,
+        "categorical": 5,
+        "value_kinds": {"amount": 132, "category": 5, "count": 1, "flag": 45},
+    }
+    assert len(payload["known_gaps"]) == 1

@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "sources.schema.json",
- "title": "External inputs: logical ids + content pins. NO paths (operational); NO engine pin (vintages).",
+ "title": "External input pins and typed source stages with split semantic, documentation, and operational surfaces; no engine pin",
  "x-spec-surface": "normative",
  "type": "object",
  "additionalProperties": false,
@@ -43,9 +43,5224 @@
       "items": {
        "$ref": "defs.schema.json#/$defs/vintage_ref"
       }
+     },
+     "vintage_authorities": {
+      "type": "array",
+      "items": {
+       "$ref": "#/$defs/vintage_authority"
+      }
      }
     }
    }
+  },
+  "stage_asset": {
+   "$ref": "#/$defs/stage_asset"
+  },
+  "stage_manifest": {
+   "$ref": "#/$defs/stage_manifest"
+  },
+  "stages": {
+   "type": "array",
+   "minItems": 1,
+   "items": {
+    "$ref": "#/$defs/source_stage"
+   }
+  }
+ },
+ "$defs": {
+  "stage_asset": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "path",
+    "sha256"
+   ],
+   "properties": {
+    "id": {
+     "const": "source_stages"
+    },
+    "path": {
+     "const": "microcosm.build.us/source_stages.json",
+     "x-spec-surface": "operational"
+    },
+    "sha256": {
+     "$ref": "defs.schema.json#/$defs/sha256"
+    }
+   }
+  },
+  "vintage_authority": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "kind",
+    "value"
+   ],
+   "properties": {
+    "id": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "kind": {
+     "enum": [
+      "survey_period",
+      "tax_period",
+      "geography_vintage"
+     ]
+    },
+    "value": {
+     "type": [
+      "string",
+      "integer"
+     ]
+    }
+   }
+  },
+  "stage_manifest": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "version",
+    "country",
+    "policy"
+   ],
+   "properties": {
+    "version": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "country": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "policy": {
+     "type": "string",
+     "minLength": 1,
+     "x-spec-surface": "documentation"
+    }
+   }
+  },
+  "source_stage": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "artifacts": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/source_parameter_record"
+     }
+    },
+    "base_candidate": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "filename": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "revision": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "runtime_sha256_required": {
+       "type": "boolean"
+      },
+      "sha256": {
+       "$ref": "defs.schema.json#/$defs/sha256"
+      },
+      "size_bytes": {
+       "type": "number"
+      },
+      "tier": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "filename",
+      "revision",
+      "runtime_sha256_required",
+      "sha256",
+      "size_bytes",
+      "tier"
+     ]
+    },
+    "donor_relief_outputs": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "grain": {
+     "type": "string"
+    },
+    "nonnegative_outputs": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "notes": {
+     "type": "string",
+     "x-spec-surface": "documentation"
+    },
+    "official_table_components": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "operations": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "$ref": "#/$defs/source_parameter_record"
+     }
+    },
+    "output_weight_kind": {
+     "type": "string"
+    },
+    "output_weight_kind_rationale": {
+     "type": "string",
+     "x-spec-surface": "documentation"
+    },
+    "outputs": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "source": {
+     "type": "string",
+     "x-spec-surface": "operational"
+    },
+    "stage": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "survey": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "stage",
+    "survey",
+    "source",
+    "grain",
+    "operations",
+    "outputs"
+   ]
+  },
+  "source_parameter_record": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "basis": {
+       "type": "string"
+      },
+      "format": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "administrative_table"
+      },
+      "locator": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "mapped_build_period": {
+       "type": "number"
+      },
+      "measure": {
+       "type": "string"
+      },
+      "mime_type": {
+       "type": "string"
+      },
+      "period_mapping": {
+       "type": "string"
+      },
+      "publication": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "role": {
+       "type": "string"
+      },
+      "runtime_sha256_required": {
+       "type": "boolean"
+      },
+      "sha256": {
+       "$ref": "defs.schema.json#/$defs/sha256"
+      },
+      "sheets": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "size_bytes": {
+       "type": "number"
+      },
+      "source": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "survey": {
+       "type": "string"
+      },
+      "tax_year_start": {
+       "type": "number"
+      },
+      "vintage": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "format",
+      "kind",
+      "locator",
+      "vintage"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "format": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "administrative_validation_only"
+      },
+      "locator": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "measure": {
+       "type": "string"
+      },
+      "vintage": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "format",
+      "kind",
+      "locator",
+      "measure",
+      "vintage"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "aggregates": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "kind": {
+       "const": "aggregate_person_to_tax_unit"
+      },
+      "operation": {
+       "type": "string"
+      },
+      "person_table": {
+       "type": "string"
+      },
+      "person_tax_unit_id": {
+       "type": "string"
+      },
+      "tax_unit_id": {
+       "type": "string"
+      },
+      "tax_unit_table": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "aggregates",
+      "kind",
+      "operation",
+      "person_table",
+      "person_tax_unit_id",
+      "tax_unit_id",
+      "tax_unit_table"
+     ]
+    },
+    {
+     "type": "object",
+     "x-spec-surface": "documentation",
+     "additionalProperties": false,
+     "properties": {
+      "acs_lines": {
+       "type": "string"
+      },
+      "acs_path_parts": {
+       "type": "array",
+       "x-spec-surface": "operational",
+       "items": {
+        "type": "string"
+       }
+      },
+      "census_acs_lines": {
+       "type": "string"
+      },
+      "census_acs_path_parts": {
+       "type": "array",
+       "x-spec-surface": "operational",
+       "items": {
+        "type": "string"
+       }
+      },
+      "clone_lines": {
+       "type": "string"
+      },
+      "clone_path_parts": {
+       "type": "array",
+       "x-spec-surface": "operational",
+       "items": {
+        "type": "string"
+       }
+      },
+      "commit": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "export_lines": {
+       "type": "string"
+      },
+      "export_path_parts": {
+       "type": "array",
+       "x-spec-surface": "operational",
+       "items": {
+        "type": "string"
+       }
+      },
+      "hud_etl_lines": {
+       "type": "string"
+      },
+      "hud_etl_path_parts": {
+       "type": "array",
+       "x-spec-surface": "operational",
+       "items": {
+        "type": "string"
+       }
+      },
+      "imputation_lines": {
+       "type": "string"
+      },
+      "imputation_path_parts": {
+       "type": "array",
+       "x-spec-surface": "operational",
+       "items": {
+        "type": "string"
+       }
+      },
+      "kind": {
+       "const": "archived_derivation_evidence",
+       "x-spec-surface": "normative"
+      },
+      "lines": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "outputs": {
+       "type": "array",
+       "x-spec-surface": "normative",
+       "items": {
+        "type": "string"
+       }
+      },
+      "parameter_lines": {
+       "type": "string"
+      },
+      "parameter_path_parts": {
+       "type": "array",
+       "x-spec-surface": "operational",
+       "items": {
+        "type": "string"
+       }
+      },
+      "path_parts": {
+       "type": "array",
+       "x-spec-surface": "operational",
+       "items": {
+        "type": "string"
+       }
+      },
+      "puf_imputation_lines": {
+       "type": "string"
+      },
+      "puf_imputation_path_parts": {
+       "type": "array",
+       "x-spec-surface": "operational",
+       "items": {
+        "type": "string"
+       }
+      },
+      "puf_lines": {
+       "type": "string"
+      },
+      "puf_output_lines": {
+       "type": "string"
+      },
+      "puf_output_path_parts": {
+       "type": "array",
+       "x-spec-surface": "operational",
+       "items": {
+        "type": "string"
+       }
+      },
+      "puf_path_parts": {
+       "type": "array",
+       "x-spec-surface": "operational",
+       "items": {
+        "type": "string"
+       }
+      },
+      "puf_predictor_lines": {
+       "type": "string"
+      },
+      "randomness_lines": {
+       "type": "string"
+      },
+      "randomness_path_parts": {
+       "type": "array",
+       "x-spec-surface": "operational",
+       "items": {
+        "type": "string"
+       }
+      },
+      "rate_lines": {
+       "type": "string"
+      },
+      "rate_path_parts": {
+       "type": "array",
+       "x-spec-surface": "operational",
+       "items": {
+        "type": "string"
+       }
+      },
+      "repository_name_parts": {
+       "type": "array",
+       "x-spec-surface": "operational",
+       "items": {
+        "type": "string"
+       }
+      },
+      "repository_owner": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "source_declaration_lines": {
+       "type": "string"
+      },
+      "source_declaration_path_parts": {
+       "type": "array",
+       "x-spec-surface": "operational",
+       "items": {
+        "type": "string"
+       }
+      },
+      "source_lines": {
+       "type": "string"
+      },
+      "source_path_parts": {
+       "type": "array",
+       "x-spec-surface": "operational",
+       "items": {
+        "type": "string"
+       }
+      },
+      "take_up_lines": {
+       "type": "string"
+      },
+      "take_up_parameter_lines": {
+       "type": "string"
+      },
+      "take_up_parameter_path_parts": {
+       "type": "array",
+       "x-spec-surface": "operational",
+       "items": {
+        "type": "string"
+       }
+      },
+      "targets_lines": {
+       "type": "string"
+      },
+      "targets_path_parts": {
+       "type": "array",
+       "x-spec-surface": "operational",
+       "items": {
+        "type": "string"
+       }
+      }
+     },
+     "required": [
+      "commit",
+      "kind",
+      "lines",
+      "path_parts",
+      "repository_name_parts",
+      "repository_owner"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "age_bands": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "18_64": {
+         "type": "string"
+        },
+        "65_plus": {
+         "type": "string"
+        },
+        "under_18": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "18_64",
+        "65_plus",
+        "under_18"
+       ]
+      },
+      "assignment_unit": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "eligibility": {
+       "type": "string"
+      },
+      "fan_to_support_clones": {
+       "type": "boolean"
+      },
+      "kind": {
+       "const": "assign_binary_from_rate"
+      },
+      "method": {
+       "type": "string"
+      },
+      "output": {
+       "type": "string"
+      },
+      "rate_column": {
+       "type": "string"
+      },
+      "rate_derivation": {
+       "type": "string"
+      },
+      "rate_key": {
+       "type": "string"
+      },
+      "rate_target_role": {
+       "type": "string"
+      },
+      "reported_true_anchor": {
+       "type": "string"
+      },
+      "source": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "target_measure": {
+       "type": "string"
+      },
+      "target_period": {
+       "type": "string"
+      },
+      "target_source": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "employer_pays_all_code": {
+       "type": "number"
+      },
+      "employer_pays_some_code": {
+       "type": "number"
+      },
+      "family_plan_code": {
+       "type": "number"
+      },
+      "inputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "kind": {
+       "const": "assign_by_plan_type"
+      },
+      "owner_code": {
+       "type": "number"
+      },
+      "self_only_plan_code": {
+       "type": "number"
+      },
+      "source_unavailable_when_missing": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      }
+     },
+     "required": [
+      "employer_pays_all_code",
+      "employer_pays_some_code",
+      "family_plan_code",
+      "inputs",
+      "kind",
+      "owner_code",
+      "self_only_plan_code",
+      "source_unavailable_when_missing"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "employer_coverage_source": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "attribute_self_employed_health_premiums"
+      },
+      "medicare_age_source": {
+       "type": "string"
+      },
+      "medicare_age_threshold": {
+       "type": "number"
+      },
+      "medicare_ssdi_source": {
+       "type": "string"
+      },
+      "output_premiums": {
+       "type": "string"
+      },
+      "output_self_employed_flag": {
+       "type": "string"
+      },
+      "reported_source": {
+       "type": "string"
+      },
+      "self_employment_income_sources": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      }
+     },
+     "required": [
+      "employer_coverage_source",
+      "kind",
+      "medicare_age_source",
+      "medicare_age_threshold",
+      "medicare_ssdi_source",
+      "output_premiums",
+      "output_self_employed_flag",
+      "reported_source",
+      "self_employment_income_sources"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "domain": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "calibrate_binary_assignment"
+      },
+      "preserve_true_anchor": {
+       "type": "string"
+      },
+      "preserve_true_anchors": {
+       "type": "boolean"
+      },
+      "targets": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "variable": {
+       "type": "string"
+      },
+      "weight": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "domain",
+      "draw",
+      "kind",
+      "targets",
+      "variable",
+      "weight"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "amount_targets": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "amount_weight": {
+       "type": "string"
+      },
+      "count_targets": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "count_weight": {
+       "type": "string"
+      },
+      "domain": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "calibrate_binary_assignment_joint_targets"
+      },
+      "optional": {
+       "type": "boolean"
+      },
+      "preserve_true_anchor": {
+       "type": "string"
+      },
+      "preserve_true_anchors": {
+       "type": "boolean"
+      },
+      "variable": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "amount_targets",
+      "amount_weight",
+      "count_targets",
+      "count_weight",
+      "domain",
+      "draw",
+      "kind",
+      "optional",
+      "preserve_true_anchor",
+      "preserve_true_anchors",
+      "variable"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "adjudication": {
+       "type": "string"
+      },
+      "calibrated_facts_unchanged": {
+       "type": "string"
+      },
+      "calibration_permitted": {
+       "type": "boolean"
+      },
+      "classification_rationale": {
+       "type": "string"
+      },
+      "fact_fence_id": {
+       "type": "string"
+      },
+      "fenced_fact_composition": {
+       "type": "string"
+      },
+      "fenced_fact_count": {
+       "type": "number"
+      },
+      "kind": {
+       "const": "classify_cgt_band_facts_with_reviewed_fence"
+      },
+      "promotion_path": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "adjudication",
+      "calibrated_facts_unchanged",
+      "calibration_permitted",
+      "classification_rationale",
+      "fact_fence_id",
+      "fenced_fact_composition",
+      "fenced_fact_count",
+      "kind",
+      "promotion_path"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "blocked_dependency": {
+       "type": "string"
+      },
+      "breakdown_dependency": {
+       "type": "string"
+      },
+      "calibration_permitted": {
+       "type": "boolean"
+      },
+      "classification_rationale": {
+       "type": "string"
+      },
+      "components": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "fact_fence_id": {
+       "type": "string"
+      },
+      "fail_on_fact_count_mismatch": {
+       "type": "boolean"
+      },
+      "fail_on_unfenced_exclusion": {
+       "type": "boolean"
+      },
+      "forbid_biased_estimate_or_delta": {
+       "type": "boolean"
+      },
+      "frs_breakdown_status": {
+       "type": "string"
+      },
+      "input_weight_kind": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "classify_hmrc_income_facts_with_reviewed_fences"
+      },
+      "outcome_counts": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "directional_fail": {
+         "type": "number"
+        },
+        "directional_pass": {
+         "type": "number"
+        },
+        "exact_fail": {
+         "type": "number"
+        },
+        "exact_pass": {
+         "type": "number"
+        },
+        "excluded_with_fence": {
+         "type": "number"
+        }
+       },
+       "required": [
+        "directional_fail",
+        "directional_pass",
+        "exact_fail",
+        "exact_pass",
+        "excluded_with_fence"
+       ]
+      },
+      "output_weight_kind": {
+       "type": "string"
+      },
+      "required_fact_count": {
+       "type": "number"
+      },
+      "reviewed_fences": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "constituents": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "dependent_fence_ids": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "fence_id": {
+          "type": "string"
+         },
+         "finding": {
+          "type": "string"
+         },
+         "mass_implication": {
+          "type": "string"
+         },
+         "rationale": {
+          "type": "string"
+         },
+         "raw_sources_searched": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         }
+        },
+        "required": [
+         "constituents",
+         "dependent_fence_ids",
+         "fence_id",
+         "finding",
+         "mass_implication",
+         "rationale",
+         "raw_sources_searched"
+        ]
+       }
+      },
+      "target_operation": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "blocked_dependency",
+      "breakdown_dependency",
+      "calibration_permitted",
+      "classification_rationale",
+      "components",
+      "fact_fence_id",
+      "fail_on_fact_count_mismatch",
+      "fail_on_unfenced_exclusion",
+      "forbid_biased_estimate_or_delta",
+      "frs_breakdown_status",
+      "input_weight_kind",
+      "kind",
+      "outcome_counts",
+      "output_weight_kind",
+      "required_fact_count",
+      "reviewed_fences",
+      "target_operation"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "denominator": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "compute_ratio"
+      },
+      "numerator": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "output": {
+       "type": "string"
+      },
+      "where": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "denominator",
+      "kind",
+      "numerator",
+      "output",
+      "where"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "convert_interest_to_structural_mortgage_inputs"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "declare_income_reference_offset"
+      },
+      "notes": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "years": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "kind",
+      "notes",
+      "years"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "allocation": {
+       "type": "string"
+      },
+      "annual_qualifying_loan_target": {
+       "type": "number"
+      },
+      "archived_processed_puf_disaggregation_seed": {
+       "type": "number"
+      },
+      "auto_loan_amount_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "auto_loan_rate_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "band_alignment": {
+       "type": "string"
+      },
+      "banding_period": {
+       "type": "string"
+      },
+      "banding_variable": {
+       "type": "string"
+      },
+      "floor_negative_source_values": {
+       "type": "boolean"
+      },
+      "from": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "inputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "kind": {
+       "const": "derive"
+      },
+      "method": {
+       "type": "string"
+      },
+      "mortgage_output": {
+       "type": "string"
+      },
+      "net_worth_source_column": {
+       "type": "string"
+      },
+      "non_mortgage_output": {
+       "type": "string"
+      },
+      "notes": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "one_source_per_household": {
+       "type": "boolean"
+      },
+      "outlier_screen_before_split": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "maximum": {
+         "type": "number"
+        },
+        "variable": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "maximum",
+        "variable"
+       ]
+      },
+      "output": {
+       "type": "string"
+      },
+      "outputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "period_in_seed": {
+       "type": "boolean"
+      },
+      "published_home_mortgage_column": {
+       "type": "string"
+      },
+      "published_source_year": {
+       "type": "number"
+      },
+      "published_total_column": {
+       "type": "string"
+      },
+      "rate_divisor": {
+       "type": "number"
+      },
+      "raw_total": {
+       "type": "string"
+      },
+      "rotation_groups": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "scf_probability": {
+       "type": "number"
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "source": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "child_qualifying_age_limit": {
+       "type": "number"
+      },
+      "childcare_expense_source": {
+       "type": "string"
+      },
+      "earned_income_sources": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "full_time_student_source": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "derive_adult_care_inputs"
+      },
+      "output_expenses": {
+       "type": "string"
+      },
+      "output_flag": {
+       "type": "string"
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "self_care_difficulty_source": {
+       "type": "string"
+      },
+      "support_channel_source": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "child_qualifying_age_limit",
+      "childcare_expense_source",
+      "earned_income_sources",
+      "full_time_student_source",
+      "kind",
+      "output_expenses",
+      "output_flag",
+      "seed_from_build_config",
+      "self_care_difficulty_source",
+      "support_channel_source"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "expense_output": {
+       "type": "string"
+      },
+      "expense_source": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "derive_child_support_inputs"
+      },
+      "received_output": {
+       "type": "string"
+      },
+      "received_source": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "expense_output",
+      "expense_source",
+      "kind",
+      "received_output",
+      "received_source"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "derive_childcare_inputs"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "first_amount_source": {
+       "type": "string"
+      },
+      "first_code_source": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "derive_disability_benefits"
+      },
+      "output": {
+       "type": "string"
+      },
+      "second_amount_source": {
+       "type": "string"
+      },
+      "second_code_source": {
+       "type": "string"
+      },
+      "workers_compensation_code": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "first_amount_source",
+      "first_code_source",
+      "kind",
+      "output",
+      "second_amount_source",
+      "second_code_source",
+      "workers_compensation_code"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "derive_education_inputs"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "derive_eligibility_inputs"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "derive_energy_subsidy"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "derive_hours_worked"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "household_tenure_map": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "0": {
+         "type": "string"
+        },
+        "1": {
+         "type": "string"
+        },
+        "2": {
+         "type": "string"
+        },
+        "3": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "0",
+        "1",
+        "2",
+        "3"
+       ]
+      },
+      "household_tenure_source": {
+       "type": "string"
+      },
+      "housing_assistance_source": {
+       "type": "string"
+      },
+      "housing_take_up_assignment": {
+       "type": "string"
+      },
+      "housing_take_up_output": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "derive_housing_tenure_inputs"
+      },
+      "spm_tenure_map": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "1": {
+         "type": "string"
+        },
+        "2": {
+         "type": "string"
+        },
+        "3": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "1",
+        "2",
+        "3"
+       ]
+      },
+      "spm_tenure_source": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "household_tenure_map",
+      "household_tenure_source",
+      "housing_assistance_source",
+      "housing_take_up_assignment",
+      "housing_take_up_output",
+      "kind",
+      "spm_tenure_map",
+      "spm_tenure_source"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "derive_immigration_status"
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "time_period_from_build_config": {
+       "type": "boolean"
+      },
+      "undocumented_population_anchor": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "source": {
+         "type": "string",
+         "x-spec-surface": "operational"
+        },
+        "value": {
+         "type": "number"
+        }
+       },
+       "required": [
+        "source",
+        "value"
+       ]
+      },
+      "undocumented_students": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "source": {
+         "type": "string",
+         "x-spec-surface": "operational"
+        },
+        "target": {
+         "type": "number"
+        }
+       },
+       "required": [
+        "source",
+        "target"
+       ]
+      },
+      "undocumented_workers": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "source": {
+         "type": "string",
+         "x-spec-surface": "operational"
+        },
+        "target": {
+         "type": "number"
+        }
+       },
+       "required": [
+        "source",
+        "target"
+       ]
+      }
+     },
+     "required": [
+      "kind",
+      "seed_from_build_config",
+      "time_period_from_build_config",
+      "undocumented_population_anchor",
+      "undocumented_students",
+      "undocumented_workers"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "enrolled_code": {
+       "type": "number"
+      },
+      "kind": {
+       "const": "derive_medicare_take_up"
+      },
+      "output": {
+       "type": "string"
+      },
+      "source": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "enrolled_code",
+      "kind",
+      "output",
+      "source"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "inputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "kind": {
+       "const": "derive_mortgage_balance_hints"
+      }
+     },
+     "required": [
+      "inputs",
+      "kind"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "chip_premium_source": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "derive_other_health_insurance_premiums"
+      },
+      "marketplace_net_premium_source": {
+       "type": "string"
+      },
+      "medicaid_premium_source": {
+       "type": "string"
+      },
+      "output": {
+       "type": "string"
+      },
+      "reported_source": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "chip_premium_source",
+      "kind",
+      "marketplace_net_premium_source",
+      "medicaid_premium_source",
+      "output",
+      "reported_source"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "derive_pregnancy"
+      },
+      "pregnancy_rate": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "source": {
+         "type": "string",
+         "x-spec-surface": "operational"
+        },
+        "value": {
+         "type": "number"
+        }
+       },
+       "required": [
+        "source",
+        "value"
+       ]
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "kind",
+      "pregnancy_rate",
+      "seed_from_build_config"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "employment_allocation_flag": {
+       "type": "string"
+      },
+      "employment_source": {
+       "type": "string"
+      },
+      "fallback_to_current": {
+       "type": "boolean"
+      },
+      "kind": {
+       "const": "derive_prior_year_income"
+      },
+      "no_prior_artifact": {
+       "type": "string"
+      },
+      "person_id": {
+       "type": "string"
+      },
+      "prior_year_offset": {
+       "type": "number"
+      },
+      "self_employment_allocation_flag": {
+       "type": "string"
+      },
+      "self_employment_source": {
+       "type": "string"
+      },
+      "sentinels": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "source_year": {
+       "type": "string"
+      },
+      "unallocated_flag": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "employment_allocation_flag",
+      "employment_source",
+      "fallback_to_current",
+      "kind",
+      "no_prior_artifact",
+      "person_id",
+      "prior_year_offset",
+      "self_employment_allocation_flag",
+      "self_employment_source",
+      "sentinels",
+      "source_year",
+      "unallocated_flag"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "alimony_expense_output": {
+       "type": "string"
+      },
+      "alimony_expense_source": {
+       "type": "string"
+      },
+      "alimony_income_output": {
+       "type": "string"
+      },
+      "alimony_income_source": {
+       "type": "string"
+      },
+      "casualty_loss_output": {
+       "type": "string"
+      },
+      "casualty_loss_source": {
+       "type": "string"
+      },
+      "collectibles_capital_gain_output": {
+       "type": "string"
+      },
+      "collectibles_capital_gain_source": {
+       "type": "string"
+      },
+      "domestic_production_ald_output": {
+       "type": "string"
+      },
+      "domestic_production_ald_source": {
+       "type": "string"
+      },
+      "educator_expense_output": {
+       "type": "string"
+      },
+      "educator_expense_source": {
+       "type": "string"
+      },
+      "farm_operations_income_output": {
+       "type": "string"
+      },
+      "farm_operations_income_source": {
+       "type": "string"
+      },
+      "farm_rent_income_output": {
+       "type": "string"
+      },
+      "farm_rent_income_source": {
+       "type": "string"
+      },
+      "investment_income_elected_form_4952_output": {
+       "type": "string"
+      },
+      "investment_income_elected_form_4952_source": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "derive_puf_policyengine_variables"
+      },
+      "non_qualified_dividend_output": {
+       "type": "string"
+      },
+      "ordinary_dividend_source": {
+       "type": "string"
+      },
+      "qualified_dividend_output": {
+       "type": "string"
+      },
+      "qualified_dividend_source": {
+       "type": "string"
+      },
+      "qualified_tuition_optional_source": {
+       "type": "string"
+      },
+      "qualified_tuition_output": {
+       "type": "string"
+      },
+      "qualified_tuition_primary_source": {
+       "type": "string"
+      },
+      "salt_refund_income_output": {
+       "type": "string"
+      },
+      "salt_refund_income_source": {
+       "type": "string"
+      },
+      "unrecaptured_section_1250_gain_output": {
+       "type": "string"
+      },
+      "unrecaptured_section_1250_gain_source": {
+       "type": "string"
+      },
+      "unreimbursed_business_employee_expenses_output": {
+       "type": "string"
+      },
+      "unreimbursed_business_employee_expenses_source": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "alimony_expense_output",
+      "alimony_expense_source",
+      "alimony_income_output",
+      "alimony_income_source",
+      "casualty_loss_output",
+      "casualty_loss_source",
+      "collectibles_capital_gain_output",
+      "collectibles_capital_gain_source",
+      "domestic_production_ald_output",
+      "domestic_production_ald_source",
+      "educator_expense_output",
+      "educator_expense_source",
+      "farm_operations_income_output",
+      "farm_operations_income_source",
+      "farm_rent_income_output",
+      "farm_rent_income_source",
+      "investment_income_elected_form_4952_output",
+      "investment_income_elected_form_4952_source",
+      "kind",
+      "non_qualified_dividend_output",
+      "ordinary_dividend_source",
+      "qualified_dividend_output",
+      "qualified_dividend_source",
+      "qualified_tuition_optional_source",
+      "qualified_tuition_output",
+      "qualified_tuition_primary_source",
+      "salt_refund_income_output",
+      "salt_refund_income_source",
+      "unrecaptured_section_1250_gain_output",
+      "unrecaptured_section_1250_gain_source",
+      "unreimbursed_business_employee_expenses_output",
+      "unreimbursed_business_employee_expenses_source"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "derive_relationship_inputs"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "dc_share_of_remainder": {
+       "type": "number"
+      },
+      "kind": {
+       "const": "derive_retirement_contributions"
+      },
+      "roth_dc_share": {
+       "type": "number"
+      },
+      "se_pension_share": {
+       "type": "number"
+      },
+      "traditional_ira_share": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "dc_share_of_remainder",
+      "kind",
+      "roth_dc_share",
+      "se_pension_share",
+      "traditional_ira_share"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "derive_retirement_distributions"
+      },
+      "output_by_account_code": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "1": {
+         "type": "string"
+        },
+        "2": {
+         "type": "string"
+        },
+        "3": {
+         "type": "string"
+        },
+        "4": {
+         "type": "string"
+        },
+        "5": {
+         "type": "string"
+        },
+        "6": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6"
+       ]
+      }
+     },
+     "required": [
+      "kind",
+      "output_by_account_code"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "exemption_rate": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "source": {
+         "type": "string",
+         "x-spec-surface": "operational"
+        },
+        "value": {
+         "type": "number"
+        }
+       },
+       "required": [
+        "source",
+        "value"
+       ]
+      },
+      "kind": {
+       "const": "derive_snap_abawd_discretionary_exemption"
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "exemption_rate",
+      "kind",
+      "seed_from_build_config"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "derive_snap_take_up"
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "take_up_rate": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "source": {
+         "type": "string",
+         "x-spec-surface": "operational"
+        },
+        "value": {
+         "type": "number"
+        }
+       },
+       "required": [
+        "source",
+        "value"
+       ]
+      }
+     },
+     "required": [
+      "kind",
+      "seed_from_build_config",
+      "take_up_rate"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "derive_weeks_unemployed"
+      },
+      "niu_replacement": {
+       "type": "number"
+      },
+      "niu_value": {
+       "type": "number"
+      },
+      "output": {
+       "type": "string"
+      },
+      "source": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "niu_replacement",
+      "niu_value",
+      "output",
+      "source"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "category_rates": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "source": {
+         "type": "string",
+         "x-spec-surface": "operational"
+        },
+        "values": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "breastfeeding": {
+           "type": "number"
+          },
+          "child": {
+           "type": "number"
+          },
+          "infant": {
+           "type": "number"
+          },
+          "none": {
+           "type": "number"
+          },
+          "postpartum": {
+           "type": "number"
+          },
+          "pregnant": {
+           "type": "number"
+          }
+         },
+         "required": [
+          "breastfeeding",
+          "child",
+          "infant",
+          "none",
+          "postpartum",
+          "pregnant"
+         ]
+        },
+        "vintage": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "source",
+        "values",
+        "vintage"
+       ]
+      },
+      "kind": {
+       "const": "derive_wic_claim"
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "category_rates",
+      "kind",
+      "seed_from_build_config"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "derive_workers_compensation"
+      },
+      "output": {
+       "type": "string"
+      },
+      "source": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "output",
+      "source"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "inputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "kind": {
+       "const": "derived_from_prior_stages"
+      }
+     },
+     "required": [
+      "inputs",
+      "kind"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "amount_columns": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "disaggregate_aggregate_records"
+      },
+      "method": {
+       "type": "string"
+      },
+      "replace_records": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "spec": {
+       "type": "string"
+      },
+      "weight": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "amount_columns",
+      "kind",
+      "method",
+      "replace_records",
+      "seed_from_build_config",
+      "spec",
+      "weight"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "allocation_flag_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "kind": {
+       "const": "fit_tip_income_model"
+      },
+      "observed_status_values": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "source_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      }
+     },
+     "required": [
+      "allocation_flag_columns",
+      "kind",
+      "observed_status_values",
+      "predictors",
+      "source_columns"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "count_model": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "fit_vehicle_model"
+      },
+      "n_estimators": {
+       "type": "number"
+      },
+      "observed_status_values": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "owned_allocation_flag": {
+       "type": "string"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "seed": {
+       "type": "number"
+      },
+      "training_sample_cap": {
+       "type": "number"
+      },
+      "value_allocation_flags": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "value_model": {
+       "type": "string"
+      },
+      "weight": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "count_model",
+      "kind",
+      "n_estimators",
+      "observed_status_values",
+      "owned_allocation_flag",
+      "predictors",
+      "seed",
+      "training_sample_cap",
+      "value_allocation_flags",
+      "value_model",
+      "weight"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "head_carry_output": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "fit_weighted_acs_rent_qrf"
+      },
+      "max_train_samples": {
+       "type": "number"
+      },
+      "n_estimators": {
+       "type": "number"
+      },
+      "per_target_initial_cap": {
+       "type": "number"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "sample_fill_salt": {
+       "type": "string"
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "shared_sample_targets": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "target": {
+       "type": "string"
+      },
+      "target_allocation_flags": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "real_estate_taxes": {
+         "type": "string"
+        },
+        "rent": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "real_estate_taxes",
+        "rent"
+       ]
+      },
+      "training_seed_name": {
+       "type": "string"
+      },
+      "weight": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "head_carry_output",
+      "kind",
+      "max_train_samples",
+      "n_estimators",
+      "per_target_initial_cap",
+      "predictors",
+      "sample_fill_salt",
+      "seed_from_build_config",
+      "shared_sample_targets",
+      "target",
+      "target_allocation_flags",
+      "training_seed_name",
+      "weight"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "age_domain": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "assignment_unit": {
+       "type": "string"
+      },
+      "canonical_unit": {
+       "type": "string"
+      },
+      "dependent_exclusion": {
+       "type": "string"
+      },
+      "direct_response_filter": {
+       "type": "string"
+      },
+      "donor": {
+       "type": "string"
+      },
+      "excluded_statuses": {
+       "type": "string"
+      },
+      "fan_to_support_clones": {
+       "type": "boolean"
+      },
+      "financial_asset_targets": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "kind": {
+       "const": "fit_weighted_qrf"
+      },
+      "label_allocation_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "label_source_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "max_train_samples": {
+       "type": "number"
+      },
+      "model_seed": {
+       "type": "number"
+      },
+      "n_estimators": {
+       "type": "number"
+      },
+      "net_worth_signed": {
+       "type": "boolean"
+      },
+      "net_worth_target": {
+       "type": "string"
+      },
+      "postprediction_signal_predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "predictor_mapping": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "age": {
+         "type": "string"
+        },
+        "count_under_18": {
+         "type": "string"
+        },
+        "count_under_6": {
+         "type": "string"
+        },
+        "dividend_income": {
+         "type": "string"
+        },
+        "employment_income": {
+         "type": "string"
+        },
+        "household_size": {
+         "type": "string"
+        },
+        "interest_income": {
+         "type": "string"
+        },
+        "is_female": {
+         "type": "string"
+        },
+        "is_married": {
+         "type": "string"
+        },
+        "non_ssi_income": {
+         "type": "string"
+        },
+        "rental_income": {
+         "type": "string"
+        },
+        "retirement_income": {
+         "type": "string"
+        },
+        "social_security": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "age",
+        "count_under_18",
+        "count_under_6",
+        "dividend_income",
+        "employment_income",
+        "household_size",
+        "interest_income",
+        "is_female",
+        "is_married",
+        "non_ssi_income",
+        "rental_income",
+        "retirement_income",
+        "social_security"
+       ]
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "preserve_under_65_asec_ssi_reporters": {
+       "type": "boolean"
+      },
+      "response_filter": {
+       "type": "string"
+      },
+      "sample_with_replacement": {
+       "type": "boolean"
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "structural_no_filters": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "target": {
+       "type": "string"
+      },
+      "target_balanced_max_train_samples": {
+       "type": "number"
+      },
+      "target_specific_allocation_status_masks": {
+       "type": "boolean"
+      },
+      "targets": {
+       "oneOf": [
+        {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "bank_account_assets": {
+           "type": "string"
+          },
+          "bond_assets": {
+           "type": "string"
+          },
+          "stock_assets": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "bank_account_assets",
+          "bond_assets",
+          "stock_assets"
+         ]
+        }
+       ]
+      },
+      "training_candidate": {
+       "type": "string"
+      },
+      "training_sample_seed": {
+       "type": "number"
+      },
+      "training_sample_seed_name": {
+       "type": "string"
+      },
+      "weight": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "predictors"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "assessable_income_source_semantics": {
+       "type": "string"
+      },
+      "categorical_predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "derived_policyengine_outputs": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "employment_income": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "derive_after_draw": {
+           "type": "boolean"
+          },
+          "formula": {
+           "type": "string"
+          },
+          "source_columns": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          }
+         },
+         "required": [
+          "derive_after_draw",
+          "formula",
+          "source_columns"
+         ]
+        }
+       },
+       "required": [
+        "employment_income"
+       ]
+      },
+      "double_apply_source_weight": {
+       "type": "boolean"
+      },
+      "employment_income_source_semantics": {
+       "type": "string"
+      },
+      "fit_weight_kind": {
+       "type": "string"
+      },
+      "hmrc_employed_income_source_semantics": {
+       "type": "string"
+      },
+      "joint_draw": {
+       "type": "boolean"
+      },
+      "kind": {
+       "const": "fit_weighted_qrf_stage1"
+      },
+      "outputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "post_sample_fit_weight": {
+       "type": "string"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "require_all_outputs": {
+       "type": "boolean"
+      },
+      "require_all_predictors": {
+       "type": "boolean"
+      },
+      "sample_size": {
+       "type": "number"
+      },
+      "sample_with_replacement": {
+       "type": "boolean"
+      },
+      "savings_interest_source_semantics": {
+       "type": "string"
+      },
+      "self_employment_income_source_semantics": {
+       "type": "string"
+      },
+      "source_columns": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "charitable_investment_gifts": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "dividend_income": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "gift_aid": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "hmrc_spi_employment_benefits": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "hmrc_spi_employment_expenses": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "hmrc_spi_incapacity_benefit_income": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "hmrc_spi_miscellaneous_employment_income": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "hmrc_spi_other_income": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "hmrc_spi_other_social_security_income": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "hmrc_spi_pay": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "hmrc_spi_state_pension_income": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "hmrc_spi_taxable_termination_pay": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "hmrc_spi_unemployment_benefit_income": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "other_investment_income": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "private_pension_income": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "property_income": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "savings_interest_income": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "self_employment_income": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        }
+       },
+       "required": [
+        "charitable_investment_gifts",
+        "dividend_income",
+        "gift_aid",
+        "hmrc_spi_employment_benefits",
+        "hmrc_spi_employment_expenses",
+        "hmrc_spi_incapacity_benefit_income",
+        "hmrc_spi_miscellaneous_employment_income",
+        "hmrc_spi_other_income",
+        "hmrc_spi_other_social_security_income",
+        "hmrc_spi_pay",
+        "hmrc_spi_state_pension_income",
+        "hmrc_spi_taxable_termination_pay",
+        "hmrc_spi_unemployment_benefit_income",
+        "other_investment_income",
+        "private_pension_income",
+        "property_income",
+        "savings_interest_income",
+        "self_employment_income"
+       ]
+      },
+      "source_leaf_reconciliation": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "composite_indicator": {
+         "type": "string"
+        },
+        "documentation_url": {
+         "type": "string",
+         "x-spec-surface": "operational"
+        },
+        "formulas": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "TEI": {
+           "type": "string"
+          },
+          "TI": {
+           "type": "string"
+          },
+          "TII": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "TEI",
+          "TI",
+          "TII"
+         ]
+        },
+        "maximum_absolute_difference_gbp": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "composite": {
+           "type": "object",
+           "additionalProperties": false,
+           "properties": {
+            "TEI": {
+             "type": "number"
+            },
+            "TI": {
+             "type": "number"
+            },
+            "TII": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "TEI",
+            "TI",
+            "TII"
+           ]
+          },
+          "ordinary": {
+           "type": "object",
+           "additionalProperties": false,
+           "properties": {
+            "TEI": {
+             "type": "number"
+            },
+            "TI": {
+             "type": "number"
+            },
+            "TII": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "TEI",
+            "TI",
+            "TII"
+           ]
+          }
+         },
+         "required": [
+          "composite",
+          "ordinary"
+         ]
+        },
+        "rationale": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "composite_indicator",
+        "documentation_url",
+        "formulas",
+        "maximum_absolute_difference_gbp",
+        "rationale"
+       ]
+      },
+      "source_sampling_weight": {
+       "type": "string"
+      },
+      "source_ti_identity_fields": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "stochastic_aggregates_forbidden": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "ti_identity_absolute_tolerance_gbp": {
+       "type": "number"
+      },
+      "training_artifact_role": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "assessable_income_source_semantics",
+      "categorical_predictors",
+      "derived_policyengine_outputs",
+      "double_apply_source_weight",
+      "employment_income_source_semantics",
+      "fit_weight_kind",
+      "hmrc_employed_income_source_semantics",
+      "joint_draw",
+      "kind",
+      "outputs",
+      "post_sample_fit_weight",
+      "predictors",
+      "require_all_outputs",
+      "require_all_predictors",
+      "sample_size",
+      "sample_with_replacement",
+      "savings_interest_source_semantics",
+      "self_employment_income_source_semantics",
+      "source_columns",
+      "source_leaf_reconciliation",
+      "source_sampling_weight",
+      "source_ti_identity_fields",
+      "stochastic_aggregates_forbidden",
+      "ti_identity_absolute_tolerance_gbp",
+      "training_artifact_role"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "categorical_predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "joint_draw": {
+       "type": "boolean"
+      },
+      "kind": {
+       "const": "fit_weighted_qrf_stage2"
+      },
+      "outputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "postprocess": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "gross_savings_interest_income": {
+         "type": "string"
+        },
+        "refresh_disability_categories": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "refresh_disability_flags": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        }
+       },
+       "required": [
+        "gross_savings_interest_income",
+        "refresh_disability_categories",
+        "refresh_disability_flags"
+       ]
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "require_all_materializable_outputs": {
+       "type": "boolean"
+      },
+      "require_all_outputs": {
+       "type": "boolean"
+      },
+      "require_all_predictors": {
+       "type": "boolean"
+      },
+      "reviewed_absent_outputs": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "incapacity_benefit_reported": {
+         "type": "string"
+        },
+        "maternity_allowance_reported": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "incapacity_benefit_reported",
+        "maternity_allowance_reported"
+       ]
+      },
+      "reviewed_absent_predictors": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "other_investment_income": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "other_investment_income"
+       ]
+      },
+      "target_population": {
+       "type": "string"
+      },
+      "training_population": {
+       "type": "string"
+      },
+      "weight": {
+       "type": "string"
+      },
+      "weight_mapping": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "categorical_predictors",
+      "joint_draw",
+      "kind",
+      "outputs",
+      "postprocess",
+      "predictors",
+      "require_all_materializable_outputs",
+      "require_all_outputs",
+      "require_all_predictors",
+      "reviewed_absent_outputs",
+      "reviewed_absent_predictors",
+      "target_population",
+      "training_population",
+      "weight",
+      "weight_mapping"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "fail_below_floor": {
+       "type": "boolean"
+      },
+      "kind": {
+       "const": "gate_distributional_effective_mass"
+      },
+      "mass_share_denominator": {
+       "type": "string"
+      },
+      "minimum_nondefault_mass_share": {
+       "type": "number"
+      },
+      "required_support_channel": {
+       "type": "string"
+      },
+      "support_channel_column": {
+       "type": "string"
+      },
+      "weight": {
+       "type": "string"
+      },
+      "weight_mapping": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "columns",
+      "fail_below_floor",
+      "kind",
+      "mass_share_denominator",
+      "minimum_nondefault_mass_share",
+      "required_support_channel",
+      "support_channel_column",
+      "weight",
+      "weight_mapping"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "condition": {
+       "type": "string"
+      },
+      "from_entity": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "head_carry"
+      },
+      "outputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "to_entity": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "condition",
+      "from_entity",
+      "kind",
+      "to_entity"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "impute_child_support_to_puf_support"
+      },
+      "max_train_samples": {
+       "type": "number"
+      },
+      "n_estimators": {
+       "type": "number"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "weight": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "max_train_samples",
+      "n_estimators",
+      "predictors",
+      "seed_from_build_config",
+      "weight"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "impute_childcare_to_puf_support"
+      },
+      "max_train_samples": {
+       "type": "number"
+      },
+      "n_estimators": {
+       "type": "number"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "reduction": {
+       "type": "string"
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "weight": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "max_train_samples",
+      "n_estimators",
+      "predictors",
+      "reduction",
+      "seed_from_build_config",
+      "weight"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "impute_disability_benefits_to_puf_support"
+      },
+      "max_train_samples": {
+       "type": "number"
+      },
+      "n_estimators": {
+       "type": "number"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "weight": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "max_train_samples",
+      "n_estimators",
+      "predictors",
+      "seed_from_build_config",
+      "weight"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "impute_energy_subsidy_to_puf_support"
+      },
+      "max_train_samples": {
+       "type": "number"
+      },
+      "n_estimators": {
+       "type": "number"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "reduction": {
+       "type": "string"
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "weight": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "max_train_samples",
+      "n_estimators",
+      "predictors",
+      "reduction",
+      "seed_from_build_config",
+      "weight"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "impute_housing_assistance_to_puf_support"
+      },
+      "max_train_samples": {
+       "type": "number"
+      },
+      "n_estimators": {
+       "type": "number"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "reduction": {
+       "type": "string"
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "take_up_assignment": {
+       "type": "string"
+      },
+      "take_up_output": {
+       "type": "string"
+      },
+      "target": {
+       "type": "string"
+      },
+      "weight": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "max_train_samples",
+      "n_estimators",
+      "predictors",
+      "reduction",
+      "seed_from_build_config",
+      "take_up_assignment",
+      "take_up_output",
+      "target",
+      "weight"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "impute_other_health_insurance_premiums_to_puf_support"
+      },
+      "max_train_samples": {
+       "type": "number"
+      },
+      "n_estimators": {
+       "type": "number"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "weight": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "max_train_samples",
+      "n_estimators",
+      "predictors",
+      "seed_from_build_config",
+      "weight"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "impute_prior_year_income_to_puf_support"
+      },
+      "max_train_samples": {
+       "type": "number"
+      },
+      "n_estimators": {
+       "type": "number"
+      },
+      "outputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "weight": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "max_train_samples",
+      "n_estimators",
+      "outputs",
+      "predictors",
+      "seed_from_build_config",
+      "weight"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "impute_retirement_contributions_to_puf_support"
+      },
+      "max_train_samples": {
+       "type": "number"
+      },
+      "n_estimators": {
+       "type": "number"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "weight": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "max_train_samples",
+      "n_estimators",
+      "predictors",
+      "seed_from_build_config",
+      "weight"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "impute_retirement_distributions_to_puf_support"
+      },
+      "max_train_samples": {
+       "type": "number"
+      },
+      "n_estimators": {
+       "type": "number"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "weight": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "max_train_samples",
+      "n_estimators",
+      "predictors",
+      "seed_from_build_config",
+      "weight"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "clip": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "kind": {
+       "const": "impute_weeks_unemployed_to_puf_support"
+      },
+      "max_train_samples": {
+       "type": "number"
+      },
+      "n_estimators": {
+       "type": "number"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "round": {
+       "type": "string"
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "weight": {
+       "type": "string"
+      },
+      "zero_unless": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "clip",
+      "kind",
+      "max_train_samples",
+      "n_estimators",
+      "predictors",
+      "round",
+      "seed_from_build_config",
+      "weight",
+      "zero_unless"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "impute_workers_compensation_to_puf_support"
+      },
+      "max_train_samples": {
+       "type": "number"
+      },
+      "n_estimators": {
+       "type": "number"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "seed_from_build_config": {
+       "type": "boolean"
+      },
+      "weight": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "max_train_samples",
+      "n_estimators",
+      "predictors",
+      "seed_from_build_config",
+      "weight"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "keys": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "kind": {
+       "const": "join"
+      },
+      "left": {
+       "type": "string"
+      },
+      "linkage": {
+       "type": "string"
+      },
+      "notes": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "right": {
+       "type": "string"
+      },
+      "validation": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "left",
+      "right"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "map_columns"
+      },
+      "mapping": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "DB030": {
+         "type": "string"
+        },
+        "DB040": {
+         "type": "string"
+        },
+        "PY010G": {
+         "type": "string"
+        },
+        "RB030": {
+         "type": "string"
+        },
+        "RB080": {
+         "type": "string"
+        },
+        "RB090": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "DB030",
+        "DB040",
+        "PY010G",
+        "RB030",
+        "RB080",
+        "RB090"
+       ]
+      },
+      "notes": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      }
+     },
+     "required": [
+      "kind",
+      "mapping",
+      "notes"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "amount_unit_multiplier": {
+       "type": "number"
+      },
+      "artifact_role": {
+       "type": "string"
+      },
+      "column_index_base": {
+       "type": "number"
+      },
+      "component_columns": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "dividend_income": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "amount_column_index": {
+           "type": "number"
+          },
+          "count_column_index": {
+           "type": "number"
+          },
+          "sheet": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "amount_column_index",
+          "count_column_index",
+          "sheet"
+         ]
+        },
+        "employment_income": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "amount_column_index": {
+           "type": "number"
+          },
+          "count_column_index": {
+           "type": "number"
+          },
+          "sheet": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "amount_column_index",
+          "count_column_index",
+          "sheet"
+         ]
+        },
+        "other_investment_income": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "amount_column_index": {
+           "type": "number"
+          },
+          "count_column_index": {
+           "type": "number"
+          },
+          "sheet": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "amount_column_index",
+          "count_column_index",
+          "sheet"
+         ]
+        },
+        "private_pension_income": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "amount_column_index": {
+           "type": "number"
+          },
+          "count_column_index": {
+           "type": "number"
+          },
+          "sheet": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "amount_column_index",
+          "count_column_index",
+          "sheet"
+         ]
+        },
+        "property_income": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "amount_column_index": {
+           "type": "number"
+          },
+          "count_column_index": {
+           "type": "number"
+          },
+          "sheet": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "amount_column_index",
+          "count_column_index",
+          "sheet"
+         ]
+        },
+        "savings_interest_income": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "amount_column_index": {
+           "type": "number"
+          },
+          "count_column_index": {
+           "type": "number"
+          },
+          "sheet": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "amount_column_index",
+          "count_column_index",
+          "sheet"
+         ]
+        },
+        "self_employment_income": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "amount_column_index": {
+           "type": "number"
+          },
+          "count_column_index": {
+           "type": "number"
+          },
+          "sheet": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "amount_column_index",
+          "count_column_index",
+          "sheet"
+         ]
+        },
+        "state_pension": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "amount_column_index": {
+           "type": "number"
+          },
+          "count_column_index": {
+           "type": "number"
+          },
+          "sheet": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "amount_column_index",
+          "count_column_index",
+          "sheet"
+         ]
+        }
+       },
+       "required": [
+        "dividend_income",
+        "employment_income",
+        "other_investment_income",
+        "private_pension_income",
+        "property_income",
+        "savings_interest_income",
+        "self_employment_income",
+        "state_pension"
+       ]
+      },
+      "count_unit_multiplier": {
+       "type": "number"
+      },
+      "data_row_start_index": {
+       "type": "number"
+      },
+      "fail_on_missing_band": {
+       "type": "boolean"
+      },
+      "fail_on_missing_component": {
+       "type": "boolean"
+      },
+      "fail_on_missing_sheet": {
+       "type": "boolean"
+      },
+      "fail_on_non_numeric_value": {
+       "type": "boolean"
+      },
+      "kind": {
+       "const": "materialize_hmrc_income_bands_fail_closed"
+      },
+      "mapped_build_period": {
+       "type": "number"
+      },
+      "period_mapping": {
+       "type": "string"
+      },
+      "required_band_lower_bounds_gbp": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "required_measures": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "stop_label": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "amount_unit_multiplier",
+      "artifact_role",
+      "column_index_base",
+      "component_columns",
+      "count_unit_multiplier",
+      "data_row_start_index",
+      "fail_on_missing_band",
+      "fail_on_missing_component",
+      "fail_on_missing_sheet",
+      "fail_on_non_numeric_value",
+      "kind",
+      "mapped_build_period",
+      "period_mapping",
+      "required_band_lower_bounds_gbp",
+      "required_measures",
+      "stop_label"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "format": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "official_data_dictionary"
+      },
+      "lines": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "locator": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "vintage": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "format",
+      "kind",
+      "lines",
+      "locator",
+      "vintage"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "format": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "official_survey_instrument"
+      },
+      "lines": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "locator": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "vintage": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "format",
+      "kind",
+      "lines",
+      "locator",
+      "vintage"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "access": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "doi": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "filename": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "format": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "private_microdata"
+      },
+      "locator": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "reviewed_source": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "role": {
+       "type": "string"
+      },
+      "runtime_sha256_required": {
+       "type": "boolean"
+      },
+      "sha256": {
+       "$ref": "defs.schema.json#/$defs/sha256"
+      },
+      "size_bytes": {
+       "type": "number"
+      },
+      "survey": {
+       "type": "string"
+      },
+      "tax_year_start": {
+       "type": "number"
+      },
+      "ukds_study_number": {
+       "type": "string"
+      },
+      "vintage": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "access",
+      "doi",
+      "filename",
+      "format",
+      "kind",
+      "locator",
+      "reviewed_source",
+      "role",
+      "runtime_sha256_required",
+      "sha256",
+      "size_bytes",
+      "survey",
+      "tax_year_start",
+      "ukds_study_number",
+      "vintage"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "expected_rows": {
+       "type": "number"
+      },
+      "format": {
+       "type": "string"
+      },
+      "generated_cache": {
+       "type": "string"
+      },
+      "generated_cache_content_sha256": {
+       "$ref": "defs.schema.json#/$defs/sha256"
+      },
+      "generated_cache_rows": {
+       "type": "number"
+      },
+      "integrity_note": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "kind": {
+       "const": "public_microdata"
+      },
+      "locator": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "member": {
+       "type": "string"
+      },
+      "member_crc32": {
+       "type": "string"
+      },
+      "member_sha256": {
+       "$ref": "defs.schema.json#/$defs/sha256"
+      },
+      "member_size_bytes": {
+       "type": "number"
+      },
+      "repository": {
+       "type": "object",
+       "x-spec-surface": "operational",
+       "additionalProperties": false,
+       "properties": {
+        "name_parts": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "owner": {
+         "type": "string"
+        },
+        "provider": {
+         "type": "string"
+        },
+        "repo_type": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "name_parts",
+        "owner",
+        "provider",
+        "repo_type"
+       ]
+      },
+      "revision": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "sha256": {
+       "$ref": "defs.schema.json#/$defs/sha256"
+      },
+      "size_bytes": {
+       "type": "number"
+      },
+      "source": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "source_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "vintage": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "format",
+      "kind",
+      "locator",
+      "vintage"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "format": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "published_aggregate_table"
+      },
+      "locator": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "report_source": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "source": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "vintage": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "format",
+      "kind",
+      "locator",
+      "report_source",
+      "source",
+      "vintage"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "band_order": {
+       "type": "string"
+      },
+      "column_reconciliation": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "rank_preserving_allocation"
+      },
+      "minimum_allocation_people": {
+       "type": "number"
+      },
+      "ordering": {
+       "type": "string"
+      },
+      "shortfall_policy": {
+       "type": "string"
+      },
+      "suppressed_cell_allocation": {
+       "type": "string"
+      },
+      "weights": {
+       "type": "string"
+      },
+      "within": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "band_order",
+      "column_reconciliation",
+      "kind",
+      "minimum_allocation_people",
+      "ordering",
+      "shortfall_policy",
+      "suppressed_cell_allocation",
+      "weights",
+      "within"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "allocation_flag": {
+       "type": "string"
+      },
+      "household_head_only": {
+       "type": "boolean"
+      },
+      "kind": {
+       "const": "read_acs_rent_donor"
+      },
+      "source_already_annualized": {
+       "type": "boolean"
+      },
+      "source_unit": {
+       "type": "string"
+      },
+      "table": {
+       "type": "string"
+      },
+      "target": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "allocation_flag",
+      "household_head_only",
+      "kind",
+      "source_already_annualized",
+      "source_unit",
+      "table",
+      "target"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "allocation_status_observed_values": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "delimiter": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "read_table"
+      },
+      "month": {
+       "type": "number"
+      },
+      "month_column": {
+       "type": "string"
+      },
+      "source_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "table": {
+       "type": "string"
+      },
+      "target_allocation_status_columns": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "bank_account_assets": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "bond_assets": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "stock_assets": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        }
+       },
+       "required": [
+        "bank_account_assets",
+        "bond_assets",
+        "stock_assets"
+       ]
+      },
+      "targets": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "bank_account_assets": {
+         "type": "string"
+        },
+        "bond_assets": {
+         "type": "string"
+        },
+        "stock_assets": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "bank_account_assets",
+        "bond_assets",
+        "stock_assets"
+       ]
+      },
+      "weight": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "table"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "read_tables"
+      },
+      "tables": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "weight": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "tables",
+      "weight"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "declared_factor": {
+       "type": "number"
+      },
+      "entity": {
+       "type": "string"
+      },
+      "gate_coupling": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "record_mass_conservation_receipt"
+      },
+      "reason": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "declared_factor",
+      "entity",
+      "gate_coupling",
+      "kind",
+      "reason"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "replace_sentinels"
+      },
+      "scope": {
+       "type": "string"
+      },
+      "sentinels": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      }
+     },
+     "required": [
+      "kind",
+      "scope",
+      "sentinels"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "existing_channel": {
+       "type": "string"
+      },
+      "fail_on_live_existing_spi_mass": {
+       "type": "boolean"
+      },
+      "kind": {
+       "const": "replace_zero_weight_spi_support"
+      },
+      "mass_change_reason": {
+       "type": "string"
+      },
+      "output_weight_kind": {
+       "type": "string"
+      },
+      "preserve_total_household_mass": {
+       "type": "boolean"
+      },
+      "replacement_strata": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "require_existing_weight": {
+       "type": "number"
+      },
+      "require_mass_change_record": {
+       "type": "boolean"
+      },
+      "spi_prior_national_household_mass_share": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "existing_channel",
+      "fail_on_live_existing_spi_mass",
+      "kind",
+      "mass_change_reason",
+      "output_weight_kind",
+      "preserve_total_household_mass",
+      "replacement_strata",
+      "require_existing_weight",
+      "require_mass_change_record",
+      "spi_prior_national_household_mass_share"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "format": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "research_report"
+      },
+      "locator": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "source": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "vintage": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "format",
+      "kind",
+      "locator",
+      "source",
+      "vintage"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "format": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "restricted_microdata"
+      },
+      "licence": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "locator": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "vintage": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "format",
+      "kind",
+      "licence",
+      "locator",
+      "vintage"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "annualization": {
+       "type": "string"
+      },
+      "fail_on_full_concept_alias": {
+       "type": "boolean"
+      },
+      "fail_on_missing_retained_constituent": {
+       "type": "boolean"
+      },
+      "forbid_proxy_substitution": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "full_concepts_forbidden_on_frs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "kind": {
+       "const": "retain_adjudicated_frs_hmrc_leaves"
+      },
+      "mapped_build_period": {
+       "type": "number"
+      },
+      "population": {
+       "type": "string"
+      },
+      "retained_full_constituents": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "hmrc_spi_incapacity_benefit_income": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "formula": {
+           "type": "string"
+          },
+          "observed_support": {
+           "type": "string"
+          },
+          "raw_sources": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          },
+          "scope": {
+           "type": "string"
+          },
+          "spi_concept": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "formula",
+          "observed_support",
+          "raw_sources",
+          "scope",
+          "spi_concept"
+         ]
+        },
+        "hmrc_spi_pay": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "formula": {
+           "type": "string"
+          },
+          "raw_sources": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          },
+          "scope": {
+           "type": "string"
+          },
+          "spi_concept": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "formula",
+          "raw_sources",
+          "scope",
+          "spi_concept"
+         ]
+        },
+        "hmrc_spi_unemployment_benefit_income": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "formula": {
+           "type": "string"
+          },
+          "raw_sources": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          },
+          "scope": {
+           "type": "string"
+          },
+          "spi_concept": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "formula",
+          "raw_sources",
+          "scope",
+          "spi_concept"
+         ]
+        }
+       },
+       "required": [
+        "hmrc_spi_incapacity_benefit_income",
+        "hmrc_spi_pay",
+        "hmrc_spi_unemployment_benefit_income"
+       ]
+      },
+      "retained_named_subsets": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "ossben_identifiable_subset": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "formula": {
+           "type": "string"
+          },
+          "raw_sources": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          },
+          "scope": {
+           "type": "string"
+          },
+          "spi_concept": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "formula",
+          "raw_sources",
+          "scope",
+          "spi_concept"
+         ]
+        },
+        "srp_regular_code5": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "formula": {
+           "type": "string"
+          },
+          "raw_sources": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          },
+          "scope": {
+           "type": "string"
+          },
+          "spi_concept": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "formula",
+          "raw_sources",
+          "scope",
+          "spi_concept"
+         ]
+        }
+       },
+       "required": [
+        "ossben_identifiable_subset",
+        "srp_regular_code5"
+       ]
+      },
+      "source_absent_full_constituents": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "source_vintage": {
+       "type": "string"
+      },
+      "status": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "annualization",
+      "fail_on_full_concept_alias",
+      "fail_on_missing_retained_constituent",
+      "forbid_proxy_substitution",
+      "full_concepts_forbidden_on_frs",
+      "kind",
+      "mapped_build_period",
+      "population",
+      "retained_full_constituents",
+      "retained_named_subsets",
+      "source_absent_full_constituents",
+      "source_vintage",
+      "status"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "exclusive_with": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "kind": {
+       "const": "split_component_by_share"
+      },
+      "output": {
+       "type": "string"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "share_field": {
+       "type": "string"
+      },
+      "source_column": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "exclusive_with",
+      "kind",
+      "output",
+      "resource",
+      "share_field",
+      "source_column"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "artifact_role": {
+       "type": "string"
+      },
+      "delimiter": {
+       "type": "string"
+      },
+      "fail_on_invalid_weight": {
+       "type": "boolean"
+      },
+      "fail_on_missing_columns": {
+       "type": "boolean"
+      },
+      "fail_on_missing_file": {
+       "type": "boolean"
+      },
+      "filename": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "kind": {
+       "const": "strict_read_private_table"
+      },
+      "required_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "runtime_sha256_required": {
+       "type": "boolean"
+      },
+      "weight": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "artifact_role",
+      "delimiter",
+      "fail_on_invalid_weight",
+      "fail_on_missing_columns",
+      "fail_on_missing_file",
+      "filename",
+      "kind",
+      "required_columns",
+      "runtime_sha256_required",
+      "weight"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "sub_aea_remainder"
+      },
+      "policy": {
+       "type": "string"
+      },
+      "rationale": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "policy",
+      "rationale"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
+       "const": "support_clip"
+      },
+      "lower": {
+       "type": "number"
+      },
+      "output": {
+       "type": "string"
+      },
+      "range": {
+       "type": "string"
+      },
+      "upper": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "kind",
+      "range"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "allowance": {
+       "type": "string"
+      },
+      "components": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "components_semantics": {
+       "type": "string"
+      },
+      "fail_on_missing_component": {
+       "type": "boolean"
+      },
+      "kind": {
+       "const": "taxable_income_proxy"
+      }
+     },
+     "required": [
+      "allowance",
+      "components",
+      "components_semantics",
+      "fail_on_missing_component",
+      "kind"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "from_year": {
+       "type": "number"
+      },
+      "kind": {
+       "const": "uprate"
+      },
+      "to_year_from_build_config": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "from_year",
+      "kind",
+      "to_year_from_build_config"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "artifact": {
+       "type": "string"
+      },
+      "fail_on_mismatch": {
+       "type": "boolean"
+      },
+      "kind": {
+       "const": "verify_certified_candidate"
+      },
+      "runtime_sha256_required": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "artifact",
+      "fail_on_mismatch",
+      "kind",
+      "runtime_sha256_required"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "artifact_role": {
+       "type": "string"
+      },
+      "fail_on_mismatch": {
+       "type": "boolean"
+      },
+      "kind": {
+       "const": "verify_pinned_cgt_ods"
+      },
+      "require_before_source_read": {
+       "type": "boolean"
+      },
+      "runtime_sha256_required": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "artifact_role",
+      "fail_on_mismatch",
+      "kind",
+      "require_before_source_read",
+      "runtime_sha256_required"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "artifact_roles": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "fail_on_mismatch": {
+       "type": "boolean"
+      },
+      "kind": {
+       "const": "verify_pinned_hmrc_source_pair"
+      },
+      "require_before_source_read": {
+       "type": "boolean"
+      },
+      "runtime_sha256_required": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "artifact_roles",
+      "fail_on_mismatch",
+      "kind",
+      "require_before_source_read",
+      "runtime_sha256_required"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "format": {
+       "type": "string"
+      },
+      "integrity_note": {
+       "type": "string",
+       "x-spec-surface": "documentation"
+      },
+      "kind": {
+       "const": "versioned_derived_microdata"
+      },
+      "lineage": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "aggregate_disaggregation_seed": {
+         "type": "number"
+        },
+        "archived_commit": {
+         "type": "string",
+         "x-spec-surface": "operational"
+        },
+        "disaggregator_lines": {
+         "type": "string",
+         "x-spec-surface": "documentation"
+        },
+        "disaggregator_path_parts": {
+         "type": "array",
+         "x-spec-surface": "operational",
+         "items": {
+          "type": "string"
+         }
+        },
+        "forbes_aggregate_recid": {
+         "type": "number"
+        },
+        "forbes_synthetic_record_count": {
+         "type": "number"
+        },
+        "forbes_top_tail_enabled": {
+         "type": "boolean"
+        },
+        "generator_lines": {
+         "type": "string",
+         "x-spec-surface": "documentation"
+        },
+        "generator_path_parts": {
+         "type": "array",
+         "x-spec-surface": "operational",
+         "items": {
+          "type": "string"
+         }
+        },
+        "operation_order": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        }
+       },
+       "required": [
+        "aggregate_disaggregation_seed",
+        "archived_commit",
+        "disaggregator_lines",
+        "disaggregator_path_parts",
+        "forbes_aggregate_recid",
+        "forbes_synthetic_record_count",
+        "forbes_top_tail_enabled",
+        "generator_lines",
+        "generator_path_parts",
+        "operation_order"
+       ]
+      },
+      "locator": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "official_household_source": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "official_person_source": {
+       "type": "string",
+       "x-spec-surface": "operational"
+      },
+      "sha256": {
+       "$ref": "defs.schema.json#/$defs/sha256"
+      },
+      "vintage": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "format",
+      "kind",
+      "locator",
+      "vintage"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "dependency": {
+       "type": "string"
+      },
+      "dependency_discipline": {
+       "type": "string"
+      },
+      "instant_rule": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "versioned_parameter_tree"
+      },
+      "parameters": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "role": {
+       "type": "string"
+      },
+      "runtime_sha256_required": {
+       "type": "boolean"
+      }
+     },
+     "required": [
+      "dependency",
+      "dependency_discipline",
+      "instant_rule",
+      "kind",
+      "parameters",
+      "role",
+      "runtime_sha256_required"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "bottom_band_floor": {
+       "type": "string"
+      },
+      "bounded_band_family": {
+       "type": "string"
+      },
+      "deterministic": {
+       "type": "boolean"
+      },
+      "kind": {
+       "const": "within_band_draws"
+      },
+      "mean_repair_margin": {
+       "type": "number"
+      },
+      "mean_repair_reason": {
+       "type": "string"
+      },
+      "open_band_family": {
+       "type": "string"
+      },
+      "seed_base": {
+       "type": "number"
+      },
+      "seed_mixing": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "bottom_band_floor",
+      "bounded_band_family",
+      "deterministic",
+      "kind",
+      "mean_repair_margin",
+      "mean_repair_reason",
+      "open_band_family",
+      "seed_base",
+      "seed_mixing"
+     ]
+    }
+   ],
+   "description": "Closed kind-discriminated source artifact and operation records, covering the packaged US, UK, and BE source vocabularies."
   }
  }
 }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import re
 from collections.abc import Callable
@@ -21,6 +22,7 @@ from microcosm.build.spec_engine.schemas import (
     assert_schema_id_allowed,
     load_schema_registry,
 )
+from microcosm.build.spec_engine.seeds import LEGACY_V1_PROTOCOL
 
 SchemaMutation = Callable[[dict[str, dict[str, Any]]], None]
 
@@ -51,10 +53,41 @@ def test_schema_registry_loads_only_the_approved_closed_world() -> None:
     assert catalog.schema("locks.schema.json#/$defs/bundle_lock")["required"] == [
         "grammar_receipt",
         "files",
+        "generated_authorities",
+        "seed_protocol",
+        "seed_site_bindings",
+        "vintage_authorities",
         "spec_sha256",
     ]
     with pytest.raises(NoSuchResource):
         catalog.registry.get_or_retrieve("https://example.invalid/schema.json")
+
+
+def test_every_object_schema_is_closed_or_has_typed_map_values() -> None:
+    """Refuse catch-all records that could make a normative field untyped."""
+
+    catalog = load_schema_registry()
+    violations: list[str] = []
+
+    def visit(value: object, *, location: str) -> None:
+        if isinstance(value, dict):
+            if value.get("type") == "object":
+                additional = value.get("additionalProperties")
+                unevaluated = value.get("unevaluatedProperties")
+                closed = additional is False or unevaluated is False
+                typed_map = isinstance(additional, dict) and bool(additional)
+                if not closed and not typed_map:
+                    violations.append(location)
+            for key, child in value.items():
+                visit(child, location=f"{location}/{key}")
+        elif isinstance(value, list):
+            for index, child in enumerate(value):
+                visit(child, location=f"{location}/{index}")
+
+    for schema_id, schema in sorted(catalog.schemas.items()):
+        visit(schema, location=schema_id)
+
+    assert violations == []
 
 
 def test_schema_kind_allowlist_refuses_mismatched_authority() -> None:
@@ -97,6 +130,10 @@ def test_emitted_bundle_lock_fragment_uses_the_same_registry() -> None:
             "migration_chain": [],
         },
         "files": {"bundle.yaml": {"sha256": digest, "byte_size": 10}},
+        "generated_authorities": {},
+        "seed_protocol": LEGACY_V1_PROTOCOL.to_wire(),
+        "seed_site_bindings": [],
+        "vintage_authorities": {"records": {}},
         "spec_sha256": digest,
     }
 
@@ -104,6 +141,54 @@ def test_emitted_bundle_lock_fragment_uses_the_same_registry() -> None:
         instance,
         "locks.schema.json#/$defs/bundle_lock",
     )
+
+
+@pytest.mark.parametrize("invalid_default", [-1, 2**64])
+def test_seed_lock_schema_rejects_out_of_uint64_defaults(invalid_default: int) -> None:
+    protocol = copy.deepcopy(LEGACY_V1_PROTOCOL.to_wire())
+    protocol["sites"][0]["default"] = invalid_default
+    with pytest.raises(SpecValidationError, match="seed_protocol"):
+        load_schema_registry().validate(
+            {
+                "grammar_receipt": {
+                    "schema_version": 1,
+                    "canonicalizer_version": 1,
+                    "migration_chain": [],
+                },
+                "files": {},
+                "generated_authorities": {},
+                "seed_protocol": protocol,
+                "seed_site_bindings": [],
+                "vintage_authorities": {"records": {}},
+                "spec_sha256": "0" * 64,
+            },
+            "locks.schema.json#/$defs/bundle_lock",
+        )
+
+
+def test_seed_lock_schema_rejects_duplicate_rows_and_missing_rng_version() -> None:
+    protocol = copy.deepcopy(LEGACY_V1_PROTOCOL.to_wire())
+    protocol["sites"].append(copy.deepcopy(protocol["sites"][0]))
+    missing_version = copy.deepcopy(LEGACY_V1_PROTOCOL.to_wire())
+    del missing_version["sites"][0]["rng_version"]
+    base = {
+        "grammar_receipt": {
+            "schema_version": 1,
+            "canonicalizer_version": 1,
+            "migration_chain": [],
+        },
+        "files": {},
+        "generated_authorities": {},
+        "seed_site_bindings": [],
+        "vintage_authorities": {"records": {}},
+        "spec_sha256": "0" * 64,
+    }
+    for invalid in (protocol, missing_version):
+        with pytest.raises(SpecValidationError):
+            load_schema_registry().validate(
+                {**base, "seed_protocol": invalid},
+                "locks.schema.json#/$defs/bundle_lock",
+            )
 
 
 @pytest.mark.parametrize(

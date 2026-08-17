@@ -352,6 +352,22 @@ class TestResolvedCountrySpecSeam:
         assert spec.resolved_spec is not None
         assert spec.resolved_spec.country == "xx"
 
+    def test_generated_locks_are_admitted_but_excluded_from_authority_hashes(
+        self, tmp_path
+    ) -> None:
+        files = _minimal_package()
+        files.update(
+            {
+                "bundle.lock.json": {},
+                "engine_abi.lock.json": {},
+                "plan.lock.json": {},
+            }
+        )
+        spec = load_country_spec(_write_package(tmp_path, files))
+
+        assert set(spec.resource_hashes) == {"country_package.json", "gates.json"}
+        assert all("lock.json" not in resource for resource in spec.resources)
+
     @pytest.mark.parametrize(
         ("row", "message"),
         [
@@ -379,6 +395,14 @@ class TestResolvedCountrySpecSeam:
                     "entrypoint": "microcosm.build:run",
                 },
                 "closed-world",
+            ),
+            (
+                {
+                    "path": "engine_abi.lock.json",
+                    "kind": "legacy_json",
+                    "schema_id": "legacy_json",
+                },
+                "generated locks cannot be authored",
             ),
         ],
     )

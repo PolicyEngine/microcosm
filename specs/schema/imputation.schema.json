@@ -1,7 +1,7 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "imputation.schema.json",
- "title": "Predictor blocks, models, chaining, concepts, families, producer graph",
+ "title": "Predictor blocks, models, chaining, concepts, families, and lossless producer graph",
  "x-spec-surface": "normative",
  "type": "object",
  "additionalProperties": false,
@@ -10,12 +10,19 @@
   "models",
   "chaining",
   "concepts",
+  "waiver_records",
+  "transfer_execution",
+  "gap_fill_schedule",
+  "primary_checkpoint",
   "families",
   "producer_graph"
  ],
  "properties": {
   "predictor_blocks": {
    "type": "object",
+   "propertyNames": {
+    "$ref": "defs.schema.json#/$defs/identifier"
+   },
    "additionalProperties": {
     "type": "object",
     "additionalProperties": false,
@@ -25,10 +32,11 @@
     "properties": {
      "columns": {
       "type": "array",
-      "minItems": 1,
       "items": {
-       "$ref": "defs.schema.json#/$defs/identifier"
-      }
+       "type": "string",
+       "minLength": 1
+      },
+      "minItems": 1
      },
      "tags": {
       "type": "array",
@@ -53,6 +61,9 @@
   },
   "models": {
    "type": "object",
+   "propertyNames": {
+    "$ref": "defs.schema.json#/$defs/identifier"
+   },
    "additionalProperties": {
     "type": "object",
     "additionalProperties": false,
@@ -67,7 +78,6 @@
      "params": {
       "type": "object",
       "additionalProperties": false,
-      "description": "SCHEMA-COMPLETE: every build-facing parameter explicit; library defaults never reach a build.",
       "required": [
        "n_estimators",
        "max_samples_leaf",
@@ -109,6 +119,9 @@
     "splits": {
      "const": "declared_only"
     },
+    "memory_policy": {
+     "const": "release_after_draw"
+    },
     "split_after": {
      "type": "array",
      "items": {
@@ -121,10 +134,12 @@
       ],
       "properties": {
        "family": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
        },
        "after_target": {
-        "$ref": "defs.schema.json#/$defs/identifier"
+        "type": "string",
+        "minLength": 1
        },
        "reason": {
         "type": "string",
@@ -133,113 +148,955 @@
       }
      }
     },
-    "memory_policy": {
-     "const": "release_after_draw"
-    },
     "keep_together": {
      "type": "array",
      "items": {
       "type": "array",
-      "minItems": 2,
       "items": {
-       "$ref": "defs.schema.json#/$defs/identifier"
-      }
+       "type": "string",
+       "minLength": 1
+      },
+      "minItems": 2
      }
     }
    }
   },
   "concepts": {
    "type": "object",
-   "description": "Concept registry: named concept -> predictor columns.",
+   "propertyNames": {
+    "$ref": "defs.schema.json#/$defs/identifier"
+   },
    "additionalProperties": {
     "type": "array",
-    "minItems": 1,
     "items": {
      "$ref": "defs.schema.json#/$defs/identifier"
-    }
+    },
+    "minItems": 1,
+    "uniqueItems": true
    }
   },
-  "families": {
+  "waiver_records": {
    "type": "array",
-   "minItems": 1,
    "items": {
     "type": "object",
     "additionalProperties": false,
     "required": [
      "id",
-     "stage",
-     "donor",
-     "model",
-     "predictors",
-     "targets"
+     "code",
+     "marker",
+     "reason",
+     "coverage_status",
+     "targets",
+     "requires_concepts",
+     "missing_concepts_by_target"
     ],
     "properties": {
      "id": {
-      "type": "string",
-      "pattern": "^[a-z0-9_/]+$"
-     },
-     "stage": {
       "$ref": "defs.schema.json#/$defs/identifier"
      },
-     "donor": {
-      "type": "object",
-      "additionalProperties": false,
-      "minProperties": 1,
-      "maxProperties": 1,
-      "properties": {
-       "channel": {
-        "$ref": "defs.schema.json#/$defs/identifier"
-       },
-       "support_role": {
-        "$ref": "defs.schema.json#/$defs/identifier"
-       }
-      }
+     "code": {
+      "const": "F-P"
      },
-     "recipient": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-       "channel": {
-        "$ref": "defs.schema.json#/$defs/identifier"
-       }
-      }
+     "marker": {
+      "const": "F-P: eligibility concepts absent"
      },
-     "model": {
-      "$ref": "defs.schema.json#/$defs/identifier"
+     "reason": {
+      "const": "eligibility_concepts_absent"
      },
-     "predictors": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-       "$ref": "defs.schema.json#/$defs/identifier"
-      }
+     "coverage_status": {
+      "const": "required_concepts_not_covered_by_current_predictors"
      },
      "targets": {
       "type": "array",
-      "minItems": 1,
-      "description": "Participation targets carry TARGET-SPECIFIC concept sets; coverage failure fails the LOAD.",
       "items": {
-       "type": "object",
-       "additionalProperties": false,
-       "required": [
-        "name"
-       ],
-       "properties": {
-        "name": {
-         "$ref": "defs.schema.json#/$defs/identifier"
-        },
-        "requires_concepts": {
-         "type": "array",
-         "items": {
-          "$ref": "defs.schema.json#/$defs/identifier"
+       "$ref": "defs.schema.json#/$defs/identifier"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+     },
+     "requires_concepts": {
+      "type": "array",
+      "items": {
+       "$ref": "defs.schema.json#/$defs/identifier"
+      },
+      "minItems": 1,
+      "uniqueItems": true
+     },
+     "missing_concepts_by_target": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+       "$ref": "defs.schema.json#/$defs/identifier"
+      },
+      "additionalProperties": {
+       "type": "array",
+       "items": {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       },
+       "minItems": 1,
+       "uniqueItems": true
+      }
+     }
+    }
+   },
+   "uniqueItems": true
+  },
+  "transfer_execution": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "discrete_numeric_targets": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "donor_combined_components": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "__acs_transfer_interest_dividend_rental_income": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "__acs_transfer_retirement_income": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "__acs_transfer_social_security_income": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      }
+     },
+     "required": [
+      "__acs_transfer_interest_dividend_rental_income",
+      "__acs_transfer_retirement_income",
+      "__acs_transfer_social_security_income"
+     ]
+    },
+    "group_optional_names": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "__acs_transfer_employment_income": {
+       "type": "string"
+      },
+      "__acs_transfer_interest_dividend_rental_income": {
+       "type": "string"
+      },
+      "__acs_transfer_is_household_head": {
+       "type": "string"
+      },
+      "__acs_transfer_retirement_income": {
+       "type": "string"
+      },
+      "__acs_transfer_self_employment_income": {
+       "type": "string"
+      },
+      "__acs_transfer_social_security_income": {
+       "type": "string"
+      },
+      "__acs_transfer_tenure_code": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "__acs_transfer_employment_income",
+      "__acs_transfer_interest_dividend_rental_income",
+      "__acs_transfer_is_household_head",
+      "__acs_transfer_retirement_income",
+      "__acs_transfer_self_employment_income",
+      "__acs_transfer_social_security_income",
+      "__acs_transfer_tenure_code"
+     ]
+    },
+    "housing": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "head_source_precedence": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "head_codes": {
+          "type": "array",
+          "items": {
+           "anyOf": [
+            {
+             "type": "boolean"
+            },
+            {
+             "type": "integer"
+            }
+           ]
+          }
+         },
+         "source": {
+          "type": "string"
          }
         },
-        "value_kind": {
-         "enum": [
-          "amount",
+        "required": [
+         "head_codes",
+         "source"
+        ]
+       }
+      },
+      "targets": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "tenure_source_precedence": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      }
+     },
+     "required": [
+      "head_source_precedence",
+      "targets",
+      "tenure_source_precedence"
+     ]
+    },
+    "immigration_status_model_target": {
+     "type": "string"
+    },
+    "immigration_status_targets": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "post_transfer_features": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "adult_care": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "activation": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "all_targets": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          }
+         },
+         "required": [
+          "all_targets"
+         ]
+        },
+        "contract": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "expense": {
+           "type": "string"
+          },
+          "flag": {
+           "type": "string"
+          },
+          "mutable_rows": {
+           "type": "string"
+          },
+          "tax_unit_link": {
+           "type": "string"
+          },
+          "tax_unit_role": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "expense",
           "flag",
-          "count",
-          "category"
+          "mutable_rows",
+          "tax_unit_link",
+          "tax_unit_role"
+         ]
+        }
+       },
+       "required": [
+        "activation",
+        "contract"
+       ]
+      },
+      "schedule_d_capital_gain_distributions": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "activation": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "all_targets": {
+           "type": "array",
+           "items": {
+            "type": "string"
+           }
+          },
+          "derive_schedule_d": {
+           "type": "boolean"
+          }
+         },
+         "required": [
+          "all_targets",
+          "derive_schedule_d"
+         ]
+        },
+        "contract": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "exclusive_with": {
+           "type": "string"
+          },
+          "output": {
+           "type": "string"
+          },
+          "preserve_preexisting_nonnull": {
+           "type": "boolean"
+          },
+          "share_asset": {
+           "type": "null"
+          },
+          "source": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "exclusive_with",
+          "output",
+          "preserve_preexisting_nonnull",
+          "share_asset",
+          "source"
+         ]
+        },
+        "enabled_overrides": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "share_asset": {
+           "type": "object",
+           "additionalProperties": false,
+           "properties": {
+            "asset": {
+             "type": "string"
+            },
+            "asset_sha256": {
+             "$ref": "defs.schema.json#/$defs/sha256"
+            },
+            "national_anchor_ty2015": {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "note": {
+               "type": "string",
+               "x-spec-surface": "documentation"
+              },
+              "pub1304_direct_1040_route_k": {
+               "type": "number"
+              },
+              "schedule_d_cgd_share_of_lt_net_gains": {
+               "type": "number"
+              },
+              "schedule_d_route_residual_k": {
+               "type": "number"
+              },
+              "soca_all_route_capital_gain_distributions_k": {
+               "type": "number"
+              },
+              "soca_long_term_total_net_gain_k": {
+               "type": "number"
+              }
+             },
+             "required": [
+              "note",
+              "pub1304_direct_1040_route_k",
+              "schedule_d_cgd_share_of_lt_net_gains",
+              "schedule_d_route_residual_k",
+              "soca_all_route_capital_gain_distributions_k",
+              "soca_long_term_total_net_gain_k"
+             ]
+            },
+            "schedule_d_cgd_share_of_lt_net_gains": {
+             "type": "number"
+            }
+           },
+           "required": [
+            "asset",
+            "asset_sha256",
+            "national_anchor_ty2015",
+            "schedule_d_cgd_share_of_lt_net_gains"
+           ]
+          }
+         },
+         "required": [
+          "share_asset"
+         ]
+        }
+       },
+       "required": [
+        "activation",
+        "contract",
+        "enabled_overrides"
+       ]
+      }
+     },
+     "required": [
+      "adult_care",
+      "schedule_d_capital_gain_distributions"
+     ]
+    },
+    "predictor_bindings": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "group_required": {
+       "type": "string"
+      },
+      "housing_mandatory": {
+       "type": "string"
+      },
+      "person_optional": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "person_required": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "group_required",
+      "housing_mandatory",
+      "person_optional",
+      "person_required"
+     ]
+    },
+    "profiles": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "acs_transfer_default": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "derive_schedule_d": {
+         "type": "boolean"
+        }
+       },
+       "required": [
+        "derive_schedule_d"
+       ]
+      },
+      "acs_transfer_early": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "derive_schedule_d": {
+         "type": "boolean"
+        }
+       },
+       "required": [
+        "derive_schedule_d"
+       ]
+      }
+     },
+     "required": [
+      "acs_transfer_default",
+      "acs_transfer_early"
+     ]
+    },
+    "recipient_combined_sources": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "__acs_transfer_interest_dividend_rental_income": {
+       "type": "string"
+      },
+      "__acs_transfer_retirement_income": {
+       "type": "string"
+      },
+      "__acs_transfer_social_security_income": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "__acs_transfer_interest_dividend_rental_income",
+      "__acs_transfer_retirement_income",
+      "__acs_transfer_social_security_income"
+     ]
+    },
+    "schema_version": {
+     "type": "integer"
+    },
+    "tenure_codes": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "NONE": {
+       "type": "number"
+      },
+      "OWNED OUTRIGHT": {
+       "type": "number"
+      },
+      "OWNED WITH MORTGAGE": {
+       "type": "number"
+      },
+      "OWNED_OUTRIGHT": {
+       "type": "number"
+      },
+      "OWNED_WITH_MORTGAGE": {
+       "type": "number"
+      },
+      "OWNER WITH MORTGAGE": {
+       "type": "number"
+      },
+      "OWNER WITHOUT MORTGAGE": {
+       "type": "number"
+      },
+      "OWNER_WITHOUT_MORTGAGE": {
+       "type": "number"
+      },
+      "OWNER_WITH_MORTGAGE": {
+       "type": "number"
+      },
+      "RENTED": {
+       "type": "number"
+      },
+      "RENTER": {
+       "type": "number"
+      }
+     },
+     "required": [
+      "NONE",
+      "OWNED OUTRIGHT",
+      "OWNED WITH MORTGAGE",
+      "OWNED_OUTRIGHT",
+      "OWNED_WITH_MORTGAGE",
+      "OWNER WITH MORTGAGE",
+      "OWNER WITHOUT MORTGAGE",
+      "OWNER_WITHOUT_MORTGAGE",
+      "OWNER_WITH_MORTGAGE",
+      "RENTED",
+      "RENTER"
+     ]
+    }
+   },
+   "required": [
+    "discrete_numeric_targets",
+    "donor_combined_components",
+    "group_optional_names",
+    "housing",
+    "immigration_status_model_target",
+    "immigration_status_targets",
+    "post_transfer_features",
+    "predictor_bindings",
+    "profiles",
+    "recipient_combined_sources",
+    "schema_version",
+    "tenure_codes"
+   ]
+  },
+  "gap_fill_schedule": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "activation_policy": {
+     "type": "string"
+    },
+    "directions": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+       "activation_stage": {
+        "type": "string"
+       },
+       "name": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "activation_stage",
+       "name"
+      ]
+     }
+    }
+   },
+   "required": [
+    "activation_policy",
+    "directions"
+   ]
+  },
+  "primary_checkpoint": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "schema_version",
+    "target_order_digest_rule"
+   ],
+   "properties": {
+    "schema_version": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "target_order_digest_rule": {
+     "type": "string",
+     "minLength": 1
+    }
+   }
+  },
+  "families": {
+   "type": "array",
+   "items": {
+    "$ref": "#/$defs/family"
+   },
+   "minItems": 1
+  },
+  "producer_graph": {
+   "$ref": "#/$defs/producer_graph"
+  }
+ },
+ "$defs": {
+  "node_capabilities": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "determinism",
+    "numeric_reproducibility",
+    "effects",
+    "structural_delta",
+    "retry_safety"
+   ],
+   "properties": {
+    "determinism": {
+     "enum": [
+      "deterministic",
+      "seeded",
+      "nondeterministic"
+     ]
+    },
+    "numeric_reproducibility": {
+     "enum": [
+      "bitwise",
+      "tolerance_bound",
+      "unspecified"
+     ]
+    },
+    "effects": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "items": {
+      "enum": [
+       "none",
+       "declared_source_read",
+       "declared_sink_write"
+      ]
+     }
+    },
+    "structural_delta": {
+     "enum": [
+      "none",
+      "filter",
+      "expand",
+      "join",
+      "relink",
+      "reorder",
+      "reweight"
+     ]
+    },
+    "retry_safety": {
+     "enum": [
+      "idempotent",
+      "attempt_scoped",
+      "nonretryable"
+     ]
+    }
+   }
+  },
+  "structural_mutation": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "operation",
+    "precondition",
+    "postcondition"
+   ],
+   "properties": {
+    "operation": {
+     "enum": [
+      "preserve",
+      "preserve_absent",
+      "append_remapped_clone_keys",
+      "expand_complete_household_graphs",
+      "append_relinked_clone_memberships",
+      "append_clone_blocks_preserving_native_order",
+      "split_mass_across_clone_descendants"
+     ]
+    },
+    "precondition": {
+     "enum": [
+      "entity_keys_valid",
+      "entity_cardinality_valid",
+      "links_valid",
+      "memberships_valid",
+      "entity_order_valid",
+      "weights_valid",
+      "mass_history_valid",
+      "native_entity_keys_unique",
+      "native_clone_index_zero",
+      "link_tables_absent",
+      "native_memberships_valid",
+      "native_entity_order_valid",
+      "native_household_mass_finite"
+     ]
+    },
+    "postcondition": {
+     "enum": [
+      "entity_keys_unchanged",
+      "entity_cardinality_unchanged",
+      "links_unchanged",
+      "memberships_unchanged",
+      "entity_order_unchanged",
+      "weights_unchanged",
+      "mass_history_unchanged",
+      "all_entity_keys_unique",
+      "clone_roles_materialized",
+      "link_tables_absent",
+      "clone_memberships_reference_remapped_keys",
+      "clone_blocks_follow_native_rows",
+      "household_mass_conserved"
+     ]
+    }
+   }
+  },
+  "node_mutations": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "entity_keys",
+    "cardinality",
+    "links",
+    "memberships",
+    "order",
+    "weights",
+    "mass_history"
+   ],
+   "properties": {
+    "entity_keys": {
+     "$ref": "#/$defs/structural_mutation"
+    },
+    "cardinality": {
+     "$ref": "#/$defs/structural_mutation"
+    },
+    "links": {
+     "$ref": "#/$defs/structural_mutation"
+    },
+    "memberships": {
+     "$ref": "#/$defs/structural_mutation"
+    },
+    "order": {
+     "$ref": "#/$defs/structural_mutation"
+    },
+    "weights": {
+     "$ref": "#/$defs/structural_mutation"
+    },
+    "mass_history": {
+     "$ref": "#/$defs/structural_mutation"
+    }
+   }
+  },
+  "write_scope": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "entity",
+    "column",
+    "row_scope",
+    "mode",
+    "cell_segments"
+   ],
+   "properties": {
+    "entity": {
+     "$ref": "defs.schema.json#/$defs/entity"
+    },
+    "column": {
+     "type": "string",
+     "minLength": 1
+    },
+    "row_scope": {
+     "$ref": "defs.schema.json#/$defs/row_scope"
+    },
+    "mode": {
+     "enum": [
+      "column_cells",
+      "structural_column",
+      "resolved_weight",
+      "virtual_receipt"
+     ]
+    },
+    "cell_segments": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "oneOf": [
+       {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "predicate",
+         "coverage_scope",
+         "write_policy"
+        ],
+        "properties": {
+         "predicate": {
+          "const": "coverage_scope"
+         },
+         "coverage_scope": {
+          "$ref": "defs.schema.json#/$defs/row_scope"
+         },
+         "write_policy": {
+          "const": "declared_output_write"
+         }
+        }
+       },
+       {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "predicate",
+         "origin",
+         "clone_index",
+         "write_policy"
+        ],
+        "properties": {
+         "predicate": {
+          "const": "origin_clone"
+         },
+         "origin": {
+          "enum": [
+           "asec",
+           "acs"
+          ]
+         },
+         "clone_index": {
+          "enum": [
+           0,
+           1,
+           2
+          ]
+         },
+         "write_policy": {
+          "enum": [
+           "final_write",
+           "primary_write",
+           "byte_exact_clone_1_inheritance",
+           "interim_write_overwritten_by_owner_last",
+           "interim_clone_1_inheritance_overwritten_by_owner_last",
+           "byte_exact_clone_1_mirror"
+          ]
+         }
+        }
+       }
+      ]
+     }
+    }
+   }
+  },
+  "incomparable_node_policy": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "requirement",
+    "proof_method",
+    "overlap_rule",
+    "commutativity_proofs",
+    "incomparable_pair_count",
+    "disjoint_write_pair_count"
+   ],
+   "properties": {
+    "requirement": {
+     "const": "commute_or_disjoint_writes"
+    },
+    "proof_method": {
+     "const": "transitive_closure_and_closed_cell_segment_intersection"
+    },
+    "overlap_rule": {
+     "const": "explicit_commutativity_proof_required"
+    },
+    "commutativity_proofs": {
+     "type": "array",
+     "maxItems": 0
+    },
+    "incomparable_pair_count": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "disjoint_write_pair_count": {
+     "type": "integer",
+     "minimum": 0
+    }
+   }
+  },
+  "family": {
+   "type": "object",
+   "additionalProperties": false,
+  "required": [
+   "id",
+   "stage",
+   "donor",
+   "model",
+   "predictors",
+   "targets"
+  ],
+  "allOf": [
+   {
+    "if": {
+     "properties": {
+      "stage": {
+       "enum": [
+        "primary_puf_qrf",
+        "late_producer_dag"
+       ]
+      }
+     }
+    },
+    "then": {
+     "properties": {
+      "targets": {
+       "items": {
+        "required": [
+         "output_coverage_scope"
+        ]
+       }
+      }
+     }
+    },
+    "else": {
+     "properties": {
+      "targets": {
+       "items": {
+        "not": {
+         "required": [
+          "output_coverage_scope"
          ]
         }
        }
@@ -247,25 +1104,632 @@
      }
     }
    }
+  ],
+   "properties": {
+    "id": {
+     "type": "string",
+     "pattern": "^[a-z0-9_/]+$"
+    },
+    "stage": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "entities": {
+     "type": "array",
+     "items": {
+      "$ref": "defs.schema.json#/$defs/entity"
+     },
+     "minItems": 1
+    },
+    "direction": {
+     "type": "string",
+     "minLength": 1
+    },
+    "runtime_name": {
+     "type": "string",
+     "minLength": 1
+    },
+    "donor": {
+     "type": "object",
+     "additionalProperties": false,
+     "minProperties": 1,
+     "maxProperties": 1,
+     "properties": {
+      "channel": {
+       "$ref": "defs.schema.json#/$defs/identifier"
+      },
+      "support_role": {
+       "$ref": "defs.schema.json#/$defs/identifier"
+      }
+     }
+    },
+    "recipient": {
+     "type": "object",
+     "additionalProperties": false,
+     "minProperties": 1,
+     "properties": {
+      "channel": {
+       "$ref": "defs.schema.json#/$defs/identifier"
+      }
+     }
+    },
+    "donor_contract": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "projection": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "support_channel": {
+         "type": "string"
+        },
+        "support_clone_index": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "support_channel",
+        "support_clone_index"
+       ]
+      },
+      "resource_binding_channel": {
+       "type": [
+        "string",
+        "null"
+       ]
+      },
+      "selection": {
+       "type": "string"
+      },
+      "spine": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "selection",
+      "spine"
+     ]
+    },
+    "recipient_contract": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "scope": {
+       "type": "string"
+      },
+      "selection": {
+       "type": "string"
+      }
+     },
+     "minProperties": 1
+    },
+    "model": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "predictors": {
+     "type": "array",
+     "items": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     },
+     "minItems": 1
+    },
+    "max_targets_per_fit": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "execution_contract": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "chaining": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "targets": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "name",
+       "entity",
+       "value_kind",
+       "dtype",
+       "period",
+       "requires_concepts"
+      ],
+      "properties": {
+       "name": {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       },
+       "entity": {
+        "$ref": "defs.schema.json#/$defs/entity"
+       },
+       "value_kind": {
+        "enum": [
+         "amount",
+         "flag",
+         "count",
+         "category"
+        ]
+       },
+       "dtype": {
+        "enum": [
+         "bool",
+         "float",
+         "int",
+         "str"
+        ]
+       },
+       "period": {
+        "enum": [
+         "year",
+         "month",
+         "eternity"
+        ]
+       },
+       "output_coverage_scope": {
+        "$ref": "defs.schema.json#/$defs/row_scope"
+       },
+       "producer_binding": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "operator",
+         "order_index",
+         "execution_scope",
+         "stage"
+        ],
+        "properties": {
+         "operator": {
+          "$ref": "defs.schema.json#/$defs/identifier"
+         },
+         "order_index": {
+          "type": "integer",
+          "minimum": 0
+         },
+         "execution_scope": {
+          "$ref": "defs.schema.json#/$defs/identifier"
+         },
+         "stage": {
+          "type": "string",
+          "minLength": 1
+         }
+        }
+       },
+       "requires_concepts": {
+        "type": "array",
+        "items": {
+         "$ref": "defs.schema.json#/$defs/identifier"
+        },
+        "uniqueItems": true
+       },
+       "recipient_absence_rules": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "column": {
+           "type": "string"
+          },
+          "entity": {
+           "type": "string"
+          },
+          "reason": {
+           "type": "string"
+          },
+          "rule_id": {
+           "type": "string"
+          },
+          "selection": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "column",
+          "entity",
+          "reason",
+          "rule_id",
+          "selection"
+         ]
+        }
+       },
+       "waiver": {
+        "const": "f_p_eligibility_concepts_absent"
+       }
+      },
+      "allOf": [
+       {
+        "if": {
+         "required": [
+          "waiver"
+         ]
+        },
+        "then": {
+         "properties": {
+          "requires_concepts": {
+           "minItems": 1
+          }
+         }
+        }
+       }
+      ]
+     },
+     "minItems": 1
+    }
+   }
   },
   "producer_graph": {
    "type": "object",
    "additionalProperties": false,
-   "required": [
-    "external_stages",
-    "nodes",
-    "ownership_matrix"
+   "allOf": [
+    {
+     "not": {
+      "anyOf": [
+       {"required": ["edges"]},
+       {"required": ["input_inventories"]},
+       {"required": ["incomparable_node_policy"]},
+       {"required": ["order"]},
+       {"required": ["ordering"]},
+       {"required": ["transfer_groups"]},
+       {"required": ["waves"]}
+      ]
+     }
+    }
    ],
    "properties": {
+    "edges": {
+     "type": "array",
+     "items": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     }
+    },
+    "execution_receipt_contract": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "row_binding": {
+       "type": "string"
+      },
+      "top_binding": {
+       "type": "string"
+      },
+      "transition_authority": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "authority_id": {
+         "type": "string"
+        },
+        "independent_digest_required": {
+         "type": "boolean"
+        },
+        "metadata_key": {
+         "type": "string"
+        },
+        "version": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "authority_id",
+        "independent_digest_required",
+        "metadata_key",
+        "version"
+       ]
+      },
+      "version": {
+       "type": "integer"
+      },
+      "virtual_resource_binding": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "row_binding",
+      "top_binding",
+      "transition_authority",
+      "version",
+      "virtual_resource_binding"
+     ]
+    },
     "external_stages": {
      "type": "array",
      "items": {
-      "$ref": "defs.schema.json#/$defs/identifier"
+      "type": "string"
      }
     },
-    "ordering": {
-     "const": "deterministic_total",
-     "description": "Incomparable nodes must commute or occupy disjoint write scopes; the compiler emits one total order."
+    "graph_schema_version": {
+     "type": "integer"
+    },
+    "input_inventories": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "acs_earnings_universe": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "operator": {
+         "type": "string"
+        },
+        "requirements": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+           "alternatives": {
+            "type": "array",
+            "items": {
+             "type": "array",
+             "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+               "column": {
+                "type": "string"
+               },
+               "entity": {
+                "type": "string"
+               },
+               "value_kind": {
+                "type": "string"
+               }
+              },
+              "required": [
+               "column",
+               "entity",
+               "value_kind"
+              ]
+             }
+            }
+           },
+           "label": {
+            "type": "string"
+           },
+           "optional": {
+            "type": "boolean"
+           },
+           "required_scope": {
+            "type": "null"
+           }
+          },
+          "required": [
+           "alternatives",
+           "label",
+           "optional",
+           "required_scope"
+          ]
+         }
+        }
+       },
+       "required": [
+        "operator",
+        "requirements"
+       ]
+      },
+      "primary_puf": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "operator": {
+         "type": "string"
+        },
+        "requirements": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+           "alternatives": {
+            "type": "array",
+            "items": {
+             "type": "array",
+             "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+               "column": {
+                "type": "string"
+               },
+               "entity": {
+                "type": "string"
+               },
+               "value_kind": {
+                "type": "string"
+               }
+              },
+              "required": [
+               "column",
+               "entity",
+               "value_kind"
+              ]
+             }
+            }
+           },
+           "label": {
+            "type": "string"
+           },
+           "optional": {
+            "type": "boolean"
+           },
+           "required_scope": {
+            "anyOf": [
+             {
+              "type": "string"
+             },
+             {
+              "type": "null"
+             }
+            ]
+           }
+          },
+          "required": [
+           "alternatives",
+           "label",
+           "optional",
+           "required_scope"
+          ]
+         }
+        }
+       },
+       "required": [
+        "operator",
+        "requirements"
+       ]
+      },
+      "sources": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "operator": {
+          "type": "string"
+         },
+         "requirements": {
+          "type": "array",
+          "items": {
+           "type": "object",
+           "additionalProperties": false,
+           "properties": {
+            "alternatives": {
+             "type": "array",
+             "items": {
+              "type": "array",
+              "items": {
+               "type": "object",
+               "additionalProperties": false,
+               "properties": {
+                "column": {
+                 "type": "string"
+                },
+                "entity": {
+                 "type": "string"
+                },
+                "value_kind": {
+                 "type": "string"
+                }
+               },
+               "required": [
+                "column",
+                "entity",
+                "value_kind"
+               ]
+              }
+             }
+            },
+            "label": {
+             "type": "string"
+            },
+            "optional": {
+             "type": "boolean"
+            },
+            "required_scope": {
+             "type": "null"
+            }
+           },
+           "required": [
+            "alternatives",
+            "label",
+            "optional",
+            "required_scope"
+           ]
+          }
+         }
+        },
+        "required": [
+         "operator",
+         "requirements"
+        ]
+       }
+      },
+      "transfers": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "operator": {
+          "type": "string"
+         },
+         "requirements": {
+          "type": "array",
+          "items": {
+           "type": "object",
+           "additionalProperties": false,
+           "properties": {
+            "alternatives": {
+             "type": "array",
+             "items": {
+              "type": "array",
+              "items": {
+               "type": "object",
+               "additionalProperties": false,
+               "properties": {
+                "column": {
+                 "type": "string"
+                },
+                "entity": {
+                 "type": "string"
+                },
+                "value_kind": {
+                 "type": "string"
+                }
+               },
+               "required": [
+                "column",
+                "entity",
+                "value_kind"
+               ]
+              }
+             }
+            },
+            "label": {
+             "type": "string"
+            },
+            "optional": {
+             "type": "boolean"
+            },
+            "required_scope": {
+             "anyOf": [
+              {
+               "type": "string"
+              },
+              {
+               "type": "null"
+              }
+             ]
+            }
+           },
+           "required": [
+            "alternatives",
+            "label",
+            "optional",
+            "required_scope"
+           ]
+          }
+         }
+        },
+        "required": [
+         "operator",
+         "requirements"
+        ]
+       }
+      }
+     },
+     "required": [
+      "acs_earnings_universe",
+      "primary_puf",
+      "sources",
+      "transfers"
+     ]
+    },
+    "incomparable_node_policy": {
+     "$ref": "#/$defs/incomparable_node_policy"
     },
     "nodes": {
      "type": "array",
@@ -273,14 +1737,46 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+       "capabilities",
        "id",
+       "name",
+       "kind",
        "kernel",
        "inputs",
-       "outputs"
+       "mutations",
+       "outputs",
+       "virtual_resources"
+      ],
+      "allOf": [
+       {
+        "not": {
+         "anyOf": [
+          {"required": ["depends_on"]},
+          {"required": ["write_scopes"]}
+         ]
+        }
+       }
       ],
       "properties": {
+       "capabilities": {
+        "$ref": "#/$defs/node_capabilities"
+       },
        "id": {
-        "$ref": "defs.schema.json#/$defs/identifier"
+        "type": "string",
+        "minLength": 1
+       },
+       "name": {
+        "type": "string",
+        "minLength": 1
+       },
+       "kind": {
+        "enum": [
+         "acs_earnings_universe",
+         "primary_puf",
+         "post_clone_source",
+         "source_finalizer",
+         "late_transfer"
+        ]
        },
        "kernel": {
         "$ref": "defs.schema.json#/$defs/kernel_ref"
@@ -288,7 +1784,8 @@
        "depends_on": {
         "type": "array",
         "items": {
-         "$ref": "defs.schema.json#/$defs/identifier"
+         "type": "string",
+         "minLength": 1
         }
        },
        "inputs": {
@@ -297,86 +1794,66 @@
          "type": "object",
          "additionalProperties": false,
          "required": [
-          "entity",
+          "alternatives",
           "column",
-          "required_scope",
+          "entity",
           "producing_stage",
-          "absence"
+          "required_scope",
+          "tolerated_absence_receipts"
          ],
          "properties": {
-          "entity": {
-           "$ref": "defs.schema.json#/$defs/entity"
-          },
-          "column": {
-           "$ref": "defs.schema.json#/$defs/identifier"
-          },
-          "value_kind": {
-           "enum": [
-            "amount",
-            "flag",
-            "count",
-            "category",
-            "weight"
-           ]
-          },
-          "required_scope": {
-           "$ref": "defs.schema.json#/$defs/row_scope"
-          },
-          "producing_stage": {
-           "$ref": "defs.schema.json#/$defs/identifier"
-          },
-          "absence": {
-           "type": "object",
-           "additionalProperties": false,
-           "required": [
-            "policy"
-           ],
-           "properties": {
-            "policy": {
-             "enum": [
-              "fatal",
-              "tolerated_with_receipt"
-             ]
-            },
-            "receipt_ids": {
-             "type": "array",
-             "items": {
-              "$ref": "defs.schema.json#/$defs/identifier"
-             }
-            }
-           }
-          },
           "alternatives": {
            "type": "array",
-           "description": "Ordered OR-of-AND with declared precedence; predicates disjoint + exhaustive.",
            "items": {
             "type": "array",
-            "minItems": 1,
             "items": {
              "type": "object",
              "additionalProperties": false,
              "required": [
               "entity",
-              "column"
+              "column",
+              "value_kind"
              ],
              "properties": {
               "entity": {
                "$ref": "defs.schema.json#/$defs/entity"
               },
               "column": {
-               "$ref": "defs.schema.json#/$defs/identifier"
+               "type": "string",
+               "minLength": 1
               },
               "value_kind": {
                "enum": [
-                "amount",
-                "flag",
-                "count",
-                "category",
-                "weight"
+                "column_present",
+                "finite_numeric",
+                "non_null"
                ]
               }
              }
-            }
+            },
+            "minItems": 1
+           },
+           "minItems": 1
+          },
+          "column": {
+           "type": "string",
+           "minLength": 1
+          },
+          "entity": {
+           "$ref": "defs.schema.json#/$defs/entity"
+          },
+          "producing_stage": {
+           "type": "string",
+           "minLength": 1
+          },
+          "required_scope": {
+           "$ref": "defs.schema.json#/$defs/row_scope"
+          },
+          "tolerated_absence_receipts": {
+           "type": "array",
+           "items": {
+            "type": "string",
+            "minLength": 1
            }
           }
          }
@@ -391,26 +1868,18 @@
           "entity",
           "column",
           "coverage_scope",
-          "presence"
+          "temporary",
+          "validation_only"
          ],
          "properties": {
           "entity": {
            "$ref": "defs.schema.json#/$defs/entity"
           },
           "column": {
-           "$ref": "defs.schema.json#/$defs/identifier"
+           "type": "string",
+           "minLength": 1
           },
           "coverage_scope": {
-           "$ref": "defs.schema.json#/$defs/row_scope"
-          },
-          "presence": {
-           "enum": [
-            "required",
-            "forbidden",
-            "predicated"
-           ]
-          },
-          "predicate": {
            "$ref": "defs.schema.json#/$defs/row_scope"
           },
           "temporary": {
@@ -422,18 +1891,85 @@
          }
         }
        },
+       "mutations": {
+        "$ref": "#/$defs/node_mutations"
+       },
+       "write_scopes": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+         "$ref": "#/$defs/write_scope"
+        }
+       },
        "virtual_resources": {
         "type": "array",
         "items": {
          "type": "object",
          "additionalProperties": false,
-         "required": [
-          "id",
-          "kind"
-         ],
          "properties": {
+          "dynamic_field": {
+           "type": "object",
+           "additionalProperties": false,
+           "properties": {
+            "derivation": {
+             "anyOf": [
+              {
+               "type": "string"
+              },
+              {
+               "type": "object",
+               "additionalProperties": false,
+               "properties": {
+                "base": {
+                 "type": "string"
+                },
+                "producer": {
+                 "type": "object",
+                 "additionalProperties": false,
+                 "properties": {
+                  "entity": {
+                   "type": "string"
+                  },
+                  "family": {
+                   "type": "string"
+                  },
+                  "name": {
+                   "type": "string"
+                  },
+                  "ordered_targets": {
+                   "type": "array",
+                   "items": {
+                    "type": "string"
+                   }
+                  }
+                 },
+                 "required": [
+                  "entity",
+                  "family",
+                  "name",
+                  "ordered_targets"
+                 ]
+                }
+               },
+               "required": [
+                "base",
+                "producer"
+               ]
+              }
+             ]
+            },
+            "name": {
+             "type": "string"
+            }
+           },
+           "required": [
+            "derivation",
+            "name"
+           ]
+          },
           "id": {
-           "$ref": "defs.schema.json#/$defs/identifier"
+           "type": "string",
+           "minLength": 1
           },
           "kind": {
            "enum": [
@@ -445,96 +1981,1958 @@
             "target_bank"
            ]
           },
-          "digest_rule": {
-           "$ref": "defs.schema.json#/$defs/identifier"
+          "resolution": {
+           "type": "string"
+          },
+          "binding": {
+           "oneOf": [
+            {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "contract_identity": {
+               "type": "object",
+               "additionalProperties": false,
+               "properties": {
+                "aggregation": {
+                 "type": "string"
+                },
+                "eligible_person_null_policy": {
+                 "type": "string"
+                },
+                "empty_universe_tax_unit_policy": {
+                 "type": "string"
+                },
+                "minimum_age": {
+                 "type": "integer"
+                },
+                "out_of_universe_person_policy": {
+                 "type": "string"
+                },
+                "person_allocation_policy": {
+                 "type": "string"
+                },
+                "produced_frame_semantics": {
+                 "type": "string"
+                },
+                "rules": {
+                 "type": "array",
+                 "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                   "mapped_column": {
+                    "type": "string"
+                   },
+                   "rule_id": {
+                    "type": "string"
+                   },
+                   "source_column": {
+                    "type": "string"
+                   }
+                  },
+                  "required": [
+                   "mapped_column",
+                   "rule_id",
+                   "source_column"
+                  ]
+                 }
+                },
+                "source_channel": {
+                 "type": "string"
+                },
+                "source_dataset": {
+                 "type": "string"
+                },
+                "version": {
+                 "type": "integer"
+                }
+               },
+               "required": [
+                "aggregation",
+                "eligible_person_null_policy",
+                "empty_universe_tax_unit_policy",
+                "minimum_age",
+                "out_of_universe_person_policy",
+                "person_allocation_policy",
+                "produced_frame_semantics",
+                "rules",
+                "source_channel",
+                "source_dataset",
+                "version"
+               ]
+              },
+              "ordered_mapped_columns": {
+               "type": "array",
+               "items": {
+                "type": "string"
+               }
+              },
+              "person_scope_mode": {
+               "type": "string"
+              },
+              "resource_kind": {
+               "const": "acs_pums_earnings_universe_execution_config"
+              },
+              "runtime_identity_owner": {
+               "type": "string"
+              },
+              "schema_version": {
+               "type": "integer"
+              }
+             },
+             "required": [
+              "contract_identity",
+              "ordered_mapped_columns",
+              "person_scope_mode",
+              "resource_kind",
+              "runtime_identity_owner",
+              "schema_version"
+             ]
+            },
+            {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "resource_kind": {
+               "const": "late_transfer_model_config"
+              },
+              "schema_version": {
+               "type": "integer"
+              }
+             },
+             "required": [
+              "resource_kind",
+              "schema_version"
+             ]
+            },
+            {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "mode": {
+               "type": "string"
+              },
+              "resource_kind": {
+               "const": "late_transfer_target_bank"
+              },
+              "schema_version": {
+               "type": "integer"
+              }
+             },
+             "required": [
+              "mode",
+              "resource_kind",
+              "schema_version"
+             ]
+            },
+            {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "allow_existing_without_source": {
+               "anyOf": [
+                {
+                 "type": "boolean"
+                },
+                {
+                 "type": "null"
+                }
+               ]
+              },
+              "external_sidecars": {
+               "type": "object",
+               "additionalProperties": false,
+               "properties": {
+                "asec_2023_source": {
+                 "type": "object",
+                 "additionalProperties": false,
+                 "properties": {
+                  "mode": {
+                   "type": "string"
+                  }
+                 },
+                 "required": [
+                  "mode"
+                 ]
+                },
+                "asec_education_source": {
+                 "type": "object",
+                 "additionalProperties": false,
+                 "properties": {
+                  "mode": {
+                   "type": "string"
+                  }
+                 },
+                 "required": [
+                  "mode"
+                 ]
+                }
+               }
+              },
+              "force_puf_imputation": {
+               "anyOf": [
+                {
+                 "type": "boolean"
+                },
+                {
+                 "type": "null"
+                }
+               ]
+              },
+              "formula_owned_outputs_removed": {
+               "type": "object",
+               "additionalProperties": false,
+               "properties": {
+                "person": {
+                 "type": "array",
+                 "items": {
+                  "type": "string"
+                 }
+                }
+               }
+              },
+              "housing_assistance_qrf": {
+               "anyOf": [
+                {
+                 "type": "object",
+                 "additionalProperties": false,
+                 "properties": {
+                  "max_train_samples": {
+                   "type": "integer"
+                  },
+                  "n_estimators": {
+                   "type": "integer"
+                  }
+                 },
+                 "required": [
+                  "max_train_samples",
+                  "n_estimators"
+                 ]
+                },
+                {
+                 "type": "null"
+                }
+               ]
+              },
+              "operator_contract": {
+               "type": "object",
+               "additionalProperties": false,
+               "properties": {
+                "execution_scope": {
+                 "type": "string"
+                },
+                "family": {
+                 "type": "string"
+                },
+                "mechanism": {
+                 "type": "string"
+                },
+                "phases": {
+                 "type": "array",
+                 "items": {
+                  "type": "string"
+                 }
+                }
+               },
+               "required": [
+                "execution_scope",
+                "family",
+                "mechanism",
+                "phases"
+               ]
+              },
+              "resource_kind": {
+               "const": "post_clone_source_execution_config"
+              },
+              "schema_version": {
+               "type": "integer"
+              },
+              "source_stage_ref": {
+               "anyOf": [
+                {
+                 "type": "null"
+                },
+                {
+                 "type": "object",
+                 "additionalProperties": false,
+                 "required": [
+                  "asset_id",
+                  "stage_id",
+                  "runtime_resolver"
+                 ],
+                 "properties": {
+                  "asset_id": {
+                   "const": "source_stages"
+                  },
+                  "stage_id": {
+                   "type": "string",
+                   "minLength": 1
+                  },
+                  "runtime_resolver": {
+                   "type": "object",
+                   "additionalProperties": false,
+                   "required": [
+                    "module",
+                    "callable",
+                    "purpose"
+                   ],
+                   "properties": {
+                    "module": {
+                     "type": "string",
+                     "minLength": 1
+                    },
+                    "callable": {
+                     "type": "string",
+                     "minLength": 1
+                    },
+                    "purpose": {
+                     "const": "legacy_runtime_verification_evidence"
+                    }
+                   }
+                  }
+                 }
+                }
+               ]
+              }
+             },
+             "required": [
+              "allow_existing_without_source",
+              "external_sidecars",
+              "force_puf_imputation",
+              "formula_owned_outputs_removed",
+              "housing_assistance_qrf",
+              "operator_contract",
+              "resource_kind",
+              "schema_version",
+              "source_stage_ref"
+             ]
+            },
+            {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "audit_sinks": {
+               "type": "object",
+               "additionalProperties": false,
+               "properties": {
+                "fit_records": {
+                 "type": "string"
+                },
+                "recipient_predictor_universe": {
+                 "type": "string"
+                },
+                "tail_bound_diagnostics": {
+                 "type": "string"
+                }
+               },
+               "required": [
+                "fit_records",
+                "recipient_predictor_universe",
+                "tail_bound_diagnostics"
+               ]
+              },
+              "capital_gains_tail": {
+               "type": "object",
+               "additionalProperties": false,
+               "properties": {
+                "concentration_gate": {
+                 "type": "object",
+                 "additionalProperties": false,
+                 "properties": {
+                  "max_top_share": {
+                   "type": "number"
+                  },
+                  "min_nonzero_records": {
+                   "type": "integer"
+                  },
+                  "ordered_joint_vector_columns": {
+                   "type": "array",
+                   "items": {
+                    "type": "string"
+                   }
+                  },
+                  "ordered_recipient_agi_proxy_columns": {
+                   "type": "array",
+                   "items": {
+                    "type": "string"
+                   }
+                  },
+                  "positive_mass_five_x_target": {
+                   "type": "number"
+                  },
+                  "recipient_capital_gains_topcode": {
+                   "type": "number"
+                  },
+                  "recipient_owned_candidate_overlap": {
+                   "type": "array",
+                   "items": {
+                    "type": "string"
+                   }
+                  },
+                  "reference_quantile": {
+                   "type": "number"
+                  },
+                  "reviewed_exclusions": {
+                   "type": "object",
+                   "additionalProperties": false,
+                   "properties": {}
+                  },
+                  "schema_version": {
+                   "type": "integer"
+                  },
+                  "selection_comparison": {
+                   "type": "string"
+                  },
+                  "selection_quantile": {
+                   "type": "number"
+                  },
+                  "top_k": {
+                   "type": "integer"
+                  },
+                  "worsening_share_tolerance": {
+                   "type": "number"
+                  }
+                 },
+                 "required": [
+                  "max_top_share",
+                  "min_nonzero_records",
+                  "ordered_joint_vector_columns",
+                  "ordered_recipient_agi_proxy_columns",
+                  "positive_mass_five_x_target",
+                  "recipient_capital_gains_topcode",
+                  "recipient_owned_candidate_overlap",
+                  "reference_quantile",
+                  "reviewed_exclusions",
+                  "schema_version",
+                  "selection_comparison",
+                  "selection_quantile",
+                  "top_k",
+                  "worsening_share_tolerance"
+                 ]
+                },
+                "enabled": {
+                 "type": "boolean"
+                },
+                "soi_e19200_agi_bands": {
+                 "type": "object",
+                 "additionalProperties": false,
+                 "properties": {
+                  "agi_bands": {
+                   "type": "array",
+                   "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                     "deductible_points_amount": {
+                      "type": "integer"
+                     },
+                     "home_mortgage_interest_amount": {
+                      "type": "integer"
+                     },
+                     "home_mortgage_share": {
+                      "type": "number"
+                     },
+                     "investment_interest_amount": {
+                      "type": "integer"
+                     },
+                     "label": {
+                      "type": "string"
+                     },
+                     "lower_bound": {
+                      "anyOf": [
+                       {
+                        "type": "number"
+                       },
+                       {
+                        "type": "null"
+                       }
+                      ]
+                     },
+                     "non_mortgage_interest_amount": {
+                      "type": "integer"
+                     },
+                     "qualified_mortgage_insurance_premiums_amount": {
+                      "type": "integer"
+                     },
+                     "source_cells": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                       "deductible_points_amount": {
+                        "type": "string"
+                       },
+                       "home_mortgage_interest_amount": {
+                        "type": "string"
+                       },
+                       "investment_interest_amount": {
+                        "type": "string"
+                       },
+                       "qualified_mortgage_insurance_premiums_amount": {
+                        "type": "string"
+                       },
+                       "total_interest_paid_amount": {
+                        "type": "string"
+                       }
+                      },
+                      "required": [
+                       "deductible_points_amount",
+                       "home_mortgage_interest_amount",
+                       "investment_interest_amount",
+                       "qualified_mortgage_insurance_premiums_amount",
+                       "total_interest_paid_amount"
+                      ]
+                     },
+                     "source_row": {
+                      "type": "integer"
+                     },
+                     "total_interest_paid_amount": {
+                      "type": "integer"
+                     },
+                     "upper_bound": {
+                      "anyOf": [
+                       {
+                        "type": "number"
+                       },
+                       {
+                        "type": "null"
+                       }
+                      ]
+                     }
+                    },
+                    "required": [
+                     "deductible_points_amount",
+                     "home_mortgage_interest_amount",
+                     "home_mortgage_share",
+                     "investment_interest_amount",
+                     "label",
+                     "lower_bound",
+                     "non_mortgage_interest_amount",
+                     "qualified_mortgage_insurance_premiums_amount",
+                     "source_cells",
+                     "source_row",
+                     "total_interest_paid_amount",
+                     "upper_bound"
+                    ]
+                   }
+                  },
+                  "all_returns": {
+                   "type": "object",
+                   "additionalProperties": false,
+                   "properties": {
+                    "deductible_points_amount": {
+                     "type": "integer"
+                    },
+                    "home_mortgage_interest_amount": {
+                     "type": "integer"
+                    },
+                    "investment_interest_amount": {
+                     "type": "integer"
+                    },
+                    "non_mortgage_interest_amount": {
+                     "type": "integer"
+                    },
+                    "qualified_mortgage_insurance_premiums_amount": {
+                     "type": "integer"
+                    },
+                    "source_cells": {
+                     "type": "object",
+                     "additionalProperties": false,
+                     "properties": {
+                      "deductible_points_amount": {
+                       "type": "string"
+                      },
+                      "home_mortgage_interest_amount": {
+                       "type": "string"
+                      },
+                      "investment_interest_amount": {
+                       "type": "string"
+                      },
+                      "qualified_mortgage_insurance_premiums_amount": {
+                       "type": "string"
+                      },
+                      "total_interest_paid_amount": {
+                       "type": "string"
+                      }
+                     },
+                     "required": [
+                      "deductible_points_amount",
+                      "home_mortgage_interest_amount",
+                      "investment_interest_amount",
+                      "qualified_mortgage_insurance_premiums_amount",
+                      "total_interest_paid_amount"
+                     ]
+                    },
+                    "source_row": {
+                     "type": "integer"
+                    },
+                    "total_interest_paid_amount": {
+                     "type": "integer"
+                    }
+                   },
+                   "required": [
+                    "deductible_points_amount",
+                    "home_mortgage_interest_amount",
+                    "investment_interest_amount",
+                    "non_mortgage_interest_amount",
+                    "qualified_mortgage_insurance_premiums_amount",
+                    "source_cells",
+                    "source_row",
+                    "total_interest_paid_amount"
+                   ]
+                  },
+                  "asset": {
+                   "type": "string"
+                  },
+                  "asset_sha256": {
+                   "$ref": "defs.schema.json#/$defs/sha256"
+                  },
+                  "runtime_agi_bands": {
+                   "type": "object",
+                   "additionalProperties": false,
+                   "properties": {
+                    "agi_bands": {
+                     "type": "array",
+                     "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "properties": {
+                       "deductible_points_amount": {
+                        "type": "integer"
+                       },
+                       "home_mortgage_interest_amount": {
+                        "type": "integer"
+                       },
+                       "home_mortgage_share": {
+                        "type": "number"
+                       },
+                       "investment_interest_amount": {
+                        "type": "integer"
+                       },
+                       "label": {
+                        "type": "string"
+                       },
+                       "lower_bound": {
+                        "anyOf": [
+                         {
+                          "type": "number"
+                         },
+                         {
+                          "type": "null"
+                         }
+                        ]
+                       },
+                       "non_mortgage_interest_amount": {
+                        "type": "integer"
+                       },
+                       "qualified_mortgage_insurance_premiums_amount": {
+                        "type": "integer"
+                       },
+                       "source_cells": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                         "deductible_points_amount": {
+                          "type": "string"
+                         },
+                         "home_mortgage_interest_amount": {
+                          "type": "string"
+                         },
+                         "investment_interest_amount": {
+                          "type": "string"
+                         },
+                         "qualified_mortgage_insurance_premiums_amount": {
+                          "type": "string"
+                         },
+                         "total_interest_paid_amount": {
+                          "type": "string"
+                         }
+                        },
+                        "required": [
+                         "deductible_points_amount",
+                         "home_mortgage_interest_amount",
+                         "investment_interest_amount",
+                         "qualified_mortgage_insurance_premiums_amount",
+                         "total_interest_paid_amount"
+                        ]
+                       },
+                       "source_row": {
+                        "type": "integer"
+                       },
+                       "total_interest_paid_amount": {
+                        "type": "integer"
+                       },
+                       "upper_bound": {
+                        "anyOf": [
+                         {
+                          "type": "number"
+                         },
+                         {
+                          "type": "null"
+                         }
+                        ]
+                       }
+                      },
+                      "required": [
+                       "deductible_points_amount",
+                       "home_mortgage_interest_amount",
+                       "home_mortgage_share",
+                       "investment_interest_amount",
+                       "label",
+                       "lower_bound",
+                       "non_mortgage_interest_amount",
+                       "qualified_mortgage_insurance_premiums_amount",
+                       "source_cells",
+                       "source_row",
+                       "total_interest_paid_amount",
+                       "upper_bound"
+                      ]
+                     }
+                    },
+                    "schema_version": {
+                     "type": "integer"
+                    }
+                   },
+                   "required": [
+                    "agi_bands",
+                    "schema_version"
+                   ]
+                  }
+                 },
+                 "required": [
+                  "agi_bands",
+                  "all_returns",
+                  "asset",
+                  "asset_sha256",
+                  "runtime_agi_bands"
+                 ]
+                },
+                "spec": {
+                 "type": "object",
+                 "additionalProperties": false,
+                 "properties": {
+                  "aggregate_recids": {
+                   "type": "array",
+                   "items": {
+                    "type": "integer"
+                   }
+                  },
+                  "buckets": {
+                   "type": "array",
+                   "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                     "agi_lower": {
+                      "anyOf": [
+                       {
+                        "type": "number"
+                       },
+                       {
+                        "type": "null"
+                       }
+                      ]
+                     },
+                     "agi_upper": {
+                      "anyOf": [
+                       {
+                        "type": "number"
+                       },
+                       {
+                        "type": "null"
+                       }
+                      ]
+                     },
+                     "description": {
+                      "type": "string",
+                      "x-spec-surface": "documentation"
+                     },
+                     "recid": {
+                      "type": "integer"
+                     },
+                     "synthetic_agi_upper": {
+                      "anyOf": [
+                       {
+                        "type": "number"
+                       },
+                       {
+                        "type": "null"
+                       }
+                      ]
+                     }
+                    },
+                    "required": [
+                     "agi_lower",
+                     "agi_upper",
+                     "description",
+                     "recid",
+                     "synthetic_agi_upper"
+                    ]
+                   }
+                  },
+                  "enabled": {
+                   "type": "boolean"
+                  },
+                  "forbes_top_tail": {
+                   "type": "boolean"
+                  },
+                  "screened_fields": {
+                   "type": "array",
+                   "items": {
+                    "type": "string"
+                   }
+                  },
+                  "source": {
+                   "type": "string"
+                  },
+                  "synthetic_recid_start": {
+                   "type": "integer"
+                  },
+                  "synthetic_tail_support_eligible": {
+                   "type": "boolean"
+                  }
+                 },
+                 "required": [
+                  "aggregate_recids",
+                  "buckets",
+                  "enabled",
+                  "forbes_top_tail",
+                  "screened_fields",
+                  "source",
+                  "synthetic_recid_start",
+                  "synthetic_tail_support_eligible"
+                 ]
+                },
+                "support_contract_ref": {
+                 "type": "object",
+                 "additionalProperties": false,
+                 "required": [
+                  "domain",
+                  "support_role",
+                  "pointer"
+                 ],
+                 "properties": {
+                  "domain": {
+                   "const": "spine"
+                  },
+                  "support_role": {
+                   "const": "puf_tax_detail"
+                  },
+                  "pointer": {
+                   "const": "/tail_support/legacy_contract"
+                  }
+                 }
+                }
+               },
+               "required": [
+                "concentration_gate",
+                "enabled",
+                "soi_e19200_agi_bands",
+                "spec",
+                "support_contract_ref"
+               ]
+              },
+              "doctrines": {
+               "type": "object",
+               "additionalProperties": false,
+               "properties": {
+                "absent_cells": {
+                 "type": "string"
+                },
+                "require_complete_recipient_predictors": {
+                 "type": "boolean"
+                },
+                "whole_pool_output_universes": {
+                 "type": "object",
+                 "additionalProperties": false,
+                 "properties": {
+                  "person.s_corp_income": {
+                   "type": "object",
+                   "additionalProperties": false,
+                   "properties": {
+                    "assignment": {
+                     "type": "string"
+                    },
+                    "column": {
+                     "type": "string"
+                    },
+                    "coverage_scope": {
+                     "type": "string"
+                    },
+                    "donor_precondition": {
+                     "type": "string"
+                    },
+                    "entity": {
+                     "type": "string"
+                    },
+                    "materialized_value": {
+                     "type": "number"
+                    },
+                    "native_precondition": {
+                     "type": "string"
+                    },
+                    "puf_clone_precondition": {
+                     "type": "string"
+                    },
+                    "rule_id": {
+                     "type": "string"
+                    },
+                    "schema_version": {
+                     "type": "integer"
+                    },
+                    "source_semantics": {
+                     "type": "string"
+                    }
+                   },
+                   "required": [
+                    "assignment",
+                    "column",
+                    "coverage_scope",
+                    "donor_precondition",
+                    "entity",
+                    "materialized_value",
+                    "native_precondition",
+                    "puf_clone_precondition",
+                    "rule_id",
+                    "schema_version",
+                    "source_semantics"
+                   ]
+                  }
+                 },
+                 "required": [
+                  "person.s_corp_income"
+                 ]
+                }
+               },
+               "required": [
+                "absent_cells",
+                "require_complete_recipient_predictors",
+                "whole_pool_output_universes"
+               ]
+              },
+              "qrf": {
+               "type": "object",
+               "additionalProperties": false,
+               "properties": {
+                "invocation_mode": {
+                 "type": "object",
+                 "additionalProperties": false,
+                 "properties": {
+                  "person_outputs": {
+                   "type": "string"
+                  },
+                  "predictors": {
+                   "type": "string"
+                  },
+                  "tax_unit_outputs": {
+                   "type": "string"
+                  }
+                 },
+                 "required": [
+                  "person_outputs",
+                  "predictors",
+                  "tax_unit_outputs"
+                 ]
+                },
+                "tail_bound_quantiles": {
+                 "type": "object",
+                 "additionalProperties": false,
+                 "properties": {
+                  "non_sch_d_capital_gains": {
+                   "type": "number"
+                  }
+                 },
+                 "required": [
+                  "non_sch_d_capital_gains"
+                 ]
+                },
+                "worker_execution": {
+                 "x-spec-surface": "execution_profile",
+                 "type": "object",
+                 "additionalProperties": false,
+                 "properties": {
+                  "resolve_as": {
+                   "type": "string"
+                  },
+                  "surface": {
+                   "type": "string"
+                  },
+                  "template": {
+                   "type": "object",
+                   "additionalProperties": false,
+                   "properties": {
+                    "argv_template": {
+                     "type": "array",
+                     "items": {
+                      "anyOf": [
+                       {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "properties": {
+                         "resolver_op": {
+                          "const": "sys_executable"
+                         }
+                        },
+                        "required": [
+                         "resolver_op"
+                        ]
+                       },
+                       {
+                        "type": "string"
+                       }
+                      ]
+                     }
+                    },
+                    "environment": {
+                     "type": "object",
+                     "additionalProperties": false,
+                     "properties": {
+                      "bound_names": {
+                       "type": "array",
+                       "items": {
+                        "type": "string"
+                       }
+                      },
+                      "overrides": {
+                       "type": "object",
+                       "additionalProperties": false,
+                       "properties": {}
+                      },
+                      "policy": {
+                       "type": "string"
+                      },
+                      "semantic_controls": {
+                       "type": "object",
+                       "additionalProperties": false,
+                       "properties": {
+                        "POPULACE_FIT_N_JOBS": {
+                         "type": "object",
+                         "additionalProperties": false,
+                         "properties": {
+                          "configured": {
+                           "type": "object",
+                           "additionalProperties": false,
+                           "properties": {
+                            "name": {
+                             "const": "POPULACE_FIT_N_JOBS"
+                            },
+                            "resolver_op": {
+                             "const": "environment_value"
+                            }
+                           },
+                           "required": [
+                            "name",
+                            "resolver_op"
+                           ]
+                          },
+                          "resolved": {
+                           "type": "object",
+                           "additionalProperties": false,
+                           "properties": {
+                            "default": {
+                             "type": "integer"
+                            },
+                            "name": {
+                             "const": "POPULACE_FIT_N_JOBS"
+                            },
+                            "resolver_op": {
+                             "const": "env_canonical_positive_int_or_default"
+                            }
+                           },
+                           "required": [
+                            "default",
+                            "name",
+                            "resolver_op"
+                           ]
+                          }
+                         },
+                         "required": [
+                          "configured",
+                          "resolved"
+                         ]
+                        },
+                        "POPULACE_FIT_PREDICT_WORKERS": {
+                         "type": "object",
+                         "additionalProperties": false,
+                         "properties": {
+                          "configured": {
+                           "type": "object",
+                           "additionalProperties": false,
+                           "properties": {
+                            "name": {
+                             "const": "POPULACE_FIT_PREDICT_WORKERS"
+                            },
+                            "resolver_op": {
+                             "const": "environment_value"
+                            }
+                           },
+                           "required": [
+                            "name",
+                            "resolver_op"
+                           ]
+                          },
+                          "resolution": {
+                           "type": "object",
+                           "additionalProperties": false,
+                           "properties": {
+                            "name": {
+                             "const": "POPULACE_FIT_PREDICT_WORKERS"
+                            },
+                            "resolver_op": {
+                             "const": "env_or_cpu_count_resolution_label"
+                            }
+                           },
+                           "required": [
+                            "name",
+                            "resolver_op"
+                           ]
+                          },
+                          "resolved": {
+                           "type": "object",
+                           "additionalProperties": false,
+                           "properties": {
+                            "fallback_minimum": {
+                             "type": "integer"
+                            },
+                            "name": {
+                             "const": "POPULACE_FIT_PREDICT_WORKERS"
+                            },
+                            "resolver_op": {
+                             "const": "env_positive_int_or_cpu_count"
+                            }
+                           },
+                           "required": [
+                            "fallback_minimum",
+                            "name",
+                            "resolver_op"
+                           ]
+                          }
+                         },
+                         "required": [
+                          "configured",
+                          "resolution",
+                          "resolved"
+                         ]
+                        }
+                       },
+                       "required": [
+                        "POPULACE_FIT_N_JOBS",
+                        "POPULACE_FIT_PREDICT_WORKERS"
+                       ]
+                      }
+                     },
+                     "required": [
+                      "bound_names",
+                      "overrides",
+                      "policy",
+                      "semantic_controls"
+                     ]
+                    },
+                    "interpreter": {
+                     "type": "object",
+                     "additionalProperties": false,
+                     "properties": {
+                      "cache_tag": {
+                       "type": "object",
+                       "additionalProperties": false,
+                       "properties": {
+                        "resolver_op": {
+                         "const": "python_cache_tag"
+                        }
+                       },
+                       "required": [
+                        "resolver_op"
+                       ]
+                      },
+                      "executable": {
+                       "type": "object",
+                       "additionalProperties": false,
+                       "properties": {
+                        "resolver_op": {
+                         "const": "sys_executable"
+                        }
+                       },
+                       "required": [
+                        "resolver_op"
+                       ]
+                      },
+                      "implementation": {
+                       "type": "object",
+                       "additionalProperties": false,
+                       "properties": {
+                        "resolver_op": {
+                         "const": "python_implementation"
+                        }
+                       },
+                       "required": [
+                        "resolver_op"
+                       ]
+                      },
+                      "resolved_executable": {
+                       "type": "object",
+                       "additionalProperties": false,
+                       "properties": {
+                        "resolver_op": {
+                         "const": "resolved_sys_executable"
+                        }
+                       },
+                       "required": [
+                        "resolver_op"
+                       ]
+                      },
+                      "version": {
+                       "type": "object",
+                       "additionalProperties": false,
+                       "properties": {
+                        "resolver_op": {
+                         "const": "python_version_triplet"
+                        }
+                       },
+                       "required": [
+                        "resolver_op"
+                       ]
+                      }
+                     },
+                     "required": [
+                      "cache_tag",
+                      "executable",
+                      "implementation",
+                      "resolved_executable",
+                      "version"
+                     ]
+                    },
+                    "module": {
+                     "type": "string"
+                    }
+                   },
+                   "required": [
+                    "argv_template",
+                    "environment",
+                    "interpreter",
+                    "module"
+                   ]
+                  }
+                 },
+                 "required": [
+                  "resolve_as",
+                  "surface",
+                  "template"
+                 ]
+                }
+               },
+               "required": [
+                "invocation_mode",
+                "tail_bound_quantiles",
+                "worker_execution"
+               ]
+              },
+              "resource_kind": {
+               "const": "primary_puf_execution_config"
+              },
+              "schema_version": {
+               "type": "integer"
+              }
+             },
+             "required": [
+              "audit_sinks",
+              "capital_gains_tail",
+              "doctrines",
+              "qrf",
+              "resource_kind",
+              "schema_version"
+             ]
+            },
+            {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "manifest_filename": {
+               "type": "string"
+              },
+              "mode": {
+               "type": "string"
+              },
+              "resource_kind": {
+               "const": "primary_qrf_checkpoint"
+              },
+              "schema_version": {
+               "type": "integer"
+              }
+             },
+             "required": [
+              "manifest_filename",
+              "mode",
+              "resource_kind",
+              "schema_version"
+             ]
+            },
+            {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "resource_kind": {
+               "const": "puf_donor_tax_units"
+              },
+              "runtime_identity": {
+               "type": "object",
+               "additionalProperties": false,
+               "properties": {
+                "codec": {
+                 "type": "string"
+                },
+                "fields": {
+                 "type": "array",
+                 "items": {
+                  "type": "string"
+                 }
+                },
+                "normalization": {
+                 "type": "string"
+                }
+               },
+               "required": [
+                "codec",
+                "fields",
+                "normalization"
+               ]
+              },
+              "schema_version": {
+               "type": "integer"
+              },
+              "source_input_pins": {
+               "type": "array",
+               "items": {
+                "type": "string"
+               }
+              }
+             },
+             "required": [
+              "resource_kind",
+              "runtime_identity",
+              "schema_version",
+              "source_input_pins"
+             ]
+            },
+            {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "deferred_status": {
+               "type": "string"
+              },
+              "deferred_transfer_inputs": {
+               "type": "object",
+               "additionalProperties": false,
+               "properties": {
+                "bank_account_assets": {
+                 "type": "object",
+                 "additionalProperties": false,
+                 "properties": {
+                  "entity": {
+                   "type": "string"
+                  },
+                  "legacy_family": {
+                   "type": "string"
+                  },
+                  "owner": {
+                   "type": "string"
+                  },
+                  "physical_dtype": {
+                   "type": "string"
+                  },
+                  "reason": {
+                   "type": "string"
+                  }
+                 },
+                 "required": [
+                  "entity",
+                  "legacy_family",
+                  "owner",
+                  "physical_dtype",
+                  "reason"
+                 ]
+                },
+                "bond_assets": {
+                 "type": "object",
+                 "additionalProperties": false,
+                 "properties": {
+                  "entity": {
+                   "type": "string"
+                  },
+                  "legacy_family": {
+                   "type": "string"
+                  },
+                  "owner": {
+                   "type": "string"
+                  },
+                  "physical_dtype": {
+                   "type": "string"
+                  },
+                  "reason": {
+                   "type": "string"
+                  }
+                 },
+                 "required": [
+                  "entity",
+                  "legacy_family",
+                  "owner",
+                  "physical_dtype",
+                  "reason"
+                 ]
+                },
+                "stock_assets": {
+                 "type": "object",
+                 "additionalProperties": false,
+                 "properties": {
+                  "entity": {
+                   "type": "string"
+                  },
+                  "legacy_family": {
+                   "type": "string"
+                  },
+                  "owner": {
+                   "type": "string"
+                  },
+                  "physical_dtype": {
+                   "type": "string"
+                  },
+                  "reason": {
+                   "type": "string"
+                  }
+                 },
+                 "required": [
+                  "entity",
+                  "legacy_family",
+                  "owner",
+                  "physical_dtype",
+                  "reason"
+                 ]
+                }
+               },
+               "required": [
+                "bank_account_assets",
+                "bond_assets",
+                "stock_assets"
+               ]
+              },
+              "formula_owned_output_exclusions": {
+               "type": "object",
+               "additionalProperties": false,
+               "properties": {
+                "person": {
+                 "type": "array",
+                 "items": {
+                  "type": "string"
+                 }
+                }
+               },
+               "required": [
+                "person"
+               ]
+              },
+              "phase": {
+               "type": "string"
+              },
+              "resource_kind": {
+               "const": "source_finalizer_execution_config"
+              },
+              "schema_version": {
+               "type": "integer"
+              },
+              "source_operator_registry": {
+               "type": "array",
+               "items": {
+                "type": "string"
+               }
+              }
+             },
+             "required": [
+              "deferred_status",
+              "deferred_transfer_inputs",
+              "formula_owned_output_exclusions",
+              "phase",
+              "resource_kind",
+              "schema_version",
+              "source_operator_registry"
+             ]
+            },
+            {
+             "type": "object",
+             "additionalProperties": false,
+             "properties": {
+              "dynamic_field": {
+               "type": "object",
+               "additionalProperties": false,
+               "properties": {
+                "derivation": {
+                 "type": "string"
+                },
+                "name": {
+                 "type": "string"
+                }
+               },
+               "required": [
+                "derivation",
+                "name"
+               ]
+              },
+              "resource_kind": {
+               "const": "source_operator_receipt"
+              },
+              "schema_version": {
+               "type": "integer"
+              },
+              "source_operator": {
+               "type": "string"
+              }
+             },
+             "required": [
+              "dynamic_field",
+              "resource_kind",
+              "schema_version",
+              "source_operator"
+             ]
+            }
+           ]
           }
-         }
+         },
+         "required": [
+          "binding",
+          "id",
+          "kind",
+          "resolution"
+         ]
         }
-       },
-       "structural_delta": {
-        "enum": [
-         "none",
-         "filter",
-         "expand",
-         "join",
-         "relink",
-         "reorder",
-         "reweight"
-        ]
-       },
-       "retry_safety": {
-        "enum": [
-         "idempotent",
-         "attempt_scoped",
-         "nonretryable"
-        ]
        }
       }
      }
+    },
+    "order": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "ordering": {
+     "type": "string"
+    },
+    "ownership_contract": {
+     "type": "object",
+     "additionalProperties": false,
+     "allOf": [
+      {"not": {"required": ["targets"]}}
+     ],
+     "properties": {
+      "artifact_kind": {
+       "type": "string"
+      },
+      "doctrine": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "clone_2_policy": {
+         "type": "string"
+        },
+        "non_owner_write_policy": {
+         "type": "string"
+        },
+        "owner_cardinality": {
+         "type": "string"
+        },
+        "retirement_legacy_order": {
+         "type": "string"
+        },
+        "tail_preservation_guard": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "clone_2_policy",
+        "non_owner_write_policy",
+        "owner_cardinality",
+        "retirement_legacy_order",
+        "tail_preservation_guard"
+       ]
+      },
+      "schema_version": {
+       "type": "integer"
+      },
+      "targets": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "entity": {
+          "type": "string"
+         },
+         "source_producer": {
+          "type": "string"
+         },
+         "source_touch": {
+          "type": "string"
+         },
+         "target": {
+          "type": "string"
+         },
+         "transfer_producer": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "entity",
+         "source_producer",
+         "source_touch",
+         "target",
+         "transfer_producer"
+        ]
+       }
+      }
+     },
+     "required": [
+      "artifact_kind",
+      "doctrine",
+      "schema_version"
+     ]
+    },
+    "ownership_matrix": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+       "clone_index": {
+        "type": "integer"
+       },
+       "entity": {
+        "type": "string"
+       },
+       "final_owner": {
+        "type": "string"
+       },
+       "finalization": {
+        "type": "string"
+       },
+       "origin": {
+        "type": "string"
+       },
+       "producer_actions": {
+        "type": "array",
+        "items": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "action": {
+           "type": "string"
+          },
+          "owns_final": {
+           "type": "boolean"
+          },
+          "producer": {
+           "type": "string"
+          }
+         },
+         "required": [
+          "action",
+          "owns_final",
+          "producer"
+         ]
+        }
+       },
+       "target": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "clone_index",
+       "entity",
+       "final_owner",
+       "finalization",
+       "origin",
+       "producer_actions",
+       "target"
+      ]
+     }
+    },
+    "resource_semantics": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "artifact_kind": {
+       "type": "string"
+      },
+      "resolution": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "clone_attachment_ref": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": ["domain", "support_role", "pointer"],
+         "properties": {
+          "domain": {
+           "const": "spine"
+          },
+          "support_role": {
+           "const": "puf_tax_detail"
+          },
+          "pointer": {
+           "const": "/attachment"
+          }
+         }
+        },
+        "build_model_seed_ref": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": ["domain", "value_source"],
+         "properties": {
+          "domain": {
+           "const": "seed_protocol"
+          },
+          "value_source": {
+           "const": "run_request.build_model_seed"
+          }
+         }
+        },
+        "digest_rule": {
+         "const": "canonical_sha256(resolved_payload_without_sha256)"
+        }
+       },
+       "required": [
+        "clone_attachment_ref",
+        "build_model_seed_ref",
+        "digest_rule"
+       ]
+      },
+      "source_execution_defaults": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "operator_registry_ref",
+        "phase",
+        "time_period_ref"
+       ],
+       "properties": {
+        "operator_registry_ref": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": ["domain", "pointer"],
+         "properties": {
+          "domain": {"const": "spine"},
+          "pointer": {
+           "const": "/pipeline_contract/post_clone_source_operator_order"
+          }
+         }
+        },
+        "phase": {
+         "const": "post_clone"
+        },
+        "time_period_ref": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": ["domain", "pointer"],
+         "properties": {
+          "domain": {"const": "bundle"},
+          "pointer": {"const": "/dataset_run/target_period"}
+         }
+        }
+       }
+      },
+      "schema_version": {
+       "type": "integer"
+      }
+     },
+     "required": [
+      "artifact_kind",
+      "resolution",
+      "source_execution_defaults",
+      "schema_version"
+     ]
+    },
+    "schedule_payload_schema_version": {
+     "type": "integer"
+    },
+    "scope_registry": {
+     "default": {
+      "predicate_space": "producer_origin_clone_or_receipt",
+      "universe": [
+       "origin:acs/clone:0",
+       "origin:acs/clone:1",
+       "origin:acs/clone:2",
+       "origin:asec/clone:0",
+       "origin:asec/clone:1",
+       "origin:asec/clone:2",
+       "receipt:virtual"
+      ],
+      "scopes": [
+       {
+        "id": "acs_source",
+        "atoms": [
+         "origin:acs/clone:0"
+        ]
+       },
+       {
+        "id": "asec_source",
+        "atoms": [
+         "origin:asec/clone:0"
+        ]
+       },
+       {
+        "id": "puf_clone",
+        "atoms": [
+         "origin:acs/clone:1",
+         "origin:acs/clone:2",
+         "origin:asec/clone:1",
+         "origin:asec/clone:2"
+        ]
+       },
+       {
+        "id": "receipt",
+        "atoms": [
+         "receipt:virtual"
+        ]
+       },
+       {
+        "id": "whole_pool",
+        "atoms": [
+         "origin:acs/clone:0",
+         "origin:acs/clone:1",
+         "origin:acs/clone:2",
+         "origin:asec/clone:0",
+         "origin:asec/clone:1",
+         "origin:asec/clone:2"
+        ]
+       }
+      ]
+     },
+     "allOf": [
+      {
+       "$ref": "defs.schema.json#/$defs/closed_scope_registry"
+      },
+      {
+       "properties": {
+        "predicate_space": {
+         "const": "producer_origin_clone_or_receipt"
+        },
+        "universe": {
+         "minItems": 7,
+         "maxItems": 7
+        },
+        "scopes": {
+         "minItems": 5,
+         "maxItems": 5
+        }
+       }
+      }
+     ]
+    },
+    "scope_coverage": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "declared": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "acs_source": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "asec_source": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "puf_clone": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "receipt": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "whole_pool": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        }
+       },
+       "required": [
+        "acs_source",
+        "asec_source",
+        "puf_clone",
+        "receipt",
+        "whole_pool"
+       ]
+      },
+      "unlisted_scope_rule": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "declared",
+      "unlisted_scope_rule"
+     ]
     },
     "transfer_groups": {
      "type": "array",
      "items": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-       "id",
-       "members"
-      ],
       "properties": {
-       "id": {
-        "$ref": "defs.schema.json#/$defs/identifier"
+       "entity": {
+        "type": "string"
        },
-       "members": {
+       "family": {
+        "type": "string"
+       },
+       "name": {
+        "type": "string"
+       },
+       "targets": {
         "type": "array",
-        "minItems": 1,
         "items": {
-         "$ref": "defs.schema.json#/$defs/identifier"
+         "type": "string"
         }
        }
-      }
+      },
+      "required": [
+       "entity",
+       "family",
+       "name",
+       "targets"
+      ]
      }
     },
-    "ownership_matrix": {
+    "waves": {
      "type": "array",
-     "description": "The full conditional ownership matrix (18 rows today), keyed target x origin x clone role.",
      "items": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-       "target",
-       "origin",
-       "clone_role",
-       "owner",
-       "non_owner_action"
-      ],
-      "properties": {
-       "target": {
-        "$ref": "defs.schema.json#/$defs/identifier"
-       },
-       "origin": {
-        "$ref": "defs.schema.json#/$defs/identifier"
-       },
-       "clone_role": {
-        "$ref": "defs.schema.json#/$defs/identifier"
-       },
-       "owner": {
-        "$ref": "defs.schema.json#/$defs/identifier"
-       },
-       "finalizes": {
-        "type": "boolean"
-       },
-       "non_owner_action": {
-        "enum": [
-         "preserve",
-         "fill_missing_only",
-         "forbidden_write"
-        ]
-       }
+      "type": "array",
+      "items": {
+       "type": "string"
       }
      }
     }
-   }
+   },
+   "required": [
+    "execution_receipt_contract",
+    "external_stages",
+    "graph_schema_version",
+    "nodes",
+    "ownership_contract",
+    "ownership_matrix",
+    "resource_semantics",
+    "schedule_payload_schema_version",
+    "scope_coverage"
+   ]
   }
  }
 }

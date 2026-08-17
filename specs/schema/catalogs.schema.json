@@ -13,6 +13,44 @@
   "lineage_class"
  ],
  "properties": {
+  "metadata_waivers": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "field",
+     "authority",
+     "public",
+     "reason",
+     "expires_on"
+    ],
+    "properties": {
+     "id": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     },
+     "field": {
+      "const": "unit"
+     },
+     "authority": {
+      "const": "PolicyEngineUSVariableMetadataIndex"
+     },
+     "public": {
+      "const": false
+     },
+     "reason": {
+      "type": "string",
+      "minLength": 1,
+      "x-spec-surface": "documentation"
+     },
+     "expires_on": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     }
+    }
+   }
+  },
   "columns": {
    "type": "array",
    "items": {
@@ -33,9 +71,23 @@
       "required": [
        "entity",
        "dtype",
-       "period",
+       "unit",
        "nullable",
-       "stability"
+       "domain",
+       "public_stability"
+      ],
+      "oneOf": [
+       {
+        "required": [
+         "period"
+        ]
+       },
+       {
+        "required": [
+         "definition_period",
+         "vintage"
+        ]
+       }
       ],
       "properties": {
        "entity": {
@@ -53,25 +105,77 @@
         ]
        },
        "unit": {
-        "type": "string"
+        "oneOf": [
+         {
+          "enum": [
+           "usd",
+           "count",
+           "ratio",
+           "boolean",
+           "categorical"
+          ]
+         },
+       {
+          "const": "unit_not_declared_by_engine_metadata"
+         }
+        ]
+       },
+       "unit_waiver": {
+        "$ref": "defs.schema.json#/$defs/identifier"
        },
        "period": {
+        "$ref": "defs.schema.json#/$defs/vintage_ref"
+       },
+       "definition_period": {
+        "enum": [
+         "year",
+         "month",
+         "eternity"
+        ]
+       },
+       "vintage": {
         "$ref": "defs.schema.json#/$defs/vintage_ref"
        },
        "nullable": {
         "type": "boolean"
        },
        "domain": {
-        "type": "string"
+        "$ref": "defs.schema.json#/$defs/identifier"
        },
-       "stability": {
+       "public_stability": {
         "enum": [
          "public_stable",
          "public_experimental",
          "internal"
         ]
        }
-      }
+      },
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "unit": {
+           "const": "unit_not_declared_by_engine_metadata"
+          }
+         },
+         "required": [
+          "unit"
+         ]
+        },
+        "then": {
+         "required": [
+          "unit_waiver"
+         ]
+        },
+        "else": {
+         "not": {
+          "required": [
+           "unit_waiver"
+          ]
+         }
+        }
+       }
+      ]
      },
     "docs": {
      "x-spec-surface": "documentation",

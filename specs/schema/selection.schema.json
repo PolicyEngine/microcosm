@@ -1,81 +1,309 @@
 {
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "selection.schema.json",
- "title": "Sparse selection: exact-k (validity gates are KERNEL CONTRACT, not config)",
+ "title": "Sparse exact-k selection with required run-request values",
  "x-spec-surface": "normative",
  "type": "object",
  "additionalProperties": false,
  "required": [
-  "exact_k"
+  "contract_id",
+  "version",
+  "exact_k",
+  "inputs",
+  "algorithm",
+  "post_selection_contract",
+  "receipt"
  ],
  "properties": {
+  "contract_id": {"const": "us_exact_k_selection_runtime"},
+  "version": {"type": "integer", "minimum": 1},
+  "exact_k": {"$ref": "#/$defs/exact_k"},
+  "inputs": {"$ref": "#/$defs/inputs"},
+  "algorithm": {"$ref": "#/$defs/algorithm"},
+  "post_selection_contract": {"$ref": "#/$defs/post_selection_contract"},
+  "receipt": {"$ref": "#/$defs/receipt"}
+ },
+ "$defs": {
   "exact_k": {
    "type": "object",
    "additionalProperties": false,
    "required": [
     "kernel",
+    "cardinality_gate",
     "k",
     "pi_hi",
+    "seed",
     "group_ids",
     "on_infeasible",
     "post_selection_weights"
    ],
    "properties": {
-    "kernel": {
-     "$ref": "defs.schema.json#/$defs/kernel_ref"
-    },
-    "k": {
-     "type": "object",
-     "additionalProperties": false,
-     "required": [
-      "default",
-      "surface"
-     ],
-     "description": "k is a run-request knob; the bundle declares only a default with explicit precedence.",
-     "properties": {
-      "default": {
-       "type": "integer",
-       "minimum": 1
-      },
-      "surface": {
-       "const": "run_request"
-      },
-     "precedence": {
-      "default": "run_request_overrides_default",
-      "const": "run_request_overrides_default"
-      }
-     }
-    },
-    "pi_hi": {
-     "type": "number",
-     "exclusiveMinimum": 0,
-     "maximum": 1
-    },
+    "kernel": {"$ref": "defs.schema.json#/$defs/kernel_ref"},
+    "cardinality_gate": {"$ref": "defs.schema.json#/$defs/kernel_ref"},
+    "k": {"$ref": "#/$defs/k_run_request"},
+    "pi_hi": {"$ref": "#/$defs/pi_hi_run_request"},
+    "seed": {"$ref": "#/$defs/seed_run_request"},
     "group_ids": {
      "oneOf": [
-      {
-       "const": "none"
-      },
+      {"const": "none"},
       {
        "allOf": [
-        {
-         "$ref": "defs.schema.json#/$defs/identifier"
-        },
-        {
-         "not": {
-          "const": "none"
-         }
-        }
+        {"$ref": "defs.schema.json#/$defs/identifier"},
+        {"not": {"const": "none"}}
        ]
       }
      ]
     },
-    "on_infeasible": {
-     "const": "refuse"
+    "on_infeasible": {"const": "refuse"},
+    "post_selection_weights": {"const": "selected_keep_calibrated"}
+   }
+  },
+  "k_run_request": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "required",
+    "default",
+    "surface",
+    "precedence",
+    "allowed",
+    "N",
+    "minimum",
+    "maximum"
+   ],
+   "properties": {
+    "required": {"const": true},
+    "default": {"type": "null"},
+    "surface": {"const": "run_request"},
+    "precedence": {"const": "run_request_overrides_default"},
+    "allowed": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "contains": {"const": "N"},
+     "items": {
+      "oneOf": [
+       {"const": "N"},
+       {"type": "integer", "minimum": 1}
+      ]
+     }
     },
-    "post_selection_weights": {
-     "const": "selected_keep_calibrated",
-     "description": "Selected records carry calibrated weights unchanged; non-selected absent; no re-normalization unless declared."
+    "N": {"const": "authenticated_pool_household_count"},
+    "minimum": {"type": "integer", "minimum": 1},
+    "maximum": {"const": "pool_household_count"}
+   }
+  },
+  "pi_hi_run_request": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "required",
+    "default",
+    "surface",
+    "precedence",
+    "minimum_inclusive",
+    "maximum_inclusive"
+   ],
+   "properties": {
+    "required": {"const": true},
+    "default": {"type": "null"},
+    "surface": {"const": "run_request"},
+    "precedence": {"const": "run_request_overrides_default"},
+    "minimum_inclusive": {"type": "number", "minimum": 0, "maximum": 1},
+    "maximum_inclusive": {"type": "number", "minimum": 0, "maximum": 1}
+   }
+  },
+  "seed_run_request": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "required",
+    "default",
+    "surface",
+    "precedence",
+    "kind"
+   ],
+   "properties": {
+    "required": {"const": true},
+    "default": {"type": "null"},
+    "surface": {"const": "run_request"},
+    "precedence": {"const": "run_request_overrides_default"},
+    "kind": {"const": "nonnegative_integer"}
+   }
+  },
+  "inputs": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["selection_score", "group_ids", "required_authenticated_bindings"],
+   "properties": {
+    "selection_score": {"const": "hard_concrete_gate_open_probability_pi"},
+    "group_ids": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["current_ladder_value", "runtime_seam", "duplicate_policy"],
+     "properties": {
+      "current_ladder_value": {"type": "null"},
+      "runtime_seam": {"const": "one_unique_id_per_record_only"},
+      "duplicate_policy": {"const": "refuse_pending_spine_grouping_policy"}
+     }
+    },
+    "required_authenticated_bindings": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "items": {"$ref": "defs.schema.json#/$defs/identifier"}
+    }
+   }
+  },
+  "algorithm": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["certainty", "boundary", "design", "full_pool"],
+   "properties": {
+    "certainty": {"$ref": "#/$defs/certainty"},
+    "boundary": {"$ref": "#/$defs/boundary"},
+    "design": {"$ref": "#/$defs/design"},
+    "full_pool": {"$ref": "#/$defs/full_pool"}
+   }
+  },
+  "certainty": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["comparison", "action", "k_below_certainty_count"],
+   "properties": {
+    "comparison": {"const": "pi >= pi_hi"},
+    "action": {"const": "include_first"},
+    "k_below_certainty_count": {"const": "refuse"}
+   }
+  },
+  "boundary": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "remaining_draw",
+    "positive_score_filter",
+    "first_order_inclusion_probability",
+    "probability_one_tolerance",
+    "q_above_one",
+    "exact_one"
+   ],
+   "properties": {
+    "remaining_draw": {"const": "k - certainty_count"},
+    "positive_score_filter": {"const": "pi > 0"},
+    "first_order_inclusion_probability": {
+     "const": "q_i = remaining_draw * pi_i / sum(pi_boundary)"
+    },
+    "probability_one_tolerance": {"type": "number", "minimum": 0},
+    "q_above_one": {"const": "refuse_without_clamping"},
+    "exact_one": {"const": "deterministic_take_all_before_fractional_draw"}
+   }
+  },
+  "design": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "name",
+    "without_replacement",
+    "rng",
+    "support_order",
+    "index_dtype",
+    "subset_law",
+    "majority_draw",
+    "dynamic_program",
+    "rejection"
+   ],
+   "properties": {
+    "name": {"const": "sampford"},
+    "without_replacement": {"const": true},
+    "rng": {"$ref": "defs.schema.json#/$defs/kernel_ref"},
+    "support_order": {"const": "ascending_stable"},
+    "index_dtype": {"enum": ["int32", "int64"]},
+    "subset_law": {"type": "string", "minLength": 1},
+    "majority_draw": {"const": "sample_complementary_sampford_design"},
+    "dynamic_program": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["always_max_cells", "max_bytes", "max_cells"],
+     "properties": {
+      "always_max_cells": {"type": "integer", "minimum": 1},
+      "max_bytes": {"type": "integer", "minimum": 1},
+      "max_cells": {"type": "integer", "minimum": 1}
+     }
+    },
+    "rejection": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["max_attempts", "safety_factor", "attempt_limit"],
+     "properties": {
+      "max_attempts": {"type": "integer", "minimum": 1},
+      "safety_factor": {"type": "number", "exclusiveMinimum": 0},
+      "attempt_limit": {"const": "fail_closed"}
+     }
+    }
+   }
+  },
+  "full_pool": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "condition",
+    "support",
+    "inclusion_probabilities",
+    "design_receipt",
+    "selection_epochs"
+   ],
+   "properties": {
+    "condition": {"const": "k == pool_size"},
+    "support": {"const": "identity"},
+    "inclusion_probabilities": {"const": 1.0},
+    "design_receipt": {"const": "full-pool"},
+    "selection_epochs": {"const": 0}
+   }
+  },
+  "post_selection_contract": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "subset_source",
+    "initial_formula",
+    "normalization",
+    "refit",
+    "final_weights",
+    "no_post_selection_keep_without_refit",
+    "diagnostic_methods"
+   ],
+   "properties": {
+    "subset_source": {"const": "original_pool_frame"},
+    "initial_formula": {"const": "original_weight_i / selected_q_i"},
+    "normalization": {"const": "project_to_known_original_pool_weight_total"},
+    "refit": {"const": "ordinary_adam_calibration_with_l0_removed"},
+    "final_weights": {"const": "refit_calibrated_weights"},
+    "no_post_selection_keep_without_refit": {"const": true},
+    "diagnostic_methods": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "items": {"$ref": "defs.schema.json#/$defs/identifier"}
+    }
+   }
+  },
+  "receipt": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["selection_receipt_fields", "manifest_kernel", "manifest_fields"],
+   "properties": {
+    "selection_receipt_fields": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "items": {"$ref": "defs.schema.json#/$defs/identifier"}
+    },
+    "manifest_kernel": {"$ref": "defs.schema.json#/$defs/kernel_ref"},
+    "manifest_fields": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "items": {"$ref": "defs.schema.json#/$defs/identifier"}
     }
    }
   }

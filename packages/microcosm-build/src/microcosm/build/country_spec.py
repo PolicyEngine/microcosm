@@ -65,6 +65,7 @@ __all__ = [
     "ReleaseContractManifest",
     "ResolvedCountrySpec",
     "country_stage_plan",
+    "load_country_take_up_contract_projection",
     "load_country_spec",
 ]
 
@@ -92,6 +93,9 @@ ALLOWED_COUNTRY_RESOURCE_KINDS = frozenset(
 )
 
 _LEGACY_RESOURCE_SCHEMA_ID = "legacy_json"
+_GENERATED_LOCK_FILENAMES = frozenset(
+    {"bundle.lock.json", "engine_abi.lock.json", "plan.lock.json"}
+)
 
 #: Gate functions a gates spec may select — the release-gate vocabulary of
 #: :mod:`microcosm.build.gates`. Incumbent-comparison gates (parity,
@@ -822,6 +826,11 @@ class CountryResourceRow:
                 "country_package.json resource: the manifest cannot declare "
                 "itself as a resource."
             )
+        if normalized.name in _GENERATED_LOCK_FILENAMES:
+            raise ValueError(
+                "country_package.json resource: generated locks cannot be "
+                "authored manifest resources."
+            )
         kind = _require_non_empty_string(
             self.kind, field_name="kind", context="country_package.json resource"
         )
@@ -886,6 +895,10 @@ class ResolvedCountrySpec:
         target_references: Ledger target references, when declared.
         gates: The gate selection, when declared.
         release_contract: The release contract, when declared.
+        take_up_contract: The constants-era take-up compatibility view. For a
+            generation-1 bundle this is compiled from typed YAML plus the
+            generated engine ABI lock; packaged JSON is equality-attested
+            migration evidence only.
         resource_hashes: Resource filename -> sha256 of its bytes (includes
             ``country_package.json`` itself).
         resolved_spec: The canonical spec-engine object for a generation-1
@@ -902,6 +915,7 @@ class ResolvedCountrySpec:
     target_references: tuple[LedgerTargetReference, ...]
     gates: GatesManifest | None
     release_contract: ReleaseContractManifest | None
+    take_up_contract: Mapping[str, Any] | None
     resource_hashes: Mapping[str, str]
     resolved_spec: object | None = None
 
@@ -967,6 +981,265 @@ def _country_resource_path(root: Path, path: str) -> Path:
     return root.joinpath(*PurePosixPath(path).parts)
 
 
+def _typed_compatibility_projection(
+    resolved_spec: object,
+    *,
+    kind: str,
+    field: str,
+) -> Mapping[str, Any] | None:
+    """Return one migration projection from the authoritative typed domain.
+
+    Compatibility JSON may coexist with a generation-1 bundle while legacy
+    consumers migrate.  The value exposed to those consumers must nevertheless
+    come from the typed domain; the JSON copy is only generated evidence that
+    is asserted below, never a second authority.
+    """
+
+    try:
+        domain = resolved_spec.domain(kind)  # type: ignore[attr-defined]
+    except KeyError:
+        return None
+    wire = domain.to_wire()
+    if not isinstance(wire, Mapping):  # pragma: no cover - typed model invariant
+        raise ValueError(f"{kind}: normalized typed domain is not an object.")
+    if kind == "sources" and field == "stage_manifest":
+        metadata = wire.get("stage_manifest")
+        stages = wire.get("stages")
+        if not isinstance(metadata, Mapping) or not isinstance(stages, list):
+            return None
+        projection = {**metadata, "stages": stages}
+    elif kind == "spine" and field == "support_source_pool":
+        metadata = wire.get("support_source_pool_metadata")
+        support_source_pool = wire.get("support_source_pool")
+        if not isinstance(metadata, Mapping) or not isinstance(
+            support_source_pool, Mapping
+        ):
+            return None
+        projection = {**metadata, "support_spine": support_source_pool}
+    else:
+        projection = wire.get(field)
+    if projection is None:
+        return None
+    if not isinstance(projection, Mapping):  # pragma: no cover - schema invariant
+        raise ValueError(f"{kind}/{field}: compatibility projection is not an object.")
+    return projection
+
+
+def _select_compatibility_payload(
+    *,
+    resolved_spec: object | None,
+    kind: str,
+    field: str,
+    legacy_name: str,
+    legacy_payload: Mapping[str, Any] | None,
+) -> Mapping[str, Any] | None:
+    """Select the typed projection and attest any packaged legacy copy."""
+
+    if resolved_spec is None:
+        return legacy_payload
+    projection = _typed_compatibility_projection(
+        resolved_spec,
+        kind=kind,
+        field=field,
+    )
+    if projection is None:
+        return legacy_payload
+    if legacy_payload is not None and projection != legacy_payload:
+        raise ValueError(
+            f"{legacy_name}: packaged compatibility JSON differs from the "
+            f"authoritative {kind}/{field} bundle projection."
+        )
+    return projection
+
+
+def _compile_typed_take_up_compatibility_projection(
+    take_up: Mapping[str, Any],
+    sources: Mapping[str, Any],
+    *,
+    root: Path,
+) -> Mapping[str, Any]:
+    """Compile normalized typed domains to the constants-era contract view."""
+
+    from microcosm.build.spec_engine import (
+        assert_engine_abi_lock_current,
+        load_schema_registry,
+        project_legacy_take_up_contract,
+        validate_take_up_semantics,
+    )
+
+    validate_take_up_semantics(take_up, sources_document=sources)
+    engine_abi_lock = assert_engine_abi_lock_current(
+        root,
+        {"take_up": take_up, "sources": sources},
+        schema_registry=load_schema_registry(),
+    )
+    if engine_abi_lock is None:  # pragma: no cover - take_up is present above
+        raise ValueError("typed take-up unexpectedly produced no engine ABI lock")
+    return project_legacy_take_up_contract(
+        take_up,
+        engine_abi_lock=engine_abi_lock,
+        sources_document=sources,
+    )
+
+
+def _typed_take_up_compatibility_projection(
+    resolved_spec: object,
+    *,
+    root: Path,
+) -> Mapping[str, Any] | None:
+    """Compile the resolved take-up domain to its constants-era contract view."""
+
+    try:
+        take_up_domain = resolved_spec.domain("take_up")  # type: ignore[attr-defined]
+    except KeyError:
+        return None
+    take_up = take_up_domain.to_wire()
+    if not isinstance(take_up, Mapping):  # pragma: no cover - typed invariant
+        raise ValueError("take_up: normalized typed domain is not an object.")
+
+    try:
+        sources_domain = resolved_spec.domain("sources")  # type: ignore[attr-defined]
+    except KeyError:
+        sources: Mapping[str, Any] = {}
+    else:
+        sources_value = sources_domain.to_wire()
+        if not isinstance(sources_value, Mapping):  # pragma: no cover
+            raise ValueError("sources: normalized typed domain is not an object.")
+        sources = sources_value
+    return _compile_typed_take_up_compatibility_projection(
+        take_up,
+        sources,
+        root=root,
+    )
+
+
+def _select_take_up_compatibility_payload(
+    *,
+    resolved_spec: object | None,
+    root: Path,
+    legacy_payload: Mapping[str, Any] | None,
+) -> Mapping[str, Any] | None:
+    """Prefer the typed projection and attest the frozen migration evidence."""
+
+    if resolved_spec is None:
+        return legacy_payload
+    projection = _typed_take_up_compatibility_projection(
+        resolved_spec,
+        root=root,
+    )
+    if projection is None:
+        return legacy_payload
+    if legacy_payload is not None and projection != legacy_payload:
+        raise ValueError(
+            "take_up_contract.json: packaged compatibility JSON differs from "
+            "the authoritative take_up bundle projection."
+        )
+    return projection
+
+
+def load_country_take_up_contract_projection(
+    country: str | Path,
+) -> Mapping[str, Any] | None:
+    """Load only the manifest-declared typed take-up compatibility surface.
+
+    Some legacy US modules construct static registries during package import.
+    Sending those imports through the complete bundle resolver would create a
+    bootstrap cycle (and make an unrelated domain edit break module import).
+    This narrow CountrySpec seam uses the same strict parser, schema defaults,
+    normalizer, semantic validator, and ABI-lock projector as the full loader,
+    but reads only ``sources`` and ``take_up``. It imports no country runtime
+    and no Python authority constants.
+
+    Generation-0 packages retain their legacy JSON reader. In generation 1,
+    packaged JSON is compared as frozen migration evidence and never selected
+    as the returned authority.
+    """
+
+    if isinstance(country, Path):
+        root = country
+    else:
+        root = Path(str(importlib_resources.files("microcosm.build").joinpath(country)))
+    package_path = root / "country_package.json"
+    package = _require_mapping(
+        json.loads(package_path.read_text(encoding="utf-8")),
+        context="country_package.json",
+    )
+    resource_rows = _resolve_country_resource_rows(package.get("resources", []))
+    typed_manifest = package.get("schema_version") == 1 and all(
+        isinstance(row, Mapping) for row in package.get("resources", ())
+    )
+    legacy_rows = [
+        row
+        for row in resource_rows
+        if row.kind == "legacy_json" and row.path == "take_up_contract.json"
+    ]
+    if len(legacy_rows) > 1:  # pragma: no cover - duplicate paths rejected above
+        raise ValueError("country_package.json: duplicate take-up evidence rows.")
+    legacy_payload = (
+        _require_mapping(
+            json.loads(
+                _country_resource_path(root, legacy_rows[0].path).read_text(
+                    encoding="utf-8"
+                )
+            ),
+            context="take_up_contract.json",
+        )
+        if legacy_rows
+        else None
+    )
+    if not typed_manifest:
+        return legacy_payload
+
+    take_up_rows = [row for row in resource_rows if row.kind == "take_up"]
+    if not take_up_rows:
+        return legacy_payload
+    if len(take_up_rows) != 1:
+        raise ValueError(
+            "country_package.json: generation-1 package must declare exactly "
+            "one take_up resource."
+        )
+    sources_rows = [row for row in resource_rows if row.kind == "sources"]
+    if len(sources_rows) > 1:
+        raise ValueError(
+            "country_package.json: generation-1 package declares multiple "
+            "sources resources."
+        )
+
+    from microcosm.build.spec_engine import load_schema_registry, load_yaml12_file
+    from microcosm.build.spec_engine.canonical import normalize_and_project
+    from microcosm.build.spec_engine.model import thaw_json
+
+    registry = load_schema_registry()
+
+    def load_normalized(row: CountryResourceRow) -> Mapping[str, Any]:
+        value = load_yaml12_file(_country_resource_path(root, row.path))
+        registry.validate(value, row.schema_id)
+        defaulted = registry.validate_and_inject_defaults(value, row.schema_id)
+        normalized, _ = normalize_and_project(
+            defaulted,
+            schema_id=row.schema_id,
+            registry=registry,
+        )
+        thawed = thaw_json(normalized)
+        if not isinstance(thawed, Mapping):  # pragma: no cover - schema invariant
+            raise ValueError(f"{row.path}: normalized resource is not an object.")
+        return thawed
+
+    take_up = load_normalized(take_up_rows[0])
+    sources = load_normalized(sources_rows[0]) if sources_rows else {}
+    projection = _compile_typed_take_up_compatibility_projection(
+        take_up,
+        sources,
+        root=root,
+    )
+    if legacy_payload is not None and projection != legacy_payload:
+        raise ValueError(
+            "take_up_contract.json: packaged compatibility JSON differs from "
+            "the authoritative take_up bundle projection."
+        )
+    return projection
+
+
 def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
     """Load and validate the ``country`` package.
 
@@ -1023,7 +1296,9 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
     on_disk = {
         path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()
     }
-    undeclared = sorted(on_disk - declared_paths - {"country_package.json"})
+    undeclared = sorted(
+        on_disk - declared_paths - {"country_package.json"} - _GENERATED_LOCK_FILENAMES
+    )
     if undeclared:
         raise ValueError(
             f"{root.name}: file(s) {undeclared} are not declared in "
@@ -1057,9 +1332,26 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
                 json.loads(resource_path.read_text(encoding="utf-8")), context=name
             )
 
+    resolved_spec: object | None = None
+    if typed_manifest:
+        # Import lazily so generation-0 CountrySpec consumers do not pay the
+        # schema/compiler import cost.  This is the single seam: a typed
+        # package returns compatibility projections derived from the exact
+        # same resolved compiler object, never a parallel spec system.
+        from microcosm.build.spec_engine import load_bundle
+
+        resolved_spec = load_bundle(root)
+
+    source_payload = _select_compatibility_payload(
+        resolved_spec=resolved_spec,
+        kind="sources",
+        field="stage_manifest",
+        legacy_name="source_stages.json",
+        legacy_payload=payloads.get("source_stages.json"),
+    )
     sources = (
-        SourceManifest.from_mapping(payloads["source_stages.json"])
-        if "source_stages.json" in payloads
+        SourceManifest.from_mapping(source_payload)
+        if source_payload is not None
         else None
     )
     if sources is not None and sources.country != declared_country:
@@ -1067,9 +1359,16 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
             f"source_stages.json: declares country {sources.country!r} but "
             f"lives in the {declared_country!r} package."
         )
+    support_payload = _select_compatibility_payload(
+        resolved_spec=resolved_spec,
+        kind="spine",
+        field="support_source_pool",
+        legacy_name="support_spine.json",
+        legacy_payload=payloads.get("support_spine.json"),
+    )
     support_spine = (
-        SupportSpineManifest.from_mapping(payloads["support_spine.json"])
-        if "support_spine.json" in payloads
+        SupportSpineManifest.from_mapping(support_payload)
+        if support_payload is not None
         else None
     )
     if support_spine is not None and support_spine.country != declared_country:
@@ -1103,16 +1402,11 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
         if "release_contract.json" in payloads
         else None
     )
-
-    resolved_spec: object | None = None
-    if typed_manifest:
-        # Import lazily so generation-0 CountrySpec consumers do not pay the
-        # schema/compiler import cost.  This is the single seam: a typed
-        # package returns the compatibility projections above and the exact
-        # same resolved compiler object, never a parallel spec system.
-        from microcosm.build.spec_engine import load_bundle
-
-        resolved_spec = load_bundle(root)
+    take_up_contract = _select_take_up_compatibility_payload(
+        resolved_spec=resolved_spec,
+        root=root,
+        legacy_payload=payloads.get("take_up_contract.json"),
+    )
 
     return ResolvedCountrySpec(
         country=declared_country,
@@ -1124,6 +1418,7 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
         target_references=target_references,
         gates=gates,
         release_contract=release_contract,
+        take_up_contract=take_up_contract,
         resource_hashes=hashes,
         resolved_spec=resolved_spec,
     )

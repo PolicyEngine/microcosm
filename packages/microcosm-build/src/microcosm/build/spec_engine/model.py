@@ -12,6 +12,10 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import PurePosixPath
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .seeds import SeedProtocol
 
 type JsonScalar = None | bool | int | float | str
 
@@ -102,6 +106,14 @@ class Surface(StrEnum):
     OPERATIONAL = "operational"
     CHAIN_STATE = "chain_state"
     DOCUMENTATION = "documentation"
+
+
+class SeedSiteOwnerKind(StrEnum):
+    """Closed owner namespaces for a resolved stochastic draw site."""
+
+    PRODUCER_NODE = "producer_node"
+    SOURCE_STAGE = "source_stage"
+    PIPELINE_OPERATION = "pipeline_operation"
 
 
 @dataclass(frozen=True, slots=True)
@@ -258,6 +270,27 @@ class SymbolRef:
 
 
 @dataclass(frozen=True, slots=True)
+class SeedSiteOwner:
+    kind: SeedSiteOwnerKind
+    id: str
+
+    def to_wire(self) -> dict[str, str]:
+        return {"kind": self.kind.value, "id": self.id}
+
+
+@dataclass(frozen=True, slots=True)
+class SeedSiteBinding:
+    site: str
+    owners: tuple[SeedSiteOwner, ...]
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "site": self.site,
+            "owners": [owner.to_wire() for owner in self.owners],
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class EntitySpec:
     """A resolved frame entity used by typed columns and scopes."""
 
@@ -266,15 +299,27 @@ class EntitySpec:
 
 @dataclass(frozen=True, slots=True)
 class ArtifactSpec:
+    """A compiler-resolved node, virtual output, or bound virtual resource."""
+
     id: str
     kind: str
-    producing_stage: str | None = None
+    producing_stages: tuple[str, ...]
+    entity: EntitySpec | None
+    key: str | None
+    lifetime: str
+    validation: str
+    binding: FrozenValue
 
 
 @dataclass(frozen=True, slots=True)
 class ScopeSpec:
+    """A named row scope in a finite, compiler-decidable predicate space."""
+
+    id: str
+    predicate_space: str
     entity: EntitySpec | None
     predicate: FrozenValue
+    source_path: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -282,8 +327,13 @@ class ColumnSpec:
     key: str
     entity: EntitySpec
     dtype: str
+    unit: str
     period: str
+    vintage: str | None
     nullable: bool
+    domain: str
+    public_stability: str
+    unit_waiver: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -331,6 +381,10 @@ class ResolvedSpec:
     scopes: tuple[ScopeSpec, ...]
     columns: tuple[ColumnSpec, ...]
     references: tuple[SymbolRef, ...]
+    vintage_authorities: FrozenMap
+    generated_authorities: FrozenMap
+    seed_protocol: SeedProtocol
+    seed_site_bindings: tuple[SeedSiteBinding, ...]
     file_receipts: FrozenMap
     package_fingerprint: str
     spec_sha256: str
@@ -345,8 +399,7 @@ class ResolvedSpec:
         )
         if len(matches) != 1:
             raise KeyError(
-                f"expected exactly one {selected.value!r} resource, got "
-                f"{len(matches)}"
+                f"expected exactly one {selected.value!r} resource, got {len(matches)}"
             )
         return matches[0]
 

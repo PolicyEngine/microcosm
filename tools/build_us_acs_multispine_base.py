@@ -85,7 +85,13 @@ def _write_dataset(
 def main(argv: list[str] | None = None) -> int:
     """Warn, then run the preserved local-release staging implementation."""
 
-    warnings.warn(_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
+    # Some optional numerical dependencies install a process-wide ``ignore``
+    # filter for every Warning during import.  The command's removal notice is
+    # part of this compatibility shim's public contract, so make this one
+    # warning visible without changing the caller's warning policy.
+    with warnings.catch_warnings():
+        warnings.simplefilter("always", DeprecationWarning)
+        warnings.warn(_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
     return _legacy.main(argv)
 
 

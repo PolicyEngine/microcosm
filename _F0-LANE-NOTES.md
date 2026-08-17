@@ -389,3 +389,148 @@ these inventory surfaces without a bundle home is a failing report.
   `git diff --check` are clean.  The build-shard wheel was then rebuilt from
   that same tree and installed offline in a second clean Python 3.14 venv; its
   imported package contained all 15 schema resources.
+
+## 3. Complete generated US bundle
+
+### One-way migration and package ownership
+
+- The retained one-shot migration generator has one tombstone,
+  `2026-11-16`, and one ordered 12-domain registry
+  (`tools/generate_us_bundle_from_constants.py:37`, `:50`, and `:66`).  One
+  scoped pass builds all documents, renders deterministic alias-free YAML,
+  attests the frozen compatibility resources, emits the engine lock, supports
+  byte-for-byte `--check`, and compiles the result through `load_bundle()`
+  (`tools/generate_us_bundle_from_constants.py:192`, `:242`, `:304`, `:328`,
+  `:353`, and `:404`).
+- `country_package.json` is the one typed `{path, kind, schema_id}` inventory:
+  12 packaged YAML domains plus 20 explicit `legacy_json` evidence resources
+  (`tools/generate_us_bundle_from_constants.py:224` and
+  `packages/microcosm-build/src/microcosm/build/us/country_package.json:1`).
+  The admitted kinds are closed, and `CountrySpec` remains the exact alias of
+  `ResolvedCountrySpec`
+  (`packages/microcosm-build/src/microcosm/build/country_spec.py:76`, `:849`,
+  and `:939`).
+- The seam calls `load_bundle()` once and derives the legacy source,
+  support-spine, and take-up views from that same resolved object.  Packaged
+  generation-0 JSON is equality-attested evidence, not a selectable second
+  authority (`country_spec.py:984`, `:1116`, `:1279`, `:1335`, and `:1405`).
+- The retired root drafting location is a symlink-free pointer only
+  (`specs/us/README.md:1`), enforced together with generator/package byte
+  equality at
+  `packages/microcosm-build/tests/test_us_spec_bundle.py:1015` and `:1034`.
+
+### Complete normalized US surface
+
+- Machine-counted contents are 7 pinned sources / 37 source stages; early
+  13 families / 48 targets; primary 1 / 65; late 19 / 70; and itemization
+  batches `[8, 8, 8, 8, 5]`
+  (`packages/microcosm-build/tests/test_us_spec_bundle.py:281`).
+- The producer graph has 38 nodes, 18 ownership rows, 71 derived RAW edges,
+  and 6 deterministic waves.  Only 92 structural/virtual outputs are authored;
+  the family-owned join compiles the complete 227-output surface
+  (`test_us_spec_bundle.py:338` and
+  `packages/microcosm-build/tests/test_spec_engine_typed_closure.py:50`).
+  `compile_producer_outputs()` makes family targets the sole modeled-output
+  authority and refuses mirrors/collisions; the same module then closes typed
+  columns, artifacts, and scopes
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/typed_closure.py:162`
+  and `:921`).
+- Take-up contains 13 programs and 24 typed steps: 17 thin source-operation
+  references and 7 local operations over 8 source stages.  Ownership is engine
+  4, measured 1, mixed 1, modeled 6, transferred 1
+  (`test_us_spec_bundle.py:381`).  Source-backed steps contain neither copied
+  compatibility payloads nor copied stage arrays
+  (`packages/microcosm-build/tests/test_spec_engine_take_up_semantics.py:107`).
+- The battery has 131 scalar plus 1 joint metric, catalogs close 173 columns,
+  and typed resolution yields 84 artifacts and 7 finite scopes
+  (`test_us_spec_bundle.py:440` and
+  `test_spec_engine_typed_closure.py:50`).
+- The selected `legacy-v1` protocol resolves 53 draw sites over 14 streams;
+  geography remains today's PUMA-anchored legacy phase; the vintage index has
+  15 referenced authorities; and publication owns the normative
+  `microcosm-us-2024` line plus the exact five-rung grammar
+  (`test_us_spec_bundle.py:884` and
+  `packages/microcosm-build/tests/test_us_bundle_core_contracts.py:227`).
+- Required participation concepts and today's exact predictor gaps are recorded
+  in one F-P waiver rather than filled with invented predictors
+  (`tools/us_bundle_generation/imputation.py:3324` and
+  `test_us_spec_bundle.py:484`).
+
+### Single-authored derivations and compatibility identities
+
+- Graph edges, waves, order, write scopes, input inventories, and transfer
+  groups are derived from node inputs, family targets, scopes, and the authored
+  ownership rows (`tools/us_bundle_generation/imputation.py:2438`, `:2657`,
+  `:2721`, `:2803`, and `:2831`).  The typed projection reconstructs the seven
+  constants-era imputation identity components at `imputation.py:2947`.
+- Exact graph identities remain schedule SHA
+  `b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5`,
+  schedule-payload SHA
+  `7766f2e94476cceb93d9730a74afb2ca6fed836068053f96fa4141bcc2f6154e`,
+  and ownership SHA
+  `5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356`
+  (`test_us_spec_bundle.py:364` and `:678`).
+- Primary effective predictor tuples derive from the one base block plus the
+  preceding target order (`imputation.py:2905`); battery summary views derive
+  from the metric registries (`tools/us_bundle_generation/contracts.py:1033`).
+- Calibration's retired flat aliases are not authored.  A pure projector
+  derives them from the normalized solver contract
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/calibration_semantics.py:31`
+  and `:101`); the constants-era canonical SHA remains
+  `8cc14b405d775640123eafeda89405ab0cb28455c554df8e9bf0eb950d78a806`
+  (`packages/microcosm-build/tests/test_spec_engine_calibration_semantics.py:27`).
+- Take-up source references join to source operations, then project the typed
+  ownership/step contract with reviewed generated ABI facts
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/take_up_semantics.py:331`,
+  `:348`, and `:646`).  The result reconstructs frozen
+  `take_up_contract.json` exactly
+  (`packages/microcosm-build/tests/test_spec_engine_take_up_semantics.py:260`).
+- `engine_abi.lock.json` derives from normalized take-up plus the fresh installed
+  engine, is canonicalized/schema-validated, and is refused when missing or
+  stale (`packages/microcosm-build/src/microcosm/build/spec_engine/engine_abi.py:292`,
+  `:375`, and `:410`).  It pins PolicyEngine US `1.764.6` once, covers all 13
+  programs, and contains the 993-row remaining-stage input manifest
+  (`packages/microcosm-build/tests/test_spec_engine_engine_abi.py:331`).
+- The seed implementation is source/dependency-attested and remains explicitly
+  mirror-only until F1.  Every selected site binds exhaustively to a producer
+  node, source stage, or pipeline operation
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/seeds.py:35`,
+  `:149`, and
+  `packages/microcosm-build/src/microcosm/build/spec_engine/identity_contracts.py:68`).
+  The generation-0 checkpoint envelope was extracted without relabeling
+  (`tools/build_us_multispine_pool.py:302`; exact gate at
+  `packages/microcosm-build/tests/test_spec_engine_identity_contracts.py:58`).
+- Generation-0 resource bytes are unchanged: source stages
+  `a3e9ca87f43d74b3d83320ca77559f28452036cf60dfc16bee10a22d4784f672`,
+  support spine
+  `68f37dc6ae6e0cde7ebccb53f88dd4a800e63456f838fa214ff98d1db8d815be`,
+  and take-up
+  `5852e96582793313782d1c3edfc4cfdd0358a1a9cfd54bfea5844cbb09e89bd4`.
+  The generator attests both raw evidence and typed projections
+  (`tools/generate_us_bundle_from_constants.py:117` and `:304`).
+  `PROGRESS.md` remains untouched at SHA
+  `7de938a5d5c9128303392edcfbb6d5c1f5f437b05521346a858ff37b6b572d78`.
+
+### Packaging and validation gate
+
+- All package resources are swept by the typed package-closure test, while the
+  build wheel force-includes the 15 schemas
+  (`packages/microcosm-build/tests/test_spec_only_country_packages.py:47` and
+  `packages/microcosm-build/pyproject.toml:63`).  All five shard wheels were
+  rebuilt offline following the CI shard loop at `.github/workflows/test.yml:45`.
+- Final source and isolated installed-wheel identities match exactly: 15
+  schemas, 32 resources, spec SHA
+  `c78c1ce8c951e5f745d7a03c3e887e151f8fcfa0bd3adeafb12cf73f2983acac`,
+  seed implementation SHA
+  `76a79351cb919e1a3119b6a0c1bfbc4ef392381f8a7add61b34c1527c444eacd`,
+  and package fingerprint
+  `30bb9dcd0d902c9bd8fd19471f5e01e82539f3845a4c58f3bf1aa3b134078ecc`.
+- The synced numerical stack installs a process-wide warning ignore filter
+  during the deprecated ACS shim's imports.  The shim now scopes an `always`
+  filter to its one public deprecation notice, leaving the caller's filter
+  unchanged (`tools/build_us_acs_multispine_base.py:85`; contract test at
+  `packages/microcosm-build/tests/test_us_acs_multispine_base_builder.py:202`).
+- Final D3 suite gate: 6,521 tests collected; `.venv/bin/python -m pytest -q`
+  reached 100% with exit 0 and no failures.  The generator `--check`, Ruff,
+  `git diff --check`, raw resource hashes, and source/wheel identity parity are
+  rerun immediately before the commit.

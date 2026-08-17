@@ -34,7 +34,9 @@
     "spm_unit",
     "household",
     "family",
-    "benunit"
+    "benunit",
+    "marital_unit",
+    "frame"
    ]
   },
   "surface": {
@@ -158,17 +160,70 @@
    ],
    "description": "Closed predicate algebra: overlap, exhaustiveness, and equality are compiler-decidable."
   },
+  "closed_scope_registry": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "predicate_space",
+    "universe",
+    "scopes"
+   ],
+   "properties": {
+    "predicate_space": {
+     "$ref": "#/$defs/identifier"
+    },
+    "universe": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "items": {
+      "type": "string",
+      "minLength": 1
+     }
+    },
+    "scopes": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "id",
+       "atoms"
+      ],
+      "properties": {
+       "id": {
+        "$ref": "#/$defs/identifier"
+       },
+       "atoms": {
+        "type": "array",
+        "minItems": 1,
+        "uniqueItems": true,
+        "items": {
+         "type": "string",
+         "minLength": 1
+        }
+       }
+      }
+     }
+    }
+   }
+  },
   "gate_record": {
    "type": "object",
    "additionalProperties": false,
    "required": [
     "id",
+    "kernel",
     "metric",
     "input",
     "population",
+    "slices",
     "reference",
     "min_support",
+    "effective_sample_size",
     "thresholds",
+    "uncertainty",
     "missing_slice",
     "status",
     "reason_map"
@@ -176,6 +231,9 @@
    "properties": {
     "id": {
      "$ref": "#/$defs/identifier"
+    },
+    "kernel": {
+     "$ref": "#/$defs/kernel_ref"
     },
     "metric": {
      "type": "object",
@@ -188,7 +246,31 @@
        "$ref": "#/$defs/identifier"
       },
       "params": {
-       "type": "object"
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "formula",
+        "missing_or_null_in_scope",
+        "declared_structural_absence"
+       ],
+       "properties": {
+        "formula": {
+         "$ref": "#/$defs/identifier"
+        },
+        "metric_contract_refs": {
+         "type": "array",
+         "uniqueItems": true,
+         "items": {
+          "$ref": "#/$defs/identifier"
+         }
+        },
+        "missing_or_null_in_scope": {
+         "$ref": "#/$defs/identifier"
+        },
+        "declared_structural_absence": {
+         "$ref": "#/$defs/identifier"
+        }
+       }
       }
      }
     },
@@ -226,43 +308,84 @@
     },
     "slices": {
      "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
      "items": {
       "$ref": "#/$defs/identifier"
      }
     },
     "reference": {
-     "type": "object",
-     "additionalProperties": false,
-     "required": [
-      "kind"
-     ],
-     "properties": {
-      "kind": {
-       "enum": [
-        "release",
-        "data_digest",
-        "external_fact"
-       ]
+     "oneOf": [
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": ["kind", "release_id"],
+       "properties": {
+        "kind": {"const": "release"},
+        "release_id": {"type": "string", "minLength": 1}
+       }
       },
-      "release_id": {
-       "type": "string"
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": ["kind", "sha256"],
+       "properties": {
+        "kind": {"const": "data_digest"},
+        "sha256": {"$ref": "#/$defs/sha256"}
+       }
       },
-      "sha256": {
-       "$ref": "#/$defs/sha256"
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": ["kind", "fact_ref"],
+       "properties": {
+        "kind": {"const": "external_fact"},
+        "fact_ref": {"$ref": "#/$defs/source_ref"}
+       }
       },
-      "fact_ref": {
-       "$ref": "#/$defs/source_ref"
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": ["kind", "authority_ref"],
+       "properties": {
+        "kind": {"const": "compiled_authority"},
+        "authority_ref": {"const": "authority_binding"}
+       }
       }
-     }
+     ]
     },
     "min_support": {
      "type": "integer",
      "minimum": 0
     },
+    "effective_sample_size": {
+     "oneOf": [
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": ["method", "minimum", "not_applicable_reason"],
+       "properties": {
+        "method": {"const": "kish"},
+        "minimum": {"type": "integer", "minimum": 0},
+        "not_applicable_reason": {"type": "null"}
+       }
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": ["method", "minimum", "not_applicable_reason"],
+       "properties": {
+        "method": {"const": "not_computed"},
+        "minimum": {"type": "null"},
+        "not_applicable_reason": {"$ref": "#/$defs/identifier"}
+       }
+      }
+     ]
+    },
     "thresholds": {
      "type": "object",
      "additionalProperties": false,
-     "minProperties": 1,
+     "required": ["absolute", "relative"],
      "properties": {
       "absolute": {
        "type": "number"
@@ -273,24 +396,37 @@
      }
     },
     "uncertainty": {
-     "type": "object",
-     "additionalProperties": false,
-     "required": [
-      "rule"
-     ],
-     "properties": {
-      "rule": {
-       "enum": [
-        "none",
-        "multi_seed",
-        "interval"
-       ]
+     "oneOf": [
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": ["rule"],
+       "properties": {"rule": {"const": "none"}}
       },
-      "seeds": {
-       "type": "integer",
-       "minimum": 2
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": ["rule", "seeds"],
+       "properties": {
+        "rule": {"const": "multi_seed"},
+        "seeds": {"type": "integer", "minimum": 2}
+       }
+      },
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": ["rule", "confidence_level", "method"],
+       "properties": {
+        "rule": {"const": "interval"},
+        "confidence_level": {
+         "type": "number",
+         "exclusiveMinimum": 0,
+         "exclusiveMaximum": 1
+        },
+        "method": {"$ref": "#/$defs/identifier"}
+       }
       }
-     }
+     ]
     },
     "missing_slice": {
      "enum": [
@@ -307,6 +443,8 @@
     },
     "reason_map": {
      "type": "object",
+     "minProperties": 1,
+     "propertyNames": {"$ref": "#/$defs/identifier"},
      "additionalProperties": {
       "$ref": "#/$defs/identifier"
      }

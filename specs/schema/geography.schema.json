@@ -119,7 +119,14 @@
      }
     },
     "ladder_source": {
-     "$ref": "defs.schema.json#/$defs/identifier"
+     "oneOf": [
+      {
+       "$ref": "defs.schema.json#/$defs/identifier"
+      },
+      {
+       "$ref": "defs.schema.json#/$defs/source_ref"
+      }
+     ]
     },
     "seed": {
      "$ref": "defs.schema.json#/$defs/stream_ref"
@@ -128,6 +135,18 @@
      "type": "array",
      "items": {
       "$ref": "defs.schema.json#/$defs/identifier"
+     }
+    },
+    "default_seed": {
+     "type": "integer"
+    },
+    "assign_tract": {
+     "type": "boolean"
+    },
+    "layer_vintages": {
+     "type": "object",
+     "additionalProperties": {
+      "$ref": "defs.schema.json#/$defs/vintage_ref"
      }
     }
    }

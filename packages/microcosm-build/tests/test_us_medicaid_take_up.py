@@ -40,6 +40,7 @@ from microcosm.build.us_runtime.take_up import (  # noqa: E402
 )
 from microcosm.build.us_runtime.take_up_contract import (  # noqa: E402
     count_calibrated_take_up_programs,
+    load_legacy_take_up_contract_evidence,
     load_take_up_contract,
     seeded_take_up_programs,
 )
@@ -143,6 +144,7 @@ class TestContractTreatment:
 
     def _reload_with(self, monkeypatch, tmp_path: Path, mutated: dict) -> None:
         load_take_up_contract.cache_clear()
+        load_legacy_take_up_contract_evidence.cache_clear()
         path = tmp_path / "take_up_contract.json"
         path.write_text(json.dumps(mutated))
         monkeypatch.setattr(
@@ -157,6 +159,7 @@ class TestContractTreatment:
         raw = json.loads(_contract_path().read_text())
         yield raw
         load_take_up_contract.cache_clear()
+        load_legacy_take_up_contract_evidence.cache_clear()
 
     def test_count_calibrated_without_calibration_block_fails(
         self, monkeypatch, tmp_path, base_table
@@ -167,7 +170,7 @@ class TestContractTreatment:
                 program.pop("calibration")
         self._reload_with(monkeypatch, tmp_path, mutated)
         with pytest.raises(ValueError, match="calibration"):
-            load_take_up_contract()
+            load_legacy_take_up_contract_evidence()
 
     def test_count_calibrated_with_sourced_rate_fails(
         self, monkeypatch, tmp_path, base_table
@@ -184,7 +187,7 @@ class TestContractTreatment:
                 }
         self._reload_with(monkeypatch, tmp_path, mutated)
         with pytest.raises(ValueError, match="sourced rate"):
-            load_take_up_contract()
+            load_legacy_take_up_contract_evidence()
 
 
 class TestAssignment:

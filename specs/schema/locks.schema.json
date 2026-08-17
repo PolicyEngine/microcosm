@@ -9,6 +9,10 @@
    "required": [
     "grammar_receipt",
     "files",
+    "generated_authorities",
+    "seed_protocol",
+    "seed_site_bindings",
+    "vintage_authorities",
     "spec_sha256"
    ],
    "properties": {
@@ -68,8 +72,205 @@
       }
      }
     },
+    "generated_authorities": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "engine_abi_lock": {"$ref": "#/$defs/engine_abi_lock"}
+     }
+    },
+    "seed_protocol": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "id",
+      "implementation_id",
+      "implementation_sha256",
+      "boundary",
+      "kernels",
+      "streams",
+      "sites"
+     ],
+     "properties": {
+      "id": {"const": "legacy-v1"},
+      "implementation_id": {"type": "string", "minLength": 1},
+      "implementation_sha256": {"$ref": "defs.schema.json#/$defs/sha256"},
+      "boundary": {"const": "mirror-only-until-f1"},
+      "kernels": {
+       "type": "array",
+       "minItems": 1,
+       "uniqueItems": true,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "source_modules", "source_sha256"],
+        "properties": {
+         "id": {"$ref": "defs.schema.json#/$defs/identifier"},
+         "source_modules": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+           "type": "string",
+           "pattern": "^microcosm\\.[a-z][a-z0-9_.]*$"
+          }
+         },
+         "source_sha256": {"$ref": "defs.schema.json#/$defs/sha256"}
+        }
+       }
+      },
+      "streams": {
+       "type": "array",
+       "minItems": 1,
+       "uniqueItems": true,
+       "items": {"$ref": "defs.schema.json#/$defs/identifier"}
+      },
+      "sites": {
+       "type": "array",
+       "minItems": 1,
+       "uniqueItems": true,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "id",
+         "stream",
+         "value_source",
+         "default",
+         "rng_family",
+         "rng_version",
+         "kernel",
+         "seed_material",
+         "consumption_order",
+         "reset_boundary",
+         "draw_condition",
+         "derivation"
+        ],
+        "properties": {
+         "id": {"$ref": "defs.schema.json#/$defs/identifier"},
+         "stream": {"$ref": "defs.schema.json#/$defs/stream_ref"},
+         "value_source": {
+          "enum": [
+           "derived_acs_pattern_seed",
+           "literal",
+           "run_request.build_model_seed",
+           "run_request.clone_attachment_seed",
+           "run_request.sample_seed",
+           "run_request.selection_seed",
+           "stable_string"
+          ]
+         },
+         "default": {
+          "oneOf": [
+           {"type": "null"},
+           {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 18446744073709551615
+           }
+          ]
+         },
+         "rng_family": {"type": "string", "minLength": 1},
+         "rng_version": {"type": "string", "minLength": 1},
+         "kernel": {"$ref": "defs.schema.json#/$defs/identifier"},
+         "seed_material": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+         },
+         "consumption_order": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+         },
+         "reset_boundary": {"type": "string", "minLength": 1},
+         "draw_condition": {"type": "string", "minLength": 1},
+         "derivation": {"type": "string", "minLength": 1}
+        }
+       }
+      }
+     }
+    },
+    "seed_site_bindings": {
+     "type": "array",
+     "uniqueItems": true,
+     "items": {"$ref": "#/$defs/seed_site_binding"}
+    },
+    "vintage_authorities": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "records"
+     ],
+     "properties": {
+      "engine_abi_lock_sha256": {
+       "$ref": "defs.schema.json#/$defs/sha256"
+      },
+      "records": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "authority",
+         "kind",
+         "value"
+        ],
+        "properties": {
+         "authority": {
+          "type": "string",
+          "minLength": 1
+         },
+         "authority_sha256": {
+          "$ref": "defs.schema.json#/$defs/sha256"
+         },
+         "kind": {
+          "enum": [
+           "tax_period_ref",
+           "survey_period_ref",
+           "target_period_ref",
+           "geography_vintage_ref",
+           "policy_engine_surface_ref",
+           "release_series_ref"
+          ]
+         },
+         "value": {
+          "type": [
+           "string",
+           "integer"
+          ]
+         }
+        }
+       }
+      }
+     }
+    },
     "spec_sha256": {
      "$ref": "defs.schema.json#/$defs/sha256"
+    }
+   }
+  },
+  "seed_site_binding": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["site", "owners"],
+   "properties": {
+    "site": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "owners": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+       "kind": {
+        "enum": ["producer_node", "source_stage", "pipeline_operation"]
+       },
+       "id": {"type": "string", "minLength": 1}
+      }
+     }
     }
    }
   },
@@ -168,7 +369,8 @@
    "additionalProperties": false,
    "required": [
     "engine",
-    "programs"
+    "programs",
+    "remaining_stage_input_manifest"
    ],
    "properties": {
     "engine": {
@@ -189,7 +391,7 @@
     },
     "programs": {
      "type": "object",
-     "description": "Generated from the single engine pin; CI compares a fresh derivation BEFORE bundle compilation; bumps fail closed. Total-and-injective program->variable mapping asserted.",
+     "description": "The single generated engine pin. CI compares a fresh installed-version/ABI derivation BEFORE bundle compilation; bumps fail closed. Total-and-injective program->variable mapping asserted.",
      "additionalProperties": {
       "type": "object",
       "additionalProperties": false,
@@ -198,7 +400,8 @@
        "entity",
        "value_type",
        "default",
-       "engine_class"
+       "engine_class",
+       "consumers"
       ],
       "properties": {
        "variable": {
@@ -226,6 +429,150 @@
        }
       }
      }
+    },
+    "remaining_stage_input_manifest": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["rows", "receipt"],
+     "properties": {
+      "rows": {
+       "type": "array",
+       "minItems": 1,
+       "uniqueItems": true,
+       "items": {"$ref": "#/$defs/remaining_stage_input_row"}
+      },
+      "receipt": {"$ref": "#/$defs/remaining_stage_input_receipt"}
+     }
+    }
+   }
+  },
+  "remaining_stage_input_row": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "stage",
+    "consumer",
+    "entity",
+    "variable",
+    "execution_scope",
+    "provision",
+    "available_by",
+    "fallback"
+   ],
+   "properties": {
+    "stage": {"enum": ["derive", "seed", "simulate"]},
+    "consumer": {"type": "string", "minLength": 1},
+    "entity": {"$ref": "defs.schema.json#/$defs/entity"},
+    "variable": {"type": "string", "minLength": 1},
+    "execution_scope": {"type": "string", "minLength": 1},
+    "provision": {"type": "string", "minLength": 1},
+    "available_by": {"type": "string", "minLength": 1},
+    "fallback": {
+     "oneOf": [
+      {"type": "null"},
+      {"type": "string", "minLength": 1}
+     ]
+    }
+   }
+  },
+  "remaining_stage_input_receipt": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "schema_version",
+    "entry_count",
+    "stage_counts",
+    "consumer_counts",
+    "ssi_dependency_contract",
+    "engine_input_projection_contract",
+    "manifest_sha256",
+    "sha256"
+   ],
+   "properties": {
+    "schema_version": {"const": 1},
+    "entry_count": {"type": "integer", "minimum": 1},
+    "stage_counts": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["derive", "seed", "simulate"],
+     "properties": {
+      "derive": {"type": "integer", "minimum": 0},
+      "seed": {"type": "integer", "minimum": 0},
+      "simulate": {"type": "integer", "minimum": 0}
+     }
+    },
+    "consumer_counts": {
+     "type": "object",
+     "minProperties": 1,
+     "propertyNames": {"type": "string", "minLength": 1},
+     "additionalProperties": {"type": "integer", "minimum": 1}
+    },
+    "ssi_dependency_contract": {
+     "$ref": "#/$defs/remaining_stage_dependency_contract"
+    },
+    "engine_input_projection_contract": {
+     "$ref": "#/$defs/remaining_stage_engine_projection_contract"
+    },
+    "manifest_sha256": {"$ref": "defs.schema.json#/$defs/sha256"},
+    "sha256": {
+     "$ref": "defs.schema.json#/$defs/sha256",
+     "description": "Compatibility SHA of the validated generation-0 receipt before engine_version literals are normalized to typed references."
+    }
+   }
+  },
+  "engine_version_ref": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["kind", "pointer"],
+   "properties": {
+    "kind": {"const": "engine_abi_lock"},
+    "pointer": {"const": "/engine/version"}
+   }
+  },
+  "remaining_stage_dependency_contract": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "engine_version_ref",
+    "root",
+    "input_leaf_count",
+    "formula_node_count",
+    "edge_count",
+    "sha256"
+   ],
+   "properties": {
+    "engine_version_ref": {"$ref": "#/$defs/engine_version_ref"},
+    "root": {"type": "string", "minLength": 1},
+    "input_leaf_count": {"type": "integer", "minimum": 1},
+    "formula_node_count": {"type": "integer", "minimum": 1},
+    "edge_count": {"type": "integer", "minimum": 1},
+    "sha256": {
+     "$ref": "defs.schema.json#/$defs/sha256",
+     "description": "Compatibility SHA of the generation-0 contract containing the resolved engine version."
+    }
+   }
+  },
+  "remaining_stage_engine_projection_contract": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "engine_version_ref",
+    "input_count",
+    "default_count",
+    "sha256",
+    "defaults_sha256"
+   ],
+   "properties": {
+    "engine_version_ref": {"$ref": "#/$defs/engine_version_ref"},
+    "input_count": {"type": "integer", "minimum": 1},
+    "default_count": {"type": "integer", "minimum": 0},
+    "sha256": {
+     "$ref": "defs.schema.json#/$defs/sha256",
+     "description": "Compatibility SHA of the generation-0 projection contract containing the resolved engine version."
+    },
+    "defaults_sha256": {
+     "$ref": "defs.schema.json#/$defs/sha256",
+     "description": "Compatibility SHA of the generation-0 engine default map."
     }
    }
   }

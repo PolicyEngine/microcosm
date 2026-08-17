@@ -22,7 +22,23 @@
    "enum": [
     "legacy-v1",
     "derived-v2"
-   ]
+    ]
+  },
+  "dataset_run": {
+   "type": "object",
+   "description": "Normative dataset-line contract. This is the generation-0 target period, not a realized run-request override.",
+   "additionalProperties": false,
+   "required": [
+    "target_period"
+   ],
+   "properties": {
+    "target_period": {
+     "type": [
+      "string",
+      "integer"
+     ]
+    }
+   }
   },
   "status": {
    "x-spec-surface": "documentation",

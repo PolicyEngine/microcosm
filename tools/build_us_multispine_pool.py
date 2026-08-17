@@ -199,6 +199,7 @@ __all__ = [
     "build_stacked_pool",
     "load_simulation_ready_us_multispine_pool_manifest",
     "main",
+    "stacked_checkpoint_artifact_protocol_identity",
 ]
 
 POOL_MANIFEST_SCHEMA_VERSION = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
@@ -282,6 +283,9 @@ _STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
     1.00: "f100",
 }
 _STACKED_PIPELINE = "us-stacked-pool"
+_STACKED_CHECKPOINT_IDENTITY_ARTIFACT_KIND = (
+    "populace_us_stacked_pool_checkpoint_identity"
+)
 # Version 11 additionally binds the primary-PUF whole-pool universe semantics.
 # Earlier checkpoints must rebuild rather than resume with a nullable
 # s_corp_income leaf. Version 10 bound the complete late-resource semantics and
@@ -293,6 +297,17 @@ _STACKED_RELEASE_ID_PATTERN = re.compile(
 )
 
 type PoolOperator = Callable[[Frame], PoolStageOutput]
+
+
+def stacked_checkpoint_artifact_protocol_identity() -> dict[str, object]:
+    """Return the static generation-0 stacked checkpoint identity envelope."""
+
+    return {
+        "artifact_kind": _STACKED_CHECKPOINT_IDENTITY_ARTIFACT_KIND,
+        "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
+        "materializer_version": _STACKED_CHECKPOINT_MATERIALIZER_VERSION,
+        "pipeline": _STACKED_PIPELINE,
+    }
 
 
 @dataclass(frozen=True)
@@ -1065,10 +1080,7 @@ def _stacked_checkpoint_base_identity(
     if stack.get("sample_seed") != sample_seed:
         raise ValueError("Live stack receipt does not match sample_seed.")
     return {
-        "artifact_kind": "populace_us_stacked_pool_checkpoint_identity",
-        "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
-        "materializer_version": _STACKED_CHECKPOINT_MATERIALIZER_VERSION,
-        "pipeline": _STACKED_PIPELINE,
+        **stacked_checkpoint_artifact_protocol_identity(),
         "period": POOL_TIME_PERIOD,
         "model_seed": POOL_RANDOM_SEED,
         "policyengine_us_version": (
