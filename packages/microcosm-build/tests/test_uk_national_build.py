@@ -488,8 +488,12 @@ def test_deprecated_shim_and_country_stage_plan_paths_are_payload_identical(
     input_h5 = tmp_path / "base.h5"
     _write_toy_h5(input_h5, employment_income=40_000.0)
     spec = load_country_spec("uk")
-    retained_outputs = spec.sources.stages[0].outputs
-    hmrc_outputs = spec.sources.stages[1].outputs
+    # Select by name, not position: the manifest's stage order changed when
+    # frs_spine became the pipeline root, and this test only exercises the
+    # two national staging stages.
+    stages_by_name = {stage.stage: stage for stage in spec.sources.stages}
+    retained_outputs = stages_by_name["frs_hmrc_retained_leaves"].outputs
+    hmrc_outputs = stages_by_name["hmrc_spi_income"].outputs
 
     def retained(frame: Frame) -> Frame:
         person = frame.table("person").copy()
@@ -522,6 +526,7 @@ def test_deprecated_shim_and_country_stage_plan_paths_are_payload_identical(
                 "frs_hmrc_retained_leaves": retained,
                 "hmrc_spi_income": hmrc,
             },
+            stage_names=("frs_hmrc_retained_leaves", "hmrc_spi_income"),
         ),
         coverage_engine=object(),
         gate_registry=_registry_with_coverage(_passing_gate),

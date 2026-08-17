@@ -219,6 +219,45 @@ class TestCountryStagePlan:
         with pytest.raises(ValueError, match="Unknown stage implementation"):
             country_stage_plan(spec, {name: (lambda frame: frame) for name in names})
 
+    def test_default_stage_selection_still_requires_all_declared_stages(self) -> None:
+        spec = load_country_spec("be")
+
+        with pytest.raises(ValueError, match="missing \\['clone_assign_communes'\\]"):
+            country_stage_plan(spec, {"silc_load": lambda frame: frame})
+
+    def test_explicit_stage_subset_uses_manifest_order(self) -> None:
+        spec = load_country_spec("be")
+        plan = country_stage_plan(
+            spec,
+            {
+                "silc_load": lambda frame: frame,
+                "clone_assign_communes": lambda frame: frame,
+            },
+            stage_names=("clone_assign_communes", "silc_load"),
+        )
+
+        assert [stage.name for stage in plan.stages] == [
+            "silc_load",
+            "clone_assign_communes",
+        ]
+
+    def test_explicit_stage_subset_refuses_empty_or_unknown_names(self) -> None:
+        spec = load_country_spec("be")
+        implementations = {
+            "silc_load": lambda frame: frame,
+            "clone_assign_communes": lambda frame: frame,
+        }
+
+        with pytest.raises(ValueError, match="stage_names must not be empty"):
+            country_stage_plan(spec, implementations, stage_names=())
+
+        with pytest.raises(ValueError, match="Unknown stage selection"):
+            country_stage_plan(
+                spec,
+                implementations,
+                stage_names=("silc_load", "silc_load_fallback"),
+            )
+
 
 class TestExistingPackagesGeneralize:
     """The loader is country-neutral: the US and UK packages load unchanged."""
