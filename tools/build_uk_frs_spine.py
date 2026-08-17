@@ -74,9 +74,9 @@ _STAGE_NAMES = (
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Build the deterministic UK FRS spine from pinned raw tabs. The "
-            "spine stage has no seed: determinism is structural because E2 "
-            "does not run stochastic assignment or imputation."
+            "Build the deterministic UK FRS spine from pinned raw tabs. Every "
+            "stochastic stage draws identity-keyed from seeds declared in the "
+            "manifest, so two runs from the same inputs are payload-identical."
         )
     )
     parser.add_argument(
