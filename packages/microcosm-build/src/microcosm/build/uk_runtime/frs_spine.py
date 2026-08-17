@@ -209,7 +209,6 @@ OUTPUT_COLUMNS = (
     "is_married",
     "dependent_children",
     "household_id",
-    "household_weight",
     "region",
     "tenure_type",
     "accommodation_type",
