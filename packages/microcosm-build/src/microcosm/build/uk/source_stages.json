@@ -470,9 +470,11 @@
         {
           "kind": "impute_cell_means",
           "cells": [
-            "single cell"
+            "single cell: EMA participants (code == 1; adema/ademaamt pair, eduma/edumaamt when adema is absent; chema/chemaamt for children)"
           ],
-          "value": "EMA weekly amount annualized with 365.25 / 7"
+          "donor_filter": "participants with non-negative reported amounts",
+          "missing": "participants with sentinel negative reported amounts",
+          "value": "donor-mean fill, floored at zero, annualized with 365.25 / 7"
         }
       ],
       "outputs": [
@@ -491,7 +493,7 @@
         "child_ema",
         "age_started_or_accepted_current_education_or_training"
       ],
-      "notes": "Ports the incumbent education cascade including its unreachable POST_SECONDARY branch order. EDUCQUAL_MAP is a swappable constant pending licensed UKDS data-dictionary verification; EMA uses the shared weeks-in-year constant."
+      "notes": "Ports the incumbent education cascade including its unreachable POST_SECONDARY branch order. EDUCQUAL_MAP carries the corrected harmonised highest-qualification codeframe (1 = Doctorate, descending), verified against the FRS 2023-24 raw aggregates and adopted as a signed difference (PR #703); an upstream defect report records the incumbent inversion. EMA uses the shared weeks-in-year constant."
     },
     {
       "stage": "frs_legacy_proxies",

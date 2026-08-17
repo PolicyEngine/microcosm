@@ -91,16 +91,22 @@ def add_frs_employment(
 def derive_frs_employment(person: pd.DataFrame, adult: pd.DataFrame) -> pd.DataFrame:
     """Return person-indexed employment derivations.
 
-    ``mjobsect`` and ``sic`` are intentionally direct-indexed so missing
-    source columns fail loudly, matching the incumbent FRS port.
+    ``empstati``, ``mjobsect``, and ``sic`` are intentionally direct-indexed
+    so missing source columns fail loudly, matching the incumbent FRS port.
     """
 
     raw = adult.set_index("person_id")
     aligned = raw.reindex(person["person_id"])
     values = pd.DataFrame(index=person.index)
-    empstati = pd.to_numeric(aligned.get("empstati"), errors="coerce").fillna(0)
+    empstati = pd.to_numeric(aligned["empstati"], errors="coerce").fillna(0)
+    # Unmapped codes above the declared domain follow the incumbent's
+    # post-map fillna to LONG_TERM_DISABLED; 0/NaN rows land on CHILD via
+    # the explicit map entry.
     values["employment_status"] = (
-        empstati.astype(int).map(EMPLOYMENT_STATUS_MAP).fillna("CHILD").to_numpy()
+        empstati.astype(int)
+        .map(EMPLOYMENT_STATUS_MAP)
+        .fillna("LONG_TERM_DISABLED")
+        .to_numpy()
     )
     sector = pd.to_numeric(aligned["mjobsect"], errors="coerce").fillna(0)
     values["employment_sector"] = (

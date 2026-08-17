@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from microcosm.build.uk_runtime.frs_disability import (
     UKDWPBaselineDisabilityRates,
@@ -88,6 +89,9 @@ def test_disability_flag_operator_asymmetry_and_afcs() -> None:
 
 
 def test_dwp_baseline_reader_uses_january_first_instant() -> None:
+    # The reader constructs the real engine's parameter tree; the wheel gate
+    # and the us-extra CI lane run without policyengine-uk, so skip there.
+    pytest.importorskip("policyengine_uk")
     rates = uk_dwp_baseline_disability_rates(2023)
 
     assert rates.instant == "2023-01-01"

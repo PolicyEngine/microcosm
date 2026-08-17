@@ -179,8 +179,13 @@ def derive_frs_education(person: pd.DataFrame, raw_person: pd.DataFrame) -> pd.D
     values["is_before_universal_credit_qualifying_young_person_terminal_date"] = (
         (age == 19) & in_qualifying
     )
-    values["adult_ema"] = _ema(raw, amount_column=("emaamt", "edumaamt"))
-    values["child_ema"] = _ema(raw, amount_column=("chemaamt", "eduma"))
+    if "adema" in raw.columns:
+        values["adult_ema"] = _ema(raw, code_column="adema", amount_column="ademaamt")
+    else:
+        # Vintages without the adema pair carry eduma/edumaamt — the
+        # incumbent aliases them before its fill; 2023-24 is such a vintage.
+        values["adult_ema"] = _ema(raw, code_column="eduma", amount_column="edumaamt")
+    values["child_ema"] = _ema(raw, code_column="chema", amount_column="chemaamt")
     benefit_columns = [
         column for column in BENEFITS_IN_OWN_RIGHT_REPORTED_COLUMNS if column in person
     ]
@@ -225,12 +230,24 @@ def derive_current_education(*, fted, typeed2, age) -> np.ndarray:
     )
 
 
-def _ema(raw: pd.DataFrame, *, amount_column: tuple[str, str]) -> np.ndarray:
-    for column in amount_column:
-        if column in raw.columns:
-            amount = _num(raw, column)
-            return np.maximum(amount, 0).to_numpy(dtype=float) * WEEKS_IN_YEAR
-    return np.zeros(len(raw), dtype=float)
+def _ema(raw: pd.DataFrame, *, code_column: str, amount_column: str) -> np.ndarray:
+    """Participation-gated mean fill for EMA amounts (fill_with_mean port).
+
+    Participants (code == 1) reporting a sentinel negative amount receive
+    the mean of participants' non-negative reported amounts; everyone else
+    keeps their reported amount. Floored at zero and annualized at
+    WEEKS_IN_YEAR (the signed multiplier difference vs the incumbent's
+    bare 52). A vintage with participants but no valid donor amount fills
+    with zero — frames refuse NaN, where the incumbent would propagate it.
+    """
+
+    code = _num(raw, code_column)
+    amount = _num(raw, amount_column)
+    needs_fill = (code == 1) & (amount < 0)
+    donors = (code == 1) & (amount >= 0)
+    fill_mean = float(amount[donors].mean()) if bool(donors.any()) else 0.0
+    filled = np.where(needs_fill, fill_mean, amount)
+    return np.maximum(filled, 0.0) * WEEKS_IN_YEAR
 
 
 def _num(frame: pd.DataFrame, column: str) -> pd.Series:

@@ -67,8 +67,11 @@ def test_training_qyp_ema_and_benefits_in_own_right() -> None:
             "typeed2": [7, 0, 0],
             "educqual": [17, 86, 999],
             "train": [9, 10, np.nan],
-            "emaamt": [2.0, -1.0, 0.0],
-            "chemaamt": [0.0, 3.0, 0.0],
+            # 2023-24-shaped vintage: no adema pair, eduma/edumaamt instead.
+            "eduma": [1, 1, 0],
+            "edumaamt": [2.0, -1.0, 5.0],
+            "chema": [0, 1, 1],
+            "chemaamt": [0.0, 3.0, -1.0],
         }
     )
 
@@ -81,6 +84,45 @@ def test_training_qyp_ema_and_benefits_in_own_right() -> None:
     assert result[
         "is_before_universal_credit_qualifying_young_person_terminal_date"
     ].tolist() == [True, False, False]
-    assert result["adult_ema"].tolist() == [2.0 * WEEKS_IN_YEAR, 0.0, 0.0]
-    assert result["child_ema"].tolist() == [0.0, 3.0 * WEEKS_IN_YEAR, 0.0]
+    # fill_with_mean semantics: a participant's sentinel −1 receives the
+    # participant mean (2.0 adult / 3.0 child); a non-participant keeps a
+    # positive reported amount (no flag-gating of reported values).
+    assert result["adult_ema"].tolist() == [
+        2.0 * WEEKS_IN_YEAR,
+        2.0 * WEEKS_IN_YEAR,
+        5.0 * WEEKS_IN_YEAR,
+    ]
+    assert result["child_ema"].tolist() == [
+        0.0,
+        3.0 * WEEKS_IN_YEAR,
+        3.0 * WEEKS_IN_YEAR,
+    ]
     assert result["receives_benefits_in_own_right"].tolist() == [False, True, False]
+
+
+def test_adult_ema_prefers_the_adema_pair_when_present() -> None:
+    person = pd.DataFrame({"person_id": [1, 2], "age": [17, 18]})
+    raw = pd.DataFrame(
+        {
+            "person_id": [1, 2],
+            "fted": [2, 2],
+            "typeed2": [0, 0],
+            "educqual": [3, 3],
+            # adema pair present: it must win over a contradictory eduma pair
+            # (the incumbent aliases eduma into adema only when adema is
+            # absent).
+            "adema": [1, 1],
+            "ademaamt": [4.0, -1.0],
+            "eduma": [1, 1],
+            "edumaamt": [9.0, 9.0],
+            "chema": [0, 0],
+            "chemaamt": [0.0, 0.0],
+        }
+    )
+
+    result = derive_frs_education(person, raw)
+
+    assert result["adult_ema"].tolist() == [
+        4.0 * WEEKS_IN_YEAR,
+        4.0 * WEEKS_IN_YEAR,
+    ]
