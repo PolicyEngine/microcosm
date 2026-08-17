@@ -157,3 +157,52 @@ class TestUKSourceStagesManifest:
 
         with pytest.raises(ValueError, match=match):
             country_stage_plan(spec, implementations)
+
+
+class TestDeclaredOutputsAreWrittenColumns:
+    """Declared outputs must name columns the stages actually write.
+
+    Outputs are load-bearing (``country_stage_plan`` compiles them into
+    ``StagePlan.produces``), and the licensed-data acceptance for this
+    migration caught a declared output that was an SPI *concept* rather
+    than a persisted column — harmless while nothing read the field,
+    refused at full rung once it did. This pins every declared output to
+    a named runtime written-column constant so the class cannot recur
+    without a licensed build to find it (microcosm#690 review).
+    """
+
+    def test_stage1_outputs_are_exactly_the_retained_leaf_columns(self) -> None:
+        from microcosm.build.uk_runtime.frs_hmrc_leaves import (
+            FRS_HMRC_RETAINED_LEAF_COLUMNS,
+        )
+
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+        stage1 = stages["frs_hmrc_retained_leaves"]
+        assert stage1.outputs == tuple(FRS_HMRC_RETAINED_LEAF_COLUMNS)
+
+    def test_stage2_outputs_are_backed_by_runtime_written_columns(self) -> None:
+        from microcosm.build.uk_runtime.spi_support import (
+            SPI_HMRC_DERIVED_AUXILIARY_COLUMNS,
+            SPI_HMRC_QRF_AUXILIARY_COLUMNS,
+            SPI_INCOME_IMPUTATION_COLUMNS,
+        )
+
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+        stage2 = stages["hmrc_spi_income"]
+        written = (
+            set(SPI_INCOME_IMPUTATION_COLUMNS)
+            | set(SPI_HMRC_QRF_AUXILIARY_COLUMNS)
+            | set(SPI_HMRC_DERIVED_AUXILIARY_COLUMNS)
+        )
+        # The narrow PAY+EPB+TAXTERM employment input is written on SPI rows
+        # by the stage even though the QRF output surface excludes it.
+        written.add("employment_income")
+        unbacked = [name for name in stage2.outputs if name not in written]
+        assert unbacked == [], (
+            "Declared outputs with no named runtime written-column constant "
+            f"backing them: {unbacked}. Either the manifest declares a "
+            "concept instead of a persisted column, or the runtime constant "
+            "moved without the manifest following."
+        )
