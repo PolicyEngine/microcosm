@@ -12,11 +12,15 @@ accident.
 from __future__ import annotations
 
 import json
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
 
 from microcosm.build import (
+    CountryResourceRow,
+    CountrySpec,
+    ResolvedCountrySpec,
     country_stage_plan,
     load_country_spec,
 )
@@ -251,6 +255,153 @@ class TestExistingPackagesGeneralize:
             "release_input_coverage_manifest.json",
             "uk_local_target_census.json",
         )
+
+
+class TestResolvedCountrySpecSeam:
+    def test_country_spec_is_the_exact_resolved_alias(self) -> None:
+        assert CountrySpec is ResolvedCountrySpec
+
+    def test_legacy_filenames_become_explicit_typed_rows(self) -> None:
+        spec = load_country_spec("be")
+        assert spec.resources == tuple(row.path for row in spec.resource_rows)
+        assert all(
+            row.kind == "legacy_json" and row.schema_id == "legacy_json"
+            for row in spec.resource_rows
+        )
+        assert spec.resolved_spec is None
+
+    def test_resource_rows_are_frozen(self) -> None:
+        row = CountryResourceRow(
+            path="spec/bundle.yaml",
+            kind="bundle",
+            schema_id="bundle.schema.json",
+        )
+        with pytest.raises(FrozenInstanceError):
+            row.path = "spec/changed.yaml"
+
+    def test_typed_json_and_yaml_descriptors_load_together(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["country_package.json"]["resources"] = [
+            {
+                "path": "gates.json",
+                "kind": "legacy_json",
+                "schema_id": "legacy_json",
+            },
+            {
+                "path": "spec/bundle.yaml",
+                "kind": "bundle",
+                "schema_id": "bundle.schema.json",
+            },
+        ]
+        del files["country_package.json"]["policy"]
+        package_dir = _write_package(tmp_path, files)
+        spec_dir = package_dir / "spec"
+        spec_dir.mkdir()
+        (spec_dir / "bundle.yaml").write_text(
+            "country: xx\nidentity_generation: 1\nseed_protocol: legacy-v1\n",
+            encoding="utf-8",
+        )
+
+        spec = load_country_spec(package_dir)
+
+        assert spec.resources == ("gates.json", "spec/bundle.yaml")
+        assert spec.gates is not None
+        assert spec.resource_rows[1] == CountryResourceRow(
+            path="spec/bundle.yaml",
+            kind="bundle",
+            schema_id="bundle.schema.json",
+        )
+        assert set(spec.resource_hashes) == {
+            "country_package.json",
+            "gates.json",
+            "spec/bundle.yaml",
+        }
+        assert spec.resolved_spec is not None
+
+    def test_generation_one_manifest_does_not_require_legacy_policy(
+        self, tmp_path
+    ) -> None:
+        package_dir = tmp_path / "xx"
+        package_dir.mkdir()
+        (package_dir / "country_package.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "country": "xx",
+                    "resources": [
+                        {
+                            "path": "bundle.yaml",
+                            "kind": "bundle",
+                            "schema_id": "bundle.schema.json",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (package_dir / "bundle.yaml").write_text(
+            "country: xx\nidentity_generation: 1\nseed_protocol: legacy-v1\n",
+            encoding="utf-8",
+        )
+
+        spec = load_country_spec(package_dir)
+
+        assert spec.policy == ""
+        assert spec.sources is None
+        assert spec.gates is None
+        assert spec.resolved_spec is not None
+        assert spec.resolved_spec.country == "xx"
+
+    @pytest.mark.parametrize(
+        ("row", "message"),
+        [
+            (
+                {
+                    "path": "../escape.yaml",
+                    "kind": "bundle",
+                    "schema_id": "bundle.schema.json",
+                },
+                "normalized local POSIX path",
+            ),
+            (
+                {
+                    "path": "bundle.yaml",
+                    "kind": "executable",
+                    "schema_id": "bundle.schema.json",
+                },
+                "unknown kind",
+            ),
+            (
+                {
+                    "path": "bundle.yaml",
+                    "kind": "bundle",
+                    "schema_id": "bundle.schema.json",
+                    "entrypoint": "microcosm.build:run",
+                },
+                "closed-world",
+            ),
+        ],
+    )
+    def test_invalid_typed_resource_rows_are_refused(
+        self, tmp_path, row, message
+    ) -> None:
+        files = _minimal_package()
+        files["country_package.json"]["resources"] = [row]
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match=message):
+            load_country_spec(package_dir)
+
+    def test_duplicate_typed_paths_are_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        row = {
+            "path": "gates.json",
+            "kind": "legacy_json",
+            "schema_id": "legacy_json",
+        }
+        files["country_package.json"]["resources"] = [row, dict(row)]
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="duplicate resource path"):
+            load_country_spec(package_dir)
 
 
 class TestUKGatesManifest:

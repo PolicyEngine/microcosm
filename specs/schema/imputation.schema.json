@@ -2,6 +2,7 @@
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "imputation.schema.json",
  "title": "Predictor blocks, models, chaining, concepts, families, producer graph",
+ "x-spec-surface": "normative",
  "type": "object",
  "additionalProperties": false,
  "required": [

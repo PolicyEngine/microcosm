@@ -337,3 +337,55 @@ operators; 13 take-up programs; every tail-control field; every legacy-v1 draw
 site; and all stacked identity/rung/release fields inventoried above and in
 subsection G.  A normative field without a compiler usage path or any one of
 these inventory surfaces without a bundle home is a failing report.
+
+## 2. Loader, canonicalizer, and CountrySpec seam
+
+- The authored parser is a deliberately restricted YAML 1.2 implementation:
+  it composes before construction so duplicate keys, merge keys, tags,
+  timestamps, recursive aliases, non-string keys, multi-document streams, and
+  non-finite values refuse with stable source positions
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/yaml12.py:295`).
+- `SchemaRegistry` loads exactly the 15 approved draft-2020-12 documents,
+  checks their ids and schemas, pre-resolves every local reference through a
+  retrieval-refusing `referencing.Registry`, injects only declared defaults,
+  and reports all validation failures in deterministic path order
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/schemas.py:162`).
+  The only current authored default is selection precedence, now explicit at
+  `specs/schema/selection.schema.json:44`; omitted and explicit forms resolve
+  identically.
+- Every authored schema inherits a normative surface declaration (for example
+  `specs/schema/bundle.schema.json:5`).  The two ruled exceptions are encoded
+  rather than guessed: catalog docs are documentation
+  (`specs/schema/catalogs.schema.json:77`) and the publication audit store is
+  operational (`specs/schema/publication.schema.json:129`).  The
+  schema-directed walker produces six physically separate immutable objects,
+  normalizes finite numbers and NFC strings, preserves arrays unless the
+  schema explicitly declares a set, and sorts the manifest's declared set
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/canonical.py:170`;
+  `specs/schema/resource_manifest.schema.json:23`).
+- `load_bundle()` validates manifest path containment and exact file closure,
+  resolves typed domains/defaults/cross-references, and returns the immutable
+  dataclass root at
+  `packages/microcosm-build/src/microcosm/build/spec_engine/loader.py:235` and
+  `packages/microcosm-build/src/microcosm/build/spec_engine/model.py:323`.
+  Its semantic envelope includes the typed composition and normative domain
+  projections; documentation/operational edits do not change `spec_sha256`.
+  `bundle.lock.json` is emitted only from that result
+  (`spec_engine/loader.py:411`) and is never admitted as an authored row.
+- The seam is one type: `CountrySpec` is an exact alias of
+  `ResolvedCountrySpec` (`packages/microcosm-build/src/microcosm/build/country_spec.py:873`
+  and `country_spec.py:928`).  Generation-0 filename rows
+  become visible `legacy_json` descriptors without changing their historical
+  fingerprint; a typed v1 manifest loads the compiler result through this same
+  object (`country_spec.py:1116`).
+- Packaging gate: all five shard wheels built; the build wheel contains exactly
+  the 15 schemas via the force-include rule
+  (`packages/microcosm-build/pyproject.toml:66`).  A clean Python 3.14 venv
+  installed the wheels offline, imported `microcosm.build.spec_engine` from the
+  wheel, resolved the schema root inside site-packages, and loaded the shipped
+  US, UK, and BE compatibility packages.
+- Validation gate: the exact pre-commit tree collected 6,356 tests and completed
+  at 100% with 6,319 passed, 37 skipped, and zero failures.  Ruff and
+  `git diff --check` are clean.  The build-shard wheel was then rebuilt from
+  that same tree and installed offline in a second clean Python 3.14 venv; its
+  imported package contained all 15 schema resources.

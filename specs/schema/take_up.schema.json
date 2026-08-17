@@ -2,6 +2,7 @@
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "take_up.schema.json",
  "title": "Take-up: orthogonal ownership x ordered typed steps; facts bind via engine_abi.lock",
+ "x-spec-surface": "normative",
  "type": "object",
  "additionalProperties": false,
  "required": [
@@ -9,6 +10,7 @@
  ],
  "properties": {
   "status": {
+   "x-spec-surface": "documentation",
    "type": "string"
   },
   "programs": {

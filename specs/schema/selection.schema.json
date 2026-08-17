@@ -2,6 +2,7 @@
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "selection.schema.json",
  "title": "Sparse selection: exact-k (validity gates are KERNEL CONTRACT, not config)",
+ "x-spec-surface": "normative",
  "type": "object",
  "additionalProperties": false,
  "required": [
@@ -39,8 +40,9 @@
       "surface": {
        "const": "run_request"
       },
-      "precedence": {
-       "const": "run_request_overrides_default"
+     "precedence": {
+      "default": "run_request_overrides_default",
+      "const": "run_request_overrides_default"
       }
      }
     },
@@ -55,7 +57,16 @@
        "const": "none"
       },
       {
-       "$ref": "defs.schema.json#/$defs/identifier"
+       "allOf": [
+        {
+         "$ref": "defs.schema.json#/$defs/identifier"
+        },
+        {
+         "not": {
+          "const": "none"
+         }
+        }
+       ]
       }
      ]
     },

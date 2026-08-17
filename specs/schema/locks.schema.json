@@ -61,8 +61,9 @@
        "sha256": {
         "$ref": "defs.schema.json#/$defs/sha256"
        },
-       "byte_size": {
-        "type": "integer"
+      "byte_size": {
+       "type": "integer",
+       "minimum": 0
        }
       }
      }

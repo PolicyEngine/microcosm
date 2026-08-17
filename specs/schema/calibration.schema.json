@@ -2,6 +2,7 @@
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "calibration.schema.json",
  "title": "Calibration: the full mathematical contract (no library defaults)",
+ "x-spec-surface": "normative",
  "type": "object",
  "additionalProperties": false,
  "required": [

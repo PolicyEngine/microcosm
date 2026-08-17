@@ -2,6 +2,7 @@
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "catalogs.schema.json",
  "title": "Column catalog: normative contract + docs overlay; lineage is COMPILER-EMITTED, never authored",
+ "x-spec-surface": "normative",
  "type": "object",
  "additionalProperties": false,
  "required": [
@@ -72,8 +73,9 @@
        }
       }
      },
-     "docs": {
-      "type": "object",
+    "docs": {
+     "x-spec-surface": "documentation",
+     "type": "object",
       "additionalProperties": false,
       "description": "Non-normative; hashed into the documentation digest, NOT spec_sha256.",
       "properties": {

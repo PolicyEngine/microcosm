@@ -2,6 +2,7 @@
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "publication.schema.json",
  "title": "Publication: attempt events, atomic promotion, audit chain != release graph",
+ "x-spec-surface": "normative",
  "type": "object",
  "additionalProperties": false,
  "required": [
@@ -88,8 +89,9 @@
       "normative": {
        "const": true
       },
-      "note": {
-       "type": "string"
+     "note": {
+      "x-spec-surface": "documentation",
+      "type": "string"
       },
       "legacy_prefixes": {
        "type": "array",
@@ -124,6 +126,7 @@
      "const": "strict_linear"
     },
     "store": {
+     "x-spec-surface": "operational",
      "type": "string",
      "description": "OPERATIONAL binding; never hashed."
     }

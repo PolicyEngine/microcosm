@@ -1,13 +1,13 @@
 """The declarative country spec: one loader for a spec-only country package.
 
-A country package (``microcosm/build/<country>/``) is pure data — JSON specs
-validated by shared schema classes, executed only through shared runtimes.
-This module is the schema for the package as a whole: it loads
-``country_package.json`` plus every typed resource, refuses undeclared or
-malformed resources, content-hashes each resource, and compiles the source
-manifest into a :class:`~microcosm.build.plan.StagePlan` with the same
-no-fallback posture as the US plan (an implementation per declared stage or
-nothing).
+A country package (``microcosm/build/<country>/``) is pure data — JSON or YAML
+specs validated by shared schema classes, executed only through shared
+runtimes. This module is the seam for the package as a whole: it loads the
+single typed inventory in ``country_package.json``, refuses undeclared or
+malformed resources, content-hashes each resource, and retains the generation-0
+projections needed to compile a source manifest into a
+:class:`~microcosm.build.plan.StagePlan` with the same no-fallback posture as
+the US plan (an implementation per declared stage or nothing).
 
 Belgium is the first full consumer (microcosm#261, epic microcosm#259): the
 ``be/`` package declares its BE-SILC source stages, clone-and-assign commune
@@ -25,9 +25,9 @@ Typed resources, by canonical filename:
 - ``gates.json`` — :class:`GatesManifest` (this module)
 - ``release_contract.json`` — :class:`ReleaseContractManifest` (this module)
 
-Any other declared resource must still be a JSON mapping (the spec-only
-tests forbid everything else), but its interpretation belongs to the runtime
-that reads it.
+Generation-0 bare filenames are resolved to explicit ``legacy_json`` rows and
+must still hold JSON mappings. Generation-1 typed rows may point at the closed
+JSON/YAML spec-engine domains; their interpretation belongs to the compiler.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from importlib import resources as importlib_resources
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any
 
@@ -55,15 +55,43 @@ __all__ = [
     "ALLOWED_GATE_CRITICALITIES",
     "ALLOWED_GATE_PHASES",
     "ALLOWED_GEOGRAPHY_SPINE_METHODS",
+    "ALLOWED_COUNTRY_RESOURCE_KINDS",
     "CountrySpec",
+    "CountryResourceRow",
     "GateSelectionSpec",
     "GatesManifest",
     "GeographySpineManifest",
     "GeographySpineSpec",
     "ReleaseContractManifest",
+    "ResolvedCountrySpec",
     "country_stage_plan",
     "load_country_spec",
 ]
+
+#: Resource kinds admitted by the binding ``resource_manifest.schema.json``.
+#: ``legacy_json`` is the explicit generation-0 compatibility kind: it keeps
+#: today's filename-dispatched readers working while typed bundle resources
+#: flow to the spec-engine compiler.
+ALLOWED_COUNTRY_RESOURCE_KINDS = frozenset(
+    {
+        "bundle",
+        "sources",
+        "spine",
+        "geography",
+        "imputation",
+        "take_up",
+        "battery",
+        "calibration",
+        "selection",
+        "publication",
+        "vintages",
+        "catalogs",
+        "schema",
+        "legacy_json",
+    }
+)
+
+_LEGACY_RESOURCE_SCHEMA_ID = "legacy_json"
 
 #: Gate functions a gates spec may select — the release-gate vocabulary of
 #: :mod:`microcosm.build.gates`. Incumbent-comparison gates (parity,
@@ -754,14 +782,104 @@ def _validate_target_references(
 
 
 @dataclass(frozen=True)
-class CountrySpec:
+class CountryResourceRow:
+    """One row in the authoritative typed country-resource manifest.
+
+    ``path`` is a normalized POSIX path relative to the country directory;
+    ``kind`` selects the compiler domain; and ``schema_id`` names the closed
+    schema used for that domain.  The generation-0 compatibility reader turns
+    each historical bare filename into an explicit ``legacy_json`` row with
+    schema id ``legacy_json``.  That inference is deliberately visible on the
+    resolved object instead of surviving as a second, implicit inventory.
+    """
+
+    path: str
+    kind: str
+    schema_id: str
+
+    def __post_init__(self) -> None:
+        path = _require_non_empty_string(
+            self.path, field_name="path", context="country_package.json resource"
+        )
+        normalized = PurePosixPath(path)
+        if (
+            normalized.is_absolute()
+            or path == "."
+            or path != normalized.as_posix()
+            or any(part in {"", ".", ".."} for part in normalized.parts)
+        ):
+            raise ValueError(
+                "country_package.json resource: path must be a normalized "
+                f"local POSIX path, got {path!r}."
+            )
+        if not re.fullmatch(r"[a-z0-9_./-]+", path):
+            raise ValueError(
+                "country_package.json resource: path contains characters "
+                f"outside [a-z0-9_./-]: {path!r}."
+            )
+        if path == "country_package.json":
+            raise ValueError(
+                "country_package.json resource: the manifest cannot declare "
+                "itself as a resource."
+            )
+        kind = _require_non_empty_string(
+            self.kind, field_name="kind", context="country_package.json resource"
+        )
+        if kind not in ALLOWED_COUNTRY_RESOURCE_KINDS:
+            raise ValueError(
+                "country_package.json resource: unknown kind "
+                f"{kind!r}; expected one of "
+                f"{sorted(ALLOWED_COUNTRY_RESOURCE_KINDS)}."
+            )
+        _require_non_empty_string(
+            self.schema_id,
+            field_name="schema_id",
+            context="country_package.json resource",
+        )
+
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, Any]) -> CountryResourceRow:
+        """Validate and freeze one typed ``{path, kind, schema_id}`` row."""
+
+        raw = _require_mapping(raw, context="country_package.json resource")
+        unknown = sorted(set(raw) - {"path", "kind", "schema_id"})
+        if unknown:
+            raise ValueError(
+                "country_package.json resource: unknown field(s) "
+                f"{unknown}; typed rows are closed-world."
+            )
+        return cls(
+            path=raw.get("path"),
+            kind=raw.get("kind"),
+            schema_id=raw.get("schema_id"),
+        )
+
+    @classmethod
+    def from_legacy_path(cls, path: Any) -> CountryResourceRow:
+        """Make the explicit generation-0 row for one bare filename."""
+
+        return cls(
+            path=_require_non_empty_string(
+                path,
+                field_name="resource path",
+                context="country_package.json",
+            ),
+            kind="legacy_json",
+            schema_id=_LEGACY_RESOURCE_SCHEMA_ID,
+        )
+
+
+@dataclass(frozen=True)
+class ResolvedCountrySpec:
     """A loaded, validated, content-hashed country package.
 
     Attributes:
         country: Country code (directory name and every resource's
             ``country`` field).
         policy: The package's standing policy line.
-        resources: Declared resource filenames, in manifest order.
+        resource_rows: Declared typed resources, in manifest order.
+        resources: Compatibility projection of resource paths, in manifest
+            order.
         sources: The source-stage manifest, when declared.
         support_spine: The support-spine manifest, when declared.
         geography_spine: The geography-spine manifest, when declared.
@@ -770,11 +888,14 @@ class CountrySpec:
         release_contract: The release contract, when declared.
         resource_hashes: Resource filename -> sha256 of its bytes (includes
             ``country_package.json`` itself).
+        resolved_spec: The canonical spec-engine object for a generation-1
+            bundle, when compiled. It remains ``None`` for generation-0
+            compatibility packages.
     """
 
     country: str
     policy: str
-    resources: tuple[str, ...]
+    resource_rows: tuple[CountryResourceRow, ...]
     sources: SourceManifest | None
     support_spine: SupportSpineManifest | None
     geography_spine: GeographySpineManifest | None
@@ -782,6 +903,13 @@ class CountrySpec:
     gates: GatesManifest | None
     release_contract: ReleaseContractManifest | None
     resource_hashes: Mapping[str, str]
+    resolved_spec: object | None = None
+
+    @property
+    def resources(self) -> tuple[str, ...]:
+        """Historical filename projection, derived from the typed rows."""
+
+        return tuple(row.path for row in self.resource_rows)
 
     @property
     def fingerprint(self) -> str:
@@ -794,7 +922,52 @@ class CountrySpec:
         return compute_composition_fingerprint(self.resource_hashes.values())
 
 
-def load_country_spec(country: str | Path) -> CountrySpec:
+# Compatibility is an exact alias, not a parallel representation. Existing
+# annotations and imports continue to work while every loader caller receives
+# the single resolved country object.
+CountrySpec = ResolvedCountrySpec
+
+
+def _resolve_country_resource_rows(
+    resources_field: Any,
+) -> tuple[CountryResourceRow, ...]:
+    """Resolve legacy filenames or typed rows into the one manifest shape."""
+
+    if not isinstance(resources_field, list):
+        raise ValueError("country_package.json: resources must be a list.")
+    if not resources_field:
+        raise ValueError("country_package.json: resources must not be empty.")
+
+    rows: list[CountryResourceRow] = []
+    for index, raw in enumerate(resources_field):
+        try:
+            row = (
+                CountryResourceRow.from_mapping(raw)
+                if isinstance(raw, Mapping)
+                else CountryResourceRow.from_legacy_path(raw)
+            )
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                f"country_package.json: resources[{index}] is invalid: {error}"
+            ) from error
+        rows.append(row)
+
+    paths = [row.path for row in rows]
+    duplicates = sorted({path for path in paths if paths.count(path) > 1})
+    if duplicates:
+        raise ValueError(
+            f"country_package.json: duplicate resource path(s) {duplicates}."
+        )
+    return tuple(rows)
+
+
+def _country_resource_path(root: Path, path: str) -> Path:
+    """Resolve a validated manifest path below ``root``."""
+
+    return root.joinpath(*PurePosixPath(path).parts)
+
+
+def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
     """Load and validate the ``country`` package.
 
     Args:
@@ -802,7 +975,8 @@ def load_country_spec(country: str | Path) -> CountrySpec:
             path to a country package directory.
 
     Returns:
-        The validated :class:`CountrySpec`.
+        The validated :class:`ResolvedCountrySpec` (also exported through the
+        exact compatibility alias :class:`CountrySpec`).
 
     Raises:
         FileNotFoundError: If the package or a declared resource is missing.
@@ -829,16 +1003,27 @@ def load_country_spec(country: str | Path) -> CountrySpec:
             f"country_package.json declares country {declared_country!r} but "
             f"lives in directory {root.name!r}."
         )
-    policy = _require_non_empty_string(
-        package.get("policy"), field_name="policy", context="country_package.json"
+    resource_rows = _resolve_country_resource_rows(package.get("resources", []))
+    typed_manifest = package.get("schema_version") == 1 and all(
+        isinstance(row, Mapping) for row in package.get("resources", ())
     )
-    resources_field = package.get("resources", [])
-    if not isinstance(resources_field, list):
-        raise ValueError("country_package.json: resources must be a list.")
-    resources = tuple(str(name) for name in resources_field)
+    raw_policy = package.get("policy")
+    if typed_manifest:
+        # ``policy`` belonged to the generation-0 manifest. The binding typed
+        # resource-manifest schema intentionally omits it; bundle.yaml carries
+        # generation-1 settings instead. Typed manifests may retain declared
+        # legacy_json evidence rows without reverting the manifest grammar.
+        policy = ""
+    else:
+        policy = _require_non_empty_string(
+            raw_policy, field_name="policy", context="country_package.json"
+        )
 
-    on_disk = {path.name for path in root.iterdir() if path.is_file()}
-    undeclared = sorted(on_disk - set(resources) - {"country_package.json"})
+    declared_paths = {row.path for row in resource_rows}
+    on_disk = {
+        path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()
+    }
+    undeclared = sorted(on_disk - declared_paths - {"country_package.json"})
     if undeclared:
         raise ValueError(
             f"{root.name}: file(s) {undeclared} are not declared in "
@@ -848,16 +1033,29 @@ def load_country_spec(country: str | Path) -> CountrySpec:
 
     hashes: dict[str, str] = {"country_package.json": sha256_file(package_path)}
     payloads: dict[str, Mapping[str, Any]] = {}
-    for name in resources:
-        resource_path = root / name
+    for row in resource_rows:
+        name = row.path
+        resource_path = _country_resource_path(root, name)
         if not resource_path.exists():
             raise FileNotFoundError(
                 f"{root.name}: declared resource {name!r} is missing."
             )
+        if not resource_path.resolve().is_relative_to(root.resolve()):
+            raise ValueError(
+                f"{root.name}: declared resource {name!r} resolves outside "
+                "the country package."
+            )
+        if not resource_path.is_file():
+            raise ValueError(f"{root.name}: declared resource {name!r} is not a file.")
         hashes[name] = sha256_file(resource_path)
-        payloads[name] = _require_mapping(
-            json.loads(resource_path.read_text(encoding="utf-8")), context=name
-        )
+        if row.kind == "legacy_json":
+            if resource_path.suffix not in {".json", ".jsonld"}:
+                raise ValueError(
+                    f"{root.name}: legacy_json resource {name!r} must be JSON."
+                )
+            payloads[name] = _require_mapping(
+                json.loads(resource_path.read_text(encoding="utf-8")), context=name
+            )
 
     sources = (
         SourceManifest.from_mapping(payloads["source_stages.json"])
@@ -906,10 +1104,20 @@ def load_country_spec(country: str | Path) -> CountrySpec:
         else None
     )
 
-    return CountrySpec(
+    resolved_spec: object | None = None
+    if typed_manifest:
+        # Import lazily so generation-0 CountrySpec consumers do not pay the
+        # schema/compiler import cost.  This is the single seam: a typed
+        # package returns the compatibility projections above and the exact
+        # same resolved compiler object, never a parallel spec system.
+        from microcosm.build.spec_engine import load_bundle
+
+        resolved_spec = load_bundle(root)
+
+    return ResolvedCountrySpec(
         country=declared_country,
         policy=policy,
-        resources=resources,
+        resource_rows=resource_rows,
         sources=sources,
         support_spine=support_spine,
         geography_spine=geography_spine,
@@ -917,6 +1125,7 @@ def load_country_spec(country: str | Path) -> CountrySpec:
         gates=gates,
         release_contract=release_contract,
         resource_hashes=hashes,
+        resolved_spec=resolved_spec,
     )
 
 

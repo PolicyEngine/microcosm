@@ -20,6 +20,8 @@ dependencies = [
     # The imputation lineage spec (specs/*.yaml) is the source of truth for
     # predictor sets and model attributes; the conformance test reads it.
     "pyyaml>=6",
+    "jsonschema>=4.23,<5",
+    "referencing>=0.35,<1",
 ]
 
 [project.optional-dependencies]
@@ -60,6 +62,9 @@ ignore-vcs = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/microcosm"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"../../specs/schema" = "microcosm/build/spec_engine/schema"
 
 [tool.uv.sources]
 microcosm-frame = { workspace = true }
