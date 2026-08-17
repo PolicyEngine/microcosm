@@ -95,6 +95,66 @@ def test_identity_stability_receipt_compares_by_entity_id() -> None:
     assert receipt["mismatches"] == {}
 
 
+def test_e4_identity_receipt_survives_permutation_on_synthetic_frame() -> None:
+    tool = _load_tool("verify_uk_identity_stability")
+
+    class Contract:
+        def rate(self, key: str) -> float:
+            return 0.5 if not key.startswith("scp") else 0.9
+
+        def continuous_entry(self, key: str):
+            return {"mean": 15.019, "sd": 4.972, "lower": 0, "upper": 30}
+
+    person = pd.DataFrame(
+        {
+            "person_id": [101, 102, 201, 301],
+            "person_benunit_id": [10, 10, 20, 30],
+            "person_household_id": [1, 1, 1, 2],
+            "age": [5, 6, 40, 70],
+            "child_benefit_reported": [0.0, 10.0, 0.0, 0.0],
+            "pension_credit_reported": [0.0, 0.0, 0.0, 5.0],
+            "universal_credit_reported": [0.0, 0.0, 20.0, 0.0],
+        }
+    )
+    frame = uk_national_frame(
+        person=person,
+        benunit=pd.DataFrame({"benunit_id": [10, 20, 30]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [1, 2],
+                "region": ["LONDON", "SCOTLAND"],
+                "household_weight": [2.0, 3.0],
+            }
+        ),
+        time_period="2023",
+    )
+    count_resource = {
+        "cells": {
+            "LONDON": {"A": {"CENTRAL_LONDON": 3, "OUTER_LONDON": 1}},
+            "SCOTLAND": {"A": {"LOTHIAN": 2}},
+        }
+    }
+
+    receipt = tool.e4_identity_receipt(
+        frame,
+        contract=Contract(),
+        count_resource=count_resource,
+        lha_category=["A", "A", "A"],
+        permutation_seed=7,
+    )
+
+    assert receipt["identical_under_permutation"] is True
+    assert receipt["permutation_mismatches"] == {}
+    # The synthetic frame carries no stored E4 columns; the receipt says so
+    # explicitly instead of silently passing the stored comparison.
+    assert receipt["matches_stored_columns"] is False
+    assert set(receipt["stored_columns_missing"]) == {
+        "person",
+        "benunit",
+        "household",
+    }
+
+
 def test_brma_distribution_masks_small_counts() -> None:
     tool = _load_tool("emit_uk_brma_distribution")
     household = pd.DataFrame(
