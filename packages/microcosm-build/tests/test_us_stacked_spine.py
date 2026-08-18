@@ -39,7 +39,13 @@ from microcosm.build.serialization_dtypes import CANONICAL_STRING_DTYPE
 from microcosm.build.us_runtime.acs_income_universe import (
     apply_acs_pums_earnings_universe_zeros,
 )
-from microcosm.build.us_runtime.acs_transfer import AcsTransferResult
+from microcosm.build.us_runtime.acs_transfer import (
+    ACS_GROUP_TRANSFER_PREDICTORS,
+    ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS,
+    ACS_PERSON_TRANSFER_PREDICTORS,
+    AcsPredictorSet,
+    AcsTransferResult,
+)
 from microcosm.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankStore
 from microcosm.build.us_runtime.late_producer_dag import (
     ProducerContract,
@@ -1626,6 +1632,32 @@ _CANONICAL_RENT_ABSENCE_RULE = GapFillAbsenceRule(
 )
 
 
+_TEST_PERSON_PREDICTOR_SET = AcsPredictorSet(
+    required=ACS_PERSON_TRANSFER_PREDICTORS,
+    optional=tuple(
+        ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS[index] for index in (0, 1, 4, 5, 6)
+    ),
+)
+_TEST_PUF_PERSON_PREDICTOR_SET = AcsPredictorSet(
+    required=ACS_PERSON_TRANSFER_PREDICTORS,
+    optional=tuple(
+        ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS[index] for index in (0, 1, 5, 6)
+    ),
+)
+_TEST_HOUSING_PREDICTOR_SET = AcsPredictorSet(
+    required=(
+        *ACS_PERSON_TRANSFER_PREDICTORS,
+        *ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS[-2:],
+    ),
+    optional=tuple(
+        ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS[index] for index in (0, 1, 4)
+    ),
+)
+_TEST_GROUP_PREDICTOR_SET = AcsPredictorSet(
+    required=ACS_GROUP_TRANSFER_PREDICTORS,
+)
+
+
 _GAP_FILL_TEST_PLAN = (
     GapFillDirection(
         name="asec_survey_to_acs",
@@ -1637,12 +1669,19 @@ _GAP_FILL_TEST_PLAN = (
                 "model_required_boolean": ("is_disabled",),
             }
         },
+        predictor_sets={
+            "person": {
+                "model_required_numeric": _TEST_PERSON_PREDICTOR_SET,
+                "model_required_boolean": _TEST_PERSON_PREDICTOR_SET,
+            }
+        },
     ),
     GapFillDirection(
         name="asec_housing_to_acs",
         recipient_channel="acs",
         donor_channel="asec",
         target_families={"person": {"housing": ("pre_subsidy_rent",)}},
+        predictor_sets={"person": {"housing": _TEST_HOUSING_PREDICTOR_SET}},
         recipient_absence_rules=(_CANONICAL_RENT_ABSENCE_RULE,),
     ),
 )
@@ -2970,6 +3009,13 @@ def test_gap_fill_activation_authority_rejects_nonlive_declared_channel(
             recipient_channel=recipient_channel,
             donor_channel=donor_channel,
             target_families={"person": {"complete": ("age",)}},
+            predictor_sets={
+                "person": {
+                    "complete": AcsPredictorSet(
+                        required=("is_female", "__acs_transfer_state_fips")
+                    )
+                }
+            },
         ),
     )
 
@@ -6961,7 +7007,7 @@ def test_self_digested_partial_authority_cannot_forge_production_identity() -> N
         GateReport((result,)).to_manifest()
 
 
-@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6, 7, 8, 9))
+@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
 def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     stale_version: int,
 ) -> None:
@@ -6981,7 +7027,7 @@ def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     )
     stale_receipt = stacked_spine_module._authority_receipt(stale)
 
-    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 10
+    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 11
     assert stale_receipt["version"] == stale_version
     assert stale_receipt["integrity_valid"] is True
     assert stale_receipt["digest_matches_declared"] is True
@@ -7000,7 +7046,7 @@ def test_stacked_authority_binds_import_validated_late_producer_schedule() -> No
     receipt = stacked_spine_module.stacked_spine_authority_receipt()
     component = receipt["components"]["late_producer_schedule"]
 
-    assert receipt["version"] == 10
+    assert receipt["version"] == 11
     assert component["producer_count"] == 38
     assert component["schedule_sha256"] == (
         stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE.sha256
@@ -8233,12 +8279,23 @@ _E2E_GAP_FILL_PLAN = (
                 "puf_tax_itemization": ("health_savings_account_ald",),
             },
         },
+        predictor_sets={
+            "person": {
+                "puf_tax_itemization": _TEST_PUF_PERSON_PREDICTOR_SET,
+                "model_required_numeric": _TEST_PERSON_PREDICTOR_SET,
+                "model_required_boolean": _TEST_PERSON_PREDICTOR_SET,
+            },
+            "tax_unit": {
+                "puf_tax_itemization": _TEST_GROUP_PREDICTOR_SET,
+            },
+        },
     ),
     GapFillDirection(
         name="asec_housing_to_acs",
         recipient_channel="acs",
         donor_channel="asec",
         target_families={"person": {"housing": ("pre_subsidy_rent",)}},
+        predictor_sets={"person": {"housing": _TEST_HOUSING_PREDICTOR_SET}},
         recipient_absence_rules=(_CANONICAL_RENT_ABSENCE_RULE,),
     ),
 )

@@ -58,6 +58,9 @@ def _person(
         "AGEP": 40,
         "SEX": 1,
         "MAR": 1,
+        "DEAR": 2,
+        "DEYE": 2,
+        "HINS3": 2,
         "ADJINC": 1_000_000,
         "WAGP": 50_000,
         "SEMP": 0,
@@ -223,6 +226,9 @@ def test_build_acs_pums_unit_frame_preserves_lineage_geography_and_weights(
     assert person["source_household_id"].tolist() == [1, 1, 1, 2]
     assert person["source_person_id"].tolist() == ["1", "2", "3", "1"]
     assert person["source_row_id"].tolist() == [0, 1, 2, 3]
+    assert person["DEAR"].tolist() == [2, 2, 2, 2]
+    assert person["DEYE"].tolist() == [2, 2, 2, 2]
+    assert person["HINS3"].tolist() == [2, 2, 2, 2]
     assert person["source_household_id"].dtype == np.dtype(np.int64)
     assert pd.api.types.is_string_dtype(person["source_person_id"].dtype)
     assert person["source_row_id"].dtype == np.dtype(np.int64)

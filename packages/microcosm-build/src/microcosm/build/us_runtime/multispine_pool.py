@@ -38,7 +38,10 @@ from microcosm.build.us_runtime.acs_transfer import (
 from microcosm.build.us_runtime.adult_care import with_us_adult_care_inputs
 from microcosm.build.us_runtime.child_support import with_us_child_support_inputs
 from microcosm.build.us_runtime.childcare import with_us_childcare_inputs
-from microcosm.build.us_runtime.cps_carried import derive_us_cps_carried_inputs
+from microcosm.build.us_runtime.cps_carried import (
+    CPS_CARRIED_PERSON_PREDICTORS,
+    derive_us_cps_carried_inputs,
+)
 from microcosm.build.us_runtime.disability_benefits import (
     with_us_disability_benefits,
 )
@@ -631,6 +634,9 @@ _SOURCE_OPERATOR_FAMILIES: Mapping[str, str] = {
     name: contract.family for name, contract in POOL_OPERATOR_CONTRACTS.items()
 }
 _FORMULA_OWNED_SOURCE_OUTPUTS = FORMULA_OWNED_SOURCE_COLUMNS
+_SOURCE_PREDICTOR_OUTPUTS: Mapping[str, frozenset[str]] = {
+    "person": CPS_CARRIED_PERSON_PREDICTORS,
+}
 _POOL_NATIVE_COMPLETE_OUTPUTS: Mapping[str, frozenset[str]] = {
     "person": frozenset(
         {
@@ -727,6 +733,7 @@ def pool_transfer_target_families() -> TargetFamilies:
                 declared
                 | set(_POOL_NATIVE_COMPLETE_OUTPUTS.get(entity, ()))
                 | set(_FORMULA_OWNED_SOURCE_OUTPUTS.get(entity, ()))
+                | set(_SOURCE_PREDICTOR_OUTPUTS.get(entity, ()))
             )
             targets = tuple(sorted(set(columns) - excluded))
             if targets:
@@ -2196,6 +2203,9 @@ def _run_source_operator_chain(
                 outcome,
                 declared_outputs,
                 operator_name=operator_name,
+                optional_outputs=(
+                    _SOURCE_PREDICTOR_OUTPUTS if family == "cps_carried" else {}
+                ),
             )
         else:
             current = outcome
@@ -2684,9 +2694,11 @@ def _merge_source_operator_outputs(
     outputs: Mapping[str, frozenset[str]],
     *,
     operator_name: str,
+    optional_outputs: Mapping[str, frozenset[str]] | None = None,
 ) -> tuple[Frame, dict[str, int]]:
     """Merge only one operator's explicit family by entity ID."""
 
+    optional_outputs = {} if optional_outputs is None else optional_outputs
     tables = {entity: pool.table(entity).copy() for entity in pool.entities}
     merged_rows: dict[str, int] = {}
     for entity, columns in outputs.items():
@@ -2710,7 +2722,8 @@ def _merge_source_operator_outputs(
                 f"Multispine source operator {operator_name!r} returned duplicate "
                 f"{entity_id!r} values."
             )
-        missing_outputs = sorted(set(columns) - set(source.columns))
+        optional = set(optional_outputs.get(entity, ()))
+        missing_outputs = sorted(set(columns) - set(source.columns) - optional)
         if missing_outputs:
             raise ValueError(
                 f"Multispine source operator {operator_name!r} did not emit its "
@@ -2724,7 +2737,7 @@ def _merge_source_operator_outputs(
                 f"Multispine source operator {operator_name!r} output IDs do not "
                 f"align one-to-one with the {entity!r} pool."
             )
-        for column in sorted(columns):
+        for column in sorted(set(columns).intersection(source.columns)):
             source_values = source_by_id[column]
             aligned = source_values.reindex(target_ids)
             source_is_boolean = _is_physical_boolean_series(source_values)

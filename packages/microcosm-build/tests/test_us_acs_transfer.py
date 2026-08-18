@@ -20,7 +20,9 @@ from microcosm.build.us_runtime.acs_transfer import (
     ACS_NATIVE_PERSON_INPUTS,
     ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS,
     ACS_PERSON_TRANSFER_PREDICTORS,
+    AcsPredictorSet,
     AcsTransferResult,
+    declared_acs_transfer_predictor_sets,
     declared_acs_transfer_target_families,
     default_acs_transfer_target_families,
     transfer_acs_inputs,
@@ -783,6 +785,130 @@ def test_declared_plan_carries_the_23_stage_base_surface() -> None:
     assert declared_acs_transfer_target_families()["spm_unit"][
         "model_required_boolean"
     ] == ("is_tanf_enrolled", "receives_snap")
+
+
+def test_eligibility_arm_declares_only_recipient_complete_additions() -> None:
+    families = {
+        "person": {
+            "puf_tax_itemization": ("qualified_dividend_income",),
+            "model_required_numeric": ("veterans_benefits",),
+            "model_required_boolean": ("is_blind",),
+            "model_required_discrete": ("own_children_in_household",),
+        }
+    }
+
+    declared = declared_acs_transfer_predictor_sets(families)["person"]
+    eligibility = {
+        "__acs_transfer_difficulty_hearing",
+        "__acs_transfer_difficulty_seeing",
+        "__acs_transfer_has_medicare_coverage",
+    }
+    for family in ("puf_tax_itemization", "model_required_numeric"):
+        assert eligibility <= set(declared[family].optional)
+    assert eligibility.intersection(declared["model_required_boolean"].optional) == {
+        "__acs_transfer_has_medicare_coverage"
+    }
+    assert eligibility.isdisjoint(declared["model_required_discrete"].optional)
+    for predictor_set in declared.values():
+        assert "__acs_transfer_interest_dividend_rental_income" not in (
+            *predictor_set.required,
+            *predictor_set.optional,
+        )
+
+
+def test_explicit_eligibility_predictors_decode_reviewed_acs_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {
+            "difficulty_hearing": [1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
+            "difficulty_seeing": [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0],
+            "has_medicare_coverage": [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0],
+        },
+    )
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {
+            "DEAR": [1, 2, 2, 1, 2, 1],
+            "DEYE": [2, 2, 1, 2, 1, 2],
+            "HINS3": [2, 2, 2, 1, 1, 2],
+        },
+    )
+    family = {"person": {"fixture": ("qualified_dividend_income",)}}
+    eligibility = (
+        "__acs_transfer_difficulty_hearing",
+        "__acs_transfer_difficulty_seeing",
+        "__acs_transfer_has_medicare_coverage",
+    )
+    predictor_sets = {
+        "person": {
+            "fixture": AcsPredictorSet(
+                required=ACS_PERSON_TRANSFER_PREDICTORS,
+                optional=eligibility,
+            )
+        }
+    }
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families=family,
+        predictor_sets=predictor_sets,
+        donor_channel=None,
+        n_estimators=1,
+    )
+
+    assert result.frame.person["qualified_dividend_income"].notna().all()
+    assert len(_MeanQRF.calls) == 1
+    call = _MeanQRF.calls[0]
+    assert call["predictors"] == (*ACS_PERSON_TRANSFER_PREDICTORS, *eligibility)
+    recipient_surface = acs_transfer_module._transfer_feature_surface(
+        donor,
+        recipient,
+        entity="person",
+        targets=("qualified_dividend_income",),
+        predictor_set=predictor_sets["person"]["fixture"],
+        require_all_predictors=True,
+    ).recipient
+    np.testing.assert_array_equal(
+        recipient_surface[eligibility[0]].to_numpy(),
+        [1.0, 0.0, 0.0, 1.0, 0.0, 1.0],
+    )
+    np.testing.assert_array_equal(
+        recipient_surface[eligibility[1]].to_numpy(),
+        [0.0, 0.0, 1.0, 0.0, 1.0, 0.0],
+    )
+    np.testing.assert_array_equal(
+        recipient_surface[eligibility[2]].to_numpy(),
+        [0.0, 0.0, 0.0, 1.0, 1.0, 0.0],
+    )
+    identity = acs_transfer_module.acs_transfer_execution_contract_identity(
+        targets=("qualified_dividend_income",),
+        predictor_sets=predictor_sets,
+    )
+    assert set(identity["eligibility_predictor_mappings"]) == set(eligibility)
+    assert set(identity["donor_eligibility_predictor_mappings"]["predictors"]) == {
+        "difficulty_hearing",
+        "difficulty_seeing",
+        "has_medicare_coverage",
+    }
+
+    baseline_only = {
+        "person": {
+            "fixture": AcsPredictorSet(required=ACS_PERSON_TRANSFER_PREDICTORS)
+        }
+    }
+    baseline_identity = acs_transfer_module.acs_transfer_execution_contract_identity(
+        targets=("qualified_dividend_income",),
+        predictor_sets=baseline_only,
+    )
+    assert "eligibility_predictor_mappings" not in baseline_identity
+    assert "donor_eligibility_predictor_mappings" not in baseline_identity
 
 
 def test_explicit_transfer_adds_requested_model_inputs(

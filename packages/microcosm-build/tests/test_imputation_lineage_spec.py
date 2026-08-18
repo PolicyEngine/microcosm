@@ -15,13 +15,17 @@ import pytest
 import yaml
 
 from microcosm.build.us_runtime.acs_transfer import (
+    _GROUP_OPTIONAL_NAMES,
     ACS_GROUP_TRANSFER_PREDICTORS,
     ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS,
     ACS_PERSON_TRANSFER_PREDICTORS,
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
 )
 from microcosm.build.us_runtime.puf_support import PUF_TAX_DETAIL_DEFAULT_PREDICTORS
-from microcosm.build.us_runtime.stacked_spine import stacked_gap_fill_plan
+from microcosm.build.us_runtime.stacked_spine import (
+    declared_stacked_post_puf_predictor_sets,
+    stacked_gap_fill_plan,
+)
 from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_PRODUCER_REGISTRY,
     CANONICAL_US_LATE_TRANSFER_GROUPS,
@@ -81,7 +85,44 @@ def test_predictor_sets_match_the_code(spec: dict) -> None:
     assert sets["acs_group_transfer"]["required"] == [
         _clean(c) for c in ACS_GROUP_TRANSFER_PREDICTORS
     ]
+    assert sets["acs_group_transfer"]["optional"] == [
+        _clean(c) for c in _GROUP_OPTIONAL_NAMES.values()
+    ]
     assert sets["puf_tax_detail"]["required"] == list(PUF_TAX_DETAIL_DEFAULT_PREDICTORS)
+
+
+def test_late_family_predictor_sets_match_the_live_baseline_runtime(spec: dict) -> None:
+    target_families: dict[str, dict[str, tuple[str, ...]]] = {}
+    for group in CANONICAL_US_LATE_TRANSFER_GROUPS:
+        target_families.setdefault(group.entity, {})[group.family] = group.targets
+    live = declared_stacked_post_puf_predictor_sets(target_families)
+
+    for family in spec["imputed_families"]:
+        if family["stage"] != "late_transfer":
+            continue
+        declared = spec["predictor_sets"][family["predictor_set"]]
+        predictor_set = live[family["entity"]][family["family"]]
+        assert declared["required"] == [_clean(name) for name in predictor_set.required]
+        assert declared.get("optional", []) == [
+            _clean(name) for name in predictor_set.optional
+        ]
+
+
+def test_early_family_predictor_sets_match_the_live_arm_runtime(spec: dict) -> None:
+    declared_families = {family["id"]: family for family in spec["imputed_families"]}
+
+    for direction in stacked_gap_fill_plan():
+        for entity, families in direction.predictor_sets.items():
+            for family, predictor_set in families.items():
+                family_id = f"gap_fill/{direction.name}/{entity}/{family}"
+                mirror = declared_families[family_id]
+                declared = spec["predictor_sets"][mirror["predictor_set"]]
+                assert declared["required"] == [
+                    _clean(name) for name in predictor_set.required
+                ]
+                assert declared.get("optional", []) == [
+                    _clean(name) for name in predictor_set.optional
+                ]
 
 
 def test_model_attributes_match_the_code(spec: dict) -> None:

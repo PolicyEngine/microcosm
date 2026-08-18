@@ -190,6 +190,9 @@ def _raw_asec_predictor_frame() -> Frame:
                 "NOW_VACARE": [2, 1, 2],
                 "NOW_OTHMT": [2, 1, 2],
                 "NOW_IHSFLG": [1, 2, 2],
+                "MCARE": [1, 2, 2],
+                "PEDISEAR": [1, 2, 2],
+                "PEDISEYE": [2, 2, 1],
                 "RNT_VAL": [20.0, 0.0, 0.0],
                 "FRSE_VAL": [5.0, 0.0, 0.0],
                 "UC_VAL": [0.0, 70.0, 0.0],
@@ -1127,6 +1130,72 @@ def test_cps_carried_derivations_create_leaf_inputs_not_aggregates() -> None:
     assert "receives_wic" in CPS_CARRIED_PERSON_INPUTS
     assert person["receives_wic"].tolist() == [False, True, False]
     assert pd.api.types.is_bool_dtype(person["receives_wic"])
+
+
+def test_cps_carried_derives_only_the_eligibility_arm_predictors() -> None:
+    from microcosm.build.us_runtime.cps_carried import (
+        CPS_CARRIED_PERSON_PREDICTORS,
+        cps_carried_person_predictor_mapping_identity,
+    )
+
+    person = derive_us_cps_carried_inputs(_raw_asec_predictor_frame()).table("person")
+
+    assert CPS_CARRIED_PERSON_PREDICTORS == frozenset(
+        {
+            "difficulty_hearing",
+            "difficulty_seeing",
+            "has_medicare_coverage",
+        }
+    )
+    np.testing.assert_array_equal(person["difficulty_hearing"], [1.0, 0.0, 0.0])
+    np.testing.assert_array_equal(person["difficulty_seeing"], [0.0, 0.0, 1.0])
+    np.testing.assert_array_equal(person["has_medicare_coverage"], [1.0, 0.0, 0.0])
+    identity = cps_carried_person_predictor_mapping_identity()
+    assert set(identity["predictors"]) == CPS_CARRIED_PERSON_PREDICTORS
+    assert identity["predictors"]["difficulty_hearing"] == {
+        "source": "PEDISEAR",
+        "codec": "reviewed_binary_codes_preserve_blank",
+        "true_codes": [1.0],
+        "false_codes": [2.0],
+        "missing_codes": [-1.0],
+    }
+    assert identity["predictors"]["has_medicare_coverage"] == {
+        "source": "MCARE",
+        "codec": "reviewed_binary_codes_preserve_blank",
+        "true_codes": [1.0],
+        "false_codes": [0.0, 2.0],
+        "missing_codes": [],
+    }
+
+
+def test_cps_carried_eligibility_predictors_preserve_raw_blanks() -> None:
+    frame = _raw_asec_predictor_frame()
+    person = frame.table("person")
+    for source in ("MCARE", "PEDISEAR", "PEDISEYE"):
+        person[source] = person[source].astype(object)
+        person.loc[1, source] = pd.NA
+
+    derived = derive_us_cps_carried_inputs(frame).table("person")
+
+    assert derived.loc[
+        1,
+        ["difficulty_hearing", "difficulty_seeing", "has_medicare_coverage"],
+    ].isna().all()
+
+
+@pytest.mark.parametrize(
+    ("source", "bad_code"),
+    (("MCARE", 3), ("PEDISEAR", 0), ("PEDISEYE", 0)),
+)
+def test_cps_carried_eligibility_predictors_refuse_unknown_codes(
+    source: str,
+    bad_code: int,
+) -> None:
+    frame = _raw_asec_predictor_frame()
+    frame.table("person").loc[1, source] = bad_code
+
+    with pytest.raises(ValueError, match=rf"{source}.*unsupported code"):
+        derive_us_cps_carried_inputs(frame)
 
 
 def test_cps_carried_derives_reported_enrollment_by_spm_unit() -> None:

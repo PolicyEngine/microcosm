@@ -62,3 +62,39 @@ is not needed in that minimal arm.
 
 Arm implementation, test, build, and gate receipts are appended on the branch
 that owns each arm.
+
+### `arm-eligibility` surgery (2026-08-17)
+
+- The branch starts from `arm-split-base` at
+  `aec9fdc1cf71eb33019fe3e0e425926573544afb`. The early target declarations
+  retain their baseline order, including CHAMPVA at position 0.
+- The observability audit above admits exactly the three recipient-complete
+  fields: ACS `DEAR` -> `difficulty_hearing`, `DEYE` ->
+  `difficulty_seeing`, and `HINS3` -> `has_medicare_coverage`. The donor
+  analogues are the reviewed ASEC `PEDISEAR`, `PEDISEYE`, and `MCARE` codecs;
+  blanks remain null and unsupported codes fail closed. Both donor and
+  recipient mappings are bound into the transfer execution identity.
+- `puf_tax_itemization` and `model_required_numeric` receive all three
+  predictors. `model_required_boolean` receives own Medicare coverage only;
+  the difficulty flags are excluded there to avoid direct disability-target
+  leakage. No other early family receives an eligibility predictor.
+- The explicit early sets retain the realized baseline predictors and exclude
+  investment, which is unavailable on the pre-clone donor. The late-transfer
+  runtime remains the baseline call with no explicit predictor sets. The
+  #695 mirror declares these exact live early sets and the unchanged live late
+  shared ACS-transfer surface. Stacked authority version 11 binds the new
+  per-family predictor declarations into the `gap_fill_plan` component.
+- The copied round-1 gate is byte-identical to the rejected-branch source and
+  the order arm: SHA-256
+  `25295af61fece0e124a2658eed469ce1b5ecf9abd0c8e6b622807df8d4d69fe8`.
+- The copied virtualenv's `pytest` console script retained a stale shebang to
+  the read-only predictor-sets worktree. Tests therefore run through
+  `UV_CACHE_DIR=$PWD/.uv-cache uv run python -m pytest`, whose imports resolve
+  to this worktree; the analogous Ruff command is `uv run python -m ruff`.
+- Focused verification passed the complete `test_us_stacked_spine.py` and
+  `test_us_multispine_pool_tool.py` modules plus the ACS PUMS, ACS transfer,
+  PUF support, multispine-pool, and lineage-spec modules. `python -m ruff
+  check .`, `git diff --check`, and the copied gate's `--help` import smoke all
+  passed. The otherwise inert `_complete_numeric_component_sum` helper is
+  retained solely because the byte-identical gate imports it for measurement;
+  eligibility runtime does not select the investment predictor.

@@ -90,9 +90,13 @@ from microcosm.build.us_runtime.acs_income_universe import (
 from microcosm.build.us_runtime.acs_transfer import (
     ASEC_PUF_DONOR_SPINE,
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+    AcsPredictorSet,
     AcsTransferResult,
     AcsTransferTargetBank,
+    PredictorSets,
     TargetFamilies,
+    _legacy_predictor_set,
+    declared_acs_transfer_predictor_sets,
     transfer_acs_inputs,
 )
 from microcosm.build.us_runtime.late_producer_dag import (
@@ -239,6 +243,7 @@ __all__ = [
     "assemble_stacked_spine",
     "assert_stacked_tail_cells_preserved",
     "by_origin_battery",
+    "declared_stacked_post_puf_predictor_sets",
     "gap_fill_stacked_spine",
     "run_stacked_puf_pass",
     "run_stacked_late_producer_dag",
@@ -1688,11 +1693,12 @@ _GAP_FILL_ASEC_TO_ACS = "asec_survey_to_acs"
 _GAP_FILL_ASEC_HOUSING_TO_ACS = "asec_housing_to_acs"
 _GAP_FILL_HOUSING_FAMILY = "housing"
 _STACKED_AUTHORITY_ID = "us_stacked_spine_authority"
-# v10 binds the primary-PUF whole-pool output-universe declaration. v9 bound
-# the content-hashed execution/transition-authority schema in addition to the
-# import-validated producer/input DAG. Version 8 named the graph but did not
+# v11 binds the per-family gap-fill predictor declarations. v10 bound the
+# primary-PUF whole-pool output-universe declaration. v9 bound the content-
+# hashed execution/transition-authority schema in addition to the import-
+# validated producer/input DAG. Version 8 named the graph but did not
 # authenticate its live input/output transition.
-_STACKED_AUTHORITY_VERSION = 10
+_STACKED_AUTHORITY_VERSION = 11
 _CANONICAL_AUTHORITY_FORM = "CANONICAL"
 _NONCANONICAL_AUTHORITY_FORM = "NON-CANONICAL"
 _PRE_CLONE_PREPARATION_STAGE = "prepare_multispine_source_inputs_for_clone"
@@ -1730,6 +1736,46 @@ def _freeze_target_families(target_families: TargetFamilies) -> TargetFamilies:
                 )
             frozen_families[family] = frozen_targets
         frozen_entities[entity] = MappingProxyType(frozen_families)
+    return MappingProxyType(frozen_entities)
+
+
+def _freeze_predictor_sets(
+    predictor_sets: PredictorSets,
+    *,
+    target_families: TargetFamilies,
+) -> PredictorSets:
+    """Validate and recursively freeze one predictor set per family."""
+
+    if not isinstance(predictor_sets, Mapping):
+        raise TypeError("Predictor sets must be a mapping.")
+    expected = {
+        (entity, family)
+        for entity, families in target_families.items()
+        for family in families
+    }
+    observed: set[tuple[str, str]] = set()
+    frozen_entities: dict[str, Mapping[str, AcsPredictorSet]] = {}
+    for entity, families in predictor_sets.items():
+        if not isinstance(entity, str) or not entity.strip():
+            raise ValueError("Predictor-set entity names must be non-empty strings.")
+        if not isinstance(families, Mapping):
+            raise TypeError(f"Predictor sets for {entity!r} must be a mapping.")
+        frozen_families: dict[str, AcsPredictorSet] = {}
+        for family, predictor_set in families.items():
+            if not isinstance(family, str) or not family.strip():
+                raise ValueError("Predictor-set family names must be non-empty strings.")
+            if not isinstance(predictor_set, AcsPredictorSet):
+                raise TypeError(
+                    f"Predictor set {entity}/{family} must be an AcsPredictorSet."
+                )
+            observed.add((entity, family))
+            frozen_families[family] = predictor_set
+        frozen_entities[entity] = MappingProxyType(frozen_families)
+    if observed != expected:
+        raise ValueError(
+            "Predictor sets must declare exactly the target families; "
+            f"missing={sorted(expected - observed)}, extra={sorted(observed - expected)}."
+        )
     return MappingProxyType(frozen_entities)
 
 
@@ -1774,6 +1820,7 @@ class GapFillDirection:
     recipient_channel: str
     donor_channel: str
     target_families: TargetFamilies
+    predictor_sets: PredictorSets | None = None
     recipient_absence_rules: tuple[GapFillAbsenceRule, ...] = ()
 
     def __post_init__(self) -> None:
@@ -1801,6 +1848,19 @@ class GapFillDirection:
             self,
             "target_families",
             _freeze_target_families(self.target_families),
+        )
+        resolved_predictor_sets = (
+            declared_acs_transfer_predictor_sets(self.target_families)
+            if self.predictor_sets is None
+            else self.predictor_sets
+        )
+        object.__setattr__(
+            self,
+            "predictor_sets",
+            _freeze_predictor_sets(
+                resolved_predictor_sets,
+                target_families=self.target_families,
+            ),
         )
         rules = tuple(self.recipient_absence_rules)
         if any(not isinstance(rule, GapFillAbsenceRule) for rule in rules):
@@ -1873,6 +1933,7 @@ def _build_stacked_gap_fill_plan(
                 recipient_channel=ACS_STACKED_SUPPORT_CHANNEL,
                 donor_channel=BASE_ASEC_SUPPORT_CHANNEL,
                 target_families=survey_families,
+                predictor_sets=declared_acs_transfer_predictor_sets(survey_families),
             )
         )
     if housing_families:
@@ -1882,6 +1943,7 @@ def _build_stacked_gap_fill_plan(
                 recipient_channel=ACS_STACKED_SUPPORT_CHANNEL,
                 donor_channel=BASE_ASEC_SUPPORT_CHANNEL,
                 target_families=housing_families,
+                predictor_sets=declared_acs_transfer_predictor_sets(housing_families),
                 recipient_absence_rules=(
                     GapFillAbsenceRule(
                         rule_id=_ACS_GQ_RENT_ABSENCE_RULE_ID,
@@ -2148,6 +2210,16 @@ def _plan_payload(plan: Sequence[GapFillDirection]) -> list[dict[str, object]]:
             "recipient_channel": direction.recipient_channel,
             "donor_channel": direction.donor_channel,
             "target_families": _surface_payload(direction.target_families),
+            "predictor_sets": {
+                entity: {
+                    family: {
+                        "required": list(predictor_set.required),
+                        "optional": list(predictor_set.optional),
+                    }
+                    for family, predictor_set in families.items()
+                }
+                for entity, families in direction.predictor_sets.items()
+            },
             "recipient_absence_rules": [
                 {
                     "rule_id": rule.rule_id,
@@ -7674,6 +7746,7 @@ def _gap_fill_stacked_spine_evaluate(
             current,
             donor,
             target_families=direction.target_families,
+            predictor_sets=direction.predictor_sets,
             donor_channel=None,
             seed=seed,
             n_estimators=n_estimators,
@@ -8195,6 +8268,20 @@ def _verify_gap_fill_outcome(
 # ---------------------------------------------------------------------------
 # Post-PUF transfer of outputs that do not exist at the early gap-fill stage
 # ---------------------------------------------------------------------------
+
+
+def declared_stacked_post_puf_predictor_sets(
+    target_families: TargetFamilies,
+) -> dict[str, dict[str, AcsPredictorSet]]:
+    """Describe the live baseline shared predictor tuple for late families."""
+
+    return {
+        entity: {
+            family: _legacy_predictor_set(entity=entity, targets=targets)
+            for family, targets in families.items()
+        }
+        for entity, families in target_families.items()
+    }
 
 
 @dataclass(frozen=True)

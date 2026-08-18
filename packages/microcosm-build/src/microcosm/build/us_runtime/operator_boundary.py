@@ -26,6 +26,7 @@ from microcosm.build.us_runtime.congressional_district_geography import (
 from microcosm.build.us_runtime.cps_carried import (
     CPS_CARRIED_FORMULA_OWNED_COLUMNS,
     CPS_CARRIED_PERSON_INPUTS,
+    CPS_CARRIED_PERSON_PREDICTORS,
     CPS_CARRIED_SPM_UNIT_INPUTS,
 )
 from microcosm.build.us_runtime.disability_benefits import (
@@ -245,7 +246,9 @@ FORMULA_OWNED_SOURCE_COLUMNS: Mapping[str, frozenset[str]] = {
 
 PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
     "cps_carried": {
-        "person": frozenset(CPS_CARRIED_PERSON_INPUTS),
+        "person": frozenset(
+            {*CPS_CARRIED_PERSON_INPUTS, *CPS_CARRIED_PERSON_PREDICTORS}
+        ),
         "spm_unit": frozenset(CPS_CARRIED_SPM_UNIT_INPUTS),
     },
     "hours_worked": {

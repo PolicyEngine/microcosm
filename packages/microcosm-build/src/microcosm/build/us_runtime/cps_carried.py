@@ -1,9 +1,10 @@
-"""CPS ASEC variables carried into PolicyEngine leaf inputs.
+"""CPS ASEC variables carried into PolicyEngine leaves and model predictors.
 
 This stage translates raw CPS ASEC value columns already present on the
-source spine into PolicyEngine input leaves needed by downstream donor stages.
-It intentionally does not emit PolicyEngine formula-owned totals such as
-``dividend_income`` or ``social_security``.
+source spine into PolicyEngine input leaves and the narrowly reviewed model
+predictors needed by downstream donor stages. It intentionally does not emit
+PolicyEngine formula-owned totals such as ``dividend_income`` or
+``social_security``.
 """
 
 from __future__ import annotations
@@ -26,16 +27,19 @@ from microcosm.frame import US_SCHEMA, Frame
 __all__ = [
     "CPS_CARRIED_FORMULA_OWNED_COLUMNS",
     "CPS_CARRIED_PERSON_INPUTS",
+    "CPS_CARRIED_PERSON_PREDICTORS",
     "CPS_CARRIED_SPM_UNIT_INPUTS",
     "CPS_REPORTED_SNAP_RAW_COLUMN",
     "CPS_REPORTED_TANF_AMOUNT_RAW_COLUMN",
     "CPS_REPORTED_TANF_TYPE_RAW_COLUMN",
     "CPS_REPORTED_WIC_RAW_COLUMN",
     "WIC_CARRIER_ADJUDICATION_URL",
+    "cps_carried_person_predictor_mapping_identity",
     "derive_us_cps_carried_inputs",
     "reported_snap_receipt_by_spm_unit",
     "reported_tanf_enrollment_by_spm_unit",
     "reported_wic_receipt_carrier",
+    "validate_cps_carried_person_predictors",
 ]
 
 TAXABLE_INTEREST_FRACTION = 0.680
@@ -102,6 +106,78 @@ CPS_CARRIED_PERSON_INPUTS = frozenset(
     }
 )
 
+# Canonical donor-side columns for the three recipient-complete eligibility
+# predictors admitted by the arm. They are model-only and never exported as
+# PolicyEngine input leaves.
+CPS_CARRIED_PERSON_PREDICTORS = frozenset(
+    {
+        "difficulty_hearing",
+        "difficulty_seeing",
+        "has_medicare_coverage",
+    }
+)
+
+_CPS_CODED_PERSON_PREDICTOR_SOURCES: Mapping[
+    str,
+    tuple[str, frozenset[float], frozenset[float], frozenset[float]],
+] = {
+    "difficulty_hearing": (
+        "PEDISEAR",
+        frozenset({1.0}),
+        frozenset({2.0}),
+        frozenset({-1.0}),
+    ),
+    "difficulty_seeing": (
+        "PEDISEYE",
+        frozenset({1.0}),
+        frozenset({2.0}),
+        frozenset({-1.0}),
+    ),
+    "has_medicare_coverage": (
+        "MCARE",
+        frozenset({1.0}),
+        frozenset({0.0, 2.0}),
+        frozenset(),
+    ),
+}
+
+
+def cps_carried_person_predictor_mapping_identity(
+    *,
+    columns: tuple[str, ...] | None = None,
+) -> dict[str, object]:
+    """Bind the reviewed raw ASEC codecs for selected model predictors."""
+
+    selected = (
+        CPS_CARRIED_PERSON_PREDICTORS if columns is None else frozenset(columns)
+    )
+    unknown = sorted(selected - CPS_CARRIED_PERSON_PREDICTORS)
+    if unknown:
+        raise ValueError(f"Unknown CPS carried predictor column(s): {unknown}.")
+    return {
+        "version": 1,
+        "canonical_validation": {
+            column: {"domain": "binary_0_1", "missing": "allowed"}
+            for column in sorted(selected)
+        },
+        "predictors": {
+            output: {
+                "source": source,
+                "codec": "reviewed_binary_codes_preserve_blank",
+                "true_codes": sorted(true_codes),
+                "false_codes": sorted(false_codes),
+                "missing_codes": sorted(missing_codes),
+            }
+            for output, (
+                source,
+                true_codes,
+                false_codes,
+                missing_codes,
+            ) in sorted(_CPS_CODED_PERSON_PREDICTOR_SOURCES.items())
+            if output in selected
+        },
+    }
+
 CPS_CARRIED_SPM_UNIT_INPUTS = frozenset(
     {
         "is_tanf_enrolled",
@@ -118,9 +194,9 @@ def derive_us_cps_carried_inputs(
 ) -> Frame:
     """Carry raw CPS ASEC values onto PE input leaves.
 
-    Existing leaf input columns are preserved, making the transform idempotent.
-    The transform refuses to run on a non-US frame and never creates
-    formula-owned aggregate variables.
+    Existing leaf and canonical predictor columns are preserved, making the
+    transform idempotent. The transform refuses to run on a non-US frame and
+    never creates formula-owned aggregate variables.
 
     ``PAW_VAL``, ``SPM_SNAPSUB``, and ``WICYN`` are annual reported facts,
     while the engine's ``is_tanf_enrolled``, ``receives_snap``, and
@@ -144,6 +220,7 @@ def derive_us_cps_carried_inputs(
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     person = tables["person"]
 
+    _fill_person_predictors(person)
     _fill_missing(person, "age", _source(person, "A_AGE"))
     _fill_bool_missing(person, "is_female", _integer_source(person, "A_SEX") == 2)
     _fill_bool_missing(person, "receives_wic", reported_wic_receipt_carrier(person))
@@ -350,6 +427,93 @@ def _fill_missing(table: pd.DataFrame, column: str, values: np.ndarray) -> None:
 def _fill_bool_missing(table: pd.DataFrame, column: str, values: np.ndarray) -> None:
     if column not in table.columns:
         table[column] = values.astype(bool)
+
+
+def _fill_person_predictors(person: pd.DataFrame) -> None:
+    """Carry measured ASEC analogues without converting blanks to zero."""
+
+    validate_cps_carried_person_predictors(person)
+    for output, (
+        source,
+        true_codes,
+        false_codes,
+        missing_codes,
+    ) in _CPS_CODED_PERSON_PREDICTOR_SOURCES.items():
+        values = _nullable_source(person, source)
+        if values is None or output in person:
+            continue
+        person[output] = _coded_indicator(
+            values,
+            source=source,
+            true_codes=true_codes,
+            false_codes=false_codes,
+            missing_codes=missing_codes,
+        )
+    validate_cps_carried_person_predictors(person)
+
+
+def validate_cps_carried_person_predictors(
+    person: pd.DataFrame,
+    *,
+    columns: tuple[str, ...] | None = None,
+    context: str = "CPS carried",
+) -> None:
+    """Refuse non-binary canonical predictor values while allowing blanks."""
+
+    selected = CPS_CARRIED_PERSON_PREDICTORS if columns is None else frozenset(columns)
+    unknown = sorted(selected - CPS_CARRIED_PERSON_PREDICTORS)
+    if unknown:
+        raise ValueError(f"{context} requested unknown predictor column(s): {unknown}.")
+    for column in sorted(selected.intersection(person.columns)):
+        values = _nullable_source(person, column)
+        if values is None:  # pragma: no cover - guarded by the intersection
+            continue
+        observed = np.isfinite(values)
+        invalid = observed & ~np.isin(values, [0.0, 1.0])
+        if invalid.any():
+            bad = sorted(set(values[invalid].tolist()))
+            raise ValueError(
+                f"{context} canonical predictor {column!r} contains "
+                f"unsupported value(s): {bad}."
+            )
+
+
+def _coded_indicator(
+    values: np.ndarray,
+    *,
+    source: str,
+    true_codes: frozenset[float],
+    false_codes: frozenset[float],
+    missing_codes: frozenset[float],
+) -> np.ndarray:
+    """Decode one reviewed CPS code domain while retaining NIU sentinels."""
+
+    observed = np.isfinite(values)
+    valid_codes = [*true_codes, *false_codes, *missing_codes]
+    invalid = observed & ~np.isin(values, valid_codes)
+    if invalid.any():
+        bad = sorted(set(values[invalid].tolist()))
+        raise ValueError(f"ASEC {source} contains unsupported code(s): {bad}.")
+    result = np.full(len(values), np.nan, dtype=np.float64)
+    result[np.isin(values, list(false_codes))] = 0.0
+    result[np.isin(values, list(true_codes))] = 1.0
+    return result
+
+
+def _nullable_source(person: pd.DataFrame, column: str) -> np.ndarray | None:
+    """Read one optional predictor source while preserving native blanks."""
+
+    if column not in person.columns:
+        return None
+    source = person[column]
+    numeric = pd.to_numeric(source, errors="coerce")
+    invalid = source.notna() & numeric.isna()
+    if invalid.any():
+        raise ValueError(f"ASEC {column} contains non-numeric values.")
+    values = numeric.to_numpy(dtype=np.float64)
+    if np.isinf(values).any():
+        raise ValueError(f"ASEC {column} contains infinity.")
+    return values
 
 
 def _source(person: pd.DataFrame, column: str) -> np.ndarray:

@@ -2386,7 +2386,7 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
     current = identity()
     pool_code = current["pool_code"]
     assert current["materializer_version"] == 11
-    assert current["stacked_authority"]["version"] == 10
+    assert current["stacked_authority"]["version"] == 11
     assert pool_code["operator_order"] == [
         "assemble_stacked_spine",
         "prepare_multispine_source_inputs_for_clone",

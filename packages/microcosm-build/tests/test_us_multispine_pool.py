@@ -3461,6 +3461,11 @@ def test_every_source_operator_output_has_a_pool_owner() -> None:
         for columns in multispine_pool_module._FORMULA_OWNED_SOURCE_OUTPUTS.values()
         for column in columns
     }
+    predictor_owned = {
+        column
+        for columns in multispine_pool_module._SOURCE_PREDICTOR_OUTPUTS.values()
+        for column in columns
+    }
     seeded = {
         program.variable
         for program in load_take_up_contract().programs
@@ -3472,7 +3477,9 @@ def test_every_source_operator_output_has_a_pool_owner() -> None:
         family = multispine_pool_module._SOURCE_OPERATOR_FAMILIES[operator_name]
         for columns in PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[family].values():
             for column in columns:
-                if column not in transferred | native | formula_owned | seeded:
+                if column not in (
+                    transferred | native | formula_owned | predictor_owned | seeded
+                ):
                     unowned.append(f"{family}.{column}")
     assert not unowned
 
