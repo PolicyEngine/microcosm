@@ -1,1 +1,1 @@
-Split Logbook archives by country (`logbook/<country>.jsonl`, mirrored under `logbook-spool/<country>/`): the US pool lineage and the UK migration never share a chain, `export` names the one chain it extends, and `validate`/`render` walk a directory chain by chain.
+Split Logbook archives and database lineage by chain scope (`logbook/us.jsonl` plus `logbook/<country>/<dataset>.jsonl`), with scoped migration enforcement and scope-filtered remote export.

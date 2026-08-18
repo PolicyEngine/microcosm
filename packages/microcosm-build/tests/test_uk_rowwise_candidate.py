@@ -336,7 +336,7 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(tmp_path) -> None:
     rows = _spool_rows(output_dir)
     assert len(rows) == 1
     row = rows[0]
-    assert row.pipeline == "uk-rowwise-candidate"
+    assert row.pipeline == "uk-locals-candidate"
     assert row.rung == "f100"
     assert row.seed == 7
     assert row.disposition == "iterating"

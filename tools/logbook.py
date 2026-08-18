@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -48,6 +49,17 @@ DEFAULT_SPOOL_ROOT = ROOT / "logbook-spool"
 REMOTE_EXPORT_KEY_ENV = "POPULACE_LEDGER_EXPORT_KEY"
 REMOTE_API_KEY_ENV = "POPULACE_LEDGER_API_KEY"
 REMOTE_PAGE_SIZE = 500
+# Mirror of logbook.chain_scope() in
+# supabase/migrations/20260818000000_logbook_chain_scopes.sql. The legacy US
+# rows predate the scope split and must continue one mixed `us` chain forever.
+LEGACY_US_PIPELINES = (
+    "us-2024-release",
+    "us-pool-inc2",
+    "us-stacked-pool",
+)
+_PIPELINE_SCOPE_PATTERN = re.compile(
+    r"^(?P<country>[a-z]{2})-(?P<line>[a-z0-9_]+)(?:-[a-z0-9_-]+)?$"
+)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -172,7 +184,43 @@ def _scope_label(archive: Path, root: Path | None = None) -> str:
     return resolved.stem
 
 
-def _remote_rows() -> tuple[LogbookRow, ...]:
+def _chain_scope(pipeline: str) -> str | None:
+    """Return the Logbook chain scope declared by a pipeline name."""
+
+    if pipeline in LEGACY_US_PIPELINES:
+        return "us"
+    match = _PIPELINE_SCOPE_PATTERN.fullmatch(pipeline)
+    if match is None:
+        return None
+    return f"{match.group('country')}/{match.group('line')}"
+
+
+def _remote_archive_scope(archive: Path) -> str:
+    """Derive the remote export scope from the ratified archive path."""
+
+    if archive.suffix != ".jsonl":
+        raise ValueError(
+            f"--remote archive {archive} must be logbook/us.jsonl or "
+            "logbook/<country>/<dataset>.jsonl"
+        )
+    parts = archive.parts
+    if len(parts) >= 2 and parts[-2] == "logbook" and archive.name == "us.jsonl":
+        return "us"
+    if len(parts) >= 3 and parts[-3] == "logbook":
+        country = parts[-2]
+        dataset = archive.stem
+        if re.fullmatch(r"[a-z]{2}", country) and re.fullmatch(
+            r"[a-z0-9_]+",
+            dataset,
+        ):
+            return f"{country}/{dataset}"
+    raise ValueError(
+        f"--remote archive {archive} must be logbook/us.jsonl or "
+        "logbook/<country>/<dataset>.jsonl"
+    )
+
+
+def _remote_rows(scope: str) -> tuple[LogbookRow, ...]:
     ledger_url = os.environ.get("POPULACE_LEDGER_URL")
     export_key = os.environ.get(REMOTE_EXPORT_KEY_ENV)
     api_key = os.environ.get(REMOTE_API_KEY_ENV)
@@ -187,6 +235,7 @@ def _remote_rows() -> tuple[LogbookRow, ...]:
     while True:
         endpoint = _remote_builds_endpoint(
             ledger_url,
+            scope=scope,
             offset=offset,
             limit=REMOTE_PAGE_SIZE,
         )
@@ -216,10 +265,28 @@ def _remote_rows() -> tuple[LogbookRow, ...]:
                     "Logbook live store ended before its declared row count"
                 )
             break
+    wrong_scope = sorted(
+        {
+            row.pipeline
+            for row in rows
+            if _chain_scope(row.pipeline) != scope
+        }
+    )
+    if wrong_scope:
+        raise ValueError(
+            f"Logbook live store returned pipelines outside scope {scope}: "
+            f"{', '.join(wrong_scope)}"
+        )
     return order_rows_by_chain(rows)
 
 
-def _remote_builds_endpoint(url: str, *, offset: int, limit: int) -> str:
+def _remote_builds_endpoint(
+    url: str,
+    *,
+    scope: str,
+    offset: int,
+    limit: int,
+) -> str:
     _validate_remote_url(url)
     base = url.rstrip("/")
     if base.endswith("/rest/v1/builds"):
@@ -228,14 +295,20 @@ def _remote_builds_endpoint(url: str, *, offset: int, limit: int) -> str:
         endpoint = f"{base}/builds"
     else:
         endpoint = f"{base}/rest/v1/builds"
-    query = urlencode(
-        {
-            "select": ",".join(sorted(LOGBOOK_ROW_FIELDS)),
-            "order": "ts.asc,build_id.asc",
-            "limit": str(limit),
-            "offset": str(offset),
-        }
-    )
+    query_params = {
+        "select": ",".join(sorted(LOGBOOK_ROW_FIELDS)),
+        "order": "ts.asc,build_id.asc",
+        "limit": str(limit),
+        "offset": str(offset),
+    }
+    if scope == "us":
+        query_params["pipeline"] = (
+            f"in.({','.join(json.dumps(name) for name in LEGACY_US_PIPELINES)})"
+        )
+    else:
+        country, dataset = scope.split("/", 1)
+        query_params["pipeline"] = f"like.{country}-{dataset}-*"
+    query = urlencode(query_params)
     return f"{endpoint}?{query}"
 
 
@@ -322,9 +395,10 @@ def main(argv: list[str] | None = None) -> int:
                     "export needs --source (the completed spool beside the "
                     "run's artifact) or --remote."
                 )
-            candidates = (
-                _remote_rows() if args.remote else _source_rows(args.source)
-            )
+            if args.remote:
+                candidates = _remote_rows(_remote_archive_scope(args.archive))
+            else:
+                candidates = _source_rows(args.source)
             receipt = export_rows(args.archive, candidates)
             print(
                 f"exported {receipt.appended} new Logbook rows into "

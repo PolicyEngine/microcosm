@@ -315,7 +315,7 @@ def test_national_build_driver_uses_standalone_national_seam(
     rows = _spool_rows(tmp_path)
     assert len(rows) == 1
     row = rows[0]
-    assert row.pipeline == "uk-national-staging"
+    assert row.pipeline == "uk-households-staging"
     assert row.rung == "f100"
     assert row.seed == 578
     assert row.disposition == "iterating"
@@ -564,7 +564,7 @@ def test_national_driver_writes_aggregate_reports_before_reraising_final_gate(
     assert len(rows) == 1
     row = rows[0]
     assert row.disposition == "failed"
-    assert row.pipeline == "uk-national-staging"
+    assert row.pipeline == "uk-households-staging"
     assert row.gate_verdicts == {
         "uk_release_input_coverage": {
             "verdict": "failed",
@@ -759,7 +759,7 @@ def test_national_driver_does_not_write_reports_for_stage_failure(
     assert len(rows) == 1
     row = rows[0]
     assert row.disposition == "failed"
-    assert row.pipeline == "uk-national-staging"
+    assert row.pipeline == "uk-households-staging"
     assert row.gate_verdicts["pipeline_error"]["verdict"] == "error"
     assert row.gate_verdicts["pipeline_error"]["receipt"].endswith("#/error_type")
     assert "error" in row.phases_reached

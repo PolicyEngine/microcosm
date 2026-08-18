@@ -92,7 +92,7 @@ _UK_JUNE_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 #: loudly, so the receipt path can never absorb a real defect.
 _RUNG_NAMED_EDGE_SIGNATURE = "The least populated classes in y have only 1 member"
 _RUNG_ABORT_EXIT_CODE = 3
-_UK_NATIONAL_PIPELINE = "uk-national-staging"
+_UK_NATIONAL_PIPELINE = "uk-households-staging"
 _REPOSITORY = Path(__file__).resolve().parents[1]
 
 

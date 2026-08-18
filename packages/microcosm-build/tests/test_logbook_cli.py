@@ -29,6 +29,7 @@ def _row(
     *,
     predecessor: str | None,
     minute: int,
+    pipeline: str = "fixture-pipeline",
     rung: str = "f010",
     disposition: str = "failed",
 ) -> LogbookRow:
@@ -40,7 +41,7 @@ def _row(
     return LogbookRow.create(
         build_id=build_id,
         ts=f"2026-08-05T12:{minute:02d}:00Z",
-        pipeline="fixture-pipeline",
+        pipeline=pipeline,
         rung=rung,
         seed=628,
         code_pin="1c1fc717",
@@ -62,12 +63,21 @@ def _row(
     )
 
 
-def _chain() -> tuple[LogbookRow, LogbookRow, LogbookRow]:
-    first = _row("fixture-build-1", predecessor=None, minute=1)
+def _chain(
+    *,
+    pipeline: str = "fixture-pipeline",
+) -> tuple[LogbookRow, LogbookRow, LogbookRow]:
+    first = _row(
+        "fixture-build-1",
+        predecessor=None,
+        minute=1,
+        pipeline=pipeline,
+    )
     second = _row(
         "fixture-build-2",
         predecessor=first.row_digest,
         minute=2,
+        pipeline=pipeline,
         rung="f100",
         disposition="published",
     )
@@ -75,6 +85,7 @@ def _chain() -> tuple[LogbookRow, LogbookRow, LogbookRow]:
         "fixture-build-3",
         predecessor=second.row_digest,
         minute=3,
+        pipeline=pipeline,
         rung="f100",
         disposition="certified",
     )
@@ -324,8 +335,8 @@ def test_cli_remote_export_uses_distinct_read_only_key(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    rows = _chain()
-    archive = tmp_path / "logbook.jsonl"
+    rows = _chain(pipeline="us-stacked-pool")
+    archive = tmp_path / "logbook" / "us.jsonl"
     cli = _load_cli()
     monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
     monkeypatch.setenv("POPULACE_LEDGER_KEY", "writer-jwt-must-not-be-used")
@@ -352,6 +363,35 @@ def test_cli_remote_export_uses_distinct_read_only_key(
     assert query["order"] == ["ts.asc,build_id.asc"]
     assert query["limit"] == [str(cli.REMOTE_PAGE_SIZE)]
     assert query["offset"] == ["0"]
+    assert query["pipeline"] == [
+        'in.("us-2024-release","us-pool-inc2","us-stacked-pool")'
+    ]
+
+
+def test_cli_remote_export_filters_nested_scope(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    rows = _chain(pipeline="uk-households-staging")
+    archive = tmp_path / "logbook" / "uk" / "households.jsonl"
+    cli = _load_cli()
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
+    monkeypatch.setenv("POPULACE_LEDGER_EXPORT_KEY", "exporter-jwt")
+    monkeypatch.setenv("POPULACE_LEDGER_API_KEY", "project-api-key")
+    requests: list[object] = []
+
+    def fake_urlopen(request: object, *, timeout: float) -> _RemoteResponse:
+        del timeout
+        requests.append(request)
+        return _RemoteResponse(rows)
+
+    monkeypatch.setattr(cli, "urlopen", fake_urlopen)
+
+    assert cli.main(["export", "--remote", "--archive", str(archive)]) == 0
+
+    assert load_logbook_file(archive) == rows
+    query = parse_qs(urlparse(requests[0].full_url).query)
+    assert query["pipeline"] == ["like.uk-households-*"]
 
 
 def test_cli_remote_export_refuses_the_writer_key(
@@ -365,7 +405,12 @@ def test_cli_remote_export_refuses_the_writer_key(
     monkeypatch.setenv("POPULACE_LEDGER_API_KEY", "project-api-key")
 
     result = cli.main(
-        ["export", "--remote", "--archive", str(tmp_path / "logbook.jsonl")]
+        [
+            "export",
+            "--remote",
+            "--archive",
+            str(tmp_path / "logbook" / "us.jsonl"),
+        ]
     )
 
     assert result == 1
@@ -376,8 +421,8 @@ def test_cli_remote_export_paginates_before_chain_ordering(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    rows = _chain()
-    archive = tmp_path / "logbook.jsonl"
+    rows = _chain(pipeline="us-stacked-pool")
+    archive = tmp_path / "logbook" / "us.jsonl"
     cli = _load_cli()
     monkeypatch.setattr(cli, "REMOTE_PAGE_SIZE", 2)
     monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
@@ -421,8 +466,82 @@ def test_cli_remote_export_rejects_insecure_origin(
     monkeypatch.setattr(cli, "urlopen", unexpected_request)
 
     result = cli.main(
-        ["export", "--remote", "--archive", str(tmp_path / "logbook.jsonl")]
+        [
+            "export",
+            "--remote",
+            "--archive",
+            str(tmp_path / "logbook" / "us.jsonl"),
+        ]
     )
 
     assert result == 1
     assert "must use HTTPS" in capsys.readouterr().err
+
+
+def test_cli_remote_export_refuses_unscoped_archive_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cli = _load_cli()
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
+    monkeypatch.setenv("POPULACE_LEDGER_EXPORT_KEY", "exporter-jwt")
+    monkeypatch.setenv("POPULACE_LEDGER_API_KEY", "project-api-key")
+
+    def unexpected_request(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("unscoped archive must fail before a request")
+
+    monkeypatch.setattr(cli, "urlopen", unexpected_request)
+
+    result = cli.main(
+        ["export", "--remote", "--archive", str(tmp_path / "logbook.jsonl")]
+    )
+
+    assert result == 1
+    assert "must be logbook/us.jsonl" in capsys.readouterr().err
+
+
+def test_cli_remote_export_refuses_wrong_scope_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rows = _chain(pipeline="uk-locals-rowwise")
+    archive = tmp_path / "logbook" / "uk" / "households.jsonl"
+    cli = _load_cli()
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
+    monkeypatch.setenv("POPULACE_LEDGER_EXPORT_KEY", "exporter-jwt")
+    monkeypatch.setenv("POPULACE_LEDGER_API_KEY", "project-api-key")
+    monkeypatch.setattr(
+        cli,
+        "urlopen",
+        lambda *_args, **_kwargs: _RemoteResponse(rows),
+    )
+
+    result = cli.main(["export", "--remote", "--archive", str(archive)])
+
+    assert result == 1
+    err = capsys.readouterr().err
+    assert "outside scope uk/households" in err
+    assert "uk-locals-rowwise" in err
+
+
+@pytest.mark.parametrize(
+    ("pipeline", "scope"),
+    [
+        ("us-2024-release", "us"),
+        ("us-pool-inc2", "us"),
+        ("us-stacked-pool", "us"),
+        ("uk-households-staging", "uk/households"),
+        ("uk-locals-rowwise", "uk/locals"),
+        ("us-pool-inc3", "us/pool"),
+        ("mystery-pipeline", None),
+    ],
+)
+def test_chain_scope_matches_sql_contract(
+    pipeline: str,
+    scope: str | None,
+) -> None:
+    cli = _load_cli()
+
+    assert cli._chain_scope(pipeline) == scope
