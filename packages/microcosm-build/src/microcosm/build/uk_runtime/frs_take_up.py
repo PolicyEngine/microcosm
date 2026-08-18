@@ -181,7 +181,19 @@ def uk_take_up_signal_gate(
     contract: UKTakeUpContract | None = None,
     maximum_share_deviation: float = 0.05,
 ) -> GateResult:
-    """Require non-constant UK stochastic flags near contract target shares."""
+    """Require non-constant UK stochastic flags near contract target shares.
+
+    Reading a failure on an anchored column (child benefit, pension credit,
+    universal credit): the target here is the raw contract rate, but the
+    assignment targets an *unweighted* count over all units and accepts
+    anchor overshoot, so a weighted share can drift from the rate without
+    any regression when reporters are weight-skewed — plausible for pension
+    credit. Before hunting a port defect, compare the column's unweighted
+    share against the rate: if the unweighted share sits on target and only
+    the weighted one drifts, the cause is weight skew among reporters, not
+    the assignment. The band is calibrated against the measured margin at
+    the 2023 spine (max |deviation| 0.0073).
+    """
 
     resolved = contract if contract is not None else load_uk_take_up_contract()
     failures: list[str] = []

@@ -24,7 +24,17 @@ def stable_identity_uniforms(
     seed: int,
     salt: str,
 ) -> np.ndarray:
-    """Return deterministic U[0,1) draws keyed by ``seed:salt:id``."""
+    """Return deterministic U[0,1) draws keyed by ``seed:salt:id``.
+
+    Known hot spot: this is a per-id Python loop over blake2b, measured at
+    ~1.8M ids/s. That is negligible at FRS spine scale (36k persons x 17
+    columns is ~0.35s) and bounded but visible for a country-agnostic caller
+    at local-area scale (1.6M ids x 17 columns is ~15s). If a consumer ever
+    needs it faster, the fix is to hash into one contiguous bytes buffer and
+    reinterpret it (``np.frombuffer(buf, dtype=">u8") / 2**64``) rather than
+    building a Python list of floats; the per-id key string and digest size
+    must stay byte-identical or every committed draw moves.
+    """
 
     denominator = float(2**64)
     return np.asarray(
