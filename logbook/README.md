@@ -20,10 +20,28 @@ part of each row digest, so moving a row to a different root would recompute
 the digest and destroy the evidence the chain exists to preserve.
 
 Every new archive uses `logbook/<country>/<dataset>.jsonl`. The dataset token
-is a line of data work, not an epic name: `households`, `locals`, `firms`, and
-similar base-data families. Different base data need different scopes, and
-scope is also where builds serialize. If two lines must append concurrently,
-they need separate chains.
+names the line's base data, not an epic and not a build mechanism: `frs` is
+the FRS-derived survey-microdata line (persons, benunits, and households —
+its spine, staging, and every imputation stage share one chain), `locals` is
+the local-areas product line, and a future firm line will carry its own
+base-data name. Different base data need different scopes, and scope is also
+where builds serialize: if two lines must append concurrently, they need
+separate chains.
+
+## The vocabulary is closed-world
+
+The ratified scopes are exactly `us` and `uk/frs` — deliberately minimal: a
+scope is ratified when its line starts archiving, not speculatively. The
+`uk-locals-*` drivers already follow the naming convention, and their rows
+spool locally regardless (recording never consults this list); `uk/locals`
+gets ratified when the local-areas line first archives. A pipeline whose
+name derives any unratified scope is refused — even at genesis. Opening a
+scope is a reviewed decision made in three places together: the
+`logbook.scope_declared` migration, the `DECLARED_SCOPES` mirror in
+`tools/logbook.py`, and this list. It is never a side effect of a
+well-formed pipeline name: without the list, a typo'd `uk-huseholds-...`
+run would mint scope `uk/huseholds` at genesis, and on an append-only store
+a stray scope can never be removed.
 
 ## A chain can only be extended
 
@@ -48,7 +66,7 @@ artifact. Archiving is a separate, reviewed step -- the build never writes
 into the repository.
 
 ```bash
-python tools/logbook.py export --archive logbook/uk/households.jsonl --source <run-dir>/logbook-spool
+python tools/logbook.py export --archive logbook/uk/frs.jsonl --source <run-dir>/logbook-spool
 ```
 
 Export verifies the chain before appending and refuses a suffix that does
@@ -84,8 +102,8 @@ The database keeps `builds_unique_predecessor` global because two rows
 claiming one predecessor is a fork wherever it happens. Genesis, tail
 discovery, and advisory locking are scoped: `logbook.chain_scope(pipeline)`
 maps the three legacy US pipeline names to `us`, and maps new pipelines like
-`uk-households-staging` or `uk-locals-rowwise` to `uk/households` and
-`uk/locals`. The per-scope advisory lock lets independent scopes append
+`uk-frs-staging` or `uk-locals-rowwise` to `uk/frs` and `uk/locals`;
+`logbook.scope_declared` then refuses any scope outside the ratified list. The per-scope advisory lock lets independent scopes append
 concurrently while appends within one scope still serialize.
 
 Remote export reads one scope at a time. For `logbook/us.jsonl`, it requests
@@ -96,5 +114,5 @@ scope again client-side before ordering the chain.
 ## UK M1 receipt
 
 The campaign's M1 row remains a local receipt only. It is structurally
-un-insertable into the database chain, so the `uk/households` DB chain opens
-at the campaign's M2 genesis, matching the archive.
+un-insertable into the database chain, so the `uk/frs` DB chain opens at the
+campaign's M2 genesis, matching the archive.

@@ -29,7 +29,7 @@ def _row(
     *,
     predecessor: str | None,
     minute: int,
-    pipeline: str = "fixture-pipeline",
+    pipeline: str = "uk-frs-staging",
     rung: str = "f010",
     disposition: str = "failed",
 ) -> LogbookRow:
@@ -65,7 +65,7 @@ def _row(
 
 def _chain(
     *,
-    pipeline: str = "fixture-pipeline",
+    pipeline: str = "uk-frs-staging",
 ) -> tuple[LogbookRow, LogbookRow, LogbookRow]:
     first = _row(
         "fixture-build-1",
@@ -218,7 +218,8 @@ def test_cli_export_appends_jsonl_source_suffix_idempotently(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     first, second, third = _chain()
-    archive = tmp_path / "logbook.jsonl"
+    archive = tmp_path / "logbook" / "uk" / "frs.jsonl"
+    archive.parent.mkdir(parents=True)
     source = tmp_path / "source.jsonl"
     _write_jsonl(archive, (first,))
     _write_jsonl(source, (first, second, third))
@@ -240,6 +241,54 @@ def test_cli_export_appends_jsonl_source_suffix_idempotently(
     assert load_logbook_file(archive) == (first, second, third)
 
 
+def test_cli_local_export_refuses_wrong_scope_rows(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # The adversarial finding on this PR: the chain verifier authenticates
+    # payloads, never filenames, so without this gate a uk-locals spool
+    # exported into the uk/frs archive would chain validly and
+    # permanently mis-scope lineage. Local exports get the same scope
+    # discipline as the remote branch.
+    archive = tmp_path / "logbook" / "uk" / "frs.jsonl"
+    archive.parent.mkdir(parents=True)
+    source = tmp_path / "source.jsonl"
+    _write_jsonl(source, _chain(pipeline="uk-locals-rowwise"))
+    cli = _load_cli()
+
+    exit_code = cli.main(
+        ["export", "--archive", str(archive), "--source", str(source)]
+    )
+
+    assert exit_code == 1
+    err = capsys.readouterr().err
+    assert "outside scope uk/frs" in err
+    assert "uk-locals-rowwise" in err
+    assert not archive.exists()
+
+
+def test_cli_export_refuses_an_unratified_scope_archive(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # uk/firms derives cleanly but is not in the ratified vocabulary yet:
+    # opening a scope is a reviewed diff (migration + CLI mirror + README),
+    # never a side effect of a well-formed archive path.
+    archive = tmp_path / "logbook" / "uk" / "firms.jsonl"
+    archive.parent.mkdir(parents=True)
+    source = tmp_path / "source.jsonl"
+    _write_jsonl(source, _chain(pipeline="uk-firms-staging"))
+    cli = _load_cli()
+
+    exit_code = cli.main(
+        ["export", "--archive", str(archive), "--source", str(source)]
+    )
+
+    assert exit_code == 1
+    assert "not in the ratified scope list" in capsys.readouterr().err
+    assert not archive.exists()
+
+
 def test_cli_export_chain_orders_a_spool_directory(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -252,7 +301,8 @@ def test_cli_export_chain_orders_a_spool_directory(
             row.to_json_line(),
             encoding="utf-8",
         )
-    archive = tmp_path / "logbook.jsonl"
+    archive = tmp_path / "logbook" / "uk" / "frs.jsonl"
+    archive.parent.mkdir(parents=True)
     cli = _load_cli()
 
     assert (
@@ -277,7 +327,8 @@ def test_cli_export_divergence_fails_closed_without_modifying_archive(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     first, _, _ = _chain()
-    archive = tmp_path / "logbook.jsonl"
+    archive = tmp_path / "logbook" / "uk" / "frs.jsonl"
+    archive.parent.mkdir(parents=True)
     _write_jsonl(archive, (first,))
     before = archive.read_bytes()
     divergent = _row(
@@ -372,8 +423,8 @@ def test_cli_remote_export_filters_nested_scope(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    rows = _chain(pipeline="uk-households-staging")
-    archive = tmp_path / "logbook" / "uk" / "households.jsonl"
+    rows = _chain(pipeline="uk-frs-staging")
+    archive = tmp_path / "logbook" / "uk" / "frs.jsonl"
     cli = _load_cli()
     monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
     monkeypatch.setenv("POPULACE_LEDGER_EXPORT_KEY", "exporter-jwt")
@@ -391,7 +442,7 @@ def test_cli_remote_export_filters_nested_scope(
 
     assert load_logbook_file(archive) == rows
     query = parse_qs(urlparse(requests[0].full_url).query)
-    assert query["pipeline"] == ["like.uk-households-*"]
+    assert query["pipeline"] == ["like.uk-frs-*"]
 
 
 def test_cli_remote_export_refuses_the_writer_key(
@@ -507,7 +558,7 @@ def test_cli_remote_export_refuses_wrong_scope_rows(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     rows = _chain(pipeline="uk-locals-rowwise")
-    archive = tmp_path / "logbook" / "uk" / "households.jsonl"
+    archive = tmp_path / "logbook" / "uk" / "frs.jsonl"
     cli = _load_cli()
     monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
     monkeypatch.setenv("POPULACE_LEDGER_EXPORT_KEY", "exporter-jwt")
@@ -522,7 +573,7 @@ def test_cli_remote_export_refuses_wrong_scope_rows(
 
     assert result == 1
     err = capsys.readouterr().err
-    assert "outside scope uk/households" in err
+    assert "outside scope uk/frs" in err
     assert "uk-locals-rowwise" in err
 
 
@@ -532,7 +583,7 @@ def test_cli_remote_export_refuses_wrong_scope_rows(
         ("us-2024-release", "us"),
         ("us-pool-inc2", "us"),
         ("us-stacked-pool", "us"),
-        ("uk-households-staging", "uk/households"),
+        ("uk-frs-staging", "uk/frs"),
         ("uk-locals-rowwise", "uk/locals"),
         ("us-pool-inc3", "us/pool"),
         ("mystery-pipeline", None),

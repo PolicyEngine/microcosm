@@ -184,52 +184,69 @@ def test_logbook_chain_scopes_migration_preserves_and_scopes_live_rows() -> None
     _refuses(
         connection,
         _build_row(
-            "uk-households-from-us",
-            pipeline="uk-households-staging",
+            "uk-frs-from-us",
+            pipeline="uk-frs-staging",
             predecessor=us_next_tail,
         ),
-        "scope uk/households must have null prev_row_digest",
+        "scope uk/frs must have null prev_row_digest",
     )
     _insert(
         connection,
         _build_row(
-            "uk-households-genesis",
-            pipeline="uk-households-staging",
+            "uk-frs-genesis",
+            pipeline="uk-frs-staging",
             predecessor=None,
         ),
     )
-    _insert(
+    # Vocabulary is closed-world and minimal: uk/locals and uk/firms both
+    # derive cleanly but are not ratified yet, so even their geneses are
+    # refused until a migration adds them (locals rows keep spooling locally
+    # in the meantime — recording never consults the allowlist). Cross-scope
+    # independence is already proven above: uk/frs opened while us had rows.
+    _refuses(
+        connection,
+        _build_row(
+            "uk-locals-genesis", pipeline="uk-locals-rowwise", predecessor=None
+        ),
+        "not in the ratified scope list",
+    )
+    _refuses(
         connection,
         _build_row("uk-firms-genesis", pipeline="uk-firms-staging", predecessor=None),
+        "not in the ratified scope list",
     )
 
-    uk_households_genesis = _digest_of(connection, "uk-households-genesis")
+    uk_frs_genesis = _digest_of(connection, "uk-frs-genesis")
     _insert(
         connection,
         _build_row(
-            "uk-households-second",
-            pipeline="uk-households-staging",
-            predecessor=uk_households_genesis,
+            "uk-frs-second",
+            pipeline="uk-frs-staging",
+            predecessor=uk_frs_genesis,
         ),
     )
     _refuses(
         connection,
         _build_row(
-            "uk-households-stale",
-            pipeline="uk-households-staging",
-            predecessor=uk_households_genesis,
+            "uk-frs-stale",
+            pipeline="uk-frs-staging",
+            predecessor=uk_frs_genesis,
         ),
-        "current uk/households tail is",
+        "current uk/frs tail is",
     )
 
+    # A new-named US pipeline derives us/pool, an unratified scope: refused
+    # both with a predecessor and at genesis — opening a scope is a reviewed
+    # migration, never a side effect of a well-formed name.
     _refuses(
         connection,
         _build_row("us-pool-inc3-linked", pipeline="us-pool-inc3", predecessor=us_tail),
-        "scope us/pool must have null prev_row_digest",
+        "not in the ratified scope list",
     )
-    _insert(
+    _refuses(
         connection,
         _build_row("us-pool-inc3-genesis", pipeline="us-pool-inc3", predecessor=None),
+        "not in the ratified scope list",
     )
     _insert(
         connection,

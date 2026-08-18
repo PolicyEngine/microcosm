@@ -275,10 +275,10 @@ def test_record_terminal_attempt_writes_one_validated_row_and_refuses_double_rec
 
 def test_preflight_digest_and_atomic_write_json_are_canonical(tmp_path: Path) -> None:
     assert (
-        preflight_digest("uk-households-staging")
+        preflight_digest("uk-frs-staging")
         == hashlib.sha256(
             canonical_json_bytes(
-                {"pipeline": "uk-households-staging", "state": "preflight"}
+                {"pipeline": "uk-frs-staging", "state": "preflight"}
             )
         ).hexdigest()
     )

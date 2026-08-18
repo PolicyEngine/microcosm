@@ -175,6 +175,13 @@ def test_logbook_chain_scope_migration_contract() -> None:
     assert "builds_single_genesis_per_scope" in sql
     assert "builds_pipeline_declares_scope" in sql
     assert "hashtext(new_scope)" in sql
+    # The ratified vocabulary is closed-world: the allowlist function exists,
+    # carries exactly the ratified scopes, and gates both the CHECK and the
+    # trigger — opening a scope is a reviewed migration edit here.
+    assert "CREATE OR REPLACE FUNCTION logbook.scope_declared" in sql
+    assert "'us', 'uk/frs'" in sql
+    assert "scope_declared(logbook.chain_scope(pipeline))" in sql
+    assert "not in the ratified scope list" in sql
     assert "DROP INDEX IF EXISTS logbook.builds_unique_predecessor" not in sql
     assert "CREATE UNIQUE INDEX builds_unique_predecessor" not in sql
 

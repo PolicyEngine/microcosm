@@ -60,6 +60,11 @@ LEGACY_US_PIPELINES = (
 _PIPELINE_SCOPE_PATTERN = re.compile(
     r"^(?P<country>[a-z]{2})-(?P<line>[a-z0-9_]+)(?:-[a-z0-9_-]+)?$"
 )
+#: Mirror of logbook.scope_declared() in the same migration: the ratified
+#: scope vocabulary, closed-world. Opening a scope is a reviewed diff here,
+#: in the migration, and in logbook/README.md -- never a side effect of a
+#: well-formed pipeline name.
+DECLARED_SCOPES = frozenset({"us", "uk/frs"})
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -195,27 +200,43 @@ def _chain_scope(pipeline: str) -> str | None:
     return f"{match.group('country')}/{match.group('line')}"
 
 
-def _remote_archive_scope(archive: Path) -> str:
-    """Derive the remote export scope from the ratified archive path."""
+def _archive_scope(archive: Path) -> str:
+    """Derive the export scope from the ratified archive path.
+
+    Every export appends to exactly one scope chain, so the archive path
+    must name the scope — for local spools as much as for the live store.
+    The chain verifier authenticates row payloads, never filenames: without
+    this check a wrong spool would form a perfectly valid chain inside the
+    wrong archive, permanently mis-scoping lineage.
+    """
 
     if archive.suffix != ".jsonl":
         raise ValueError(
-            f"--remote archive {archive} must be logbook/us.jsonl or "
+            f"export archive {archive} must be logbook/us.jsonl or "
             "logbook/<country>/<dataset>.jsonl"
         )
     parts = archive.parts
+    scope = None
     if len(parts) >= 2 and parts[-2] == "logbook" and archive.name == "us.jsonl":
-        return "us"
-    if len(parts) >= 3 and parts[-3] == "logbook":
+        scope = "us"
+    elif len(parts) >= 3 and parts[-3] == "logbook":
         country = parts[-2]
         dataset = archive.stem
         if re.fullmatch(r"[a-z]{2}", country) and re.fullmatch(
             r"[a-z0-9_]+",
             dataset,
         ):
-            return f"{country}/{dataset}"
+            scope = f"{country}/{dataset}"
+    if scope is not None:
+        if scope not in DECLARED_SCOPES:
+            raise ValueError(
+                f"export archive {archive} names scope {scope}, which is not "
+                "in the ratified scope list; ratify it (migration + this "
+                "mirror + README) before exporting"
+            )
+        return scope
     raise ValueError(
-        f"--remote archive {archive} must be logbook/us.jsonl or "
+        f"export archive {archive} must be logbook/us.jsonl or "
         "logbook/<country>/<dataset>.jsonl"
     )
 
@@ -395,10 +416,26 @@ def main(argv: list[str] | None = None) -> int:
                     "export needs --source (the completed spool beside the "
                     "run's artifact) or --remote."
                 )
+            scope = _archive_scope(args.archive)
             if args.remote:
-                candidates = _remote_rows(_remote_archive_scope(args.archive))
+                candidates = _remote_rows(scope)
             else:
                 candidates = _source_rows(args.source)
+                # The same scope discipline as the remote branch: a wrong
+                # spool would chain validly into the wrong archive, and a
+                # committed mis-scope can never be re-rooted.
+                wrong_scope = sorted(
+                    {
+                        row.pipeline
+                        for row in candidates
+                        if _chain_scope(row.pipeline) != scope
+                    }
+                )
+                if wrong_scope:
+                    raise ValueError(
+                        f"Logbook source {args.source} holds pipelines "
+                        f"outside scope {scope}: {', '.join(wrong_scope)}"
+                    )
             receipt = export_rows(args.archive, candidates)
             print(
                 f"exported {receipt.appended} new Logbook rows into "

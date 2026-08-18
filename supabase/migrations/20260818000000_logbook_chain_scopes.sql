@@ -43,9 +43,30 @@ $function$;
 GRANT EXECUTE ON FUNCTION logbook.chain_scope(text)
     TO logbook_writer, logbook_exporter, logbook_break_glass_admin;
 
+-- The ratified scope vocabulary, closed-world (the same move this repo makes
+-- for gate entries and operation kinds): genesis is fail-closed against
+-- continuation, and this list makes it fail-closed against vocabulary too. A
+-- typo'd pipeline that derives an unratified scope (`uk-huseholds-...` ->
+-- `uk/huseholds`) is refused instead of opening a stray chain at genesis --
+-- which on an append-only table could never be removed. Ratifying a new
+-- scope (uk/firms, a future finer US line) is a one-line reviewed migration
+-- here plus the CLI mirror in tools/logbook.py and a README row.
+CREATE OR REPLACE FUNCTION logbook.scope_declared(p_scope text)
+RETURNS boolean
+LANGUAGE sql
+IMMUTABLE
+PARALLEL SAFE
+SET search_path = pg_catalog
+AS $function$
+    SELECT p_scope IN ('us', 'uk/frs');
+$function$;
+
+GRANT EXECUTE ON FUNCTION logbook.scope_declared(text)
+    TO logbook_writer, logbook_exporter, logbook_break_glass_admin;
+
 ALTER TABLE logbook.builds
     ADD CONSTRAINT builds_pipeline_declares_scope
-    CHECK (logbook.chain_scope(pipeline) IS NOT NULL);
+    CHECK (logbook.scope_declared(logbook.chain_scope(pipeline)));
 
 -- One genesis per scope, not one table-wide.
 DROP INDEX IF EXISTS logbook.builds_single_genesis;
@@ -78,6 +99,14 @@ BEGIN
             'Logbook build % pipeline % does not declare a chain scope',
             NEW.build_id,
             NEW.pipeline
+            USING ERRCODE = '23514';
+    END IF;
+    IF NOT logbook.scope_declared(new_scope) THEN
+        RAISE EXCEPTION
+            'Logbook build % scope % is not in the ratified scope list; '
+            'ratify it by migration before its genesis',
+            NEW.build_id,
+            new_scope
             USING ERRCODE = '23514';
     END IF;
 
