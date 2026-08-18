@@ -73,6 +73,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "source_stages.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "input_mass_reviewed_exclusions.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -89,11 +94,6 @@
     },
     {
       "path": "release_input_coverage_manifest.json",
-      "kind": "legacy_json",
-      "schema_id": "legacy_json"
-    },
-    {
-      "path": "source_stages.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

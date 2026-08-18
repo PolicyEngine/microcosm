@@ -1252,6 +1252,7 @@ def _inflate_virtual_resource(
                 "nonnegative_outputs": deepcopy(
                     list(stage_row.get("nonnegative_outputs", []))
                 ),
+                "rewrites": deepcopy(list(stage_row.get("rewrites", []))),
                 "notes": stage_row.get("notes", ""),
             }
             _restore_source_stage_legacy_numbers(stage)
