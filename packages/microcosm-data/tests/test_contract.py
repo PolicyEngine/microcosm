@@ -3777,6 +3777,48 @@ def test_exact_k_uk_gate_battery_rejects_a_non_candidate_report(
     assert "release_candidate must be true" in _battery_failures(directory)
 
 
+def test_exact_k_uk_gate_battery_rejects_loosened_input_mass_tolerance(
+    tmp_path: Path,
+) -> None:
+    # The tolerance is committed spec, not report self-description: an
+    # honestly re-signed report claiming a looser fence still refuses.
+    directory, payload = _write_battery_release(tmp_path)
+    details = payload["gates"]["uk_input_mass_parity"]["details"]
+    details["relative_tolerance"] = 50.0
+    _rewrite_battery_report(directory, payload)
+
+    assert "relative_tolerance must equal the committed spec value" in (
+        _battery_failures(directory)
+    )
+
+
+def test_exact_k_uk_gate_battery_rejects_loosened_qrf_thresholds(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    details = payload["gates"]["uk_qrf_tail_concentration"]["details"]
+    details["max_top_share"] = 0.999999
+    _rewrite_battery_report(directory, payload)
+
+    assert "max_top_share to equal the committed spec value" in (
+        _battery_failures(directory)
+    )
+
+
+def test_exact_k_uk_gate_battery_rejects_shrunken_qrf_tail(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    details = payload["gates"]["uk_qrf_tail_concentration"]["details"]
+    details["top_k"] = 5
+    details["min_nonzero_records"] = 6
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert "top_k to equal the committed spec value" in failures
+    assert "min_nonzero_records to equal the committed spec value" in failures
+
+
 def test_exact_k_uk_gate_battery_rejects_a_blocked_report(tmp_path: Path) -> None:
     directory, payload = _write_battery_release(tmp_path)
     payload["blocked_at_phase"] = "terminal"
