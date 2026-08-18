@@ -117,3 +117,15 @@ that owns each arm.
   arm directory still contained only the ignored supervisor and guard journal:
   no status, build log, checkpoint, output H5, or gate artifact existed.  The
   guard resumes no earlier than the original 08:28:49Z ten-minute boundary.
+- Host takeover (2026-08-18T08:30Z): the session owner stopped the delegated
+  guard-records lane and its detached controller after poll 1 (51.08 GiB
+  literal free, threshold 85).  The 85 GiB literal Pages-free rule this lane
+  enforced was a charter transcription bug, superseded in-session by the
+  corrected ratified guard: no other arm build active, plus reclaimable
+  memory (free + inactive + purgeable + speculative) of at least 55 GiB, with
+  a 45-minute escape hatch when only the memory clause is unmet.  Literal
+  free pages on macOS sit near zero under load by design, so the literal rule
+  cannot pass on this host (36 consecutive below-threshold samples over
+  5 h 50 m, then a fresh controller's first sample, all WAIT).  The host now
+  runs supervisor, chain driver (order -> eligibility -> investment), and
+  these records directly.
