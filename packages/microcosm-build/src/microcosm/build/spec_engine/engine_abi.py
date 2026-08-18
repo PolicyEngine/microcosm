@@ -462,7 +462,7 @@ def assert_engine_abi_lock_current(
             raise SpecValidationError(
                 "generated lock is not in canonical byte form",
                 source=ENGINE_ABI_LOCK_FILENAME,
-            )
+            ) from None
         assert isinstance(parsed, Mapping)
         return parsed
     schema_registry.validate(expected_payload, ENGINE_ABI_LOCK_SCHEMA_ID)
