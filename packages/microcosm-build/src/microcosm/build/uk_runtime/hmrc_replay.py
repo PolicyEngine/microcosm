@@ -641,10 +641,12 @@ class HMRCReplayReport:
     effective_mass_evidence: Mapping[str, object]
     diagnostic_aggregates: tuple[HMRCReplayDiagnosticAggregate, ...] = ()
     schema_version: int = 1
+    report_kind: str = "uk_hmrc_income_208_fact_replay"
 
     def __post_init__(self) -> None:
         if self.schema_version != 1:
             raise ValueError("HMRC replay report schema_version must be 1.")
+        _require_nonempty_string(self.report_kind, "report_kind")
         object.__setattr__(self, "facts", tuple(self.facts))
         object.__setattr__(self, "fences", tuple(self.fences))
         object.__setattr__(
@@ -721,7 +723,7 @@ class HMRCReplayReport:
     def to_payload(self) -> dict[str, object]:
         payload = {
             "schema_version": self.schema_version,
-            "report_kind": "uk_hmrc_income_208_fact_replay",
+            "report_kind": self.report_kind,
             "summary": self.summary,
             "source_evidence": _thaw_json(self.source_evidence),
             "build_evidence": _thaw_json(self.build_evidence),
@@ -773,6 +775,7 @@ def build_conservative_hmrc_replay_report(
     qrf_evidence: Mapping[str, object],
     effective_mass_evidence: Mapping[str, object],
     diagnostic_aggregates: Sequence[HMRCReplayDiagnosticAggregate] = (),
+    report_kind: str = "uk_hmrc_income_208_fact_replay",
 ) -> HMRCReplayReport:
     """Build the reviewed 0 exact / 0 directional / 208 excluded report."""
 
@@ -784,6 +787,7 @@ def build_conservative_hmrc_replay_report(
         qrf_evidence=qrf_evidence,
         effective_mass_evidence=effective_mass_evidence,
         diagnostic_aggregates=tuple(diagnostic_aggregates),
+        report_kind=report_kind,
     )
 
 

@@ -48,8 +48,14 @@ from microcosm.build.uk_runtime.frs_spine import (
     uk_frs_spine_seed_frame,
 )
 from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
+from microcosm.build.uk_runtime.hmrc_replay import write_hmrc_replay_report
 from microcosm.build.uk_runtime.national_build import write_uk_national_frame
 from microcosm.build.uk_runtime.national_frame import uk_household_weight_kind
+from microcosm.build.uk_runtime.spi_spine import (
+    UKFRSHMRCSpineLeavesStageTransform,
+    UKSPIIncomeSpineStageTransform,
+    UKSPISupportChannelStageTransform,
+)
 from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
@@ -68,6 +74,9 @@ _STAGE_NAMES = (
     "frs_person_draws",
     "frs_household_draws",
     "frs_brma",
+    "frs_hmrc_spine_leaves",
+    "spi_support_channel",
+    "hmrc_spi_income_spine",
 )
 
 
@@ -90,6 +99,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         required=True,
         help="Output H5 path for the raw FRS spine Frame.",
+    )
+    parser.add_argument(
+        "--spi-tab",
+        type=Path,
+        required=True,
+        help="Pinned local SPI 2022-23 put2223uk.tab path.",
+    )
+    parser.add_argument(
+        "--hmrc-ods",
+        type=Path,
+        required=True,
+        help="Pinned local HMRC collated ODS path.",
     )
     parser.add_argument(
         "--checkpoint-dir",
@@ -116,9 +137,18 @@ def _validate_args(args: argparse.Namespace) -> None:
         )
     if args.spine_h5.suffix != ".h5":
         raise ValueError("--spine-h5 must end with '.h5'.")
+    if not args.spi_tab.is_file():
+        raise ValueError(f"--spi-tab must be an existing file: {args.spi_tab}")
+    if args.spi_tab.name != "put2223uk.tab":
+        raise ValueError("--spi-tab must name put2223uk.tab.")
+    if not args.hmrc_ods.is_file():
+        raise ValueError(f"--hmrc-ods must be an existing file: {args.hmrc_ods}")
+    if args.hmrc_ods.suffix.lower() != ".ods":
+        raise ValueError("--hmrc-ods must end with '.ods'.")
     paths = {
         "spine_h5": args.spine_h5,
         "build_sidecar": args.spine_h5.with_suffix(".build.json"),
+        "hmrc_replay_sidecar": args.spine_h5.with_suffix(".hmrc_replay.json"),
     }
     if args.emit_nonzero_shares is not None:
         paths["emit_nonzero_shares"] = args.emit_nonzero_shares
@@ -229,6 +259,15 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
             seed = operation.parameters.get("seed")
             if isinstance(output, str) and isinstance(seed, int):
                 stage_seeds[output] = seed
+            elif isinstance(seed, int):
+                if operation.kind == "stack_zero_weight_donors":
+                    stage_seeds["stack_zero_weight_donors"] = seed
+                elif operation.kind == "strict_read_private_table":
+                    stage_seeds["donor_bootstrap"] = seed
+                elif operation.kind == "fit_weighted_qrf_stage1":
+                    stage_seeds["stage1"] = seed
+                elif operation.kind == "fit_weighted_qrf_stage2":
+                    stage_seeds["stage2"] = seed
         if stage_seeds:
             declared[stage.stage] = stage_seeds
     return declared
@@ -364,6 +403,11 @@ def main(argv: list[str] | None = None) -> int:
         append_phase(state, "inputs_pinned")
         engine = _rules_engine()
         stochastic_contract = load_uk_take_up_contract()
+        hmrc_spine_transform = UKSPIIncomeSpineStageTransform(
+            args.spi_tab,
+            args.hmrc_ods,
+            stage=stages_by_name["hmrc_spi_income_spine"],
+        )
         plan = country_stage_plan(
             spec,
             {
@@ -413,6 +457,14 @@ def main(argv: list[str] | None = None) -> int:
                     stage=stages_by_name["frs_brma"],
                     engine=engine,
                 ),
+                "frs_hmrc_spine_leaves": UKFRSHMRCSpineLeavesStageTransform(
+                    args.frs_raw_dir,
+                    stage=stages_by_name["frs_hmrc_spine_leaves"],
+                ),
+                "spi_support_channel": UKSPISupportChannelStageTransform(
+                    stage=stages_by_name["spi_support_channel"],
+                ),
+                "hmrc_spi_income_spine": hmrc_spine_transform,
             },
             stage_names=_STAGE_NAMES,
         )
@@ -425,6 +477,14 @@ def main(argv: list[str] | None = None) -> int:
             write_uk_national_frame(frame, args.checkpoint_dir / "frs_spine.h5")
             append_phase(state, "checkpoint_written")
         sidecar_path = output.with_suffix(".build.json")
+        replay_sidecar_path = output.with_suffix(".hmrc_replay.json")
+        if hmrc_spine_transform.last_result is None:
+            raise RuntimeError("HMRC SPI spine stage did not record replay evidence.")
+        write_hmrc_replay_report(
+            hmrc_spine_transform.last_result.replay_report,
+            replay_sidecar_path,
+        )
+        append_phase(state, "hmrc_replay_sidecar_written")
         sidecar = _build_sidecar(
             frame=frame,
             stages=stages,
