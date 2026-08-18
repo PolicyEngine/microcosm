@@ -176,6 +176,7 @@ def test_exclusion_pins_all_sha_locked_hermetic_inputs() -> None:
 
 
 def test_mounted_artifacts_contain_receipt_but_no_risk_assessment() -> None:
+    pytest.importorskip("tables")
     evidence = _entry()["evidence"]
     build_summary = json.loads(
         (ROOT / "experiments/build_j_recert/base_j.summary.json").read_text()

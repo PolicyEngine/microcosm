@@ -837,6 +837,9 @@ policyengine = [
     { name = "microunit" },
     { name = "policyengine-us" },
 ]
+uk = [
+    { name = "policyengine-uk" },
+]
 us = [
     { name = "microunit" },
 ]
@@ -854,10 +857,11 @@ requires-dist = [
     { name = "microunit", marker = "extra == 'us'", specifier = ">=0.1.0" },
     { name = "numpy", specifier = ">=2" },
     { name = "pandas", specifier = ">=2.3" },
+    { name = "policyengine-uk", marker = "extra == 'uk'", specifier = ">=2.88" },
     { name = "policyengine-us", marker = "extra == 'policyengine'", specifier = ">=1.745.0,<2" },
     { name = "tables", marker = "extra == 'axiom'", specifier = ">=3" },
 ]
-provides-extras = ["us", "policyengine", "axiom"]
+provides-extras = ["us", "policyengine", "uk", "axiom"]
 
 [package.metadata.requires-dev]
 dev = [

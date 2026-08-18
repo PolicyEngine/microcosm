@@ -656,6 +656,7 @@ def test_nested_normative_objects_refuse_unknown_fields(
 def test_typed_domains_are_exact_legacy_compatibility_projections(
     resolved_us_spec: ResolvedSpec,
 ) -> None:
+    pytest.importorskip("policyengine_us")
     documents = {
         f"{kind}.yaml": _domain(resolved_us_spec, kind) for kind in TYPED_DOMAIN_KINDS
     }

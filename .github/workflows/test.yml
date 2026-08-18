@@ -51,7 +51,15 @@ jobs:
       - name: Install from wheels into a clean venv
         run: |
           uv venv /tmp/wheels-venv
-          uv pip install --python /tmp/wheels-venv/bin/python dist/*.whl pytest
+          # Constrain third-party resolution to the locked dependency set:
+          # the seed protocol's normative surface includes RNG library
+          # versions (generator behavior changes draws), so an unpinned
+          # install produces a genuinely different — unsupported — spec
+          # identity and fails the sha pins by design.
+          uv export --all-packages --no-emit-workspace --no-hashes --quiet \
+            --format requirements.txt --output-file /tmp/wheel-constraints.txt
+          uv pip install --python /tmp/wheels-venv/bin/python \
+            --constraint /tmp/wheel-constraints.txt dist/*.whl pytest
       - name: Verify clean wheel boundary and import every shard
         run: |
           env -u PYTHONPATH /tmp/wheels-venv/bin/python -I - <<'PY'

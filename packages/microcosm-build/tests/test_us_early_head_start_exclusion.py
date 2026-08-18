@@ -193,6 +193,7 @@ def test_exclusion_pins_exact_locked_artifact_absence_claims() -> None:
 def test_mounted_sha_locked_asec_schema_has_no_person_enrollment_signal(
     filename: str,
 ) -> None:
+    pytest.importorskip("tables")
     evidence = _entry()["evidence"]
     item = next(
         record
