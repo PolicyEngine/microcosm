@@ -20,6 +20,11 @@ from tools.us_bundle_generation.contracts import build_take_up
 from tools.us_bundle_generation.core import build_catalogs
 from tools.us_bundle_generation.imputation import build_imputation
 
+pytest.importorskip(
+    "policyengine_us",
+    reason="live-engine oracle: the wheels gate's venv installs no engine",
+)
+
 _ENTITY_IDS = (
     "person",
     "tax_unit",

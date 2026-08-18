@@ -1271,9 +1271,6 @@
       "source": {
        "type": "string",
        "x-spec-surface": "operational"
-      },
-      "parameters": {
-       "type": "string"
       }
      },
      "required": [
@@ -5470,7 +5467,7 @@
        "type": "string"
       },
       "parameters": {
-       "type": "object"
+       "type": "string"
       }
      },
      "anyOf": [

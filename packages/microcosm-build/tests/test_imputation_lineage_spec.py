@@ -23,6 +23,11 @@ from microcosm.fit.qrf import DEFAULT_N_ESTIMATORS, DEFAULT_ZERO_ATOL
 from tools.emit_lineage_dashboard import emit
 from tools.us_bundle_generation.imputation import build_imputation
 
+pytest.importorskip(
+    "policyengine_us",
+    reason="live-engine oracle: the wheels gate's venv installs no engine",
+)
+
 
 @pytest.fixture(scope="module")
 def spec() -> dict[str, object]:

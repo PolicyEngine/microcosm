@@ -329,6 +329,7 @@ def test_generated_remaining_stage_manifest_is_a_canonical_identity_binding(
 
 
 def test_checked_in_us_lock_is_fresh_schema_valid_and_not_authored() -> None:
+    pytest.importorskip("policyengine_us")
     domains = {
         "vintages": load_yaml12_file(US_SPEC_ROOT / "vintages.yaml"),
         "take_up": load_yaml12_file(US_SPEC_ROOT / "take_up.yaml"),

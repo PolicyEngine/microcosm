@@ -174,9 +174,9 @@ class SchemaRegistry:
         """Load and verify exactly the approved fifteen-schema catalog.
 
         An explicit ``schema_root`` is useful for golden and mutation tests.
-        Normal source-tree imports fall back to ``<repo>/specs/schema`` when
-        package data has not yet been materialized; installed wheels must
-        contain ``microcosm/build/spec_engine/schema``.
+        The catalog has exactly one home — package data at
+        ``microcosm/build/spec_engine/schema`` — so editable installs and
+        wheels read identical bytes by construction.
         """
 
         root = schema_root if schema_root is not None else _schema_data_root()
@@ -446,15 +446,10 @@ def _schema_data_root() -> Traversable | Path:
     packaged = resources.files("microcosm.build.spec_engine").joinpath("schema")
     if packaged.is_dir():
         return packaged
-
-    current = Path(__file__).resolve()
-    for parent in current.parents:
-        candidate = parent / "specs" / "schema"
-        if candidate.is_dir():
-            return candidate
     raise SpecSchemaError(
-        "approved schema package data is absent and no source-tree "
-        "specs/schema fallback exists"
+        "approved schema package data is absent; the fifteen-schema catalog "
+        "ships inside microcosm.build.spec_engine.schema (one copy — the "
+        "former specs/schema fallback and its wheel force-include are retired)"
     )
 
 

@@ -216,6 +216,10 @@ def generated_documents() -> dict[str, dict[str, object]]:
     # The extractor is intentionally exercised once per module: this proves
     # the checked-in package remains a projection of the live constants while
     # keeping the comparatively expensive PolicyEngine ABI read bounded.
+    pytest.importorskip(
+        "policyengine_us",
+        reason="live-engine oracle: the wheels gate's venv installs no engine",
+    )
     return generator.build_documents()
 
 

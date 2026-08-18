@@ -332,11 +332,11 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "f0b676f6508dbf6bb2b787c42e6b85331bacc57c6649ac7ad15fdaa5884a1b2d",
     "early_families": "e26a90e2b5c16e23e7c17424d1c2e4ab18ed66b1d0e129248e87c0bab9b3fd5d",
-    "full_checkpoint": "ff21484d152b0aa923798a832ee788cea07296d13dd60124f617df6f46ff5df9",
+    "full_checkpoint": "2972db18e0f69ac4df4079916355a1bcd9ec5c12f3e19d5650fc47b5a8a0e3e8",
     "gap_fill_schedule": "96aefe2853de91ae95f50bc2ccc2c1dd94802c27f21c643981152bbcb13c4e10",
     "graph_nodes": "a83363de26cad0144b5a98b36b4bca49542e37a7b9fee3d7e541f692deeff864",
     "late_families": "a160432fc12a85df20ba7fd6687673b3c31786df7a983e2477604ab923b26d18",
-    "late_resource_semantics": "b23c74dcfaaa5780d09caadec2cd110e6b9e268e31057b8584ae814f866bfe17",
+    "late_resource_semantics": "9206aa072ce360ef87dc7d832351fcae2e0d1da71abcacc5af0d43ef88582dee",
     "late_schedule": "b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "987b501c695e31f45521c4a178528f75ab3df22c09bc407b182213b2de99ee57",
@@ -451,6 +451,44 @@ def _array(value: object, location: str) -> Sequence[object]:
 
 def _wire(value: FrozenValue) -> object:
     return thaw_json(value)
+
+
+def _without_operational_bindings(value: object) -> object:
+    """Strip execution-profile subtrees before semantic digesting.
+
+    ``worker_execution`` embeds the invoking interpreter path verbatim
+    (``sys.executable``), which spells itself differently between a script
+    (``.venv/bin/python``) and the pytest console script
+    (``.venv/bin/python3``) for the same interpreter. Execution profile is a
+    receipted operational surface, never semantic evidence, so inventory
+    digests are computed over the receipt with those subtrees removed. The
+    live generation-0 receipt itself is unchanged.
+    """
+
+    if isinstance(value, Mapping):
+        drop_self_hash = "producers" in value and "sha256" in value
+        return {
+            key: _without_operational_bindings(item)
+            for key, item in value.items()
+            if key != "worker_execution"
+            and not (drop_self_hash and key == "sha256")
+        }
+    if isinstance(value, list):
+        return [_without_operational_bindings(item) for item in value]
+    return value
+
+
+def _operational_free_sha256(value: object) -> str:
+    """Digest with operational subtrees and receipt self-hashes removed.
+
+    The receipt's embedded ``sha256`` is computed over the unpruned
+    content, so it re-imports the interpreter-path instability; a
+    self-hash is identified as a ``sha256`` key sitting beside the
+    ``producers`` array it summarizes. Input content pins (``sha256``
+    beside a locator) are semantic and stay.
+    """
+
+    return sha256_json(_without_operational_bindings(value))
 
 
 def _json_equal(left: object, right: object) -> bool:
@@ -1020,7 +1058,9 @@ def build_inventory_coverage(
                 resource_semantics,
                 expected_imputation.get("late_producer_resource_semantics"),
             ),
-            "resource semantics digest differs": resource_semantics.get("sha256")
+            "resource semantics digest differs": _operational_free_sha256(
+                resource_semantics
+            )
             == EXPECTED_HASHES["late_resource_semantics"],
         },
         homes=(
@@ -1029,7 +1069,7 @@ def build_inventory_coverage(
         ),
         consumers=("legacy_adapter.imputation.late_producer_resource_semantics",),
         observed={
-            "sha256": resource_semantics.get("sha256"),
+            "sha256": _operational_free_sha256(resource_semantics),
             "producer_count": resource_semantics.get("producer_count"),
         },
         expected={
@@ -1507,7 +1547,9 @@ def build_inventory_coverage(
     add(
         "stacked_checkpoint_base_identity_exact",
         clauses={
-            "full checkpoint identity digest differs": sha256_json(full_checkpoint)
+            "full checkpoint identity digest differs": _operational_free_sha256(
+                full_checkpoint
+            )
             == EXPECTED_HASHES["full_checkpoint"],
             "full checkpoint top-level fields differ": set(full_checkpoint)
             == EXPECTED_FULL_CHECKPOINT_TOP_LEVEL,
@@ -1548,7 +1590,7 @@ def build_inventory_coverage(
             "stacked_authority_semantics.project_stacked_checkpoint_base_identity",
         ),
         observed={
-            "sha256": sha256_json(full_checkpoint),
+            "sha256": _operational_free_sha256(full_checkpoint),
             "field_names": sorted(full_checkpoint),
             "input_roles": list(
                 _mapping(full_checkpoint["inputs"], "full inputs")
@@ -1591,7 +1633,10 @@ def build_inventory_coverage(
         },
         homes=("/spine/pipeline_contract", "/imputation", "/take_up"),
         consumers=("legacy_adapter.stacked_checkpoint_static_components.pool_code",),
-        observed={"field_names": sorted(pool_code), "sha256": sha256_json(pool_code)},
+        observed={
+            "field_names": sorted(pool_code),
+            "sha256": _operational_free_sha256(pool_code),
+        },
         expected={"field_names": sorted(EXPECTED_CHECKPOINT_POOL_CODE)},
     )
 

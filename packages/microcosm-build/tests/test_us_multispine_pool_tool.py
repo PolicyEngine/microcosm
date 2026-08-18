@@ -1796,6 +1796,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    pytest.importorskip("policyengine_us")
     args = pool_tool._parser().parse_args(
         [
             *_stacked_main_argv(tmp_path),
@@ -1954,6 +1955,7 @@ def test_constants_adapter_refuses_live_execution_surface_drift(
     mutated_value: object,
     expected_difference: str,
 ) -> None:
+    pytest.importorskip("policyengine_us")
     args = pool_tool._parser().parse_args(
         [
             *_stacked_main_argv(tmp_path),

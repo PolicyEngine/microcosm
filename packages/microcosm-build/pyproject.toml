@@ -64,7 +64,6 @@ ignore-vcs = true
 packages = ["src/microcosm"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"../../specs/schema" = "microcosm/build/spec_engine/schema"
 
 [tool.uv.sources]
 microcosm-frame = { workspace = true }

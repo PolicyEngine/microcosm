@@ -1329,12 +1329,12 @@
         ],
         "expected": {
           "producer_count": 38,
-          "sha256": "b23c74dcfaaa5780d09caadec2cd110e6b9e268e31057b8584ae814f866bfe17"
+          "sha256": "9206aa072ce360ef87dc7d832351fcae2e0d1da71abcacc5af0d43ef88582dee"
         },
         "failures": [],
         "observed": {
           "producer_count": 38,
-          "sha256": "b23c74dcfaaa5780d09caadec2cd110e6b9e268e31057b8584ae814f866bfe17"
+          "sha256": "9206aa072ce360ef87dc7d832351fcae2e0d1da71abcacc5af0d43ef88582dee"
         },
         "status": "covered"
       },
@@ -1852,7 +1852,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "ff21484d152b0aa923798a832ee788cea07296d13dd60124f617df6f46ff5df9"
+          "sha256": "2972db18e0f69ac4df4079916355a1bcd9ec5c12f3e19d5650fc47b5a8a0e3e8"
         },
         "failures": [],
         "observed": {
@@ -1875,7 +1875,7 @@
             "alpha",
             "zeta"
           ],
-          "sha256": "ff21484d152b0aa923798a832ee788cea07296d13dd60124f617df6f46ff5df9"
+          "sha256": "2972db18e0f69ac4df4079916355a1bcd9ec5c12f3e19d5650fc47b5a8a0e3e8"
         },
         "status": "covered"
       },
@@ -1939,7 +1939,7 @@
             "take_up_contract",
             "us_qbi_reconciliation_contract"
           ],
-          "sha256": "881e161949df97ac08087377646d6d06cb45319f93f43ed23ea866e41f1d5b1d"
+          "sha256": "8df3775167f89e79b44cc3606b52b54d488edaee8fc34dd757163dd8b6510fa7"
         },
         "status": "covered"
       },

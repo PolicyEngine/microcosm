@@ -227,6 +227,7 @@ def test_resolved_seed_protocol_expansion_is_spec_normative(
 
 
 def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> None:
+    pytest.importorskip("policyengine_us")
     first = load_bundle(
         _rich_minimal(tmp_path / "xx", note="first", store="local:a"),
         kernel_registry=KernelRegistry.from_ids(SELECTION_KERNEL_IDS),

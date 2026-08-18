@@ -152,6 +152,7 @@ def test_us_inventory_is_structure_exact_and_complete(
     compiled_us: CompiledSpecIR,
     legacy_us: dict[str, object],
 ) -> None:
+    pytest.importorskip("policyengine_us")
     report = build_inventory_coverage(
         resolved_us,
         compiled=compiled_us,
@@ -172,6 +173,7 @@ def test_full_checkpoint_vector_binds_dynamic_inputs_and_scale_controls(
     compiled_us: CompiledSpecIR,
     legacy_us: dict[str, object],
 ) -> None:
+    pytest.importorskip("policyengine_us")
     report = build_inventory_coverage(
         resolved_us,
         compiled=compiled_us,

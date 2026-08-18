@@ -19,7 +19,13 @@ from microcosm.build.spec_engine.stacked_authority_semantics import (
     stacked_identity_bytes,
 )
 from microcosm.build.us_runtime.stacked_spine import (
+
     stacked_spine_authority_receipt,
+)
+
+pytest.importorskip(
+    "policyengine_us",
+    reason="live-engine oracle: the wheels gate's venv installs no engine",
 )
 
 ROOT = Path(__file__).resolve().parents[3]

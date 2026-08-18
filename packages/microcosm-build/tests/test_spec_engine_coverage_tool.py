@@ -21,6 +21,11 @@ from tools.spec_engine_coverage import (
     coverage_report_bytes,
 )
 
+pytest.importorskip(
+    "policyengine_us",
+    reason="live-engine oracle: the wheels gate's venv installs no engine",
+)
+
 
 @pytest.fixture(scope="module")
 def coverage_inputs() -> tuple[ResolvedSpec, CompiledSpecIR, dict[str, object]]:
