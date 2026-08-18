@@ -19,7 +19,6 @@ from microcosm.build.spec_engine.stacked_authority_semantics import (
     stacked_identity_bytes,
 )
 from microcosm.build.us_runtime.stacked_spine import (
-
     stacked_spine_authority_receipt,
 )
 

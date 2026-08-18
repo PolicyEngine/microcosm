@@ -23,7 +23,6 @@ from microcosm.build.spec_engine.take_up_semantics import (
     project_legacy_take_up_identity,
 )
 from microcosm.build.us_runtime.take_up_contract import (
-
     load_legacy_take_up_contract_evidence,
     take_up_contract_identity,
 )
