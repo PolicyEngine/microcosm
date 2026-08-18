@@ -99,3 +99,15 @@ that owns each arm.
   read 4,094,042 free 16-KiB pages (62.47 GiB) at 23:31:29Z, below the fixed
   5,570,560-page (85 GiB) threshold.  Every reported build and gate below is
   from a later clean launch that passed the literal-free-pages guard.
+- Owner correction and fail-closed retry (2026-08-18T02:23:07Z): the obsolete
+  literal-free-pages rule above was replaced by the corrected process-exclusion
+  plus reclaimable-memory guard. The corrected supervisor refused before fork
+  with exit 76 because sandboxed `/usr/bin/pgrep -f
+  '[b]uild_us_multispine_pool'` could not access the macOS process list (`rc=3`,
+  `sysmond service not found`). A separate `vm_stat` read showed 5,324,390
+  reclaimable 16-KiB pages (81.243744 GiB), above the corrected 55-GiB memory
+  threshold, but condition 1 is load-bearing and was not inferred from that.
+  The only files present are the corrected supervisor and its guard journal;
+  no build child, status, log, checkpoint, output artifact, or gate exists.
+  The preceding sentence promising later literal-free-pages launches is
+  therefore historical only: no arm build has yet been accepted as evidence.
