@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import sys
+from importlib import metadata
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -355,15 +356,18 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
         operations: list[dict[str, object]] | None = None,
         nonnegative_outputs: tuple[str, ...] = (),
         rewrites: tuple[str, ...] = (),
+        grain: str = "person",
+        extra_artifacts: tuple[dict[str, object], ...] = (),
     ) -> SourceStageSpec:
         artifacts = [
-            artifact for artifact in stage.artifacts if artifact["table"] in tables
+            artifact for artifact in stage.artifacts if artifact.get("table") in tables
         ]
+        artifacts.extend(extra_artifacts)
         payload = {
             "stage": name,
             "survey": "Synthetic FRS",
             "source": "local fabricated rows",
-            "grain": "person",
+            "grain": grain,
             "artifacts": artifacts,
             "operations": operations or [{"kind": "derive"}],
             "outputs": list(outputs),
@@ -469,9 +473,154 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "disabled_students_allowance_eligible_expenses",
                     ),
                 ),
+                source_stage(
+                    "frs_take_up",
+                    grain="benunit",
+                    operations=[
+                        {"kind": "aggregate_person_to_benunit"},
+                        {
+                            "kind": "assign_binary_with_anchored_residual",
+                            "output": "would_claim_child_benefit",
+                            "seed": 0,
+                        },
+                        {
+                            "kind": "assign_binary_from_rate",
+                            "output": "child_benefit_opts_out",
+                            "seed": 0,
+                        },
+                        {
+                            "kind": "assign_binary_with_anchored_residual",
+                            "output": "would_claim_pc",
+                            "seed": 0,
+                        },
+                        {
+                            "kind": "assign_binary_with_anchored_residual",
+                            "output": "would_claim_uc",
+                            "seed": 0,
+                        },
+                        {
+                            "kind": "assign_binary_from_rate",
+                            "output": "would_claim_tfc",
+                            "seed": 0,
+                        },
+                        {
+                            "kind": "assign_binary_from_rate",
+                            "output": "would_claim_extended_childcare",
+                            "seed": 0,
+                        },
+                        {
+                            "kind": "assign_binary_from_rate",
+                            "output": "would_claim_universal_childcare",
+                            "seed": 0,
+                        },
+                        {
+                            "kind": "assign_binary_from_rate",
+                            "output": "would_claim_targeted_childcare",
+                            "seed": 0,
+                        },
+                        {
+                            "kind": "assign_clipped_normal",
+                            "output": "maximum_extended_childcare_hours_usage",
+                            "seed": 0,
+                        },
+                    ],
+                    outputs=(
+                        "would_claim_child_benefit",
+                        "child_benefit_opts_out",
+                        "would_claim_pc",
+                        "would_claim_uc",
+                        "would_claim_tfc",
+                        "would_claim_extended_childcare",
+                        "would_claim_universal_childcare",
+                        "would_claim_targeted_childcare",
+                        "maximum_extended_childcare_hours_usage",
+                    ),
+                    nonnegative_outputs=("maximum_extended_childcare_hours_usage",),
+                ),
+                source_stage(
+                    "frs_person_draws",
+                    operations=[
+                        {
+                            "kind": "assign_binary_from_rate",
+                            "output": "would_claim_marriage_allowance",
+                            "seed": 0,
+                        },
+                        {
+                            "kind": "assign_binary_from_banded_rates",
+                            "output": "would_claim_scp",
+                            "seed": 0,
+                        },
+                        {
+                            "kind": "assign_uniform_draw",
+                            "output": "attends_private_school_random_draw",
+                            "seed": 0,
+                        },
+                    ],
+                    outputs=(
+                        "would_claim_marriage_allowance",
+                        "would_claim_scp",
+                        "attends_private_school_random_draw",
+                    ),
+                ),
+                source_stage(
+                    "frs_household_draws",
+                    grain="household",
+                    operations=[
+                        {
+                            "kind": "assign_binary_from_rate",
+                            "output": "household_owns_tv",
+                            "seed": 0,
+                        },
+                        {
+                            "kind": "assign_binary_from_rate",
+                            "output": "would_evade_tv_licence_fee",
+                            "seed": 0,
+                        },
+                        {
+                            "kind": "assign_binary_from_rate",
+                            "output": "main_residential_property_purchased_is_first_home",
+                            "seed": 0,
+                        },
+                        {
+                            "kind": "assign_binary_from_rate",
+                            "output": "property_purchased",
+                            "seed": 0,
+                        },
+                    ],
+                    outputs=(
+                        "household_owns_tv",
+                        "would_evade_tv_licence_fee",
+                        "main_residential_property_purchased_is_first_home",
+                        "property_purchased",
+                    ),
+                ),
+                source_stage(
+                    "frs_brma",
+                    grain="household",
+                    operations=[
+                        {"kind": "materialize_rules_engine_predictors"},
+                        {
+                            "kind": "sample_categorical_from_count_table",
+                            "output": "brma",
+                            "seed": 0,
+                        },
+                    ],
+                    outputs=("brma",),
+                    # Mirrors the real manifest's non-tab resource artifact so
+                    # the driver's pin split is exercised without licensed data.
+                    extra_artifacts=(
+                        {
+                            "role": "count_resource",
+                            "resource": "brma_rent_counts.json",
+                            "kind": "public_aggregated_counts",
+                            "format": "json",
+                        },
+                    ),
+                ),
             ),
         ),
         geography_spine=None,
+        resource_hashes={"brma_rent_counts.json": "f" * 64},
     )
 
 
@@ -484,6 +633,8 @@ class _FakeUKEngine:
         for variable in variables:
             if variable == "state_pension_age":
                 values[variable] = np.full(person_count, 66.0)
+            elif variable == "LHA_category":
+                values[variable] = np.array(["A"] * len(frame.table("benunit")))
             else:
                 values[variable] = np.zeros(person_count)
         return values
@@ -785,6 +936,29 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     assert len(frame.table("person")) == 3
     assert len(frame.table("benunit")) == 2
     assert len(frame.table("household")) == 2
+    assert {
+        "would_claim_child_benefit",
+        "child_benefit_opts_out",
+        "would_claim_pc",
+        "would_claim_uc",
+        "would_claim_tfc",
+        "would_claim_extended_childcare",
+        "would_claim_universal_childcare",
+        "would_claim_targeted_childcare",
+        "maximum_extended_childcare_hours_usage",
+    } <= set(frame.table("benunit"))
+    assert {
+        "would_claim_marriage_allowance",
+        "would_claim_scp",
+        "attends_private_school_random_draw",
+    } <= set(frame.table("person"))
+    assert {
+        "household_owns_tv",
+        "would_evade_tv_licence_fee",
+        "main_residential_property_purchased_is_first_home",
+        "property_purchased",
+        "brma",
+    } <= set(frame.table("household"))
     sidecar = json.loads(output.with_suffix(".build.json").read_text())
     assert sidecar["pipeline"] == "uk-frs-spine"
     assert sidecar["schema_version"] == 2
@@ -796,6 +970,19 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     }
     assert sidecar["household_weight_total"] == 30.0
     assert set(sidecar["artifact_pins"]) == set(FRS_SPINE_TABLES)
+    assert sidecar["declared_seeds"]["frs_take_up"]["would_claim_child_benefit"] == 0
+    assert sidecar["declared_seeds"]["frs_brma"] == {"brma": 0}
+    assert len(sidecar["stochastic_contract_sha256"]) == 64
+    assert sidecar["resource_pins"] == {"brma_rent_counts.json": "f" * 64}
+    # Resolve the expected version the way the driver does, so the assertion
+    # holds in the engine-hermetic lane too: the real version where
+    # policyengine-uk is installed, the documented fallback where it is not.
+    # Either way this still fails on the "unknown" the U1 pin fix removed.
+    try:
+        expected_engine_version = metadata.version("policyengine-uk")
+    except metadata.PackageNotFoundError:
+        expected_engine_version = "unavailable"
+    assert sidecar["rules_engine"]["version"] == expected_engine_version
     share_payload = json.loads(shares.read_text())
     assert share_payload["stages"]["frs_spine"]["employment_income"] == pytest.approx(
         2 / 3

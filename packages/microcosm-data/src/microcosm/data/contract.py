@@ -329,13 +329,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "a852b3de381376ea401b55f4ed98c59f01c2335b0f8483c6ca5b9337c1cbce32"
+    "8e0daba2f02e9f0051b8b592c5f983a7c7641aefdad5940e699232d5f09ef8bb"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "22e3b51e5886d8cf8bfb9a8a67b84fc99b112fbfd3dd7119fcff8bf79411924c"
+    "e41243c17b788c855e3aea88ff84513286f728d25238be9b7608344ae40e7550"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "63e7977a2fdcaaed2fe167ef5703e66f8ce90b2a0f0fc98c1645212266bc7c55"
+    "59c95a8c46796e34b8d40b2c41e304a734a36306b93120818c4b4435f8eef00d"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -349,6 +349,8 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_weights_audit": "weights_audit",
     "uk_nonnegative_columns": "nonnegative_columns",
     "uk_export_surface": "export_surface",
+    "uk_take_up_signal": "take_up_signal",
+    "uk_brma_enum_domain": "enum_domain",
     "uk_target_surface": "target_surface",
     "uk_target_fit": "target_fit",
     "uk_input_mass_parity": "input_mass_parity",
@@ -372,6 +374,8 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_weights_audit": ("weights_audit", "terminal"),
     "uk_nonnegative_columns": ("nonnegative_columns", "terminal"),
     "uk_export_surface": ("export_surface", "terminal"),
+    "uk_take_up_signal": ("take_up_signal", "terminal"),
+    "uk_brma_enum_domain": ("enum_domain", "terminal"),
     "uk_target_surface": ("target_surface", "terminal"),
     "uk_target_fit": ("target_fit", "terminal"),
     "uk_input_mass_parity": ("input_mass_parity", "terminal"),

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from importlib import metadata
 from pathlib import Path
 from typing import Any
 
@@ -62,7 +63,9 @@ class UKFRSLegacyProxiesStageTransform:
     def __call__(self, frame: Frame) -> Frame:
         period = uk_time_period(frame)
         assert_rules_engine_country(self.engine, "uk")
-        materialized = self.engine.materialize(frame, UK_LEGACY_PROXY_PREDICTORS, period)
+        materialized = self.engine.materialize(
+            frame, UK_LEGACY_PROXY_PREDICTORS, period
+        )
         return add_frs_legacy_proxies(
             frame,
             self.raw_dir,
@@ -94,8 +97,7 @@ def uk_legacy_jsa_policy(build_period: int | str) -> UKLegacyJSAPolicy:
     return UKLegacyJSAPolicy(
         max_weekly_hours_single=float(parameters.gov.dwp.JSA.hours.single(instant)),
         instant=instant,
-        source="policyengine-uk parameters "
-        f"{getattr(policyengine_uk, '__version__', 'unknown')}",
+        source="policyengine-uk parameters " + metadata.version("policyengine-uk"),
     )
 
 
@@ -109,7 +111,9 @@ def add_frs_legacy_proxies(
 ) -> Frame:
     artifacts = _artifact_by_table(stage)
     adult = normalize_ids(
-        read_pinned_tab(Path(raw_dir) / str(artifacts["adult"]["locator"]), artifacts["adult"])
+        read_pinned_tab(
+            Path(raw_dir) / str(artifacts["adult"]["locator"]), artifacts["adult"]
+        )
     )
     person = frame.table("person").copy()
     raw = adult.set_index("person_id").reindex(person["person_id"])
@@ -157,8 +161,11 @@ def derive_frs_legacy_proxies(
         & (hours < max_annual_hours)
         & (education == "NOT_IN_EDUCATION")
     )
-    health = reported & (age >= 16) & (age < spa) & np.isin(
-        status, ESA_HEALTH_EMPLOYMENT_STATUSES
+    health = (
+        reported
+        & (age >= 16)
+        & (age < spa)
+        & np.isin(status, ESA_HEALTH_EMPLOYMENT_STATUSES)
     )
     values["esa_health_condition_proxy"] = health
     values["esa_support_group_proxy"] = (

@@ -7,6 +7,7 @@ import hashlib
 import sys
 import time
 from datetime import UTC, datetime
+from importlib import metadata
 from pathlib import Path
 
 from microcosm.build.country_spec import country_stage_plan, load_country_spec
@@ -26,6 +27,7 @@ from microcosm.build.logbook_adoption import (
     sha256_argument,
     write_error_receipt,
 )
+from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
 from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTransform
 from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
 from microcosm.build.uk_runtime.frs_education import UKFRSEducationStageTransform
@@ -34,15 +36,21 @@ from microcosm.build.uk_runtime.frs_education_grants import (
     UKFRSEducationGrantSplitStageTransform,
 )
 from microcosm.build.uk_runtime.frs_employment import UKFRSEmploymentStageTransform
+from microcosm.build.uk_runtime.frs_household_draws import (
+    UKFRSHouseholdDrawsStageTransform,
+)
 from microcosm.build.uk_runtime.frs_legacy_proxies import (
     UKFRSLegacyProxiesStageTransform,
 )
+from microcosm.build.uk_runtime.frs_person_draws import UKFRSPersonDrawsStageTransform
 from microcosm.build.uk_runtime.frs_spine import (
     UKFRSSpineStageTransform,
     uk_frs_spine_seed_frame,
 )
+from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
 from microcosm.build.uk_runtime.national_build import write_uk_national_frame
 from microcosm.build.uk_runtime.national_frame import uk_household_weight_kind
+from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
 _PIPELINE = "uk-frs-spine"
@@ -56,15 +64,19 @@ _STAGE_NAMES = (
     "frs_education",
     "frs_legacy_proxies",
     "frs_education_grant_split",
+    "frs_take_up",
+    "frs_person_draws",
+    "frs_household_draws",
+    "frs_brma",
 )
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Build the deterministic UK FRS spine from pinned raw tabs. The "
-            "spine stage has no seed: determinism is structural because E2 "
-            "does not run stochastic assignment or imputation."
+            "Build the deterministic UK FRS spine from pinned raw tabs. Every "
+            "stochastic stage draws identity-keyed from seeds declared in the "
+            "manifest, so two runs from the same inputs are payload-identical."
         )
     )
     parser.add_argument(
@@ -123,6 +135,8 @@ def _artifact_pins(stages) -> dict[str, dict[str, object]]:
     pins = {}
     for stage in stages:
         for artifact in stage.artifacts:
+            if "table" not in artifact:
+                continue
             table = str(artifact["table"])
             pin = {
                 "locator": str(artifact["locator"]),
@@ -145,7 +159,32 @@ def _stage_artifact_pins(stage) -> dict[str, dict[str, object]]:
             "size_bytes": int(artifact["size_bytes"]),
         }
         for artifact in stage.artifacts
+        if "table" in artifact
     }
+
+
+def _resource_pins(stages, spec) -> dict[str, str]:
+    """Country-package resources the selected stages declare as inputs.
+
+    Non-tab artifacts reference committed resources by filename; their bytes
+    are hashed by load_country_spec, so the pin is the spec's recorded sha.
+    """
+
+    pins: dict[str, str] = {}
+    for stage in stages:
+        for artifact in stage.artifacts:
+            if "resource" not in artifact:
+                continue
+            resource = str(artifact["resource"])
+            sha256 = spec.resource_hashes.get(resource)
+            if sha256 is None:
+                raise ValueError(
+                    f"stage {stage.stage!r} declares resource artifact "
+                    f"{resource!r} which is not a declared country-package "
+                    "resource."
+                )
+            pins[resource] = str(sha256)
+    return dict(sorted(pins.items()))
 
 
 def _role_pins(pins: dict[str, dict[str, object]]) -> dict[str, dict[str, object]]:
@@ -175,16 +214,35 @@ def _rules_engine() -> PolicyEngineUKEngine:
 
 def _rules_engine_provenance() -> dict[str, str]:
     try:
-        import policyengine_uk
-    except ImportError:
+        version = metadata.version("policyengine-uk")
+    except metadata.PackageNotFoundError:
         return {"package": "policyengine-uk", "version": "unavailable"}
-    return {
-        "package": "policyengine-uk",
-        "version": str(getattr(policyengine_uk, "__version__", "unknown")),
-    }
+    return {"package": "policyengine-uk", "version": version}
 
 
-def _build_sidecar(*, frame, stages, records, artifact_pins) -> dict[str, object]:
+def _declared_seeds(stages) -> dict[str, dict[str, int]]:
+    declared: dict[str, dict[str, int]] = {}
+    for stage in stages:
+        stage_seeds: dict[str, int] = {}
+        for operation in stage.operations:
+            output = operation.parameters.get("output")
+            seed = operation.parameters.get("seed")
+            if isinstance(output, str) and isinstance(seed, int):
+                stage_seeds[output] = seed
+        if stage_seeds:
+            declared[stage.stage] = stage_seeds
+    return declared
+
+
+def _build_sidecar(
+    *,
+    frame,
+    stages,
+    records,
+    artifact_pins,
+    resource_pins: dict[str, str],
+    stochastic_contract_sha256: str,
+) -> dict[str, object]:
     household_weight = frame.weights_for("household")
     return {
         "schema_version": 2,
@@ -195,6 +253,7 @@ def _build_sidecar(*, frame, stages, records, artifact_pins) -> dict[str, object
         "household_weight_total": float(household_weight.values.sum()),
         "entity_row_counts": _entity_row_counts(frame),
         "artifact_pins": artifact_pins,
+        "resource_pins": resource_pins,
         "stage_artifact_pins": {
             stage.stage: _stage_artifact_pins(stage) for stage in stages
         },
@@ -211,6 +270,8 @@ def _build_sidecar(*, frame, stages, records, artifact_pins) -> dict[str, object
             stage.stage: [operation.kind for operation in stage.operations]
             for stage in stages
         },
+        "declared_seeds": _declared_seeds(stages),
+        "stochastic_contract_sha256": stochastic_contract_sha256,
         "rules_engine": _rules_engine_provenance(),
     }
 
@@ -289,6 +350,7 @@ def main(argv: list[str] | None = None) -> int:
         stages_by_name = spec.sources.stage_map()
         stages = [stages_by_name[name] for name in _STAGE_NAMES]
         artifact_pins = _artifact_pins(stages)
+        resource_pins = _resource_pins(stages, spec)
         state.input_pins_digest = role_pins_digest(_role_pins(artifact_pins))
         run_config = {
             "pipeline": _PIPELINE,
@@ -301,6 +363,7 @@ def main(argv: list[str] | None = None) -> int:
         ).hexdigest()
         append_phase(state, "inputs_pinned")
         engine = _rules_engine()
+        stochastic_contract = load_uk_take_up_contract()
         plan = country_stage_plan(
             spec,
             {
@@ -334,6 +397,22 @@ def main(argv: list[str] | None = None) -> int:
                         engine=engine,
                     )
                 ),
+                "frs_take_up": UKFRSTakeUpStageTransform(
+                    contract=stochastic_contract,
+                    stage=stages_by_name["frs_take_up"],
+                ),
+                "frs_person_draws": UKFRSPersonDrawsStageTransform(
+                    contract=stochastic_contract,
+                    stage=stages_by_name["frs_person_draws"],
+                ),
+                "frs_household_draws": UKFRSHouseholdDrawsStageTransform(
+                    contract=stochastic_contract,
+                    stage=stages_by_name["frs_household_draws"],
+                ),
+                "frs_brma": UKFRSBRMAStageTransform(
+                    stage=stages_by_name["frs_brma"],
+                    engine=engine,
+                ),
             },
             stage_names=_STAGE_NAMES,
         )
@@ -351,17 +430,15 @@ def main(argv: list[str] | None = None) -> int:
             stages=stages,
             records=records,
             artifact_pins=artifact_pins,
+            resource_pins=resource_pins,
+            stochastic_contract_sha256=stochastic_contract.resource_sha256,
         )
         atomic_write_json(sidecar_path, sidecar)
         append_phase(state, "build_sidecar_written")
         if args.emit_nonzero_shares is not None:
             final_columns = list(
                 dict.fromkeys(
-                    [
-                        column
-                        for record in records
-                        for column in record.produced
-                    ]
+                    [column for record in records for column in record.produced]
                     + list(FRS_EDUCATION_GRANT_REWRITES)
                 )
             )

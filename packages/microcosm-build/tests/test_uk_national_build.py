@@ -4,6 +4,7 @@ import json
 from datetime import date, datetime
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -205,15 +206,28 @@ def _write_two_row_h5(
     *,
     employment_income: tuple[float, float] = (40_000.0, 55_000.0),
 ) -> None:
+    n = 100
+    household_ids = np.arange(1, n + 1)
+    person_ids = np.arange(10, 10 + n)
+    benunit_ids = np.arange(100, 100 + n)
+    employment = np.resize(np.asarray(employment_income, dtype=float), n)
+
+    def flags(true_count: int) -> list[bool]:
+        return [index < true_count for index in range(n)]
+
     with pd.HDFStore(path) as store:
         store.put(
             "person",
             pd.DataFrame(
                 {
-                    "person_id": [10, 20],
-                    "person_household_id": [1, 2],
-                    "person_benunit_id": [100, 200],
-                    "employment_income": employment_income,
+                    "person_id": person_ids,
+                    "person_household_id": household_ids,
+                    "person_benunit_id": benunit_ids,
+                    "employment_income": employment,
+                    "age": [6 + index % 3 for index in range(n)],
+                    "would_claim_marriage_allowance": flags(50),
+                    "would_claim_scp": flags(85),
+                    "attends_private_school_random_draw": np.linspace(0.01, 0.99, n),
                 }
             ),
             format="table",
@@ -221,7 +235,20 @@ def _write_two_row_h5(
         )
         store.put(
             "benunit",
-            pd.DataFrame({"benunit_id": [100, 200]}),
+            pd.DataFrame(
+                {
+                    "benunit_id": benunit_ids,
+                    "would_claim_child_benefit": flags(89),
+                    "child_benefit_opts_out": flags(23),
+                    "would_claim_pc": flags(70),
+                    "would_claim_uc": flags(55),
+                    "would_claim_tfc": flags(59),
+                    "would_claim_extended_childcare": flags(81),
+                    "would_claim_universal_childcare": flags(56),
+                    "would_claim_targeted_childcare": flags(60),
+                    "maximum_extended_childcare_hours_usage": np.linspace(1.0, 30.0, n),
+                }
+            ),
             format="table",
             data_columns=True,
         )
@@ -229,10 +256,22 @@ def _write_two_row_h5(
             "household",
             pd.DataFrame(
                 {
-                    "household_id": [1, 2],
-                    "household_weight": [1.0, 2.0],
-                    "household_is_spi_synthetic": [False, True],
-                    "household_is_capital_gains_clone": [False, True],
+                    "household_id": household_ids,
+                    "household_weight": np.ones(n),
+                    "household_is_spi_synthetic": [
+                        index % 2 == 1 for index in range(n)
+                    ],
+                    "household_is_capital_gains_clone": [
+                        index % 4 >= 2 for index in range(n)
+                    ],
+                    "household_owns_tv": flags(95),
+                    "would_evade_tv_licence_fee": flags(11),
+                    "main_residential_property_purchased_is_first_home": flags(38),
+                    "property_purchased": flags(4),
+                    "brma": [
+                        "ABERDEEN_AND_SHIRE" if index % 2 == 0 else "ARGYLL_AND_BUTE"
+                        for index in range(n)
+                    ],
                 }
             ),
             format="table",
@@ -327,9 +366,7 @@ def test_driver_validates_the_uk_residue_after_each_stage(
         _run_national_build(
             input_h5=input_h5,
             staging_h5=tmp_path / "staging.h5",
-            stages=(
-                UKNationalStage("export_column", return_export_column),
-            ),
+            stages=(UKNationalStage("export_column", return_export_column),),
             coverage_engine=object(),
         )
 
@@ -891,6 +928,8 @@ def test_national_build_real_terminal_batch_passes_before_staging(
         "uk_weight_ratio": "passed",
         "uk_weights_audit": "passed",
         "uk_nonnegative_columns": "passed",
+        "uk_take_up_signal": "passed",
+        "uk_brma_enum_domain": "passed",
         # The legacy report omitted unevidenced gates; the battery names
         # every gap — non-blocking off the release-candidate posture.
         "uk_export_surface": "evidence_absent",

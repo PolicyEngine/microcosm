@@ -101,13 +101,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "a852b3de381376ea401b55f4ed98c59f01c2335b0f8483c6ca5b9337c1cbce32"
+    "8e0daba2f02e9f0051b8b592c5f983a7c7641aefdad5940e699232d5f09ef8bb"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "22e3b51e5886d8cf8bfb9a8a67b84fc99b112fbfd3dd7119fcff8bf79411924c"
+    "e41243c17b788c855e3aea88ff84513286f728d25238be9b7608344ae40e7550"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "63e7977a2fdcaaed2fe167ef5703e66f8ce90b2a0f0fc98c1645212266bc7c55"
+    "59c95a8c46796e34b8d40b2c41e304a734a36306b93120818c4b4435f8eef00d"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
@@ -143,6 +143,8 @@ UK_GATE_BATTERY_ENTRIES = {
         "nonnegative_columns",
     ),
     "uk_export_surface": ("export_surface", "terminal", "export_surface"),
+    "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
+    "uk_brma_enum_domain": ("enum_domain", "terminal", "enum_domain"),
     "uk_target_surface": ("target_surface", "terminal", "target_surface"),
     "uk_target_fit": ("target_fit", "terminal", "target_fit"),
     "uk_input_mass_parity": ("input_mass_parity", "terminal", "input_mass_parity"),
@@ -786,6 +788,24 @@ def _terminal_gate_details(name: str) -> dict:
                 "non_numeric_columns": [],
                 "density_filter": "none: every declared output is checked (#609)",
             },
+        }
+    if name == "take_up_signal":
+        # Mirrors uk_take_up_signal_gate's per-column detail block.
+        return {
+            "benunit.would_claim_uc": {
+                "weighted_share": 0.55,
+                "target": 0.55,
+                "absolute_deviation": 0.0,
+                "unique_count": 2,
+            }
+        }
+    if name == "enum_domain":
+        # Mirrors enum_domain_gate's detail block.
+        return {
+            "columns_checked": 1,
+            "invalid_counts": {},
+            "invalid_examples": {},
+            "allowed_values": {"brma": ["CENTRAL_LONDON"]},
         }
     raise AssertionError(f"No terminal fixture details for {name!r}")
 

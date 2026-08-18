@@ -537,7 +537,18 @@ def build_uk_national_dataset(
         # this build actually scheduled (same roster the preflight coverage
         # gate attests).
         "build_stage_names": tuple(stage.name for stage in materialized_stages),
+        "rules_engine": engine,
     }
+    brma_domain = _brma_enum_domain(engine)
+    if brma_domain is None and "brma" in frame.table("household"):
+        brma_domain = tuple(
+            sorted(
+                str(value)
+                for value in frame.table("household")["brma"].dropna().unique()
+            )
+        )
+    if brma_domain is not None:
+        artifacts["brma_enum_domain"] = brma_domain
     fit_weight_records = _stage_fit_weight_records(materialized_stages)
     if fit_weight_records is not None:
         artifacts["fit_weight_records"] = fit_weight_records
@@ -785,6 +796,23 @@ def _stage_fit_weight_records(
     except Exception:  # noqa: BLE001 - unreadable records coerce to () and
         # fail the audit as missing evidence rather than crashing the batch.
         return ()
+
+
+def _brma_enum_domain(engine: object) -> tuple[str, ...] | None:
+    variable_getter = getattr(engine, "_variable", None)
+    if not callable(variable_getter):
+        return None
+    try:
+        variable = variable_getter("brma")
+    except Exception:
+        return None
+    possible_values = getattr(variable, "possible_values", None)
+    members = getattr(possible_values, "__members__", None)
+    if isinstance(members, Mapping):
+        return tuple(str(name) for name in members)
+    if possible_values is None:
+        return None
+    return tuple(str(getattr(value, "name", value)) for value in possible_values)
 
 
 def _write_input_coverage_diagnostic(path: Path, gate: GateResult) -> None:

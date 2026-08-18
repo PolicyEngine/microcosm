@@ -152,6 +152,20 @@ def _fixture_coverage_registry():
             legacy_name="uk_release_input_coverage",
             needs_frame=False,
         ),
+        "take_up_signal": UKGateBinding(
+            name="take_up_signal",
+            evaluator=lambda context, parameters: GateResult(
+                name="take_up_signal", passed=True
+            ),
+            parameter_keys=frozenset({"maximum_share_deviation"}),
+        ),
+        "enum_domain": UKGateBinding(
+            name="enum_domain",
+            evaluator=lambda context, parameters: GateResult(
+                name="enum_domain", passed=True
+            ),
+            parameter_keys=frozenset({"columns"}),
+        ),
     }
 
 
@@ -251,8 +265,7 @@ class TestUKSurfaceAdapter:
         assert result.name == "nonnegative_columns"
         assert result.passed is False
         assert (
-            "sic_industry_division: 1 finite value(s) below zero"
-            in result.failures[0]
+            "sic_industry_division: 1 finite value(s) below zero" in result.failures[0]
         )
 
     def test_nonnegative_binding_passes_clean_scheduled_columns(self) -> None:
@@ -339,9 +352,10 @@ class TestBatteryRegressions:
         passed = [
             entry_id for entry_id, o in by_id.items() if o.status is GateStatus.PASSED
         ]
-        # 11 with uk_nonnegative_columns: the scheduled stages declare no
-        # nonnegative outputs, so the gate passes with zero required columns.
-        assert len(passed) == 11
+        # 11 as on main (uk_nonnegative_columns passes with zero required
+        # columns — the scheduled stages declare none) plus the two E4
+        # stochastic gates; their evaluators have direct tests of their own.
+        assert len(passed) == 13
         qrf = by_id["uk_qrf_tail_concentration"]
         assert qrf.status is GateStatus.FAILED
         assert "declared QRF output is absent" in qrf.result.failures[0]
