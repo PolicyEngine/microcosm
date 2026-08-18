@@ -6,13 +6,18 @@ import argparse
 import gzip
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import pandas as pd
 
 EXPECTED_SHA256 = "4956a20a5e5a04be5a00abd6b841d29b96da27ca539e522dd570537031120a02"
 EXPECTED_ROWS = 1_257_744
-DEFAULT_SOURCE = Path(".codex-work/incumbent/storage/lha_list_of_rents.csv.gz")
+# The VOA rents CSV is a staged input, not repo content. Point
+# UK_LHA_RENTS_CSV at wherever it is staged, or pass --source.
+DEFAULT_SOURCE = Path(
+    os.environ.get("UK_LHA_RENTS_CSV", "incumbent/storage/lha_list_of_rents.csv.gz")
+)
 DEFAULT_OUTPUT = Path(
     "packages/microcosm-build/src/microcosm/build/uk/brma_rent_counts.json"
 )

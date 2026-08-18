@@ -2,13 +2,24 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 from importlib.resources import files
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[3]
-STAGED_LHA_RENTS = ROOT / ".codex-work/incumbent/storage/lha_list_of_rents.csv.gz"
+# The VOA rents CSV is a staged input, not repo content: the regeneration
+# check runs wherever it is staged (point UK_LHA_RENTS_CSV at it) and skips
+# elsewhere, including PR CI. The committed resource's integrity is still
+# pinned in CI by the source-facts test below, which holds its sha256, row
+# count, and cell/BRMA counts against the generator's constants.
+STAGED_LHA_RENTS = Path(
+    os.environ.get(
+        "UK_LHA_RENTS_CSV",
+        ROOT / ".codex-work/incumbent/storage/lha_list_of_rents.csv.gz",
+    )
+)
 GENERATOR = ROOT / "tools/build_uk_brma_count_table.py"
 _SPEC = importlib.util.spec_from_file_location("build_uk_brma_count_table", GENERATOR)
 assert _SPEC is not None and _SPEC.loader is not None
@@ -25,6 +36,10 @@ def _resource() -> dict:
     )
 
 
+@pytest.mark.skipif(
+    not STAGED_LHA_RENTS.exists(),
+    reason=f"staged VOA rents CSV not present at {STAGED_LHA_RENTS}",
+)
 def test_committed_brma_resource_matches_regenerator() -> None:
     assert _resource() == build_resource(STAGED_LHA_RENTS)
 

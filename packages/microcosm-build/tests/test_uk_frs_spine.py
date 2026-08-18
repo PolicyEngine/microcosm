@@ -974,7 +974,15 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     assert sidecar["declared_seeds"]["frs_brma"] == {"brma": 0}
     assert len(sidecar["stochastic_contract_sha256"]) == 64
     assert sidecar["resource_pins"] == {"brma_rent_counts.json": "f" * 64}
-    assert sidecar["rules_engine"]["version"] == metadata.version("policyengine-uk")
+    # Resolve the expected version the way the driver does, so the assertion
+    # holds in the engine-hermetic lane too: the real version where
+    # policyengine-uk is installed, the documented fallback where it is not.
+    # Either way this still fails on the "unknown" the U1 pin fix removed.
+    try:
+        expected_engine_version = metadata.version("policyengine-uk")
+    except metadata.PackageNotFoundError:
+        expected_engine_version = "unavailable"
+    assert sidecar["rules_engine"]["version"] == expected_engine_version
     share_payload = json.loads(shares.read_text())
     assert share_payload["stages"]["frs_spine"]["employment_income"] == pytest.approx(
         2 / 3
