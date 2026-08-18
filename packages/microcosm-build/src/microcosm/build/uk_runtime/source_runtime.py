@@ -32,8 +32,7 @@ def _uk_nonnegative_outputs_by_stage() -> dict[str, tuple[str, ...]]:
     if spec.sources is None:
         return {}
     return {
-        stage.stage: tuple(stage.nonnegative_outputs)
-        for stage in spec.sources.stages
+        stage.stage: tuple(stage.nonnegative_outputs) for stage in spec.sources.stages
     }
 
 
@@ -62,6 +61,8 @@ def uk_stage_implementations(
     frs_person_draws_transform: Callable[[Frame], Frame] | None = None,
     frs_household_draws_transform: Callable[[Frame], Frame] | None = None,
     frs_brma_transform: Callable[[Frame], Frame] | None = None,
+    was_wealth_transform: Callable[[Frame], Frame] | None = None,
+    regional_property_uprating_transform: Callable[[Frame], Frame] | None = None,
     frs_hmrc_spine_leaves_transform: Callable[[Frame], Frame] | None = None,
     spi_support_channel_transform: Callable[[Frame], Frame] | None = None,
     hmrc_spi_income_spine_transform: Callable[[Frame], Frame] | None = None,
@@ -84,6 +85,8 @@ def uk_stage_implementations(
         "frs_person_draws": frs_person_draws_transform,
         "frs_household_draws": frs_household_draws_transform,
         "frs_brma": frs_brma_transform,
+        "was_wealth": was_wealth_transform,
+        "regional_property_uprating": regional_property_uprating_transform,
         "frs_hmrc_spine_leaves": frs_hmrc_spine_leaves_transform,
         "spi_support_channel": spi_support_channel_transform,
         "hmrc_spi_income_spine": hmrc_spi_income_spine_transform,

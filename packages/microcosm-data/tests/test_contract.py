@@ -123,13 +123,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "609075af473c64fe7dbcb035b9254121d6c9c000c28fc67a14417bb02657d08f"
+    "5ddd3da9a52b0dc19ba1c97315f0e4f8acdedf2b74ea29bff512cbdb57de1cab"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "610512a5bbddeba355cf57de52579eca5f36cf43788be239307cc5c025e76783"
+    "8d58fffe5e6542a7f10578076bbcc943cf587f9f22017ccc630450007b5b6166"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "cb25537c8a99aa6c44911b098df10dfb7ba143dc3210400b61f847c3d0c9b12d"
+    "b7b645deee1b15750403f98a4c7dac09d6e08440a878b8d1ff83a15e9195b809"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
@@ -164,6 +164,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "terminal",
         "nonnegative_columns",
     ),
+    "uk_support": ("support", "terminal", "support"),
     "uk_export_surface": ("export_surface", "terminal", "export_surface"),
     "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
     "uk_brma_enum_domain": ("enum_domain", "terminal", "enum_domain"),
@@ -748,6 +749,8 @@ def _terminal_gate_details(name: str) -> dict:
             "atol": 0.0,
             "chunk_size": 1_000_000,
         }
+    if name == "support":
+        return {"columns_checked": 13}
     if name == "export_surface":
         return {
             "candidate_columns": 1,

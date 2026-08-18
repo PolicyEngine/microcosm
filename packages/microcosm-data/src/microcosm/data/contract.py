@@ -315,6 +315,7 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "surface",
         }
     ),
+    "support": frozenset({"columns_checked"}),
 }
 _UK_TARGET_GEOGRAPHY_LEVELS = frozenset(
     {"national", "region", "country", "local_authority", "constituency"}
@@ -342,13 +343,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "609075af473c64fe7dbcb035b9254121d6c9c000c28fc67a14417bb02657d08f"
+    "5ddd3da9a52b0dc19ba1c97315f0e4f8acdedf2b74ea29bff512cbdb57de1cab"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "610512a5bbddeba355cf57de52579eca5f36cf43788be239307cc5c025e76783"
+    "8d58fffe5e6542a7f10578076bbcc943cf587f9f22017ccc630450007b5b6166"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "cb25537c8a99aa6c44911b098df10dfb7ba143dc3210400b61f847c3d0c9b12d"
+    "b7b645deee1b15750403f98a4c7dac09d6e08440a878b8d1ff83a15e9195b809"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -361,6 +362,7 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_weight_ratio": "weight_ratio",
     "uk_weights_audit": "weights_audit",
     "uk_nonnegative_columns": "nonnegative_columns",
+    "uk_support": "support",
     "uk_export_surface": "export_surface",
     "uk_take_up_signal": "take_up_signal",
     "uk_brma_enum_domain": "enum_domain",
@@ -386,6 +388,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_weight_ratio": ("weight_ratio", "terminal"),
     "uk_weights_audit": ("weights_audit", "terminal"),
     "uk_nonnegative_columns": ("nonnegative_columns", "terminal"),
+    "uk_support": ("support", "terminal"),
     "uk_export_surface": ("export_surface", "terminal"),
     "uk_take_up_signal": ("take_up_signal", "terminal"),
     "uk_brma_enum_domain": ("enum_domain", "terminal"),

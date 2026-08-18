@@ -116,6 +116,9 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
     spi_reason = str(
         manifest.family_coverage["hmrc_spi_income"]["required_mass_change_reason"]
     )
+    e5_reason = str(
+        manifest.family_coverage["was_wealth"]["required_mass_change_reason"]
+    )
     compliant = SimpleNamespace(
         household_weight_kind=WeightKind.IMPORTANCE,
         time_period="2023",
@@ -133,6 +136,13 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
                 new_total=100.0,
                 declared_factor=1.0,
                 reason=UK_CGT_MASS_CONSERVATION_REASON,
+            ),
+            MassChangeRecord(
+                entity="household",
+                old_total=100.0,
+                new_total=100.0,
+                declared_factor=1.0,
+                reason=e5_reason,
             ),
         ),
     )

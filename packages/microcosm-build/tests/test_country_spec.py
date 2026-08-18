@@ -315,12 +315,14 @@ class TestExistingPackagesGeneralize:
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
+            "regional_land_values.json",
             "source_stages.json",
             "take_up_contract.json",
             "input_mass_reviewed_exclusions.json",
             "national_staging_build_record.json",
             "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
+            "was_wealth_support_bounds.json",
             "uk_local_target_census.json",
         )
 
@@ -353,6 +355,7 @@ class TestUKGatesManifest:
             "uk_weight_ratio",
             "uk_weights_audit",
             "uk_nonnegative_columns",
+            "uk_support",
             "uk_export_surface",
             "uk_take_up_signal",
             "uk_brma_enum_domain",

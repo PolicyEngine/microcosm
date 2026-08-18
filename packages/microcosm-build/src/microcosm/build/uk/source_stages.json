@@ -804,6 +804,212 @@
       "notes": "Identity-keyed seed 0 streams replace the incumbent BRMA seed 0 sequential generator. Household collapse uses salt brma:household_pick."
     },
     {
+      "stage": "was_wealth",
+      "survey": "Wealth and Assets Survey round 8",
+      "source": "Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed 2006-22 household tab.",
+      "grain": "household",
+      "base_candidate": {
+        "filename": "populace_uk_2023.h5",
+        "revision": "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z",
+        "sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+        "tier": "frs"
+      },
+      "artifacts": [
+        {
+          "role": "qrf_donor",
+          "kind": "private_microdata",
+          "ukds_study_number": 7215,
+          "doi": "10.5255/UKDA-SN-7215-20",
+          "filename": "was_round_8_hhold_eul_may_2025_230525.tab",
+          "sha256": "18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374",
+          "size_bytes": 39073613,
+          "access": "private_local_input",
+          "locator": "caller-supplied local input",
+          "runtime_sha256_required": true
+        }
+      ],
+      "operations": [
+        {
+          "kind": "derive",
+          "scope": "strict WAS donor cleaning with lower-case exact column matching and no fuzzy r/w fallback",
+          "fillna": 0,
+          "direct_maps": {
+            "owned_land": "DVLUKValR8_sum",
+            "property_wealth": "DVPropertyR8",
+            "gross_financial_wealth": "HFINWR8_SUM",
+            "net_financial_wealth": "HFINWNTR8_Sum",
+            "main_residence_value": "DVhvalueR8",
+            "other_residential_property_value": "DVHseValR8_sum",
+            "non_residential_property_value": "DVBlDValR8_sum",
+            "savings": "DVSaValR8_aggr",
+            "num_vehicles": "vcarnr8",
+            "weight": "R8xshhwgt"
+          },
+          "derived": {
+            "corporate_wealth_excl_isa": "(totalpenr8_aggr - dvvaldbt_scaper8_aggr) + DVFESHARESR8_aggr + DVFShUKVR8_aggr + DVFCollVR8_aggr",
+            "stocks_and_shares_isa": "DVIISAVR8_aggr",
+            "cash_isa": "DVCISAVR8_aggr",
+            "student_loan_balance": "Tot_LosR8_aggr - Tot_los_exc_SLCR8_aggr",
+            "is_renting": "DVPriRntR8 == 1",
+            "region": "GORR8 via incumbent REGIONS map"
+          }
+        },
+        {
+          "kind": "materialize_rules_engine_predictors",
+          "predictors": [
+            "household_net_income",
+            "num_adults",
+            "num_children",
+            "private_pension_income",
+            "employment_income",
+            "self_employment_income",
+            "capital_income",
+            "is_renting"
+          ],
+          "consumed_only": true
+        },
+        {
+          "kind": "fit_weighted_qrf_chain",
+          "weights": "explicit",
+          "seed": 0,
+          "n_estimators": 100,
+          "predictors": [
+            "household_net_income",
+            "num_adults",
+            "num_children",
+            "private_pension_income",
+            "employment_income",
+            "self_employment_income",
+            "capital_income",
+            "num_bedrooms",
+            "council_tax",
+            "is_renting",
+            "region"
+          ],
+          "categorical_predictors": [
+            "region",
+            "is_renting"
+          ],
+          "region_remap": {
+            "NORTHERN_IRELAND": "WALES"
+          },
+          "integer_outputs": [
+            "num_vehicles"
+          ],
+          "chain_order": [
+            "owned_land",
+            "property_wealth",
+            "corporate_wealth_excl_isa",
+            "stocks_and_shares_isa",
+            "corporate_wealth",
+            "gross_financial_wealth",
+            "net_financial_wealth",
+            "main_residence_value",
+            "other_residential_property_value",
+            "non_residential_property_value",
+            "savings",
+            "num_vehicles",
+            "student_loan_balance",
+            "cash_isa"
+          ]
+        },
+        {
+          "kind": "fold_into",
+          "output": "corporate_wealth",
+          "inputs": [
+            "corporate_wealth_excl_isa",
+            "stocks_and_shares_isa"
+          ],
+          "drop_inputs": [
+            "corporate_wealth_excl_isa"
+          ]
+        },
+        {
+          "kind": "support_clip",
+          "range": "donor_realized"
+        },
+        {
+          "kind": "allocate_within_group_waterfall",
+          "source": "household.student_loan_balance",
+          "target": "person.student_loan_balance",
+          "tiers": [
+            "student_loan_repayments > 0",
+            "student_loans > 0",
+            "highest_education == TERTIARY",
+            "current_education == TERTIARY",
+            "18 <= age <= 55",
+            "everyone"
+          ],
+          "keyed_by": "entity_id"
+        }
+      ],
+      "outputs": [
+        "owned_land",
+        "property_wealth",
+        "corporate_wealth",
+        "gross_financial_wealth",
+        "net_financial_wealth",
+        "main_residence_value",
+        "other_residential_property_value",
+        "non_residential_property_value",
+        "savings",
+        "num_vehicles",
+        "cash_isa",
+        "stocks_and_shares_isa",
+        "student_loan_balance"
+      ],
+      "nonnegative_outputs": [
+        "owned_land",
+        "property_wealth",
+        "corporate_wealth",
+        "gross_financial_wealth",
+        "main_residence_value",
+        "other_residential_property_value",
+        "non_residential_property_value",
+        "savings",
+        "num_vehicles",
+        "cash_isa",
+        "stocks_and_shares_isa",
+        "student_loan_balance"
+      ],
+      "notes": "Ports incumbent WAS round-8 wealth imputation with signed E5 differences: exact lower-case column matching replaces the fuzzy r/w fallback; cash ISA uses DVCISAVR8_aggr and stocks-and-shares ISA uses DVIISAVR8_aggr; corporate_wealth folds stocks-and-shares ISA after drawing corporate_wealth_excl_isa; recipient Northern Ireland regions are mapped to Wales for prediction only; student_loan_balance is allocated by household id rather than the incumbent positional off-by-one. Engine predictors materialize at their native entity and person/benunit values are summed to household, reproducing the incumbent map_to=household semantics; region is one-hot encoded jointly across donor and recipient (the incumbent's dummy encoding), with unmapped donor GOR codes becoming all-zero dummy rows. The WAS and FRS predictor definitions are not fully like-for-like and are ported as-is; raw WAS missing values are blanket-filled with zero and negative sentinels are not recoded."
+    },
+    {
+      "stage": "regional_property_uprating",
+      "survey": "Public regional property reference",
+      "source": "MHCLG dwellings and ONS UK House Price Index December 2025 regional average prices.",
+      "grain": "household",
+      "base_candidate": {
+        "filename": "populace_uk_2023.h5",
+        "revision": "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z",
+        "sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+        "tier": "frs"
+      },
+      "artifacts": [
+        {
+          "role": "regional_reference",
+          "resource": "regional_land_values.json",
+          "kind": "public_aggregate_reference",
+          "format": "json"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "uprate_to_regional_reference",
+          "resource": "regional_land_values.json",
+          "factor": "avg_house_price / unweighted_mean(main_residence_value | region, >0)",
+          "owner_rows": "main_residence_value > 0",
+          "skip_empty_or_nonpositive_regions": true
+        }
+      ],
+      "outputs": [],
+      "rewrites": [
+        "main_residence_value",
+        "property_wealth"
+      ],
+      "notes": "Deterministically rescales owner rows so regional unweighted owner means match the public house-price reference. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior."
+    },
+    {
       "stage": "frs_hmrc_spine_leaves",
       "survey": "Family Resources Survey 2023-24",
       "source": "Department for Work and Pensions Family Resources Survey 2023-24 raw adult.tab and benefits.tab, caller-supplied local input",

@@ -1143,7 +1143,11 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     sidecar = json.loads(output.with_suffix(".build.json").read_text())
     assert sidecar["pipeline"] == "uk-frs-spine"
     assert sidecar["schema_version"] == 2
-    assert sidecar["stages"] == list(tool._STAGE_NAMES)
+    assert sidecar["stages"] == [
+        name
+        for name in tool._STAGE_NAMES
+        if name in _synthetic_spec(stage).sources.stage_map()
+    ]
     assert sidecar["entity_row_counts"] == {
         "person": 3,
         "benunit": 2,

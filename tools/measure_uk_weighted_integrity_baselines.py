@@ -48,6 +48,7 @@ from microcosm.build.uk_runtime.hmrc_source_contract import (
     uk_hmrc_weighted_qrf_output_columns,
 )
 from microcosm.build.uk_runtime.national_build import load_uk_national_frame
+from microcosm.build.uk_runtime.was_wealth import UK_WAS_WEALTH_HOUSEHOLD_OUTPUT_COLUMNS
 from microcosm.build.uk_runtime.weighted_integrity import (
     uk_input_mass_totals,
     uk_qrf_tail_concentration_columns,
@@ -60,6 +61,7 @@ DEFAULT_TOP_K_GRID = (10, 100, 500, 1000)
 # 30; raise this with --sdc-minimum-count when a study's Special Conditions
 # (EUL clause 3) require it.
 DEFAULT_SDC_MINIMUM_COUNT = 10
+UK_WAS_HOUSEHOLD_WEIGHTED_INTEGRITY_COLUMNS = UK_WAS_WEALTH_HOUSEHOLD_OUTPUT_COLUMNS
 
 
 def _parse_args() -> argparse.Namespace:
@@ -202,6 +204,16 @@ def _measure(
         )
         for column in sorted(values)
     }
+    household_values, household_weights = household_tail_concentration_columns(frame)
+    household_tail = {
+        column: _tail_measurements(
+            household_values[column],
+            household_weights[column],
+            top_k_grid,
+            minimum_count=minimum_count,
+        )
+        for column in sorted(household_values)
+    }
     return {
         "path": str(path.resolve()),
         "filename": path.name,
@@ -215,6 +227,8 @@ def _measure(
         "input_mass_totals": dict(sorted(totals.items())),
         "qrf_surface": surface,
         "qrf_tail": qrf_tail,
+        "household_qrf_surface": "was_wealth",
+        "household_qrf_tail": household_tail,
         "input_mass_reference_template": {
             "schema_version": 1,
             "identity": {
@@ -226,6 +240,25 @@ def _measure(
             "totals": dict(sorted(totals.items())),
         },
     }
+
+
+def household_tail_concentration_columns(
+    frame,
+    output_columns=UK_WAS_HOUSEHOLD_WEIGHTED_INTEGRITY_COLUMNS,
+) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    household = frame.table("household")
+    weights = frame.weights_for("household").values
+    values: dict[str, np.ndarray] = {}
+    aligned_weights: dict[str, np.ndarray] = {}
+    for column in output_columns:
+        if column not in household.columns:
+            continue
+        values[column] = np.asarray(
+            household[column],
+            dtype=np.float64,
+        )
+        aligned_weights[column] = np.asarray(weights, dtype=np.float64)
+    return values, aligned_weights
 
 
 def main() -> int:

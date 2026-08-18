@@ -52,12 +52,16 @@ from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
 from microcosm.build.uk_runtime.hmrc_replay import write_hmrc_replay_report
 from microcosm.build.uk_runtime.national_build import write_uk_national_frame
 from microcosm.build.uk_runtime.national_frame import uk_household_weight_kind
+from microcosm.build.uk_runtime.regional_uprating import (
+    UKRegionalPropertyUpratingStageTransform,
+)
 from microcosm.build.uk_runtime.spi_spine import (
     UKFRSHMRCSpineLeavesStageTransform,
     UKSPIIncomeSpineStageTransform,
     UKSPISupportChannelStageTransform,
 )
 from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
+from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
 _PIPELINE = "uk-frs-spine"
@@ -75,6 +79,8 @@ _STAGE_NAMES = (
     "frs_person_draws",
     "frs_household_draws",
     "frs_brma",
+    "was_wealth",
+    "regional_property_uprating",
     "frs_hmrc_spine_leaves",
     "spi_support_channel",
     "hmrc_spi_income_spine",
@@ -117,6 +123,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--checkpoint-dir",
         type=Path,
         help="Optional directory for a copy of the completed spine checkpoint.",
+    )
+    parser.add_argument(
+        "--was-tab",
+        type=Path,
+        help="Caller-supplied private WAS round-8 household tab for was_wealth.",
     )
     parser.add_argument(
         "--emit-nonzero-shares",
@@ -166,31 +177,32 @@ def _artifact_pins(stages) -> dict[str, dict[str, object]]:
     pins = {}
     for stage in stages:
         for artifact in stage.artifacts:
-            if "table" not in artifact:
+            key = artifact.get("table", artifact.get("filename"))
+            if key is None:
                 continue
-            table = str(artifact["table"])
+            key = str(key)
             pin = {
                 "locator": str(artifact["locator"]),
                 "sha256": str(artifact["sha256"]),
                 "size_bytes": int(artifact["size_bytes"]),
             }
-            if table in pins and pins[table] != pin:
+            if key in pins and pins[key] != pin:
                 raise ValueError(
-                    f"FRS tab {table!r} has inconsistent artifact pins across stages."
+                    f"UK source artifact {key!r} has inconsistent pins across stages."
                 )
-            pins[table] = pin
+            pins[key] = pin
     return dict(sorted(pins.items()))
 
 
 def _stage_artifact_pins(stage) -> dict[str, dict[str, object]]:
     return {
-        str(artifact["table"]): {
+        str(artifact.get("table", artifact.get("filename"))): {
             "locator": str(artifact["locator"]),
             "sha256": str(artifact["sha256"]),
             "size_bytes": int(artifact["size_bytes"]),
         }
         for artifact in stage.artifacts
-        if "table" in artifact
+        if "table" in artifact or "filename" in artifact
     }
 
 
@@ -309,6 +321,8 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds["stage1"] = seed
                 elif operation.kind == "fit_weighted_qrf_stage2":
                     stage_seeds["stage2"] = seed
+                elif operation.kind == "fit_weighted_qrf_chain":
+                    stage_seeds[stage.stage] = seed
         if stage_seeds:
             declared[stage.stage] = stage_seeds
     return declared
@@ -446,7 +460,12 @@ def main(argv: list[str] | None = None) -> int:
         if spec.sources is None:
             raise ValueError("UK country spec has no source stages.")
         stages_by_name = spec.sources.stage_map()
-        stages = [stages_by_name[name] for name in _STAGE_NAMES]
+        stage_names = tuple(name for name in _STAGE_NAMES if name in stages_by_name)
+        if "was_wealth" in stage_names and args.was_tab is None:
+            raise ValueError(
+                "--was-tab is required when the was_wealth stage is scheduled."
+            )
+        stages = [stages_by_name[name] for name in stage_names]
         artifact_pins = _artifact_pins(stages)
         resource_pins = _resource_pins(stages, spec)
         input_artifact_pins = _input_artifact_pins(stages)
@@ -461,7 +480,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         run_config = {
             "pipeline": _PIPELINE,
-            "stages": list(_STAGE_NAMES),
+            "stages": list(stage_names),
             "artifact_pins_digest": state.input_pins_digest,
             "spine_h5": str(args.spine_h5),
         }
@@ -471,70 +490,78 @@ def main(argv: list[str] | None = None) -> int:
         append_phase(state, "inputs_pinned")
         engine = _rules_engine()
         stochastic_contract = load_uk_take_up_contract()
-        hmrc_spine_transform = UKSPIIncomeSpineStageTransform(
-            args.spi_tab,
-            args.hmrc_ods,
-            stage=stages_by_name["hmrc_spi_income_spine"],
+        implementations = {
+            "frs_spine": UKFRSSpineStageTransform(
+                args.frs_raw_dir,
+                stage=stages_by_name["frs_spine"],
+            ),
+            "frs_employment": UKFRSEmploymentStageTransform(
+                args.frs_raw_dir,
+                stage=stages_by_name["frs_employment"],
+            ),
+            "frs_council_tax": UKFRSCouncilTaxStageTransform(
+                args.frs_raw_dir,
+                stage=stages_by_name["frs_council_tax"],
+            ),
+            "frs_disability": UKFRSDisabilityStageTransform(
+                stage=stages_by_name["frs_disability"],
+            ),
+            "frs_education": UKFRSEducationStageTransform(
+                args.frs_raw_dir,
+                stage=stages_by_name["frs_education"],
+            ),
+            "frs_legacy_proxies": UKFRSLegacyProxiesStageTransform(
+                args.frs_raw_dir,
+                stage=stages_by_name["frs_legacy_proxies"],
+                engine=engine,
+            ),
+            "frs_education_grant_split": (
+                UKFRSEducationGrantSplitStageTransform(
+                    stage=stages_by_name["frs_education_grant_split"],
+                    engine=engine,
+                )
+            ),
+            "frs_take_up": UKFRSTakeUpStageTransform(
+                contract=stochastic_contract,
+                stage=stages_by_name["frs_take_up"],
+            ),
+            "frs_person_draws": UKFRSPersonDrawsStageTransform(
+                contract=stochastic_contract,
+                stage=stages_by_name["frs_person_draws"],
+            ),
+            "frs_household_draws": UKFRSHouseholdDrawsStageTransform(
+                contract=stochastic_contract,
+                stage=stages_by_name["frs_household_draws"],
+            ),
+            "frs_brma": UKFRSBRMAStageTransform(
+                stage=stages_by_name["frs_brma"],
+                engine=engine,
+            ),
+        }
+        if "was_wealth" in stage_names:
+            implementations["was_wealth"] = UKWASWealthStageTransform(
+                stage=stages_by_name["was_wealth"],
+                engine=engine,
+                was_tab_path=args.was_tab,
+            )
+        if "regional_property_uprating" in stage_names:
+            implementations["regional_property_uprating"] = (
+                UKRegionalPropertyUpratingStageTransform(
+                    stage=stages_by_name["regional_property_uprating"],
+                )
+            )
+        implementations["frs_hmrc_spine_leaves"] = UKFRSHMRCSpineLeavesStageTransform(
+            args.frs_raw_dir,
+            stage=stages_by_name["frs_hmrc_spine_leaves"],
         )
+        implementations["spi_support_channel"] = UKSPISupportChannelStageTransform(
+            stage=stages_by_name["spi_support_channel"],
+        )
+        implementations["hmrc_spi_income_spine"] = hmrc_spine_transform
         plan = country_stage_plan(
             spec,
-            {
-                "frs_spine": UKFRSSpineStageTransform(
-                    args.frs_raw_dir,
-                    stage=stages_by_name["frs_spine"],
-                ),
-                "frs_employment": UKFRSEmploymentStageTransform(
-                    args.frs_raw_dir,
-                    stage=stages_by_name["frs_employment"],
-                ),
-                "frs_council_tax": UKFRSCouncilTaxStageTransform(
-                    args.frs_raw_dir,
-                    stage=stages_by_name["frs_council_tax"],
-                ),
-                "frs_disability": UKFRSDisabilityStageTransform(
-                    stage=stages_by_name["frs_disability"],
-                ),
-                "frs_education": UKFRSEducationStageTransform(
-                    args.frs_raw_dir,
-                    stage=stages_by_name["frs_education"],
-                ),
-                "frs_legacy_proxies": UKFRSLegacyProxiesStageTransform(
-                    args.frs_raw_dir,
-                    stage=stages_by_name["frs_legacy_proxies"],
-                    engine=engine,
-                ),
-                "frs_education_grant_split": (
-                    UKFRSEducationGrantSplitStageTransform(
-                        stage=stages_by_name["frs_education_grant_split"],
-                        engine=engine,
-                    )
-                ),
-                "frs_take_up": UKFRSTakeUpStageTransform(
-                    contract=stochastic_contract,
-                    stage=stages_by_name["frs_take_up"],
-                ),
-                "frs_person_draws": UKFRSPersonDrawsStageTransform(
-                    contract=stochastic_contract,
-                    stage=stages_by_name["frs_person_draws"],
-                ),
-                "frs_household_draws": UKFRSHouseholdDrawsStageTransform(
-                    contract=stochastic_contract,
-                    stage=stages_by_name["frs_household_draws"],
-                ),
-                "frs_brma": UKFRSBRMAStageTransform(
-                    stage=stages_by_name["frs_brma"],
-                    engine=engine,
-                ),
-                "frs_hmrc_spine_leaves": UKFRSHMRCSpineLeavesStageTransform(
-                    args.frs_raw_dir,
-                    stage=stages_by_name["frs_hmrc_spine_leaves"],
-                ),
-                "spi_support_channel": UKSPISupportChannelStageTransform(
-                    stage=stages_by_name["spi_support_channel"],
-                ),
-                "hmrc_spi_income_spine": hmrc_spine_transform,
-            },
-            stage_names=_STAGE_NAMES,
+            implementations,
+            stage_names=stage_names,
         )
         frame, records = plan.run(uk_frs_spine_seed_frame())
         append_phase(state, "spine_built")
