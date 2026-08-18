@@ -18,7 +18,7 @@ from __future__ import annotations
 import hashlib
 import sys
 
-from microcosm.build.spec_engine import canonical, loader
+from microcosm.build.spec_engine import canonical, loader, seeds
 from microcosm.build.spec_engine.canonical import canonical_json_bytes
 
 
@@ -63,6 +63,14 @@ def main(argv: list[str]) -> None:
                 section = envelopes[0]["resolved_bindings"][dump_section]
                 print(f"DUMP {dump_section}")
                 print(canonical_json_bytes(section).decode("utf-8"))
+                if dump_section == "seed_protocol":
+                    for kernel in seeds.LEGACY_V1_KERNELS:
+                        for module in kernel.source_modules:
+                            print(
+                                "MODULE",
+                                module,
+                                seeds.source_inventory_sha256((module,))[:16],
+                            )
     finally:
         loader.sha256_json = real
 
