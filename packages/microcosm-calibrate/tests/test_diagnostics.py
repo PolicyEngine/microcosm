@@ -33,7 +33,7 @@ from microcosm.calibrate import (
     score_targets,
     write_calibration_diagnostics,
 )
-from microcosm.calibrate.diagnostics import _target_loss_basis_hash
+from microcosm.calibrate._target_loss_attribution import target_loss_basis_hash
 
 _ATTRIBUTION_ROW_FIELDS = {
     "target_loss_weight",
@@ -184,12 +184,12 @@ def test_target_loss_basis_hash_is_stable_and_sensitive() -> None:
     names = ["population@2024", "income@2024"]
     weights = np.asarray([1.0, 2.0])
     scales = np.asarray([100.0, 200.0])
-    expected = _target_loss_basis_hash(names, weights, scales)
+    expected = target_loss_basis_hash(names, weights, scales)
 
-    assert _target_loss_basis_hash(names, weights.copy(), scales.copy()) == expected
-    assert _target_loss_basis_hash(list(reversed(names)), weights, scales) != expected
-    assert _target_loss_basis_hash(names, np.asarray([1.0, 3.0]), scales) != expected
-    assert _target_loss_basis_hash(names, weights, np.asarray([100.0, 201.0])) != (
+    assert target_loss_basis_hash(names, weights.copy(), scales.copy()) == expected
+    assert target_loss_basis_hash(list(reversed(names)), weights, scales) != expected
+    assert target_loss_basis_hash(names, np.asarray([1.0, 3.0]), scales) != expected
+    assert target_loss_basis_hash(names, weights, np.asarray([100.0, 201.0])) != (
         expected
     )
 
@@ -293,6 +293,30 @@ def test_contribution_mismatch_warns_instead_of_failing_diagnostics(
         warning_code=TARGET_LOSS_ATTRIBUTION_WARNING_CODES["contribution_mismatch"],
     )
     assert payload["final_loss"] == invalid.final_loss
+
+
+def test_unexpected_attribution_assembly_failure_warns_and_preserves_core_payload(
+    feasible_frame,
+    monkeypatch,
+) -> None:
+    result = _result(feasible_frame, epochs=1)
+
+    def fail_assembly(_result) -> None:
+        raise RuntimeError("synthetic assembly failure")
+
+    monkeypatch.setattr(
+        "microcosm.calibrate.diagnostics.assemble_target_loss_attribution",
+        fail_assembly,
+    )
+    payload = diagnostics_payload(result)
+
+    _assert_attribution_withheld(
+        payload,
+        warning_code=TARGET_LOSS_ATTRIBUTION_WARNING_CODES["assembly_error"],
+    )
+    warning_message = payload["diagnostic_warnings"][0]["message"]
+    assert "RuntimeError: synthetic assembly failure" in warning_message
+    assert payload["final_loss"] == result.final_loss
 
 
 def test_skipped_targets_ship_with_their_reason(feasible_frame) -> None:
