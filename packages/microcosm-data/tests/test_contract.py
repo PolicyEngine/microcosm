@@ -332,7 +332,7 @@ def _release_manifest(
 
 def _calibration_diagnostics() -> dict:
     return {
-        "schema_version": 5,
+        "schema_version": 6,
         "weight_entity": "household",
         "options": {"epochs": 120},
         "target_surface": {
@@ -1866,7 +1866,7 @@ def test_legacy_diagnostics_exemption_is_scoped_to_the_exact_june_id(
         payload=diagnostics,
     )
 
-    with pytest.raises(ReleaseContractError, match="publishes version 5"):
+    with pytest.raises(ReleaseContractError, match="publishes version 6"):
         validate_release_dir(directory)
 
 

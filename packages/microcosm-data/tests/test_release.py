@@ -82,7 +82,7 @@ DEDUCTION_CRITICAL_TARGETS = (
 
 def _calibration_diagnostics() -> dict:
     return {
-        "schema_version": 5,
+        "schema_version": 6,
         "weight_entity": "household",
         "options": {"epochs": 120},
         "target_surface": {
