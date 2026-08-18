@@ -110,3 +110,10 @@ that owns each arm.
   5,570,560 16-KiB pages (85 GiB), with ten-minute rechecks and no override.
   At 2026-08-18T02:27:46Z, a clean literal reading found 2,337,023 free pages
   (35.660141 GiB), so the order build remains unlaunched and waiting.
+- Guard-controller rollover (verified 2026-08-18T08:21:21Z): the long-lived
+  foreground guard controller was externally terminated with exit 143 after
+  its 36th valid below-threshold sample.  Its last sample at 08:18:49Z found
+  3,026,679 free 16-KiB pages (46.183456 GiB).  No fork had occurred and the
+  arm directory still contained only the ignored supervisor and guard journal:
+  no status, build log, checkpoint, output H5, or gate artifact existed.  The
+  guard resumes no earlier than the original 08:28:49Z ten-minute boundary.
