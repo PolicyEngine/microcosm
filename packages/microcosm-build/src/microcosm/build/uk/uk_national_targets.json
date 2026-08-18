@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "country": "uk",
-  "description": "UK national calibration contract: value-free target declarations over Chronicle facts. Selection contracts live in Microcosm per the chronicle#166 ruling (2026-08-13): Chronicle is a facts-only layer; Microcosm owns which facts are targets, how they bind to the model, and the active subset. Observed values resolve from a hash-pinned Chronicle consumer-facts artifact at build time (identity only). Compilation to TargetSpec rows, the UK mapping module, and the metric providers for the declarative counterfactual kinds are microcosm#622; the calibration seam is microcosm#623.",
+  "description": "UK national calibration contract: value-free target declarations over Chronicle facts. Selection contracts live in Microcosm per the chronicle#166 ruling (2026-08-13): Chronicle is a facts-only layer; Microcosm owns which facts are targets, how they bind to the model, and the active subset. Observed values resolve from a hash-pinned Chronicle consumer-facts artifact at build time (identity only). Compilation to TargetSpec rows, the UK mapping module, and the metric providers for the declarative counterfactual kinds are microcosm#622; the calibration seam is microcosm#623. The ledger_selector vocabulary is shared with typed LedgerTargetReference rows; this contract's dimension_values, groupby_dimension, and list-form dimensions extend it with the chronicle#164 selector semantics implemented in ledger_targets.py. groupby_dimension is the chronicle spelling of the fact's layout.groupby_dimension.",
   "allowed_value_operations": [
     "identity"
   ],
@@ -628,28 +628,28 @@
       "voa/council_tax/YORKSHIRE/total": "voa.council_tax_stock.total"
     },
     "excluded": {
-      "dwp/benefit_cap_total_reduction": "The GBP 320.9m total reduction is uk-data's computed annualization of a monthly figure - excluded per the facts-only ADR (#139).",
-      "hmrc/capital_gains_band_100000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside populace#467.",
-      "hmrc/capital_gains_band_1000000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside populace#467.",
-      "hmrc/capital_gains_band_12300": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside populace#467.",
-      "hmrc/capital_gains_band_2000000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside populace#467.",
-      "hmrc/capital_gains_band_25000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside populace#467.",
-      "hmrc/capital_gains_band_250000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside populace#467.",
-      "hmrc/capital_gains_band_50000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside populace#467.",
-      "hmrc/capital_gains_band_500000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside populace#467.",
-      "hmrc/capital_gains_band_5000000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside populace#467.",
-      "hmrc/cgt_taxpayers_band_100000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside populace#467.",
-      "hmrc/cgt_taxpayers_band_1000000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside populace#467.",
-      "hmrc/cgt_taxpayers_band_12300": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside populace#467.",
-      "hmrc/cgt_taxpayers_band_2000000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside populace#467.",
-      "hmrc/cgt_taxpayers_band_25000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside populace#467.",
-      "hmrc/cgt_taxpayers_band_250000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside populace#467.",
-      "hmrc/cgt_taxpayers_band_50000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside populace#467.",
-      "hmrc/cgt_taxpayers_band_500000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside populace#467.",
-      "hmrc/cgt_taxpayers_band_5000000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside populace#467.",
+      "dwp/benefit_cap_total_reduction": "The GBP 320.9m total reduction is uk-data's computed annualization of a monthly figure - excluded per the facts-only ADR (chronicle#139).",
+      "hmrc/capital_gains_band_100000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
+      "hmrc/capital_gains_band_1000000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
+      "hmrc/capital_gains_band_12300": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
+      "hmrc/capital_gains_band_2000000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
+      "hmrc/capital_gains_band_25000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
+      "hmrc/capital_gains_band_250000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
+      "hmrc/capital_gains_band_50000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
+      "hmrc/capital_gains_band_500000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
+      "hmrc/capital_gains_band_5000000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
+      "hmrc/cgt_taxpayers_band_100000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
+      "hmrc/cgt_taxpayers_band_1000000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
+      "hmrc/cgt_taxpayers_band_12300": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
+      "hmrc/cgt_taxpayers_band_2000000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
+      "hmrc/cgt_taxpayers_band_25000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
+      "hmrc/cgt_taxpayers_band_250000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
+      "hmrc/cgt_taxpayers_band_50000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
+      "hmrc/cgt_taxpayers_band_500000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
+      "hmrc/cgt_taxpayers_band_5000000": "Banded CGT rows read uk-data's storage/capital_gains_size_distribution_hmrc.csv, which was never packaged (no publisher table pinned). Candidate follow-up alongside microcosm#467.",
       "hmrc/salary_sacrifice_contributions": "SPP Review 2025 base value (GBP 24bn); the pinned asset 404s with no Wayback snapshot - blocked until a source surfaces (checklist row).",
-      "housing/rent_private": "Computed rate x count products (PIPR mean rent / EHS mean weekly cost x unpinned tenure counts). The base facts are ported (#159); the product stays a populace-side declaration per the facts-only ADR.",
-      "housing/rent_social": "Computed rate x count products (PIPR mean rent / EHS mean weekly cost x unpinned tenure counts). The base facts are ported (#159); the product stays a populace-side declaration per the facts-only ADR.",
+      "housing/rent_private": "Computed rate x count products (PIPR mean rent / EHS mean weekly cost x unpinned tenure counts). The base facts are ported (chronicle#159); the product stays a populace-side declaration per the facts-only ADR.",
+      "housing/rent_social": "Computed rate x count products (PIPR mean rent / EHS mean weekly cost x unpinned tenure counts). The base facts are ported (chronicle#159); the product stays a populace-side declaration per the facts-only ADR.",
       "housing/total_mortgage": "No publisher source: uk-data cites the ONS rent bulletin, which carries no mortgage figure (policyengine-uk-data#453). Nearest sourced anchor is EHS AT1.7 all-mortgagors mean weekly housing costs.",
       "nts/households_no_vehicle": "DfT NTS facts are percent shares; uk-data targets household counts. Identity-only value resolution cannot scale a share into a count - populace derives the count targets (share x household total), following the US derived-CHIP precedent.",
       "nts/households_one_vehicle": "DfT NTS facts are percent shares; uk-data targets household counts. Identity-only value resolution cannot scale a share into a count - populace derives the count targets (share x household total), following the US derived-CHIP precedent.",
@@ -665,11 +665,21 @@
       "ons/household_land_value/WALES": "Regional household land values are uk-data's computed allocation (dwellings x average house price shares, sources/mhclg_regional_land.py) - no publisher regional land facts exist to port.",
       "ons/household_land_value/WEST_MIDLANDS": "Regional household land values are uk-data's computed allocation (dwellings x average house price shares, sources/mhclg_regional_land.py) - no publisher regional land facts exist to port.",
       "ons/household_land_value/YORKSHIRE": "Regional household land values are uk-data's computed allocation (dwellings x average house price shares, sources/mhclg_regional_land.py) - no publisher regional land facts exist to port.",
-      "ons/tenure_england_owned_outright": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on #133 - moved to the wave-3 LA package (#134).",
-      "ons/tenure_england_owned_with_mortgage": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on #133 - moved to the wave-3 LA package (#134).",
-      "ons/tenure_england_rented_privately": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on #133 - moved to the wave-3 LA package (#134).",
-      "ons/tenure_england_social_rent": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on #133 - moved to the wave-3 LA package (#134).",
-      "ons/tenure_england_total": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on #133 - moved to the wave-3 LA package (#134)."
+      "ons/tenure_england_owned_outright": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on chronicle#133 - moved to the wave-3 LA package (chronicle#134).",
+      "ons/tenure_england_owned_with_mortgage": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on chronicle#133 - moved to the wave-3 LA package (chronicle#134).",
+      "ons/tenure_england_rented_privately": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on chronicle#133 - moved to the wave-3 LA package (chronicle#134).",
+      "ons/tenure_england_social_rent": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on chronicle#133 - moved to the wave-3 LA package (chronicle#134).",
+      "ons/tenure_england_total": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on chronicle#133 - moved to the wave-3 LA package (chronicle#134)."
+    },
+    "unmapped_declarations": {
+      "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is 410-Gone at ebf733c and its rows were silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
+      "hmrc.salary_sacrifice.it_relief_higher_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is 410-Gone at ebf733c and its rows were silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
+      "hmrc.salary_sacrifice.it_relief_additional_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is 410-Gone at ebf733c and its rows were silently suppressed by the bare-except drop in build_loss_matrix.py:376-394."
+    },
+    "accounting_notes": {
+      "cross_level_duplicate_names": "Name-only identity flattens two-level emissions for ons/uk_population, ons/scotland_children_under_16, and ons/scotland_babies_under_1.",
+      "two_child_limit_year_surface": "The 15 dwp/uc/two_child_limit/* rows are 2026-only; the incumbent effective surface is 636 at calibration year 2025 and 651 at 2026. This is microcosm#622 Fixture-B input because the incumbent cannot self-report the year-specific surface.",
+      "geography_level_order_canonicalization": "The 9 voa.council_tax_stock.* rows use country, region order to match the rest of the contract; consumers use membership only."
     }
   },
   "targets": [
@@ -720,7 +730,7 @@
           "value_variable": "ni_employee",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "uk-data binds this EFO total-NI line to ni_employee only, while separate employee/employer/self-employed lines are also calibrated - suspected binding defect carried as-is for parity; adjudicate in populace#622."
+          "notes": "uk-data binds this EFO total-NI line to ni_employee only, while separate employee/employer/self-employed lines are also calibrated - suspected binding defect carried as-is for parity; adjudicate in microcosm#622."
         },
         "axiom": {
           "metric_name": "obr/ni",
@@ -1336,7 +1346,7 @@
           "value_variable": "pip",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "EFO line covers DLA and PIP combined; uk-data binds pip only - carried as-is for parity; adjudicate in populace#622."
+          "notes": "EFO line covers DLA and PIP combined; uk-data binds pip only - carried as-is for parity; adjudicate in microcosm#622."
         },
         "axiom": {
           "metric_name": "obr/pip",
@@ -1735,7 +1745,7 @@
           "output_variable": "ni_employee",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "NICs relief attributed to salary sacrifice (compute/income.py:59-68). uk-data's SPP-Review-based obr/salary_sacrifice_employee_ni_relief row (source lost) retires onto this hmrc-backed fact - vintage difference for the populace#622 parity gate."
+          "notes": "NICs relief attributed to salary sacrifice (compute/income.py:59-68). uk-data's SPP-Review-based obr/salary_sacrifice_employee_ni_relief row (source lost) retires onto this hmrc-backed fact - vintage difference for the microcosm#622 parity gate."
         },
         "axiom": {
           "metric_name": "hmrc/salary_sacrifice_employee_nics_relief",
@@ -1769,7 +1779,7 @@
           "output_variable": "ni_employer",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "NICs relief attributed to salary sacrifice (compute/income.py:59-68). uk-data's SPP-Review-based obr/salary_sacrifice_employer_ni_relief row (source lost) retires onto this hmrc-backed fact - vintage difference for the populace#622 parity gate."
+          "notes": "NICs relief attributed to salary sacrifice (compute/income.py:59-68). uk-data's SPP-Review-based obr/salary_sacrifice_employer_ni_relief row (source lost) retires onto this hmrc-backed fact - vintage difference for the microcosm#622 parity gate."
         },
         "axiom": {
           "metric_name": "hmrc/salary_sacrifice_employer_nics_relief",
@@ -2453,7 +2463,7 @@
           "value_variable": "capital_gains",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Gains summed over people whose gains exceed the annual exempt amount (sources/hmrc_cgt.py:86-104). Also the single-homing successor for populace's UK_CGT_TARGET_SPECS (populace#622 item 6)."
+          "notes": "Gains summed over people whose gains exceed the annual exempt amount (sources/hmrc_cgt.py:86-104). Also the single-homing successor for populace's UK_CGT_TARGET_SPECS (microcosm#622 item 6)."
         },
         "axiom": {
           "metric_name": "hmrc/capital_gains_total",
@@ -2742,7 +2752,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "uk-data binds the JSA claimant count to contributory JSA only (jsa_contrib) - carried as-is for parity; adjudicate in populace#622."
+          "notes": "uk-data binds the JSA claimant count to contributory JSA only (jsa_contrib) - carried as-is for parity; adjudicate in microcosm#622."
         },
         "axiom": {
           "metric_name": "dwp/jsa_claimants",
@@ -8133,8 +8143,8 @@
       "target_id": "voa.council_tax_stock.band_a",
       "family": "council_tax_stock",
       "geography_levels": [
-        "region",
-        "country"
+        "country",
+        "region"
       ],
       "measurement": {
         "entity": "household",
@@ -8221,8 +8231,8 @@
       "target_id": "voa.council_tax_stock.band_b",
       "family": "council_tax_stock",
       "geography_levels": [
-        "region",
-        "country"
+        "country",
+        "region"
       ],
       "measurement": {
         "entity": "household",
@@ -8309,8 +8319,8 @@
       "target_id": "voa.council_tax_stock.band_c",
       "family": "council_tax_stock",
       "geography_levels": [
-        "region",
-        "country"
+        "country",
+        "region"
       ],
       "measurement": {
         "entity": "household",
@@ -8397,8 +8407,8 @@
       "target_id": "voa.council_tax_stock.band_d",
       "family": "council_tax_stock",
       "geography_levels": [
-        "region",
-        "country"
+        "country",
+        "region"
       ],
       "measurement": {
         "entity": "household",
@@ -8485,8 +8495,8 @@
       "target_id": "voa.council_tax_stock.band_e",
       "family": "council_tax_stock",
       "geography_levels": [
-        "region",
-        "country"
+        "country",
+        "region"
       ],
       "measurement": {
         "entity": "household",
@@ -8573,8 +8583,8 @@
       "target_id": "voa.council_tax_stock.band_f",
       "family": "council_tax_stock",
       "geography_levels": [
-        "region",
-        "country"
+        "country",
+        "region"
       ],
       "measurement": {
         "entity": "household",
@@ -8661,8 +8671,8 @@
       "target_id": "voa.council_tax_stock.band_g",
       "family": "council_tax_stock",
       "geography_levels": [
-        "region",
-        "country"
+        "country",
+        "region"
       ],
       "measurement": {
         "entity": "household",
@@ -8749,8 +8759,8 @@
       "target_id": "voa.council_tax_stock.band_h",
       "family": "council_tax_stock",
       "geography_levels": [
-        "region",
-        "country"
+        "country",
+        "region"
       ],
       "measurement": {
         "entity": "household",
@@ -8837,8 +8847,8 @@
       "target_id": "voa.council_tax_stock.total",
       "family": "council_tax_stock",
       "geography_levels": [
-        "region",
-        "country"
+        "country",
+        "region"
       ],
       "measurement": {
         "entity": "household",

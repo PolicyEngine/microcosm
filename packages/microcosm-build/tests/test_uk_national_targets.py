@@ -13,6 +13,8 @@ import json
 from collections.abc import Mapping
 from importlib import resources as importlib_resources
 
+from microcosm.build.uk_runtime.fiscal_targets import UK_CGT_TARGET_SPECS
+
 FORBIDDEN_VALUE_KEYS = {"aggregation", "operation", "registry", "target_value", "value"}
 FORBIDDEN_RUNTIME_KEYS = {
     "callable",
@@ -34,6 +36,44 @@ BINDING_KINDS = {
     "baseline_flag_crosstab",
 }
 PROJECTION_FAMILIES = {"obr", "slc_borrowers", "scotgov_social_security"}
+SELECTOR_KEYS = {
+    "source_name",
+    "source_concept",
+    "source_measure_id",
+    "groupby_dimension",
+    "dimensions",
+    "dimension_values",
+}
+POLICYENGINE_BINDING_KEYS = {
+    "affected_flag_variable",
+    "band",
+    "band_period_factor",
+    "count_of",
+    "filters",
+    "folded_into",
+    "from_entity",
+    "gate_comparison",
+    "gate_parameter",
+    "gated_variable",
+    "groupby_variable",
+    "household_conditions",
+    "kind",
+    "map_to",
+    "metric_name",
+    "notes",
+    "output_delta",
+    "output_variable",
+    "reduce",
+    "source_lines",
+    "threshold_price_base_year",
+    "value_expression",
+    "value_variable",
+    "zeroed_input",
+}
+ASSERTION_POLICIES = {"allow_source_projection"}
+BINDING_REDUCERS = {"any"}
+PREDICATE_REDUCERS = {"any", "any_child_under", "count", "sum"}
+PREDICATE_ENTITIES = {"person", "benunit", "household"}
 
 
 def _load() -> dict:
@@ -91,8 +131,19 @@ def test_uk_national_targets_shape_and_accounting():
     assert len(parity["mapped"]) == parity["mapped_rows"]
     assert len(parity["excluded"]) == parity["excluded_rows"]
     mapped_target_ids = set(parity["mapped"].values())
+    unmapped_declarations = parity["unmapped_declarations"]
+    assert set(mapped_target_ids).isdisjoint(unmapped_declarations)
     declared_target_ids = {target["target_id"] for target in resource["targets"]}
-    assert mapped_target_ids <= declared_target_ids
+    assert mapped_target_ids | set(unmapped_declarations) == declared_target_ids
+    assert all(reason for reason in unmapped_declarations.values())
+    assert len(mapped_target_ids) == 183
+
+
+def test_uk_national_targets_have_unique_target_ids():
+    resource = _load()
+
+    target_ids = [target["target_id"] for target in resource["targets"]]
+    assert len(target_ids) == len(set(target_ids))
 
 
 def test_uk_national_targets_are_value_free_and_hook_free():
@@ -113,9 +164,12 @@ def test_uk_national_targets_declare_selectors_and_closed_world_kinds():
 
     metric_names: list[str] = []
     for target in resource["targets"]:
-        assert target["ledger_selector"], target["target_id"]
-        assert "assertion" not in target["ledger_selector"], target["target_id"]
+        selector = target["ledger_selector"]
+        assert selector, target["target_id"]
+        assert set(selector) <= SELECTOR_KEYS, target["target_id"]
+        assert "assertion" not in selector, target["target_id"]
         binding = target["bindings"]["policyengine"]
+        assert set(binding) <= POLICYENGINE_BINDING_KEYS, target["target_id"]
         metric_names.append(binding["metric_name"])
         kind = binding.get("kind")
         assert kind is None or kind in BINDING_KINDS, target["target_id"]
@@ -126,3 +180,104 @@ def test_uk_national_targets_declare_selectors_and_closed_world_kinds():
         else:
             assert "assertion_policy" not in target, target["target_id"]
     assert len(metric_names) == len(set(metric_names))
+
+
+def test_uk_national_targets_declare_chronicle_loader_guarantees():
+    resource = _load()
+
+    for target in resource["targets"]:
+        selector = target["ledger_selector"]
+        if "dimension_values" in selector:
+            assert _valid_dimension_values(selector["dimension_values"]), (
+                target["target_id"]
+            )
+        if "dimensions" in selector:
+            dimensions = selector["dimensions"]
+            assert isinstance(dimensions, list), target["target_id"]
+            assert all(isinstance(name, str) and name for name in dimensions), (
+                target["target_id"]
+            )
+
+        binding = target["bindings"]["policyengine"]
+        kind = binding.get("kind")
+        if kind == "input_substitution_counterfactual":
+            assert {
+                "zeroed_input",
+                "folded_into",
+                "output_variable",
+                "output_delta",
+            } <= set(binding), target["target_id"]
+        elif kind == "parameter_gated_threshold":
+            assert {
+                "gate_parameter",
+                "gated_variable",
+                "gate_comparison",
+            } <= set(binding), target["target_id"]
+        elif kind == "baseline_flag_crosstab":
+            assert {"affected_flag_variable", "count_of"} <= set(binding), (
+                target["target_id"]
+            )
+
+        if "reduce" in binding:
+            assert binding["reduce"] in BINDING_REDUCERS, target["target_id"]
+        for field in ("filters", "household_conditions"):
+            for predicate in binding.get(field, ()):
+                if "reduce" in predicate:
+                    assert predicate["reduce"] in PREDICATE_REDUCERS, (
+                        target["target_id"],
+                        predicate,
+                    )
+                if "entity" in predicate:
+                    assert predicate["entity"] in PREDICATE_ENTITIES, (
+                        target["target_id"],
+                        predicate,
+                    )
+
+        assertion_policy = target.get("assertion_policy")
+        if assertion_policy is not None:
+            assert assertion_policy in ASSERTION_POLICIES, target["target_id"]
+
+    assert _target_by_id(resource, "obr.esa")["bindings"]["policyengine"][
+        "value_expression"
+    ] == "esa_income + esa_contrib"
+
+
+def test_uk_national_cgt_contract_names_match_runtime_specs():
+    resource = _load()
+
+    cgt_metric_names = {
+        target["bindings"]["policyengine"]["metric_name"]
+        for target in resource["targets"]
+        if target["target_id"].startswith("hmrc.cgt.")
+    }
+
+    assert cgt_metric_names == {spec.name for spec in UK_CGT_TARGET_SPECS}
+
+
+def _target_by_id(resource: Mapping, target_id: str) -> Mapping:
+    for target in resource["targets"]:
+        if target["target_id"] == target_id:
+            return target
+    raise AssertionError(f"missing target {target_id!r}")
+
+
+def _valid_dimension_values(value: object) -> bool:
+    if not isinstance(value, Mapping):
+        return False
+    if not value:
+        return False
+    for key, expected in value.items():
+        if not isinstance(key, str) or not key:
+            return False
+        if _is_dimension_scalar(expected):
+            continue
+        if isinstance(expected, list) and expected and all(
+            _is_dimension_scalar(item) for item in expected
+        ):
+            continue
+        return False
+    return True
+
+
+def _is_dimension_scalar(value: object) -> bool:
+    return isinstance(value, str | int | float | bool)
