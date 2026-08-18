@@ -2228,7 +2228,10 @@ def _eligibility_person_feature(
     if role == "donor":
         return None if canonical is None else canonical.rename(feature)
 
-    raw = _person_column(frame, raw_column)
+    # Raw ACS code columns can round-trip through checkpoint storage as
+    # string/object dtype; fetch them ungated and let the decode below
+    # apply the strict numeric and code-set validation.
+    raw = _person_raw_code_column(frame, raw_column)
     decoded: pd.Series | None = None
     if raw is not None:
         numeric = pd.to_numeric(raw, errors="coerce")
@@ -2272,6 +2275,20 @@ def _person_column(frame: Frame, column: str) -> pd.Series | None:
             f"numeric/boolean, got dtype {series.dtype}."
         )
     return pd.Series(_as_float_array(series), index=person.index, name=column)
+
+
+def _person_raw_code_column(frame: Frame, column: str) -> pd.Series | None:
+    """Fetch a raw survey code column without the numeric-dtype gate.
+
+    Callers own validation: raw codes may arrive as string/object after
+    checkpoint round-trips, and the eligibility decode rejects any value
+    that does not parse to a supported code.
+    """
+
+    person = frame.table(frame.schema.person_entity)
+    if column not in person.columns:
+        return None
+    return person[column]
 
 
 def _complete_component_sum(

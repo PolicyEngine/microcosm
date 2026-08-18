@@ -898,6 +898,57 @@ def test_explicit_eligibility_predictors_decode_reviewed_acs_fields(
         "has_medicare_coverage",
     }
 
+
+def test_eligibility_raw_codes_decode_from_object_dtype_columns() -> None:
+    """Raw ACS codes may round-trip through checkpoints as string/object."""
+
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {
+            "difficulty_hearing": [1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
+            "difficulty_seeing": [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0],
+            "has_medicare_coverage": [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0],
+        },
+    )
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {
+            "DEAR": ["1", "2", "2", "1", "2", "1"],
+            "DEYE": ["2", "2", "1", "2", "1", "2"],
+            "HINS3": ["2", "2", "2", "1", "1", "2"],
+        },
+    )
+    eligibility = (
+        "__acs_transfer_difficulty_hearing",
+        "__acs_transfer_difficulty_seeing",
+        "__acs_transfer_has_medicare_coverage",
+    )
+    surface = acs_transfer_module._transfer_feature_surface(
+        donor,
+        recipient,
+        entity="person",
+        targets=("qualified_dividend_income",),
+        predictor_set=AcsPredictorSet(
+            required=ACS_PERSON_TRANSFER_PREDICTORS,
+            optional=eligibility,
+        ),
+        require_all_predictors=True,
+    ).recipient
+    np.testing.assert_array_equal(
+        surface[eligibility[0]].to_numpy(),
+        [1.0, 0.0, 0.0, 1.0, 0.0, 1.0],
+    )
+    np.testing.assert_array_equal(
+        surface[eligibility[1]].to_numpy(),
+        [0.0, 0.0, 1.0, 0.0, 1.0, 0.0],
+    )
+    np.testing.assert_array_equal(
+        surface[eligibility[2]].to_numpy(),
+        [0.0, 0.0, 0.0, 1.0, 1.0, 0.0],
+    )
+
     baseline_only = {
         "person": {
             "fixture": AcsPredictorSet(required=ACS_PERSON_TRANSFER_PREDICTORS)
