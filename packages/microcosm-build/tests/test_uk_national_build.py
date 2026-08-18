@@ -887,7 +887,7 @@ def _stub_real_coverage(monkeypatch, gate_result_factory) -> None:
     )
 
 
-def test_national_build_real_terminal_batch_passes_before_staging(
+def test_national_build_real_terminal_batch_blocks_incomplete_qrf_before_staging(
     monkeypatch,
     tmp_path,
 ) -> None:
@@ -899,24 +899,26 @@ def test_national_build_real_terminal_batch_passes_before_staging(
     _write_two_row_h5(input_h5)
     _stub_real_coverage(monkeypatch, _passing_gate)
 
-    result = _run_national_build(
-        input_h5=input_h5,
-        staging_h5=staging_h5,
-        # The audit's absence blocks every posture (evidence_absent_blocks),
-        # so a healthy staging pass needs the HMRC stage's audit evidence —
-        # exactly what the real pipeline supplies.
-        stages=(UKNationalStage("hmrc_spi_income", _RecordedFitStage()),),
-        coverage_engine=object(),
-        terminal_gate_path=terminal_json,
-        gate_registry=None,  # the real UK registry
-    )
+    with pytest.raises(GateBatteryBlockedError) as error:
+        _run_national_build(
+            input_h5=input_h5,
+            staging_h5=staging_h5,
+            # The audit's absence blocks every posture (evidence_absent_blocks),
+            # so this supplies the HMRC stage's audit evidence. The real QRF
+            # gate is spec-armed now and correctly blocks this tiny synthetic
+            # frame because it lacks the declared QRF output surface.
+            stages=(UKNationalStage("hmrc_spi_income", _RecordedFitStage()),),
+            coverage_engine=object(),
+            terminal_gate_path=terminal_json,
+            gate_registry=None,  # the real UK registry
+        )
 
-    assert result.input_coverage.passed is True
-    assert result.terminal_gate_path == terminal_json.resolve()
-    assert staging_h5.is_file()
+    assert "[uk_qrf_tail_concentration]" in str(error.value)
+    assert error.value.phase == "terminal"
+    assert not staging_h5.exists()
     payload = json.loads(terminal_json.read_text(encoding="utf-8"))
     assert payload["schema_version"] == 4
-    assert payload["blocked_at_phase"] is None
+    assert payload["blocked_at_phase"] == "terminal"
     statuses = {entry_id: gate["status"] for entry_id, gate in payload["gates"].items()}
     assert statuses == {
         "uk_release_input_coverage_manifest_current": "passed",
@@ -936,7 +938,7 @@ def test_national_build_real_terminal_batch_passes_before_staging(
         "uk_target_surface": "evidence_absent",
         "uk_target_fit": "evidence_absent",
         "uk_input_mass_parity": "evidence_absent",
-        "uk_qrf_tail_concentration": "evidence_absent",
+        "uk_qrf_tail_concentration": "failed",
     }
     # One exclusion clock: the evaluated exclusion gate stamps the injected
     # date, never a per-gate default.
@@ -1005,16 +1007,18 @@ def test_national_build_parity_trio_is_evidence_absent(
     _write_two_row_h5(input_h5)
     _stub_real_coverage(monkeypatch, _passing_gate)
 
-    result = _run_national_build(
-        input_h5=input_h5,
-        staging_h5=tmp_path / "staging.h5",
-        stages=(UKNationalStage("hmrc_spi_income", _RecordedFitStage()),),
-        coverage_engine=object(),
-        terminal_gate_path=tmp_path / "terminal_gates.json",
-        gate_registry=None,
-    )
+    terminal_json = tmp_path / "terminal_gates.json"
+    with pytest.raises(GateBatteryBlockedError):
+        _run_national_build(
+            input_h5=input_h5,
+            staging_h5=tmp_path / "staging.h5",
+            stages=(UKNationalStage("hmrc_spi_income", _RecordedFitStage()),),
+            coverage_engine=object(),
+            terminal_gate_path=terminal_json,
+            gate_registry=None,
+        )
 
-    gates = result.gate_report["gates"]
+    gates = json.loads(terminal_json.read_text(encoding="utf-8"))["gates"]
     assert gates["uk_weights_audit"]["status"] == "passed"
     assert gates["uk_weights_audit"]["details"]["resolved_weight_kinds"] == {
         "uk_frs_only_spi_fill": "importance",
@@ -1023,6 +1027,8 @@ def test_national_build_parity_trio_is_evidence_absent(
     for entry_id in ("uk_export_surface", "uk_target_surface", "uk_target_fit"):
         assert gates[entry_id]["status"] == "evidence_absent", entry_id
         assert gates[entry_id]["reason"] == "missing evidence: parity_evidence"
+    assert gates["uk_input_mass_parity"]["status"] == "evidence_absent"
+    assert gates["uk_qrf_tail_concentration"]["status"] == "failed"
 
 
 def test_national_build_rejects_both_gate_path_names_and_h5_collisions(

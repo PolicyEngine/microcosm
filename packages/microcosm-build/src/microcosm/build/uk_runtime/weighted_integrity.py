@@ -103,6 +103,7 @@ before reading) shows:
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import math
@@ -134,12 +135,18 @@ __all__ = [
     "UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE",
     "UKInputMassParityPolicy",
     "UKInputMassReference",
+    "UKInputMassReferenceDescriptor",
     "UKQRFTailConcentrationPolicy",
     "UKReviewedExclusion",
+    "UK_INPUT_MASS_REFERENCE_REGISTRY",
+    "coerce_input_mass_reference_registry",
     "coerce_reviewed_exclusions",
     "exclusion_evaluation_date",
     "load_uk_input_mass_reference",
+    "load_uk_reference_scoped_exclusion_register",
     "load_uk_reviewed_exclusion_register",
+    "uk_default_input_mass_reviewed_exclusions",
+    "uk_default_qrf_tail_reviewed_exclusions",
     "uk_input_mass_parity_gate",
     "uk_input_mass_totals",
     "uk_qrf_tail_concentration_columns",
@@ -169,13 +176,89 @@ UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE = "degenerate_reviewed_exclusions.json
 UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
     "c36c015a60f796ad9199a4a5652706f5310909cb572b1c90092ef9df1fa7187e"
 )
-_UK_INPUT_MASS_REFERENCE_IDENTITY = MappingProxyType(
-    {
-        "filename": "enhanced_frs_2023_24.h5",
-        "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
-        "sha256": ("584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d"),
-        "vintage": "2023_24",
-    }
+
+
+_SHA256_HEX = frozenset("0123456789abcdef")
+
+
+@dataclass(frozen=True)
+class UKInputMassReferenceDescriptor:
+    """Named pinned reference for the UK input-mass parity comparison."""
+
+    name: str
+    filename: str
+    revision: str
+    sha256: str
+    vintage: str
+    totals_sha256: str
+    scope_note: str
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "name",
+            "filename",
+            "revision",
+            "sha256",
+            "vintage",
+            "totals_sha256",
+            "scope_note",
+        ):
+            value = getattr(self, field_name)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"UK input-mass reference descriptor {field_name} must be "
+                    "a non-empty string."
+                )
+            if value != value.strip():
+                raise ValueError(
+                    f"UK input-mass reference descriptor {field_name} must not "
+                    f"carry surrounding whitespace; got {value!r}."
+                )
+        for field_name in ("sha256", "totals_sha256"):
+            value = getattr(self, field_name)
+            if len(value) != 64 or any(character not in _SHA256_HEX for character in value):
+                raise ValueError(
+                    f"UK input-mass reference descriptor {field_name} must be "
+                    "a lowercase sha256."
+                )
+
+    @property
+    def identity(self) -> dict[str, str]:
+        """The schema-1 sidecar identity mapping shape."""
+
+        return {
+            "filename": self.filename,
+            "revision": self.revision,
+            "sha256": self.sha256,
+            "vintage": self.vintage,
+        }
+
+    def spec_payload(self) -> dict[str, object]:
+        """The gates.json registry entry shape."""
+
+        return {
+            "identity": self.identity,
+            "totals_sha256": self.totals_sha256,
+            "scope_note": self.scope_note,
+        }
+
+
+_UK_INPUT_MASS_REFERENCE_DESCRIPTOR = UKInputMassReferenceDescriptor(
+    name="efrs-post-calibration",
+    filename="enhanced_frs_2023_24.h5",
+    revision="655dd07e4bb9c777b00dac044949611f1feb824f",
+    sha256="584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
+    vintage="2023_24",
+    totals_sha256=UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
+    scope_note=(
+        "Post-calibration eFRS production incumbent; structurally lacks the "
+        "SPI clone channel, so SPI-channel-exclusive columns are comparable "
+        "only through per-reference reviewed exclusions."
+    ),
+)
+
+UK_INPUT_MASS_REFERENCE_REGISTRY = MappingProxyType(
+    {_UK_INPUT_MASS_REFERENCE_DESCRIPTOR.name: _UK_INPUT_MASS_REFERENCE_DESCRIPTOR}
 )
 
 _REVIEWED_EXCLUSION_FIELDS = frozenset(
@@ -320,6 +403,64 @@ def coerce_reviewed_exclusions(
     return dict(sorted(records.items()))
 
 
+def coerce_input_mass_reference_registry(
+    value: object, *, label: str
+) -> dict[str, UKInputMassReferenceDescriptor]:
+    """Validate the closed-world input-mass reference registry."""
+
+    if not isinstance(value, Mapping) or not value:
+        raise TypeError(f"{label} reference_registry must be a non-empty mapping.")
+    records: dict[str, UKInputMassReferenceDescriptor] = {}
+    for name, entry in value.items():
+        if not isinstance(name, str) or not name.strip() or name != name.strip():
+            raise ValueError(
+                f"{label} reference_registry names must be non-empty trimmed "
+                f"strings; got {name!r}."
+            )
+        if isinstance(entry, UKInputMassReferenceDescriptor):
+            descriptor = entry
+            if descriptor.name != name:
+                raise ValueError(
+                    f"{label} reference_registry entry {name!r} carries "
+                    f"descriptor name {descriptor.name!r}."
+                )
+            records[name] = descriptor
+            continue
+        if not isinstance(entry, Mapping):
+            raise TypeError(
+                f"{label} reference_registry entry {name!r} must be an object."
+            )
+        expected_entry_fields = {"identity", "totals_sha256", "scope_note"}
+        if set(entry) != expected_entry_fields:
+            raise ValueError(
+                f"{label} reference_registry entry {name!r} fields must be "
+                f"exactly {sorted(expected_entry_fields)}, got {sorted(entry)}."
+            )
+        identity = entry["identity"]
+        if not isinstance(identity, Mapping):
+            raise TypeError(
+                f"{label} reference_registry entry {name!r} identity must be "
+                "an object."
+            )
+        expected_identity_fields = {"filename", "revision", "sha256", "vintage"}
+        if set(identity) != expected_identity_fields:
+            raise ValueError(
+                f"{label} reference_registry entry {name!r} identity fields "
+                f"must be exactly {sorted(expected_identity_fields)}, got "
+                f"{sorted(identity)}."
+            )
+        records[name] = UKInputMassReferenceDescriptor(
+            name=name,
+            filename=identity["filename"],
+            revision=identity["revision"],
+            sha256=identity["sha256"],
+            vintage=identity["vintage"],
+            totals_sha256=entry["totals_sha256"],
+            scope_note=entry["scope_note"],
+        )
+    return dict(sorted(records.items()))
+
+
 def exclusion_evaluation_date(now: date | None) -> date:
     """Resolve the injected exclusion clock, refusing datetimes.
 
@@ -401,22 +542,9 @@ def _premature_exclusion_failure(
     )
 
 
-def load_uk_reviewed_exclusion_register(
-    source: str | Path | None,
-    *,
-    resource: str,
-) -> dict[str, UKReviewedExclusion]:
-    """Load one committed reviewed-exclusion register (schema 2, #610).
-
-    ``source`` overrides the committed default (``resource``, a JSON file
-    under ``microcosm.build.uk``). The register schema is
-    ``{"schema_version": 2, "description": ..., "exclusions": {column:
-    {reason, approved_by, adjudication, approved_on, expires_on}}}`` — every
-    entry is a complete approval receipt, re-validated by the gates so a
-    register cannot bypass the discipline by construction order. Expiry is
-    enforced at gate evaluation, never here.
-    """
-
+def _read_register_payload(source: str | Path | None, *, resource: str) -> tuple[
+    Mapping[str, object], str
+]:
     if source is None:
         raw = files("microcosm.build.uk").joinpath(resource).read_text("utf-8")
         label = resource
@@ -448,6 +576,26 @@ def load_uk_reviewed_exclusion_register(
         raise ValueError(f"{label}: malformed JSON: {exc.msg}.") from exc
     if not isinstance(payload, Mapping):
         raise ValueError(f"{label}: exclusion register must be a JSON object.")
+    return payload, label
+
+
+def load_uk_reviewed_exclusion_register(
+    source: str | Path | None,
+    *,
+    resource: str,
+) -> dict[str, UKReviewedExclusion]:
+    """Load one committed reviewed-exclusion register (schema 2, #610).
+
+    ``source`` overrides the committed default (``resource``, a JSON file
+    under ``microcosm.build.uk``). The register schema is
+    ``{"schema_version": 2, "description": ..., "exclusions": {column:
+    {reason, approved_by, adjudication, approved_on, expires_on}}}`` — every
+    entry is a complete approval receipt, re-validated by the gates so a
+    register cannot bypass the discipline by construction order. Expiry is
+    enforced at gate evaluation, never here.
+    """
+
+    payload, label = _read_register_payload(source, resource=resource)
     expected_fields = {"schema_version", "description", "exclusions"}
     if set(payload) != expected_fields:
         raise ValueError(
@@ -474,6 +622,82 @@ def load_uk_reviewed_exclusion_register(
             f"{label}: exclusion register must carry an 'exclusions' object."
         )
     return coerce_reviewed_exclusions(exclusions, label=label)
+
+
+def load_uk_reference_scoped_exclusion_register(
+    source: str | Path | None,
+    *,
+    resource: str,
+) -> dict[str, Mapping[str, UKReviewedExclusion]]:
+    """Load the schema-3 per-reference input-mass exclusion register."""
+
+    payload, label = _read_register_payload(source, resource=resource)
+    expected_fields = {"schema_version", "description", "references"}
+    if set(payload) != expected_fields:
+        raise ValueError(
+            f"{label}: exclusion register fields must be exactly "
+            f"{sorted(expected_fields)}, got {sorted(payload)}."
+        )
+    if (
+        type(payload.get("schema_version")) is not int
+        or payload.get("schema_version") != 3
+    ):
+        raise ValueError(
+            f"{label}: exclusion register schema_version must be 3 "
+            "(the per-reference approval-receipt schema), got "
+            f"{payload.get('schema_version')!r}."
+        )
+    description = payload.get("description")
+    if not isinstance(description, str) or not description.strip():
+        raise ValueError(
+            f"{label}: exclusion register description must be a non-empty string."
+        )
+    references = payload.get("references")
+    if not isinstance(references, Mapping):
+        raise ValueError(
+            f"{label}: exclusion register must carry a 'references' object."
+        )
+    result: dict[str, Mapping[str, UKReviewedExclusion]] = {}
+    for reference, exclusions in references.items():
+        if (
+            not isinstance(reference, str)
+            or not reference.strip()
+            or reference != reference.strip()
+        ):
+            raise ValueError(
+                f"{label}: reference names must be non-empty trimmed strings; "
+                f"got {reference!r}."
+            )
+        result[reference] = MappingProxyType(
+            coerce_reviewed_exclusions(
+                exclusions, label=f"{label} reference {reference!r}"
+            )
+        )
+    return dict(sorted(result.items()))
+
+
+@functools.cache
+def uk_default_input_mass_reviewed_exclusions() -> Mapping[
+    str, Mapping[str, UKReviewedExclusion]
+]:
+    """Committed schema-3 per-reference input-mass exclusions."""
+
+    return MappingProxyType(
+        load_uk_reference_scoped_exclusion_register(
+            None, resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE
+        )
+    )
+
+
+@functools.cache
+def uk_default_qrf_tail_reviewed_exclusions() -> Mapping[str, UKReviewedExclusion]:
+    """Committed schema-2 QRF tail exclusions."""
+
+    return MappingProxyType(
+        load_uk_reviewed_exclusion_register(
+            None, resource=UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE
+        )
+    )
 
 
 def load_uk_input_mass_reference(source: str | Path) -> UKInputMassReference:
@@ -508,8 +732,19 @@ def load_uk_input_mass_reference(source: str | Path) -> UKInputMassReference:
         sha256=str(identity.get("sha256", "")),
         vintage=str(identity.get("vintage", "")),
     )
-    _validate_input_mass_reference(reference)
-    return reference
+    observed_digest = _input_mass_reference_evidence_sha256(reference)
+    for descriptor in UK_INPUT_MASS_REFERENCE_REGISTRY.values():
+        if (
+            reference.identity == descriptor.identity
+            and observed_digest == descriptor.totals_sha256
+        ):
+            return reference
+    known = sorted(UK_INPUT_MASS_REFERENCE_REGISTRY)
+    raise ValueError(
+        f"{path}: input-mass reference sidecar did not match any reviewed "
+        f"reference {known}; observed identity {reference.identity} with "
+        f"canonical evidence sha256 {observed_digest}."
+    )
 
 
 @dataclass(frozen=True)
@@ -591,19 +826,31 @@ def _input_mass_reference_evidence_sha256(
 
 
 def _validate_input_mass_reference(reference: UKInputMassReference) -> None:
-    expected_identity = dict(_UK_INPUT_MASS_REFERENCE_IDENTITY)
+    _validate_input_mass_reference_for_descriptor(
+        reference, _UK_INPUT_MASS_REFERENCE_DESCRIPTOR
+    )
+
+
+def _validate_input_mass_reference_for_descriptor(
+    reference: UKInputMassReference,
+    descriptor: UKInputMassReferenceDescriptor,
+) -> None:
+    if not isinstance(descriptor, UKInputMassReferenceDescriptor):
+        raise TypeError("descriptor must be UKInputMassReferenceDescriptor.")
+    expected_identity = descriptor.identity
     if reference.identity != expected_identity:
         raise ValueError(
             "UK input-mass reference identity must match the reviewed "
-            f"enhanced-FRS incumbent; expected {expected_identity}, got "
-            f"{reference.identity}."
+            f"{descriptor.name}; expected {expected_identity}, got "
+            f"{reference.identity}. Known references: "
+            f"{sorted(UK_INPUT_MASS_REFERENCE_REGISTRY)}."
         )
     observed_digest = _input_mass_reference_evidence_sha256(reference)
-    if observed_digest != UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256:
+    if observed_digest != descriptor.totals_sha256:
         raise ValueError(
             "UK input-mass reference totals must match the reviewed "
-            "enhanced-FRS incumbent; expected canonical evidence sha256 "
-            f"{UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256}, got {observed_digest}."
+            f"{descriptor.name}; expected canonical evidence sha256 "
+            f"{descriptor.totals_sha256}, got {observed_digest}."
         )
 
 
@@ -752,6 +999,7 @@ def uk_input_mass_parity_gate(
     candidate_totals: Mapping[str, float],
     reference: UKInputMassReference,
     *,
+    descriptor: UKInputMassReferenceDescriptor,
     policy: UKInputMassParityPolicy,
     candidate_name: str = "uk_release_candidate",
     now: date | None = None,
@@ -770,9 +1018,11 @@ def uk_input_mass_parity_gate(
 
     if not isinstance(reference, UKInputMassReference):
         raise TypeError("reference must be UKInputMassReference.")
+    if not isinstance(descriptor, UKInputMassReferenceDescriptor):
+        raise TypeError("descriptor must be UKInputMassReferenceDescriptor.")
     if not isinstance(policy, UKInputMassParityPolicy):
         raise TypeError("policy must be UKInputMassParityPolicy.")
-    _validate_input_mass_reference(reference)
+    _validate_input_mass_reference_for_descriptor(reference, descriptor)
     evaluated_on = exclusion_evaluation_date(now)
     records = dict(policy.reviewed_exclusions)
     exclusions, expired, premature = _reviewed_exclusion_reasons(
@@ -835,6 +1085,8 @@ def uk_input_mass_parity_gate(
             "expired_exclusions": expired,
             "premature_exclusions": premature,
             "exclusions_evaluated_on": evaluated_on.isoformat(),
+            "reference": descriptor.name,
+            "reference_scope_note": descriptor.scope_note,
             "reference_identity": reference.identity,
         },
     )
