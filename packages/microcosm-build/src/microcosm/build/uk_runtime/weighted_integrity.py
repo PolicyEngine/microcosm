@@ -23,9 +23,8 @@ stale entries fail).
 Thresholds carry **no committed defaults**: the US numbers are calibrated to
 US incidents and the #609 measurement pass has not yet adjudicated UK
 boundaries. Arming either gate requires explicit policy values; once the
-measurement numbers are adjudicated, the constants belong next to
-:data:`~microcosm.build.uk_runtime.terminal_gates.UK_MAX_TO_MEDIAN_WEIGHT_RATIO`
-with the same derivation-comment discipline.
+measurement numbers are adjudicated, the schema-4 manifest parameters should
+carry the same derivation-comment discipline as the weight-ratio threshold.
 
 What the first measurement pass against the pinned enhanced-FRS incumbent
 (sha ``584ae33d…``, 2026-08-04) established, so that no later reader

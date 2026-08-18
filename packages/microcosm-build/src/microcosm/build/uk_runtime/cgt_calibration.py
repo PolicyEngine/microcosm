@@ -146,8 +146,12 @@ def materialize_uk_cgt_calibration_frame(
             f"UK CGT person {UK_CGT_SOURCE_COLUMN!r} values must be finite."
         )
 
+    household_weight_by_id = pd.Series(
+        national_frame.weights_for("household").values,
+        index=household["household_id"].to_numpy(),
+    )
     mapped_mass = person["person_household_id"].map(
-        household.set_index("household_id")["household_weight"]
+        household_weight_by_id
     )
     if mapped_mass.isna().any() or not mapped_mass.gt(0.0).all():
         raise ValueError(
@@ -188,7 +192,7 @@ def materialize_uk_cgt_calibration_frame(
         EntitySchema(group_entities=("household",)),
         {
             "household": Weights(
-                household["household_weight"].to_numpy(dtype=float),
+                national_frame.weights_for("household").values,
                 uk_household_weight_kind(national_frame),
             )
         },

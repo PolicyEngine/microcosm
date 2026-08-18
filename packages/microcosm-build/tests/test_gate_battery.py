@@ -384,6 +384,43 @@ class TestEvidenceAbsence:
             assert report["gates"]["t"]["status"] == "evidence_absent"
             assert report["shippable"] is False
 
+    def test_evidence_absent_blocks_flag_blocks_every_posture(
+        self, tmp_path, signing_env
+    ):
+        # The dev-posture leniency is opt-out per entry: a manifest entry
+        # declaring evidence_absent_blocks blocks the default build too,
+        # while its report status stays honestly evidence_absent (the
+        # legacy UK weights-audit strictness, ported in #654/#691 review).
+        manifest = _manifest(
+            [_entry("t", gate="weights_audit", evidence_absent_blocks=True)],
+            ["terminal"],
+        )
+        run = GateBatteryRun(
+            manifest,
+            release_id="xx-test-build",
+            report_path=tmp_path / "strict_absent.json",
+            release_candidate=False,
+        )
+        run.run_phase("terminal", EvidenceContext())
+        assert run.enforce("terminal", mode=BlockingMode.MARKS_ARTIFACT) is True
+        report = json.loads(run.report_path.read_text())
+        assert report["gates"]["t"]["status"] == "evidence_absent"
+        assert report["shippable"] is False
+        # The armed flag rides both digests: an identical manifest without
+        # the flag hashes differently.
+        unflagged = _manifest([_entry("t", gate="weights_audit")], ["terminal"])
+        baseline = GateBatteryRun(
+            unflagged,
+            release_id="xx-test-build",
+            report_path=tmp_path / "lenient_absent.json",
+            release_candidate=False,
+        )
+        baseline.run_phase("terminal", EvidenceContext())
+        assert baseline.enforce("terminal", mode=BlockingMode.MARKS_ARTIFACT) is False
+        lenient = json.loads(baseline.report_path.read_text())
+        assert lenient["policy_sha256"] != report["policy_sha256"]
+        assert lenient["gates_manifest_sha256"] != report["gates_manifest_sha256"]
+
     def test_diagnostic_entries_never_block(self, tmp_path, signing_env):
         manifest = _manifest(
             [

@@ -228,7 +228,10 @@ def materialize_uk_hmrc_calibration_frame(
     ):
         raise RuntimeError("HMRC TI must equal derived TEI + TII exactly.")
 
-    positive_household_mass = household.set_index("household_id")["household_weight"]
+    positive_household_mass = pd.Series(
+        frame.weights_for("household").values,
+        index=household["household_id"].to_numpy(),
+    )
     mapped_mass = person["person_household_id"].map(positive_household_mass)
     if mapped_mass.isna().any() or not mapped_mass.gt(0.0).all():
         raise ValueError(
@@ -294,7 +297,7 @@ def materialize_uk_hmrc_calibration_frame(
         EntitySchema(group_entities=("household",)),
         {
             "household": Weights(
-                household["household_weight"].to_numpy(dtype=float),
+                frame.weights_for("household").values,
                 uk_household_weight_kind(frame),
             )
         },
@@ -392,10 +395,8 @@ def _validate_materialization_inputs(
         raise ValueError(
             "HMRC target materialization requires rebuilt importance weights."
         )
-    weights = pd.to_numeric(
-        frame.table("household")["household_weight"], errors="coerce"
-    )
-    if weights.isna().any() or not weights.gt(0.0).all():
+    weights = frame.weights_for("household").values
+    if not (weights > 0.0).all():
         raise ValueError(
             "HMRC target materialization requires every household prior weight "
             "to be strictly positive."

@@ -67,7 +67,7 @@ from microcosm.build.uk_runtime.spi_support import (
     replace_uk_spi_support_tables,
     support_channel_column,
 )
-from microcosm.frame import Frame, WeightKind
+from microcosm.frame import Frame, WeightKind, engine_tables
 
 __all__ = [
     "CERTIFIED_UK_CANDIDATE_FILENAME",
@@ -543,10 +543,11 @@ def restore_uk_hmrc_income_family(
         build_period=time_period,
     )
 
+    tables = engine_tables(frame, weighted_entities=("household",))
     support = replace_uk_spi_support_tables(
         person=frame.table("person"),
         benunit=frame.table("benunit"),
-        household=frame.table("household"),
+        household=tables["household"],
         seed=seed,
         source_year=int(time_period),
         spi_prior_mass_share=spi_prior_mass_share,
@@ -729,9 +730,11 @@ def _distributional_mass_shares(frame: Frame) -> dict[str, float]:
     )
     if not spi_people.any():
         raise RuntimeError("Rebuilt HMRC family contains no SPI support people.")
-    household_weights = frame.table("household").set_index("household_id")[
-        "household_weight"
-    ]
+    household = frame.table("household")
+    household_weights = pd.Series(
+        frame.weights_for("household").values,
+        index=household["household_id"].to_numpy(),
+    )
     mapped = pd.to_numeric(
         person["person_household_id"].map(household_weights),
         errors="coerce",

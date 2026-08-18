@@ -93,6 +93,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "source_stages.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "uk_local_target_census.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

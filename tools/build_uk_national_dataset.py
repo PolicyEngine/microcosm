@@ -13,8 +13,7 @@ from datetime import UTC, datetime
 from itertools import combinations
 from pathlib import Path
 
-import pandas as pd
-
+from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.gate_battery import GateBatteryBlockedError
 from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.logbook_adoption import (
@@ -42,10 +41,7 @@ from microcosm.build.uk_runtime.hmrc_restoration import (
     UKHMRCIncomeStageTransform,
     verify_certified_uk_candidate,
 )
-from microcosm.build.uk_runtime.national_build import (
-    UKNationalStage,
-    build_uk_national_dataset,
-)
+from microcosm.build.uk_runtime.national_build import build_uk_national_dataset
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_time_period,
@@ -55,6 +51,7 @@ from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_SEED_DEFAULT,
 )
 from microcosm.build.uk_runtime.release_identity import UK_RELEASE_TIERS
+from microcosm.build.uk_runtime.source_runtime import uk_stage_implementations
 from microcosm.build.uk_runtime.terminal_gates import (
     uk_default_degenerate_reviewed_exclusions,
 )
@@ -882,11 +879,10 @@ def _main_recording(
     append_phase(state, "candidate_verified")
     append_phase(state, "inputs_pinned")
     # This staging path performs no calibration and therefore has no real
-    # target-surface or target-fit evidence. Leave parity_evidence absent;
-    # the terminal report omits that trio instead of inventing passes.
-    # The weighted-integrity pair (#609) follows the same rule: it joins
-    # the battery only when the caller arms it with a frozen reference
-    # and measured thresholds.
+    # target-surface or target-fit evidence; the schema-4 battery records
+    # the missing evidence explicitly. The weighted-integrity pair (#609)
+    # joins only when the caller arms it with a frozen reference and
+    # measured thresholds.
     gate_path_argument = (
         {"input_coverage_path": legacy_input_coverage_path}
         if legacy_input_coverage_path is not None
@@ -905,16 +901,20 @@ def _main_recording(
         calibration_diagnostics_sha256=args.calibration_diagnostics_sha256,
         reviewed_degenerate_exclusions=reviewed_degenerate_exclusions,
         stages=(
-            UKNationalStage(
-                name="frs_hmrc_retained_leaves",
-                transform=retained_leaves_transform,
-            ),
-            UKNationalStage(
-                name="hmrc_spi_income",
-                transform=hmrc_transform,
-            ),
+            *country_stage_plan(
+                load_country_spec("uk"),
+                uk_stage_implementations(
+                    retained_leaves_transform=retained_leaves_transform,
+                    hmrc_income_transform=hmrc_transform,
+                ),
+                # The manifest also declares the frs_spine pipeline root;
+                # the national staging pipeline selects its own stages.
+                stage_names=("frs_hmrc_retained_leaves", "hmrc_spi_income"),
+            ).stages,
             # Runs after the SPI restoration so the taxable-income proxy
-            # sees the restored income surface.
+            # sees the restored income surface. Declared today in the
+            # bespoke uk/cgt_source_stages.json; absorbing it into the
+            # canonical source_stages.json is WS-E follow-up work.
             uk_capital_gains_imputation_stage(args.cgt_ods),
         ),
         **gate_path_argument,
@@ -1128,9 +1128,6 @@ def _aggregate_build_record(
         }
         for record in result.frame.mass_log
     ]
-    household_weights = pd.to_numeric(
-        result.frame.table("household")["household_weight"], errors="raise"
-    )
     release_evidence = dict(result.gate_report["release_evidence"])
     return {
         "schema_version": 3,
@@ -1165,7 +1162,9 @@ def _aggregate_build_record(
                 "household": len(result.frame.table("household")),
             },
             "household_weight_kind": uk_household_weight_kind(result.frame).value,
-            "household_weight_total": float(household_weights.sum()),
+            "household_weight_total": float(
+                result.frame.weights_for("household").total
+            ),
             "mass_changes": mass_changes,
         },
         "source_rows": {

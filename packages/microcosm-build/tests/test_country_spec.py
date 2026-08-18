@@ -229,6 +229,45 @@ class TestCountryStagePlan:
         with pytest.raises(ValueError, match="Unknown stage implementation"):
             country_stage_plan(spec, {name: (lambda frame: frame) for name in names})
 
+    def test_default_stage_selection_still_requires_all_declared_stages(self) -> None:
+        spec = load_country_spec("be")
+
+        with pytest.raises(ValueError, match="missing \\['clone_assign_communes'\\]"):
+            country_stage_plan(spec, {"silc_load": lambda frame: frame})
+
+    def test_explicit_stage_subset_uses_manifest_order(self) -> None:
+        spec = load_country_spec("be")
+        plan = country_stage_plan(
+            spec,
+            {
+                "silc_load": lambda frame: frame,
+                "clone_assign_communes": lambda frame: frame,
+            },
+            stage_names=("clone_assign_communes", "silc_load"),
+        )
+
+        assert [stage.name for stage in plan.stages] == [
+            "silc_load",
+            "clone_assign_communes",
+        ]
+
+    def test_explicit_stage_subset_refuses_empty_or_unknown_names(self) -> None:
+        spec = load_country_spec("be")
+        implementations = {
+            "silc_load": lambda frame: frame,
+            "clone_assign_communes": lambda frame: frame,
+        }
+
+        with pytest.raises(ValueError, match="stage_names must not be empty"):
+            country_stage_plan(spec, implementations, stage_names=())
+
+        with pytest.raises(ValueError, match="Unknown stage selection"):
+            country_stage_plan(
+                spec,
+                implementations,
+                stage_names=("silc_load", "silc_load_fallback"),
+            )
+
 
 class TestExistingPackagesGeneralize:
     """The loader is country-neutral: the US and UK packages load unchanged."""
@@ -261,6 +300,7 @@ class TestExistingPackagesGeneralize:
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
+            "source_stages.json",
             "input_mass_reviewed_exclusions.json",
             "national_staging_build_record.json",
             "qrf_tail_reviewed_exclusions.json",
@@ -477,6 +517,7 @@ class TestUKGatesManifest:
             "uk_weight_ess",
             "uk_weight_ratio",
             "uk_weights_audit",
+            "uk_nonnegative_columns",
             "uk_export_surface",
             "uk_target_surface",
             "uk_target_fit",
@@ -486,6 +527,14 @@ class TestUKGatesManifest:
         # Legacy behaviour: every evaluated failure raises, so every
         # declared entry blocks release.
         assert all(g.criticality == "release_blocking" for g in manifest.gates)
+
+    def test_only_the_weights_audit_blocks_on_absent_evidence(self, manifest) -> None:
+        # "An absent audit is not a passing audit" — the retired schema-3
+        # path blocked every posture on a missing fit-weight audit, and the
+        # battery keeps that strictness via the entry flag (#654, #691
+        # review). No other entry opts out of the dev-posture leniency.
+        flagged = [g.id for g in manifest.gates if g.evidence_absent_blocks]
+        assert flagged == ["uk_weights_audit"]
         assert all(g.not_applicable is None for g in manifest.gates)
 
     def test_gate_names_are_country_neutral(self, manifest) -> None:
@@ -495,15 +544,12 @@ class TestUKGatesManifest:
         assert by_id["uk_qrf_tail_concentration"] == "tail_concentration"
         assert not any(name.startswith("uk_") for name in by_id.values())
 
-    def test_thresholds_match_the_legacy_module_constants(self, manifest) -> None:
+    def test_thresholds_match_the_schema4_manifest(self, manifest) -> None:
         params = {gate.id: gate.parameters for gate in manifest.gates}
-        assert (
-            params["uk_weight_ess"]["minimum_ess_fraction"]
-            == terminal_gates.UK_MIN_ESS_FRACTION
-        )
+        assert params["uk_weight_ess"]["minimum_ess_fraction"] == 0.01
         assert (
             params["uk_weight_ratio"]["maximum_max_to_median_ratio"]
-            == terminal_gates.UK_MAX_TO_MEDIAN_WEIGHT_RATIO
+            == 1_151.2542195939373
         )
         assert (
             params["uk_target_fit"]["max_abs_relative_error"]
@@ -592,6 +638,25 @@ class TestRefusals:
         files["gates.json"]["gates"][0]["gate"] = "vibes"
         package_dir = _write_package(tmp_path, files)
         with pytest.raises(ValueError, match="unknown gate function 'vibes'"):
+            load_country_spec(package_dir)
+
+    def test_non_bool_evidence_absent_blocks_is_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["gates.json"]["gates"][0]["evidence_absent_blocks"] = "yes"
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="evidence_absent_blocks must be"):
+            load_country_spec(package_dir)
+
+    def test_evidence_absent_blocks_on_an_excused_entry_is_refused(
+        self, tmp_path
+    ) -> None:
+        files = _minimal_package()
+        entry = files["gates.json"]["gates"][0]
+        entry.pop("parameters", None)
+        entry["not_applicable"] = "reviewed: no surface yet"
+        entry["evidence_absent_blocks"] = True
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="mutually exclusive"):
             load_country_spec(package_dir)
 
     def test_all_diagnostic_gates_are_refused(self, tmp_path) -> None:

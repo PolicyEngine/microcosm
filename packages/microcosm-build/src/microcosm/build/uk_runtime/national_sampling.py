@@ -81,7 +81,6 @@ UK_SAMPLE_SEED_DEFAULT = 578
 def _required_household_columns() -> tuple[str, ...]:
     return (
         "household_id",
-        "household_weight",
         HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
         *SPI_REPLACEMENT_STRATA_COLUMNS,
     )
@@ -349,25 +348,6 @@ def sample_uk_national_frame(
         sampled, factor = normalize_sampled_household_mass(
             sampled, target_mass=full_mass, source_name="UK national"
         )
-        # The typed weights are authoritative; refresh the exported column in
-        # place so its position — and therefore the staging payload's column
-        # order — is preserved. The assignment relies on Frame.table returning
-        # the stored table, so verify it took rather than trust the invariant
-        # from two modules away (validate_uk_national_frame would also catch
-        # a stale column, but the failure should name its cause here).
-        sampled.table("household")["household_weight"] = sampled.weights_for(
-            "household"
-        ).values
-        refreshed = sampled.table("household")["household_weight"].to_numpy(
-            dtype="float64"
-        )
-        if not np.array_equal(refreshed, sampled.weights_for("household").values):
-            raise ValueError(
-                "UK sample: the in-place household_weight refresh did not "
-                "persist; Frame.table stopped returning live table "
-                "references, so the exported column would keep its "
-                "pre-normalization values."
-            )
         receipt["normalization_factor"] = factor
         receipt["normalized_household_mass"] = float(
             sampled.weights_for("household").total

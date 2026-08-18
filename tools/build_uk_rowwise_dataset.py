@@ -63,6 +63,7 @@ from microcosm.build.uk_runtime import (
     validate_geography_coverage,
     write_geography_crosswalk,
 )
+from microcosm.frame import engine_tables
 
 CROSSWALK_FILENAME = "uk_official_geography_crosswalk.csv.gz"
 DATASET_FILENAME_TEMPLATE = "populace_uk_{source_year}_rowwise.h5"
@@ -1315,7 +1316,9 @@ def _rowwise_summary(
     if isinstance(result, UKLadderRowwiseDatasetResult):
         person = result.frame.table("person")
         benunit = result.frame.table("benunit")
-        household = result.frame.table("household")
+        household = engine_tables(result.frame, weighted_entities=("household",))[
+            "household"
+        ]
         weight_kind = uk_household_weight_kind(result.frame)
         mass_log = result.frame.mass_log
         time_period = uk_time_period(result.frame)

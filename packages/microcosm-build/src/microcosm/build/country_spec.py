@@ -140,7 +140,16 @@ ALLOWED_GATE_CRITICALITIES = frozenset({"release_blocking", "diagnostic"})
 #: extension) would run the gate on defaults while the declared intent
 #: vanished from ``policy_sha256`` — an unattested threshold.
 _GATE_ENTRY_KEYS = frozenset(
-    {"id", "gate", "phase", "criticality", "parameters", "not_applicable", "notes"}
+    {
+        "id",
+        "gate",
+        "phase",
+        "criticality",
+        "parameters",
+        "not_applicable",
+        "evidence_absent_blocks",
+        "notes",
+    }
 )
 
 #: Build phases a gate selection may bind to — the shared vocabulary that
@@ -424,6 +433,13 @@ class GateSelectionSpec:
             it appears in every report as ``not_applicable`` and never
             evaluates. Mutually exclusive with ``parameters`` — an excused
             gate with tuned thresholds is a contradiction.
+        evidence_absent_blocks: When true, an ``evidence_absent`` outcome on
+            this entry blocks the build in every posture, not only under the
+            release-candidate posture. For entries whose declared intent is
+            that absence is never excusable (e.g. "an absent audit is not a
+            passing audit") — the outcome stays honestly ``evidence_absent``
+            in the report; only the enforcement changes. Meaningless on an
+            excused entry, so mutually exclusive with ``not_applicable``.
         notes: Free-text rationale.
     """
 
@@ -433,6 +449,7 @@ class GateSelectionSpec:
     criticality: str
     parameters: Mapping[str, Any] = field(default_factory=dict)
     not_applicable: str | None = None
+    evidence_absent_blocks: bool = False
     notes: str = ""
 
     def __post_init__(self) -> None:
@@ -440,6 +457,11 @@ class GateSelectionSpec:
             raise TypeError(
                 "GateSelectionSpec parameters must be a mapping, got "
                 f"{type(self.parameters).__name__}."
+            )
+        if not isinstance(self.evidence_absent_blocks, bool):
+            raise TypeError(
+                "GateSelectionSpec evidence_absent_blocks must be a bool, got "
+                f"{type(self.evidence_absent_blocks).__name__}."
             )
         object.__setattr__(
             self,
@@ -510,6 +532,18 @@ class GateSelectionSpec:
                     "mutually exclusive — an excused gate with tuned "
                     "thresholds is a contradiction."
                 )
+        evidence_absent_blocks = raw.get("evidence_absent_blocks", False)
+        if not isinstance(evidence_absent_blocks, bool):
+            raise ValueError(
+                f"gate {gate_id!r}: evidence_absent_blocks must be a JSON "
+                f"boolean, got {evidence_absent_blocks!r}."
+            )
+        if evidence_absent_blocks and not_applicable is not None:
+            raise ValueError(
+                f"gate {gate_id!r}: evidence_absent_blocks and not_applicable "
+                "are mutually exclusive — an excused entry never evaluates, "
+                "so demanding its absence block is a contradiction."
+            )
         return cls(
             id=gate_id,
             gate=gate,
@@ -517,6 +551,7 @@ class GateSelectionSpec:
             criticality=criticality,
             parameters=dict(parameters),
             not_applicable=not_applicable,
+            evidence_absent_blocks=evidence_absent_blocks,
             notes=str(raw.get("notes", "")),
         )
 
@@ -1568,27 +1603,38 @@ def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
 def country_stage_plan(
     spec: CountrySpec,
     implementations: Mapping[str, Callable[[Frame], Frame]],
+    stage_names: tuple[str, ...] | None = None,
 ) -> StagePlan:
     """Assemble the country's :class:`StagePlan` from its source manifest.
 
     The US plan's no-fallback posture, generalized: every declared stage
     (source stages in manifest order, then the geography-spine stage when
-    declared) needs exactly one implementation; a missing stage refuses to
-    assemble and an unknown name is refused too.
+    declared) needs exactly one implementation by default; callers may
+    select a validated non-empty subset for country pipelines that share one
+    manifest while running separate entry points.
 
     Args:
         spec: A loaded country spec with a source manifest.
         implementations: One ``transform(frame) -> Frame`` per declared
-            stage.
+            selected stage.
+        stage_names: Optional declared-stage names to run. Selection is
+            validated against the manifest, and execution order remains the
+            manifest order regardless of this tuple's order. Implementations
+            for declared-but-unselected stages are deliberately tolerated —
+            pipelines sharing one implementations map may each select their
+            own subset — so an extra entry for an unselected stage is a
+            silent no-op, not an error; only implementations for stages the
+            manifest never declares are refused.
 
     Returns:
         The validated plan, each stage carrying its manifest citation as
         the donor record.
 
     Raises:
-        ValueError: If the spec declares no source stages, an implementation
-            is missing, or an implementation is supplied for an undeclared
-            stage.
+        ValueError: If the spec declares no source stages, a requested
+            selection is empty or unknown, an implementation is missing for a
+            selected stage, or an implementation is supplied for an
+            undeclared stage.
     """
     if spec.sources is None:
         raise ValueError(
@@ -1616,20 +1662,47 @@ def country_stage_plan(
                 (spine.code_column,),
             )
         )
-    stage_names = [name for name, _, _ in declared]
-    missing = [name for name in stage_names if name not in implementations]
+    declared_names = [name for name, _, _ in declared]
+    selected_names: tuple[str, ...]
+    if stage_names is None:
+        selected_names = tuple(declared_names)
+    else:
+        if not stage_names:
+            raise ValueError("country_stage_plan stage_names must not be empty.")
+        duplicates = sorted(
+            {name for name in stage_names if stage_names.count(name) > 1}
+        )
+        if duplicates:
+            raise ValueError(
+                f"country_stage_plan stage_names contains duplicate stage(s) "
+                f"{duplicates}."
+            )
+        unknown_selection = sorted(set(stage_names) - set(declared_names))
+        if unknown_selection:
+            raise ValueError(
+                f"Unknown stage selection {unknown_selection}; declared stages "
+                f"are {declared_names}."
+            )
+        requested = set(stage_names)
+        selected_names = tuple(name for name in declared_names if name in requested)
+    missing = [name for name in selected_names if name not in implementations]
     if missing:
         raise ValueError(
-            f"country_stage_plan needs an implementation for every declared "
+            f"country_stage_plan needs an implementation for every selected "
             f"stage; missing {missing}. There are no stubs or fallbacks by "
             "design."
         )
-    unknown = sorted(set(implementations) - set(stage_names))
+    unknown = sorted(set(implementations) - set(declared_names))
     if unknown:
         raise ValueError(
             f"Unknown stage implementation(s) {unknown}; declared stages are "
-            f"{stage_names}."
+            f"{declared_names}."
         )
+    selected = [
+        (name, donor, outputs)
+        for name, donor, outputs in declared
+        if name in set(selected_names)
+    ]
     return StagePlan(
         Stage(
             name=name,
@@ -1637,5 +1710,5 @@ def country_stage_plan(
             produces=outputs,
             donor=donor,
         )
-        for name, donor, outputs in declared
+        for name, donor, outputs in selected
     )

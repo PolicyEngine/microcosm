@@ -7,11 +7,13 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.gate_battery import (
     GateBatteryBlockedError,
     gate_signing_key_env,
 )
 from microcosm.build.gates import FitWeightRecord, GateResult
+from microcosm.build.plan import Stage, StagePlan
 from microcosm.build.uk_runtime.battery_bindings import UKGateBinding
 from microcosm.build.uk_runtime.national_build import (
     UKNationalStage,
@@ -27,7 +29,6 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.build.uk_runtime.release_input_coverage import (
     uk_release_input_coverage_gate,
 )
-from microcosm.build.uk_runtime.terminal_gates import UKReleaseParityEvidence
 from microcosm.frame import Frame, MassChangeRecord, WeightKind
 
 TEST_UK_RELEASE_ID = "populace-uk-2023-frs-k535080"
@@ -64,10 +65,23 @@ def _toy_gate_registry() -> dict[str, UKGateBinding]:
     manifest preflight are pass-throughs (both have their own tests) and
     every gate without a binding is a named ``evidence_absent`` gap —
     non-blocking off the release-candidate posture, exactly the legacy
-    fixture's effect of reporting only the coverage verdict.
+    fixture's effect of reporting only the coverage verdict. The one
+    exception is the weights audit: its manifest entry declares
+    ``evidence_absent_blocks`` (an absent audit is not a passing audit,
+    in every posture), so the seam registry binds it as a pass-through —
+    the strict-absence behavior has its own tests.
     """
 
     return {
+        "weights_audit": UKGateBinding(
+            name="weights_audit",
+            evaluator=lambda context, parameters: GateResult(
+                name="weights_audit",
+                passed=True,
+                details={"toy_audit": True},
+            ),
+            needs_frame=False,
+        ),
         "release_input_coverage": UKGateBinding(
             name="release_input_coverage",
             evaluator=_toy_coverage_evaluator,
@@ -109,8 +123,33 @@ def _replace_person(frame: Frame, person: pd.DataFrame) -> Frame:
         household=frame.table("household"),
         time_period=uk_time_period(frame),
         weight_kind=uk_household_weight_kind(frame),
+        household_weights=frame.weights_for("household").values,
         mass_log=frame.mass_log,
     )
+
+
+def _assert_same_frame_payload(left: Frame, right: Frame) -> None:
+    assert left.schema == right.schema
+    assert left.entities == right.entities
+    for entity in left.entities:
+        pd.testing.assert_frame_equal(
+            left.table(entity),
+            right.table(entity),
+            check_exact=True,
+            check_dtype=True,
+        )
+    assert left.weighted_entities == right.weighted_entities
+    for entity in left.weighted_entities:
+        assert left.weights_for(entity).kind is right.weights_for(entity).kind
+        pd.testing.assert_series_equal(
+            pd.Series(left.weights_for(entity).values),
+            pd.Series(right.weights_for(entity).values),
+            check_exact=True,
+            check_dtype=True,
+        )
+    pd.testing.assert_series_equal(left.strata, right.strata, check_exact=True)
+    assert left.mass_log == right.mass_log
+    assert left.metadata == right.metadata
 
 
 @pytest.fixture(autouse=True)
@@ -260,35 +299,36 @@ def test_driver_validates_the_uk_residue_after_each_stage(
 ) -> None:
     """The driver's post-stage validate is load-bearing, not decorative.
 
-    A stage returning ``frame.with_weights(...)`` with a stale exported
-    ``household_weight`` column constructs a perfectly valid Frame — the
-    kernel permits the column when typed weights exist — so only the
-    driver's ``validate_uk_national_frame`` call can stop the wrong weights
-    from shipping. The stage-side rejection tests all raise inside the
-    stage's own frame construction; this one can only fail at the driver
-    seam.
+    A stage can directly construct a kernel-valid Frame carrying the exported
+    ``household_weight`` column. Only the driver's
+    ``validate_uk_national_frame`` call can stop that column from returning
+    to the in-build carrier.
     """
 
     pytest.importorskip("tables")
-    from microcosm.frame import CONSERVE_MASS, Weights
 
     input_h5 = tmp_path / "base.h5"
     _write_two_row_h5(input_h5)
 
-    def redistribute_without_refreshing_column(frame: Frame) -> Frame:
-        weights = frame.weights_for("household")
-        return frame.with_weights(
-            "household",
-            Weights(values=weights.values[::-1].copy(), kind=weights.kind),
-            mass=CONSERVE_MASS,
+    def return_export_column(frame: Frame) -> Frame:
+        return Frame(
+            {
+                "person": frame.table("person"),
+                "benunit": frame.table("benunit"),
+                "household": frame.table("household").assign(household_weight=999.0),
+            },
+            frame.schema,
+            {"household": frame.weights_for("household")},
+            metadata=frame.metadata,
+            mass_log=frame.mass_log,
         )
 
-    with pytest.raises(ValueError, match="refresh the exported column"):
+    with pytest.raises(ValueError, match="must not persist exported weight"):
         _run_national_build(
             input_h5=input_h5,
             staging_h5=tmp_path / "staging.h5",
             stages=(
-                UKNationalStage("stale_column", redistribute_without_refreshing_column),
+                UKNationalStage("export_column", return_export_column),
             ),
             coverage_engine=object(),
         )
@@ -398,10 +438,101 @@ def test_national_build_runs_preflight_stages_gate_then_staging_write(
     staged, staged_provenance = load_uk_national_frame(staging_h5)
     assert staged_provenance.source_h5 == staging_h5.resolve()
     assert staged.person["employment_income"].tolist() == [50_000.0]
-    assert staged.table("household")["household_weight"].tolist() == [2.0]
+    assert staged.weights_for("household").values.tolist() == [2.0]
     diagnostic = json.loads(coverage_json.read_text())
     assert diagnostic["enforced"] is True
     assert diagnostic["input_coverage"]["passed"] is True
+
+
+def test_national_build_accepts_stage_plan_and_records_stage_evidence(
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+
+    input_h5 = tmp_path / "base.h5"
+    staging_h5 = tmp_path / "staging.h5"
+    _write_toy_h5(input_h5)
+
+    def add_bonus(frame: Frame) -> Frame:
+        person = frame.table("person").copy()
+        person["bonus_income"] = [125.0]
+        return _replace_person(frame, person)
+
+    result = _run_national_build(
+        input_h5=input_h5,
+        staging_h5=staging_h5,
+        stages=StagePlan(
+            (
+                Stage(
+                    name="income",
+                    transform=add_bonus,
+                    produces=("bonus_income",),
+                ),
+            )
+        ),
+        coverage_engine=object(),
+        gate_registry=_registry_with_coverage(_passing_gate),
+    )
+
+    assert result.stage_names == ("income",)
+    assert [record.stage for record in result.stage_records] == ["income"]
+    assert result.stage_records[0].produced == ("bonus_income",)
+    assert result.stage_records[0].nonzero_share == {"bonus_income": 1.0}
+
+
+def test_deprecated_shim_and_country_stage_plan_paths_are_payload_identical(
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+
+    input_h5 = tmp_path / "base.h5"
+    _write_toy_h5(input_h5, employment_income=40_000.0)
+    spec = load_country_spec("uk")
+    # Select by name, not position: the manifest's stage order changed when
+    # frs_spine became the pipeline root, and this test only exercises the
+    # two national staging stages.
+    stages_by_name = {stage.stage: stage for stage in spec.sources.stages}
+    retained_outputs = stages_by_name["frs_hmrc_retained_leaves"].outputs
+    hmrc_outputs = stages_by_name["hmrc_spi_income"].outputs
+
+    def retained(frame: Frame) -> Frame:
+        person = frame.table("person").copy()
+        for index, column in enumerate(retained_outputs, start=1):
+            person[column] = float(index)
+        return _replace_person(frame, person)
+
+    def hmrc(frame: Frame) -> Frame:
+        person = frame.table("person").copy()
+        for index, column in enumerate(hmrc_outputs, start=1):
+            person[column] = float(index * 10)
+        return _replace_person(frame, person)
+
+    legacy = _run_national_build(
+        input_h5=input_h5,
+        staging_h5=tmp_path / "legacy.h5",
+        stages=(
+            UKNationalStage("frs_hmrc_retained_leaves", retained),
+            UKNationalStage("hmrc_spi_income", hmrc),
+        ),
+        coverage_engine=object(),
+        gate_registry=_registry_with_coverage(_passing_gate),
+    )
+    shared = _run_national_build(
+        input_h5=input_h5,
+        staging_h5=tmp_path / "shared.h5",
+        stages=country_stage_plan(
+            spec,
+            {
+                "frs_hmrc_retained_leaves": retained,
+                "hmrc_spi_income": hmrc,
+            },
+            stage_names=("frs_hmrc_retained_leaves", "hmrc_spi_income"),
+        ),
+        coverage_engine=object(),
+        gate_registry=_registry_with_coverage(_passing_gate),
+    )
+
+    _assert_same_frame_payload(legacy.frame, shared.frame)
 
 
 def _write_clone_family_h5(path: Path) -> None:
@@ -734,6 +865,10 @@ def test_national_build_real_terminal_batch_passes_before_staging(
     result = _run_national_build(
         input_h5=input_h5,
         staging_h5=staging_h5,
+        # The audit's absence blocks every posture (evidence_absent_blocks),
+        # so a healthy staging pass needs the HMRC stage's audit evidence —
+        # exactly what the real pipeline supplies.
+        stages=(UKNationalStage("hmrc_spi_income", _RecordedFitStage()),),
         coverage_engine=object(),
         terminal_gate_path=terminal_json,
         gate_registry=None,  # the real UK registry
@@ -754,9 +889,10 @@ def test_national_build_real_terminal_batch_passes_before_staging(
         "uk_zero_weight_strata": "passed",
         "uk_weight_ess": "passed",
         "uk_weight_ratio": "passed",
+        "uk_weights_audit": "passed",
+        "uk_nonnegative_columns": "passed",
         # The legacy report omitted unevidenced gates; the battery names
         # every gap — non-blocking off the release-candidate posture.
-        "uk_weights_audit": "evidence_absent",
         "uk_export_surface": "evidence_absent",
         "uk_target_surface": "evidence_absent",
         "uk_target_fit": "evidence_absent",
@@ -820,7 +956,7 @@ def test_national_build_real_terminal_batch_writes_all_findings_before_raise(
     assert not staging_h5.exists()
 
 
-def test_national_build_parity_trio_evaluates_with_evidence_absent_without(
+def test_national_build_parity_trio_is_evidence_absent(
     monkeypatch,
     tmp_path,
 ) -> None:
@@ -829,43 +965,22 @@ def test_national_build_parity_trio_evaluates_with_evidence_absent_without(
     input_h5 = tmp_path / "healthy.h5"
     _write_two_row_h5(input_h5)
     _stub_real_coverage(monkeypatch, _passing_gate)
-    parity = UKReleaseParityEvidence(
-        candidate_columns=("person.employment_income",),
-        reference_columns=("person.employment_income",),
-        candidate_targets=("population",),
-        reference_targets=("population",),
-        target_relative_errors={"population": 0.0},
-    )
 
-    with_evidence = _run_national_build(
+    result = _run_national_build(
         input_h5=input_h5,
         staging_h5=tmp_path / "staging.h5",
         stages=(UKNationalStage("hmrc_spi_income", _RecordedFitStage()),),
         coverage_engine=object(),
-        parity_evidence=parity,
         terminal_gate_path=tmp_path / "terminal_gates.json",
-        gate_registry=None,  # the real UK registry
+        gate_registry=None,
     )
 
-    gates = with_evidence.gate_report["gates"]
+    gates = result.gate_report["gates"]
     assert gates["uk_weights_audit"]["status"] == "passed"
     assert gates["uk_weights_audit"]["details"]["resolved_weight_kinds"] == {
         "uk_frs_only_spi_fill": "importance",
         "uk_spi_2022_23_income": "design",
     }
-    for entry_id in ("uk_export_surface", "uk_target_surface", "uk_target_fit"):
-        assert gates[entry_id]["status"] == "passed", entry_id
-
-    without_evidence = _run_national_build(
-        input_h5=input_h5,
-        staging_h5=tmp_path / "staging2.h5",
-        stages=(UKNationalStage("hmrc_spi_income", _RecordedFitStage()),),
-        coverage_engine=object(),
-        terminal_gate_path=tmp_path / "terminal_gates2.json",
-        gate_registry=None,
-    )
-
-    gates = without_evidence.gate_report["gates"]
     for entry_id in ("uk_export_surface", "uk_target_surface", "uk_target_fit"):
         assert gates[entry_id]["status"] == "evidence_absent", entry_id
         assert gates[entry_id]["reason"] == "missing evidence: parity_evidence"
@@ -1021,6 +1136,7 @@ def test_national_build_rejects_stage_that_breaks_entity_links(tmp_path) -> None
                 benunit=frame.table("benunit"),
                 household=frame.table("household"),
                 time_period=None,
+                household_weights=frame.weights_for("household").values,
             ),
             "time_period must be a non-empty string",
         ),
@@ -1104,6 +1220,7 @@ def test_national_staging_h5_loads_through_policyengine_uk(tmp_path) -> None:
         household=frame.table("household"),
         time_period=uk_time_period(frame),
         weight_kind=WeightKind.IMPORTANCE,
+        household_weights=frame.weights_for("household").values,
         mass_log=(
             MassChangeRecord(
                 entity="household",

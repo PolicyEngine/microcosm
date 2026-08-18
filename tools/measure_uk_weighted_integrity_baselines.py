@@ -6,7 +6,7 @@ the pinned eFRS incumbent, and the current staging candidate, plus top-k
 weighted mass share and carrier count for every declared QRF output. This
 tool produces those numbers so they can be posted on #578 and the gate
 boundaries set at the measured edge with no discretionary headroom — the
-same discipline that pinned ``UK_MAX_TO_MEDIAN_WEIGHT_RATIO``.
+same discipline that pinned the schema-4 weight-ratio threshold.
 
 It is a diagnostic recorder only: it never gates, and release builds do not
 run it. Each ``--h5`` must be a UK national single-year artifact (person,
