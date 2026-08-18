@@ -96,10 +96,11 @@ LOCAL_AREA_SOURCE_COVERAGE_KEYS = (
 )
 
 # Lockstep with microcosm.calibrate.diagnostics.CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
-# (schema 5 = the #492 past_cap_census block). microcosm-data cannot import
+# (schema 6 = final per-target loss attribution plus warning-only degradation).
+# microcosm-data cannot import
 # microcosm-calibrate (dependency direction), so the builder test suite pins the
 # two constants equal — see test_calibration_diagnostics_schema_lockstep.
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 5
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 6
 US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")

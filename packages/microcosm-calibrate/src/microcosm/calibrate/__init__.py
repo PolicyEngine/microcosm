@@ -81,6 +81,10 @@ _assert_frame_compatible(_frame_version, _REQUIRED_FRAME_SERIES)
 
 from microcosm.calibrate.diagnostics import (  # noqa: E402 - after the compat gate
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    TARGET_LOSS_ATTRIBUTION_ABS_TOLERANCE,
+    TARGET_LOSS_ATTRIBUTION_REL_TOLERANCE,
+    TARGET_LOSS_ATTRIBUTION_WARNING_CODES,
+    TARGET_LOSS_BASIS_HASH_ALGORITHM,
     diagnostics_payload,
     past_cap_census,
     write_calibration_diagnostics,
@@ -126,6 +130,10 @@ __all__ = [
     "CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION",
     "CONSERVE_MASS",
     "FREE_MASS",
+    "TARGET_LOSS_ATTRIBUTION_ABS_TOLERANCE",
+    "TARGET_LOSS_ATTRIBUTION_REL_TOLERANCE",
+    "TARGET_LOSS_ATTRIBUTION_WARNING_CODES",
+    "TARGET_LOSS_BASIS_HASH_ALGORITHM",
     "CalibrationProblem",
     "CalibrationResult",
     "L0RefitResult",
