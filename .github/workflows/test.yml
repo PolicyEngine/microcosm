@@ -23,7 +23,15 @@ jobs:
         # consumer change fail here instead of being skipped until a remote build.
         run: uv sync --all-packages --extra us
       - name: Behavioral contract suite + unit tests
-        run: uv run pytest
+        # One pytest process per shard. A single process accumulates the
+        # engine plus every shard's fixtures and repeatedly OOM-killed the
+        # 7 GB runner at ~91% (the runner-shutdown signature, three runs in
+        # a row); per-shard processes bound residency and give per-shard
+        # attribution if one shard ever outgrows the runner on its own.
+        run: |
+          for shard in packages/*/; do
+            uv run pytest "${shard}tests" -p no:cacheprovider
+          done
       - name: Lint
         run: uv run ruff check .
 
