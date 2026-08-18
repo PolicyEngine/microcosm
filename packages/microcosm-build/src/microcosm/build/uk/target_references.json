@@ -1,0 +1,244 @@
+{
+  "country": "uk",
+  "description": "UK active-subset Ledger target references for the national 2023 spine. Rows are generated from uk_national_targets.json: name is the contract target_id; ledger_selector is the contract selector plus geography_level country for the first national activation; entity is from_entity, then map_to, then household; measure is bindings.policyengine.metric_name; family is the contract family; period is 2023; metadata.contract_target_id points back to the contract row. Observed values stay in Ledger facts and resolve by identity only. Deferred classes are recorded in .codex-work/membership_report.json: no fact at or before 2023, multi-fact sum resolution pending, source-projection policy pending, country-level geography ambiguity, or missing/non-finite fact values.",
+  "allowed_value_operations": [
+    "identity"
+  ],
+  "target_references": [
+    {
+      "name": "isc.private_school_students",
+      "ledger_selector": {
+        "source_name": "isc",
+        "source_concept": "isc.pupils_at_member_schools",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "obr/private_school_students",
+      "family": "isc",
+      "period": 2023,
+      "metadata": {
+        "contract_target_id": "isc.private_school_students"
+      }
+    },
+    {
+      "name": "ons.household_composition.lone_households_under_65",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.families_households_table7",
+        "groupby_dimension": "ons.household_type",
+        "dimension_values": {
+          "household_type": "lone_households_under_65"
+        },
+        "geography_level": "country"
+      },
+      "entity": "household",
+      "measure": "ons/lone_households_under_65",
+      "family": "ons_household_composition",
+      "period": 2023,
+      "metadata": {
+        "contract_target_id": "ons.household_composition.lone_households_under_65"
+      }
+    },
+    {
+      "name": "ons.household_composition.lone_households_over_65",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.families_households_table7",
+        "groupby_dimension": "ons.household_type",
+        "dimension_values": {
+          "household_type": "lone_households_over_65"
+        },
+        "geography_level": "country"
+      },
+      "entity": "household",
+      "measure": "ons/lone_households_over_65",
+      "family": "ons_household_composition",
+      "period": 2023,
+      "metadata": {
+        "contract_target_id": "ons.household_composition.lone_households_over_65"
+      }
+    },
+    {
+      "name": "ons.household_composition.unrelated_adult_households",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.families_households_table7",
+        "groupby_dimension": "ons.household_type",
+        "dimension_values": {
+          "household_type": "unrelated_adult_households"
+        },
+        "geography_level": "country"
+      },
+      "entity": "household",
+      "measure": "ons/unrelated_adult_households",
+      "family": "ons_household_composition",
+      "period": 2023,
+      "metadata": {
+        "contract_target_id": "ons.household_composition.unrelated_adult_households"
+      }
+    },
+    {
+      "name": "ons.household_composition.couple_no_children_households",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.families_households_table7",
+        "groupby_dimension": "ons.household_type",
+        "dimension_values": {
+          "household_type": "couple_no_children_households"
+        },
+        "geography_level": "country"
+      },
+      "entity": "household",
+      "measure": "ons/couple_no_children_households",
+      "family": "ons_household_composition",
+      "period": 2023,
+      "metadata": {
+        "contract_target_id": "ons.household_composition.couple_no_children_households"
+      }
+    },
+    {
+      "name": "ons.household_composition.couple_under_3_children_households",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.families_households_table7",
+        "groupby_dimension": "ons.household_type",
+        "dimension_values": {
+          "household_type": "couple_under_3_children_households"
+        },
+        "geography_level": "country"
+      },
+      "entity": "household",
+      "measure": "ons/couple_under_3_children_households",
+      "family": "ons_household_composition",
+      "period": 2023,
+      "metadata": {
+        "contract_target_id": "ons.household_composition.couple_under_3_children_households"
+      }
+    },
+    {
+      "name": "ons.household_composition.couple_3_plus_children_households",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.families_households_table7",
+        "groupby_dimension": "ons.household_type",
+        "dimension_values": {
+          "household_type": "couple_3_plus_children_households"
+        },
+        "geography_level": "country"
+      },
+      "entity": "household",
+      "measure": "ons/couple_3_plus_children_households",
+      "family": "ons_household_composition",
+      "period": 2023,
+      "metadata": {
+        "contract_target_id": "ons.household_composition.couple_3_plus_children_households"
+      }
+    },
+    {
+      "name": "ons.household_composition.couple_non_dependent_children_only_households",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.families_households_table7",
+        "groupby_dimension": "ons.household_type",
+        "dimension_values": {
+          "household_type": "couple_non_dependent_children_only_households"
+        },
+        "geography_level": "country"
+      },
+      "entity": "household",
+      "measure": "ons/couple_non_dependent_children_only_households",
+      "family": "ons_household_composition",
+      "period": 2023,
+      "metadata": {
+        "contract_target_id": "ons.household_composition.couple_non_dependent_children_only_households"
+      }
+    },
+    {
+      "name": "ons.household_composition.lone_parent_dependent_children_households",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.families_households_table7",
+        "groupby_dimension": "ons.household_type",
+        "dimension_values": {
+          "household_type": "lone_parent_dependent_children_households"
+        },
+        "geography_level": "country"
+      },
+      "entity": "household",
+      "measure": "ons/lone_parent_dependent_children_households",
+      "family": "ons_household_composition",
+      "period": 2023,
+      "metadata": {
+        "contract_target_id": "ons.household_composition.lone_parent_dependent_children_households"
+      }
+    },
+    {
+      "name": "ons.household_composition.lone_parent_non_dependent_children_households",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.families_households_table7",
+        "groupby_dimension": "ons.household_type",
+        "dimension_values": {
+          "household_type": "lone_parent_non_dependent_children_households"
+        },
+        "geography_level": "country"
+      },
+      "entity": "household",
+      "measure": "ons/lone_parent_non_dependent_children_households",
+      "family": "ons_household_composition",
+      "period": 2023,
+      "metadata": {
+        "contract_target_id": "ons.household_composition.lone_parent_non_dependent_children_households"
+      }
+    },
+    {
+      "name": "ons.household_composition.multi_family_households",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.families_households_table7",
+        "groupby_dimension": "ons.household_type",
+        "dimension_values": {
+          "household_type": "multi_family_households"
+        },
+        "geography_level": "country"
+      },
+      "entity": "household",
+      "measure": "ons/multi_family_households",
+      "family": "ons_household_composition",
+      "period": 2023,
+      "metadata": {
+        "contract_target_id": "ons.household_composition.multi_family_households"
+      }
+    },
+    {
+      "name": "ons.savings_interest_income",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.ukea_haxv",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "ons/savings_interest_income",
+      "family": "ons_national_accounts",
+      "period": 2023,
+      "metadata": {
+        "contract_target_id": "ons.savings_interest_income"
+      }
+    },
+    {
+      "name": "ons.public_sector_employment",
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_measure_id": "total_public_sector",
+        "geography_level": "country"
+      },
+      "entity": "person",
+      "measure": "ons/public_sector_employment",
+      "family": "ons_employment",
+      "period": 2023,
+      "metadata": {
+        "contract_target_id": "ons.public_sector_employment"
+      }
+    }
+  ]
+}
