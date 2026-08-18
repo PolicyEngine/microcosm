@@ -1040,9 +1040,17 @@ def _fact_matches_selector(fact: object, selector: Mapping[str, object]) -> bool
             if not _dimensions_match(fact, expected):
                 return False
             continue
+        if key == "dimension_values":
+            if not _dimension_values_match(fact, expected):
+                return False
+            continue
         if expected is None or expected == "":
             continue
         candidates = _selector_candidates(fact, str(key))
+        if isinstance(expected, (list, tuple)):
+            if not any(str(item) in candidates for item in expected):
+                return False
+            continue
         if str(expected) not in candidates:
             return False
     return True
@@ -1084,9 +1092,9 @@ def _selector_candidates(fact: object, key: str) -> tuple[str, ...]:
         return (_str_at(fact, "geography", "id"),)
     if key == "entity_name":
         return (_str_at(fact, "entity", "name"),)
-    if key == "layout_record_set_id":
+    if key in {"record_set_id", "layout_record_set_id"}:
         return (_str_at(fact, "layout", "record_set_id"),)
-    if key == "layout_groupby_dimension":
+    if key in {"groupby_dimension", "layout_groupby_dimension"}:
         return (_str_at(fact, "layout", "groupby_dimension"),)
     if key == "layout_groupby_value_id":
         return (_str_at(fact, "layout", "groupby_value_id"),)
@@ -1100,12 +1108,44 @@ def _selector_candidates(fact: object, key: str) -> tuple[str, ...]:
 
 
 def _dimensions_match(fact: object, expected: object) -> bool:
+    if isinstance(expected, list):
+        expected_names = {str(name) for name in expected}
+        dimension_names = {str(key) for key in _dimensions(fact)}
+        return dimension_names == expected_names
     if not isinstance(expected, Mapping):
-        raise ValueError("Ledger fact selector field 'dimensions' must be a mapping.")
+        raise ValueError(
+            "Ledger fact selector field 'dimensions' must be a mapping or list."
+        )
     dimensions = {str(key): str(value) for key, value in _dimensions(fact).items()}
     return all(
         dimensions.get(str(key)) == str(value) for key, value in expected.items()
     )
+
+
+def _dimension_values_match(fact: object, expected: object) -> bool:
+    if not isinstance(expected, Mapping):
+        raise ValueError(
+            "Ledger fact selector field 'dimension_values' must be a mapping."
+        )
+    dimensions = _dimensions(fact)
+    for key, expected_value in expected.items():
+        if key not in dimensions:
+            return False
+        actual_value = dimensions[key]
+        if isinstance(expected_value, list):
+            if not any(
+                _strict_scalar_equal(actual_value, candidate)
+                for candidate in expected_value
+            ):
+                return False
+            continue
+        if not _strict_scalar_equal(actual_value, expected_value):
+            return False
+    return True
+
+
+def _strict_scalar_equal(actual: object, expected: object) -> bool:
+    return type(actual) is type(expected) and actual == expected
 
 
 def _measure_concepts(fact: object) -> tuple[str, ...]:
