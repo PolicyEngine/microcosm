@@ -428,7 +428,43 @@ def assert_engine_abi_lock_current(
             )
         return None
 
-    expected_payload = engine_abi_lock_payload_from_domains(domains)
+    try:
+        expected_payload = engine_abi_lock_payload_from_domains(domains)
+    except importlib.metadata.PackageNotFoundError:
+        # The engine distribution is absent, so currency is unattestable in
+        # this environment (e.g. the wheels gate's engine-less venv). The
+        # committed lock is still validated structurally — present, schema-
+        # valid, canonical UTF-8 JSON in canonical byte form — and returned
+        # unattested. Every environment that regenerates the lock or builds
+        # against engine facts installs the engine and takes the attested
+        # path above, which stays fail-closed on any drift.
+        if not lock_resource.is_file():
+            raise SpecValidationError(
+                "engine_abi.lock.json is required for a bundle with a "
+                "policy-engine ABI"
+            ) from None
+        try:
+            raw = lock_resource.read_bytes()
+        except OSError as error:
+            raise SpecValidationError(
+                f"unable to read generated lock: {error}",
+                source=ENGINE_ABI_LOCK_FILENAME,
+            ) from error
+        try:
+            parsed = json.loads(raw)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise SpecValidationError(
+                "generated lock is not canonical UTF-8 JSON",
+                source=ENGINE_ABI_LOCK_FILENAME,
+            ) from error
+        schema_registry.validate(parsed, ENGINE_ABI_LOCK_SCHEMA_ID)
+        if raw != canonical_json_bytes(parsed) + b"\n":
+            raise SpecValidationError(
+                "generated lock is not in canonical byte form",
+                source=ENGINE_ABI_LOCK_FILENAME,
+            )
+        assert isinstance(parsed, Mapping)
+        return parsed
     schema_registry.validate(expected_payload, ENGINE_ABI_LOCK_SCHEMA_ID)
     expected_bytes = canonical_json_bytes(expected_payload) + b"\n"
     if not lock_resource.is_file():

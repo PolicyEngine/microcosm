@@ -392,3 +392,62 @@ def test_lock_mutation_does_not_change_authored_domain_payloads(
     before = copy.deepcopy(domains)
     engine_abi_lock_payload_from_domains(domains)
     assert domains == before
+
+
+def test_engine_absent_environment_validates_lock_structurally(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without the engine distribution, spec loads validate the committed
+    lock structurally (present, schema-valid, canonical bytes) instead of
+    failing on the currency attestation — the wheels gate's venv installs
+    no engine by design. Currency stays fail-closed wherever the engine
+    exists."""
+
+    import importlib.metadata as im
+
+    from microcosm.build import country_spec as cs
+    from microcosm.build.spec_engine import engine_abi
+
+    def absent(package: str) -> str:
+        raise im.PackageNotFoundError(package)
+
+    monkeypatch.setattr(engine_abi, "_installed_engine_version", absent)
+    spec = cs.load_country_spec("us")
+    assert spec.country == "us"
+
+
+def test_engine_absent_environment_still_refuses_a_tampered_lock(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    import importlib.metadata as im
+    import json as json_module
+
+    from microcosm.build.spec_engine import engine_abi
+    from microcosm.build.spec_engine.loader import load_schema_registry
+
+    def absent(package: str) -> str:
+        raise im.PackageNotFoundError(package)
+
+    monkeypatch.setattr(engine_abi, "_installed_engine_version", absent)
+    registry = load_schema_registry()
+    us_root = (
+        Path(__file__).resolve().parents[1] / "src" / "microcosm" / "build" / "us"
+    )
+    spec_dir = us_root / "spec"
+    lock_path = tmp_path / engine_abi.ENGINE_ABI_LOCK_FILENAME
+    parsed = json_module.loads(
+        (us_root / engine_abi.ENGINE_ABI_LOCK_FILENAME).read_bytes()
+    )
+    lock_path.write_bytes(
+        json_module.dumps(parsed, indent=3).encode() + b"\n"
+    )  # non-canonical byte form
+    import yaml
+
+    domains = {
+        "take_up": yaml.safe_load((spec_dir / "take_up.yaml").read_text()),
+        "sources": yaml.safe_load((spec_dir / "sources.yaml").read_text()),
+    }
+    with pytest.raises(Exception, match="canonical"):
+        engine_abi.assert_engine_abi_lock_current(
+            tmp_path, domains, schema_registry=registry
+        )
