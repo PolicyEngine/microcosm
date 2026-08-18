@@ -172,9 +172,19 @@ _UK_WEIGHT_SUMMARY_FIELDS = (
 _UK_MIN_ESS_FRACTION = 0.01
 _UK_MAX_TO_MEDIAN_WEIGHT_RATIO = 1_151.2542195939373
 _UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
-# Independent publication pin for the reviewed reference source. The data
+# Spec-armed weighted-integrity thresholds (uk/gates.json parameters,
+# microcosm#630): passing reports must carry exactly the committed values,
+# so a re-signed report cannot loosen a fence the spec armed. Held in
+# lockstep with the committed spec by the build-shard sync tests.
+_UK_INPUT_MASS_RELATIVE_TOLERANCE = 4.521811483823806
+_UK_INPUT_MASS_MINIMUM_REFERENCE_TOTAL = 0.0
+_UK_QRF_TAIL_TOP_K = 100
+_UK_QRF_TAIL_MAX_TOP_SHARE = 0.9970712395200448
+_UK_QRF_TAIL_MIN_NONZERO_RECORDS = 274
+# Independent publication pin for the active reviewed reference source. The data
 # shard cannot import the build shard, so keep this in lockstep with
-# microcosm.build.uk_runtime.parity_reference.load_efrs_parity_reference().source.
+# uk/gates.json reference_registry["efrs-post-calibration"].identity.
+_UK_INPUT_MASS_ACTIVE_REFERENCE = "efrs-post-calibration"
 _UK_INPUT_MASS_REFERENCE_IDENTITY = {
     "filename": "enhanced_frs_2023_24.h5",
     "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
@@ -281,6 +291,8 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "expired_exclusions",
             "premature_exclusions",
             "exclusions_evaluated_on",
+            "reference",
+            "reference_scope_note",
             "reference_identity",
         }
     ),
@@ -329,13 +341,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "a852b3de381376ea401b55f4ed98c59f01c2335b0f8483c6ca5b9337c1cbce32"
+    "609075af473c64fe7dbcb035b9254121d6c9c000c28fc67a14417bb02657d08f"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "22e3b51e5886d8cf8bfb9a8a67b84fc99b112fbfd3dd7119fcff8bf79411924c"
+    "610512a5bbddeba355cf57de52579eca5f36cf43788be239307cc5c025e76783"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "63e7977a2fdcaaed2fe167ef5703e66f8ce90b2a0f0fc98c1645212266bc7c55"
+    "cb25537c8a99aa6c44911b098df10dfb7ba143dc3210400b61f847c3d0c9b12d"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -349,6 +361,8 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_weights_audit": "weights_audit",
     "uk_nonnegative_columns": "nonnegative_columns",
     "uk_export_surface": "export_surface",
+    "uk_take_up_signal": "take_up_signal",
+    "uk_brma_enum_domain": "enum_domain",
     "uk_target_surface": "target_surface",
     "uk_target_fit": "target_fit",
     "uk_input_mass_parity": "input_mass_parity",
@@ -372,6 +386,8 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_weights_audit": ("weights_audit", "terminal"),
     "uk_nonnegative_columns": ("nonnegative_columns", "terminal"),
     "uk_export_surface": ("export_surface", "terminal"),
+    "uk_take_up_signal": ("take_up_signal", "terminal"),
+    "uk_brma_enum_domain": ("enum_domain", "terminal"),
     "uk_target_surface": ("target_surface", "terminal"),
     "uk_target_fit": ("target_fit", "terminal"),
     "uk_input_mass_parity": ("input_mass_parity", "terminal"),
@@ -393,7 +409,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
 # canonical hash; this pins the wrapped digest so the entry's evidence line
 # still binds the enhanced-FRS incumbent totals.
 _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "948b4c6a7c7d588293fda4e3f075c3e3fbb63c2317e99e686b6b79346b43f665"
+    "a77111e4acecd3945d69f77f58209bf6a58eb72d39a47de9cb01e5b73d2592f4"
 )
 # The degenerate binding's evidence payload digests the resolved exclusion
 # records; for a release that must be the committed register, so its digest
@@ -1492,12 +1508,41 @@ def _check_uk_terminal_gate_observables(
 
     input_mass = _uk_terminal_gate_details(gates, "input_mass_parity")
     if input_mass is not None:
+        if input_mass.get("reference") != _UK_INPUT_MASS_ACTIVE_REFERENCE:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
+                f"reference must equal {_UK_INPUT_MASS_ACTIVE_REFERENCE!r}."
+            )
+        scope_note = input_mass.get("reference_scope_note")
+        if not isinstance(scope_note, str) or not scope_note.strip():
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
+                "reference_scope_note must be a non-empty string."
+            )
         identity = input_mass.get("reference_identity")
         if identity != _UK_INPUT_MASS_REFERENCE_IDENTITY:
             failures.append(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
-                "reference_identity must match the reviewed enhanced-FRS "
-                f"incumbent {_UK_INPUT_MASS_REFERENCE_IDENTITY}."
+                "reference_identity must match the active reviewed "
+                f"efrs-post-calibration reference {_UK_INPUT_MASS_REFERENCE_IDENTITY}."
+            )
+        if not _uk_terminal_observable_matches(
+            input_mass.get("relative_tolerance"),
+            _UK_INPUT_MASS_RELATIVE_TOLERANCE,
+        ):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
+                "relative_tolerance must equal the committed spec value "
+                f"{_UK_INPUT_MASS_RELATIVE_TOLERANCE}."
+            )
+        if not _uk_terminal_observable_matches(
+            input_mass.get("minimum_reference_total"),
+            _UK_INPUT_MASS_MINIMUM_REFERENCE_TOTAL,
+        ):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} input_mass_parity.details."
+                "minimum_reference_total must equal the committed spec value "
+                f"{_UK_INPUT_MASS_MINIMUM_REFERENCE_TOTAL}."
             )
         if input_mass.get("stale_exclusions") != []:
             failures.append(
@@ -1536,6 +1581,12 @@ def _check_uk_terminal_gate_observables(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
                 "requires details.top_k to be a positive non-boolean integer."
             )
+        elif top_k != _UK_QRF_TAIL_TOP_K:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                f"requires details.top_k to equal the committed spec value "
+                f"{_UK_QRF_TAIL_TOP_K}."
+            )
         max_top_share = qrf_tail.get("max_top_share")
         valid_max_top_share = (
             not isinstance(max_top_share, bool)
@@ -1548,6 +1599,14 @@ def _check_uk_terminal_gate_observables(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
                 "requires details.max_top_share to be a finite non-boolean "
                 "number in (0, 1)."
+            )
+        elif not _uk_terminal_observable_matches(
+            max_top_share, _UK_QRF_TAIL_MAX_TOP_SHARE
+        ):
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                f"requires details.max_top_share to equal the committed spec "
+                f"value {_UK_QRF_TAIL_MAX_TOP_SHARE}."
             )
         min_nonzero_records = qrf_tail.get("min_nonzero_records")
         valid_min_nonzero_records_type = not isinstance(
@@ -1563,6 +1622,12 @@ def _check_uk_terminal_gate_observables(
                 f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
                 "requires details.min_nonzero_records to be a non-boolean integer "
                 "greater than details.top_k."
+            )
+        elif min_nonzero_records != _UK_QRF_TAIL_MIN_NONZERO_RECORDS:
+            failures.append(
+                f"{_UK_TERMINAL_GATE_REPORT_FILE} passing QRF tail concentration "
+                f"requires details.min_nonzero_records to equal the committed "
+                f"spec value {_UK_QRF_TAIL_MIN_NONZERO_RECORDS}."
             )
         top_share = qrf_tail.get("top_share")
         carrier_counts = qrf_tail.get("carrier_counts")

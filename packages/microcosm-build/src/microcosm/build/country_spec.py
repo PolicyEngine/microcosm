@@ -122,6 +122,7 @@ ALLOWED_GATE_FUNCTIONS = frozenset(
         "spine_agreement",
         "support",
         "tail_concentration",
+        "take_up_signal",
         "target_fit",
         "target_profile_coverage",
         "target_surface",

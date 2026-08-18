@@ -60,12 +60,8 @@ from microcosm.build.uk_runtime.national_sampling import (
 from microcosm.build.uk_runtime.release_input_coverage import (
     PolicyEngineUKCoverageEngine,
 )
-from microcosm.build.uk_runtime.terminal_gates import (
-    UKInputMassParityPolicy,
-    UKInputMassReference,
-    UKQRFTailConcentrationPolicy,
-)
 from microcosm.build.uk_runtime.weighted_integrity import (
+    UKInputMassReference,
     UKReviewedExclusion,
     exclusion_evaluation_date,
 )
@@ -348,8 +344,10 @@ def build_uk_national_dataset(
     stages: Sequence[UKNationalStage | PlanStage] | StagePlan = (),
     coverage_engine: Any | None = None,
     input_mass_reference: UKInputMassReference | None = None,
-    input_mass_policy: UKInputMassParityPolicy | None = None,
-    qrf_tail_policy: UKQRFTailConcentrationPolicy | None = None,
+    reviewed_input_mass_exclusions: (
+        Mapping[str, Mapping[str, UKReviewedExclusion]] | None
+    ) = None,
+    reviewed_qrf_tail_exclusions: Mapping[str, UKReviewedExclusion] | None = None,
     reviewed_degenerate_exclusions: Mapping[str, UKReviewedExclusion] | None = None,
     terminal_gate_path: str | Path | None = None,
     input_coverage_path: str | Path | None = None,
@@ -460,12 +458,6 @@ def build_uk_national_dataset(
             "candidate must keep its signed schema-4 report, so the two "
             "are mutually exclusive."
         )
-    if (input_mass_reference is None) != (input_mass_policy is None):
-        raise ValueError(
-            "input_mass_parity arms with a frozen reference and reviewed "
-            "thresholds together; supply both or neither."
-        )
-
     engine = (
         coverage_engine
         if coverage_engine is not None
@@ -537,15 +529,27 @@ def build_uk_national_dataset(
         # this build actually scheduled (same roster the preflight coverage
         # gate attests).
         "build_stage_names": tuple(stage.name for stage in materialized_stages),
+        "rules_engine": engine,
     }
+    brma_domain = _brma_enum_domain(engine)
+    if brma_domain is None and "brma" in frame.table("household"):
+        brma_domain = tuple(
+            sorted(
+                str(value)
+                for value in frame.table("household")["brma"].dropna().unique()
+            )
+        )
+    if brma_domain is not None:
+        artifacts["brma_enum_domain"] = brma_domain
     fit_weight_records = _stage_fit_weight_records(materialized_stages)
     if fit_weight_records is not None:
         artifacts["fit_weight_records"] = fit_weight_records
     if input_mass_reference is not None:
         artifacts["input_mass_reference"] = input_mass_reference
-        artifacts["input_mass_policy"] = input_mass_policy
-    if qrf_tail_policy is not None:
-        artifacts["qrf_tail_policy"] = qrf_tail_policy
+    if reviewed_input_mass_exclusions is not None:
+        artifacts["reviewed_input_mass_exclusions"] = reviewed_input_mass_exclusions
+    if reviewed_qrf_tail_exclusions is not None:
+        artifacts["reviewed_qrf_tail_exclusions"] = reviewed_qrf_tail_exclusions
     if reviewed_degenerate_exclusions is not None:
         artifacts["reviewed_degenerate_exclusions"] = reviewed_degenerate_exclusions
     terminal = battery.run_phase(
@@ -785,6 +789,23 @@ def _stage_fit_weight_records(
     except Exception:  # noqa: BLE001 - unreadable records coerce to () and
         # fail the audit as missing evidence rather than crashing the batch.
         return ()
+
+
+def _brma_enum_domain(engine: object) -> tuple[str, ...] | None:
+    variable_getter = getattr(engine, "_variable", None)
+    if not callable(variable_getter):
+        return None
+    try:
+        variable = variable_getter("brma")
+    except Exception:
+        return None
+    possible_values = getattr(variable, "possible_values", None)
+    members = getattr(possible_values, "__members__", None)
+    if isinstance(members, Mapping):
+        return tuple(str(name) for name in members)
+    if possible_values is None:
+        return None
+    return tuple(str(getattr(value, "name", value)) for value in possible_values)
 
 
 def _write_input_coverage_diagnostic(path: Path, gate: GateResult) -> None:

@@ -28,11 +28,16 @@ from microcosm.build.uk_runtime.terminal_gates import (
     uk_weight_ratio_gate,
     uk_zero_weight_strata_gate,
 )
+from microcosm.build.uk_runtime.weighted_integrity import (
+    UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
+    UKInputMassReferenceDescriptor,
+)
 
 TEST_MIN_ESS_FRACTION = 0.01
 TEST_MAX_TO_MEDIAN_WEIGHT_RATIO = 1_151.2542195939373
 VALIDATE_REFERENCE = (
-    "microcosm.build.uk_runtime.weighted_integrity._validate_input_mass_reference"
+    "microcosm.build.uk_runtime.weighted_integrity."
+    "_validate_input_mass_reference_for_descriptor"
 )
 
 
@@ -286,6 +291,18 @@ def _input_mass_reference(totals=None) -> UKInputMassReference:
     )
 
 
+def _input_mass_descriptor() -> UKInputMassReferenceDescriptor:
+    return UKInputMassReferenceDescriptor(
+        name="efrs-post-calibration",
+        filename="enhanced_frs_2023_24.h5",
+        revision="655dd07e4bb9c777b00dac044949611f1feb824f",
+        sha256="584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
+        vintage="2023_24",
+        totals_sha256=UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
+        scope_note="Seeded scoped-reference note.",
+    )
+
+
 def _input_mass_policy(**overrides) -> UKInputMassParityPolicy:
     fields = {"relative_tolerance": 0.5, "minimum_reference_total": 0.0}
     fields.update(overrides)
@@ -303,6 +320,7 @@ def _input_mass_gate(candidate_totals, reference=None, *, policy=None):
         return uk_input_mass_parity_gate(
             candidate_totals,
             _input_mass_reference() if reference is None else reference,
+            descriptor=_input_mass_descriptor(),
             policy=_input_mass_policy() if policy is None else policy,
         )
 
@@ -346,6 +364,7 @@ def test_weighted_integrity_type_errors_are_named() -> None:
         uk_input_mass_parity_gate(
             {"employment_income": 10.0},
             object(),
+            descriptor=_input_mass_descriptor(),
             policy=_input_mass_policy(),
         )
     with pytest.raises(TypeError, match="policy must be UKQRFTailConcentrationPolicy"):

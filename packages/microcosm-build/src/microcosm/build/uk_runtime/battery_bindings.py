@@ -31,6 +31,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import date, datetime
+from types import MappingProxyType
 from typing import Any
 
 from microcosm.build.gate_battery import (
@@ -40,9 +41,11 @@ from microcosm.build.gate_battery import (
 )
 from microcosm.build.gates import (
     GateResult,
+    enum_domain_gate,
     nonnegative_columns_gate,
     weights_audit_gate,
 )
+from microcosm.build.uk_runtime.frs_take_up import uk_take_up_signal_gate
 from microcosm.build.uk_runtime.national_frame import _uk_gate_surface
 from microcosm.build.uk_runtime.release_input_coverage import (
     assert_uk_release_input_coverage_build_stages,
@@ -66,11 +69,16 @@ from microcosm.build.uk_runtime.terminal_gates import (
 from microcosm.build.uk_runtime.weighted_integrity import (
     UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
-    UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
+    UK_INPUT_MASS_REFERENCE_REGISTRY,
     UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
+    UKInputMassParityPolicy,
+    UKQRFTailConcentrationPolicy,
     UKReviewedExclusion,
     _input_mass_reference_evidence_sha256,
+    coerce_input_mass_reference_registry,
     coerce_reviewed_exclusions,
+    uk_default_input_mass_reviewed_exclusions,
+    uk_default_qrf_tail_reviewed_exclusions,
     uk_input_mass_parity_gate,
     uk_input_mass_totals,
     uk_qrf_tail_concentration_columns,
@@ -227,6 +235,31 @@ def _evaluate_nonnegative_columns(
     )
 
 
+def _evaluate_take_up_signal(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    return uk_take_up_signal_gate(context.frame, **dict(parameters))
+
+
+def _evaluate_brma_enum_domain(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    columns = tuple(parameters.get("columns", ()))
+    if columns != ("brma",):
+        raise ValueError("uk_brma_enum_domain must declare columns ['brma'].")
+    domain = context.artifacts.get("brma_enum_domain")
+    if domain is None:
+        engine = context.artifacts["rules_engine"]
+        variable = engine._variable("brma")
+        domain = getattr(variable, "possible_values", None)
+    if domain is None:
+        raise ValueError("brma enum domain could not be resolved from evidence.")
+    return enum_domain_gate(
+        {"brma": context.frame.table("household")["brma"]},
+        {"brma": domain},
+    )
+
+
 def _stage_names_evidence(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> object:
@@ -285,6 +318,76 @@ def _resolve_degenerate_exclusions(
     if resolved_payload == committed_payload:
         return committed, "committed"
     return resolved, "override"
+
+
+def _exclusion_payload(
+    records: Mapping[str, UKReviewedExclusion],
+) -> dict[str, dict[str, str]]:
+    return {name: record.policy_payload() for name, record in sorted(records.items())}
+
+
+def _validate_input_mass_exclusion_references(
+    register: Mapping[str, Mapping[str, UKReviewedExclusion]],
+    *,
+    label: str,
+) -> None:
+    unknown = sorted(set(register) - set(UK_INPUT_MASS_REFERENCE_REGISTRY))
+    if unknown:
+        raise ValueError(
+            f"{label} names unknown input-mass reference(s) {unknown}; known "
+            f"references are {sorted(UK_INPUT_MASS_REFERENCE_REGISTRY)}."
+        )
+
+
+def _resolve_input_mass_exclusions(
+    context: EvidenceContext, *, reference: str
+) -> tuple[Mapping[str, UKReviewedExclusion], str]:
+    """Active-reference input-mass exclusions and their content source."""
+
+    committed = uk_default_input_mass_reviewed_exclusions()
+    _validate_input_mass_exclusion_references(
+        committed, label="committed input-mass exclusion register"
+    )
+    committed_active = dict(committed.get(reference, {}))
+    override = context.artifacts.get("reviewed_input_mass_exclusions")
+    if override is None:
+        return MappingProxyType(committed_active), "committed"
+    if not isinstance(override, Mapping):
+        raise TypeError("reviewed_input_mass_exclusions must be a mapping.")
+    resolved: dict[str, Mapping[str, UKReviewedExclusion]] = {}
+    for name, exclusions in override.items():
+        if not isinstance(name, str) or not name.strip() or name != name.strip():
+            raise ValueError(
+                "reviewed_input_mass_exclusions reference names must be "
+                f"non-empty trimmed strings; got {name!r}."
+            )
+        resolved[name] = MappingProxyType(
+            coerce_reviewed_exclusions(
+                exclusions, label=f"UK input-mass override reference {name!r}"
+            )
+        )
+    _validate_input_mass_exclusion_references(
+        resolved, label="input-mass exclusion override"
+    )
+    active = dict(resolved.get(reference, {}))
+    if _exclusion_payload(active) == _exclusion_payload(committed_active):
+        return MappingProxyType(committed_active), "committed"
+    return MappingProxyType(active), "override"
+
+
+def _resolve_qrf_tail_exclusions(
+    context: EvidenceContext,
+) -> tuple[Mapping[str, UKReviewedExclusion], str]:
+    """QRF tail exclusions and their content source."""
+
+    committed = uk_default_qrf_tail_reviewed_exclusions()
+    override = context.artifacts.get("reviewed_qrf_tail_exclusions")
+    if override is None:
+        return committed, "committed"
+    resolved = coerce_reviewed_exclusions(override, label="UK QRF tail policy")
+    if _exclusion_payload(resolved) == _exclusion_payload(committed):
+        return committed, "committed"
+    return MappingProxyType(resolved), "override"
 
 
 def _evaluate_degenerate_release_surface(
@@ -418,28 +521,43 @@ def _evaluate_input_mass_parity(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
     kwargs = dict(parameters)
-    declared_sha256 = kwargs.pop("reference_sha256", None)
-    # Inert at runtime: the declared identity is held equal to the module
-    # constant by the spec-pin tests, and the canonical digest covers the
-    # reference's actual identity + totals.
-    kwargs.pop("reference_identity", None)
+    reference_name = kwargs.pop("reference", None)
+    declared_registry = kwargs.pop("reference_registry", None)
     register = kwargs.pop("reviewed_exclusions_resource", None)
-    if declared_sha256 != UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256:
+    relative_tolerance = kwargs.pop("relative_tolerance", None)
+    minimum_reference_total = kwargs.pop("minimum_reference_total", None)
+    coerced_registry = coerce_input_mass_reference_registry(
+        declared_registry, label="uk/gates.json input_mass_parity"
+    )
+    if coerced_registry != dict(UK_INPUT_MASS_REFERENCE_REGISTRY):
         raise ValueError(
-            "uk/gates.json declares input-mass reference digest "
-            f"{declared_sha256!r} but the runtime enforces "
-            f"{UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256!r}; the declared pin "
-            "and the enforced pin must move together."
+            "uk/gates.json declares input-mass reference_registry that does "
+            "not match the runtime registry; the declared pins and enforced "
+            "pins must move together."
+        )
+    if reference_name not in coerced_registry:
+        raise ValueError(
+            f"uk/gates.json declares input-mass reference {reference_name!r} "
+            f"but known references are {sorted(coerced_registry)}."
         )
     if register != UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE:
         raise ValueError(
             f"uk/gates.json names exclusion register {register!r} but the "
             f"runtime loads {UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE!r}."
         )
+    exclusions, _source = _resolve_input_mass_exclusions(
+        context, reference=reference_name
+    )
+    policy = UKInputMassParityPolicy(
+        relative_tolerance=relative_tolerance,
+        minimum_reference_total=minimum_reference_total,
+        reviewed_exclusions=exclusions,
+    )
     return uk_input_mass_parity_gate(
         uk_input_mass_totals(context.frame),
         context.artifacts["input_mass_reference"],
-        policy=context.artifacts["input_mass_policy"],
+        descriptor=coerced_registry[reference_name],
+        policy=policy,
         now=_exclusion_clock(context),
         **kwargs,
     )
@@ -448,9 +566,16 @@ def _evaluate_input_mass_parity(
 def _input_mass_reference_evidence(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> object:
+    reference_name = str(parameters["reference"])
     reference = context.artifacts["input_mass_reference"]
+    exclusions, source = _resolve_input_mass_exclusions(
+        context, reference=reference_name
+    )
     return {
-        "reference_evidence_sha256": _input_mass_reference_evidence_sha256(reference)
+        "reference": reference_name,
+        "reference_evidence_sha256": _input_mass_reference_evidence_sha256(reference),
+        "exclusions_policy": source,
+        "reviewed_exclusions": _exclusion_payload(exclusions),
     }
 
 
@@ -459,16 +584,26 @@ def _evaluate_tail_concentration(
 ) -> GateResult:
     kwargs = dict(parameters)
     register = kwargs.pop("reviewed_exclusions_resource", None)
+    top_k = kwargs.pop("top_k", None)
+    max_top_share = kwargs.pop("max_top_share", None)
+    min_nonzero_records = kwargs.pop("min_nonzero_records", None)
     if register != UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE:
         raise ValueError(
             f"uk/gates.json names exclusion register {register!r} but the "
             f"runtime loads {UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE!r}."
         )
+    exclusions, _source = _resolve_qrf_tail_exclusions(context)
+    policy = UKQRFTailConcentrationPolicy(
+        top_k=top_k,
+        max_top_share=max_top_share,
+        min_nonzero_records=min_nonzero_records,
+        reviewed_exclusions=exclusions,
+    )
     values, weights, surface = uk_qrf_tail_concentration_columns(context.frame)
     return uk_qrf_tail_concentration_gate(
         values,
         weights,
-        policy=context.artifacts["qrf_tail_policy"],
+        policy=policy,
         surface=surface,
         now=_exclusion_clock(context),
         **kwargs,
@@ -517,6 +652,16 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         evaluator=_evaluate_nonnegative_columns,
         artifact_keys=frozenset({"build_stage_names"}),
     ),
+    "take_up_signal": UKGateBinding(
+        name="take_up_signal",
+        evaluator=_evaluate_take_up_signal,
+        parameter_keys=frozenset({"maximum_share_deviation"}),
+    ),
+    "enum_domain": UKGateBinding(
+        name="enum_domain",
+        evaluator=_evaluate_brma_enum_domain,
+        parameter_keys=frozenset({"columns"}),
+    ),
     "degenerate_release_surface": UKGateBinding(
         name="degenerate_release_surface",
         evaluator=_evaluate_degenerate_release_surface,
@@ -564,22 +709,29 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         evaluator=_evaluate_input_mass_parity,
         parameter_keys=frozenset(
             {
-                "reference_sha256",
-                "reference_identity",
+                "reference",
+                "reference_registry",
                 "reviewed_exclusions_resource",
+                "relative_tolerance",
+                "minimum_reference_total",
                 "candidate_name",
             }
         ),
-        artifact_keys=frozenset(
-            {"input_mass_reference", "input_mass_policy", "exclusions_evaluated_on"}
-        ),
+        artifact_keys=frozenset({"input_mass_reference", "exclusions_evaluated_on"}),
         evidence=_input_mass_reference_evidence,
     ),
     "tail_concentration": UKGateBinding(
         name="tail_concentration",
         evaluator=_evaluate_tail_concentration,
-        parameter_keys=frozenset({"reviewed_exclusions_resource"}),
-        artifact_keys=frozenset({"qrf_tail_policy", "exclusions_evaluated_on"}),
+        parameter_keys=frozenset(
+            {
+                "reviewed_exclusions_resource",
+                "top_k",
+                "max_top_share",
+                "min_nonzero_records",
+            }
+        ),
+        artifact_keys=frozenset({"exclusions_evaluated_on"}),
         legacy_name="qrf_tail_concentration",
     ),
 }

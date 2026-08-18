@@ -58,6 +58,10 @@ def uk_stage_implementations(
     frs_education_transform: Callable[[Frame], Frame] | None = None,
     frs_legacy_proxies_transform: Callable[[Frame], Frame] | None = None,
     frs_education_grant_split_transform: Callable[[Frame], Frame] | None = None,
+    frs_take_up_transform: Callable[[Frame], Frame] | None = None,
+    frs_person_draws_transform: Callable[[Frame], Frame] | None = None,
+    frs_household_draws_transform: Callable[[Frame], Frame] | None = None,
+    frs_brma_transform: Callable[[Frame], Frame] | None = None,
 ) -> dict[str, Callable[[Frame], Frame]]:
     """Return the whole-stage implementation map for the UK source plan."""
 
@@ -73,9 +77,17 @@ def uk_stage_implementations(
         "frs_education": frs_education_transform,
         "frs_legacy_proxies": frs_legacy_proxies_transform,
         "frs_education_grant_split": frs_education_grant_split_transform,
+        "frs_take_up": frs_take_up_transform,
+        "frs_person_draws": frs_person_draws_transform,
+        "frs_household_draws": frs_household_draws_transform,
+        "frs_brma": frs_brma_transform,
     }
     implementations.update(
-        {name: transform for name, transform in optional.items() if transform is not None}
+        {
+            name: transform
+            for name, transform in optional.items()
+            if transform is not None
+        }
     )
     return implementations
 

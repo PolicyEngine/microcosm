@@ -46,9 +46,7 @@ from microcosm.build.uk_runtime.release_input_coverage import (
     uk_release_input_coverage_gate,
 )
 from microcosm.build.uk_runtime.terminal_gates import (
-    UKInputMassParityPolicy,
     UKInputMassReference,
-    UKQRFTailConcentrationPolicy,
 )
 from microcosm.frame import engine_tables
 
@@ -59,7 +57,8 @@ KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 CLOCK = date(2026, 9, 1)
 
 VALIDATE_REFERENCE = (
-    "microcosm.build.uk_runtime.weighted_integrity._validate_input_mass_reference"
+    "microcosm.build.uk_runtime.weighted_integrity."
+    "_validate_input_mass_reference_for_descriptor"
 )
 
 
@@ -127,16 +126,6 @@ def _reference() -> UKInputMassReference:
     )
 
 
-def _input_mass_policy() -> UKInputMassParityPolicy:
-    return UKInputMassParityPolicy(relative_tolerance=0.5, minimum_reference_total=0.0)
-
-
-def _qrf_policy() -> UKQRFTailConcentrationPolicy:
-    return UKQRFTailConcentrationPolicy(
-        top_k=1, max_top_share=0.5, min_nonzero_records=2
-    )
-
-
 def _fixture_coverage_registry():
     """The UK registry with the coverage gate fed by the same fixture the
     differential harness used before retiring schema 3. The real coverage
@@ -151,6 +140,20 @@ def _fixture_coverage_registry():
             parameter_keys=frozenset({"check"}),
             legacy_name="uk_release_input_coverage",
             needs_frame=False,
+        ),
+        "take_up_signal": UKGateBinding(
+            name="take_up_signal",
+            evaluator=lambda context, parameters: GateResult(
+                name="take_up_signal", passed=True
+            ),
+            parameter_keys=frozenset({"maximum_share_deviation"}),
+        ),
+        "enum_domain": UKGateBinding(
+            name="enum_domain",
+            evaluator=lambda context, parameters: GateResult(
+                name="enum_domain", passed=True
+            ),
+            parameter_keys=frozenset({"columns"}),
         ),
     }
 
@@ -172,12 +175,7 @@ def _run_battery(tables, *, parity=None, fit_records=None, armed=True, clock=CLO
     if parity is not None:
         artifacts["parity_evidence"] = parity
     if armed:
-        reference = _reference()
-        input_mass_policy = _input_mass_policy()
-        qrf_policy = _qrf_policy()
-        artifacts["input_mass_reference"] = reference
-        artifacts["input_mass_policy"] = input_mass_policy
-        artifacts["qrf_tail_policy"] = qrf_policy
+        artifacts["input_mass_reference"] = _reference()
     # Small synthetic totals exercise battery behavior without disclosing
     # the licensed 131-column reference (same patch as the legacy tests);
     # the binding's declared-pin check compares spec to runtime constant and
@@ -251,8 +249,7 @@ class TestUKSurfaceAdapter:
         assert result.name == "nonnegative_columns"
         assert result.passed is False
         assert (
-            "sic_industry_division: 1 finite value(s) below zero"
-            in result.failures[0]
+            "sic_industry_division: 1 finite value(s) below zero" in result.failures[0]
         )
 
     def test_nonnegative_binding_passes_clean_scheduled_columns(self) -> None:
@@ -319,8 +316,7 @@ class TestUKCompatibility:
         reasons = {o.entry.id: o.reason for o in phase.outcomes}
         assert reasons["uk_weights_audit"] == ("missing evidence: fit_weight_records")
         assert reasons["uk_input_mass_parity"] == (
-            "missing evidence: frame, exclusions_evaluated_on, "
-            "input_mass_policy, input_mass_reference"
+            "missing evidence: frame, exclusions_evaluated_on, input_mass_reference"
         )
         assert reasons["uk_degenerate_release_surface"] == (
             "missing evidence: frame, exclusions_evaluated_on"
@@ -339,9 +335,10 @@ class TestBatteryRegressions:
         passed = [
             entry_id for entry_id, o in by_id.items() if o.status is GateStatus.PASSED
         ]
-        # 11 with uk_nonnegative_columns: the scheduled stages declare no
-        # nonnegative outputs, so the gate passes with zero required columns.
-        assert len(passed) == 11
+        # 11 as on main (uk_nonnegative_columns passes with zero required
+        # columns — the scheduled stages declare none) plus the two E4
+        # stochastic gates; their evaluators have direct tests of their own.
+        assert len(passed) == 13
         qrf = by_id["uk_qrf_tail_concentration"]
         assert qrf.status is GateStatus.FAILED
         assert "declared QRF output is absent" in qrf.result.failures[0]
@@ -396,7 +393,6 @@ class TestUnevidencedArms:
             "uk_target_surface",
             "uk_target_fit",
             "uk_input_mass_parity",
-            "uk_qrf_tail_concentration",
         }
         for reason in absent.values():
             assert reason.startswith("missing evidence: ")
@@ -406,11 +402,14 @@ class TestUnevidencedArms:
         default_blocked = {
             o.entry.id for o in battery.blocking_outcomes(release_candidate=False)
         }
-        assert default_blocked == {"uk_weights_audit"}
+        assert default_blocked == {
+            "uk_qrf_tail_concentration",
+            "uk_weights_audit",
+        }
         blocked = {
             o.entry.id for o in battery.blocking_outcomes(release_candidate=True)
         }
-        assert blocked == set(absent)
+        assert blocked == {*absent, "uk_qrf_tail_concentration"}
 
     def test_absent_fit_evidence_is_named(self) -> None:
         person, benunit, household = _tables()
@@ -460,9 +459,9 @@ class TestExclusionDiscipline:
         failed = {o.entry.id for o in battery.outcomes if o.status is GateStatus.FAILED}
         assert {
             "uk_degenerate_release_surface",
+            "uk_input_mass_parity",
             "uk_qrf_tail_concentration",
         } <= failed
-        assert "uk_input_mass_parity" not in failed
 
     def test_review_override_is_loud_in_the_evidence_payload(self) -> None:
         binding = UK_GATE_REGISTRY["degenerate_release_surface"]
@@ -750,7 +749,17 @@ class TestBindingUnits:
         )
         entry = {e.id: e for e in uk_gates.gates}["uk_input_mass_parity"]
         drifted = dict(entry.parameters)
-        drifted["reference_sha256"] = "0" * 64
+        drifted["reference_registry"] = {
+            name: (
+                {
+                    **payload,
+                    "totals_sha256": "0" * 64,
+                }
+                if name == "efrs-post-calibration"
+                else payload
+            )
+            for name, payload in drifted["reference_registry"].items()
+        }
         binding = UK_GATE_REGISTRY["input_mass_parity"]
         result = _evaluate_gate(
             "input_mass_parity",
@@ -759,11 +768,11 @@ class TestBindingUnits:
                     frame=frame,
                     artifacts={
                         "input_mass_reference": _reference(),
-                        "input_mass_policy": _input_mass_policy(),
+                        "exclusions_evaluated_on": CLOCK,
                     },
                 ),
                 drifted,
             ),
         )
         assert result.passed is False
-        assert "declared pin" in result.failures[0]
+        assert "reference_registry" in result.failures[0]

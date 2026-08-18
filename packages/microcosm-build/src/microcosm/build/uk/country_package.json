@@ -58,6 +58,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "brma_rent_counts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "hmrc_income_release_gate_report.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -74,6 +79,11 @@
     },
     {
       "path": "source_stages.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "take_up_contract.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

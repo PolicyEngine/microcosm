@@ -26,13 +26,20 @@ from microcosm.build.uk_runtime.spi_support import (
 )
 from microcosm.build.uk_runtime.weighted_integrity import (
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
+    UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
+    UK_INPUT_MASS_REFERENCE_REGISTRY,
     UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
     UKInputMassReference,
+    UKInputMassReferenceDescriptor,
     UKQRFTailConcentrationPolicy,
     UKReviewedExclusion,
+    coerce_input_mass_reference_registry,
     load_uk_input_mass_reference,
+    load_uk_reference_scoped_exclusion_register,
     load_uk_reviewed_exclusion_register,
+    uk_default_input_mass_reviewed_exclusions,
+    uk_default_qrf_tail_reviewed_exclusions,
     uk_input_mass_parity_gate,
     uk_input_mass_totals,
     uk_qrf_tail_concentration_columns,
@@ -93,6 +100,20 @@ def _reference(totals, **overrides) -> UKInputMassReference:
     return UKInputMassReference(totals=totals, **fields)
 
 
+def _descriptor(**overrides) -> UKInputMassReferenceDescriptor:
+    fields = {
+        "name": "efrs-post-calibration",
+        "filename": "enhanced_frs_2023_24.h5",
+        "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
+        "sha256": "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
+        "vintage": "2023_24",
+        "totals_sha256": UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
+        "scope_note": "Seeded scoped-reference note.",
+    }
+    fields.update(overrides)
+    return UKInputMassReferenceDescriptor(**fields)
+
+
 def _policy(**overrides) -> UKInputMassParityPolicy:
     fields = {"relative_tolerance": 0.5, "minimum_reference_total": 0.0}
     fields.update(overrides)
@@ -102,9 +123,10 @@ def _policy(**overrides) -> UKInputMassParityPolicy:
 def _synthetic_input_mass_gate(*args, **kwargs):
     """Exercise gate semantics with small totals, outside the licensed pin."""
 
+    kwargs.setdefault("descriptor", _descriptor())
     with patch.object(
         weighted_integrity,
-        "_validate_input_mass_reference",
+        "_validate_input_mass_reference_for_descriptor",
         return_value=None,
     ):
         return uk_input_mass_parity_gate(*args, **kwargs)
@@ -268,6 +290,7 @@ def test_input_mass_reference_rejects_substituted_totals_at_approved_identity(
         uk_input_mass_parity_gate(
             {"employment_income": 1.0},
             caller_self_reference,
+            descriptor=_descriptor(),
             policy=_policy(),
         )
     path = tmp_path / "self-reference.json"
@@ -281,7 +304,7 @@ def test_input_mass_reference_rejects_substituted_totals_at_approved_identity(
         ),
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="reference totals must match the reviewed"):
+    with pytest.raises(ValueError, match="did not match any reviewed reference"):
         load_uk_input_mass_reference(path)
 
 
@@ -321,6 +344,7 @@ def test_input_mass_reference_identity_pin_cannot_be_shadowed_from_cwd(
         uk_input_mass_parity_gate(
             {"employment_income": 1.0},
             caller_reference,
+            descriptor=_descriptor(),
             policy=_policy(),
         )
 
@@ -377,6 +401,34 @@ def test_input_mass_policy_and_reference_validation() -> None:
         _policy(reviewed_exclusions={1: _entry("Seeded invalid name.")})
     with pytest.raises(TypeError, match="must be an object with fields"):
         _policy(reviewed_exclusions={"employment_income": None})
+
+
+def test_input_mass_reference_registry_coercion_is_closed_world() -> None:
+    descriptor = next(iter(UK_INPUT_MASS_REFERENCE_REGISTRY.values()))
+
+    coerced = coerce_input_mass_reference_registry(
+        {"efrs-post-calibration": descriptor.spec_payload()}, label="fixture"
+    )
+
+    assert coerced == dict(UK_INPUT_MASS_REFERENCE_REGISTRY)
+    extra = descriptor.spec_payload()
+    extra["unexpected"] = "ignored?"
+    with pytest.raises(ValueError, match="fields must be exactly"):
+        coerce_input_mass_reference_registry(
+            {"efrs-post-calibration": extra}, label="fixture"
+        )
+    malformed = descriptor.spec_payload()
+    malformed["identity"] = {**descriptor.identity, "sha256": "A" * 64}
+    with pytest.raises(ValueError, match="sha256 must be a lowercase sha256"):
+        coerce_input_mass_reference_registry(
+            {"efrs-post-calibration": malformed}, label="fixture"
+        )
+    bad_totals = descriptor.spec_payload()
+    bad_totals["totals_sha256"] = "not-a-sha"
+    with pytest.raises(ValueError, match="totals_sha256"):
+        coerce_input_mass_reference_registry(
+            {"efrs-post-calibration": bad_totals}, label="fixture"
+        )
 
 
 def test_qrf_surface_is_derived_from_the_source_manifest() -> None:
@@ -595,8 +647,8 @@ def test_qrf_policy_validation() -> None:
         )
 
 
-def test_committed_exclusion_registers_load_and_are_empty() -> None:
-    input_mass = load_uk_reviewed_exclusion_register(
+def test_committed_exclusion_registers_load() -> None:
+    input_mass = load_uk_reference_scoped_exclusion_register(
         None,
         resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     )
@@ -605,8 +657,17 @@ def test_committed_exclusion_registers_load_and_are_empty() -> None:
         resource=UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
     )
 
-    assert input_mass == {}
+    assert set(input_mass) == {"efrs-post-calibration"}
+    assert set(input_mass["efrs-post-calibration"]) == {
+        "charitable_investment_gifts"
+    }
     assert qrf_tail == {}
+    assert uk_default_input_mass_reviewed_exclusions() is (
+        uk_default_input_mass_reviewed_exclusions()
+    )
+    assert uk_default_qrf_tail_reviewed_exclusions() is (
+        uk_default_qrf_tail_reviewed_exclusions()
+    )
 
 
 def test_register_loader_rejects_missing_reasons_and_bad_schema(tmp_path) -> None:
@@ -676,6 +737,60 @@ def test_register_loader_rejects_missing_reasons_and_bad_schema(tmp_path) -> Non
         load_uk_reviewed_exclusion_register(
             bad_date,
             resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
+        )
+
+
+def test_reference_scoped_register_loader_validates_schema3(tmp_path) -> None:
+    good = tmp_path / "schema3.json"
+    good.write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "description": "Seeded scoped register.",
+                "references": {
+                    "efrs-post-calibration": {
+                        "person.x": _entry("Seeded scoped reason.")
+                    },
+                    "future-reference": {},
+                },
+            }
+        )
+    )
+
+    loaded = load_uk_reference_scoped_exclusion_register(
+        good, resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE
+    )
+
+    assert set(loaded) == {"efrs-post-calibration", "future-reference"}
+    assert loaded["efrs-post-calibration"]["person.x"].reason == (
+        "Seeded scoped reason."
+    )
+
+    duplicate = tmp_path / "duplicate.json"
+    duplicate.write_text(
+        '{"schema_version":3,"description":"x","references":'
+        '{"efrs-post-calibration":{},"efrs-post-calibration":{}}}'
+    )
+    with pytest.raises(ValueError, match="duplicate JSON key"):
+        load_uk_reference_scoped_exclusion_register(
+            duplicate, resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE
+        )
+
+    bad_receipt = tmp_path / "bad-receipt.json"
+    bad_receipt.write_text(
+        json.dumps(
+            {
+                "schema_version": 3,
+                "description": "Seeded scoped register.",
+                "references": {
+                    "efrs-post-calibration": {"person.x": _entry("")},
+                },
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="reason must be a non-empty string"):
+        load_uk_reference_scoped_exclusion_register(
+            bad_receipt, resource=UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE
         )
 
 
@@ -826,6 +941,8 @@ def test_uk_input_mass_gate_is_the_shared_gate_plus_recorded_identity() -> None:
         "expired_exclusions",
         "premature_exclusions",
         "exclusions_evaluated_on",
+        "reference",
+        "reference_scope_note",
         "reference_identity",
     }
 
@@ -896,11 +1013,12 @@ def test_input_mass_reference_round_trips_the_measurement_schema(tmp_path) -> No
     )
 
     # The licensed 131-column totals are intentionally unavailable to CI;
-    # bypass only the reviewed digest while checking the measurement schema.
+    # make the small fixture present the reviewed digest while checking the
+    # measurement schema and registry identity resolution.
     with patch.object(
         weighted_integrity,
-        "_validate_input_mass_reference",
-        return_value=None,
+        "_input_mass_reference_evidence_sha256",
+        return_value=UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
     ):
         reference = load_uk_input_mass_reference(path)
 
