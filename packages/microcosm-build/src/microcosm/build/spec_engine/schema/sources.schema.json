@@ -687,6 +687,9 @@
       "target_source": {
        "type": "string",
        "x-spec-surface": "operational"
+      },
+      "seed": {
+       "type": "number"
       }
      },
      "required": [
@@ -5503,6 +5506,228 @@
       },
       "consumed_only": {
        "type": "boolean"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "draw",
+      "band_column",
+      "bands",
+      "seed"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_binary_from_banded_rates"
+      },
+      "output": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "band_column": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "number"
+      },
+      "bands": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "rate_key"
+        ],
+        "properties": {
+         "rate_key": {
+          "type": "string"
+         },
+         "upper_exclusive": {
+          "type": "number"
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "draw",
+      "anchor",
+      "rate_key",
+      "seed"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_binary_with_anchored_residual"
+      },
+      "output": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "anchor": {
+       "type": "string"
+      },
+      "rate_key": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "number"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "draw",
+      "distribution_key",
+      "seed"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_clipped_normal"
+      },
+      "output": {
+       "type": "string"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "distribution_key": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "number"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "seed"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_uniform_draw"
+      },
+      "output": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "number"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "method",
+      "aggregates"
+     ],
+     "properties": {
+      "kind": {
+       "const": "aggregate_person_to_benunit"
+      },
+      "method": {
+       "type": "string"
+      },
+      "consumed_only": {
+       "type": "boolean"
+      },
+      "aggregates": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "count_resource",
+      "cell_columns",
+      "assignment_grain",
+      "collapse_to",
+      "collapse_method",
+      "seed"
+     ],
+     "properties": {
+      "kind": {
+       "const": "sample_categorical_from_count_table"
+      },
+      "output": {
+       "type": "string"
+      },
+      "count_resource": {
+       "type": "string"
+      },
+      "cell_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "assignment_grain": {
+       "type": "string"
+      },
+      "collapse_to": {
+       "type": "string"
+      },
+      "collapse_method": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "number"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "role",
+      "kind",
+      "resource",
+      "format"
+     ],
+     "properties": {
+      "role": {
+       "type": "string"
+      },
+      "kind": {
+       "const": "public_aggregated_counts"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "format": {
+       "type": "string"
       }
      }
     }

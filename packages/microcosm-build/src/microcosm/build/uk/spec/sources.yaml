@@ -464,6 +464,169 @@ stages:
   nonnegative_outputs:
   - disabled_students_allowance_eligible_expenses
   notes: Runs before BRMA and always runs; both are signed inert differences for 2023-24. Pre-2025 DSA capacity is an aligned zero vector rather than an engine shape-sizing read.
+- stage: frs_take_up
+  survey: Family Resources Survey 2023-24
+  source: Family Resources Survey 2023-24 reported receipt anchors plus sourced UK take-up contract rates.
+  grain: benunit
+  artifacts: []
+  operations:
+  - kind: aggregate_person_to_benunit
+    method: any_positive
+    consumed_only: true
+    aggregates:
+      child_benefit_reported_anchor: child_benefit_reported
+      pension_credit_reported_anchor: pension_credit_reported
+      universal_credit_reported_anchor: universal_credit_reported
+  - kind: assign_binary_with_anchored_residual
+    output: would_claim_child_benefit
+    draw: would_claim_child_benefit
+    rate_key: child_benefit
+    anchor: child_benefit_reported_anchor
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: child_benefit_opts_out
+    draw: child_benefit_opts_out
+    rate_key: child_benefit_opts_out_rate
+    seed: 0
+  - kind: assign_binary_with_anchored_residual
+    output: would_claim_pc
+    draw: would_claim_pc
+    rate_key: pension_credit
+    anchor: pension_credit_reported_anchor
+    seed: 0
+  - kind: assign_binary_with_anchored_residual
+    output: would_claim_uc
+    draw: would_claim_uc
+    rate_key: universal_credit
+    anchor: universal_credit_reported_anchor
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: would_claim_tfc
+    draw: would_claim_tfc
+    rate_key: tax_free_childcare
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: would_claim_extended_childcare
+    draw: would_claim_extended_childcare
+    rate_key: extended_childcare
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: would_claim_universal_childcare
+    draw: would_claim_universal_childcare
+    rate_key: universal_childcare
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: would_claim_targeted_childcare
+    draw: would_claim_targeted_childcare
+    rate_key: targeted_childcare
+    seed: 0
+  - kind: assign_clipped_normal
+    output: maximum_extended_childcare_hours_usage
+    draw: maximum_extended_childcare_hours_usage
+    distribution_key: maximum_extended_childcare_hours_usage
+    seed: 0
+  outputs:
+  - would_claim_child_benefit
+  - child_benefit_opts_out
+  - would_claim_pc
+  - would_claim_uc
+  - would_claim_tfc
+  - would_claim_extended_childcare
+  - would_claim_universal_childcare
+  - would_claim_targeted_childcare
+  - maximum_extended_childcare_hours_usage
+  nonnegative_outputs:
+  - maximum_extended_childcare_hours_usage
+  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only.
+- stage: frs_person_draws
+  survey: Family Resources Survey 2023-24
+  source: Sourced UK take-up contract rates and identity-keyed deterministic draws.
+  grain: person
+  artifacts: []
+  operations:
+  - kind: assign_binary_from_rate
+    output: would_claim_marriage_allowance
+    draw: would_claim_marriage_allowance
+    rate_key: marriage_allowance
+    seed: 0
+  - kind: assign_binary_from_banded_rates
+    output: would_claim_scp
+    draw: would_claim_scp
+    band_column: age
+    bands:
+    - upper_exclusive: 6
+      rate_key: scp_under_6
+    - rate_key: scp_6_plus
+    seed: 0
+  - kind: assign_uniform_draw
+    output: attends_private_school_random_draw
+    seed: 0
+  outputs:
+  - would_claim_marriage_allowance
+  - would_claim_scp
+  - attends_private_school_random_draw
+  nonnegative_outputs:
+  - attends_private_school_random_draw
+  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; higher_earner_tie_break is intentionally not produced.
+- stage: frs_household_draws
+  survey: Family Resources Survey 2023-24
+  source: Sourced UK stochastic contract rates and identity-keyed deterministic draws.
+  grain: household
+  artifacts: []
+  operations:
+  - kind: assign_binary_from_rate
+    output: household_owns_tv
+    draw: household_owns_tv
+    rate_key: tv_ownership_rate
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: would_evade_tv_licence_fee
+    draw: would_evade_tv_licence_fee
+    rate_key: tv_licence_evasion_rate
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: main_residential_property_purchased_is_first_home
+    draw: main_residential_property_purchased_is_first_home
+    rate_key: first_time_buyer_rate
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: property_purchased
+    draw: property_purchased
+    rate_key: property_purchase_rate
+    seed: 0
+  outputs:
+  - household_owns_tv
+  - would_evade_tv_licence_fee
+  - main_residential_property_purchased_is_first_home
+  - property_purchased
+  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100. TV evasion remains an independent draw, matching the incumbent reference share.
+- stage: frs_brma
+  survey: Family Resources Survey 2023-24
+  source: Valuation Office Agency LHA list-of-rents count table and policyengine-uk LHA_category predictor.
+  grain: household
+  artifacts:
+  - role: count_resource
+    resource: brma_rent_counts.json
+    kind: public_aggregated_counts
+    format: json
+  operations:
+  - kind: materialize_rules_engine_predictors
+    predictors:
+    - LHA_category
+    consumed_only: true
+  - kind: sample_categorical_from_count_table
+    output: brma
+    count_resource: brma_rent_counts.json
+    cell_columns:
+    - region
+    - LHA_category
+    assignment_grain: benunit
+    collapse_to: household
+    collapse_method: uniform_member_pick
+    seed: 0
+  outputs:
+  - brma
+  notes: Identity-keyed seed 0 streams replace the incumbent BRMA seed 0 sequential generator. Household collapse uses salt brma:household_pick.
 - stage: frs_hmrc_retained_leaves
   survey: Family Resources Survey 2023-24
   source: Department for Work and Pensions Family Resources Survey 2023-24 raw adult.tab and benefits.tab, caller-supplied local input
@@ -1059,5 +1222,4 @@ stages:
   - hmrc_spi_total_earned_income
   - hmrc_spi_total_investment_income
   - hmrc_spi_assessable_income
-  notes: 'Current-source adjudicated replay contract: the private 2022-23 SPI donor and public 2023-24 HMRC ODS are pinned by reviewed SHA-256 and size and verified together before either is opened. The QRF draws source leaves; HMRC employed income, TEI, TII, and TI are deterministic post-draw aggregates on the SPI channel, with TI exactly equal to TEI + TII. PolicyEngine employment_income remains the narrow PAY + EPB + TAXTERM input on SPI rows. Stage 2 mirrors the incumbent UK data build''s frs_only.py exactly: its income predictors are employment, self-employment, savings interest, dividends, private pension, and property income. Other investment income remains a stage-1 SPI draw and official HMRC fact component, but is excluded from stage 2 because the certified FRS candidate does not carry it. The FRS channel retains source-faithful full PAY, UBISJA, and INCPBEN plus explicitly named ossben_identifiable_subset and srp_regular_code5; EPB, EXPS, TAXTERM, MOTHINC, OTHERINC, full OSSBEN,
-    and full SRP remain forbidden. Because the missing legs prevent a complete FRS TEI measure, none of the 208 non-overlapping total-income-band facts is exact or directional. Every fact is an excluded-with-fence record, no calibration is performed, and weights remain importance-kind. Gift Aid restoration still requires the rebuilt positive-mass SPI channel to clear the reviewed 1ppm effective-mass floor.'
+  notes: 'Current-source adjudicated replay contract: the private 2022-23 SPI donor and public 2023-24 HMRC ODS are pinned by reviewed SHA-256 and size and verified together before either is opened. The QRF draws source leaves; HMRC employed income, TEI, TII, and TI are deterministic post-draw aggregates on the SPI channel, with TI exactly equal to TEI + TII. PolicyEngine employment_income remains the narrow PAY + EPB + TAXTERM input on SPI rows. Stage 2 mirrors the incumbent UK data build''s frs_only.py exactly: its income predictors are employment, self-employment, savings interest, dividends, private pension, and property income. Other investment income remains a stage-1 SPI draw and official HMRC fact component, but is excluded from stage 2 because the certified FRS candidate does not carry it. The FRS channel retains source-faithful full PAY, UBISJA, and INCPBEN plus explicitly named ossben_identifiable_subset and srp_regular_code5; EPB, EXPS, TAXTERM, MOTHINC, OTHERINC, full OSSBEN, and full SRP remain forbidden. Because the missing legs prevent a complete FRS TEI measure, none of the 208 non-overlapping total-income-band facts is exact or directional. Every fact is an excluded-with-fence record, no calibration is performed, and weights remain importance-kind. Gift Aid restoration still requires the rebuilt positive-mass SPI channel to clear the reviewed 1ppm effective-mass floor.'
