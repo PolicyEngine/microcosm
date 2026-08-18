@@ -98,3 +98,8 @@ that owns each arm.
   passed. The otherwise inert `_complete_numeric_component_sum` helper is
   retained solely because the byte-identical gate imports it for measurement;
   eligibility runtime does not select the investment predictor.
+- Pre-build full-suite receipt on implementation commit `51126d40`: 6,250
+  passed and 68 skipped (6,318 collected), with zero failures/errors in
+  2,019.224 seconds. The machine-readable pytest receipt was written to
+  `/private/tmp/arm-eligibility-full-suite.xml`; this journal-only follow-up
+  does not change the tested runtime.
