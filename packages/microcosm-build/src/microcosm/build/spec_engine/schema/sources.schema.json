@@ -22,6 +22,9 @@
      "loader"
     ],
     "properties": {
+     "acquisition": {
+      "$ref": "#/$defs/source_acquisition"
+     },
      "id": {
       "$ref": "defs.schema.json#/$defs/identifier"
      },
@@ -68,6 +71,39 @@
   }
  },
  "$defs": {
+  "source_acquisition": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "filename",
+    "url",
+    "source_directory",
+    "verified_on"
+   ],
+   "properties": {
+    "filename": {
+     "type": "string",
+     "minLength": 1,
+     "pattern": "^[^/\\\\]+$",
+     "x-spec-surface": "operational"
+    },
+    "url": {
+     "type": "string",
+     "minLength": 1,
+     "x-spec-surface": "operational"
+    },
+    "source_directory": {
+     "type": "string",
+     "minLength": 1,
+     "x-spec-surface": "operational"
+    },
+    "verified_on": {
+     "type": "string",
+     "format": "date",
+     "x-spec-surface": "documentation"
+    }
+   }
+  },
   "stage_asset": {
    "type": "object",
    "additionalProperties": false,

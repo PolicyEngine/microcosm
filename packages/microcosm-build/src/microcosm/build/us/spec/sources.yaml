@@ -25,6 +25,11 @@ sources:
   loader: kernel:build_acs_pums_unit_frame
   vintages:
   - vintage:acs_2024
+  acquisition:
+    filename: csv_hus.zip
+    url: https://www2.census.gov/programs-surveys/acs/data/pums/2024/1-Year/csv_hus.zip
+    source_directory: https://www2.census.gov/programs-surveys/acs/data/pums/2024/1-Year/
+    verified_on: '2026-07-10'
   vintage_authorities:
   - id: acs_2024
     kind: survey_period
@@ -36,6 +41,11 @@ sources:
   loader: kernel:build_acs_pums_unit_frame
   vintages:
   - vintage:acs_2024
+  acquisition:
+    filename: csv_pus.zip
+    url: https://www2.census.gov/programs-surveys/acs/data/pums/2024/1-Year/csv_pus.zip
+    source_directory: https://www2.census.gov/programs-surveys/acs/data/pums/2024/1-Year/
+    verified_on: '2026-07-10'
 - id: acs_rent_donor
   role: acs_rent_donor
   sha256: 0b319b496f19a6913066f9c5ea572edfda3d78a187be6f375846617d0b441bd4

@@ -62,6 +62,49 @@ def _pipeline_operation_ids(spine: Mapping[str, object]) -> frozenset[str]:
                 contract.get(field), location=f"spine/pipeline_contract/{field}"
             )
         )
+    stacked_order = _unique_strings(
+        contract.get("stacked_operator_order"),
+        location="spine/pipeline_contract/stacked_operator_order",
+    )
+    staged_operations: list[str] = []
+    stage_ids: set[str] = set()
+    graph_bindings = 0
+    for index, raw_stage in enumerate(
+        _array(
+            contract.get("execution_stages"),
+            location="spine/pipeline_contract/execution_stages",
+        )
+    ):
+        location = f"spine/pipeline_contract/execution_stages/{index}"
+        stage = _mapping(raw_stage, location=location)
+        stage_id = stage.get("id")
+        if not isinstance(stage_id, str) or not stage_id:
+            raise IdentityContractError(f"{location}/id: identifier required")
+        if stage_id in stage_ids:
+            raise IdentityContractError(f"{location}/id: duplicate {stage_id!r}")
+        stage_ids.add(stage_id)
+        stage_operations = _unique_strings(
+            stage.get("operations"), location=f"{location}/operations"
+        )
+        graph_operation = stage.get("producer_graph_operation")
+        if graph_operation is not None:
+            if graph_operation not in stage_operations:
+                raise IdentityContractError(
+                    f"{location}/producer_graph_operation: must name an operation "
+                    "in the same stage"
+                )
+            graph_bindings += 1
+        staged_operations.extend(stage_operations)
+    if tuple(staged_operations) != stacked_order:
+        raise IdentityContractError(
+            "spine/pipeline_contract/execution_stages: operations must form an "
+            "ordered, contiguous, exact partition of stacked_operator_order"
+        )
+    if graph_bindings != 1:
+        raise IdentityContractError(
+            "spine/pipeline_contract/execution_stages: exactly one stage must "
+            "bind producer_graph_operation"
+        )
     return frozenset(operations)
 
 

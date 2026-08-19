@@ -47,8 +47,8 @@ import re
 import subprocess
 import time
 import uuid
-from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass, fields, is_dataclass, replace
+from collections.abc import Callable, Iterator, Mapping
+from dataclasses import asdict, dataclass, field, fields, is_dataclass, replace
 from datetime import UTC, datetime
 from enum import Enum
 from importlib.metadata import PackageNotFoundError, version
@@ -73,7 +73,10 @@ from microcosm.build.gates import (
 from microcosm.build.logbook import record_build_attempt
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
 from microcosm.build.spec_engine import (
+    RuntimeAuthorities,
     assert_legacy_payload_equal,
+    compile_runtime_authorities,
+    compile_spec,
     compile_to_legacy_payload,
     load_bundle,
 )
@@ -566,12 +569,14 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--config-authority",
-        choices=("constants", "constants_adapter"),
+        choices=("constants", "constants_adapter", "bundle"),
         default="constants",
         help=(
             "Configuration receipt mode. constants_adapter compiles and "
             "equality-attests the packaged US bundle, then still executes "
-            "through the generation-0 constants path (default: constants)."
+            "through the generation-0 constants path; bundle compiles the "
+            "packaged bundle into the generation-1 runtime authority "
+            "(default: constants)."
         ),
     )
     return parser
@@ -4043,12 +4048,59 @@ def _compiled_constants_adapter_gate(
     }
 
 
-def _stacked_run_config(args: argparse.Namespace) -> dict[str, object]:
-    """Resolve the receipt-only configuration authority for one stacked run."""
+@dataclass(frozen=True, slots=True)
+class _ResolvedStackedRunConfig(Mapping[str, object]):
+    """Receipt view plus the non-serializable bundle runtime capability.
+
+    Mapping consumers see only operational configuration receipt fields.  The
+    compiler-issued capability is deliberately absent from iteration so it
+    cannot enter generation-0 checkpoint, bank, semantic-artifact, or reuse
+    identities merely because those paths serialize ``run_config``.
+    """
+
+    runtime_authorities: RuntimeAuthorities = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self.runtime_authorities.identity_generation != 1:
+            raise ValueError(
+                "Bundle configuration requires runtime identity_generation 1."
+            )
+
+    def _receipt(self) -> dict[str, object]:
+        binding = self.runtime_authorities.spec_binding.to_wire()
+        binding["attestation"] = "bundle-authoritative"
+        return {
+            "config_authority": "bundle",
+            "spec_binding_status": "resolved",
+            "identity_generation": self.runtime_authorities.identity_generation,
+            "spec_binding": binding,
+            "runtime_authority_sha256": (self.runtime_authorities.authority_sha256),
+        }
+
+    def __getitem__(self, key: str) -> object:
+        return self._receipt()[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._receipt())
+
+    def __len__(self) -> int:
+        return len(self._receipt())
+
+
+def _stacked_run_config(
+    args: argparse.Namespace,
+) -> dict[str, object] | _ResolvedStackedRunConfig:
+    """Resolve one stacked configuration authority and its receipt view."""
 
     config_authority = getattr(args, "config_authority", "constants")
     if config_authority == "constants":
         return {"config_authority": "constants"}
+    if config_authority == "bundle":
+        resolved = load_bundle("us")
+        compiled = compile_spec(resolved)
+        return _ResolvedStackedRunConfig(
+            runtime_authorities=compile_runtime_authorities(compiled)
+        )
     if config_authority != "constants_adapter":
         raise ValueError(f"Unsupported config authority: {config_authority!r}.")
 
@@ -4069,11 +4121,11 @@ def _stacked_run_config(args: argparse.Namespace) -> dict[str, object]:
 
 
 def _requested_stacked_run_config(args: argparse.Namespace) -> dict[str, object]:
-    """Return receipt state before any fallible adapter resolution."""
+    """Return receipt state before any fallible authority resolution."""
 
     config_authority = getattr(args, "config_authority", "constants")
     result: dict[str, object] = {"config_authority": config_authority}
-    if config_authority == "constants_adapter":
+    if config_authority in {"constants_adapter", "bundle"}:
         result["spec_binding_status"] = "resolution_pending"
     return result
 
@@ -4461,16 +4513,10 @@ def _main_stacked(args: argparse.Namespace) -> int:
             args.out,
             checkpoint_root=args.checkpoint_root,
         )
-        state.build_id = _new_stacked_release_id(
-            sample_fraction=args.sample_fraction,
-            sample_seed=args.sample_seed,
-            realized_asec_households=0,
-            realized_acs_households=0,
-            timestamp=started_ts,
-        )
-        # F0 resolves and equality-attests the bundle before constructing any
-        # configured/checkpoint identity, then deliberately leaves those
-        # generation-0 identities untouched.  The binding is a run receipt.
+        # Select and fully resolve configuration authority before consulting
+        # authority-owned publication naming.  Stage authority threading is a
+        # separate seam; until then the existing semantic/checkpoint identity
+        # constructors remain deliberately untouched.
         try:
             run_config = _stacked_run_config(args)
         except Exception:
@@ -4480,6 +4526,13 @@ def _main_stacked(args: argparse.Namespace) -> int:
                     "spec_binding_status": "resolution_failed",
                 }
             raise
+        state.build_id = _new_stacked_release_id(
+            sample_fraction=args.sample_fraction,
+            sample_seed=args.sample_seed,
+            realized_asec_households=0,
+            realized_acs_households=0,
+            timestamp=started_ts,
+        )
         configured_identity = _configured_stacked_identity(args)
         state.identity_digest = hashlib.sha256(
             _canonical_json_bytes(configured_identity)
@@ -4732,10 +4785,11 @@ def main(argv: list[str] | None = None) -> int:
 
     args = _parser().parse_args(argv)
     if args.legacy_two_spine:
-        if getattr(args, "config_authority", "constants") != "constants":
+        config_authority = getattr(args, "config_authority", "constants")
+        if config_authority != "constants":
             raise ValueError(
-                "--config-authority constants_adapter is available only for "
-                "the stacked pipeline and cannot be combined with "
+                f"--config-authority {config_authority} is available only "
+                "for the stacked pipeline and cannot be combined with "
                 "--legacy-two-spine."
             )
         return _main_legacy(args)

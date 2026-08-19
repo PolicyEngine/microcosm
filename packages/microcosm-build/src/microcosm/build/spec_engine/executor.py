@@ -1448,7 +1448,7 @@ def build_run_provenance_identity(
     run_request: Mapping[str, object],
     execution_receipt: Mapping[str, object],
 ) -> RunProvenanceIdentity:
-    """Build one closed provenance identity; only generation crosses into reuse."""
+    """Build one closed provenance identity; none of it crosses into reuse."""
 
     if (
         isinstance(identity_generation, bool)
@@ -1494,13 +1494,9 @@ def _reject_provenance_fields(
     value: object,
     *,
     location: str,
-    allow_identity_generation_here: bool = False,
 ) -> None:
     if isinstance(value, Mapping):
-        prohibited = _PROVENANCE_ONLY_FIELDS - (
-            {"identity_generation"} if allow_identity_generation_here else set()
-        )
-        forbidden = sorted(set(value) & prohibited)
+        forbidden = sorted(set(value) & _PROVENANCE_ONLY_FIELDS)
         if forbidden:
             raise CapabilityError(
                 f"node reuse semantic inputs contain provenance fields at "
@@ -1521,7 +1517,6 @@ def _reject_provenance_fields(
 def node_reuse_identity(
     node: CompiledNode,
     *,
-    identity_generation: int,
     behavior_relevant_run_inputs: Mapping[str, object],
     transitive_input_content_hashes: Mapping[str, str],
     implementation_dependency_sha256: str,
@@ -1532,24 +1527,15 @@ def node_reuse_identity(
 ) -> NodeReuseIdentity:
     """Derive the runtime semantic reuse key, never a run-provenance key.
 
-    The binding generation is an explicit scalar cold-cache boundary.  The
-    rest of ``run_provenance_identity``, configuration-authority mode, and
-    broker access receipts are intentionally impossible inputs to this API.
-    Artifact content identities and actual RNG behavior inputs remain semantic.
+    ``run_provenance_identity``, binding generation, configuration-authority
+    mode, and broker access receipts are intentionally impossible inputs to
+    this API. Artifact content identities and actual RNG behavior inputs remain
+    semantic.
     """
 
     if not isinstance(node, CompiledNode):
         raise TypeError("node_reuse_identity requires a CompiledNode")
     _compiled_contract_consistent(node)
-    if (
-        isinstance(identity_generation, bool)
-        or not isinstance(identity_generation, int)
-        or identity_generation not in {0, 1}
-    ):
-        raise CapabilityError(
-            "node reuse identity_generation must be 0 or 1; unknown generations "
-            "are refused"
-        )
     if not isinstance(rng_behavior_inputs, RNGBehaviorIdentity):
         raise TypeError(
             "node_reuse_identity requires a broker-issued RNGBehaviorIdentity"
@@ -1659,7 +1645,6 @@ def node_reuse_identity(
     _reject_provenance_fields(semantic_inputs, location="node_reuse")
     payload = {
         "domain": _NODE_REUSE_KEY_DOMAIN,
-        "identity_generation": identity_generation,
         "compiler_ir_abi": _wire(node.compiler_ir_abi),
         "resolved_transitive_node_slice": node.node_slice_wire(),
         "behavior_relevant_run_inputs": semantic_inputs["behavior_relevant_run_inputs"],
@@ -1683,11 +1668,7 @@ def node_reuse_identity(
         "per_artifact_materializer_abi": semantic_inputs["artifact_materializer_abis"],
         "output_sensitive_backend_abi": semantic_inputs["output_sensitive_backend_abi"],
     }
-    _reject_provenance_fields(
-        payload,
-        location="node_reuse_payload",
-        allow_identity_generation_here=True,
-    )
+    _reject_provenance_fields(payload, location="node_reuse_payload")
     frozen = freeze_json(payload)
     if not isinstance(frozen, FrozenMap):  # pragma: no cover - root is literal map
         raise AssertionError("node reuse payload did not freeze to an object")

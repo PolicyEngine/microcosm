@@ -46,6 +46,7 @@ __all__ = [
     "US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND",
     "US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION",
     "US_STACKED_POOL_OPERATOR_ORDER",
+    "US_STACKED_POOL_EXECUTION_STAGES",
     "load_legacy_calibrated_us_h5",
     "load_simulation_ready_us_multispine_pool",
     "load_simulation_ready_us_multispine_pool_manifest",
@@ -87,6 +88,42 @@ US_STACKED_POOL_OPERATOR_ORDER = (
     "stacked_completeness_gate",
     "by_origin_battery",
 )
+US_STACKED_POOL_EXECUTION_STAGES = (
+    {
+        "id": "assembled",
+        "operations": ("assemble_stacked_spine",),
+        "durable_checkpoint": True,
+    },
+    {
+        "id": "transferred",
+        "operations": (
+            "prepare_multispine_source_inputs_for_clone",
+            "gap_fill_stacked_spine",
+            "run_stacked_late_producer_dag",
+        ),
+        "durable_checkpoint": True,
+        "producer_graph_operation": "run_stacked_late_producer_dag",
+    },
+    {
+        "id": "simulated",
+        "operations": (
+            "prepare_stacked_tail_derivation",
+            "derive_multispine_pool_inputs",
+            "seed_multispine_pool_inputs",
+            "materialize_multispine_agreement_outputs",
+        ),
+        "durable_checkpoint": True,
+    },
+    {
+        "id": "terminal",
+        "operations": (
+            "stacked_completeness_gate",
+            "by_origin_battery",
+        ),
+        "durable_checkpoint": False,
+    },
+)
+"""Ordered logical stages; operations form an exact partition of the pipeline."""
 _LEGACY_POOL_OPERATOR_ORDER = (
     "assemble",
     "clone",

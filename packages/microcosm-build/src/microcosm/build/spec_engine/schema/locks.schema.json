@@ -480,10 +480,13 @@
    "additionalProperties": false,
    "required": [
     "compiler_ir_abi",
+    "grammar_receipt",
     "spec_binding",
     "surfaces",
     "typed_inventory",
     "authorities",
+    "runtime_authorities",
+    "execution_abi",
     "stage_dag",
     "producer_graph",
     "seed_stream_map",
@@ -506,10 +509,15 @@
       }
      }
     },
+    "grammar_receipt": {
+     "$ref": "#/$defs/bundle_lock/properties/grammar_receipt"
+    },
     "spec_binding": {"$ref": "#/$defs/spec_binding"},
     "surfaces": {"$ref": "#/$defs/compiled_surfaces"},
     "typed_inventory": {"$ref": "#/$defs/typed_inventory"},
     "authorities": {"$ref": "#/$defs/compiled_authorities"},
+    "runtime_authorities": {"$ref": "#/$defs/runtime_authorities"},
+    "execution_abi": {"$ref": "#/$defs/execution_abi"},
     "stage_dag": {"$ref": "#/$defs/stage_dag"},
     "producer_graph": {"$ref": "#/$defs/producer_graph_ir"},
     "seed_stream_map": {"$ref": "#/$defs/seed_stream_map"},
@@ -518,6 +526,314 @@
      "items": {"$ref": "#/$defs/compiled_node"}
     }
    }
+  },
+  "runtime_authorities": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["schema_version", "surfaces", "domain_sha256", "sha256"],
+   "properties": {
+    "schema_version": {"const": 1},
+    "surfaces": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["normative", "execution_profile", "run_request", "behavior"],
+     "properties": {
+      "normative": {"$ref": "#/$defs/json_object"},
+      "execution_profile": {"$ref": "#/$defs/json_object"},
+      "run_request": {"$ref": "#/$defs/json_object"},
+      "behavior": {"$ref": "#/$defs/json_object"}
+     }
+    },
+    "domain_sha256": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["normative", "execution_profile", "run_request", "behavior"],
+     "properties": {
+      "normative": {"$ref": "#/$defs/sha256_map"},
+      "execution_profile": {"$ref": "#/$defs/sha256_map"},
+      "run_request": {"$ref": "#/$defs/sha256_map"},
+      "behavior": {"$ref": "#/$defs/sha256_map"}
+     }
+    },
+    "sha256": {"$ref": "defs.schema.json#/$defs/sha256"}
+   }
+  },
+  "sha256_map": {
+   "type": "object",
+   "additionalProperties": {"$ref": "defs.schema.json#/$defs/sha256"}
+  },
+  "execution_abi": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "schema_version",
+    "present",
+    "pipeline",
+    "operations",
+    "logical_stages",
+    "durable_checkpoints",
+    "code_abi",
+    "normative_artifact_vector",
+    "receipt_comparison_vector",
+    "resume_predicate",
+    "sha256"
+   ],
+   "properties": {
+    "schema_version": {"const": 1},
+    "present": {"type": "boolean"},
+    "pipeline": {
+     "oneOf": [
+      {"type": "null"},
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "id",
+        "artifact_protocol",
+        "operator_order",
+        "producer_order",
+        "seed_stream_map_sha256"
+       ],
+       "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "artifact_protocol": {"$ref": "#/$defs/json_object"},
+        "operator_order": {
+         "type": "array",
+         "items": {"type": "string", "minLength": 1}
+        },
+        "producer_order": {
+         "type": "array",
+         "items": {"type": "string", "minLength": 1}
+        },
+        "seed_stream_map_sha256": {"$ref": "defs.schema.json#/$defs/sha256"}
+       }
+      }
+     ]
+    },
+    "operations": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "ordinal", "stage_ref", "nested_producer_nodes"],
+      "properties": {
+       "id": {"type": "string", "minLength": 1},
+       "ordinal": {"type": "integer", "minimum": 0},
+       "stage_ref": {"type": "string", "minLength": 1},
+       "nested_producer_nodes": {
+        "type": "array",
+        "items": {"type": "string", "minLength": 1}
+       }
+      }
+     }
+    },
+    "logical_stages": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "id",
+       "ordinal",
+       "operations",
+       "producer_graph_operation",
+       "producer_nodes",
+       "durable_checkpoint"
+      ],
+      "properties": {
+       "id": {"type": "string", "minLength": 1},
+       "ordinal": {"type": "integer", "minimum": 0},
+       "operations": {
+        "type": "array",
+        "items": {"type": "string", "minLength": 1}
+       },
+       "producer_graph_operation": {
+        "oneOf": [
+         {"type": "null"},
+         {"type": "string", "minLength": 1}
+        ]
+       },
+       "producer_nodes": {
+        "type": "array",
+        "items": {"type": "string", "minLength": 1}
+       },
+       "durable_checkpoint": {"type": "boolean"}
+      }
+     }
+    },
+    "durable_checkpoints": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "id",
+       "ordinal",
+       "after_operation",
+       "covers_operations",
+       "artifact_roles"
+      ],
+      "properties": {
+       "id": {"type": "string", "minLength": 1},
+       "ordinal": {"type": "integer", "minimum": 0},
+       "after_operation": {"type": "string", "minLength": 1},
+       "covers_operations": {
+        "type": "array",
+        "items": {"type": "string", "minLength": 1}
+       },
+       "artifact_roles": {
+        "type": "array",
+        "items": {"type": "string", "minLength": 1}
+       }
+      }
+     }
+    },
+    "code_abi": {
+     "oneOf": [
+      {"type": "null"},
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "domain",
+        "content_selectors",
+        "locator_grammar",
+        "receipt_difference_match",
+        "implementation_sha256"
+       ],
+       "properties": {
+        "domain": {"type": "string", "minLength": 1},
+        "content_selectors": {
+         "type": "array",
+         "items": {"type": "string", "minLength": 1}
+        },
+        "locator_grammar": {"type": "string", "minLength": 1},
+        "receipt_difference_match": {
+         "const": "exactly_one_sealed_rule"
+        },
+        "implementation_sha256": {
+         "$ref": "defs.schema.json#/$defs/sha256"
+        }
+       }
+      }
+     ]
+    },
+    "normative_artifact_vector": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "id",
+       "kind",
+       "producer_ref",
+       "stage_ref",
+       "protocol_ref",
+       "locator_ref",
+       "content_selector_ref",
+       "surface",
+       "comparison",
+       "required"
+      ],
+      "properties": {
+       "id": {"type": "string", "minLength": 1},
+       "kind": {"type": "string", "minLength": 1},
+       "producer_ref": {"type": "string", "minLength": 1},
+       "stage_ref": {"type": "string", "minLength": 1},
+       "protocol_ref": {"type": "string", "minLength": 1},
+       "locator_ref": {"type": "string", "minLength": 1},
+       "content_selector_ref": {"type": "string", "minLength": 1},
+       "surface": {"const": "normative"},
+       "comparison": {"const": "raw_byte_exact"},
+       "required": {"const": true}
+      }
+     }
+    },
+    "receipt_comparison_vector": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "artifact_role",
+       "json_pointer_pattern",
+       "rule",
+       "category"
+      ],
+      "properties": {
+       "artifact_role": {"type": "string", "minLength": 1},
+       "json_pointer_pattern": {
+        "type": "string",
+        "pattern": "^/(?!.*\\*\\*)(?:[^/]+/)*[^/]+$"
+       },
+       "rule": {
+        "enum": [
+         "equal_after_normalizing_prefix",
+         "expected_to_differ_by_generation",
+         "operational_excluded"
+        ]
+       },
+       "category": {"type": "string", "minLength": 1}
+      }
+     }
+    },
+    "resume_predicate": {
+     "oneOf": [
+      {"type": "null"},
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "candidate_order",
+        "required_artifact_roles_by_stage",
+        "identity_fields",
+        "integrity_validators",
+        "last_durable_stage"
+       ],
+       "properties": {
+        "candidate_order": {
+         "type": "array",
+         "items": {"type": "string", "minLength": 1}
+        },
+        "required_artifact_roles_by_stage": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1}
+         }
+        },
+        "identity_fields": {
+         "type": "array",
+         "items": {"type": "string", "minLength": 1}
+        },
+        "integrity_validators": {
+         "type": "array",
+         "items": {"type": "string", "minLength": 1}
+        },
+        "last_durable_stage": {"type": "string", "minLength": 1}
+       }
+      }
+     ]
+    },
+    "sha256": {"$ref": "defs.schema.json#/$defs/sha256"}
+   },
+   "allOf": [
+    {
+     "if": {"properties": {"present": {"const": false}}},
+     "then": {
+      "properties": {
+       "pipeline": {"type": "null"},
+       "operations": {"maxItems": 0},
+       "logical_stages": {"maxItems": 0},
+       "durable_checkpoints": {"maxItems": 0},
+       "code_abi": {"type": "null"},
+       "normative_artifact_vector": {"maxItems": 0},
+       "receipt_comparison_vector": {"maxItems": 0},
+       "resume_predicate": {"type": "null"}
+      }
+     }
+    }
+   ]
   },
   "spec_binding": {
    "type": "object",

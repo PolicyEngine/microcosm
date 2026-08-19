@@ -266,6 +266,7 @@
    "required": [
     "artifact_protocol",
     "stacked_operator_order",
+    "execution_stages",
     "pre_clone_source_operator_order",
     "post_clone_source_operator_order",
     "derive_operator_order",
@@ -293,6 +294,21 @@
      }
     },
     "stacked_operator_order": {"$ref": "#/$defs/operator_order"},
+    "execution_stages": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "operations", "durable_checkpoint"],
+      "properties": {
+       "id": {"$ref": "#/$defs/operator_id"},
+       "operations": {"$ref": "#/$defs/operator_order"},
+       "durable_checkpoint": {"type": "boolean"},
+       "producer_graph_operation": {"$ref": "#/$defs/operator_id"}
+      }
+     }
+    },
     "pre_clone_source_operator_order": {"$ref": "#/$defs/operator_order"},
     "post_clone_source_operator_order": {"$ref": "#/$defs/operator_order"},
     "derive_operator_order": {"$ref": "#/$defs/operator_order"},

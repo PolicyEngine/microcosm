@@ -92,22 +92,22 @@ def _mutated_bundle(
 
 
 def test_exact_complete_ledger_has_one_primary_mode_per_pointer(field_ledger) -> None:
-    assert len(field_ledger.fields) == EXPECTED_CONFIGURATION_FIELD_COUNT == 41_867
+    assert len(field_ledger.fields) == EXPECTED_CONFIGURATION_FIELD_COUNT == 41_886
     assert field_ledger.source_counts == {
-        "authored": 32_218,
+        "authored": 32_237,
         "resolved_bindings": 9_649,
     }
     assert field_ledger.mode_counts == {
         "legacy_behavior": 13_245,
-        "compiler_semantic": 28_148,
+        "compiler_semantic": 28_167,
         "front_end_validation": 346,
         "identity_only": 128,
     }
     assert field_ledger.generation0_effect_counts == {
         "legacy_behavior": 37_718,
-        "no_generation0_effect": 4_149,
+        "no_generation0_effect": 4_168,
     }
-    assert len({field.pointer for field in field_ledger.fields}) == 41_867
+    assert len({field.pointer for field in field_ledger.fields}) == 41_886
 
 
 def test_eligibility_concepts_are_validation_not_generation0_behavior(
@@ -144,15 +144,11 @@ def test_spine_assembly_mass_share_fields_name_exact_adapter_sinks(
 ) -> None:
     for channel in ("acs", "asec"):
         field = field_ledger.field(
-            "/authored/spec~1spine.yaml/assembly/household_mass_shares/"
-            f"{channel}"
+            f"/authored/spec~1spine.yaml/assembly/household_mass_shares/{channel}"
         )
         assert field.mode is UsageMode.LEGACY_BEHAVIOR
         assert field.generation0_effect is Generation0Effect.LEGACY_BEHAVIOR
-        assert (
-            f"/spine_assembly/household_mass_shares/{channel}"
-            in field.sink_pointers
-        )
+        assert f"/spine_assembly/household_mass_shares/{channel}" in field.sink_pointers
 
 
 def test_copied_surfaces_cannot_rescue_a_missing_calibration_sink(
@@ -340,11 +336,7 @@ def test_mass_share_mutation_changes_the_named_adapter_surface(
     ledger = build_field_usage_ledger(mutated, legacy_payload=mutated_legacy)
     for channel in ("acs", "asec"):
         field = ledger.field(
-            "/authored/spec~1spine.yaml/assembly/household_mass_shares/"
-            f"{channel}"
+            f"/authored/spec~1spine.yaml/assembly/household_mass_shares/{channel}"
         )
         assert field.claim_id == "spine_assembly_household_mass_shares"
-        assert (
-            f"/spine_assembly/household_mass_shares/{channel}"
-            in field.sink_pointers
-        )
+        assert f"/spine_assembly/household_mass_shares/{channel}" in field.sink_pointers

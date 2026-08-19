@@ -1786,9 +1786,113 @@ def test_stacked_config_authority_defaults_to_constants_without_loading_bundle(
             AssertionError("the constants mode must not load a spec bundle")
         ),
     )
+    monkeypatch.setattr(
+        pool_tool,
+        "compile_spec",
+        lambda _resolved: (_ for _ in ()).throw(
+            AssertionError("the constants mode must not compile a spec bundle")
+        ),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "compile_runtime_authorities",
+        lambda _compiled: (_ for _ in ()).throw(
+            AssertionError("the constants mode must not issue runtime authorities")
+        ),
+    )
 
     assert args.config_authority == "constants"
     assert pool_tool._stacked_run_config(args) == {"config_authority": "constants"}
+
+
+def test_bundle_config_compiles_one_runtime_authority_without_legacy_adapter(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    args = pool_tool._parser().parse_args(
+        [*_stacked_main_argv(tmp_path), "--config-authority", "bundle"]
+    )
+    resolved = object()
+    compiled = object()
+    binding = {
+        "attestation": "mirror-attested",
+        "canonicalizer_version": 1,
+        "country": "us",
+        "schema_id": "country_spec",
+        "schema_version": 1,
+        "spec_sha256": "a" * 64,
+    }
+    runtime_authorities = SimpleNamespace(
+        identity_generation=1,
+        spec_binding=SimpleNamespace(to_wire=lambda: dict(binding)),
+        authority_sha256="b" * 64,
+    )
+    calls: list[tuple[str, object]] = []
+
+    def load(country: str) -> object:
+        calls.append(("load_bundle", country))
+        return resolved
+
+    def compile_ir(value: object) -> object:
+        calls.append(("compile_spec", value))
+        return compiled
+
+    def issue_authorities(value: object) -> object:
+        calls.append(("compile_runtime_authorities", value))
+        return runtime_authorities
+
+    monkeypatch.setattr(pool_tool, "load_bundle", load)
+    monkeypatch.setattr(pool_tool, "compile_spec", compile_ir)
+    monkeypatch.setattr(
+        pool_tool,
+        "compile_runtime_authorities",
+        issue_authorities,
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "compile_to_legacy_payload",
+        lambda _resolved: (_ for _ in ()).throw(
+            AssertionError("bundle mode must not call the legacy adapter")
+        ),
+    )
+
+    run_config = pool_tool._stacked_run_config(args)
+
+    assert calls == [
+        ("load_bundle", "us"),
+        ("compile_spec", resolved),
+        ("compile_runtime_authorities", compiled),
+    ]
+    assert isinstance(run_config, pool_tool._ResolvedStackedRunConfig)
+    assert run_config.runtime_authorities is runtime_authorities
+    assert dict(run_config) == {
+        "config_authority": "bundle",
+        "spec_binding_status": "resolved",
+        "identity_generation": 1,
+        "spec_binding": {
+            **binding,
+            "attestation": "bundle-authoritative",
+        },
+        "runtime_authority_sha256": "b" * 64,
+    }
+    assert "runtime_authorities" not in run_config
+    assert "b" * 64 not in repr(run_config)
+    with pytest.raises(AttributeError):
+        run_config.runtime_authorities = object()
+
+
+@pytest.mark.parametrize("config_authority", ["constants_adapter", "bundle"])
+def test_nonconstant_requested_config_records_pending_resolution(
+    pool_tool: ModuleType,
+    config_authority: str,
+) -> None:
+    assert pool_tool._requested_stacked_run_config(
+        SimpleNamespace(config_authority=config_authority)
+    ) == {
+        "config_authority": config_authority,
+        "spec_binding_status": "resolution_pending",
+    }
 
 
 def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
@@ -1836,6 +1940,20 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
         pool_tool,
         "assert_legacy_payload_equal",
         capture_equality,
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "compile_spec",
+        lambda _resolved: (_ for _ in ()).throw(
+            AssertionError("constants_adapter must keep the F0 adapter path")
+        ),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "compile_runtime_authorities",
+        lambda _compiled: (_ for _ in ()).throw(
+            AssertionError("constants_adapter must not issue F1 authorities")
+        ),
     )
 
     # This call performs the real bundle load, compilation, and field-complete
@@ -1903,7 +2021,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "f6ae6cde8c08e8695128ab9f29509168c1ee042faa97a28a3c94977262987309",
+            "spec_sha256": "a57b484c8993ec81e1c2c0edb9ef29dbae33c17051bdec58ed710774d73906b2",
         },
     }
 
@@ -2013,6 +2131,13 @@ def test_constants_adapter_failure_receipt_preserves_requested_resolution_state(
         tmp_path,
         terminal="success",
     )
+    monkeypatch.setattr(
+        pool_tool,
+        "_new_stacked_release_id",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("release authority must not resolve before configuration")
+        ),
+    )
     if failure_stage == "preflight":
         monkeypatch.setattr(
             pool_tool,
@@ -2106,7 +2231,7 @@ def test_constants_adapter_fixture_checkpoints_are_byte_identical_and_only_recei
         "country": "us",
         "schema_id": "country_spec",
         "schema_version": 1,
-        "spec_sha256": "f6ae6cde8c08e8695128ab9f29509168c1ee042faa97a28a3c94977262987309",
+        "spec_sha256": "a57b484c8993ec81e1c2c0edb9ef29dbae33c17051bdec58ed710774d73906b2",
     }
 
     def run_fixture(root: Path, *, config_authority: str) -> dict[str, object]:
@@ -3711,14 +3836,16 @@ def test_main_dispatches_only_to_the_selected_pipeline(
     assert calls == (["legacy"] if legacy else ["stacked"])
 
 
-def test_main_refuses_constants_adapter_with_legacy_two_spine(
+@pytest.mark.parametrize("config_authority", ["constants_adapter", "bundle"])
+def test_main_refuses_nonconstant_authority_with_legacy_two_spine(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
+    config_authority: str,
 ) -> None:
     calls: list[str] = []
     namespace = SimpleNamespace(
         legacy_two_spine=True,
-        config_authority="constants_adapter",
+        config_authority=config_authority,
     )
     parser = SimpleNamespace(parse_args=lambda _argv: namespace)
     monkeypatch.setattr(pool_tool, "_parser", lambda: parser)
@@ -3735,7 +3862,7 @@ def test_main_refuses_constants_adapter_with_legacy_two_spine(
 
     with pytest.raises(
         ValueError,
-        match="constants_adapter.*stacked pipeline",
+        match=rf"{config_authority}.*stacked pipeline",
     ):
         pool_tool.main(["fixture"])
     assert calls == []
@@ -3796,6 +3923,7 @@ def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
     assert tuple(actions["config_authority"].choices) == (
         "constants",
         "constants_adapter",
+        "bundle",
     )
     assert actions["logbook_prev_row_digest"].default is None
     for path_destination, sha_destination in pairs:

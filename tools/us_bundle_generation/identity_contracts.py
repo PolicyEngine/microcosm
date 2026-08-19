@@ -11,7 +11,10 @@ from collections.abc import Mapping
 from typing import Any
 
 from microcosm.build.spec_engine.seeds import LEGACY_V1_PROTOCOL
-from microcosm.build.us_runtime.h5_io import US_STACKED_POOL_OPERATOR_ORDER
+from microcosm.build.us_runtime.h5_io import (
+    US_STACKED_POOL_EXECUTION_STAGES,
+    US_STACKED_POOL_OPERATOR_ORDER,
+)
 from microcosm.build.us_runtime.multispine_pool import (
     POOL_DERIVE_OPERATOR_ORDER,
     POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
@@ -44,6 +47,13 @@ def build_pipeline_contract() -> dict[str, object]:
     return {
         "artifact_protocol": stacked_checkpoint_artifact_protocol_identity(),
         "stacked_operator_order": list(US_STACKED_POOL_OPERATOR_ORDER),
+        "execution_stages": [
+            {
+                **stage,
+                "operations": list(stage["operations"]),
+            }
+            for stage in US_STACKED_POOL_EXECUTION_STAGES
+        ],
         "pre_clone_source_operator_order": list(POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER),
         "post_clone_source_operator_order": list(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER),
         "derive_operator_order": list(POOL_DERIVE_OPERATOR_ORDER),

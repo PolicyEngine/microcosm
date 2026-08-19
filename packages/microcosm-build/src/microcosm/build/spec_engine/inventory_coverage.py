@@ -631,6 +631,37 @@ def build_inventory_coverage(
         _mapping(value, "producer node")
         for value in _array(graph["nodes"], "producer graph nodes")
     ]
+    authored_graph = _mapping(
+        _wire(compiled.producer_graph.authored),
+        "compiled authored producer graph",
+    )
+    authored_nodes = [
+        _mapping(value, "compiled authored producer node")
+        for value in _array(
+            authored_graph.get("nodes"), "compiled authored producer graph nodes"
+        )
+    ]
+    runtime_authorities = _mapping(
+        _wire(compiled.runtime_authorities), "compiled runtime authorities"
+    )
+    runtime_surfaces = _mapping(
+        runtime_authorities.get("surfaces"), "compiled runtime authority surfaces"
+    )
+    behavior_domains = _mapping(
+        runtime_surfaces.get("behavior"), "compiled behavior domains"
+    )
+    behavior_imputation = _mapping(
+        behavior_domains.get("imputation"), "compiled behavior imputation"
+    )
+    behavior_graph = _mapping(
+        behavior_imputation.get("producer_graph"), "compiled behavior producer graph"
+    )
+    behavior_nodes = [
+        _mapping(value, "compiled behavior producer node")
+        for value in _array(
+            behavior_graph.get("nodes"), "compiled behavior producer graph nodes"
+        )
+    ]
     compiled_by_id = {node.id: node for node in compiled.producer_graph.nodes}
     expected_outputs = compile_producer_outputs(domains)
     actual_imputation = _mapping(legacy.get("imputation"), "legacy/imputation")
@@ -912,14 +943,39 @@ def build_inventory_coverage(
     )
 
     source_node_by_id = {str(row["id"]): row for row in source_nodes}
-    node_sources_exact = set(source_node_by_id) == set(compiled_by_id) and all(
-        _json_equal(_wire(compiled_by_id[node_id].source), source_node)
-        for node_id, source_node in source_node_by_id.items()
+    behavior_node_by_id = {str(row["id"]): row for row in behavior_nodes}
+    authored_graph_exact = _json_equal(authored_graph, graph) and _json_equal(
+        authored_nodes, source_nodes
+    )
+
+    def normalized_behavior_node(row: Mapping[str, object]) -> dict[str, object]:
+        inputs = [
+            {
+                **dict(_mapping(value, "compiled behavior producer input")),
+                "tolerated_absence_receipts": list(
+                    _mapping(value, "compiled behavior producer input").get(
+                        "tolerated_absence_receipts", []
+                    )
+                ),
+            }
+            for value in _array(row.get("inputs", []), "compiled behavior inputs")
+        ]
+        return {**dict(row), "inputs": inputs, "outputs": list(row.get("outputs", []))}
+
+    behavior_sources_exact = set(behavior_node_by_id) == set(compiled_by_id) and all(
+        _json_equal(
+            _wire(compiled_by_id[node_id].source),
+            normalized_behavior_node(behavior_node),
+        )
+        for node_id, behavior_node in behavior_node_by_id.items()
     )
     add(
         "producer_registry_exact",
         clauses={
-            "producer ids or source objects differ": node_sources_exact,
+            "authored producer graph is not preserved exactly": authored_graph_exact,
+            "executable producer source objects differ from behavior projection": (
+                behavior_sources_exact
+            ),
             "producer count differs": len(source_nodes) == 38,
             "producer source digest differs": sha256_json(source_nodes)
             == EXPECTED_HASHES["graph_nodes"],
@@ -981,12 +1037,12 @@ def build_inventory_coverage(
         },
     )
 
-    inputs_exact = node_sources_exact and all(
+    inputs_exact = behavior_sources_exact and all(
         _json_equal(
             [_wire(value) for value in compiled_by_id[node_id].inputs],
-            source_node.get("inputs", []),
+            normalized_behavior_node(behavior_node).get("inputs", []),
         )
-        for node_id, source_node in source_node_by_id.items()
+        for node_id, behavior_node in behavior_node_by_id.items()
     )
     input_count = sum(
         len(_array(row.get("inputs", []), "producer inputs")) for row in source_nodes
@@ -1003,7 +1059,10 @@ def build_inventory_coverage(
             "compiler_ir.node_slices",
         ),
         observed={"rows": input_count},
-        expected={"rows": 2742, "relation": "source rows preserved exactly"},
+        expected={
+            "rows": 2742,
+            "relation": "behavior-projected source rows preserved exactly",
+        },
     )
     outputs_exact = set(expected_outputs) == set(compiled_by_id) and all(
         _json_equal(
@@ -1045,12 +1104,12 @@ def build_inventory_coverage(
         len(_array(row.get("virtual_resources", []), "virtual resources"))
         for row in source_nodes
     )
-    virtual_exact = node_sources_exact and all(
+    virtual_exact = behavior_sources_exact and all(
         _mapping(_wire(compiled_by_id[node_id].source), "compiled node source").get(
             "virtual_resources", []
         )
-        == source_node.get("virtual_resources", [])
-        for node_id, source_node in source_node_by_id.items()
+        == behavior_node.get("virtual_resources", [])
+        for node_id, behavior_node in behavior_node_by_id.items()
     )
     add(
         "producer_virtual_resources_exact",
@@ -1064,7 +1123,10 @@ def build_inventory_coverage(
             "legacy_adapter.imputation.late_producer_resource_semantics",
         ),
         observed={"rows": virtual_count},
-        expected={"rows": 75, "relation": "source node slices preserve full bindings"},
+        expected={
+            "rows": 75,
+            "relation": "behavior node slices preserve executable bindings",
+        },
     )
     resource_semantics = _mapping(
         actual_imputation.get("late_producer_resource_semantics"), "resource semantics"

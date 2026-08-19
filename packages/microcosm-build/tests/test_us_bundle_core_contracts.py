@@ -26,6 +26,7 @@ from microcosm.build.spec_engine.resolver import (
     SpecResolutionError,
     resolve_cross_references,
 )
+from microcosm.build.us_runtime.acs_sources import load_acs_source_manifest
 
 Mutation = Callable[[dict[str, Any]], None]
 ROOT = Path(__file__).resolve().parents[3]
@@ -166,6 +167,62 @@ def test_source_surface_classification_is_complete() -> None:
         isinstance(value, str) and "://" in value
         for _, value in _walk_values(operational)
     )
+
+
+def test_acs_source_acquisition_is_generated_from_packaged_manifest() -> None:
+    sources = build_sources()
+    by_id = {row["id"]: row for row in sources["sources"]}
+    manifest = load_acs_source_manifest()
+
+    for artifact in manifest.artifacts:
+        row = by_id[f"acs_{artifact.role}"]
+        assert row["sha256"] == artifact.sha256
+        assert row["byte_size"] == artifact.size_bytes
+        assert row["acquisition"] == {
+            "filename": artifact.filename,
+            "url": artifact.url,
+            "source_directory": manifest.source_directory,
+            "verified_on": manifest.verified_on,
+        }
+
+
+def test_acs_acquisition_surfaces_merge_exactly_without_changing_spec_hash() -> None:
+    sources = build_sources()
+    original_hash, original_docs_hash, surfaces = _source_surface_hashes(sources)
+    assert original_hash == "f1614e52913491e76d650e71b6bdb259adb3f6c29b03c30241e928001d0a4da5"
+
+    normative_rows = surfaces["normative"]["sources"]
+    operational_rows = surfaces["operational"]["sources"]
+    documentation_rows = surfaces["documentation"]["sources"]
+    merged_acquisition_by_id: dict[str, object] = {}
+    for index, normative_row in enumerate(normative_rows):
+        operational_acquisition = operational_rows[index].get("acquisition", {})
+        documentation_acquisition = documentation_rows[index].get("acquisition", {})
+        if operational_acquisition or documentation_acquisition:
+            assert "acquisition" not in normative_row
+            merged_acquisition_by_id[normative_row["id"]] = {
+                **operational_acquisition,
+                **documentation_acquisition,
+            }
+    assert merged_acquisition_by_id == {
+        row["id"]: row["acquisition"]
+        for row in sources["sources"]
+        if "acquisition" in row
+    }
+
+    mutated_sources = copy.deepcopy(sources)
+    acquisition = mutated_sources["sources"][1]["acquisition"]
+    acquisition["filename"] = "moved.zip"
+    acquisition["url"] = "https://operational.invalid/moved.zip"
+    acquisition["source_directory"] = "https://operational.invalid/"
+    acquisition["verified_on"] = "2026-08-19"
+    mutated_hash, mutated_docs_hash, mutated_surfaces = _source_surface_hashes(
+        mutated_sources
+    )
+
+    assert mutated_hash == original_hash
+    assert mutated_docs_hash != original_docs_hash
+    assert mutated_surfaces["operational"] != surfaces["operational"]
 
 
 def test_source_schema_rejects_non_hex_content_digests() -> None:

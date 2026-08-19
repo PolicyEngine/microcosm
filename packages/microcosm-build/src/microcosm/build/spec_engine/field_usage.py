@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_218
+EXPECTED_AUTHORED_FIELD_COUNT = 32_237
 EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_649
-EXPECTED_CONFIGURATION_FIELD_COUNT = 41_867
+EXPECTED_CONFIGURATION_FIELD_COUNT = 41_886
 
 
 class FieldUsageError(AssertionError):
@@ -204,6 +204,8 @@ def _claim_rows(
         return [row for row in rows if not is_concept_validation(row[0])]
     if claim.pointer_class == "family_concept_validation":
         return [row for row in rows if is_concept_validation(row[0])]
+    if claim.pointer_class == "pipeline_legacy":
+        return [row for row in rows if "/execution_stages/" not in row[0]]
     raise FieldUsageError(f"{claim.id}: unknown pointer class {claim.pointer_class!r}")
 
 
@@ -451,6 +453,10 @@ _PINS: dict[str, tuple[int, str]] = {
     "spine_pipeline_contract": (
         88,
         "c6e63034c73b2b3ad06df26d03fbf7d63d52aec3a7c3a176b228bacf08d18975",
+    ),
+    "spine_pipeline_execution_stages": (
+        19,
+        "49e18f2e42dfd9333c847912991c09fbd5e5906cb0f3c780e04f0abd387ad4c4",
     ),
     "spine_sampling": (
         17,
@@ -833,8 +839,22 @@ def default_usage_claims() -> tuple[UsageClaim, ...]:
                 consumer,
                 verifier,
                 legacy_sinks=sinks,
+                pointer_class=(
+                    "pipeline_legacy" if root == "pipeline_contract" else "all"
+                ),
             )
         )
+
+    claims.append(
+        _claim(
+            "spine_pipeline_execution_stages",
+            f"{_A}/spec~1spine.yaml/pipeline_contract/execution_stages",
+            UsageMode.COMPILER_SEMANTIC,
+            _NO_EFFECT,
+            "compiler_ir.execution_abi.stage_partition",
+            "execution_abi",
+        )
+    )
 
     claims.extend(
         [
@@ -1041,7 +1061,9 @@ def _verify_source_pins(context: _VerificationContext, claim: UsageClaim) -> Non
         if isinstance(row, Mapping) and isinstance(row.get("id"), str)
     ]
     if len(ids) != len(rows) or len(ids) != len(set(ids)):
-        raise FieldUsageError("source_pins: source ids are not an exact unique registry")
+        raise FieldUsageError(
+            "source_pins: source ids are not an exact unique registry"
+        )
 
     expected_refs: set[tuple[str, str, str]] = set()
     for index, value in enumerate(rows):
@@ -1166,6 +1188,38 @@ def _verify_spine_assembly_validation(
         raise FieldUsageError(
             "spine_assembly_shared_dtype_policy: unsupported storage policy"
         )
+
+
+def _verify_execution_abi(
+    context: _VerificationContext,
+    claim: UsageClaim,
+) -> None:
+    _verify_compiled_domain(context, claim)
+    _, source = _pointer_value(context.sources, claim.source_prefix)
+    execution_abi = _wire(context.compiled.execution_abi)
+    if not isinstance(source, (list, tuple)) or not isinstance(execution_abi, Mapping):
+        raise FieldUsageError("spine_pipeline_execution_stages: arrays required")
+    compiled_stages = execution_abi.get("logical_stages")
+    if not isinstance(compiled_stages, list) or len(compiled_stages) != len(source):
+        raise FieldUsageError(
+            "spine_pipeline_execution_stages: compiled stage count differs"
+        )
+    for authored, compiled in zip(source, compiled_stages, strict=True):
+        if not isinstance(authored, Mapping) or not isinstance(compiled, Mapping):
+            raise FieldUsageError(
+                "spine_pipeline_execution_stages: stage objects required"
+            )
+        expected = {
+            "id": authored.get("id"),
+            "operations": list(authored.get("operations", ())),
+            "producer_graph_operation": authored.get("producer_graph_operation"),
+            "durable_checkpoint": authored.get("durable_checkpoint"),
+        }
+        actual = {name: compiled.get(name) for name in expected}
+        if actual != expected:
+            raise FieldUsageError(
+                "spine_pipeline_execution_stages: compiled partition differs"
+            )
 
 
 def _verify_compiled_domain(context: _VerificationContext, claim: UsageClaim) -> None:
@@ -1384,12 +1438,11 @@ def _verify_claim(context: _VerificationContext, claim: UsageClaim) -> None:
         "legacy": lambda: _verify_legacy(context, claim),
         "source_pins": lambda: _verify_source_pins(context, claim),
         "spine_channels": lambda: _verify_spine_channels(context, claim),
-        "spine_assembly_legacy": lambda: _verify_spine_assembly_legacy(
-            context, claim
-        ),
+        "spine_assembly_legacy": lambda: _verify_spine_assembly_legacy(context, claim),
         "spine_assembly_validation": lambda: _verify_spine_assembly_validation(
             context, claim
         ),
+        "execution_abi": lambda: _verify_execution_abi(context, claim),
         "catalog_columns": lambda: _verify_catalog_columns(context, claim),
         "catalog_waivers": lambda: _verify_catalog_waivers(context, claim),
         "imputation_validation": lambda: _verify_imputation_validation(context, claim),

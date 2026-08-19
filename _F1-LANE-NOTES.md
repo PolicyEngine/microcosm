@@ -692,3 +692,102 @@ the enforcement status only after the independent inventory proves it.
    publication, and banks, keeping constants mode as the untouched oracle.
 3. Add hostile-constants tests and the cold dual-mode fixture gate before any
    sample build.
+
+## 4. Bundle-mode authorities
+
+### Compiler-issued runtime capability and execution ABI
+
+- The compiler ABI is now generation 4 with digest
+  `10e17024929eb7304e00dd655c29e300d275d524c0ebf72b4453361523f0f56e`.
+  Its new `execution_abi` contract is authored by an exact ordered stage
+  partition in `spine.pipeline_contract.execution_stages`; it contains four
+  logical stages, three durable checkpoints, the code/materializer ABI, 30
+  concrete normative artifact rows, scoped receipt-comparison rules, and the
+  resume predicate. The execution-ABI digest is
+  `694bb34e1d41a23143b9c02194810161b54e2228df8810f0c0deafdfd81fff80`.
+- The stage partition is generated from the existing physical operator order,
+  is schema-closed, must be a contiguous exact partition, and binds the
+  producer graph exactly once. It replaces hard-coded numeric stage splits in
+  compiler output. The US normative identity consequently moved from
+  `f6ae6cde8c08e8695128ab9f29509168c1ee042faa97a28a3c94977262987309`
+  to `a57b484c8993ec81e1c2c0edb9ef29dbae33c17051bdec58ed710774d73906b2`;
+  this is an authored F1 execution contract, not a runtime behavior change.
+- `RuntimeAuthorities` is the immutable compiler-to-runtime capability. It
+  retains only normative, execution-profile, run-request, generated/vintage,
+  declared-source, execution-ABI, seed-map, compiled-node, and narrow
+  compatibility projections. It does not retain `CompiledSpecIR`, normalized
+  documents, the legacy aggregate payload, or any country constants object.
+  Its current capability digest is
+  `853ce81c5ddb44273c6c8e19094d0eb9d7b06c2199c7fd0f6e506d47e578005e`.
+- Executable producer graph/node compilation now uses only the merged
+  normative and execution-profile projection. The full authored graph remains
+  a compiler-only plan-lock/coverage surface. Documentation and operational
+  producer fields therefore cannot rekey a node or escape into the runtime
+  capability; the coverage inventory separately proves exact authored-graph
+  preservation and exact behavior-projection compilation.
+- `USSpecAuthority` is a narrow US runtime adapter over that capability. It
+  exposes recursively frozen behavior resources, compatibility projections,
+  declared sources, and typed node queries; it cannot reopen the bundle or
+  invoke the legacy aggregate adapter. Program ids remain bundle data rather
+  than named accessors.
+
+### Source-manifest closure
+
+- The two ACS archive records now carry generated `acquisition` objects. The
+  filename, URL, and source directory are operational; `verified_on` is
+  documentation. These eight scalar bindings are generated directly from the
+  existing packaged manifest and therefore are not a second hand-authored
+  authority. They do not change `spec_sha256`, the normative source digest, or
+  the engine ABI lock.
+- The runtime compiler selects only source id/role/content pins, loader and
+  vintage references, and acquisition receipts into a sealed declared-source
+  registry. Its digest is
+  `491dd8df598f18c0a94ec03a3448733bc6b596bc59484dc626fb02f557fe2f22`.
+  Operational or documentation acquisition edits change this runtime receipt
+  authority but leave `spec_sha256`, node keys, and node-reuse inputs alone.
+
+### Provenance/reuse correction and pool selection seam
+
+- D3's journal wording that the reuse key admitted an identity-generation
+  scalar was incorrect under approved decision D3. `node_reuse_key` now
+  rejects `identity_generation` alongside every other provenance field. Two
+  otherwise identical generation-0 and generation-1 run-provenance receipts
+  produce the same reuse key. Provenance remains recorded only in
+  `run_provenance_identity` and operational broker/build receipts.
+- `--config-authority bundle` now performs exactly one
+  `load_bundle("us") -> compile_spec -> compile_runtime_authorities` selection
+  before configured identity construction. It never invokes
+  `compile_to_legacy_payload`. The hidden capability is excluded from the
+  mapping/repr receipt view so its digest and provenance cannot accidentally
+  enter checkpoint, bank, semantic-artifact, or reuse identities. Constants
+  and constants-adapter modes retain their existing paths.
+- This is the authority-selection seam, not yet a claim that every physical
+  stage is flipped. The pool driver still constructs stage authorities from
+  constants after selection. The required next work is to retain the typed
+  execution ABI and seed map in the US adapter, build sealed typed stage
+  materializers, and thread them through the existing stage entry points with
+  `None` preserving constants mode.
+
+### Verification at this checkpoint
+
+- Generated US bundle `--check`: pass.
+- Coverage generation: 41,886/41,886 normative/resolved fields and 40/40
+  inventory items; refreshed evidence is committed with this step.
+- Spec-engine run through the first production seed-inventory assertion:
+  417 tests passed. The sole failure was the fail-closed production module
+  count increasing from 202 to 204 for the two new runtime-authority modules;
+  after reviewing the new modules and updating that exact count, the remaining
+  142 spec/US-bundle/source/adapter tests passed.
+- Focused bundle-selection/constants-adapter pool-tool gate: 14/14 pass,
+  including constants-adapter byte-identical fixture checkpoints.
+- No build, sample or otherwise, was run in this step.
+
+### Next
+
+1. Complete the typed source, support, publication, checkpoint, seed, and
+   generated-engine materializers without constants or legacy-payload fallbacks.
+2. Thread a compiler-sealed US pool runtime plan stage by stage; dynamic
+   checkpoint identities must use the actual clone/run fields rather than
+   overlaying the static default projection.
+3. Add the plan-derived raw-byte/receipt comparator and the cold dual-mode
+   fixture gate before attempting any 1% receipt run.

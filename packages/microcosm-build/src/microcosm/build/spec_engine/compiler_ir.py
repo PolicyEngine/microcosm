@@ -19,6 +19,7 @@ from .canonical import sha256_json
 from .model import (
     FrozenMap,
     FrozenValue,
+    GrammarReceipt,
     ResolvedSpec,
     ResourceKind,
     SeedSiteOwnerKind,
@@ -30,9 +31,10 @@ from .model import (
 from .resolver import F0_KERNEL_REGISTRY
 from .typed_closure import TypedClosureError, compile_producer_outputs
 
-COMPILER_IR_ABI_VERSION = 3
+COMPILER_IR_ABI_VERSION = 4
 EXECUTOR_CONTRACT_ABI = "compiled-node-brokered-contracts-v2"
 BROKER_SEMANTICS_ABI = "legacy-v1-ledger-broker-semantics-v2"
+EXECUTION_ABI = "stacked-artifact-comparison-vector-v1"
 ROW_CLASSIFIER_IMPLEMENTATION_DOMAIN = (
     "microcosm.spec-engine.row-classifier-implementation.v1"
 )
@@ -45,6 +47,71 @@ _NO_WRITE_ACTIONS = frozenset(
         "producer_masked_byte_exact_noop",
         "scope_masked_noop",
     }
+)
+
+_RECEIPT_COMPARISON_VECTOR = (
+    (
+        "publication_manifest",
+        "/run_config/config_authority",
+        "expected_to_differ_by_generation",
+        "identity_generation",
+    ),
+    (
+        "publication_manifest",
+        "/run_config/spec_binding_status",
+        "expected_to_differ_by_generation",
+        "identity_generation",
+    ),
+    (
+        "publication_manifest",
+        "/run_config/run_provenance_identity",
+        "expected_to_differ_by_generation",
+        "identity_generation",
+    ),
+    (
+        "publication_manifest",
+        "/release_id",
+        "equal_after_normalizing_prefix",
+        "publication_line",
+    ),
+    (
+        "terminal_gates",
+        "/release_id",
+        "equal_after_normalizing_prefix",
+        "publication_line",
+    ),
+    (
+        "publication_manifest",
+        "/publication_run_id",
+        "operational_excluded",
+        "uuid_nonce",
+    ),
+    ("terminal_gates", "/publication_run_id", "operational_excluded", "uuid_nonce"),
+    (
+        "publication_manifest",
+        "/provenance_pins/*/path",
+        "operational_excluded",
+        "host_path",
+    ),
+    ("publication_manifest", "/pool_h5/path", "operational_excluded", "host_path"),
+    (
+        "publication_manifest",
+        "/agreement_diagnostics/path",
+        "operational_excluded",
+        "host_path",
+    ),
+    (
+        "publication_manifest",
+        "/primary_qrf_checkpoint_dir",
+        "operational_excluded",
+        "host_path",
+    ),
+    (
+        "publication_manifest",
+        "/acs_transfer_checkpoint_dir",
+        "operational_excluded",
+        "host_path",
+    ),
 )
 
 
@@ -133,6 +200,7 @@ def _compiler_ir_abi() -> CompilerIRABI:
                 # operational receipt wording and access-log instrumentation do
                 # not indirectly rekey compiled nodes.
                 "brokers": BROKER_SEMANTICS_ABI,
+                "execution_abi": EXECUTION_ABI,
             },
         }
     )
@@ -489,6 +557,7 @@ class CompiledNode:
 
 @dataclass(frozen=True, slots=True)
 class CompiledSpecIR:
+    grammar_receipt: GrammarReceipt
     spec_binding: SpecBinding
     compiler_ir_abi: CompilerIRABI
     normalized_resources: FrozenMap
@@ -496,6 +565,8 @@ class CompiledSpecIR:
     typed_inventory: FrozenMap
     generated_authorities: FrozenMap
     vintage_authorities: FrozenMap
+    runtime_authorities: FrozenMap
+    execution_abi: FrozenMap
     stage_dag: StageDag
     producer_graph: ProducerGraphIR
     seed_stream_map: SeedStreamMap
@@ -515,6 +586,7 @@ class CompiledSpecIR:
     def to_wire(self) -> dict[str, object]:
         return {
             "compiler_ir_abi": self.compiler_ir_abi.to_wire(),
+            "grammar_receipt": self.grammar_receipt.to_wire(),
             "spec_binding": self.spec_binding.to_wire(),
             "surfaces": _wire(self.surfaces),
             "typed_inventory": _wire(self.typed_inventory),
@@ -522,6 +594,8 @@ class CompiledSpecIR:
                 "generated": _wire(self.generated_authorities),
                 "vintages": _wire(self.vintage_authorities),
             },
+            "runtime_authorities": _wire(self.runtime_authorities),
+            "execution_abi": _wire(self.execution_abi),
             "stage_dag": self.stage_dag.to_wire(),
             "producer_graph": self.producer_graph.to_wire(),
             "seed_stream_map": self.seed_stream_map.to_wire(),
@@ -567,6 +641,97 @@ def _surface_resources(
             continue
         resources[kind.value] = _wire(resource.surface(surface))
     return resources
+
+
+def _merge_surface_value(left: object, right: object, *, location: str) -> object:
+    """Rejoin complementary schema projections without using full resources."""
+
+    if isinstance(left, Mapping) and isinstance(right, Mapping):
+        return {
+            key: (
+                _merge_surface_value(
+                    left[key],
+                    right[key],
+                    location=f"{location}/{key}",
+                )
+                if key in left and key in right
+                else (left[key] if key in left else right[key])
+            )
+            for key in sorted(set(left) | set(right))
+        }
+    if (
+        isinstance(left, Sequence)
+        and not isinstance(left, str | bytes)
+        and isinstance(right, Sequence)
+        and not isinstance(right, str | bytes)
+    ):
+        if len(left) != len(right):
+            raise CompilerIRError(f"{location}: surface arrays have different lengths")
+        return [
+            _merge_surface_value(
+                left_item,
+                right_item,
+                location=f"{location}/{index}",
+            )
+            for index, (left_item, right_item) in enumerate(
+                zip(left, right, strict=True)
+            )
+        ]
+    if type(left) is not type(right) or left != right:
+        raise CompilerIRError(f"{location}: surface values conflict")
+    return left
+
+
+def _behavior_resources(spec: ResolvedSpec) -> dict[str, object]:
+    """Return the closed executable projection: normative + profile only."""
+
+    merged = _merge_surface_value(
+        _surface_resources(spec, Surface.NORMATIVE),
+        _surface_resources(spec, Surface.EXECUTION_PROFILE),
+        location="behavior_resources",
+    )
+    if not isinstance(merged, dict):  # pragma: no cover - resource root is object
+        raise AssertionError("behavior resource root is not an object")
+    return merged
+
+
+def _runtime_authorities(
+    spec: ResolvedSpec,
+    *,
+    behavior_resources: Mapping[str, object],
+) -> FrozenMap:
+    """Seal the compiler-selected resource surfaces used by execution.
+
+    The normalized resources remain available for compiler diagnostics, but a
+    runtime receives only the normative, execution-profile, and run-request
+    projections.  Operational locators, chain state, and documentation cannot
+    become behavior authority through this object.
+    """
+
+    selected = {
+        surface.value: _surface_resources(spec, surface)
+        for surface in (
+            Surface.NORMATIVE,
+            Surface.EXECUTION_PROFILE,
+            Surface.RUN_REQUEST,
+        )
+    }
+    selected["behavior"] = dict(behavior_resources)
+    domain_sha256 = {
+        surface: {
+            domain: sha256_json(value) for domain, value in sorted(resources.items())
+        }
+        for surface, resources in selected.items()
+    }
+    unsigned = {
+        "schema_version": 1,
+        "surfaces": selected,
+        "domain_sha256": domain_sha256,
+    }
+    return _frozen_mapping(
+        {**unsigned, "sha256": sha256_json(unsigned)},
+        location="runtime_authorities",
+    )
 
 
 def _typed_inventory(spec: ResolvedSpec) -> FrozenMap:
@@ -900,7 +1065,11 @@ def _incomparable_policy(
     )
 
 
-def _compile_producer_graph(resources: Mapping[str, object]) -> ProducerGraphIR:
+def _compile_producer_graph(
+    resources: Mapping[str, object],
+    *,
+    authored_resources: Mapping[str, object] | None = None,
+) -> ProducerGraphIR:
     imputation_value = resources.get("imputation")
     if imputation_value is None:
         empty_policy = _frozen_mapping(
@@ -946,6 +1115,16 @@ def _compile_producer_graph(resources: Mapping[str, object]) -> ProducerGraphIR:
         resources_without_imputation = dict(resources)
         resources_without_imputation.pop("imputation", None)
         return _compile_producer_graph(resources_without_imputation)
+    authored_graph = graph
+    if authored_resources is not None:
+        authored_imputation = _mapping(
+            authored_resources.get("imputation", {}),
+            location="authored/imputation",
+        )
+        authored_graph = _mapping(
+            authored_imputation.get("producer_graph", {}),
+            location="authored/imputation/producer_graph",
+        )
     node_rows = tuple(
         _mapping(value, location=f"producer_graph/nodes/{index}")
         for index, value in enumerate(
@@ -1103,9 +1282,25 @@ def _compile_producer_graph(resources: Mapping[str, object]) -> ProducerGraphIR:
                 f"{node_id}/kernel: contract-only F0 kernel has no producer "
                 f"implementation pin: {kernel!r}"
             )
+        normalized_inputs = [
+            {
+                **dict(_mapping(value, location=f"{node_id}/inputs")),
+                "tolerated_absence_receipts": list(
+                    _mapping(value, location=f"{node_id}/inputs").get(
+                        "tolerated_absence_receipts", []
+                    )
+                ),
+            }
+            for value in _array(node.get("inputs", []), location=f"{node_id}/inputs")
+        ]
+        source_node = {
+            **dict(node),
+            "inputs": normalized_inputs,
+            "outputs": list(node.get("outputs", [])),
+        }
         input_rows = tuple(
             _frozen_mapping(value, location=f"{node_id}/inputs")
-            for value in _array(node.get("inputs", []), location=f"{node_id}/inputs")
+            for value in normalized_inputs
         )
         output_rows = tuple(
             _frozen_mapping(value, location=f"{node_id}/compiled_outputs")
@@ -1128,7 +1323,7 @@ def _compile_producer_graph(resources: Mapping[str, object]) -> ProducerGraphIR:
                 name=str(node["name"]),
                 kind=_string(node.get("kind"), location=f"{node_id}/kind"),
                 kernel=kernel,
-                source=_frozen_mapping(node, location=f"{node_id}/source"),
+                source=_frozen_mapping(source_node, location=f"{node_id}/source"),
                 capabilities=_frozen_mapping(
                     node.get("capabilities"),
                     location=f"{node_id}/capabilities",
@@ -1148,7 +1343,7 @@ def _compile_producer_graph(resources: Mapping[str, object]) -> ProducerGraphIR:
         edges=edges,
         scope_coverage=scope_coverage,
     )
-    authored = _frozen_mapping(graph, location="producer_graph")
+    authored = _frozen_mapping(authored_graph, location="producer_graph")
     provisional = ProducerGraphIR(
         present=True,
         authored=authored,
@@ -1821,6 +2016,406 @@ def _compile_nodes(
     return tuple(compiled)
 
 
+def _compile_execution_abi(
+    resources: Mapping[str, object],
+    *,
+    stage_dag: StageDag,
+    producer_graph: ProducerGraphIR,
+    seed_stream_map: SeedStreamMap,
+) -> FrozenMap:
+    """Emit the closed physical-build and dual-mode comparison contract.
+
+    Countries without a physical pipeline contract receive an explicit absent
+    row.  A compiler consumer can therefore distinguish "not applicable" from
+    an old plan lock that predates the execution ABI.
+    """
+
+    spine_value = resources.get(ResourceKind.SPINE.value)
+    if not isinstance(spine_value, Mapping):
+        raise CompilerIRError("resources/spine: object required")
+    pipeline_value = spine_value.get("pipeline_contract")
+    if pipeline_value is None:
+        unsigned = {
+            "schema_version": 1,
+            "present": False,
+            "pipeline": None,
+            "operations": [],
+            "logical_stages": [],
+            "durable_checkpoints": [],
+            "code_abi": None,
+            "normative_artifact_vector": [],
+            "receipt_comparison_vector": [],
+            "resume_predicate": None,
+        }
+        return _frozen_mapping(
+            {**unsigned, "sha256": sha256_json(unsigned)},
+            location="execution_abi",
+        )
+    pipeline = _mapping(
+        pipeline_value,
+        location="resources/spine/pipeline_contract",
+    )
+    artifact_protocol = _mapping(
+        pipeline.get("artifact_protocol"),
+        location="resources/spine/pipeline_contract/artifact_protocol",
+    )
+    operator_order = tuple(
+        _string(value, location="spine/pipeline_contract/stacked_operator_order")
+        for value in _array(
+            pipeline.get("stacked_operator_order"),
+            location="spine/pipeline_contract/stacked_operator_order",
+        )
+    )
+    logical_stages: list[dict[str, object]] = []
+    operations: list[dict[str, object]] = []
+    staged_operations: list[str] = []
+    graph_stage_id: str | None = None
+    covered_operations: list[str] = []
+    durable_checkpoints: list[dict[str, object]] = []
+    for stage_index, stage_value in enumerate(
+        _array(
+            pipeline.get("execution_stages"),
+            location="spine/pipeline_contract/execution_stages",
+        )
+    ):
+        stage = _mapping(
+            stage_value,
+            location=f"spine/pipeline_contract/execution_stages/{stage_index}",
+        )
+        stage_id = _string(
+            stage.get("id"),
+            location=f"spine/pipeline_contract/execution_stages/{stage_index}/id",
+        )
+        stage_operations = tuple(
+            _string(
+                value,
+                location=(
+                    f"spine/pipeline_contract/execution_stages/{stage_index}/operations"
+                ),
+            )
+            for value in _array(
+                stage.get("operations"),
+                location=(
+                    f"spine/pipeline_contract/execution_stages/{stage_index}/operations"
+                ),
+            )
+        )
+        graph_operation = stage.get("producer_graph_operation")
+        if graph_operation is not None:
+            graph_operation = _string(
+                graph_operation,
+                location=(
+                    "spine/pipeline_contract/execution_stages/"
+                    f"{stage_index}/producer_graph_operation"
+                ),
+            )
+            if graph_stage_id is not None:
+                raise CompilerIRError(
+                    "execution_stages: producer graph is bound more than once"
+                )
+            if graph_operation not in stage_operations:
+                raise CompilerIRError(
+                    "execution_stages: producer_graph_operation is outside its stage"
+                )
+            graph_stage_id = stage_id
+        durable = stage.get("durable_checkpoint")
+        if not isinstance(durable, bool):
+            raise CompilerIRError(
+                f"execution_stages/{stage_index}/durable_checkpoint: boolean required"
+            )
+        producer_nodes = list(stage_dag.order) if graph_operation is not None else []
+        logical_stages.append(
+            {
+                "id": stage_id,
+                "ordinal": stage_index,
+                "operations": list(stage_operations),
+                "producer_graph_operation": graph_operation,
+                "producer_nodes": producer_nodes,
+                "durable_checkpoint": durable,
+            }
+        )
+        for operation in stage_operations:
+            operations.append(
+                {
+                    "id": operation,
+                    "ordinal": len(operations),
+                    "stage_ref": stage_id,
+                    "nested_producer_nodes": (
+                        list(stage_dag.order) if operation == graph_operation else []
+                    ),
+                }
+            )
+        staged_operations.extend(stage_operations)
+        covered_operations.extend(stage_operations)
+        if durable:
+            durable_checkpoints.append(
+                {
+                    "id": stage_id,
+                    "ordinal": len(durable_checkpoints),
+                    "after_operation": stage_operations[-1],
+                    "covers_operations": list(covered_operations),
+                    "artifact_roles": [
+                        f"checkpoint:{stage_id}:payload",
+                        f"checkpoint:{stage_id}:manifest",
+                        f"checkpoint:{stage_id}:receipts",
+                    ],
+                }
+            )
+    if tuple(staged_operations) != operator_order:
+        raise CompilerIRError(
+            "execution_stages must form an ordered, contiguous, exact partition "
+            "of stacked_operator_order"
+        )
+    if graph_stage_id is None:
+        raise CompilerIRError("execution_stages: producer graph operation is absent")
+    if not durable_checkpoints:
+        raise CompilerIRError("execution_stages: no durable checkpoint declared")
+
+    terminal_stage_id = logical_stages[-1]["id"]
+    last_durable_stage_id = durable_checkpoints[-1]["id"]
+    artifact_vector: list[dict[str, object]] = []
+
+    def artifact(
+        *,
+        artifact_id: str,
+        kind: str,
+        producer_ref: str,
+        stage_ref: object,
+        protocol_ref: str,
+        locator_ref: str,
+        content_selector_ref: str,
+    ) -> None:
+        artifact_vector.append(
+            {
+                "id": artifact_id,
+                "kind": kind,
+                "producer_ref": producer_ref,
+                "stage_ref": stage_ref,
+                "protocol_ref": protocol_ref,
+                "locator_ref": locator_ref,
+                "content_selector_ref": content_selector_ref,
+                "surface": "normative",
+                "comparison": "raw_byte_exact",
+                "required": True,
+            }
+        )
+
+    artifact(
+        artifact_id="final_pool_entity_tables",
+        kind="logical_h5_content",
+        producer_ref=f"pipeline_stage:{terminal_stage_id}",
+        stage_ref=terminal_stage_id,
+        protocol_ref="code_abi:final_pool_h5",
+        locator_ref="runtime_output:pool_h5",
+        content_selector_ref="selector:h5_all_entity_tables_and_columns_v1",
+    )
+    artifact(
+        artifact_id="final_pool_weight_vectors",
+        kind="logical_h5_content",
+        producer_ref=f"pipeline_stage:{terminal_stage_id}",
+        stage_ref=terminal_stage_id,
+        protocol_ref="code_abi:final_pool_h5",
+        locator_ref="runtime_output:pool_h5",
+        content_selector_ref="selector:h5_all_weight_vectors_v1",
+    )
+    for checkpoint in durable_checkpoints:
+        checkpoint_id = str(checkpoint["id"])
+        artifact(
+            artifact_id=f"checkpoint:{checkpoint_id}:payload",
+            kind="durable_checkpoint_payload",
+            producer_ref=f"pipeline_stage:{checkpoint_id}",
+            stage_ref=checkpoint_id,
+            protocol_ref="pipeline:checkpoint_payload",
+            locator_ref=f"checkpoint:{checkpoint_id}:payload",
+            content_selector_ref="selector:file_bytes_v1",
+        )
+
+    imputation = _mapping(resources.get("imputation", {}), location="imputation")
+    gap_fill = _mapping(
+        imputation.get("gap_fill_schedule", {}),
+        location="imputation/gap_fill_schedule",
+    )
+    operation_stage = {str(row["id"]): str(row["stage_ref"]) for row in operations}
+    for index, direction_value in enumerate(
+        _array(
+            gap_fill.get("directions", []),
+            location="imputation/gap_fill_schedule/directions",
+        )
+    ):
+        direction = _mapping(
+            direction_value,
+            location=f"imputation/gap_fill_schedule/directions/{index}",
+        )
+        direction_id = _string(
+            direction.get("name"),
+            location=f"imputation/gap_fill_schedule/directions/{index}/name",
+        )
+        activation = _string(
+            direction.get("activation_stage"),
+            location=(
+                f"imputation/gap_fill_schedule/directions/{index}/activation_stage"
+            ),
+        )
+        operation = activation.split(".", 1)[0]
+        if operation not in operation_stage:
+            raise CompilerIRError(
+                f"gap-fill direction {direction_id!r} names unknown operation "
+                f"{operation!r}"
+            )
+        artifact(
+            artifact_id=f"gap_fill_direction_bank:{direction_id}",
+            kind="early_transfer_target_bank",
+            producer_ref=f"pipeline_operation:{operation}",
+            stage_ref=operation_stage[operation],
+            protocol_ref="code_abi:transfer_target_bank",
+            locator_ref=f"target_bank:gap_fill_direction:{direction_id}",
+            content_selector_ref="selector:directory_tree_bytes_v1",
+        )
+
+    for node in producer_graph.nodes:
+        source = _mapping(_wire(node.source), location=f"producer_node/{node.id}")
+        for resource_index, resource_value in enumerate(
+            _array(
+                source.get("virtual_resources", []),
+                location=f"producer_node/{node.id}/virtual_resources",
+            )
+        ):
+            resource = _mapping(
+                resource_value,
+                location=f"producer_node/{node.id}/virtual_resources/{resource_index}",
+            )
+            if resource.get("kind") != "target_bank":
+                continue
+            binding = _mapping(
+                resource.get("binding"),
+                location=(
+                    f"producer_node/{node.id}/virtual_resources/{resource_index}/binding"
+                ),
+            )
+            resource_id = _string(
+                resource.get("id"),
+                location=(
+                    f"producer_node/{node.id}/virtual_resources/{resource_index}/id"
+                ),
+            )
+            resource_kind = _string(
+                binding.get("resource_kind"),
+                location=(
+                    f"producer_node/{node.id}/virtual_resources/{resource_index}/"
+                    "binding/resource_kind"
+                ),
+            )
+            artifact(
+                artifact_id=f"target_bank:{node.id}:{resource_id}",
+                kind=resource_kind,
+                producer_ref=f"producer_node:{node.id}",
+                stage_ref=graph_stage_id,
+                protocol_ref=f"code_abi:{resource_kind}",
+                locator_ref=f"target_bank:{node.id}:{resource_id}",
+                content_selector_ref="selector:directory_tree_bytes_v1",
+            )
+
+    artifact(
+        artifact_id="terminal_gates",
+        kind="verdict_and_per_target_rows",
+        producer_ref=f"pipeline_stage:{terminal_stage_id}",
+        stage_ref=terminal_stage_id,
+        protocol_ref="code_abi:terminal_gates",
+        locator_ref="runtime_output:agreement_diagnostics",
+        content_selector_ref="selector:terminal_gate_normative_rows_v1",
+    )
+    artifact(
+        artifact_id="compiled_seed_stream_map",
+        kind="compiled_plan_component",
+        producer_ref="compiler",
+        stage_ref="configured",
+        protocol_ref="plan_lock:seed_stream_map",
+        locator_ref="plan_lock:/seed_stream_map",
+        content_selector_ref="selector:canonical_json_bytes_v1",
+    )
+    artifact(
+        artifact_id="publication_vector",
+        kind="plan_derived_publication_vector",
+        producer_ref=f"pipeline_stage:{terminal_stage_id}",
+        stage_ref=terminal_stage_id,
+        protocol_ref="code_abi:publication_manifest",
+        locator_ref="runtime_output:manifest",
+        content_selector_ref="selector:publication_normative_vector_v1",
+    )
+
+    comparison_vector = [
+        {
+            "artifact_role": artifact_role,
+            "json_pointer_pattern": path,
+            "rule": rule,
+            "category": category,
+        }
+        for artifact_role, path, rule, category in _RECEIPT_COMPARISON_VECTOR
+    ]
+    selector_refs = sorted(
+        {str(row["content_selector_ref"]) for row in artifact_vector}
+    )
+    code_abi_unsigned = {
+        "domain": EXECUTION_ABI,
+        "content_selectors": selector_refs,
+        "locator_grammar": "closed-runtime-output-and-plan-ref-v1",
+        "receipt_difference_match": "exactly_one_sealed_rule",
+    }
+    code_abi = {
+        **code_abi_unsigned,
+        "implementation_sha256": sha256_json(code_abi_unsigned),
+    }
+    required_by_stage = {
+        str(checkpoint["id"]): list(checkpoint["artifact_roles"])
+        for checkpoint in durable_checkpoints
+    }
+    unsigned: dict[str, object] = {
+        "schema_version": 1,
+        "present": True,
+        "pipeline": {
+            "id": _string(
+                artifact_protocol.get("pipeline"),
+                location=("spine/pipeline_contract/artifact_protocol/pipeline"),
+            ),
+            "artifact_protocol": dict(artifact_protocol),
+            "operator_order": list(operator_order),
+            "producer_order": list(stage_dag.order),
+            "seed_stream_map_sha256": sha256_json(seed_stream_map.to_wire()),
+        },
+        "operations": operations,
+        "logical_stages": logical_stages,
+        "durable_checkpoints": durable_checkpoints,
+        "code_abi": code_abi,
+        "normative_artifact_vector": artifact_vector,
+        "receipt_comparison_vector": comparison_vector,
+        "resume_predicate": {
+            "candidate_order": [
+                str(row["id"]) for row in reversed(durable_checkpoints)
+            ],
+            "required_artifact_roles_by_stage": required_by_stage,
+            "identity_fields": [
+                "artifact_protocol",
+                "input_pins",
+                "sampling_request",
+                "clone_attachment_request",
+                "node_reuse_keys",
+            ],
+            "integrity_validators": [
+                "missing_payload",
+                "missing_manifest",
+                "content_digest_mismatch",
+                "identity_mismatch",
+                "incomplete_stage_receipt",
+            ],
+            "last_durable_stage": last_durable_stage_id,
+        },
+    }
+    return _frozen_mapping(
+        {**unsigned, "sha256": sha256_json(unsigned)},
+        location="execution_abi",
+    )
+
+
 def compile_spec(spec: ResolvedSpec) -> CompiledSpecIR:
     """Compile one immutable ``ResolvedSpec`` without constructing authority.
 
@@ -1834,8 +2429,12 @@ def compile_spec(spec: ResolvedSpec) -> CompiledSpecIR:
         raise TypeError("compile_spec requires a ResolvedSpec")
     resources, frozen_resources = _normalized_resources(spec)
     normative_resources = _surface_resources(spec, Surface.NORMATIVE)
+    behavior_resources = _behavior_resources(spec)
     compiler_ir_abi = _compiler_ir_abi()
-    producer_graph = _compile_producer_graph(resources)
+    producer_graph = _compile_producer_graph(
+        behavior_resources,
+        authored_resources=resources,
+    )
     stage_dag = StageDag(
         external_stages=producer_graph.external_stages,
         nodes=tuple(
@@ -1853,18 +2452,29 @@ def compile_spec(spec: ResolvedSpec) -> CompiledSpecIR:
     )
     seed_stream_map = _compile_seed_stream_map(
         spec,
-        resources=resources,
+        resources=behavior_resources,
         producer_graph=producer_graph,
     )
     nodes = _compile_nodes(
         spec,
-        resources=resources,
+        resources=behavior_resources,
         normative_resources=normative_resources,
         compiler_ir_abi=compiler_ir_abi,
         producer_graph=producer_graph,
         seed_stream_map=seed_stream_map,
     )
+    runtime_authorities = _runtime_authorities(
+        spec,
+        behavior_resources=behavior_resources,
+    )
+    execution_abi = _compile_execution_abi(
+        behavior_resources,
+        stage_dag=stage_dag,
+        producer_graph=producer_graph,
+        seed_stream_map=seed_stream_map,
+    )
     return CompiledSpecIR(
+        grammar_receipt=spec.grammar_receipt,
         spec_binding=spec.spec_binding,
         compiler_ir_abi=compiler_ir_abi,
         normalized_resources=frozen_resources,
@@ -1872,6 +2482,8 @@ def compile_spec(spec: ResolvedSpec) -> CompiledSpecIR:
         typed_inventory=_typed_inventory(spec),
         generated_authorities=spec.generated_authorities,
         vintage_authorities=spec.vintage_authorities,
+        runtime_authorities=runtime_authorities,
+        execution_abi=execution_abi,
         stage_dag=stage_dag,
         producer_graph=producer_graph,
         seed_stream_map=seed_stream_map,

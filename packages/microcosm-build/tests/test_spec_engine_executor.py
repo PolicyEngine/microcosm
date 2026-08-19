@@ -3031,7 +3031,6 @@ def test_broker_receipt_is_outside_patch_and_node_identity_seals(
     behavior_session = _behavior_session(node)
     reuse = node_reuse_identity(
         node,
-        identity_generation=1,
         behavior_relevant_run_inputs={"sample_fraction": 0.01},
         transitive_input_content_hashes={"fixture_input": "d" * 64},
         implementation_dependency_sha256="e" * 64,
@@ -3045,7 +3044,7 @@ def test_broker_receipt_is_outside_patch_and_node_identity_seals(
     }
 
 
-def test_node_reuse_changes_with_generation_and_seed_but_not_run_provenance() -> None:
+def test_node_reuse_changes_with_seed_but_not_run_provenance_generation() -> None:
     node = _node(
         StructuralDelta.NONE,
         [_scope("value", "a_rows")],
@@ -3053,11 +3052,10 @@ def test_node_reuse_changes_with_generation_and_seed_but_not_run_provenance() ->
         seed_streams=("fixture",),
     )
 
-    def reuse(seed: int, *, generation: int = 1):
+    def reuse(seed: int):
         behavior_session = _behavior_session(node, fixture_seed=seed)
         return node_reuse_identity(
             node,
-            identity_generation=generation,
             behavior_relevant_run_inputs={"rung": "f004"},
             transitive_input_content_hashes={"fixture_input": "d" * 64},
             implementation_dependency_sha256="e" * 64,
@@ -3101,7 +3099,6 @@ def test_node_reuse_changes_with_generation_and_seed_but_not_run_provenance() ->
     first = reuse(17)
     second = reuse(17)
     changed_seed = reuse(18)
-    changed_generation = reuse(17, generation=0)
     assert isinstance(generation_zero_provenance, RunProvenanceIdentity)
     assert generation_zero_provenance.promotable is False
     assert generation_one_provenance.promotable is True
@@ -3126,9 +3123,8 @@ def test_node_reuse_changes_with_generation_and_seed_but_not_run_provenance() ->
     }
     assert first.key == second.key
     assert changed_seed.key != first.key
-    assert changed_generation.key != first.key
     payload = thaw_json(first.payload)
-    assert payload["identity_generation"] == 1
+    assert "identity_generation" not in payload
     rendered = str(payload)
     for forbidden in (
         "config_authority",
@@ -3167,7 +3163,6 @@ def test_node_reuse_binds_declared_source_content_but_not_its_path(
     def reuse(session: BrokerSession, hashes: Mapping[str, str] | None = None):
         return node_reuse_identity(
             node,
-            identity_generation=1,
             behavior_relevant_run_inputs={},
             transitive_input_content_hashes={} if hashes is None else hashes,
             implementation_dependency_sha256="e" * 64,
@@ -3192,7 +3187,6 @@ def test_node_reuse_binds_declared_source_content_but_not_its_path(
     with pytest.raises(CapabilityError, match="different broker sessions"):
         node_reuse_identity(
             node,
-            identity_generation=1,
             behavior_relevant_run_inputs={},
             transitive_input_content_hashes={},
             implementation_dependency_sha256="e" * 64,
@@ -3210,7 +3204,6 @@ def test_node_reuse_requires_an_exact_broker_issued_rng_identity() -> None:
         seed_streams=("fixture",),
     )
     common = {
-        "identity_generation": 1,
         "behavior_relevant_run_inputs": {"rung": "f004"},
         "transitive_input_content_hashes": {"fixture_input": "d" * 64},
         "implementation_dependency_sha256": "e" * 64,
@@ -3351,7 +3344,6 @@ def test_node_reuse_identity_refuses_provenance_and_operational_receipt_fields(
     with pytest.raises(CapabilityError, match="provenance fields"):
         node_reuse_identity(
             node,
-            identity_generation=1,
             behavior_relevant_run_inputs={"nested": {forbidden: "forbidden"}},
             transitive_input_content_hashes={"fixture_input": "d" * 64},
             implementation_dependency_sha256="e" * 64,
@@ -3376,7 +3368,6 @@ def test_node_reuse_identity_refuses_receipt_markers_under_aliases(
     with pytest.raises(CapabilityError, match="operational receipt markers"):
         node_reuse_identity(
             node,
-            identity_generation=1,
             behavior_relevant_run_inputs={"opaque_alias": aliased_marker},
             transitive_input_content_hashes={"fixture_input": "d" * 64},
             implementation_dependency_sha256="e" * 64,

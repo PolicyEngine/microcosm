@@ -197,7 +197,6 @@ the compiled plan drives execution):
 
 ```text
 node_reuse_key = H(
-  identity_generation,
   compiler_ir_abi_and_digest,
   resolved_transitive_node_slice,        # this node's plan + upstream
   behavior_relevant_run_inputs,          # rung, k where consumed, and

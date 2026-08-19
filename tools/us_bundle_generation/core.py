@@ -327,6 +327,7 @@ def build_sources() -> dict[str, Any]:
     """Build pinned inputs and first-class typed source-stage declarations."""
 
     from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_VINTAGE
+    from microcosm.build.us_runtime.acs_sources import load_acs_source_manifest
     from microcosm.build.us_runtime.multispine_pool import POOL_TIME_PERIOD
     from microcosm.build.us_runtime.puf_source_agi import PUF_SOURCE_YEAR
     from microcosm.build.us_runtime.weeks_unemployed import (
@@ -334,19 +335,31 @@ def build_sources() -> dict[str, Any]:
     )
 
     pins = canonical_input_pins()
+    acs_manifest = load_acs_source_manifest()
+    acs_acquisition = {
+        f"acs_{artifact.role}": {
+            "filename": artifact.filename,
+            "url": artifact.url,
+            "source_directory": acs_manifest.source_directory,
+            "verified_on": acs_manifest.verified_on,
+        }
+        for artifact in acs_manifest.artifacts
+    }
     rows: list[dict[str, Any]] = []
     for role in _SOURCE_ROLE_ORDER:
         pin = pins[role]
-        rows.append(
-            {
-                "id": role,
-                "role": role,
-                "sha256": pin["sha256"],
-                "byte_size": pin["size_bytes"],
-                "loader": _LOADER_BY_ROLE[role],
-                "vintages": list(_VINTAGES_BY_ROLE[role]),
-            }
-        )
+        row = {
+            "id": role,
+            "role": role,
+            "sha256": pin["sha256"],
+            "byte_size": pin["size_bytes"],
+            "loader": _LOADER_BY_ROLE[role],
+            "vintages": list(_VINTAGES_BY_ROLE[role]),
+        }
+        acquisition = acs_acquisition.get(role)
+        if acquisition is not None:
+            row["acquisition"] = acquisition
+        rows.append(row)
 
     authority_rows = {
         "asec_raw_stage": [

@@ -130,6 +130,11 @@ from .resolver import (
     KernelRegistry,
     SpecResolutionError,
 )
+from .runtime_authorities import (
+    RuntimeAuthorities,
+    RuntimeAuthorityError,
+    compile_runtime_authorities,
+)
 from .schemas import SchemaRegistry, load_schema_registry
 from .scope_algebra import CanonicalScope, ClosedScopeRegistry, ScopeAlgebraError
 from .seeds import (
@@ -201,6 +206,8 @@ __all__ = [
     "RegisteredKernel",
     "RegisteredRowClassifier",
     "RunProvenanceIdentity",
+    "RuntimeAuthorities",
+    "RuntimeAuthorityError",
     "QRFGeneratorLease",
     "RowClassification",
     "ResourceDescriptor",
@@ -233,6 +240,7 @@ __all__ = [
     "canonical_yaml_bytes",
     "canonical_json_bytes",
     "compile_spec",
+    "compile_runtime_authorities",
     "kernel_implementation_contract",
     "compile_to_legacy_payload",
     "diff_legacy_payloads",

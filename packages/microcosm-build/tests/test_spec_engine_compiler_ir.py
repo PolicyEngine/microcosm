@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from microcosm.build.spec_engine.canonical import sha256_json
+from microcosm.build.spec_engine.canonical import normalize_and_project, sha256_json
 from microcosm.build.spec_engine.compiler_ir import (
     COMPILER_IR_ABI_VERSION,
     EXECUTOR_CONTRACT_ABI,
@@ -28,6 +28,7 @@ from microcosm.build.spec_engine.model import (
     thaw_json,
 )
 from microcosm.build.spec_engine.resolver import F0_CONTRACT_ONLY_KERNEL_IDS
+from microcosm.build.spec_engine.schemas import load_schema_registry
 
 US_SCHEDULE_SHA256 = "b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5"
 
@@ -56,9 +57,15 @@ def _mutate_domain(
     resource = resources[index]
     value = copy.deepcopy(resource.domain.to_wire())
     mutation(value)
+    normalized, projections = normalize_and_project(
+        value,
+        schema_id=resource.descriptor.schema_id,
+        registry=load_schema_registry(),
+    )
     resources[index] = replace(
         resource,
-        domain=replace(resource.domain, value=freeze_json(value)),
+        domain=replace(resource.domain, value=normalized),
+        projections=projections,
     )
     return replace(spec, resources=tuple(resources))
 
@@ -240,7 +247,7 @@ def test_us_nodes_have_exact_effective_seed_grants(
 def test_compiled_nodes_lift_immutable_executor_contracts_and_bind_them(
     compiled_us: CompiledSpecIR,
 ) -> None:
-    assert COMPILER_IR_ABI_VERSION == 3
+    assert COMPILER_IR_ABI_VERSION == 4
     assert EXECUTOR_CONTRACT_ABI == "compiled-node-brokered-contracts-v2"
     producer_by_id = {node.id: node for node in compiled_us.producer_graph.nodes}
     assert tuple(node.execution_rank for node in compiled_us.nodes) == tuple(
