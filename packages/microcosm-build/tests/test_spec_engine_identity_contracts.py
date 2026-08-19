@@ -118,13 +118,13 @@ def test_identity_contract_objects_are_closed_world(
         load_schema_registry().validate(mutated, "spine.schema.json")
 
 
-def test_all_53_seed_sites_resolve_to_typed_real_owners(
+def test_all_72_seed_sites_resolve_to_typed_real_owners(
     identity_documents: tuple[dict[str, object], list[dict[str, object]]],
 ) -> None:
     spine, source_stages = identity_documents
     bindings = _resolve(spine, source_stages)
 
-    assert len(bindings) == len(LEGACY_V1_PROTOCOL.sites) == 53
+    assert len(bindings) == len(LEGACY_V1_PROTOCOL.sites) == 72
     assert [binding.site for binding in bindings] == [
         site.id for site in LEGACY_V1_PROTOCOL.sites
     ]

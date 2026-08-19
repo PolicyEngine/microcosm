@@ -319,6 +319,7 @@ _DIRECT_KERNEL_MODULES = (
     "microcosm.build.us_runtime.housing_inputs",
     "microcosm.build.us_runtime.immigration",
     "microcosm.build.us_runtime.medicaid_take_up",
+    "microcosm.build.us_runtime.org_wages",
     "microcosm.build.us_runtime.other_health_insurance",
     "microcosm.build.us_runtime.pregnancy",
     "microcosm.build.us_runtime.prior_year_income",
@@ -346,16 +347,35 @@ _DIRECT_KERNEL_MODULES = (
     "microcosm.build.us_runtime.wic_claim",
     "microcosm.build.us_runtime.workers_compensation",
     "microcosm.calibrate.exact_k",
+    "microcosm.calibrate.gates",
     "microcosm.calibrate.solve",
 )
 _QRF_KERNEL_MODULES = (
     "microcosm.build.us_runtime.acs_transfer",
+    "microcosm.build.us_runtime.child_support",
+    "microcosm.build.us_runtime.childcare",
+    "microcosm.build.us_runtime.disability_benefits",
+    "microcosm.build.us_runtime.energy_subsidy",
+    "microcosm.build.us_runtime.housing_inputs",
+    "microcosm.build.us_runtime.org_wages",
+    "microcosm.build.us_runtime.other_health_insurance",
+    "microcosm.build.us_runtime.prior_year_income",
     "microcosm.build.us_runtime.puf_qrf_chain",
+    "microcosm.build.us_runtime.puf_support",
+    "microcosm.build.us_runtime.retirement_contributions",
+    "microcosm.build.us_runtime.retirement_distributions",
     "microcosm.build.us_runtime.scf_auto_loans",
     "microcosm.build.us_runtime.scf_wealth",
     "microcosm.build.us_runtime.sipp_financial_assets",
+    "microcosm.build.us_runtime.sipp_head_start",
+    "microcosm.build.us_runtime.sipp_tips",
     "microcosm.build.us_runtime.sipp_vehicles",
     "microcosm.build.us_runtime.ssi_disability_criteria",
+    "microcosm.build.us_runtime.voluntary_filing",
+    "microcosm.build.us_runtime.weeks_unemployed",
+    "microcosm.build.us_runtime.workers_compensation",
+    "microcosm.fit",
+    "microcosm.fit.model",
     "microcosm.fit.qrf",
 )
 
@@ -422,6 +442,81 @@ def _stable_site(
         reset_boundary="stateless_per_entity",
         draw_condition=draw_condition,
         derivation=_BLAKE2B_DRAW,
+    )
+
+
+_QRF_FIT_CONSUMPTION = (
+    "per_target_fit=detect_regime:no_rng; gated:gate_random_state_integer_then_"
+    "HistGradientBoostingClassifier_fit_with_resolved_sample_weight_no_bootstrap; "
+    "present_sign_forests_positive_then_negative; each_forest:random_state_integer_"
+    "then_external_weighted_bootstrap_choice_if_weighted_then_"
+    "RandomForestQuantileRegressor_fit; ungated:single_forest_sequence; "
+    "degenerate_zero:no_rng"
+)
+_QRF_DRAW_CONSUMPTION = (
+    "per_target_draw=degenerate_zero:no_rng; otherwise_one_quantile_uniform_per_"
+    "recipient_row; gated_then_one_sign_class_uniform_per_recipient_row; "
+    "forest_prediction:no_rng"
+)
+_QRF_CHAIN_CONSUMPTION = "append_each_raw_float64_draw_to_later_recipient_predictors"
+_QRF_RESET_BOUNDARY = (
+    "fresh_SeedSequence(seed).spawn(2)_per_fit_or_start_chain; fit_child_0_shared_"
+    "across_declared_targets; draw_child_1_shared_across_declared_targets_and_"
+    "successive_predict_calls; checkpoint_resume_restores_then_advances_both_exact_"
+    "PCG64_states_without_reseeding_or_entropy"
+)
+
+
+def _qrf_consumption_order(
+    *,
+    donor_order: str,
+    target_order: str,
+    recipient_order: str,
+) -> tuple[str, ...]:
+    """Return the common QRF fit/draw protocol around site-specific row orders."""
+
+    return (
+        donor_order,
+        target_order,
+        _QRF_FIT_CONSUMPTION,
+        recipient_order,
+        _QRF_DRAW_CONSUMPTION,
+        _QRF_CHAIN_CONSUMPTION,
+    )
+
+
+def _qrf_site(
+    site_id: str,
+    *targets: str,
+    donor_order: str = "post_training_cap_donor_row_order",
+    recipient_order: str = "recipient_frame_row_order",
+    target_order: str | None = None,
+    draw_condition: str = "named_imputation_stage_executes",
+) -> DrawSiteProtocol:
+    """Build one build-seeded legacy QRF chain contract."""
+
+    if bool(targets) == bool(target_order):
+        raise ValueError(
+            f"QRF draw site {site_id!r} requires targets or target_order, not both"
+        )
+    resolved_target_order = target_order or f"declared_target_order={','.join(targets)}"
+    return _site(
+        site_id,
+        "qrf_fit_draw",
+        value_source="run_request.build_model_seed",
+        default=0,
+        rng_family="microcosm.fit.QRF SeedSequence(PCG64)",
+        rng_version=_QRF_RNG_VERSION,
+        kernel="regime_gated_qrf",
+        seed_material=("build_model_seed",),
+        consumption_order=_qrf_consumption_order(
+            donor_order=donor_order,
+            target_order=resolved_target_order,
+            recipient_order=recipient_order,
+        ),
+        reset_boundary=_QRF_RESET_BOUNDARY,
+        draw_condition=draw_condition,
+        derivation="SeedSequence(seed).spawn(2): fit_child_0 draw_child_1",
     )
 
 
@@ -495,8 +590,20 @@ LEGACY_V1_SITES = (
         rng_version=_QRF_RNG_VERSION,
         kernel="regime_gated_qrf",
         seed_material=("archived_model_seed",),
-        consumption_order=("asec_support", "puf_tax_detail_support"),
-        reset_boundary="deepcopy_pristine_fitted_model_per_support_channel",
+        consumption_order=_qrf_consumption_order(
+            donor_order=(
+                "weighted_replacement_training_row_order_then_QRF_unweighted_fit"
+            ),
+            target_order="declared_target_order=is_disabled_for_ssi",
+            recipient_order=(
+                "support_role_order=asec_support_then_puf_tax_detail_support; "
+                "within_channel_receiver_frame_row_order"
+            ),
+        ),
+        reset_boundary=(
+            f"{_QRF_RESET_BOUNDARY}; deepcopy_pristine_fitted_model_resets_draw_"
+            "child_1_per_support_channel_without_refitting"
+        ),
         derivation="build_seed_argument_ignored_for_archived_model_seed",
     ),
     _site(
@@ -514,14 +621,41 @@ LEGACY_V1_SITES = (
     _site(
         "sipp_vehicle_qrf_model",
         "qrf_fit_draw",
-        value_source="literal",
-        default=42,
+        value_source="run_request.build_model_seed",
+        default=0,
         rng_family="microcosm.fit.QRF SeedSequence(PCG64)",
         rng_version=_QRF_RNG_VERSION,
         kernel="regime_gated_qrf",
-        consumption_order=("vehicles_owned", "vehicles_value"),
-        reset_boundary="one_model_chain_per_vehicle_stage",
-        derivation="QRF SeedSequence(seed).spawn(2) fit_child_0 draw_child_1",
+        seed_material=("build_model_seed",),
+        consumption_order=_qrf_consumption_order(
+            donor_order="value_observed_donor_row_order",
+            target_order="declared_target_order=household_vehicles_value",
+            recipient_order="receiver_household_row_order",
+        ),
+        reset_boundary=(
+            f"{_QRF_RESET_BOUNDARY}; fresh_value_QRF_after_vehicle_count_prediction"
+        ),
+        derivation="SeedSequence(seed).spawn(2): fit_child_0 draw_child_1",
+    ),
+    _site(
+        "sipp_vehicle_count_random_forest_model",
+        "build_model",
+        value_source="run_request.build_model_seed",
+        default=0,
+        rng_family="sklearn RandomForestClassifier check_random_state(MT19937)",
+        rng_version=(
+            f"scikit-learn=={_distribution_version('scikit-learn')};"
+            f"numpy=={_distribution_version('numpy')}"
+        ),
+        seed_material=("build_model_seed",),
+        consumption_order=(
+            "owned_observed_donor_row_order",
+            "forest_tree_order",
+            "receiver_household_row_order",
+        ),
+        reset_boundary="fresh_classifier_per_vehicle_stage",
+        draw_condition="vehicle_source_stage_requires_imputation",
+        derivation="RandomForestClassifier(random_state=int(build_model_seed))",
     ),
     _site(
         "sipp_financial_asset_training_cap",
@@ -541,9 +675,22 @@ LEGACY_V1_SITES = (
         rng_version=_QRF_RNG_VERSION,
         kernel="regime_gated_qrf",
         seed_material=("build_model_seed", "literal_374"),
-        consumption_order=("bank_account_assets", "stock_assets", "bond_assets"),
-        reset_boundary="three_spawned_child_sequences_one_per_declared_target",
-        derivation="SeedSequence([base_seed,374]).spawn(3)",
+        consumption_order=_qrf_consumption_order(
+            donor_order="per_target_observed_donor_mask_in_caller_row_order",
+            target_order=(
+                "outer_target_order=bank_account_assets,stock_assets,bond_assets; "
+                "each_inner_QRF_declares_exactly_one_target"
+            ),
+            recipient_order="household_head_rows_in_recipient_person_frame_order",
+        ),
+        reset_boundary=(
+            "outer_SeedSequence([build_model_seed,374]).spawn(3)_once_then_one_"
+            f"fresh_inner_QRF_per_target; {_QRF_RESET_BOUNDARY}"
+        ),
+        derivation=(
+            "SeedSequence([base_seed,374]).spawn(3); each child generate_state(1,"
+            "uint32) becomes the corresponding inner QRF integer seed"
+        ),
     ),
     _site(
         "acs_rent_archived_training_cap",
@@ -582,8 +729,16 @@ LEGACY_V1_SITES = (
         rng_version=_QRF_RNG_VERSION,
         kernel="regime_gated_qrf",
         seed_material=("build_model_seed",),
-        consumption_order=("bank_account_assets", "stock_assets", "bond_assets"),
-        reset_boundary="fresh_qrf_chain_for_scf_financial_asset_vector",
+        consumption_order=_qrf_consumption_order(
+            donor_order="caller_supplied_scf_donor_row_order",
+            target_order=(
+                "declared_target_order=bank_account_assets,stock_assets,bond_assets"
+            ),
+            recipient_order="household_head_rows_in_recipient_person_frame_order",
+        ),
+        reset_boundary=(
+            f"{_QRF_RESET_BOUNDARY}; fresh_QRF_for_scf_financial_asset_vector"
+        ),
         derivation="SeedSequence(seed).spawn(2): fit_child_0 draw_child_1",
     ),
     _site(
@@ -595,8 +750,14 @@ LEGACY_V1_SITES = (
         rng_version=_QRF_RNG_VERSION,
         kernel="regime_gated_qrf",
         seed_material=("build_model_seed",),
-        consumption_order=("net_worth",),
-        reset_boundary="fresh_qrf_chain_separate_from_scf_financial_assets",
+        consumption_order=_qrf_consumption_order(
+            donor_order="caller_supplied_scf_donor_row_order",
+            target_order="declared_target_order=net_worth",
+            recipient_order="household_head_rows_in_recipient_person_frame_order",
+        ),
+        reset_boundary=(
+            f"{_QRF_RESET_BOUNDARY}; fresh_QRF_separate_from_scf_financial_assets"
+        ),
         derivation="SeedSequence(seed).spawn(2): fit_child_0 draw_child_1",
     ),
     _site(
@@ -608,8 +769,12 @@ LEGACY_V1_SITES = (
         rng_version=_QRF_RNG_VERSION,
         kernel="regime_gated_qrf",
         seed_material=("build_model_seed",),
-        consumption_order=("auto_loan_balance", "auto_loan_interest"),
-        reset_boundary="fresh_qrf_chain_per_scf_auto_loan_stage",
+        consumption_order=_qrf_consumption_order(
+            donor_order="caller_supplied_scf_auto_loan_donor_row_order",
+            target_order="declared_target_order=auto_loan_balance,auto_loan_interest",
+            recipient_order="recipient_household_table_row_order",
+        ),
+        reset_boundary=f"{_QRF_RESET_BOUNDARY}; fresh_QRF_per_scf_auto_loan_stage",
         derivation="SeedSequence(seed).spawn(2): fit_child_0 draw_child_1",
     ),
     _site(
@@ -658,12 +823,14 @@ LEGACY_V1_SITES = (
         rng_version=_QRF_RNG_VERSION,
         kernel="regime_gated_qrf",
         seed_material=("build_model_seed",),
-        consumption_order=(
-            "declared_target_order",
-            "append_each_drawn_target_to_later_predictors",
-            "ordered_quantile_then_gated_sign_uniform",
+        consumption_order=_qrf_consumption_order(
+            donor_order="checkpointed_donor_tax_unit_row_order",
+            target_order=(
+                "declared_target_order=tuple(person_outputs)+tuple(tax_unit_outputs)"
+            ),
+            recipient_order="checkpointed_recipient_tax_unit_row_order",
         ),
-        reset_boundary="one_shared_fit_rng_and_one_shared_draw_rng_per_chain",
+        reset_boundary=_QRF_RESET_BOUNDARY,
         derivation="SeedSequence(seed).spawn(2): fit_child_0 draw_child_1",
     ),
     _site(
@@ -675,13 +842,136 @@ LEGACY_V1_SITES = (
         rng_version=_QRF_RNG_VERSION,
         kernel="regime_gated_qrf",
         seed_material=("acs_transfer_pattern_seed",),
-        consumption_order=(
-            "declared_target_order",
-            "append_each_drawn_target_to_later_predictors",
-            "ordered_quantile_then_gated_sign_uniform",
+        consumption_order=_qrf_consumption_order(
+            donor_order=(
+                "availability_pattern_complete_donor_mask_in_donor_frame_row_order"
+            ),
+            target_order=(
+                "declared_target_order=runtime_model_targets_tuple_for_each_entity_"
+                "family_availability_pattern"
+            ),
+            recipient_order="availability_pattern_recipient_positions_in_frame_order",
         ),
-        reset_boundary="one_shared_fit_rng_and_one_shared_draw_rng_per_fit_group",
+        reset_boundary=_QRF_RESET_BOUNDARY,
         derivation="SeedSequence(seed).spawn(2): fit_child_0 draw_child_1",
+    ),
+    _qrf_site(
+        "child_support_puf_qrf_model",
+        "child_support_received",
+        "child_support_expense",
+    ),
+    _qrf_site(
+        "childcare_puf_qrf_model",
+        "spm_unit_pre_subsidy_childcare_expenses",
+    ),
+    _qrf_site("disability_benefits_puf_qrf_model", "disability_benefits"),
+    _qrf_site("energy_subsidy_puf_qrf_model", "spm_unit_energy_subsidy"),
+    _qrf_site(
+        "acs_rent_qrf_model",
+        "rent",
+        donor_order="archived_rent_donor_row_order",
+    ),
+    _qrf_site(
+        "housing_assistance_puf_qrf_model",
+        "receives_housing_assistance",
+    ),
+    _qrf_site(
+        "org_wages_qrf_model",
+        "hourly_wage",
+        "is_paid_hourly",
+        donor_order="caller_supplied_donor_row_order_without_training_cap_or_sort",
+        recipient_order="recipient_person_frame_row_order",
+    ),
+    _qrf_site(
+        "other_health_insurance_puf_qrf_model",
+        "health_insurance_premiums_without_medicare_part_b",
+        "other_health_insurance_premiums",
+    ),
+    _qrf_site(
+        "prior_year_income_puf_qrf_model",
+        "employment_income_last_year",
+        "self_employment_income_last_year",
+    ),
+    _qrf_site(
+        "primary_puf_monolithic_qrf_model",
+        donor_order="donor_tax_unit_row_order",
+        target_order=(
+            "declared_target_order=tuple(person_outputs)+tuple(tax_unit_outputs)"
+        ),
+        recipient_order="PUF_clone_tax_unit_rows_in_recipient_frame_order",
+        draw_condition="checkpoint_dir_is_none_and_monolithic_path_executes",
+    ),
+    _qrf_site(
+        "retirement_contributions_puf_qrf_model",
+        "traditional_401k_contributions_desired",
+        "roth_401k_contributions_desired",
+        "traditional_ira_contributions_desired",
+        "roth_ira_contributions_desired",
+        "self_employed_pension_contributions_desired",
+    ),
+    _qrf_site(
+        "retirement_distributions_puf_qrf_model",
+        "taxable_401k_distributions",
+        "taxable_403b_distributions",
+        "keogh_distributions",
+        "taxable_sep_distributions",
+    ),
+    _qrf_site(
+        "sipp_head_start_qrf_model",
+        "takes_up_head_start_if_eligible",
+        donor_order=(
+            "caller_supplied_donor_row_order; production_loader_preserves_pinned_"
+            "source_file_order_after_December_and_training_masks_without_sort"
+        ),
+        recipient_order=(
+            "eligible_age_3_to_5_subset_of_canonical_string_source_id_mergesort_"
+            "order_after_role_priority_person_id_deduplication"
+        ),
+    ),
+    _qrf_site(
+        "sipp_tip_qrf_model",
+        "tip_income",
+        donor_order="post_fixed_cap_sorted_donor_position_order",
+    ),
+    _qrf_site(
+        "voluntary_filing_qrf_model",
+        "would_file_taxes_voluntarily",
+        donor_order="stable_sorted_source_tax_unit_donor_order",
+    ),
+    _qrf_site("weeks_unemployed_puf_qrf_model", "weeks_unemployed"),
+    _qrf_site("workers_compensation_puf_qrf_model", "workers_compensation"),
+    _site(
+        "org_union_hash_lottery",
+        "stable_entity_draw",
+        value_source="literal",
+        default=None,
+        rng_family="pandas.util.hash_pandas_object stateless uint64",
+        rng_version=(
+            f"pandas=={_distribution_version('pandas')};"
+            f"numpy=={_distribution_version('numpy')}"
+        ),
+        seed_material=(
+            "implicit_pandas_default_hash_key=0123456789123456",
+            "index=False",
+            "categorize=True_default",
+            "ORG_PREDICTORS_rounded_to_4_decimals",
+        ),
+        consumption_order=(
+            "hash_every_recipient_row_in_current_frame_order_before_eligibility",
+            "eligible_state_values_in_sorted_numpy_unique_order",
+            "state_positions_in_original_recipient_row_order",
+            "count=min(state_rows,max(0,int(np.rint(state_rate*state_rows))))",
+            "np.argpartition_priority_at_count_minus_one_then_first_count_positions",
+        ),
+        reset_boundary="one_stateless_full_recipient_frame_hash_per_assign_union_call",
+        draw_condition=(
+            "at_least_one_recipient_row_satisfies_employment_income_positive_and_"
+            "weekly_hours_positive_and_age_at_least_16"
+        ),
+        derivation=(
+            "pandas_hash_uint64_cast_to_float64_then_(hash+0.5)/2**64; clip_to_"
+            "[1e-12,1-1e-12]; negative_log_uniform_divided_by_union_priority"
+        ),
     ),
     _stable_site(
         "source_aca_assignment",
@@ -827,11 +1117,19 @@ LEGACY_V1_SITES = (
         "calibration",
         value_source="run_request.build_model_seed",
         default=0,
-        rng_family="torch.manual_seed",
+        rng_family="torch.manual_seed + Tensor.uniform_",
         rng_version=f"torch=={_distribution_version('torch')}",
         seed_material=("build_model_seed",),
-        consumption_order=("optimizer_initialization_then_declared_iterations",),
-        reset_boundary="manual_seed_at_solver_entry",
+        consumption_order=(
+            "optimizer_initialization_then_declared_iterations",
+            "one_HardConcrete_uniform_vector_of_record_count_per_training_epoch",
+            "target_record_budget_evaluations_in_bisection_order",
+        ),
+        reset_boundary=(
+            "manual_seed_at_calibrate_entry_and_before_each_target_records_"
+            "budget_evaluation"
+        ),
+        draw_condition="fixed_l0_lambda_positive_or_target_records_requested",
         derivation="torch_manual_seed(integer_seed)",
     ),
     _site(
@@ -859,7 +1157,7 @@ LEGACY_V1_SITES = (
             seed_material=("build_model_seed", "stage_training_cap"),
             consumption_order=(
                 "source_dataframe_row_order",
-                "sorted_selected_positions",
+                "pandas_sample_return_order",
             ),
             reset_boundary="fresh_generator_per_source_stage",
             draw_condition="donor_rows_above_5000",

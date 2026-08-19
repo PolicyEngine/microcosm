@@ -6,7 +6,7 @@
   "country": "us",
   "documentation_sha256": "aed5b95645a5c605671e374ed2a9d511c7fd9dc29c63760c32a205d9f2db9491",
   "field_usage": {
-    "authored_normative_field_count": 32161,
+    "authored_normative_field_count": 32218,
     "claim_count": 47,
     "claims": [
       {
@@ -512,8 +512,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 277,
-        "pointer_sha256": "dfa7ae701f62f7b1f06954798d29cfba3fc53a0be21e1751646d1f5bafd6071f",
+        "pointer_count": 334,
+        "pointer_sha256": "604e99f42c6f2b6262b744f2610a86a2ce98966979ff6836fdbf9ce71b3a9d89",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1spine.yaml/seed_site_bindings",
@@ -704,8 +704,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 823,
-        "pointer_sha256": "c05ebb88538195798e9365f325381c14d92b74007f846f1fef50a08268e6d27d",
+        "pointer_count": 1196,
+        "pointer_sha256": "775a9960ae7221708894f1aa36bc93a75f4d1c2efc6cfad4c7896ab3f1e2af78",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/resolved/seed_protocol",
@@ -718,8 +718,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 277,
-        "pointer_sha256": "368fc19a8f07c4abf38ebcf2fbc4414d33c403c0f1f9881c2d2e3f5d6160feb6",
+        "pointer_count": 334,
+        "pointer_sha256": "cb18a23fa360114b29c02b04b393044a575da92fbfd3154ed5d2bd10fd95d266",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/resolved/seed_site_bindings",
@@ -740,21 +740,21 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 41380,
-    "consumed_field_count": 41380,
+    "configuration_field_count": 41867,
+    "consumed_field_count": 41867,
     "generation0_effect_counts": {
       "legacy_behavior": 37718,
-      "no_generation0_effect": 3662
+      "no_generation0_effect": 4149
     },
     "mode_counts": {
-      "compiler_semantic": 27661,
+      "compiler_semantic": 28148,
       "front_end_validation": 346,
       "identity_only": 128,
       "legacy_behavior": 13245
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "b63ffc9bf7cb2fb8ac17e314f64c7b661aba14512071c1a697e5f6ff9ebc74c5",
-    "resolved_binding_field_count": 9219,
+    "pointer_inventory_sha256": "87f1cad1074695d766643a0fa41726f1ab49603f5e36653abd3c8f125c77bbde",
+    "resolved_binding_field_count": 9649,
     "unused_field_count": 0
   },
   "inventory_coverage": {
@@ -783,9 +783,9 @@
       "producer_virtual_resources": 75,
       "release_rungs": 5,
       "resolved_references": 318,
-      "seed_owner_bindings": 112,
-      "seed_owner_rows": 54,
-      "seed_sites": 53,
+      "seed_owner_bindings": 131,
+      "seed_owner_rows": 57,
+      "seed_sites": 72,
       "seed_streams": 14,
       "source_operators": 16,
       "source_stages": 37,
@@ -1501,7 +1501,7 @@
         "expected": {
           "groups": 12,
           "partition": "disjoint and exhaustive",
-          "sites": 53
+          "sites": 72
         },
         "failures": [],
         "observed": {
@@ -1548,7 +1548,9 @@
               "adult_care_weighted_prefix_assignment",
               "capital_gains_tail_random_rank",
               "torch_calibration_reseed",
-              "exact_k_pcg64_selection"
+              "exact_k_pcg64_selection",
+              "sipp_vehicle_count_random_forest_model",
+              "org_union_hash_lottery"
             ],
             "puf_archived_42_vs_live_build_seed": [
               "puf_archived_aggregate_disaggregation",
@@ -1558,7 +1560,24 @@
               "sipp_vehicle_qrf_model",
               "sipp_financial_asset_qrf_models",
               "primary_qrf_fit_draw",
-              "acs_qrf_fit_draw"
+              "acs_qrf_fit_draw",
+              "child_support_puf_qrf_model",
+              "childcare_puf_qrf_model",
+              "disability_benefits_puf_qrf_model",
+              "energy_subsidy_puf_qrf_model",
+              "acs_rent_qrf_model",
+              "housing_assistance_puf_qrf_model",
+              "org_wages_qrf_model",
+              "other_health_insurance_puf_qrf_model",
+              "prior_year_income_puf_qrf_model",
+              "primary_puf_monolithic_qrf_model",
+              "retirement_contributions_puf_qrf_model",
+              "retirement_distributions_puf_qrf_model",
+              "sipp_head_start_qrf_model",
+              "sipp_tip_qrf_model",
+              "voluntary_filing_qrf_model",
+              "weeks_unemployed_puf_qrf_model",
+              "workers_compensation_puf_qrf_model"
             ],
             "run_request_578": [
               "survey_sample_asec",
@@ -1584,7 +1603,7 @@
               "sipp_tip_training_cap"
             ]
           },
-          "sites": 53
+          "sites": 72
         },
         "status": "covered"
       },
@@ -1601,12 +1620,12 @@
           "compiler_ir.seed_stream_map.owners"
         ],
         "expected": {
-          "owner_rows": 54,
+          "owner_rows": 57,
           "relation": "site-order-preserving owner aggregation"
         },
         "failures": [],
         "observed": {
-          "owner_rows": 54
+          "owner_rows": 57
         },
         "status": "covered"
       },
@@ -1624,13 +1643,13 @@
           "compiler_ir.node_slices"
         ],
         "expected": {
-          "map_sha256": "9bc3cac3cf4bc2534f35dc1a3097930892cdc1076931bfe1d86fa92b29063a9e",
-          "protocol_sha256": "76a79351cb919e1a3119b6a0c1bfbc4ef392381f8a7add61b34c1527c444eacd"
+          "map_sha256": "40628dc8242840fb09106389d8887e778f121dbe320a2c2d47f2aeb0b0baad48",
+          "protocol_sha256": "5c6ca5ccfbbd3897b23d29dc46196ef1ae110d6d1f2974ce360fac722075a73d"
         },
         "failures": [],
         "observed": {
-          "map_sha256": "9bc3cac3cf4bc2534f35dc1a3097930892cdc1076931bfe1d86fa92b29063a9e",
-          "protocol_sha256": "76a79351cb919e1a3119b6a0c1bfbc4ef392381f8a7add61b34c1527c444eacd"
+          "map_sha256": "40628dc8242840fb09106389d8887e778f121dbe320a2c2d47f2aeb0b0baad48",
+          "protocol_sha256": "5c6ca5ccfbbd3897b23d29dc46196ef1ae110d6d1f2974ce360fac722075a73d"
         },
         "status": "covered"
       },
@@ -1645,7 +1664,7 @@
           "compiler_ir.seed_stream_map"
         ],
         "expected": {
-          "implementation_sha256": "76a79351cb919e1a3119b6a0c1bfbc4ef392381f8a7add61b34c1527c444eacd",
+          "implementation_sha256": "5c6ca5ccfbbd3897b23d29dc46196ef1ae110d6d1f2974ce360fac722075a73d",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1666,7 +1685,7 @@
         },
         "failures": [],
         "observed": {
-          "implementation_sha256": "76a79351cb919e1a3119b6a0c1bfbc4ef392381f8a7add61b34c1527c444eacd",
+          "implementation_sha256": "5c6ca5ccfbbd3897b23d29dc46196ef1ae110d6d1f2974ce360fac722075a73d",
           "protocol": "legacy-v1",
           "streams": [
             "build_model",
@@ -1700,12 +1719,12 @@
         ],
         "expected": {
           "relation": "all site fields preserved exactly",
-          "sites": 53
+          "sites": 72
         },
         "failures": [],
         "observed": {
-          "sha256": "99710bf212c3801cfd0434d56d2d1d2e4902a2a958978cdbd91cd9acce81d2fb",
-          "sites": 53
+          "sha256": "db740892e3ff1ceddbfc0c92cefb916e65665c682f9d1b87e274876ddbfbe9ba",
+          "sites": 72
         },
         "status": "covered"
       },
@@ -1720,12 +1739,12 @@
           "compiler_ir.seed_stream_map.sites.owners"
         ],
         "expected": {
-          "bindings": 112,
-          "coverage": "all 53 sites"
+          "bindings": 131,
+          "coverage": "all 72 sites"
         },
         "failures": [],
         "observed": {
-          "bindings": 112
+          "bindings": 131
         },
         "status": "covered"
       },
@@ -2438,7 +2457,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "c78c1ce8c951e5f745d7a03c3e887e151f8fcfa0bd3adeafb12cf73f2983acac"
+      "spec_sha256": "9699f76c5c3146b36c9300be3726471d3272576748d816d9684b50f6cde795d8"
     }
   },
   "report_schema_version": 3,
@@ -2448,7 +2467,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "c78c1ce8c951e5f745d7a03c3e887e151f8fcfa0bd3adeafb12cf73f2983acac"
+    "spec_sha256": "9699f76c5c3146b36c9300be3726471d3272576748d816d9684b50f6cde795d8"
   },
   "status": "pass"
 }

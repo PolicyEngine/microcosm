@@ -136,6 +136,10 @@ seed_site_bindings:
   owners:
   - kind: source_stage
     id: vehicle_assets
+- site: sipp_vehicle_count_random_forest_model
+  owners:
+  - kind: source_stage
+    id: vehicle_assets
 - site: sipp_financial_asset_training_cap
   owners:
   - kind: source_stage
@@ -298,6 +302,78 @@ seed_site_bindings:
     id: transfer:spm_unit/source_operator_energy_subsidy
   - kind: producer_node
     id: transfer:tax_unit/puf_tax_itemization
+- site: child_support_puf_qrf_model
+  owners:
+  - kind: source_stage
+    id: child_support_inputs
+- site: childcare_puf_qrf_model
+  owners:
+  - kind: source_stage
+    id: childcare_inputs
+- site: disability_benefits_puf_qrf_model
+  owners:
+  - kind: source_stage
+    id: disability_benefits_input
+- site: energy_subsidy_puf_qrf_model
+  owners:
+  - kind: source_stage
+    id: energy_subsidy
+- site: acs_rent_qrf_model
+  owners:
+  - kind: source_stage
+    id: acs_rent
+- site: housing_assistance_puf_qrf_model
+  owners:
+  - kind: source_stage
+    id: acs_rent
+- site: org_wages_qrf_model
+  owners:
+  - kind: source_stage
+    id: org_wages
+- site: other_health_insurance_puf_qrf_model
+  owners:
+  - kind: source_stage
+    id: other_health_insurance_premiums
+- site: prior_year_income_puf_qrf_model
+  owners:
+  - kind: source_stage
+    id: prior_year_income
+- site: primary_puf_monolithic_qrf_model
+  owners:
+  - kind: producer_node
+    id: primary_puf_qrf
+- site: retirement_contributions_puf_qrf_model
+  owners:
+  - kind: source_stage
+    id: retirement_contributions
+- site: retirement_distributions_puf_qrf_model
+  owners:
+  - kind: source_stage
+    id: retirement_distributions
+- site: sipp_head_start_qrf_model
+  owners:
+  - kind: source_stage
+    id: sipp_head_start
+- site: sipp_tip_qrf_model
+  owners:
+  - kind: source_stage
+    id: sipp_tips
+- site: voluntary_filing_qrf_model
+  owners:
+  - kind: source_stage
+    id: voluntary_filing_input
+- site: weeks_unemployed_puf_qrf_model
+  owners:
+  - kind: source_stage
+    id: weeks_unemployed_input
+- site: workers_compensation_puf_qrf_model
+  owners:
+  - kind: source_stage
+    id: workers_compensation_input
+- site: org_union_hash_lottery
+  owners:
+  - kind: source_stage
+    id: org_wages
 - site: source_aca_assignment
   owners:
   - kind: source_stage

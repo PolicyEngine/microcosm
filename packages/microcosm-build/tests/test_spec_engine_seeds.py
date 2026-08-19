@@ -2,14 +2,30 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import random
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
 
+import microcosm.build.spec_engine.seed_callsite_coverage as callsite_coverage
+import microcosm.build.spec_engine.seeds as seeds_module
 from microcosm.build.spec_engine.canonical import canonical_json_bytes
+from microcosm.build.spec_engine.seed_callsite_coverage import (
+    HASH_CLASSIFICATION_KINDS,
+    LEGACY_V1_HASH_CLASSIFICATIONS,
+    LEGACY_V1_PRODUCTION_BINDINGS,
+    LEGACY_V1_PRODUCTION_EXEMPTIONS,
+    SOURCE_NAMESPACE_EXEMPTIONS,
+    UK_ONLY_SOURCE_PREFIXES,
+    assert_exact_production_callsite_coverage,
+    discover_exempted_source_modules,
+    discover_production_callsites,
+    discover_production_source_modules,
+)
 from microcosm.build.spec_engine.seeds import (
     LEGACY_V1_PROTOCOL,
     SeedProtocol,
@@ -29,18 +45,24 @@ from microcosm.build.us_runtime.puf_source_agi import (
 
 EXPECTED_LEGACY_V1_SITES = {
     "acs_qrf_fit_draw",
+    "acs_rent_qrf_model",
     "acs_rent_archived_training_cap",
     "acs_transfer_family_seed",
     "acs_transfer_pattern_seed",
     "adult_care_weighted_prefix_assignment",
     "capital_gains_tail_random_rank",
     "child_support_training_cap",
+    "child_support_puf_qrf_model",
     "childcare_training_cap",
+    "childcare_puf_qrf_model",
     "disability_benefits_training_cap",
+    "disability_benefits_puf_qrf_model",
     "eitc_take_up_assignment",
     "energy_subsidy_training_cap",
+    "energy_subsidy_puf_qrf_model",
     "exact_k_pcg64_selection",
     "housing_inputs_training_cap",
+    "housing_assistance_puf_qrf_model",
     "immigration_ead_students_assignment",
     "immigration_ead_workers_assignment",
     "legacy_congressional_district_assignment",
@@ -48,14 +70,21 @@ EXPECTED_LEGACY_V1_SITES = {
     "legacy_puma_ladder",
     "medicaid_take_up_assignment",
     "other_health_insurance_training_cap",
+    "other_health_insurance_puf_qrf_model",
+    "org_union_hash_lottery",
+    "org_wages_qrf_model",
     "pregnancy_assignment",
     "primary_qrf_fit_draw",
+    "primary_puf_monolithic_qrf_model",
     "prior_year_income_training_cap",
+    "prior_year_income_puf_qrf_model",
     "puf_archived_aggregate_disaggregation",
     "puf_clone_attachment",
     "puf_live_aggregate_disaggregation",
     "retirement_contributions_training_cap",
+    "retirement_contributions_puf_qrf_model",
     "retirement_distributions_training_cap",
+    "retirement_distributions_puf_qrf_model",
     "scf_household_source_selector",
     "scf_auto_loan_qrf_model",
     "scf_financial_asset_qrf_model",
@@ -63,6 +92,9 @@ EXPECTED_LEGACY_V1_SITES = {
     "sipp_financial_asset_qrf_models",
     "sipp_financial_asset_training_cap",
     "sipp_tip_training_cap",
+    "sipp_tip_qrf_model",
+    "sipp_head_start_qrf_model",
+    "sipp_vehicle_count_random_forest_model",
     "sipp_vehicle_qrf_model",
     "sipp_vehicle_training_cap",
     "snap_discretionary_exemption_assignment",
@@ -78,19 +110,25 @@ EXPECTED_LEGACY_V1_SITES = {
     "survey_sample_asec",
     "tanf_take_up_assignment",
     "torch_calibration_reseed",
+    "voluntary_filing_qrf_model",
     "weeks_unemployed_training_cap",
+    "weeks_unemployed_puf_qrf_model",
     "wic_claim_assignment",
     "workers_compensation_training_cap",
+    "workers_compensation_puf_qrf_model",
 }
 
-# Independent audit oracle: each ledger id must retain a current source home.
-# Paths are repository-relative, not copied from the protocol implementation.
+# Independent total audit oracle: every logical ledger id retains a current
+# source home even when several ids intentionally share one physical helper.
 AUDITED_SOURCE_BY_SITE = {
     **dict.fromkeys(
         ("survey_sample_asec", "survey_sample_acs"),
         "packages/microcosm-build/src/microcosm/build/frame_sampling.py",
     ),
-    "puf_clone_attachment": "packages/microcosm-build/src/microcosm/build/us_runtime/puf_support.py",
+    **dict.fromkeys(
+        ("puf_clone_attachment", "primary_puf_monolithic_qrf_model"),
+        "packages/microcosm-build/src/microcosm/build/us_runtime/puf_support.py",
+    ),
     "puf_archived_aggregate_disaggregation": "packages/microcosm-build/src/microcosm/build/us_runtime/puf_source_agi.py",
     "puf_live_aggregate_disaggregation": "packages/microcosm-build/src/microcosm/build/us_runtime/puf_aggregate_records.py",
     **dict.fromkeys(
@@ -98,18 +136,30 @@ AUDITED_SOURCE_BY_SITE = {
         "packages/microcosm-build/src/microcosm/build/us_runtime/ssi_disability_criteria.py",
     ),
     **dict.fromkeys(
-        ("sipp_vehicle_training_cap", "sipp_vehicle_qrf_model"),
+        (
+            "sipp_vehicle_training_cap",
+            "sipp_vehicle_qrf_model",
+            "sipp_vehicle_count_random_forest_model",
+        ),
         "packages/microcosm-build/src/microcosm/build/us_runtime/sipp_vehicles.py",
     ),
     **dict.fromkeys(
-        (
-            "sipp_financial_asset_training_cap",
-            "sipp_financial_asset_qrf_models",
-        ),
+        ("sipp_financial_asset_training_cap", "sipp_financial_asset_qrf_models"),
         "packages/microcosm-build/src/microcosm/build/us_runtime/sipp_financial_assets.py",
     ),
-    "acs_rent_archived_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/housing_inputs.py",
-    "sipp_tip_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/sipp_tips.py",
+    **dict.fromkeys(
+        (
+            "acs_rent_archived_training_cap",
+            "housing_inputs_training_cap",
+            "acs_rent_qrf_model",
+            "housing_assistance_puf_qrf_model",
+        ),
+        "packages/microcosm-build/src/microcosm/build/us_runtime/housing_inputs.py",
+    ),
+    **dict.fromkeys(
+        ("sipp_tip_training_cap", "sipp_tip_qrf_model"),
+        "packages/microcosm-build/src/microcosm/build/us_runtime/sipp_tips.py",
+    ),
     **dict.fromkeys(
         (
             "scf_household_source_selector",
@@ -154,17 +204,61 @@ AUDITED_SOURCE_BY_SITE = {
     "capital_gains_tail_random_rank": "packages/microcosm-build/src/microcosm/build/us_runtime/puf_capital_gains_tail.py",
     "torch_calibration_reseed": "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py",
     "exact_k_pcg64_selection": "packages/microcosm-calibrate/src/microcosm/calibrate/exact_k.py",
-    "prior_year_income_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/prior_year_income.py",
-    "childcare_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/childcare.py",
-    "retirement_contributions_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/retirement_contributions.py",
-    "disability_benefits_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/disability_benefits.py",
-    "housing_inputs_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/housing_inputs.py",
-    "workers_compensation_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/workers_compensation.py",
-    "retirement_distributions_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/retirement_distributions.py",
-    "child_support_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/child_support.py",
-    "energy_subsidy_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/energy_subsidy.py",
-    "other_health_insurance_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/other_health_insurance.py",
-    "weeks_unemployed_training_cap": "packages/microcosm-build/src/microcosm/build/us_runtime/weeks_unemployed.py",
+    **dict.fromkeys(
+        ("prior_year_income_training_cap", "prior_year_income_puf_qrf_model"),
+        "packages/microcosm-build/src/microcosm/build/us_runtime/prior_year_income.py",
+    ),
+    **dict.fromkeys(
+        ("childcare_training_cap", "childcare_puf_qrf_model"),
+        "packages/microcosm-build/src/microcosm/build/us_runtime/childcare.py",
+    ),
+    **dict.fromkeys(
+        (
+            "retirement_contributions_training_cap",
+            "retirement_contributions_puf_qrf_model",
+        ),
+        "packages/microcosm-build/src/microcosm/build/us_runtime/retirement_contributions.py",
+    ),
+    **dict.fromkeys(
+        ("disability_benefits_training_cap", "disability_benefits_puf_qrf_model"),
+        "packages/microcosm-build/src/microcosm/build/us_runtime/disability_benefits.py",
+    ),
+    **dict.fromkeys(
+        ("workers_compensation_training_cap", "workers_compensation_puf_qrf_model"),
+        "packages/microcosm-build/src/microcosm/build/us_runtime/workers_compensation.py",
+    ),
+    **dict.fromkeys(
+        (
+            "retirement_distributions_training_cap",
+            "retirement_distributions_puf_qrf_model",
+        ),
+        "packages/microcosm-build/src/microcosm/build/us_runtime/retirement_distributions.py",
+    ),
+    **dict.fromkeys(
+        ("child_support_training_cap", "child_support_puf_qrf_model"),
+        "packages/microcosm-build/src/microcosm/build/us_runtime/child_support.py",
+    ),
+    **dict.fromkeys(
+        ("energy_subsidy_training_cap", "energy_subsidy_puf_qrf_model"),
+        "packages/microcosm-build/src/microcosm/build/us_runtime/energy_subsidy.py",
+    ),
+    **dict.fromkeys(
+        (
+            "other_health_insurance_training_cap",
+            "other_health_insurance_puf_qrf_model",
+        ),
+        "packages/microcosm-build/src/microcosm/build/us_runtime/other_health_insurance.py",
+    ),
+    **dict.fromkeys(
+        ("weeks_unemployed_training_cap", "weeks_unemployed_puf_qrf_model"),
+        "packages/microcosm-build/src/microcosm/build/us_runtime/weeks_unemployed.py",
+    ),
+    **dict.fromkeys(
+        ("org_union_hash_lottery", "org_wages_qrf_model"),
+        "packages/microcosm-build/src/microcosm/build/us_runtime/org_wages.py",
+    ),
+    "sipp_head_start_qrf_model": "packages/microcosm-build/src/microcosm/build/us_runtime/sipp_head_start.py",
+    "voluntary_filing_qrf_model": "packages/microcosm-build/src/microcosm/build/us_runtime/voluntary_filing.py",
     "legacy_geography_ladder": "packages/microcosm-build/src/microcosm/build/us_runtime/geography_ladder.py",
     "legacy_puma_ladder": "packages/microcosm-build/src/microcosm/build/us_runtime/puma_ladder.py",
     "legacy_congressional_district_assignment": "packages/microcosm-build/src/microcosm/build/us_runtime/congressional_district_geography.py",
@@ -257,24 +351,344 @@ def test_audited_source_manifest_is_independent_and_total() -> None:
     assert set(AUDITED_SOURCE_BY_SITE) == {site.id for site in LEGACY_V1_PROTOCOL.sites}
     root = Path(__file__).resolve().parents[3]
     kernel_by_id = {kernel.id: kernel for kernel in LEGACY_V1_PROTOCOL.kernels}
-    stochastic_anchors = (
-        "default_rng",
-        "SeedSequence",
-        "hashlib.",
-        "QRF(",
-        "random_state",
-        "manual_seed",
-        "PCG64",
-        "_stable_unit_draws",
-    )
     for site_id, relative in AUDITED_SOURCE_BY_SITE.items():
-        source = (root / relative).read_text(encoding="utf-8")
-        assert any(anchor in source for anchor in stochastic_anchors), site_id
+        assert (root / relative).is_file(), site_id
         module = (
             relative.split("/src/", maxsplit=1)[1].removesuffix(".py").replace("/", ".")
         )
         site = LEGACY_V1_PROTOCOL.site(site_id)
         assert module in kernel_by_id[site.kernel].source_modules, site_id
+
+
+def test_production_callsites_are_independent_exact_classified_and_attested() -> None:
+    root = Path(__file__).resolve().parents[3]
+    kernel_by_id = {kernel.id: kernel for kernel in LEGACY_V1_PROTOCOL.kernels}
+    source_modules_by_site = {
+        site.id: frozenset(kernel_by_id[site.kernel].source_modules)
+        for site in LEGACY_V1_PROTOCOL.sites
+    }
+    modules = discover_production_source_modules(root)
+    callsites = discover_production_callsites(root)
+    assert len(modules) == 200
+    assert len(callsites) == 274
+    assert len(LEGACY_V1_PRODUCTION_BINDINGS) == 119
+    assert len(LEGACY_V1_PRODUCTION_EXEMPTIONS) == 155
+    assert len(LEGACY_V1_HASH_CLASSIFICATIONS) == 154
+    assert {row.kind for row in LEGACY_V1_HASH_CLASSIFICATIONS} == (
+        HASH_CLASSIFICATION_KINDS
+    )
+    assert_exact_production_callsite_coverage(
+        root,
+        protocol_site_ids=frozenset(EXPECTED_LEGACY_V1_SITES),
+        kernel_source_modules_by_site=source_modules_by_site,
+    )
+
+
+def test_production_source_universe_has_only_typed_country_exclusions() -> None:
+    root = Path(__file__).resolve().parents[3]
+    matches = discover_exempted_source_modules(root)
+    assert set(matches) == set(SOURCE_NAMESPACE_EXEMPTIONS)
+    assert all(row.reason for row in matches)
+    assert all(matches.values())
+    assert UK_ONLY_SOURCE_PREFIXES == (
+        "microcosm.build.uk_runtime",
+        "microcosm.build.stochastic_assignment",
+    )
+    included = discover_production_source_modules(root)
+    assert "microcosm.build.spec_engine.seed_callsite_coverage" in included
+    assert "microcosm.data.contract" in included
+    assert "microcosm.frame" in included
+    assert "microcosm.fit" in included
+    assert "tools.build_us_multispine_pool" in included
+
+
+def test_scanner_finds_new_module_random_seed_sequence_and_hash(tmp_path: Path) -> None:
+    tool = tmp_path / "tools/build_us_multispine_pool.py"
+    tool.parent.mkdir(parents=True)
+    tool.write_text("", encoding="utf-8")
+    source = (
+        tmp_path
+        / "packages/microcosm-build/src/microcosm/build/us_runtime/new_stage.py"
+    )
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "import hashlib\n"
+        "import numpy as np\n"
+        "def stage():\n"
+        "    seed = np.random.SeedSequence(4)\n"
+        "    child_seed = seed.spawn(1)[0]\n"
+        "    value = child_seed.generate_state(1)\n"
+        "    return np.random.default_rng(value).random(), hashlib.sha256(b'x')\n",
+        encoding="utf-8",
+    )
+    discovered = {row.callsite.api for row in discover_production_callsites(tmp_path)}
+    assert discovered == {
+        "hashlib.sha256",
+        "numpy.random.Generator.random",
+        "numpy.random.SeedSequence",
+        "numpy.random.SeedSequence.generate_state",
+        "numpy.random.SeedSequence.spawn",
+        "numpy.random.default_rng",
+    }
+
+
+def test_scanner_closes_alias_receiver_hash_uuid_and_escape_paths(
+    tmp_path: Path,
+) -> None:
+    tool = tmp_path / "tools/build_us_multispine_pool.py"
+    tool.parent.mkdir(parents=True)
+    tool.write_text("", encoding="utf-8")
+    source = (
+        tmp_path
+        / "packages/microcosm-build/src/microcosm/build/us_runtime/new_stage.py"
+    )
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "import hashlib\n"
+        "import numpy as np\n"
+        "import uuid\n"
+        "from uuid import uuid4 as imported_uuid4\n"
+        "def parameter(engine: np.random.Generator):\n"
+        "    return engine.gamma(2)\n"
+        "def locals_():\n"
+        "    g = np.random.default_rng(1)\n"
+        "    rs = np.random.RandomState(2)\n"
+        "    draw = g.gamma\n"
+        "    draw_alias = draw\n"
+        "    return g.random(), rs.choice(3), draw_alias(2)\n"
+        "class Holder:\n"
+        "    def __init__(self):\n"
+        "        self.g = np.random.default_rng(3)\n"
+        "        self.draw = self.g.gamma\n"
+        "    def run(self):\n"
+        "        return self.draw(2), self.g.permuted([1, 2])\n"
+        "def hashes():\n"
+        "    digest = hashlib.sha3_256\n"
+        "    constructor = hashlib.new\n"
+        "    return digest(b'x'), constructor('sha256', b'x')\n"
+        "def uuids():\n"
+        "    bound = uuid.uuid4\n"
+        "    return uuid.uuid4(), imported_uuid4(), bound()\n"
+        "def escapes(engine: np.random.Generator, name):\n"
+        "    stored = [engine.gamma]\n"
+        "    consume(engine.normal)\n"
+        "    dynamic = getattr(engine, name)\n"
+        "    return engine.choice, stored, dynamic\n",
+        encoding="utf-8",
+    )
+    rows = discover_production_callsites(tmp_path)
+    observed = {(row.callsite.qualname, row.callsite.api) for row in rows}
+    assert {
+        ("parameter", "numpy.random.Generator.gamma"),
+        ("locals_", "numpy.random.default_rng"),
+        ("locals_", "numpy.random.RandomState"),
+        ("locals_", "numpy.random.Generator.random"),
+        ("locals_", "numpy.random.RandomState.choice"),
+        ("locals_", "numpy.random.Generator.gamma"),
+        ("Holder.__init__", "numpy.random.default_rng"),
+        ("Holder.run", "numpy.random.Generator.gamma"),
+        ("Holder.run", "numpy.random.Generator.permuted"),
+        ("hashes", "hashlib.sha3_256"),
+        ("hashes", "hashlib.new"),
+        ("uuids", "uuid.uuid4"),
+        ("escapes", "stochastic.unresolved.bound_method_escape"),
+        ("escapes", "stochastic.unresolved.dynamic_getattr"),
+    } <= observed
+    uuid_rows = [row for row in rows if row.callsite.api == "uuid.uuid4"]
+    assert len(uuid_rows) == 3
+    escape_rows = [
+        row
+        for row in rows
+        if row.callsite.qualname == "escapes"
+        and row.callsite.api == "stochastic.unresolved.bound_method_escape"
+    ]
+    assert len(escape_rows) == 3
+
+
+def test_scanner_lexical_facts_kill_stale_precise_labels(tmp_path: Path) -> None:
+    tool = tmp_path / "tools/build_us_multispine_pool.py"
+    tool.parent.mkdir(parents=True)
+    tool.write_text("", encoding="utf-8")
+    source = tmp_path / "packages/microcosm-fit/src/microcosm/fit/scope_probe.py"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "import numpy as np\n"
+        "def precise():\n"
+        "    engine = np.random.default_rng(1)\n"
+        "    return engine.gamma(2)\n"
+        "def killed():\n"
+        "    engine = np.random.default_rng(2)\n"
+        "    engine = object()\n"
+        "    return engine.gamma(2)\n"
+        "def sibling():\n"
+        "    return engine.gamma(2)\n",
+        encoding="utf-8",
+    )
+    rows = discover_production_callsites(tmp_path)
+    by_qualname = {
+        row.callsite.qualname: row.callsite.api
+        for row in rows
+        if row.callsite.api.endswith("gamma")
+    }
+    assert by_qualname == {
+        "precise": "numpy.random.Generator.gamma",
+        "killed": "stochastic.unresolved.gamma",
+        "sibling": "stochastic.unresolved.gamma",
+    }
+
+
+def test_scanner_namespace_alias_chains_and_branch_joins_are_sound(
+    tmp_path: Path,
+) -> None:
+    tool = tmp_path / "tools/build_us_multispine_pool.py"
+    tool.parent.mkdir(parents=True)
+    tool.write_text("", encoding="utf-8")
+    source = tmp_path / "packages/microcosm-fit/src/microcosm/fit/alias_probe.py"
+    source.parent.mkdir(parents=True)
+    source.write_text(
+        "import hashlib\n"
+        "import numpy as np\n"
+        "import uuid\n"
+        "def factory_chain():\n"
+        "    nr = np.random\n"
+        "    make = nr.default_rng\n"
+        "    engine = make(1)\n"
+        "    draw = engine.gamma\n"
+        "    again = draw\n"
+        "    return again(2)\n"
+        "def unresolved_chain(source):\n"
+        "    draw = source.gamma\n"
+        "    again = draw\n"
+        "    return again(2)\n"
+        "def false_precision():\n"
+        "    rng = object()\n"
+        "    return rng.gamma()\n"
+        "def hash_namespace():\n"
+        "    h = hashlib\n"
+        "    make = h.sha3_256\n"
+        "    return make(b'x')\n"
+        "def uuid_namespace():\n"
+        "    u = uuid\n"
+        "    make = u.uuid4\n"
+        "    return make()\n"
+        "def branch_merge(flag):\n"
+        "    if flag:\n"
+        "        rng = np.random.default_rng(1)\n"
+        "    else:\n"
+        "        rng = np.random.RandomState(1)\n"
+        "    return rng.random()\n"
+        "class AnnotatedHolder:\n"
+        "    engine: np.random.Generator\n"
+        "    def draw(self):\n"
+        "        return self.engine.gamma(2)\n"
+        "class BranchConfigured:\n"
+        "    def configure(self, flag):\n"
+        "        if flag:\n"
+        "            self.engine = np.random.default_rng(1)\n"
+        "        else:\n"
+        "            self.engine = np.random.RandomState(1)\n"
+        "    def draw(self):\n"
+        "        return self.engine.gamma(2)\n"
+        "class SetterHolder:\n"
+        "    def set_generator(self):\n"
+        "        self.engine = np.random.default_rng(1)\n"
+        "    def set_random_state(self):\n"
+        "        self.engine = np.random.RandomState(1)\n"
+        "    def draw(self):\n"
+        "        return self.engine.gamma(2)\n"
+        "class ReverseSetterHolder:\n"
+        "    def set_random_state(self):\n"
+        "        self.engine = np.random.RandomState(1)\n"
+        "    def set_generator(self):\n"
+        "        self.engine = np.random.default_rng(1)\n"
+        "    def draw(self):\n"
+        "        return self.engine.gamma(2)\n",
+        encoding="utf-8",
+    )
+    rows = discover_production_callsites(tmp_path)
+    observed = {(row.callsite.qualname, row.callsite.api) for row in rows}
+    assert len(rows) == 19
+    assert observed == {
+        ("factory_chain", "numpy.random.default_rng"),
+        ("factory_chain", "numpy.random.Generator.gamma"),
+        ("unresolved_chain", "stochastic.unresolved.gamma"),
+        ("false_precision", "stochastic.unresolved.gamma"),
+        ("hash_namespace", "hashlib.sha3_256"),
+        ("uuid_namespace", "uuid.uuid4"),
+        ("branch_merge", "numpy.random.default_rng"),
+        ("branch_merge", "numpy.random.RandomState"),
+        ("branch_merge", "stochastic.unresolved.random"),
+        ("AnnotatedHolder.draw", "numpy.random.Generator.gamma"),
+        ("BranchConfigured.configure", "numpy.random.default_rng"),
+        ("BranchConfigured.configure", "numpy.random.RandomState"),
+        ("BranchConfigured.draw", "stochastic.unresolved.gamma"),
+        ("SetterHolder.set_generator", "numpy.random.default_rng"),
+        ("SetterHolder.set_random_state", "numpy.random.RandomState"),
+        ("SetterHolder.draw", "stochastic.unresolved.gamma"),
+        ("ReverseSetterHolder.set_random_state", "numpy.random.RandomState"),
+        ("ReverseSetterHolder.set_generator", "numpy.random.default_rng"),
+        ("ReverseSetterHolder.draw", "stochastic.unresolved.gamma"),
+    }
+
+
+def test_scanner_api_vocabulary_tracks_runtime_public_callables() -> None:
+    def public_callables(value: type[object]) -> frozenset[str]:
+        return frozenset(
+            name
+            for name in dir(value)
+            if not name.startswith("_") and callable(getattr(value, name))
+        )
+
+    generator_public = public_callables(np.random.Generator)
+    assert (
+        generator_public - callsite_coverage._NUMPY_GENERATOR_CONTROL_METHODS
+        == callsite_coverage._NUMPY_GENERATOR_METHODS
+    )
+    random_state_public = public_callables(np.random.RandomState)
+    assert (
+        random_state_public - callsite_coverage._NUMPY_RANDOMSTATE_CONTROL_METHODS
+        == callsite_coverage._NUMPY_RANDOMSTATE_DRAW_METHODS
+    )
+    assert (
+        callsite_coverage._NUMPY_RANDOMSTATE_CONTROL_METHODS
+        <= callsite_coverage._NUMPY_RANDOMSTATE_METHODS
+    )
+    python_random_public = public_callables(random.Random)
+    assert (
+        python_random_public - callsite_coverage._PYTHON_RANDOM_CONTROL_METHODS
+        == callsite_coverage._PYTHON_RANDOM_DRAW_METHODS
+    )
+    assert (
+        callsite_coverage._PYTHON_RANDOM_CONTROL_METHODS
+        <= callsite_coverage._PYTHON_RANDOM_METHODS
+    )
+    hashlib_public = frozenset(
+        f"hashlib.{name}"
+        for name in dir(hashlib)
+        if not name.startswith("_") and callable(getattr(hashlib, name))
+    )
+    assert hashlib_public == callsite_coverage._HASHLIB_APIS
+
+
+def test_every_uuid4_callsite_is_exclusively_operationally_exempt() -> None:
+    root = Path(__file__).resolve().parents[3]
+    discovered = {
+        row.callsite
+        for row in discover_production_callsites(root)
+        if row.callsite.api == "uuid.uuid4"
+    }
+    exemptions = {
+        row.callsite: row
+        for row in LEGACY_V1_PRODUCTION_EXEMPTIONS
+        if row.callsite.api == "uuid.uuid4"
+    }
+    bindings = {row.callsite for row in LEGACY_V1_PRODUCTION_BINDINGS}
+    hash_classifications = {row.callsite for row in LEGACY_V1_HASH_CLASSIFICATIONS}
+    assert len(discovered) == 9
+    assert discovered == exemptions.keys()
+    assert {row.kind for row in exemptions.values()} == {"operational_nonce"}
+    assert not discovered & bindings
+    assert not discovered & hash_classifications
 
 
 def test_exact_blake2b_salts_keys_candidates_and_absence_conditions() -> None:
@@ -370,6 +784,104 @@ def test_kernel_attestations_are_recomputed_from_logical_source_inventory() -> N
     ]
     assert qrf_sites
     assert all("numpy==" in site.rng_version for site in qrf_sites)
+
+
+@pytest.mark.parametrize("module_name", ["microcosm.fit", "microcosm.fit.model"])
+def test_qrf_kernel_digest_covers_public_dispatch_and_weight_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+    module_name: str,
+) -> None:
+    qrf_kernel = next(
+        kernel
+        for kernel in LEGACY_V1_PROTOCOL.kernels
+        if kernel.id == "regime_gated_qrf"
+    )
+    assert {
+        "microcosm.fit",
+        "microcosm.fit.model",
+        "microcosm.fit.qrf",
+    } <= set(qrf_kernel.source_modules)
+    baseline = source_inventory_sha256(qrf_kernel.source_modules)
+    real_find_spec = seeds_module.find_spec
+    real_spec = real_find_spec(module_name)
+    assert real_spec is not None and real_spec.origin is not None
+    original = Path(real_spec.origin).read_bytes()
+
+    def mutated_find_spec(name: str) -> object:
+        if name != module_name:
+            return real_find_spec(name)
+        loader = SimpleNamespace(
+            get_data=lambda _path: original + b"\n# simulated semantic mutation\n"
+        )
+        return SimpleNamespace(origin=real_spec.origin, loader=loader)
+
+    monkeypatch.setattr(seeds_module, "find_spec", mutated_find_spec)
+    assert source_inventory_sha256(qrf_kernel.source_modules) != baseline
+
+
+def test_shared_qrf_contract_pins_fit_draw_reset_and_runtime_orders() -> None:
+    fit = (
+        "per_target_fit=detect_regime:no_rng; gated:gate_random_state_integer_then_"
+        "HistGradientBoostingClassifier_fit_with_resolved_sample_weight_no_bootstrap; "
+        "present_sign_forests_positive_then_negative; each_forest:random_state_"
+        "integer_then_external_weighted_bootstrap_choice_if_weighted_then_"
+        "RandomForestQuantileRegressor_fit; ungated:single_forest_sequence; "
+        "degenerate_zero:no_rng"
+    )
+    draw = (
+        "per_target_draw=degenerate_zero:no_rng; otherwise_one_quantile_uniform_"
+        "per_recipient_row; gated_then_one_sign_class_uniform_per_recipient_row; "
+        "forest_prediction:no_rng"
+    )
+    reset = (
+        "fresh_SeedSequence(seed).spawn(2)_per_fit_or_start_chain; fit_child_0_"
+        "shared_across_declared_targets; draw_child_1_shared_across_declared_"
+        "targets_and_successive_predict_calls; checkpoint_resume_restores_then_"
+        "advances_both_exact_PCG64_states_without_reseeding_or_entropy"
+    )
+    qrf_sites = [
+        site for site in LEGACY_V1_PROTOCOL.sites if site.kernel == "regime_gated_qrf"
+    ]
+    assert len(qrf_sites) == 25
+    for site in qrf_sites:
+        assert fit in site.consumption_order, site.id
+        assert draw in site.consumption_order, site.id
+        assert (
+            "append_each_raw_float64_draw_to_later_recipient_predictors"
+            in site.consumption_order
+        ), site.id
+        assert reset in site.reset_boundary, site.id
+
+    primary = LEGACY_V1_PROTOCOL.site("primary_puf_monolithic_qrf_model")
+    assert primary.consumption_order[1] == (
+        "declared_target_order=tuple(person_outputs)+tuple(tax_unit_outputs)"
+    )
+    head_start = LEGACY_V1_PROTOCOL.site("sipp_head_start_qrf_model")
+    assert (
+        "production_loader_preserves_pinned_source_file_order"
+        in (head_start.consumption_order[0])
+    )
+    assert "eligible_age_3_to_5_subset" in head_start.consumption_order[3]
+
+
+def test_org_hash_contract_pins_implicit_defaults_full_frame_and_skip_condition() -> (
+    None
+):
+    site = LEGACY_V1_PROTOCOL.site("org_union_hash_lottery")
+    assert site.value_source == "literal"
+    assert site.seed_material == (
+        "implicit_pandas_default_hash_key=0123456789123456",
+        "index=False",
+        "categorize=True_default",
+        "ORG_PREDICTORS_rounded_to_4_decimals",
+    )
+    assert site.consumption_order[0] == (
+        "hash_every_recipient_row_in_current_frame_order_before_eligibility"
+    )
+    assert site.reset_boundary == (
+        "one_stateless_full_recipient_frame_hash_per_assign_union_call"
+    )
+    assert site.draw_condition.startswith("at_least_one_recipient_row_satisfies_")
 
 
 def test_protocol_rejects_duplicate_sites_out_of_range_seeds_and_bad_wire_digest() -> (

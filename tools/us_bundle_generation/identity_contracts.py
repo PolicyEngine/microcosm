@@ -103,7 +103,7 @@ def _stages_with_operation(
 def build_seed_site_bindings(
     source_document: Mapping[str, Any],
 ) -> list[dict[str, object]]:
-    """Bind all 53 legacy-v1 sites to their concrete execution owners."""
+    """Bind all 72 legacy-v1 sites to their concrete execution owners."""
 
     source_ids = _source_stage_ids(source_document)
     transfer_nodes = tuple(group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS)
@@ -134,6 +134,7 @@ def build_seed_site_bindings(
         "ssi_archived_qrf_model": source("ssi_disability_criteria"),
         "sipp_vehicle_training_cap": source("vehicle_assets"),
         "sipp_vehicle_qrf_model": source("vehicle_assets"),
+        "sipp_vehicle_count_random_forest_model": source("vehicle_assets"),
         "sipp_financial_asset_training_cap": source("scf_wealth"),
         "sipp_financial_asset_qrf_models": source("scf_wealth"),
         "acs_rent_archived_training_cap": source("acs_rent"),
@@ -155,6 +156,26 @@ def build_seed_site_bindings(
             *pipeline("gap_fill_stacked_spine"),
             *tuple(_owner("producer_node", node) for node in transfer_nodes),
         ),
+        "child_support_puf_qrf_model": source("child_support_inputs"),
+        "childcare_puf_qrf_model": source("childcare_inputs"),
+        "disability_benefits_puf_qrf_model": source("disability_benefits_input"),
+        "energy_subsidy_puf_qrf_model": source("energy_subsidy"),
+        "acs_rent_qrf_model": source("acs_rent"),
+        "housing_assistance_puf_qrf_model": source("acs_rent"),
+        "org_wages_qrf_model": source("org_wages"),
+        "other_health_insurance_puf_qrf_model": source(
+            "other_health_insurance_premiums"
+        ),
+        "prior_year_income_puf_qrf_model": source("prior_year_income"),
+        "primary_puf_monolithic_qrf_model": producer("primary_puf_qrf"),
+        "retirement_contributions_puf_qrf_model": source("retirement_contributions"),
+        "retirement_distributions_puf_qrf_model": source("retirement_distributions"),
+        "sipp_head_start_qrf_model": source("sipp_head_start"),
+        "sipp_tip_qrf_model": source("sipp_tips"),
+        "voluntary_filing_qrf_model": source("voluntary_filing_input"),
+        "weeks_unemployed_puf_qrf_model": source("weeks_unemployed_input"),
+        "workers_compensation_puf_qrf_model": source("workers_compensation_input"),
+        "org_union_hash_lottery": source("org_wages"),
         "source_aca_assignment": source("aca_marketplace_inputs"),
         "source_count_calibration": tuple(
             _owner("source_stage", stage)
@@ -204,9 +225,9 @@ def build_seed_site_bindings(
     }
 
     protocol_site_ids = tuple(site.id for site in LEGACY_V1_PROTOCOL.sites)
-    if len(protocol_site_ids) != 53 or set(owners) != set(protocol_site_ids):
+    if len(protocol_site_ids) != 72 or set(owners) != set(protocol_site_ids):
         raise RuntimeError(
-            "legacy-v1 seed owner ledger must cover exactly 53 protocol sites; "
+            "legacy-v1 seed owner ledger must cover exactly 72 protocol sites; "
             f"missing={sorted(set(protocol_site_ids) - owners.keys())!r}, "
             f"extra={sorted(owners.keys() - set(protocol_site_ids))!r}"
         )

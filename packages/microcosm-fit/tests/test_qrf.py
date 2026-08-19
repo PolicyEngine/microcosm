@@ -16,7 +16,30 @@ import pandas as pd
 import pytest
 
 from microcosm.fit import QRFChainState, Regime, RegimeGatedQRF, fit
-from microcosm.fit.qrf import _DISCRETE_Y_LEAF_BOUND, _fit_n_jobs, detect_regime
+from microcosm.fit.qrf import (
+    _DISCRETE_Y_LEAF_BOUND,
+    _fit_n_jobs,
+    _rng_from_state_json,
+    _rng_state_json,
+    detect_regime,
+)
+
+
+def test_rng_state_restore_uses_no_ambient_default_rng(monkeypatch) -> None:
+    source = np.random.default_rng(1_947)
+    source.random(11)
+    state = _rng_state_json(source)
+    expected = source.random(16)
+
+    def refuse_ambient_entropy(*args, **kwargs):
+        del args, kwargs
+        raise AssertionError("ambient default_rng access")
+
+    monkeypatch.setattr(np.random, "default_rng", refuse_ambient_entropy)
+    restored = _rng_from_state_json(state, stream="test")
+
+    np.testing.assert_array_equal(restored.random(16), expected)
+
 
 # ----------------------------------------------------------------------------
 # Regime detection: structural, unweighted support classification
@@ -167,6 +190,94 @@ def test_gate_consistency_guard_rejects_a_dropped_class(make_person_frame) -> No
             fit(frame, ["x"], ["target"], n_estimators=10, seed=0)
     finally:
         qrf_module._make_gate = original
+
+
+def test_fit_rng_orders_gate_then_positive_then_negative_forests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pin every fit-child event around the estimator-private RNGs."""
+
+    import microcosm.fit.qrf as qrf_module
+
+    events: list[tuple[object, ...]] = []
+
+    class SpyRng:
+        def __init__(self) -> None:
+            self.seeds = iter((101, 202, 303))
+
+        def integers(self, low: int, high: int) -> int:
+            value = next(self.seeds)
+            events.append(("integer", low, high, value))
+            return value
+
+        def choice(
+            self,
+            population: int,
+            *,
+            size: int,
+            replace: bool,
+            p: np.ndarray,
+        ) -> np.ndarray:
+            events.append(("choice", population, size, replace, tuple(np.asarray(p))))
+            return np.arange(size) % population
+
+    class FakeGate:
+        def __init__(self, seed: int) -> None:
+            events.append(("gate_init", seed))
+            self.classes_ = np.array([-1, 0, 1])
+
+        def fit(
+            self,
+            features: np.ndarray,
+            labels: np.ndarray,
+            *,
+            sample_weight: np.ndarray,
+        ) -> FakeGate:
+            events.append(
+                (
+                    "gate_fit",
+                    tuple(labels),
+                    tuple(np.asarray(sample_weight)),
+                    features.shape,
+                )
+            )
+            return self
+
+    class FakeForest:
+        def __init__(self, **kwargs: object) -> None:
+            events.append(("forest_init", kwargs["random_state"]))
+
+        def fit(self, features: np.ndarray, target: np.ndarray) -> FakeForest:
+            events.append(("forest_fit", tuple(target), features.shape))
+            return self
+
+    monkeypatch.setattr(qrf_module, "_make_gate", FakeGate)
+    monkeypatch.setattr(qrf_module, "RandomForestQuantileRegressor", FakeForest)
+    features = np.arange(10, dtype=np.float64).reshape(5, 2)
+    target = np.array([-2.0, -1.0, 0.0, 1.0, 2.0])
+    weights = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+
+    RegimeGatedQRF(max_samples_leaf=7)._fit_target(
+        features=features,
+        y=target,
+        columns=("x", "z"),
+        weights=weights,
+        rng=SpyRng(),  # type: ignore[arg-type]
+    )
+
+    assert events == [
+        ("integer", 0, 2**31 - 1, 101),
+        ("gate_init", 101),
+        ("gate_fit", (-1, -1, 0, 1, 1), tuple(weights), (5, 2)),
+        ("integer", 0, 2**31 - 1, 202),
+        ("choice", 2, 2, True, (4 / 9, 5 / 9)),
+        ("forest_init", 202),
+        ("forest_fit", (1.0, 2.0), (2, 2)),
+        ("integer", 0, 2**31 - 1, 303),
+        ("choice", 2, 2, True, (1 / 3, 2 / 3)),
+        ("forest_init", 303),
+        ("forest_fit", (-2.0, -1.0), (2, 2)),
+    ]
 
 
 def test_degenerate_zero_target_draws_all_zero(make_person_frame) -> None:

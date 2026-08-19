@@ -637,7 +637,11 @@ def _rng_from_state_json(value: str, *, stream: str) -> np.random.Generator:
         raise ValueError(f"QRF chain {stream} RNG state is not valid JSON.") from exc
     if not isinstance(state, dict) or state.get("bit_generator") != "PCG64":
         raise ValueError(f"QRF chain {stream} RNG state must describe NumPy PCG64.")
-    rng = np.random.default_rng()
+    # Construct a fixed PCG64 shell before restoring the serialized state.  An
+    # entropy-seeded ``default_rng()`` would be overwritten immediately, but it
+    # is still ambient RNG access and therefore violates the legacy-v1 broker
+    # boundary.
+    rng = np.random.Generator(np.random.PCG64(0))
     try:
         rng.bit_generator.state = state
     except (TypeError, ValueError) as exc:

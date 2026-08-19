@@ -902,7 +902,7 @@ def test_legacy_seed_vintage_and_publication_grammars_are_pinned(
         "identity_generation": 1,
         "seed_protocol": LEGACY_V1_PROTOCOL.id,
     }
-    assert len(LEGACY_V1_PROTOCOL.sites) == 53
+    assert len(LEGACY_V1_PROTOCOL.sites) == 72
     assert len(LEGACY_V1_PROTOCOL.streams) == 14
     assert LEGACY_V1_PROTOCOL.site("survey_sample_asec").default == 578
     assert LEGACY_V1_PROTOCOL.site("puf_live_aggregate_disaggregation").default == 0

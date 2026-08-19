@@ -42,7 +42,7 @@ def test_plan_lock_is_complete_and_closed_world(compiled_us: CompiledSpecIR) -> 
     assert payload["spec_binding"]["attestation"] == "mirror-attested"
     assert len(payload["producer_graph"]["nodes"]) == 38
     assert len(payload["producer_graph"]["authored"]["ownership_matrix"]) == 18
-    assert len(payload["seed_stream_map"]["sites"]) == 53
+    assert len(payload["seed_stream_map"]["sites"]) == 72
     assert len(payload["nodes"]) == 38
 
     mutated = copy.deepcopy(payload)
