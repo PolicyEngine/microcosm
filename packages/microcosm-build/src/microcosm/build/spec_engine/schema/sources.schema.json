@@ -177,9 +177,7 @@
      "required": [
       "filename",
       "revision",
-      "runtime_sha256_required",
       "sha256",
-      "size_bytes",
       "tier"
      ]
     },
@@ -5480,6 +5478,23 @@
       },
       "source": {
        "type": "string"
+      },
+      "derived": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "direct_maps": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "fillna": {
+       "type": "number"
       }
      },
      "anyOf": [
@@ -5497,6 +5512,16 @@
        "required": [
         "output",
         "formula"
+       ]
+      },
+      {
+       "required": [
+        "derived"
+       ]
+      },
+      {
+       "required": [
+        "direct_maps"
        ]
       }
      ]
@@ -6234,6 +6259,216 @@
        }
       },
       "rows": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "inputs"
+     ],
+     "properties": {
+      "kind": {
+       "const": "fold_into"
+      },
+      "output": {
+       "type": "string"
+      },
+      "inputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "drop_inputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "source",
+      "target",
+      "tiers",
+      "keyed_by"
+     ],
+     "properties": {
+      "kind": {
+       "const": "allocate_within_group_waterfall"
+      },
+      "source": {
+       "type": "string"
+      },
+      "target": {
+       "type": "string"
+      },
+      "tiers": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "keyed_by": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "predictors",
+      "chain_order",
+      "seed"
+     ],
+     "properties": {
+      "kind": {
+       "const": "fit_weighted_qrf_chain"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "categorical_predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "chain_order": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "integer_outputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "region_remap": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "weights": {
+       "type": "string"
+      },
+      "n_estimators": {
+       "type": "number"
+      },
+      "seed": {
+       "type": "number"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "resource",
+      "factor",
+      "owner_rows"
+     ],
+     "properties": {
+      "kind": {
+       "const": "uprate_to_regional_reference"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "factor": {
+       "type": "string"
+      },
+      "owner_rows": {
+       "type": "string"
+      },
+      "skip_empty_or_nonpositive_regions": {
+       "type": "boolean"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "role",
+      "filename",
+      "locator",
+      "sha256",
+      "size_bytes"
+     ],
+     "properties": {
+      "kind": {
+       "const": "private_microdata"
+      },
+      "role": {
+       "type": "string"
+      },
+      "filename": {
+       "type": "string"
+      },
+      "locator": {
+       "type": "string"
+      },
+      "sha256": {
+       "$ref": "defs.schema.json#/$defs/sha256"
+      },
+      "size_bytes": {
+       "type": "number"
+      },
+      "access": {
+       "type": "string"
+      },
+      "doi": {
+       "type": "string"
+      },
+      "ukds_study_number": {
+       "type": "number"
+      },
+      "runtime_sha256_required": {
+       "type": "boolean"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "role",
+      "resource",
+      "format"
+     ],
+     "properties": {
+      "kind": {
+       "const": "public_aggregate_reference"
+      },
+      "role": {
+       "type": "string"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "format": {
        "type": "string"
       }
      }
