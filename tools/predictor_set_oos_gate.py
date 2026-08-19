@@ -21,6 +21,7 @@ target values and effective importance weights its runtime actually consumed.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import gc
 import hashlib
 import json
@@ -527,6 +528,18 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _release_unused_heap_pages() -> None:
+    """Return freed allocator pages before loading the opposite large arm."""
+
+    if sys.platform != "darwin":
+        return
+    system = ctypes.CDLL("/usr/lib/libSystem.dylib")
+    pressure_relief = system.malloc_zone_pressure_relief
+    pressure_relief.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+    pressure_relief.restype = ctypes.c_size_t
+    pressure_relief(None, 0)
 
 
 def _stable_bucket(value: object, *, namespace: str, buckets: int) -> int:
@@ -1973,8 +1986,10 @@ def measure_arm(
             targets.update(measured)
         del donor
         gc.collect()
+        _release_unused_heap_pages()
     del frame, loaded
     gc.collect()
+    _release_unused_heap_pages()
     return ArmMeasurement(targets=targets, champva_by_origin=incidence)
 
 

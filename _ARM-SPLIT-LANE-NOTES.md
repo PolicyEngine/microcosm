@@ -145,3 +145,17 @@ that owns each arm.
   descriptor, and chain state. No estimand or gate parameter changed.
 - Next: rerun the guarded eligibility measurement; the temporary fail-closed
   files will be overwritten only by the complete rerun.
+- Excluded memory-guard run: the complete 32-family baseline sweep finished,
+  then the guard terminated the process before candidate family 1 when the
+  baseline-to-candidate load transition jumped to 21,643,149,312 bytes
+  (20.157 GiB) peak RSS. No candidate measurement or substantive verdict was
+  emitted; the older temporary integrity-failure files remain non-evidence.
+- Memory correction: the gate now asks Darwin's allocator to return unused heap
+  pages after each donor-clone projection and after deleting each loaded frame,
+  at the existing `gc.collect()` boundaries. This changes neither retained OOS
+  measurements nor any fold, forest, bootstrap, threshold, band, or clause; it
+  only prevents the freed 5.6-GiB checkpoint representation from remaining in
+  process RSS while the opposite arm loads. The guarded rerun also constrains
+  allocator magazines at process start.
+- Next: rerun under the same hard monitor, requiring both a complete verdict
+  and kernel `ru_maxrss` below 20 GiB before accepting evidence.
