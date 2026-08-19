@@ -136,14 +136,36 @@ def clean_etb_vat_table(
 
 
 def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
+    """Materialize ETB VAT recipient predictors at household grain.
+
+    Predictors materialize at their native entity (is_adult / is_child /
+    is_SP_age are person booleans) and aggregate to household by
+    person_household_id — direct engine arrays would crash the licensed
+    build on the person/household length mismatch (the E5 review class).
+    """
+
     materialized = engine.materialize(
         frame, UK_ETB_VAT_PREDICTORS, uk_time_period(frame)
     )
     household = frame.table("household")
+    person = frame.table("person")
     result = pd.DataFrame(index=household.index)
     for predictor in UK_ETB_VAT_PREDICTORS:
+        declared = str(engine.variable_metadata(predictor).entity)
         values = np.asarray(materialized[predictor])
-        result[predictor] = values
+        if declared == "household":
+            result[predictor] = values
+        elif declared == "person":
+            summed = (
+                pd.Series(values.astype(float))
+                .groupby(person["person_household_id"].to_numpy())
+                .sum()
+            )
+            result[predictor] = (
+                summed.reindex(household["household_id"]).fillna(0.0).to_numpy()
+            )
+        else:
+            raise ValueError(f"unsupported ETB VAT predictor entity {declared!r}.")
     return result
 
 
