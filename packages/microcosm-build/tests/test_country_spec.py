@@ -273,7 +273,10 @@ class TestUKCountryPackage:
     def test_spi_spine_adds_no_country_package_resources(self) -> None:
         spec = load_country_spec("uk")
 
-        assert spec.resources == (
+        legacy_rows = tuple(
+            row.path for row in spec.resource_rows if row.kind == "legacy_json"
+        )
+        assert legacy_rows == (
             "cgt_source_stages.json",
             "degenerate_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",

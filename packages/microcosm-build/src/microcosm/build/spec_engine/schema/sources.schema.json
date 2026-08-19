@@ -5471,6 +5471,15 @@
       },
       "parameters": {
        "type": "string"
+      },
+      "output": {
+       "type": "string"
+      },
+      "formula": {
+       "type": "string"
+      },
+      "source": {
+       "type": "string"
       }
      },
      "anyOf": [
@@ -5482,6 +5491,12 @@
       {
        "required": [
         "parameters"
+       ]
+      },
+      {
+       "required": [
+        "output",
+        "formula"
        ]
       }
      ]
@@ -5727,6 +5742,498 @@
        "type": "string"
       },
       "format": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "artifact_role",
+      "filename",
+      "delimiter",
+      "required_columns",
+      "weight",
+      "seed"
+     ],
+     "properties": {
+      "kind": {
+       "const": "strict_read_private_table"
+      },
+      "artifact_role": {
+       "type": "string"
+      },
+      "filename": {
+       "type": "string"
+      },
+      "delimiter": {
+       "type": "string"
+      },
+      "required_columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "weight": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "number"
+      },
+      "runtime_sha256_required": {
+       "type": "boolean"
+      },
+      "fail_on_missing_file": {
+       "type": "boolean"
+      },
+      "fail_on_missing_columns": {
+       "type": "boolean"
+      },
+      "fail_on_invalid_weight": {
+       "type": "boolean"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "channels",
+      "count",
+      "draw",
+      "flag_column",
+      "seed"
+     ],
+     "properties": {
+      "kind": {
+       "const": "stack_zero_weight_donors"
+      },
+      "count": {
+       "type": "number"
+      },
+      "draw": {
+       "type": "string"
+      },
+      "flag_column": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "number"
+      },
+      "channels": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "base",
+        "synthetic"
+       ],
+       "properties": {
+        "base": {
+         "type": "string"
+        },
+        "synthetic": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "gate",
+      "declarations"
+     ],
+     "properties": {
+      "kind": {
+       "const": "gate_zero_weight_strata"
+      },
+      "gate": {
+       "type": "string"
+      },
+      "declarations": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "name",
+         "selector",
+         "maximum_zero_weight_rows",
+         "reason"
+        ],
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "reason": {
+          "type": "string"
+         },
+         "maximum_zero_weight_rows": {
+          "type": "number"
+         },
+         "selector": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+           "type": [
+            "boolean",
+            "number",
+            "string"
+           ]
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "conservation",
+      "share",
+      "strata",
+      "weight_kind_out"
+     ],
+     "properties": {
+      "kind": {
+       "const": "allocate_zero_weight_prior_mass"
+      },
+      "conservation": {
+       "type": "string"
+      },
+      "share": {
+       "type": "number"
+      },
+      "strata": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "weight_kind_out": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "training_artifact_role",
+      "predictors",
+      "source_columns",
+      "outputs",
+      "seed"
+     ],
+     "properties": {
+      "kind": {
+       "const": "fit_weighted_qrf_stage1"
+      },
+      "training_artifact_role": {
+       "type": "string"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "categorical_predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "source_sampling_weight": {
+       "type": "string"
+      },
+      "sample_size": {
+       "type": "number"
+      },
+      "sample_with_replacement": {
+       "type": "boolean"
+      },
+      "post_sample_fit_weight": {
+       "type": "string"
+      },
+      "fit_weight_kind": {
+       "type": "string"
+      },
+      "double_apply_source_weight": {
+       "type": "boolean"
+      },
+      "source_columns": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      },
+      "derived_policyengine_outputs": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "source_columns",
+         "formula",
+         "derive_after_draw"
+        ],
+        "properties": {
+         "source_columns": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "formula": {
+          "type": "string"
+         },
+         "derive_after_draw": {
+          "type": "boolean"
+         }
+        }
+       }
+      },
+      "outputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "joint_draw": {
+       "type": "boolean"
+      },
+      "savings_interest_source_semantics": {
+       "type": "string"
+      },
+      "employment_income_source_semantics": {
+       "type": "string"
+      },
+      "hmrc_employed_income_source_semantics": {
+       "type": "string"
+      },
+      "self_employment_income_source_semantics": {
+       "type": "string"
+      },
+      "assessable_income_source_semantics": {
+       "type": "string"
+      },
+      "source_ti_identity_fields": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "source_leaf_reconciliation": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "documentation_url",
+        "composite_indicator",
+        "formulas",
+        "maximum_absolute_difference_gbp",
+        "rationale"
+       ],
+       "properties": {
+        "documentation_url": {
+         "type": "string"
+        },
+        "composite_indicator": {
+         "type": "string"
+        },
+        "rationale": {
+         "type": "string"
+        },
+        "formulas": {
+         "type": "object",
+         "minProperties": 1,
+         "additionalProperties": {
+          "type": "string"
+         }
+        },
+        "maximum_absolute_difference_gbp": {
+         "type": "object",
+         "minProperties": 1,
+         "additionalProperties": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+           "type": "number"
+          }
+         }
+        }
+       }
+      },
+      "ti_identity_absolute_tolerance_gbp": {
+       "type": "number"
+      },
+      "stochastic_aggregates_forbidden": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "require_all_predictors": {
+       "type": "boolean"
+      },
+      "require_all_outputs": {
+       "type": "boolean"
+      },
+      "initialize_frs_channel_columns": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "number"
+       }
+      },
+      "n_estimators": {
+       "type": "number"
+      },
+      "seed": {
+       "type": "number"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "training_population",
+      "target_population",
+      "predictors",
+      "outputs",
+      "seed"
+     ],
+     "properties": {
+      "kind": {
+       "const": "fit_weighted_qrf_stage2"
+      },
+      "training_population": {
+       "type": "string"
+      },
+      "target_population": {
+       "type": "string"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "reviewed_absent_predictors": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "categorical_predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "weight": {
+       "type": "string"
+      },
+      "weight_mapping": {
+       "type": "string"
+      },
+      "outputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "reviewed_absent_outputs": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "postprocess": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "gross_savings_interest_income": {
+         "type": "string"
+        },
+        "refresh_disability_categories": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        },
+        "refresh_disability_flags": {
+         "type": "array",
+         "items": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "joint_draw": {
+       "type": "boolean"
+      },
+      "require_all_predictors": {
+       "type": "boolean"
+      },
+      "require_all_materializable_outputs": {
+       "type": "boolean"
+      },
+      "require_all_outputs": {
+       "type": "boolean"
+      },
+      "n_estimators": {
+       "type": "number"
+      },
+      "seed": {
+       "type": "number"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "fit",
+      "columns",
+      "rows"
+     ],
+     "properties": {
+      "kind": {
+       "const": "redraw_columns_from_fitted_qrf"
+      },
+      "fit": {
+       "type": "string"
+      },
+      "columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "rows": {
        "type": "string"
       }
      }
