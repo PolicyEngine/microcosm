@@ -204,3 +204,75 @@ def test_has_fuel_bridge_accepts_lcfs_native_predictor_names() -> None:
     assert first["has_fuel_consumption"].tolist() == (
         second["has_fuel_consumption"].tolist()
     )
+
+
+def test_post_imputation_rake_fits_all_four_need_margins() -> None:
+    # Regression for the licensed-build finding: the manifest declares a
+    # four-margin post-imputation rake (income -> tenure -> accommodation ->
+    # region), but only the income margin was implemented — the incumbent
+    # hits the tenure/accommodation cells to ~1% and ours was off ±30%.
+    from microcosm.build.uk_runtime.lcfs_consumption import rake_energy_to_need
+
+    rng = np.random.default_rng(3)
+    n = 400
+    household = pd.DataFrame(
+        {
+            "household_gross_income": rng.uniform(5e3, 2e5, n),
+            "electricity_consumption": rng.uniform(200.0, 2000.0, n),
+            "gas_consumption": rng.uniform(100.0, 1500.0, n),
+        }
+    )
+    tenure = rng.choice(["OWNED_OUTRIGHT", "RENT_PRIVATELY", "RENT_FROM_COUNCIL"], n)
+    accommodation = rng.choice(["HOUSE_DETACHED", "FLAT", "OTHER"], n)
+    region = rng.choice(["LONDON", "WALES", "SCOTLAND"], n)
+    weights = rng.uniform(0.5, 2.0, n)
+
+    raked = rake_energy_to_need(
+        household,
+        weights=weights,
+        tenure=tenure,
+        accommodation=accommodation,
+        region=region,
+    )
+
+    import json as json_module
+    from importlib.resources import files
+
+    need = json_module.loads(
+        files("microcosm.build.uk")
+        .joinpath("need_energy_targets.json")
+        .read_text(encoding="utf-8")
+    )
+    rates = need["source"]["ofgem_q2_2026"]
+
+    def wmean(values, mask):
+        return float((values[mask] * weights[mask]).sum() / weights[mask].sum())
+
+    # Region is the last margin swept, so it fits essentially exactly; the
+    # earlier margins settle within a tight band over 50 iterations.
+    elec = raked["electricity_consumption"].to_numpy(dtype=float)
+    target = need["region"]["electricity_kwh"]["LONDON"] * (
+        rates["electricity_gbp_per_kwh"]
+    )
+    assert abs(wmean(elec, region == "LONDON") - target) / target < 1e-6
+    gas = raked["gas_consumption"].to_numpy(dtype=float)
+    tenure_target = need["tenure"]["gas_kwh"]["owner"] * rates["gas_gbp_per_kwh"]
+    assert (
+        abs(wmean(gas, tenure == "OWNED_OUTRIGHT") - tenure_target) / tenure_target
+        < 0.02
+    )
+    accomm_target = (
+        need["accommodation"]["electricity_kwh"]["detached"]
+        * rates["electricity_gbp_per_kwh"]
+    )
+    assert (
+        abs(wmean(elec, accommodation == "HOUSE_DETACHED") - accomm_target)
+        / accomm_target
+        < 0.02
+    )
+    # Unmapped categories stay outside their margin: SCOTLAND has no NEED
+    # region row and OTHER has no accommodation row, but both still move via
+    # the other margins — assert they were not pinned to any region target.
+    scotland_mean = wmean(elec, region == "SCOTLAND")
+    for kwh in need["region"]["electricity_kwh"].values():
+        assert abs(scotland_mean - kwh * rates["electricity_gbp_per_kwh"]) > 1.0

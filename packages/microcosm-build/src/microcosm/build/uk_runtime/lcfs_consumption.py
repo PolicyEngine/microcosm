@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -253,6 +254,9 @@ class UKLCFSConsumptionStageTransform:
         household_draws = rake_energy_to_need(
             household_draws.join(recipient[["household_gross_income"]]),
             weights=frame.weights_for("household").values,
+            tenure=recipient["tenure_type"].astype(str).to_numpy(),
+            accommodation=recipient["accommodation_type"].astype(str).to_numpy(),
+            region=recipient["region"].astype(str).to_numpy(),
         )
         household_draws["domestic_energy_consumption"] = (
             household_draws["electricity_consumption"]
@@ -553,23 +557,49 @@ def rake_energy_to_need(
     *,
     weights: Sequence[float] | None,
     iterations: int = 50,
+    tenure: Sequence[str] | None = None,
+    accommodation: Sequence[str] | None = None,
+    region: Sequence[str] | None = None,
 ) -> pd.DataFrame:
+    """Rake electricity/gas to the NEED margins.
+
+    The donor-side single-pass call rakes the income margin only (the
+    incumbent's training-side calibration). The post-imputation call passes
+    all four groupers and sweeps income -> tenure -> accommodation -> region
+    per iteration, the incumbent's order. Categories absent from the NEED
+    maps (CONVERTED_HOUSE/OTHER/UNKNOWN accommodation; Scotland and Northern
+    Ireland regions) are deliberately untouched by that margin.
+    """
+
     frame = household.copy()
     frame["_need_income_band"] = _income_band(frame["household_gross_income"])
+    margins = [MarginSpec("_need_income_band", _NEED_INCOME_TARGETS)]
+    scratch = ["_need_income_band"]
+    for name, values in (
+        ("tenure", tenure),
+        ("accommodation", accommodation),
+        ("region", region),
+    ):
+        if values is None:
+            continue
+        column = f"_need_{name}"
+        frame[column] = np.asarray(values).astype(str)
+        targets, _ = _need_categorical_targets(name)
+        margins.append(MarginSpec(column, targets))
+        scratch.append(column)
     weight_column = None
     if weights is not None:
         frame["_weight"] = np.asarray(weights, dtype=float)
         weight_column = "_weight"
+        scratch.append("_weight")
     raked = iterative_proportional_fit(
         frame,
         columns=("electricity_consumption", "gas_consumption"),
-        margins=(MarginSpec("_need_income_band", _NEED_INCOME_TARGETS),),
+        margins=tuple(margins),
         iterations=iterations,
         weight_column=weight_column,
     )
-    return raked.drop(
-        columns=[c for c in ("_need_income_band", "_weight") if c in raked]
-    )
+    return raked.drop(columns=[c for c in scratch if c in raked])
 
 
 _NEED_INCOME_BANDS = (
@@ -593,6 +623,37 @@ _NEED_INCOME_TARGETS = {
     }
     for _, _, name, gas, elec in _NEED_INCOME_BANDS
 }
+
+
+def _need_categorical_targets(margin: str) -> tuple[dict, dict]:
+    """(category -> column -> spend target, frs-value -> need-key map).
+
+    Built from the committed NEED resource so the raking and the
+    aggregate_admin anchors share one source of values.
+    """
+
+    from importlib.resources import files
+
+    need = json.loads(
+        files("microcosm.build.uk")
+        .joinpath("need_energy_targets.json")
+        .read_text(encoding="utf-8")
+    )
+    block = need[margin]
+    if margin == "region":
+        mapping = {name: name for name in block["gas_kwh"]}
+    else:
+        mapping = dict(block["map"])
+    targets = {
+        frs_value: {
+            "gas_consumption": block["gas_kwh"][need_key] * _GAS_RATE,
+            "electricity_consumption": (
+                block["electricity_kwh"][need_key] * _ELEC_RATE
+            ),
+        }
+        for frs_value, need_key in mapping.items()
+    }
+    return targets, mapping
 
 
 def _income_band(values: pd.Series) -> pd.Series:
