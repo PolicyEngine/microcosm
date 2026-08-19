@@ -12,6 +12,7 @@ import pytest
 
 import microcosm.build.logbook as logbook
 from microcosm.build.logbook import (
+    LOGBOOK_PROVENANCE_ROW_FIELDS,
     LOGBOOK_ROW_FIELDS,
     LogbookRow,
     canonical_json_bytes,
@@ -22,6 +23,9 @@ from microcosm.build.logbook import (
 
 ROOT = Path(__file__).resolve().parents[3]
 MIGRATION = ROOT / "supabase/migrations/20260805000000_logbook.sql"
+RUN_PROVENANCE_MIGRATION = (
+    ROOT / "supabase/migrations/20260819000000_logbook_run_provenance_identity.sql"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -62,6 +66,30 @@ def _row_kwargs(**overrides: object) -> dict[str, object]:
     return values
 
 
+def _run_provenance_identity() -> dict[str, object]:
+    return {
+        "identity_generation": 1,
+        "source_grammar_receipt": {
+            "schema_version": 3,
+            "canonicalizer_version": 1,
+            "migration_chain": [{"id": "fixture-v2-v3", "sha256": "3" * 64}],
+        },
+        "spec_binding": {
+            "country": "us",
+            "schema_id": "country-spec",
+            "schema_version": 3,
+            "canonicalizer_version": 1,
+            "spec_sha256": "4" * 64,
+            "attestation": "bundle-authoritative",
+        },
+        "authority_versions": {"stacked_authority": 10},
+        "code_inventory_digest": "5" * 64,
+        "artifact_protocol_inventory": {"parquet": "fixture-v1"},
+        "run_request": {"config_authority": "bundle", "rung": "f004"},
+        "execution_receipt": {"resolved_backend": "cpu"},
+    }
+
+
 def test_row_schema_json_round_trip_matches_628_golden() -> None:
     row = LogbookRow.create(**_row_kwargs())
 
@@ -73,6 +101,55 @@ def test_row_schema_json_round_trip_matches_628_golden() -> None:
     assert restored.row_digest == (
         "80a01b5cdefeeed6a8acd36dfa06b1e4506f4853c2786101d3c3ba414cd8a927"
     )
+
+
+def test_run_provenance_round_trip_is_bound_into_the_row_digest() -> None:
+    legacy = LogbookRow.create(**_row_kwargs())
+    provenance = _run_provenance_identity()
+    row = LogbookRow.create(**_row_kwargs(run_provenance_identity=provenance))
+
+    mapping = row.to_mapping()
+    restored = LogbookRow.from_mapping(json.loads(row.to_json_line()))
+
+    assert frozenset(mapping) == LOGBOOK_PROVENANCE_ROW_FIELDS
+    assert mapping["run_provenance_identity"] == provenance
+    assert restored == row
+    assert row.row_digest != legacy.row_digest
+    assert row.row_digest == (
+        "2cf18cffdef4885c77291ccc09aa8e25db4886b8bc3177fd1dede8a5bc42ec8b"
+    )
+
+    binding = provenance["spec_binding"]
+    assert isinstance(binding, dict)
+    binding["spec_sha256"] = "6" * 64
+    assert row.run_provenance_identity is not None
+    assert row.run_provenance_identity["spec_binding"] != binding
+
+
+def test_historical_absent_provenance_key_remains_readable_but_null_is_refused() -> (
+    None
+):
+    legacy = LogbookRow.create(**_row_kwargs()).to_mapping()
+    restored = LogbookRow.from_mapping(legacy)
+
+    assert "run_provenance_identity" not in restored.to_mapping()
+
+    legacy["run_provenance_identity"] = None
+    with pytest.raises(ValueError, match="complete object when present"):
+        LogbookRow.from_mapping(legacy)
+
+
+def test_tampered_run_provenance_is_rejected_by_the_row_digest() -> None:
+    row = LogbookRow.create(
+        **_row_kwargs(run_provenance_identity=_run_provenance_identity())
+    )
+    mapping = row.to_mapping()
+    provenance = mapping["run_provenance_identity"]
+    assert isinstance(provenance, dict)
+    provenance["code_inventory_digest"] = "6" * 64
+
+    with pytest.raises(ValueError, match=r"row_digest.*does not match"):
+        LogbookRow.from_mapping(mapping)
 
 
 def test_sql_schema_round_trip_matches_python_hash_surface() -> None:
@@ -160,6 +237,14 @@ def test_sql_schema_round_trip_matches_python_hash_surface() -> None:
     assert "CREATE POLICY predictions_exporter_select" not in sql
     assert "GRANT logbook_writer, logbook_exporter TO authenticator" in sql
 
+    provenance_sql = RUN_PROVENANCE_MIGRATION.read_text(encoding="utf-8")
+    assert "ADD COLUMN run_provenance_identity jsonb" in provenance_sql
+    assert "logbook.valid_run_provenance_identity" in provenance_sql
+    assert "WHEN p_build.run_provenance_identity IS NULL" in provenance_sql
+    assert "'{}'::jsonb" in provenance_sql
+    assert "'run_provenance_identity'" in provenance_sql
+    assert "NULL only for historical pre-F1 rows" in provenance_sql
+
 
 def test_canonical_json_matches_sql_number_and_unicode_vector() -> None:
     value = {"z": 1.0, "a": ["é", 1e-3, None], "n": -0.0}
@@ -218,6 +303,52 @@ def test_row_validation_fails_closed(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         LogbookRow.create(**_row_kwargs(**{field: value}))
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        ("unknown_generation", "unknown generations are refused"),
+        ("missing_field", "schema mismatch"),
+        ("extra_field", "schema mismatch"),
+        ("missing_binding", "requires.*spec_binding"),
+        ("mismatched_grammar", "schema_version differs"),
+        ("bad_migration_digest", "lowercase SHA-256"),
+        ("non_object_inventory", "authority_versions must be an object"),
+    ],
+)
+def test_run_provenance_validation_fails_closed(
+    mutation: str,
+    message: str,
+) -> None:
+    provenance = _run_provenance_identity()
+    if mutation == "unknown_generation":
+        provenance["identity_generation"] = 2
+    elif mutation == "missing_field":
+        del provenance["execution_receipt"]
+    elif mutation == "extra_field":
+        provenance["node_reuse_key"] = "7" * 64
+    elif mutation == "missing_binding":
+        provenance["spec_binding"] = None
+    elif mutation == "mismatched_grammar":
+        grammar = provenance["source_grammar_receipt"]
+        assert isinstance(grammar, dict)
+        grammar["schema_version"] = 2
+    elif mutation == "bad_migration_digest":
+        grammar = provenance["source_grammar_receipt"]
+        assert isinstance(grammar, dict)
+        migration_chain = grammar["migration_chain"]
+        assert isinstance(migration_chain, list)
+        migration = migration_chain[0]
+        assert isinstance(migration, dict)
+        migration["sha256"] = "not-a-digest"
+    elif mutation == "non_object_inventory":
+        provenance["authority_versions"] = []
+    else:  # pragma: no cover - exhaustive test fixture guard
+        raise AssertionError(mutation)
+
+    with pytest.raises(ValueError, match=message):
+        LogbookRow.create(**_row_kwargs(run_provenance_identity=provenance))
 
 
 def test_schema_rejects_missing_and_extra_fields_by_name() -> None:
@@ -284,6 +415,17 @@ def test_spool_round_trip_authenticates_contents_and_filename(tmp_path: Path) ->
     result.spool_path.write_text(json.dumps(tampered), encoding="utf-8")
     with pytest.raises(ValueError, match=r"row_digest.*does not match"):
         load_logbook_row(result.spool_path)
+
+
+def test_record_build_attempt_accepts_full_run_provenance(tmp_path: Path) -> None:
+    result = record_build_attempt(
+        **_row_kwargs(run_provenance_identity=_run_provenance_identity()),
+        spool_dir=tmp_path,
+    )
+
+    restored = load_logbook_row(result.spool_path)
+
+    assert restored.run_provenance_identity == _run_provenance_identity()
 
 
 def test_spool_filename_mutation_is_rejected(tmp_path: Path) -> None:

@@ -10,7 +10,11 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from microcosm.build.logbook import LogbookRow, load_logbook_file
+from microcosm.build.logbook import (
+    LOGBOOK_PROVENANCE_ROW_FIELDS,
+    LogbookRow,
+    load_logbook_file,
+)
 
 ROOT = Path(__file__).resolve().parents[3]
 CLI_PATH = ROOT / "tools/logbook.py"
@@ -31,6 +35,7 @@ def _row(
     minute: int,
     rung: str = "f010",
     disposition: str = "failed",
+    run_provenance_identity: dict[str, object] | None = None,
 ) -> LogbookRow:
     artifact = (
         f"hf://datasets/policyengine/populace-us@{build_id}"
@@ -59,7 +64,32 @@ def _row(
         disposition=disposition,
         prediction_id=None,
         prev_row_digest=predecessor,
+        run_provenance_identity=run_provenance_identity,
     )
+
+
+def _run_provenance_identity() -> dict[str, object]:
+    return {
+        "identity_generation": 1,
+        "source_grammar_receipt": {
+            "schema_version": 3,
+            "canonicalizer_version": 1,
+            "migration_chain": [{"id": "fixture-v2-v3", "sha256": "3" * 64}],
+        },
+        "spec_binding": {
+            "country": "us",
+            "schema_id": "country-spec",
+            "schema_version": 3,
+            "canonicalizer_version": 1,
+            "spec_sha256": "4" * 64,
+            "attestation": "bundle-authoritative",
+        },
+        "authority_versions": {"stacked_authority": 10},
+        "code_inventory_digest": "5" * 64,
+        "artifact_protocol_inventory": {"parquet": "fixture-v1"},
+        "run_request": {"config_authority": "bundle", "rung": "f004"},
+        "execution_receipt": {"resolved_backend": "cpu"},
+    }
 
 
 def _chain() -> tuple[LogbookRow, LogbookRow, LogbookRow]:
@@ -235,7 +265,12 @@ class _RemoteResponse:
         start: int = 0,
         total: int | None = None,
     ) -> None:
-        self._payload = json.dumps([row.to_mapping() for row in rows]).encode()
+        database_rows = []
+        for row in rows:
+            mapping = row.to_mapping()
+            mapping.setdefault("run_provenance_identity", None)
+            database_rows.append(mapping)
+        self._payload = json.dumps(database_rows).encode()
         total = len(rows) if total is None else total
         self.headers = {"Content-Range": f"{start}-{start + len(rows) - 1}/{total}"}
 
@@ -282,6 +317,50 @@ def test_cli_remote_export_uses_distinct_read_only_key(
     assert query["order"] == ["ts.asc,build_id.asc"]
     assert query["limit"] == [str(cli.REMOTE_PAGE_SIZE)]
     assert query["offset"] == ["0"]
+    assert set(query["select"][0].split(",")) == LOGBOOK_PROVENANCE_ROW_FIELDS
+
+
+def test_cli_remote_export_preserves_historical_null_and_f1_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    legacy = _row("fixture-build-legacy", predecessor=None, minute=1)
+    f1 = _row(
+        "fixture-build-f1",
+        predecessor=legacy.row_digest,
+        minute=2,
+        rung="f004",
+        run_provenance_identity=_run_provenance_identity(),
+    )
+    archive = tmp_path / "logbook.jsonl"
+    cli = _load_cli()
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
+    monkeypatch.setenv("POPULACE_LEDGER_EXPORT_KEY", "exporter-jwt")
+    monkeypatch.setenv("POPULACE_LEDGER_API_KEY", "project-api-key")
+    monkeypatch.setattr(
+        cli,
+        "urlopen",
+        lambda *_args, **_kwargs: _RemoteResponse((legacy, f1)),
+    )
+
+    assert cli.main(["export", "--remote", "--archive", str(archive)]) == 0
+
+    restored = load_logbook_file(archive)
+    assert restored == (legacy, f1)
+    assert restored[0].row_digest == legacy.row_digest
+    assert "run_provenance_identity" not in restored[0].to_mapping()
+    assert restored[1].run_provenance_identity == _run_provenance_identity()
+
+
+def test_remote_normalization_only_removes_the_historical_null() -> None:
+    cli = _load_cli()
+    historical = {"build_id": "legacy", "run_provenance_identity": None}
+    binding = _run_provenance_identity()
+    current = {"build_id": "f1", "run_provenance_identity": binding}
+
+    assert cli._normalize_remote_row(historical) == {"build_id": "legacy"}
+    assert cli._normalize_remote_row(current) == current
+    assert current["run_provenance_identity"] is binding
 
 
 def test_cli_remote_export_refuses_the_writer_key(

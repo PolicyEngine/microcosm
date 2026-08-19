@@ -58,6 +58,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 __all__ = [
     "BUILD_DISPOSITIONS",
+    "LOGBOOK_PROVENANCE_ROW_FIELDS",
     "LOGBOOK_ROW_FIELDS",
     "LOGBOOK_RUNGS",
     "LogbookExportResult",
@@ -92,6 +93,8 @@ _DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _BUILD_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$")
 LOGBOOK_RUNGS = frozenset({"f001", "f004", "f010", "f025", "f100"})
 LEDGER_API_KEY_ENV = "POPULACE_LEDGER_API_KEY"
+# This remains the historical required-field set because checked-in and live
+# pre-F1 rows omit provenance rather than serializing an unauthenticated null.
 LOGBOOK_ROW_FIELDS = frozenset(
     {
         "build_id",
@@ -113,7 +116,33 @@ LOGBOOK_ROW_FIELDS = frozenset(
         "row_digest",
     }
 )
+LOGBOOK_PROVENANCE_ROW_FIELDS = LOGBOOK_ROW_FIELDS | {"run_provenance_identity"}
 _HASH_EXCLUDED_FIELDS = frozenset({"prev_row_digest", "row_digest"})
+_RUN_PROVENANCE_FIELDS = frozenset(
+    {
+        "identity_generation",
+        "source_grammar_receipt",
+        "spec_binding",
+        "authority_versions",
+        "code_inventory_digest",
+        "artifact_protocol_inventory",
+        "run_request",
+        "execution_receipt",
+    }
+)
+_SOURCE_GRAMMAR_RECEIPT_FIELDS = frozenset(
+    {"schema_version", "canonicalizer_version", "migration_chain"}
+)
+_SPEC_BINDING_FIELDS = frozenset(
+    {
+        "country",
+        "schema_id",
+        "schema_version",
+        "canonicalizer_version",
+        "spec_sha256",
+        "attestation",
+    }
+)
 _ARCHIVE_THREAD_LOCKS: dict[Path, threading.Lock] = {}
 _ARCHIVE_THREAD_LOCKS_GUARD = threading.Lock()
 
@@ -139,6 +168,7 @@ class LogbookRow:
     prediction_id: str | None
     prev_row_digest: str | None
     row_digest: str
+    run_provenance_identity: dict[str, Any] | None = None
 
     @classmethod
     def create(
@@ -160,6 +190,7 @@ class LogbookRow:
         disposition: str,
         prediction_id: str | None,
         prev_row_digest: str | None,
+        run_provenance_identity: Mapping[str, Any] | None = None,
         row_digest: str | None = None,
     ) -> LogbookRow:
         """Validate, normalize, and hash a complete attempt receipt."""
@@ -203,6 +234,11 @@ class LogbookRow:
             "prev_row_digest",
             nullable=True,
         )
+        normalized_provenance = (
+            None
+            if run_provenance_identity is None
+            else _validate_run_provenance_identity(run_provenance_identity)
+        )
 
         values: dict[str, Any] = {
             "build_id": normalized_build_id,
@@ -222,6 +258,8 @@ class LogbookRow:
             "prediction_id": normalized_prediction,
             "prev_row_digest": normalized_prev,
         }
+        if normalized_provenance is not None:
+            values["run_provenance_identity"] = normalized_provenance
         calculated = compute_row_digest(values)
         if row_digest is not None:
             supplied = _validate_digest(row_digest, "row_digest", nullable=False)
@@ -249,6 +287,7 @@ class LogbookRow:
             prediction_id=normalized_prediction,
             prev_row_digest=normalized_prev,
             row_digest=calculated,
+            run_provenance_identity=normalized_provenance,
         )
 
     @classmethod
@@ -260,11 +299,19 @@ class LogbookRow:
                 f"Logbook row must be an object, got {type(value).__name__}."
             )
         keys = frozenset(value)
-        if keys != LOGBOOK_ROW_FIELDS:
+        if keys not in {LOGBOOK_ROW_FIELDS, LOGBOOK_PROVENANCE_ROW_FIELDS}:
             missing = sorted(LOGBOOK_ROW_FIELDS - keys)
-            extra = sorted(keys - LOGBOOK_ROW_FIELDS)
+            extra = sorted(keys - LOGBOOK_PROVENANCE_ROW_FIELDS)
             raise ValueError(
                 f"Logbook row schema mismatch; missing={missing}, extra={extra}."
+            )
+        if (
+            "run_provenance_identity" in value
+            and value["run_provenance_identity"] is None
+        ):
+            raise ValueError(
+                "run_provenance_identity must be a complete object when present; "
+                "historic rows represent its absence by omitting the field."
             )
         return cls.create(**dict(value))
 
@@ -290,6 +337,8 @@ class LogbookRow:
             "prev_row_digest": self.prev_row_digest,
             "row_digest": self.row_digest,
         }
+        if self.run_provenance_identity is not None:
+            mapping["run_provenance_identity"] = deepcopy(self.run_provenance_identity)
         # ``frozen=True`` prevents attribute replacement but a caller can
         # still mutate nested JSON containers.  Re-authenticate immediately
         # before every serialization boundary so neither such a mutation nor
@@ -361,6 +410,13 @@ def compute_row_digest(value: Mapping[str, Any]) -> str:
     missing = (LOGBOOK_ROW_FIELDS - {"row_digest"}) - frozenset(value)
     if missing:
         raise ValueError(f"Cannot hash Logbook row; missing fields: {sorted(missing)}.")
+    keys = frozenset(value)
+    allowed = LOGBOOK_PROVENANCE_ROW_FIELDS
+    extra = keys - allowed
+    if extra:
+        raise ValueError(f"Cannot hash Logbook row; extra fields: {sorted(extra)}.")
+    if "run_provenance_identity" in value:
+        _validate_run_provenance_identity(value["run_provenance_identity"])
     predecessor = _validate_digest(
         value.get("prev_row_digest"),
         "prev_row_digest",
@@ -391,6 +447,7 @@ def record_build_attempt(
     disposition: str,
     prediction_id: str | None,
     prev_row_digest: str | None,
+    run_provenance_identity: Mapping[str, Any] | None = None,
     row_digest: str | None = None,
     spool_dir: str | Path = "logbook-spool",
     timeout: float = 10.0,
@@ -400,7 +457,9 @@ def record_build_attempt(
     The complete row, including ``prev_row_digest``, is supplied by the caller
     so chain coordination is explicit. A missing URL or key selects spool-only
     mode. Remote failures are reported in ``remote_error`` and never raised;
-    validation and local persistence errors do raise.
+    validation and local persistence errors do raise. New F1 callers pass the
+    complete ``run_provenance_identity`` wire object; omitting it retains the
+    historical row and digest shape for legacy callers.
     """
 
     row = LogbookRow.create(
@@ -420,6 +479,7 @@ def record_build_attempt(
         disposition=disposition,
         prediction_id=prediction_id,
         prev_row_digest=prev_row_digest,
+        run_provenance_identity=run_provenance_identity,
         row_digest=row_digest,
     )
     spool_path = Path(spool_dir) / f"{row.row_digest}.json"
@@ -1009,6 +1069,158 @@ def _validate_gate_verdicts(value: Mapping[str, Any]) -> dict[str, Any]:
         _nonempty_text(receipt.get("receipt"), f"gate_verdicts[{gate!r}].receipt")
     canonical_json_bytes(normalized)
     return normalized
+
+
+def _validate_run_provenance_identity(value: Any) -> dict[str, Any]:
+    """Validate and detach the closed D3 provenance identity wire object."""
+
+    if not isinstance(value, Mapping):
+        raise ValueError("run_provenance_identity must be an object.")
+    normalized = _normalize_json_value(value)
+    if not isinstance(normalized, dict):  # pragma: no cover - guarded above
+        raise AssertionError("run_provenance_identity normalization lost its shape")
+    keys = frozenset(normalized)
+    if keys != _RUN_PROVENANCE_FIELDS:
+        missing = sorted(_RUN_PROVENANCE_FIELDS - keys)
+        extra = sorted(keys - _RUN_PROVENANCE_FIELDS)
+        raise ValueError(
+            "run_provenance_identity schema mismatch; "
+            f"missing={missing}, extra={extra}."
+        )
+
+    generation = normalized["identity_generation"]
+    if (
+        isinstance(generation, bool)
+        or not isinstance(generation, int)
+        or generation not in {0, 1}
+    ):
+        raise ValueError(
+            "run_provenance_identity.identity_generation must be 0 "
+            "(historic) or 1 (binding); unknown generations are refused."
+        )
+
+    grammar = normalized["source_grammar_receipt"]
+    binding = normalized["spec_binding"]
+    if generation == 0:
+        if grammar is not None or binding is not None:
+            raise ValueError(
+                "generation 0 run_provenance_identity cannot be retro-labeled "
+                "with source_grammar_receipt or spec_binding."
+            )
+    else:
+        if grammar is None or binding is None:
+            raise ValueError(
+                "generation 1 run_provenance_identity requires "
+                "source_grammar_receipt and spec_binding."
+            )
+        _validate_source_grammar_receipt(grammar)
+        _validate_provenance_spec_binding(binding)
+        assert isinstance(grammar, dict) and isinstance(binding, dict)
+        for field in ("schema_version", "canonicalizer_version"):
+            if grammar[field] != binding[field]:
+                raise ValueError(
+                    "run_provenance_identity "
+                    f"{field} differs between source_grammar_receipt "
+                    "and spec_binding."
+                )
+
+    for field in (
+        "authority_versions",
+        "artifact_protocol_inventory",
+        "run_request",
+        "execution_receipt",
+    ):
+        if not isinstance(normalized[field], dict):
+            raise ValueError(f"run_provenance_identity.{field} must be an object.")
+    _validate_digest(
+        normalized["code_inventory_digest"],
+        "run_provenance_identity.code_inventory_digest",
+        nullable=False,
+    )
+    canonical_json_bytes(normalized)
+    return normalized
+
+
+def _validate_source_grammar_receipt(value: Any) -> None:
+    if not isinstance(value, Mapping):
+        raise ValueError(
+            "run_provenance_identity.source_grammar_receipt must be an object."
+        )
+    keys = frozenset(value)
+    if keys != _SOURCE_GRAMMAR_RECEIPT_FIELDS:
+        raise ValueError(
+            "run_provenance_identity.source_grammar_receipt must contain exactly "
+            "schema_version, canonicalizer_version, and migration_chain."
+        )
+    _validate_positive_integer(
+        value["schema_version"],
+        "run_provenance_identity.source_grammar_receipt.schema_version",
+    )
+    _validate_positive_integer(
+        value["canonicalizer_version"],
+        "run_provenance_identity.source_grammar_receipt.canonicalizer_version",
+    )
+    migration_chain = value["migration_chain"]
+    if not isinstance(migration_chain, list):
+        raise ValueError(
+            "run_provenance_identity.source_grammar_receipt.migration_chain "
+            "must be an array."
+        )
+    for index, row in enumerate(migration_chain):
+        if not isinstance(row, Mapping) or frozenset(row) != {"id", "sha256"}:
+            raise ValueError(
+                "run_provenance_identity.source_grammar_receipt.migration_chain "
+                f"row {index} must contain exactly id and sha256."
+            )
+        _nonempty_text(
+            row["id"],
+            "run_provenance_identity.source_grammar_receipt."
+            f"migration_chain[{index}].id",
+        )
+        _validate_digest(
+            row["sha256"],
+            "run_provenance_identity.source_grammar_receipt."
+            f"migration_chain[{index}].sha256",
+            nullable=False,
+        )
+
+
+def _validate_provenance_spec_binding(value: Any) -> None:
+    if not isinstance(value, Mapping):
+        raise ValueError("run_provenance_identity.spec_binding must be an object.")
+    keys = frozenset(value)
+    if keys != _SPEC_BINDING_FIELDS:
+        raise ValueError(
+            "run_provenance_identity.spec_binding must contain exactly country, "
+            "schema_id, schema_version, canonicalizer_version, spec_sha256, "
+            "and attestation."
+        )
+    for field in ("country", "schema_id"):
+        _nonempty_text(
+            value[field],
+            f"run_provenance_identity.spec_binding.{field}",
+        )
+    for field in ("schema_version", "canonicalizer_version"):
+        _validate_positive_integer(
+            value[field],
+            f"run_provenance_identity.spec_binding.{field}",
+        )
+    _validate_digest(
+        value["spec_sha256"],
+        "run_provenance_identity.spec_binding.spec_sha256",
+        nullable=False,
+    )
+    if value["attestation"] not in {"mirror-attested", "bundle-authoritative"}:
+        raise ValueError(
+            "run_provenance_identity.spec_binding.attestation must be "
+            "mirror-attested or bundle-authoritative."
+        )
+
+
+def _validate_positive_integer(value: Any, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError(f"{field} must be a positive integer.")
+    return value
 
 
 def _normalize_json_value(value: Any) -> Any:

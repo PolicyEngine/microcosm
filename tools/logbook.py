@@ -17,7 +17,7 @@ from urllib.parse import urlencode
 from urllib.request import Request
 
 from microcosm.build.logbook import (
-    LOGBOOK_ROW_FIELDS,
+    LOGBOOK_PROVENANCE_ROW_FIELDS,
     LogbookRow,
     _validate_remote_url,
     export_rows,
@@ -144,7 +144,9 @@ def _remote_rows() -> tuple[LogbookRow, ...]:
                 raise RuntimeError(f"Logbook live store returned HTTP {status}")
             page = _decode_remote_page(response.read())
             total = _content_range_total(getattr(response, "headers", {}))
-        rows.extend(LogbookRow.from_mapping(item) for item in page)
+        rows.extend(
+            LogbookRow.from_mapping(_normalize_remote_row(item)) for item in page
+        )
         offset += len(page)
         if total is not None and offset >= total:
             break
@@ -168,7 +170,7 @@ def _remote_builds_endpoint(url: str, *, offset: int, limit: int) -> str:
         endpoint = f"{base}/rest/v1/builds"
     query = urlencode(
         {
-            "select": ",".join(sorted(LOGBOOK_ROW_FIELDS)),
+            "select": ",".join(sorted(LOGBOOK_PROVENANCE_ROW_FIELDS)),
             "order": "ts.asc,build_id.asc",
             "limit": str(limit),
             "offset": str(offset),
@@ -185,6 +187,15 @@ def _decode_remote_page(payload: bytes) -> list[dict[str, Any]]:
     if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
         raise ValueError("Logbook live store response must be an array of rows")
     return value
+
+
+def _normalize_remote_row(value: dict[str, Any]) -> dict[str, Any]:
+    """Translate the migration's historical SQL NULL back to key absence."""
+
+    normalized = dict(value)
+    if normalized.get("run_provenance_identity", object()) is None:
+        normalized.pop("run_provenance_identity")
+    return normalized
 
 
 def _content_range_total(headers: Any) -> int | None:
