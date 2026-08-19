@@ -16,10 +16,10 @@ the repository journal convention.
   No build has been run at any sample fraction.
 - The stochastic audit found an F0 defect: the declared 53-site protocol is
   internally closed but is not exhaustive over reachable stochastic kernel
-  invocations. The itemized defect is corrected in the working tree by an
+  invocations. The itemized defect is corrected in this lane by an
   independent source-callsite scanner and a 72-site protocol. Generator,
-  coverage, focused regression, and whole-repository lint gates pass; final
-  full-suite verification is the remaining gate before the deliverable commit.
+  coverage, focused regression, whole-repository lint, and the complete serial
+  suite all pass. Deliverable 1 is complete pending its required commit.
 
 ## Done
 
@@ -46,6 +46,12 @@ the repository journal convention.
   pass. The elapsed-time footer for this interrupted attempt was lost when the
   terminal's buffered failure trace was truncated; the reached percentage and
   failing node were recovered from pytest's cache before any edit.
+- The authoritative post-correction full suite completed green at 100% in
+  3,020.35 seconds (`real`; 2,977.39 user, 451.68 system). A separate
+  importlib-mode collection gate counted exactly 6,749 tests. The repository's
+  configured double-quiet invocation suppresses pytest's numeric pass/skip
+  footer; the run itself showed only passes and expected skips, with no failure
+  or error report.
 - `seed_callsite_coverage.py` is deliberately independent of `seeds.py`. Its
   filesystem-derived AST scan covers 200 production modules and exactly 274
   physical stochastic/hash/ambient-entropy calls: 119 are ledger-bound and 155
@@ -67,8 +73,8 @@ the repository journal convention.
 
 ## Next
 
-1. Rerun the exact full serial suite to 100% and record its count.
-2. Commit deliverable 1 with the suite green before beginning executor work.
+1. Commit deliverable 1 with the suite green.
+2. Begin the generic executor core and its fixture-scale adversarial tests.
 
 ## 1. Sync, baseline, and authority inventory
 
@@ -117,6 +123,12 @@ the repository journal convention.
 - Host-safety check during the run: `vm_stat` reported 4,137,397 free 16-KiB
   pages (about 63.1 GiB). No process in this lane has approached the 20-GiB
   RSS limit.
+- Authoritative corrected baseline: `/usr/bin/time -p .venv/bin/python -m
+  pytest -q` completed at 100% with zero failures/errors in 3,020.35 seconds.
+  `.venv/bin/python -m pytest -o addopts='--import-mode=importlib'
+  --collect-only -q` counted 6,749 tests. The generated bundle and evidence
+  `--check` gates, `ruff check .`, and `git diff --check` were rerun after the
+  suite and all pass.
 
 ### Constants-era authority flip inventory
 
@@ -293,6 +305,16 @@ Regeneration yields:
   authored normative fields plus 9,649 resolved binding fields); inventory
   coverage remains 40/40.
 
+The owner-requested starting-tree to corrected identity transition is:
+
+| Identity | Starting checkout | Corrected deliverable 1 |
+| --- | --- | --- |
+| US `spec_sha256` | `6e9dce8f0fd3e3f0101103a14d6a08ac8527b90b82d48fa8bad2c4cc70dbdfde` | `9699f76c5c3146b36c9300be3726471d3272576748d816d9684b50f6cde795d8` |
+| BE `spec_sha256` | `262091db8c7b01b2a3b596aa2468d95855a63703ba9f8ebba2940cf5834c2c83` | `0938096be78feaa48a73a94a642595b679504814eadf78d332259b5e55f0dda3` |
+| UK `spec_sha256` | `ed0a0c365dc77f6a0798caeb4ad5de6bcd8e81dd57e3293835c26ffa2b0296da` | `284bd4de3984c0b5a7650cb1bad994c52c3edf8db73781a76933999543bf0790` |
+| `legacy-v1` protocol | `6dade07562ec29c56d96ab8e299a4416c679f1c44b18b228e0ef10f21bd6f6ec` | `5c6ca5ccfbbd3897b23d29dc46196ef1ae110d6d1f2974ce360fac722075a73d` |
+| compiled seed map | `96140220b6b248c1b3a3567dc0c97df6c08176e6745d8dd55786053f26c43a32` | `40628dc8242840fb09106389d8887e778f121dbe320a2c2d47f2aeb0b0baad48` |
+
 Focused verification is green: the seed/source-census tests pass (23 tests),
 the complete QRF regression file passes (43 tests), the coverage/field/
 inventory batch passes, and the identity/compiler/plan-lock/US-bundle batch
@@ -313,11 +335,12 @@ owner. If raw ACS construction enters the graph, this must become an owned
 production pool caller. UK-only stochastic modules are outside the selected
 US `legacy-v1` namespace.
 
-The shared QRF restore helper at `microcosm-fit/src/microcosm/fit/qrf.py:640`
-currently calls `default_rng()` before replacing its state. Although that
-ambient entropy does not affect output bytes, it violates the F1 ambient-access
-contract. It must construct a deterministic `Generator(PCG64(0))`, restore the
-validated state, and remain bound to `primary_qrf_fit_draw`.
+The starting shared QRF restore helper at
+`microcosm-fit/src/microcosm/fit/qrf.py:640` called `default_rng()` before
+replacing its state. Although that ambient entropy did not affect output
+bytes, it violated the F1 ambient-access contract. Deliverable 1 now constructs
+`Generator(PCG64(0))`, restores the validated state, and keeps the callsite
+bound to `primary_qrf_fit_draw`.
 
 Operational UUID entropy occurs at pool tool `:1327`, `:3625`, `:4084`, and
 `:4388`; `logbook.py:1085`, `:1101`; `logbook_adoption.py:254`; and
@@ -351,7 +374,7 @@ primary-QRF process that is known to breach the ceiling; if the blocker remains
 when deliverable 5 is reached, the lane stops there honestly with fixture
 receipts and a green suite.
 
-### Preflight finding for deliverable 4
+### Preflight finding and owner resolution for deliverable 4
 
 The approved requirements contain a raw-byte contradiction that no current IR
 projection can resolve:
@@ -371,9 +394,24 @@ projection can resolve:
 
 The current IR also lacks the physical whole-pipeline DAG, logical-stage to
 checkpoint/bank mapping, typed operation-to-kernel bindings, final artifact
-protocols, and a closed certification plan. These can be added as compiler-
-emitted execution ABI rather than country-specific configuration, but doing so
-does not resolve the three contradictory identity requirements above. Unless
-an in-repository ruling appears while deliverables 1–3 land, the lane must stop
-honestly at deliverable 4 with a green suite; it must not make constants mode
-non-constant, secretly select a legacy bundle field, or weaken byte equality.
+protocols, and a closed certification plan. These can be added as
+compiler-emitted execution ABI rather than country-specific configuration.
+
+The owner resolved the apparent contradiction on 2026-08-19 in
+`_F1-CHARTER-R2.md`. Deliverables 4 and 6 use two sealed tiers:
+
+- The normative artifact vector remains raw-byte exact with no exclusions or
+  canonicalization.
+- Provenance and operational receipt fields compare structurally under a
+  compiler-emitted, sealed `plan_lock` vector. Every differing field must have
+  exactly one declared rule: `equal_after_normalizing_prefix`,
+  `expected_to_differ_by_generation`, or `operational_excluded`; any unlisted
+  receipt difference fails.
+- Constants mode keeps `populace-us-2024-*`, bundle mode uses
+  `microcosm-us-2024-*`, and readers accept both. Bundle receipts must match
+  the loader's generation-1 provenance triad while constants receipts remain
+  generation 0. `node_reuse_key` must be byte-equal across modes and must not
+  include provenance.
+
+This ruling permits the lane to proceed through deliverable 4 without changing
+constants mode or weakening normative byte identity.
