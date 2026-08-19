@@ -687,7 +687,7 @@
        "x-spec-surface": "operational"
       },
       "seed": {
-       "type": "number"
+       "type": "integer"
       }
      },
      "required": [
@@ -2714,7 +2714,7 @@
        "type": "boolean"
       },
       "sample_size": {
-       "type": "number"
+       "type": "integer"
       },
       "sample_with_replacement": {
        "type": "boolean"
@@ -5574,7 +5574,7 @@
        "type": "string"
       },
       "seed": {
-       "type": "number"
+       "type": "integer"
       },
       "bands": {
        "type": "array",
@@ -5590,7 +5590,7 @@
           "type": "string"
          },
          "upper_exclusive": {
-          "type": "number"
+          "type": "integer"
          }
         }
        }
@@ -5625,7 +5625,7 @@
        "type": "string"
       },
       "seed": {
-       "type": "number"
+       "type": "integer"
       }
      }
     },
@@ -5653,7 +5653,7 @@
        "type": "string"
       },
       "seed": {
-       "type": "number"
+       "type": "integer"
       }
      }
     },
@@ -5673,7 +5673,7 @@
        "type": "string"
       },
       "seed": {
-       "type": "number"
+       "type": "integer"
       }
      }
     },
@@ -5743,7 +5743,7 @@
        "type": "string"
       },
       "seed": {
-       "type": "number"
+       "type": "integer"
       }
      }
     },
@@ -5806,7 +5806,7 @@
        "type": "string"
       },
       "seed": {
-       "type": "number"
+       "type": "integer"
       },
       "runtime_sha256_required": {
        "type": "boolean"
@@ -5838,7 +5838,7 @@
        "const": "stack_zero_weight_donors"
       },
       "count": {
-       "type": "number"
+       "type": "integer"
       },
       "draw": {
        "type": "string"
@@ -5847,7 +5847,7 @@
        "type": "string"
       },
       "seed": {
-       "type": "number"
+       "type": "integer"
       },
       "channels": {
        "type": "object",
@@ -5902,7 +5902,7 @@
           "type": "string"
          },
          "maximum_zero_weight_rows": {
-          "type": "number"
+          "type": "integer"
          },
          "selector": {
           "type": "object",
@@ -5985,7 +5985,7 @@
        "type": "string"
       },
       "sample_size": {
-       "type": "number"
+       "type": "integer"
       },
       "sample_with_replacement": {
        "type": "boolean"
@@ -6129,10 +6129,10 @@
        }
       },
       "n_estimators": {
-       "type": "number"
+       "type": "integer"
       },
       "seed": {
-       "type": "number"
+       "type": "integer"
       }
      }
     },
@@ -6229,10 +6229,10 @@
        "type": "boolean"
       },
       "n_estimators": {
-       "type": "number"
+       "type": "integer"
       },
       "seed": {
-       "type": "number"
+       "type": "integer"
       }
      }
     },
@@ -6371,10 +6371,10 @@
        "type": "string"
       },
       "n_estimators": {
-       "type": "number"
+       "type": "integer"
       },
       "seed": {
-       "type": "number"
+       "type": "integer"
       }
      }
     },
@@ -6442,7 +6442,7 @@
        "type": "string"
       },
       "ukds_study_number": {
-       "type": "number"
+       "type": "integer"
       },
       "runtime_sha256_required": {
        "type": "boolean"
