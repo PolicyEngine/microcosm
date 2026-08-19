@@ -115,3 +115,19 @@ that owns each arm.
   1,495.453 seconds. The machine-readable pytest receipt was written to
   `/private/tmp/arm-investment-full-suite.xml`; this journal-only follow-up does
   not change the tested runtime.
+
+## Arm-gate continuation (2026-08-19)
+
+- State: begin the frozen Phase-P attribution gates from `arm-investment` at
+  `a91fbcdb81bd602d8e9b3465d9b26f6f423c7941`.
+- Done: verified that all three arm artifact directories contain the H5,
+  manifest, terminal-gate JSON, build log, and build-status receipt; verified
+  that `tools/predictor_set_oos_gate.py` is byte-identical to the round-1 tool
+  (SHA-256 `25295af61fece0e124a2658eed469ce1b5ecf9abd0c8e6b622807df8d4d69fe8`).
+- Fixed boundary: baseline is the read-only `stacked-f025-r1` artifact with
+  identity `9be8ecdf82356f38998e8b620ee36d9134f554fe89a8eafd8406f438e2b5aad6`;
+  no build, network, push, gate-parameter change, `PROGRESS.md` edit, or
+  `logbook-pending-chain.txt` access is authorized.
+- Next: reproduce round 1's configuration byte-for-byte for the investment
+  candidate, verify the emitted verdict and report, and commit that evidence on
+  this branch before moving to the next arm.
