@@ -245,21 +245,31 @@ def test_support_clip_and_integer_vehicle_output(
     assert clipped["owned_land"].tolist() == [100.0, 10.0]
     assert clipped["net_financial_wealth"].tolist() == [50.0, -5.0]
 
+    import microcosm.build.uk_runtime.was_wealth as module
+
     def fake_impute(*args, **kwargs):
         result = donor.loc[:, UK_WAS_WEALTH_OUTPUT_COLUMNS].reset_index(drop=True)
         result = result.copy()
         result["num_vehicles"] = [1.2, 2.8]
-        return result
-
-    import microcosm.build.uk_runtime.was_wealth as module
+        return module.UKWASWealthImputationResult(
+            draws=result,
+            fit_weight_records=(
+                module.FitWeightRecord("uk_was_2018_20_wealth:test", "explicit"),
+            ),
+        )
 
     monkeypatch.setattr(module, "impute_was_wealth", fake_impute)
-    transformed = UKWASWealthStageTransform(
+    transform = UKWASWealthStageTransform(
         stage=_stage(),
         engine=_FakeEngine(),
         donor=_raw_was(),
-    )(_frame())
+    )
+    assert transform.fit_weight_records == ()
+    transformed = transform(_frame())
 
+    assert transform.fit_weight_records == (
+        module.FitWeightRecord("uk_was_2018_20_wealth:test", "explicit"),
+    )
     assert transformed.table("household")["num_vehicles"].tolist() == [1, 3]
     assert "student_loan_balance" not in transformed.table("household").columns
     assert transformed.table("person")["student_loan_balance"].sum() == pytest.approx(
@@ -276,8 +286,9 @@ def test_stage_transform_is_deterministic_with_fast_synthetic_imputer(
     monkeypatch.setattr(
         module,
         "impute_was_wealth",
-        lambda *args, **kwargs: donor.loc[:, UK_WAS_WEALTH_OUTPUT_COLUMNS].reset_index(
-            drop=True
+        lambda *args, **kwargs: module.UKWASWealthImputationResult(
+            draws=donor.loc[:, UK_WAS_WEALTH_OUTPUT_COLUMNS].reset_index(drop=True),
+            fit_weight_records=(),
         ),
     )
     transform = UKWASWealthStageTransform(
@@ -370,6 +381,7 @@ def test_was_imputer_uses_checkpointed_chain_segments(
             return SimpleNamespace(
                 target=target,
                 raw_draw=np.full(len(recipient_predictors), float(state.position + 1)),
+                weight_kind="explicit",
                 state=SimpleNamespace(
                     targets=state.targets,
                     position=state.position + 1,
@@ -382,8 +394,13 @@ def test_was_imputer_uses_checkpointed_chain_segments(
 
     result = module.impute_was_wealth(donor, recipient, seed=0, n_estimators=7)
 
-    assert result.columns.tolist() == list(UK_WAS_WEALTH_OUTPUT_COLUMNS)
+    assert result.draws.columns.tolist() == list(UK_WAS_WEALTH_OUTPUT_COLUMNS)
     assert calls[0][1] == ("owned_land", "property_wealth")
     assert calls[1][1] == ("corporate_wealth_excl_isa", "stocks_and_shares_isa")
     assert "corporate_wealth" in calls[2][0]
     assert calls[2][1][-1] == "cash_isa"
+    fitted_targets = [name for _, targets in calls for name in targets]
+    assert [record.fit_name for record in result.fit_weight_records] == [
+        f"uk_was_2018_20_wealth:{target}" for target in fitted_targets
+    ]
+    assert {record.weight_kind for record in result.fit_weight_records} == {"explicit"}

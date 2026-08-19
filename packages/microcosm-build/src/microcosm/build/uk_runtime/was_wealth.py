@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
+from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime.frs_brma import _benunit_household_map
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
@@ -75,6 +76,7 @@ UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS = tuple(
     if column != "net_financial_wealth"
 )
 UK_WAS_WEALTH_DECLARED_SEEDS = {"was_wealth": 0}
+UK_WAS_WEALTH_FIT_NAME = "uk_was_2018_20_wealth"
 
 REGIONS: Mapping[int, str] = {
     1: "NORTH_EAST",
@@ -135,14 +137,33 @@ _RAW_TO_CLEAN = {
 }
 
 
-@dataclass(frozen=True)
+@dataclass
 class UKWASWealthStageTransform:
-    """Whole-stage callable for WAS-trained UK wealth imputation."""
+    """Whole-stage callable for WAS-trained UK wealth imputation.
+
+    Not frozen: like the HMRC restoration stage, the transform carries
+    mutable post-run fit-weight evidence for the terminal weights audit.
+    """
 
     stage: SourceStageSpec
     engine: object
     was_tab_path: str | Path | None = None
     donor: pd.DataFrame | None = None
+    #: Fit-weight evidence from the most recent run, read by the national
+    #: build's weights-audit collector (the HMRC-stage precedent).
+    last_fit_weight_records: tuple[FitWeightRecord, ...] | None = field(
+        default=None,
+        init=False,
+        repr=False,
+    )
+
+    @property
+    def fit_weight_records(self) -> tuple[FitWeightRecord, ...]:
+        """Return immutable fit-weight evidence from the most recent run."""
+
+        if self.last_fit_weight_records is None:
+            return ()
+        return tuple(self.last_fit_weight_records)
 
     def __call__(self, frame: Frame) -> Frame:
         assert_rules_engine_country(self.engine, "uk")
@@ -156,13 +177,14 @@ class UKWASWealthStageTransform:
             )
         )
         household_predictors = recipient_predictors(frame, self.engine)
-        household_draws = impute_was_wealth(
+        imputation = impute_was_wealth(
             donor,
             household_predictors,
             seed=UK_WAS_WEALTH_DECLARED_SEEDS["was_wealth"],
             n_estimators=_qrf_n_estimators(self.stage),
         )
-        household_draws = support_clip_to_donor(household_draws, donor)
+        self.last_fit_weight_records = imputation.fit_weight_records
+        household_draws = support_clip_to_donor(imputation.draws, donor)
         household_draws["num_vehicles"] = (
             np.rint(household_draws["num_vehicles"]).clip(lower=0).astype("int64")
         )
@@ -300,13 +322,21 @@ def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
     return result.loc[:, UK_WAS_WEALTH_PREDICTORS]
 
 
+@dataclass(frozen=True)
+class UKWASWealthImputationResult:
+    """WAS wealth draws plus the auditable fit-weight evidence."""
+
+    draws: pd.DataFrame
+    fit_weight_records: tuple[FitWeightRecord, ...]
+
+
 def impute_was_wealth(
     donor: pd.DataFrame,
     recipient_predictor_frame: pd.DataFrame,
     *,
     seed: int,
     n_estimators: int,
-) -> pd.DataFrame:
+) -> UKWASWealthImputationResult:
     """Fit segmented checkpointed QRF chains and draw WAS wealth outputs."""
 
     from microcosm.fit import RegimeGatedQRF
@@ -316,6 +346,7 @@ def impute_was_wealth(
     )
     model = RegimeGatedQRF(n_estimators=n_estimators, seed=seed)
     raw = pd.DataFrame(index=recipient_encoded.index)
+    fit_records: list[FitWeightRecord] = []
 
     def run_segment(base_predictors: Sequence[str], targets: Sequence[str]) -> None:
         state = model.start_chain(
@@ -336,6 +367,11 @@ def impute_was_wealth(
                 segment_raw,
                 state=state,
                 weights="weight",
+            )
+            fit_records.append(
+                FitWeightRecord(
+                    f"{UK_WAS_WEALTH_FIT_NAME}:{target}", result.weight_kind
+                )
             )
             segment_raw[target] = result.raw_draw
             raw[target] = result.raw_draw
@@ -368,7 +404,10 @@ def impute_was_wealth(
             "cash_isa",
         ),
     )
-    return raw.loc[:, UK_WAS_WEALTH_OUTPUT_COLUMNS]
+    return UKWASWealthImputationResult(
+        draws=raw.loc[:, UK_WAS_WEALTH_OUTPUT_COLUMNS],
+        fit_weight_records=tuple(fit_records),
+    )
 
 
 def encode_qrf_predictor_pair(

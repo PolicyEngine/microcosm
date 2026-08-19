@@ -4,6 +4,8 @@ import importlib.util
 import json
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[3]
 CSV = ROOT / "packages/microcosm-build/tests/fixtures/uk/regional_land_values.csv"
 JSON_RESOURCE = (
@@ -56,6 +58,45 @@ def test_was_support_bounds_resource_shape() -> None:
     assert payload["source"]["sdc_treatment"]
     assert "net_financial_wealth" in payload["bounds"]
     assert payload["bounds"]["net_financial_wealth"][0] < 0
+
+
+def test_was_support_bounds_are_generated_from_the_pinned_tab() -> None:
+    """The release-blocking uk_support gate must never run on placeholder
+    bounds: the committed resource has to record derivation from the exact
+    pinned licensed donor tab and carry no placeholder wording (the
+    adversarial-review blocker)."""
+
+    from microcosm.build.uk_runtime.was_wealth import (
+        UK_WAS_WEALTH_OUTPUT_COLUMNS,
+        WAS_DONOR_SHA256,
+    )
+
+    payload = json.loads(SUPPORT_BOUNDS.read_text())
+
+    assert payload["source"]["tab_sha256"] == WAS_DONOR_SHA256
+    assert "placeholder" not in SUPPORT_BOUNDS.read_text().lower()
+    assert set(payload["bounds"]) == set(UK_WAS_WEALTH_OUTPUT_COLUMNS)
+
+
+def test_was_support_bounds_round_trip_against_licensed_tab() -> None:
+    """Licensed-only staleness check: regenerate from the local pinned tab
+    and require byte-identity with the committed resource. Skipped where the
+    licensed tab is absent (CI is secrets-free by design)."""
+
+    import hashlib
+    import os
+
+    tab = os.environ.get("POPULACE_UK_WAS_TAB")
+    if not tab or not Path(tab).is_file():
+        pytest.skip("licensed WAS tab not available (set POPULACE_UK_WAS_TAB)")
+    from microcosm.build.uk_runtime.was_wealth import WAS_DONOR_SHA256
+
+    assert hashlib.sha256(Path(tab).read_bytes()).hexdigest() == WAS_DONOR_SHA256, (
+        "POPULACE_UK_WAS_TAB does not match the pinned donor tab."
+    )
+    payload = _support_tool().build_support_bounds(Path(tab))
+    rendered = json.dumps(payload, indent=2, sort_keys=False) + "\n"
+    assert rendered == SUPPORT_BOUNDS.read_text(encoding="utf-8")
 
 
 def test_support_bounds_tool_rounds_synthetic_donor_outward(tmp_path: Path) -> None:

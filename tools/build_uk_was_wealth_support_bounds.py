@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -23,6 +24,8 @@ DEFAULT_OUTPUT = (
 
 
 def build_support_bounds(tab_path: Path) -> dict[str, object]:
+    tab_bytes = tab_path.read_bytes()
+    tab_sha256 = hashlib.sha256(tab_bytes).hexdigest()
     raw = pd.read_csv(tab_path, sep="\t")
     donor = clean_was_household_table(raw)
     exact = donor_realized_ranges(donor)
@@ -30,18 +33,21 @@ def build_support_bounds(tab_path: Path) -> dict[str, object]:
         "version": 1,
         "country": "uk",
         "policy": (
-            "Disclosure-safe outward-rounded WAS wealth support bounds for the "
-            "UK support gate. Licensed acceptance regenerates this resource "
-            "from donor-realized exact ranges; the committed values are rounded "
-            "outward and never expose unit-record minima or maxima."
+            "Disclosure-safe outward-rounded WAS wealth support bounds for "
+            "the UK support gate, generated from the donor household tab "
+            "recorded under source.tab_sha256 by "
+            "tools/build_uk_was_wealth_support_bounds.py. Values are "
+            "donor-realized exact ranges rounded outward to one significant "
+            "figure, so unit-record minima and maxima are never committed."
         ),
         "source": {
             "ukds_study_number": 7215,
             "doi": "10.5255/UKDA-SN-7215-20",
             "artifact": "was_round_8_hhold_eul_may_2025_230525.tab",
+            "tab_sha256": tab_sha256,
             "sdc_treatment": (
-                "Exact donor min/max values are rounded outward to 1-2 "
-                "significant figures before commit."
+                "Exact donor min/max values are rounded outward to one "
+                "significant figure before commit."
             ),
         },
         "bounds": {
@@ -50,7 +56,9 @@ def build_support_bounds(tab_path: Path) -> dict[str, object]:
             if column in UK_WAS_WEALTH_OUTPUT_COLUMNS
         },
         "chronicle": [
-            "2026-08-18: support bounds generated with outward SDC rounding."
+            "Support bounds generated from the tab pinned as "
+            f"source.tab_sha256 ({tab_sha256[:12]}…) with outward SDC "
+            "rounding."
         ],
     }
 

@@ -1,68 +1,69 @@
 {
   "version": 1,
   "country": "uk",
-  "policy": "Disclosure-safe outward-rounded WAS wealth support bounds for the UK support gate. STATUS: the committed values are pre-acceptance placeholders chosen without reference to licensed data; the E5 licensed acceptance run must regenerate them (tools/build_uk_was_wealth_support_bounds.py) from donor-realized exact ranges, rounded outward to 1-2 significant figures so unit-record minima and maxima are never committed, and the regenerated values are subject to reviewer sign-off.",
+  "policy": "Disclosure-safe outward-rounded WAS wealth support bounds for the UK support gate, generated from the donor household tab recorded under source.tab_sha256 by tools/build_uk_was_wealth_support_bounds.py. Values are donor-realized exact ranges rounded outward to one significant figure, so unit-record minima and maxima are never committed.",
   "source": {
     "ukds_study_number": 7215,
     "doi": "10.5255/UKDA-SN-7215-20",
     "artifact": "was_round_8_hhold_eul_may_2025_230525.tab",
-    "sdc_treatment": "Exact donor min/max values are rounded outward to 1-2 significant figures before commit."
+    "tab_sha256": "18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374",
+    "sdc_treatment": "Exact donor min/max values are rounded outward to one significant figure before commit."
   },
   "bounds": {
     "owned_land": [
-      0,
-      100000000
+      0.0,
+      6000000
     ],
     "property_wealth": [
-      0,
-      100000000
+      0.0,
+      20000000
     ],
     "corporate_wealth": [
-      0,
-      100000000
+      0.0,
+      30000000
     ],
     "gross_financial_wealth": [
-      0,
-      100000000
+      0.0,
+      30000000
     ],
     "net_financial_wealth": [
-      -100000000,
-      100000000
+      -400000,
+      30000000
     ],
     "main_residence_value": [
-      0,
-      100000000
+      0.0,
+      8000000
     ],
     "other_residential_property_value": [
-      0,
-      100000000
+      0.0,
+      6000000
     ],
     "non_residential_property_value": [
-      0,
-      100000000
+      0.0,
+      2000000
     ],
     "savings": [
-      0,
-      100000000
+      0.0,
+      7000000
     ],
     "num_vehicles": [
-      0,
-      20
+      -8,
+      10
     ],
     "cash_isa": [
-      0,
-      10000000
+      0.0,
+      900000
     ],
     "stocks_and_shares_isa": [
-      0,
-      10000000
+      0.0,
+      3000000
     ],
     "student_loan_balance": [
-      0,
-      1000000
+      0.0,
+      200000
     ]
   },
   "chronicle": [
-    "2026-08-18: initial disclosure-safe support-bounds resource for E5 code and synthetic tests."
+    "Support bounds generated from the tab pinned as source.tab_sha256 (18b3eb980c02\u2026) with outward SDC rounding."
   ]
 }
