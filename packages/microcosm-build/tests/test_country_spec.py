@@ -295,6 +295,8 @@ class TestUKCountryPackage:
             "release_input_coverage_manifest.json",
             "was_wealth_support_bounds.json",
             "uk_local_target_census.json",
+            "uk_national_targets.json",
+            "target_references.json",
         )
 
     def test_uk_source_manifest_loads_eighteen_stages(self) -> None:
@@ -313,8 +315,8 @@ class TestExistingPackagesGeneralize:
         assert spec.sources is not None
         assert spec.support_spine is not None
         # US target references live in fiscal_target_references.json (an
-        # untyped resource its runtime interprets); the typed
-        # target_references.json convention starts with Belgium.
+        # untyped resource its runtime interprets); Belgium and the UK use the
+        # typed target_references.json convention.
         assert spec.target_references == ()
 
     def test_uk_package_loads(self) -> None:
@@ -345,6 +347,8 @@ class TestExistingPackagesGeneralize:
             "release_input_coverage_manifest.json",
             "was_wealth_support_bounds.json",
             "uk_local_target_census.json",
+            "uk_national_targets.json",
+            "target_references.json",
         )
 
 

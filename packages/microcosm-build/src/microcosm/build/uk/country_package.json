@@ -121,6 +121,16 @@
       "path": "uk_local_target_census.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
+    },
+    {
+      "path": "uk_national_targets.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "target_references.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
     }
   ]
 }

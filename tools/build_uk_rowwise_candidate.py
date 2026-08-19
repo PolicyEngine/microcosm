@@ -85,7 +85,7 @@ _CONSERVE_MASS = False
 _TARGET_RECORDS: int | None = None
 _L0_LAMBDA = 0.0
 _BUDGET_ITERS = 10
-_UK_CANDIDATE_PIPELINE = "uk-rowwise-candidate"
+_UK_CANDIDATE_PIPELINE = "uk-locals-candidate"
 _REPOSITORY = Path(__file__).resolve().parents[1]
 _PAST_CAP_COUNT_KEYS = (
     "n_targets",
@@ -112,7 +112,7 @@ class _LadderAssignment:
 def _new_candidate_build_id(*, seed: int, timestamp: datetime) -> str:
     instant = timestamp.astimezone(UTC)
     return (
-        f"uk-rowwise-candidate-f100-s{seed}-"
+        f"uk-locals-candidate-f100-s{seed}-"
         f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
     )
 

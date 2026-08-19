@@ -134,6 +134,7 @@ from microcosm.build.source_runtime import (  # noqa: E402 - after the compat ga
     run_source_stage,
 )
 from microcosm.build.staging import (  # noqa: E402 - after the compat gate
+    DEFAULT_STAGING_PREFIX,
     LATEST_STAGING_POINTER,
     RUNS_INDEX,
     STAGING_SCHEMA_VERSION,
@@ -147,6 +148,7 @@ __all__ = [
     "CountrySpec",
     "CountryResourceRow",
     "DonorSpec",
+    "DEFAULT_STAGING_PREFIX",
     "EvidenceContext",
     "FitWeightRecord",
     "FunctionBinding",

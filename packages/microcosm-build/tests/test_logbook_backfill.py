@@ -13,8 +13,10 @@ from microcosm.build.logbook import (
 )
 
 ROOT = Path(__file__).resolve().parents[3]
-ARCHIVE = ROOT / "logbook.jsonl"
-SPOOL = ROOT / "logbook-spool"
+# The #628 backfill seeded the US chain, which archives split by country
+# now carry at logbook/us.jsonl with its spool mirror beside it.
+ARCHIVE = ROOT / "logbook" / "us.jsonl"
+SPOOL = ROOT / "logbook-spool" / "us"
 
 # The archive is append-only: rows after the seed arrive one per real build
 # attempt. The #628 backfill seed itself is immutable, so its fidelity pins
