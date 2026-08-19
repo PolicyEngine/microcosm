@@ -699,6 +699,196 @@ def test__given_selector_matches_multiple_eligible_months__then_latest_month_is_
     )
 
 
+class TestLedgerSelectorExtensions:
+    def test_dimension_values_use_strict_typed_equality(self) -> None:
+        reference = LedgerTargetReference(
+            name="typed dimension selector",
+            ledger_selector={"dimension_values": {"band": "5"}},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        with pytest.raises(ValueError, match="did not match a Ledger fact selector"):
+            compile_ledger_target_references(
+                [_consumer_fact_row(dimensions={"band": 5})],
+                [reference],
+                country="us",
+            )
+
+    def test_dimension_values_accept_list_membership(self) -> None:
+        reference = LedgerTargetReference(
+            name="list dimension selector",
+            ledger_selector={"dimension_values": {"band": ["A", "B"]}},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        registry = compile_ledger_target_references(
+            [_consumer_fact_row(dimensions={"band": "B"})],
+            [reference],
+            country="us",
+        )
+
+        assert registry.specs[0].name == "list dimension selector"
+
+    def test_dimension_values_require_present_dimension(self) -> None:
+        reference = LedgerTargetReference(
+            name="missing dimension selector",
+            ledger_selector={"dimension_values": {"band": "A"}},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        with pytest.raises(ValueError, match="did not match a Ledger fact selector"):
+            compile_ledger_target_references(
+                [_consumer_fact_row(dimensions={"income_range": "all"})],
+                [reference],
+                country="us",
+            )
+
+    def test_empty_membership_list_raises_instead_of_matching_nothing(self) -> None:
+        reference = LedgerTargetReference(
+            name="empty membership selector",
+            ledger_selector={"source_measure_id": []},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        with pytest.raises(ValueError, match="empty list"):
+            compile_ledger_target_references(
+                [_consumer_fact_row()],
+                [reference],
+                country="us",
+            )
+
+    def test_empty_dimension_values_pin_list_raises(self) -> None:
+        reference = LedgerTargetReference(
+            name="empty pin list selector",
+            ledger_selector={"dimension_values": {"band": []}},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        with pytest.raises(ValueError, match="empty pin"):
+            compile_ledger_target_references(
+                [_consumer_fact_row(dimensions={"band": "A"})],
+                [reference],
+                country="us",
+            )
+
+    def test_empty_dimensions_list_matches_dimensionless_fact(self) -> None:
+        reference = LedgerTargetReference(
+            name="dimensionless selector",
+            ledger_selector={"dimensions": []},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        registry = compile_ledger_target_references(
+            [_consumer_fact_row(dimensions={})],
+            [reference],
+            country="us",
+        )
+
+        assert registry.specs[0].name == "dimensionless selector"
+
+    def test_dimensions_list_matches_exact_name_set_order_insensitively(self) -> None:
+        fact = _consumer_fact_row(dimensions={"band": "A", "sex": "all"})
+        reference = LedgerTargetReference(
+            name="dimension-name selector",
+            ledger_selector={"dimensions": ["sex", "band"]},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+        missing_name = LedgerTargetReference(
+            name="partial dimension-name selector",
+            ledger_selector={"dimensions": ["band"]},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        registry = compile_ledger_target_references([fact], [reference], country="us")
+        with pytest.raises(ValueError, match="did not match a Ledger fact selector"):
+            compile_ledger_target_references([fact], [missing_name], country="us")
+
+        assert registry.specs[0].name == "dimension-name selector"
+
+    def test_chronicle_layout_aliases_match_fact_layout(self) -> None:
+        reference = LedgerTargetReference(
+            name="layout alias selector",
+            ledger_selector={
+                "record_set_id": "irs_soi.ty2023.table_1_1",
+                "groupby_dimension": "us:statutes/26/62#adjusted_gross_income",
+            },
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        registry = compile_ledger_target_references(
+            [_consumer_fact_row()],
+            [reference],
+            country="us",
+        )
+
+        assert registry.specs[0].name == "layout alias selector"
+
+    def test_scalar_selector_accepts_list_expected_values(self) -> None:
+        reference = LedgerTargetReference(
+            name="list source measure selector",
+            ledger_selector={
+                "source_measure_id": ["total_tax", "adjusted_gross_income"],
+            },
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        registry = compile_ledger_target_references(
+            [_consumer_fact_row()],
+            [reference],
+            country="us",
+        )
+
+        assert registry.specs[0].name == "list source measure selector"
+
+    def test_us_mapping_dimensions_keep_subset_semantics(self) -> None:
+        reference = LedgerTargetReference(
+            name="mapping dimensions selector",
+            ledger_selector={"dimensions": {"income_range": "all"}},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        registry = compile_ledger_target_references(
+            [_consumer_fact_row()],
+            [reference],
+            country="us",
+        )
+
+        assert registry.specs[0].name == "mapping dimensions selector"
+
+
 def test__given_selector_matches_only_future_year__then_compilation_fails() -> None:
     # Given
     reference = LedgerTargetReference(
