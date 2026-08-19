@@ -169,3 +169,24 @@ that owns each arm.
 - State: investment evidence is complete and ready for synthesis.
 - Next: switch to `arm-eligibility`, bind only its candidate integrity
   receipts, run the same frozen gate, and commit that branch's evidence.
+
+### `arm-investment` bounded receipt replacement (2026-08-19)
+
+- State correction: the first investment verdict is statistically complete,
+  but the denied `/usr/bin/time -l` query left it without affirmative evidence
+  for the standing 20-GiB RSS ceiling. It will be replaced, not synthesized,
+  unless an otherwise identical guarded run completes below the ceiling.
+- Done: commit `bb2df330` adds the same private loader-owned Frame path proven
+  by the eligibility and order gates. The gate now also requests allocator
+  pressure relief at its existing collection boundaries. These changes affect
+  only temporary checkpoint memory ownership and release, not the frozen
+  estimand, models, folds, seeds, bootstrap, thresholds, bands, or clauses.
+  Gate SHA-256 is
+  `a9cd60f245221498090d23a2b684dd76165fa873a7e4b4e2784d385c0377f479`.
+- Verification: Ruff passed the changed gate and loader files; all 44 Frame
+  bundle tests passed. The candidate artifact bindings remain exactly those
+  accepted in the first investment run.
+- Next: commit the bounded-run setup and rerun serially under the 19.5-GiB
+  stop guard. Require complete 32-family/118-target/74-money/211-leg evidence,
+  kernel `ru_maxrss` below 20 GiB, and exact statistical equality to the first
+  investment verdict before replacing it.
