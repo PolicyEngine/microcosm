@@ -299,7 +299,7 @@ def load_frame_checkpoint(
         )
     mass_log = _mass_log_from_metadata(stored_metadata, input_path)
     try:
-        frame = Frame(
+        frame = Frame._from_owned_tables(
             tables,
             schema,
             weights,

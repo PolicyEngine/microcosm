@@ -107,6 +107,52 @@ class Frame:
         mass_log: tuple[MassChangeRecord, ...] = (),
         metadata: Mapping[str, Any] | None = None,
     ) -> None:
+        self._initialize(
+            tables,
+            schema,
+            weights,
+            strata,
+            mass_log=mass_log,
+            metadata=metadata,
+            copy_tables=True,
+        )
+
+    @classmethod
+    def _from_owned_tables(
+        cls,
+        tables: Mapping[str, pd.DataFrame],
+        schema: EntitySchema,
+        weights: Mapping[str, Weights],
+        strata: pd.Series | None = None,
+        *,
+        mass_log: tuple[MassChangeRecord, ...] = (),
+        metadata: Mapping[str, Any] | None = None,
+    ) -> "Frame":
+        """Construct from validated loader-owned tables without copying them."""
+
+        instance = cls.__new__(cls)
+        instance._initialize(
+            tables,
+            schema,
+            weights,
+            strata,
+            mass_log=mass_log,
+            metadata=metadata,
+            copy_tables=False,
+        )
+        return instance
+
+    def _initialize(
+        self,
+        tables: Mapping[str, pd.DataFrame],
+        schema: EntitySchema,
+        weights: Mapping[str, Weights],
+        strata: pd.Series | None,
+        *,
+        mass_log: tuple[MassChangeRecord, ...],
+        metadata: Mapping[str, Any] | None,
+        copy_tables: bool,
+    ) -> None:
         self._schema = schema
         self._mass_log = tuple(mass_log)
         self._metadata = _freeze_metadata(metadata)
@@ -115,7 +161,7 @@ class Frame:
         self._link_tables: dict[str, pd.DataFrame] = {}
         for name, frame in tables.items():
             target = self._link_tables if name in declared_links else self._tables
-            target[name] = frame.copy()
+            target[name] = frame.copy() if copy_tables else frame
         self._weights = dict(weights)
         self._strata = self._validated_strata(strata)
         self._validate_tables()
