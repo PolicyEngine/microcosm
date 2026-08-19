@@ -215,3 +215,72 @@ def test_nhs_age_parsing_and_85_plus_fold_in_uses_full_table_denominator() -> No
         cells["Per-person average spending"].mul(cells["Total people"]).sum(),
         NHS_BUDGET_2025_26,
     )
+
+
+def test_recipient_predictors_derive_education_counts_and_aggregate() -> None:
+    # Regression for the licensed-build crash: count_*_education are not
+    # engine variables — they derive from person current_education and
+    # aggregate to household, like the person-entity benefit predictors.
+    from types import SimpleNamespace
+
+    import numpy as np
+
+    from microcosm.build.uk_runtime.etb_services import recipient_predictors
+    from microcosm.build.uk_runtime.national_frame import uk_national_frame
+
+    entities = {
+        "is_adult": "person",
+        "is_child": "person",
+        "is_SP_age": "person",
+        "dla": "person",
+        "pip": "person",
+        "hbai_household_net_income": "household",
+        "current_education": "person",
+    }
+    values = {
+        "is_adult": np.array([1.0, 1.0, 0.0, 1.0]),
+        "is_child": np.array([0.0, 0.0, 1.0, 0.0]),
+        "is_SP_age": np.array([0.0, 1.0, 0.0, 0.0]),
+        "dla": np.array([0.0, 100.0, 0.0, 0.0]),
+        "pip": np.array([50.0, 0.0, 0.0, 0.0]),
+        "hbai_household_net_income": np.array([1e4, 2e4]),
+        "current_education": np.array(
+            ["NOT_IN_EDUCATION", "TERTIARY", "PRIMARY", "LOWER_SECONDARY"]
+        ),
+    }
+
+    class _FakeEngine:
+        country = "uk"
+
+        def variable_metadata(self, name):
+            return SimpleNamespace(entity=entities[name])
+
+        def materialize(self, frame, variables, period):
+            return {variable: values[variable] for variable in variables}
+
+    person = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3, 4],
+            "person_household_id": [10, 10, 10, 20],
+            "person_benunit_id": [100, 100, 100, 200],
+        }
+    )
+    benunit = pd.DataFrame({"benunit_id": [100, 200], "benunit_household_id": [10, 20]})
+    household = pd.DataFrame(
+        {"household_id": [10, 20], "household_weight": [1.0, 1.0]}
+    )
+    frame = uk_national_frame(
+        person=person,
+        benunit=benunit,
+        household=household,
+        time_period="2023",
+    )
+
+    result = recipient_predictors(frame, _FakeEngine())
+
+    assert result["count_primary_education"].tolist() == [1.0, 0.0]
+    assert result["count_secondary_education"].tolist() == [0.0, 1.0]
+    assert result["count_further_education"].tolist() == [1.0, 0.0]
+    assert result["is_SP_age"].tolist() == [1.0, 0.0]
+    assert result["dla"].tolist() == [100.0, 0.0]
+    assert result["hbai_household_net_income"].tolist() == [1e4, 2e4]

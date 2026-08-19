@@ -549,7 +549,6 @@ class TestE3ManifestLockstep:
     def test_engine_predictor_and_rewrite_constants_match_manifest(self) -> None:
         from microcosm.build.uk_runtime.etb_services import (
             UK_ETB_SERVICES_OUTPUT_COLUMNS,
-            UK_ETB_SERVICES_PREDICTORS,
         )
         from microcosm.build.uk_runtime.etb_vat import UK_ETB_VAT_PREDICTORS
         from microcosm.build.uk_runtime.frs_brma import UK_BRMA_PREDICTORS
@@ -630,9 +629,22 @@ class TestE3ManifestLockstep:
             tuple(stages["etb_vat"].operations[1].parameters["predictors"])
             == UK_ETB_VAT_PREDICTORS
         )
+        from microcosm.build.uk_runtime.etb_services import (
+            UK_ETB_SERVICES_EDUCATION_COUNTS,
+            UK_ETB_SERVICES_ENGINE_VARIABLES,
+        )
+
         assert (
             tuple(stages["etb_services"].operations[1].parameters["predictors"])
-            == UK_ETB_SERVICES_PREDICTORS
+            == UK_ETB_SERVICES_ENGINE_VARIABLES
+        )
+        assert (
+            tuple(
+                stages["etb_services"]
+                .operations[1]
+                .parameters["derived_predictors"]
+            )
+            == tuple(UK_ETB_SERVICES_EDUCATION_COUNTS)
         )
         assert (
             tuple(stages["etb_services"].operations[2].parameters["targets"])

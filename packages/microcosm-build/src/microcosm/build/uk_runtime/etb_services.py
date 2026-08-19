@@ -36,6 +36,22 @@ UK_ETB_SERVICES_PREDICTORS = (
     "pip",
     "hbai_household_net_income",
 )
+# The education counts are not engine variables: the incumbent derives them
+# from person current_education (etb.py:180-186). Only these materialize.
+UK_ETB_SERVICES_ENGINE_VARIABLES = (
+    "is_adult",
+    "is_child",
+    "is_SP_age",
+    "dla",
+    "pip",
+    "hbai_household_net_income",
+    "current_education",
+)
+UK_ETB_SERVICES_EDUCATION_COUNTS = {
+    "count_primary_education": ("PRIMARY",),
+    "count_secondary_education": ("LOWER_SECONDARY",),
+    "count_further_education": ("UPPER_SECONDARY", "TERTIARY"),
+}
 UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS = (
     "dfe_education_spending",
     "rail_subsidy_spending",
@@ -175,26 +191,39 @@ def household_grain_services_predictors(person_level: pd.DataFrame) -> pd.DataFr
 
 
 def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:
+    """Materialize ETB services recipient predictors at household grain.
+
+    The three education counts derive from person current_education (the
+    incumbent's construction, etb.py:180-186) — they are not engine
+    variables. Everything else materializes at its native entity and
+    aggregates to household by person_household_id.
+    """
+
     materialized = engine.materialize(
-        frame, UK_ETB_SERVICES_PREDICTORS, uk_time_period(frame)
+        frame, UK_ETB_SERVICES_ENGINE_VARIABLES, uk_time_period(frame)
     )
     household = frame.table("household")
     person = frame.table("person")
+    group_keys = person["person_household_id"].to_numpy()
+    household_ids = household["household_id"]
+
+    def person_sum(values: np.ndarray) -> np.ndarray:
+        summed = pd.Series(values.astype(float)).groupby(group_keys).sum()
+        return summed.reindex(household_ids).fillna(0.0).to_numpy()
+
     result = pd.DataFrame(index=household.index)
+    education = np.asarray(materialized["current_education"]).astype(str)
     for predictor in UK_ETB_SERVICES_PREDICTORS:
+        if predictor in UK_ETB_SERVICES_EDUCATION_COUNTS:
+            labels = UK_ETB_SERVICES_EDUCATION_COUNTS[predictor]
+            result[predictor] = person_sum(np.isin(education, labels))
+            continue
         values = np.asarray(materialized[predictor])
         entity = str(engine.variable_metadata(predictor).entity)
         if entity == "household":
             result[predictor] = values
         elif entity == "person":
-            summed = (
-                pd.Series(values.astype(float))
-                .groupby(person["person_household_id"].to_numpy())
-                .sum()
-            )
-            result[predictor] = (
-                summed.reindex(household["household_id"]).fillna(0.0).to_numpy()
-            )
+            result[predictor] = person_sum(values)
         else:
             raise ValueError(f"unsupported ETB services predictor entity {entity!r}.")
     return result
