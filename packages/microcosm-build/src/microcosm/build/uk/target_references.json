@@ -1,6 +1,6 @@
 {
   "country": "uk",
-  "description": "UK active-subset Ledger target references for the national 2023 spine. Rows are generated from uk_national_targets.json: name is the contract target_id; ledger_selector is the contract selector plus geography_level country for the first national activation; entity is from_entity, then map_to, then household; measure is bindings.policyengine.metric_name; family is the contract family; period is 2023; metadata.contract_target_id points back to the contract row. Observed values stay in Ledger facts and resolve by identity only. Deferred classes are recorded in .codex-work/membership_report.json: no fact at or before 2023, multi-fact sum resolution pending, source-projection policy pending, country-level geography ambiguity, or missing/non-finite fact values.",
+  "description": "UK active-subset Ledger target references for the national 2023 spine. Rows are generated from uk_national_targets.json: name is the contract target_id; ledger_selector is the contract selector plus geography_level country for the first national activation; entity is from_entity, then map_to, then household; measure is bindings.policyengine.metric_name; family is the contract family; period is 2023; metadata.contract_target_id points back to the contract row. Observed values stay in Ledger facts and resolve by identity only. Deferred classes are recorded in .codex-work/membership_report.json: no fact at or before 2023, multi-fact sum resolution pending, source-projection policy pending, country-level geography ambiguity, or missing/non-finite fact values. Measures name prepared columns, not raw model variables: each reference's measure is the slash-named column the microcosm#622 UK materializer must prepare on the reference's entity table from the contract binding payload (value_variable plus filters/conditions) referenced by metadata.contract_target_id, following the US prepared-indicator-column doctrine (target_spec_from_ledger_reference: count-like facts are sums of prepared indicator columns; the JCT materializer names household columns after their targets). metadata.measure_kind records this on every row.",
   "allowed_value_operations": [
     "identity"
   ],
@@ -17,7 +17,8 @@
       "family": "isc",
       "period": 2023,
       "metadata": {
-        "contract_target_id": "isc.private_school_students"
+        "contract_target_id": "isc.private_school_students",
+        "measure_kind": "prepared_column"
       }
     },
     {
@@ -36,7 +37,8 @@
       "family": "ons_household_composition",
       "period": 2023,
       "metadata": {
-        "contract_target_id": "ons.household_composition.lone_households_under_65"
+        "contract_target_id": "ons.household_composition.lone_households_under_65",
+        "measure_kind": "prepared_column"
       }
     },
     {
@@ -55,7 +57,8 @@
       "family": "ons_household_composition",
       "period": 2023,
       "metadata": {
-        "contract_target_id": "ons.household_composition.lone_households_over_65"
+        "contract_target_id": "ons.household_composition.lone_households_over_65",
+        "measure_kind": "prepared_column"
       }
     },
     {
@@ -74,7 +77,8 @@
       "family": "ons_household_composition",
       "period": 2023,
       "metadata": {
-        "contract_target_id": "ons.household_composition.unrelated_adult_households"
+        "contract_target_id": "ons.household_composition.unrelated_adult_households",
+        "measure_kind": "prepared_column"
       }
     },
     {
@@ -93,7 +97,8 @@
       "family": "ons_household_composition",
       "period": 2023,
       "metadata": {
-        "contract_target_id": "ons.household_composition.couple_no_children_households"
+        "contract_target_id": "ons.household_composition.couple_no_children_households",
+        "measure_kind": "prepared_column"
       }
     },
     {
@@ -112,7 +117,8 @@
       "family": "ons_household_composition",
       "period": 2023,
       "metadata": {
-        "contract_target_id": "ons.household_composition.couple_under_3_children_households"
+        "contract_target_id": "ons.household_composition.couple_under_3_children_households",
+        "measure_kind": "prepared_column"
       }
     },
     {
@@ -131,7 +137,8 @@
       "family": "ons_household_composition",
       "period": 2023,
       "metadata": {
-        "contract_target_id": "ons.household_composition.couple_3_plus_children_households"
+        "contract_target_id": "ons.household_composition.couple_3_plus_children_households",
+        "measure_kind": "prepared_column"
       }
     },
     {
@@ -150,7 +157,8 @@
       "family": "ons_household_composition",
       "period": 2023,
       "metadata": {
-        "contract_target_id": "ons.household_composition.couple_non_dependent_children_only_households"
+        "contract_target_id": "ons.household_composition.couple_non_dependent_children_only_households",
+        "measure_kind": "prepared_column"
       }
     },
     {
@@ -169,7 +177,8 @@
       "family": "ons_household_composition",
       "period": 2023,
       "metadata": {
-        "contract_target_id": "ons.household_composition.lone_parent_dependent_children_households"
+        "contract_target_id": "ons.household_composition.lone_parent_dependent_children_households",
+        "measure_kind": "prepared_column"
       }
     },
     {
@@ -188,7 +197,8 @@
       "family": "ons_household_composition",
       "period": 2023,
       "metadata": {
-        "contract_target_id": "ons.household_composition.lone_parent_non_dependent_children_households"
+        "contract_target_id": "ons.household_composition.lone_parent_non_dependent_children_households",
+        "measure_kind": "prepared_column"
       }
     },
     {
@@ -207,7 +217,8 @@
       "family": "ons_household_composition",
       "period": 2023,
       "metadata": {
-        "contract_target_id": "ons.household_composition.multi_family_households"
+        "contract_target_id": "ons.household_composition.multi_family_households",
+        "measure_kind": "prepared_column"
       }
     },
     {
@@ -222,7 +233,8 @@
       "family": "ons_national_accounts",
       "period": 2023,
       "metadata": {
-        "contract_target_id": "ons.savings_interest_income"
+        "contract_target_id": "ons.savings_interest_income",
+        "measure_kind": "prepared_column"
       }
     },
     {
@@ -237,7 +249,8 @@
       "family": "ons_employment",
       "period": 2023,
       "metadata": {
-        "contract_target_id": "ons.public_sector_employment"
+        "contract_target_id": "ons.public_sector_employment",
+        "measure_kind": "prepared_column"
       }
     }
   ]

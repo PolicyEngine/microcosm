@@ -9,11 +9,21 @@ from __future__ import annotations
 
 import json
 from importlib import resources as importlib_resources
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.ledger_targets import compile_ledger_target_references
+from microcosm.calibrate.matrix import build_constraint_matrix
+from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
 ACTIVE_REFERENCE_COUNT = 13
+
+FIXTURE_FEED_ROWS = (
+    Path(__file__).parent / "fixtures" / "uk_target_reference_feed_rows.jsonl"
+)
 
 
 def _load_uk_resource(name: str) -> dict:
@@ -62,7 +72,13 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         assert reference["measure"] == binding["metric_name"]
         assert reference["family"] == target["family"]
         assert reference["period"] == 2023
-        assert reference["metadata"] == {"contract_target_id": contract_target_id}
+        assert reference["metadata"] == {
+            "contract_target_id": contract_target_id,
+            "measure_kind": "prepared_column",
+        }
+        # The measure is a prepared column, so the pointed-to contract binding
+        # must carry what the microcosm#622 materializer needs to prepare it.
+        assert binding.get("value_variable"), contract_target_id
 
 
 def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
@@ -115,6 +131,78 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
         savings_interest.metadata["ledger_aggregate_fact_key"]
         == "ledger.aggregate_fact.v2:2d8306be080946696b35e1ee"
     )
+
+
+def test_uk_target_references_constrain_a_frame_with_prepared_columns() -> None:
+    """The full active subset compiles into constraint rows, end to end.
+
+    Measures name prepared columns (the US prepared-indicator-column doctrine):
+    the microcosm#622 materializer owns building them from the contract
+    bindings, so this test hand-prepares one column per measure on the
+    reference's entity table and proves the compiled registry constrains a
+    household-weighted frame with zero skipped targets and exact row
+    aggregates.
+    """
+
+    spec = load_country_spec("uk")
+    references = spec.target_references
+    feed_rows = [
+        json.loads(line)
+        for line in FIXTURE_FEED_ROWS.read_text().splitlines()
+        if line.strip()
+    ]
+
+    registry = compile_ledger_target_references(feed_rows, references, country="uk")
+    assert len(registry.specs) == ACTIVE_REFERENCE_COUNT
+
+    n_households = 3
+    weights = np.array([10.0, 20.0, 30.0])
+    household_columns: dict[str, np.ndarray] = {}
+    person_columns: dict[str, np.ndarray] = {}
+    expected_aggregates: dict[str, float] = {}
+    for index, compiled in enumerate(registry.specs):
+        column = np.array([index + 1.0, 2.0 * (index + 1.0), 0.0])
+        columns = (
+            person_columns if compiled.entity == "person" else household_columns
+        )
+        columns[compiled.measure] = column
+        expected_aggregates[f"{compiled.name}@{compiled.period}"] = float(
+            (column * weights).sum()
+        )
+
+    household_ids = np.arange(n_households, dtype="int64")
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": household_ids,
+                    "person_household_id": household_ids,
+                    **person_columns,
+                }
+            ),
+            "household": pd.DataFrame(
+                {"household_id": household_ids, **household_columns}
+            ),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(values=weights, kind=WeightKind.DESIGN)},
+    )
+
+    problem = build_constraint_matrix(frame, registry.to_target_set())
+
+    assert problem.skipped == ()
+    assert len(problem.names) == ACTIVE_REFERENCE_COUNT
+    achieved = problem.matrix @ problem.initial_weights.values
+    for name, estimate in zip(problem.names, achieved, strict=True):
+        assert estimate == expected_aggregates[name], name
+    fact_values_by_name = {
+        f"{compiled.name}@{compiled.period}": compiled.value
+        for compiled in registry.specs
+    }
+    for name, target_value in zip(
+        problem.names, problem.target_vector, strict=True
+    ):
+        assert target_value == fact_values_by_name[name], name
 
 
 def _real_uk_consumer_fact_rows() -> list[dict]:
