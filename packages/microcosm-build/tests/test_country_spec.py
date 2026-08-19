@@ -282,6 +282,8 @@ class TestUKCountryPackage:
             "release_input_coverage_manifest.json",
             "was_wealth_support_bounds.json",
             "uk_local_target_census.json",
+            "uk_national_targets.json",
+            "target_references.json",
         )
 
     def test_uk_source_manifest_loads_eighteen_stages(self) -> None:
