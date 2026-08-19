@@ -21,6 +21,7 @@ target values and effective importance weights its runtime actually consumed.
 from __future__ import annotations
 
 import argparse
+import ctypes
 import gc
 import hashlib
 import json
@@ -263,19 +264,19 @@ PHASE_P_CONFIG: dict[str, object] = {
                 },
             },
             "candidate": {
-                "stacked_authority_version": 11,
+                "stacked_authority_version": 10,
                 "stacked_authority_sha256": (
-                    "5a397d602e3a9549c2ce986eab1e098c47886b597b05c892306ef06757950a71"
+                    "caf83d496a47130efb265f6b7343191ed0b6d5717cbade60596241bc1b292bba"
                 ),
                 "gap_fill_plan_sha256": (
-                    "fdee403f065277448ecd97084c4110cc89304e6586d1717fe60d1669dc5c8af9"
+                    "bc9c27a27917b24bcdbd92092add2a07ce80101f8af2632c8f7b5ca3f3fa92d5"
                 ),
                 "early_target_bank_identity_sha256": {
                     "asec_survey_to_acs": (
-                        "26c20db9b43eecac36776e63047c324667b46c7eb7bfba7037d5fa5ab79cb474"
+                        "b8f1b2a1da938cb4feec18fda91d1134228761656aebbf21ec086ea5b30724e9"
                     ),
                     "asec_housing_to_acs": (
-                        "fa4ad7c7d8cc696d4d1ee7d8b9d6018a84a8a14f905e52f5e0fb494e7f47c21e"
+                        "3afae08b73d0acf7df8222026fd952657baddbb7ea1e3e2288ee76e6ab37d5f2"
                     ),
                 },
             },
@@ -527,6 +528,18 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _release_unused_heap_pages() -> None:
+    """Return freed allocator pages before loading the opposite large arm."""
+
+    if sys.platform != "darwin":
+        return
+    system = ctypes.CDLL("/usr/lib/libSystem.dylib")
+    pressure_relief = system.malloc_zone_pressure_relief
+    pressure_relief.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+    pressure_relief.restype = ctypes.c_size_t
+    pressure_relief(None, 0)
 
 
 def _stable_bucket(value: object, *, namespace: str, buckets: int) -> int:
@@ -1961,8 +1974,10 @@ def measure_arm(
             targets.update(measured)
         del donor
         gc.collect()
+        _release_unused_heap_pages()
     del frame, loaded
     gc.collect()
+    _release_unused_heap_pages()
     return ArmMeasurement(targets=targets, champva_by_origin=incidence)
 
 

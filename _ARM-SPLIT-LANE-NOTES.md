@@ -129,3 +129,33 @@ that owns each arm.
   5 h 50 m, then a fresh controller's first sample, all WAIT).  The host now
   runs supervisor, chain driver (order -> eligibility -> investment), and
   these records directly.
+
+## Arm-gate continuation (2026-08-19)
+
+- State: begin the frozen Phase-P attribution gate from `arm-order` at
+  `236d6061`; its complete candidate artifact is read-only identity
+  `887f2cbdcc7b8e4f4b403b51d06f3eb333a67241bf3c0de78552f00d86e71b6d`.
+- Done: refreshed only the candidate integrity bindings to order authority
+  version 10, authority SHA-256
+  `caf83d496a47130efb265f6b7343191ed0b6d5717cbade60596241bc1b292bba`,
+  gap-fill-plan SHA-256
+  `bc9c27a27917b24bcdbd92092add2a07ce80101f8af2632c8f7b5ca3f3fa92d5`,
+  survey target-bank identity
+  `b8f1b2a1da938cb4feec18fda91d1134228761656aebbf21ec086ea5b30724e9`,
+  and housing target-bank identity
+  `3afae08b73d0acf7df8222026fd952657baddbb7ea1e3e2288ee76e6ab37d5f2`.
+- Done: commit `5ab8d9c2` carries the verified private loader-owned Frame path
+  used by the eligibility measurement. The gate also returns freed Darwin
+  allocator pages at existing collection boundaries. These resource-only
+  corrections do not alter an estimand, model, fold, seed, bootstrap,
+  threshold, band, battery, or clause. Gate SHA-256 is
+  `319cd4292577c5c88322fcfe6205e176a354094950b98ca45047f7f2bb320ca1`.
+- Verification: Ruff passed the changed gate and loader files; all 44 Frame
+  bundle tests passed. The order artifact's 117 materialized target records
+  use the original strict ten-key rebuilt receipt variant.
+- Fixed boundary: baseline remains read-only identity
+  `9be8ecdf82356f38998e8b620ee36d9134f554fe89a8eafd8406f438e2b5aad6`;
+  no build, network, push, `PROGRESS.md` edit, or pending-chain access occurs.
+- Next: commit this gate binding, run it serially under the 19.5-GiB stop
+  guard, and accept only complete 32-family/118-target/74-money/211-leg
+  evidence with kernel `ru_maxrss` below 20 GiB.
