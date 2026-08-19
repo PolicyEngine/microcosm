@@ -243,6 +243,18 @@ def e5_identity_receipt(
     person = frame.table("person")
     benunit = frame.table("benunit")
     household = frame.table("household")
+    # Scope to the FRS spine rows: the SPI channel stages stack synthetic
+    # households AFTER the E5 stages ran (with their own channel-imputed
+    # property values), so the deterministic-layer identity claims apply
+    # only to the population the wealth and uprating stages actually saw.
+    # The stacked rows are E7's receipt surface, not E5's.
+    if "household_is_spi_synthetic" in household.columns:
+        spine_mask = ~household["household_is_spi_synthetic"].astype(bool)
+        household = household.loc[spine_mask].reset_index(drop=True)
+        spine_household_ids = set(household["household_id"].tolist())
+        person = person.loc[
+            person["person_household_id"].isin(spine_household_ids)
+        ].reset_index(drop=True)
     original = recompute(person, benunit, household)
     rng = np.random.default_rng(permutation_seed)
     permuted = recompute(
