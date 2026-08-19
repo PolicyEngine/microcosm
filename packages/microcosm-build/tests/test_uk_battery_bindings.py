@@ -282,6 +282,46 @@ class TestUKSurfaceAdapter:
 
         assert result.passed is True
 
+    def test_support_binding_passes_in_range_was_outputs(self) -> None:
+        person, benunit, household = _tables(n=2)
+        household["owned_land"] = [0.0, 100.0]
+        household["cash_isa"] = [0.0, 1000.0]
+        person["student_loan_balance"] = [0.0, 100.0]
+        frame = uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household,
+            time_period="2023",
+        )
+        binding = UK_GATE_REGISTRY["support"]
+
+        result = binding.evaluate(
+            EvidenceContext(frame=frame, artifacts={}),
+            {"support_bounds_resource": "was_wealth_support_bounds.json"},
+        )
+
+        assert result.passed is True
+        assert result.details["columns_checked"] == 3
+
+    def test_support_binding_fails_out_of_range_was_outputs(self) -> None:
+        person, benunit, household = _tables(n=1)
+        household["cash_isa"] = [99_999_999.0]
+        frame = uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household,
+            time_period="2023",
+        )
+        binding = UK_GATE_REGISTRY["support"]
+
+        result = binding.evaluate(
+            EvidenceContext(frame=frame, artifacts={}),
+            {"support_bounds_resource": "was_wealth_support_bounds.json"},
+        )
+
+        assert result.passed is False
+        assert "cash_isa" in result.failures[0]
+
 
 class TestUKCompatibility:
     """The BE plumbing test, run over the UK spec: an empty evidence context
@@ -336,9 +376,9 @@ class TestBatteryRegressions:
             entry_id for entry_id, o in by_id.items() if o.status is GateStatus.PASSED
         ]
         # 11 as on main (uk_nonnegative_columns passes with zero required
-        # columns — the scheduled stages declare none) plus the two E4
-        # stochastic gates; their evaluators have direct tests of their own.
-        assert len(passed) == 13
+        # columns — the scheduled stages declare none), the two E4 stochastic
+        # gates, and the E5 support gate; their evaluators have direct tests.
+        assert len(passed) == 14
         qrf = by_id["uk_qrf_tail_concentration"]
         assert qrf.status is GateStatus.FAILED
         assert "declared QRF output is absent" in qrf.result.failures[0]

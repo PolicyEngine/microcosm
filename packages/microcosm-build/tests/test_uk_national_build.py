@@ -381,6 +381,78 @@ class _RecordedFitStage:
         return frame
 
 
+class _WASRecordedFitStage:
+    fit_weight_records = (
+        FitWeightRecord("uk_was_2018_20_wealth:owned_land", "explicit"),
+        FitWeightRecord("uk_was_2018_20_wealth:cash_isa", "explicit"),
+    )
+
+    def __call__(self, frame: Frame) -> Frame:
+        return frame
+
+
+def test_stage_fit_weight_records_aggregates_every_fitting_stage() -> None:
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.national_build import _stage_fit_weight_records
+
+    plain = SimpleNamespace(name="frs_take_up", transform=lambda frame: frame)
+    hmrc = SimpleNamespace(name="hmrc_spi_income", transform=_RecordedFitStage())
+    was = SimpleNamespace(name="was_wealth", transform=_WASRecordedFitStage())
+
+    assert _stage_fit_weight_records((plain,)) is None
+    # A declared fitting stage with a hollow transform owes evidence: the
+    # failing empty artifact, not a named absence.
+    assert (
+        _stage_fit_weight_records(
+            (SimpleNamespace(name="was_wealth", transform=lambda frame: frame),)
+        )
+        == ()
+    )
+    records = _stage_fit_weight_records((plain, hmrc, was))
+    assert [record.fit_name for record in records] == [
+        "uk_spi_2022_23_income",
+        "uk_frs_only_spi_fill",
+        "uk_was_2018_20_wealth:owned_land",
+        "uk_was_2018_20_wealth:cash_isa",
+    ]
+
+    class _EmptyFitStage:
+        fit_weight_records = ()
+
+        def __call__(self, frame: Frame) -> Frame:
+            return frame
+
+    # A scheduled fitting stage with no records is missing evidence: it must
+    # force the failing empty artifact, never be absorbed by another stage's
+    # records (the audit-bypass the adversarial review flagged).
+    assert (
+        _stage_fit_weight_records(
+            (hmrc, SimpleNamespace(name="was_wealth", transform=_EmptyFitStage()))
+        )
+        == ()
+    )
+
+
+def test_weights_audit_details_carry_the_was_fit_records() -> None:
+    from microcosm.build.gate_battery import EvidenceContext
+    from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
+
+    binding = UK_GATE_REGISTRY["weights_audit"]
+    combined = (
+        *_RecordedFitStage.fit_weight_records,
+        *_WASRecordedFitStage.fit_weight_records,
+    )
+    result = binding.evaluate(
+        EvidenceContext(artifacts={"fit_weight_records": combined}),
+        {},
+    )
+    assert result.passed
+    resolved = result.details["resolved_weight_kinds"]
+    assert resolved["uk_was_2018_20_wealth:owned_land"] == "explicit"
+    assert resolved["uk_was_2018_20_wealth:cash_isa"] == "explicit"
+
+
 def test_national_build_runs_preflight_stages_gate_then_staging_write(
     monkeypatch, tmp_path
 ) -> None:
@@ -930,6 +1002,7 @@ def test_national_build_real_terminal_batch_blocks_incomplete_qrf_before_staging
         "uk_weight_ratio": "passed",
         "uk_weights_audit": "passed",
         "uk_nonnegative_columns": "passed",
+        "uk_support": "passed",
         "uk_take_up_signal": "passed",
         "uk_brma_enum_domain": "passed",
         # The legacy report omitted unevidenced gates; the battery names

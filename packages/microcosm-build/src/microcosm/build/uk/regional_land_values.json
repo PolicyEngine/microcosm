@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "country": "uk",
+  "policy": "Public regional land-value reference for deterministic post-WAS property uprating.",
+  "source": {
+    "provenance": "Incumbent public regional_land_values.csv re-homed as a JSON country-package resource for Microcosm. Values combine MHCLG dwellings and ONS UK House Price Index average prices for December 2025.",
+    "citation_urls": [
+      "https://www.gov.uk/government/collections/dwelling-stock-including-vacants",
+      "https://www.ons.gov.uk/economy/inflationandpriceindices/bulletins/housepriceindex/december2025"
+    ]
+  },
+  "values": [
+    {
+      "region": "NORTH_EAST",
+      "avg_house_price": 165257,
+      "dwellings": 1280700
+    },
+    {
+      "region": "NORTH_WEST",
+      "avg_house_price": 217428,
+      "dwellings": 3441730
+    },
+    {
+      "region": "YORKSHIRE",
+      "avg_house_price": 208447,
+      "dwellings": 2530680
+    },
+    {
+      "region": "EAST_MIDLANDS",
+      "avg_house_price": 243632,
+      "dwellings": 2213820
+    },
+    {
+      "region": "WEST_MIDLANDS",
+      "avg_house_price": 246141,
+      "dwellings": 2619300
+    },
+    {
+      "region": "EAST_OF_ENGLAND",
+      "avg_house_price": 338002,
+      "dwellings": 2841060
+    },
+    {
+      "region": "LONDON",
+      "avg_house_price": 551294,
+      "dwellings": 3813790
+    },
+    {
+      "region": "SOUTH_EAST",
+      "avg_house_price": 378800,
+      "dwellings": 4138200
+    },
+    {
+      "region": "SOUTH_WEST",
+      "avg_house_price": 301226,
+      "dwellings": 2683030
+    },
+    {
+      "region": "WALES",
+      "avg_house_price": 214883,
+      "dwellings": 1476690
+    },
+    {
+      "region": "SCOTLAND",
+      "avg_house_price": 190649,
+      "dwellings": 2602545
+    }
+  ],
+  "chronicle": [
+    "2026-08-18: added for microcosm#681 E5 WAS wealth and regional property uprating."
+  ]
+}

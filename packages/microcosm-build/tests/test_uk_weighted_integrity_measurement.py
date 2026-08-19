@@ -14,7 +14,10 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
+
+from microcosm.build.uk_runtime.national_frame import uk_national_frame
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -133,3 +136,31 @@ def test_minimum_count_below_the_standard_floor_is_refused(
 def test_default_minimum_count_follows_the_secondary_disclosure_advice() -> None:
     assert MEASUREMENT.DEFAULT_SDC_MINIMUM_COUNT == 10
     assert all(k >= 10 for k in MEASUREMENT.DEFAULT_TOP_K_GRID)
+
+
+def test_household_grain_was_tail_columns_use_household_weights() -> None:
+    frame = uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2],
+                "person_benunit_id": [1, 2],
+                "person_household_id": [10, 20],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame(
+            {
+                "household_id": [10, 20],
+                "household_weight": [2.0, 3.0],
+                "owned_land": [100.0, 200.0],
+                "cash_isa": [10.0, 20.0],
+            }
+        ),
+        time_period="2023",
+    )
+
+    values, weights = MEASUREMENT.household_tail_concentration_columns(frame)
+
+    assert values["owned_land"].tolist() == [100.0, 200.0]
+    assert weights["owned_land"].tolist() == [2.0, 3.0]
+    assert values["cash_isa"].tolist() == [10.0, 20.0]
