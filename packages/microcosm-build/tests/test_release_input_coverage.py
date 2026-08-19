@@ -732,6 +732,23 @@ class TestShippedManifest:
         # SSI assets must stay hard requirements.
         assert_release_input_coverage_manifest_current()
 
+    def test_provisional_passive_input_may_precede_engine_registry(self) -> None:
+        manifest = load_release_input_coverage_manifest()
+        for engine_has_passive_input in (False, True):
+            variables = set(manifest.declared_columns)
+            if not engine_has_passive_input:
+                variables.remove("passive_partnership_s_corp_income")
+            engine = type(
+                "FixtureVariableRegistry",
+                (),
+                {"variables": lambda _self, _variables=variables: sorted(_variables)},
+            )()
+
+            assert_release_input_coverage_manifest_current(
+                engine=engine,
+                manifest=manifest,
+            )
+
     def test_medicare_part_b_plural_names_are_deliberate_nonrequirements(
         self,
     ) -> None:

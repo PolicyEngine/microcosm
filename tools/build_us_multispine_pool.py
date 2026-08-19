@@ -155,6 +155,9 @@ from microcosm.build.us_runtime.qbi_inputs import (
     us_qbi_reconciliation_contract_identity,
     validate_us_qbi_reconciliation_live_output,
 )
+from microcosm.build.us_runtime.qbi_passive_passthrough import (
+    us_qbi_passive_passthrough_contract_identity,
+)
 from microcosm.build.us_runtime.stacked_spine import (
     CANONICAL_STACKED_GAP_FILL_SURFACE,
     CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE,
@@ -963,6 +966,9 @@ def _pool_checkpoint_base_identity(
             ),
             "late_producer_schedule": _json_ready(us_late_producer_schedule_receipt()),
             "derive_operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
+            "us_qbi_passive_passthrough_contract": (
+                us_qbi_passive_passthrough_contract_identity()
+            ),
             "primary_qrf_target_order": list(PRIMARY_QRF_TARGET_ORDER),
             "transfer_target_families": _json_ready(pool_transfer_target_families()),
             "take_up_contract": take_up_contract_identity(),
@@ -1129,6 +1135,9 @@ def _stacked_checkpoint_base_identity(
             ),
             "us_qbi_reconciliation_contract": (
                 us_qbi_reconciliation_contract_identity()
+            ),
+            "us_qbi_passive_passthrough_contract": (
+                us_qbi_passive_passthrough_contract_identity()
             ),
             "take_up_contract": take_up_contract_identity(),
             "puf_capital_gains_tail_manifest_schema_version": (

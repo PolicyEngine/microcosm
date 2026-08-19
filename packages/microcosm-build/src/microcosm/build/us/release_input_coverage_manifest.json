@@ -298,6 +298,10 @@
   "partnership_s_corp_income_would_be_qualified": {
    "status": "required"
   },
+  "passive_partnership_s_corp_income": {
+   "note": "Section 469 passive subset of partnership and S-corporation income, assigned by the provisional SCF-shaped sibling stage for the NIIT base. Required with no reviewed exclusion so release publication cannot silently drop the new engine input.",
+   "status": "required"
+  },
   "pre_subsidy_care_expenses": {
    "note": "Adult/disabled-dependent care expense leaf of the section 21 CDCC (PolicyEngine/microcosm#451 item 1), written by the adult_care_inputs base-builder stage: without it every CDCC reform binding through adult care scores exactly $0 (the #368 absent-input class). Currently absent — the intended red gate until the next base rebuild carries the stage through.",
    "status": "required"
@@ -534,11 +538,11 @@
   }
  },
  "counts": {
-  "required": 163,
+  "required": 164,
   "reviewed_exclusion": 7,
-  "total": 170
+  "total": 171
  },
- "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, and the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/microcosm#462). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/microcosm#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
+ "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, the #722 passive pass-through NIIT input, and the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/microcosm#462). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/microcosm#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (microcosm.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",
  "issue": "PolicyEngine/microcosm#368",
  "reference": {

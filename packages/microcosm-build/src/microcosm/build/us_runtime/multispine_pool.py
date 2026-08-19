@@ -83,6 +83,10 @@ from microcosm.build.us_runtime.qbi_inputs import (
     validate_us_qbi_reconciliation_transition,
     with_us_qbi_input_reconciliation,
 )
+from microcosm.build.us_runtime.qbi_passive_passthrough import (
+    US_QBI_PASSIVE_PASSTHROUGH_PERSON_INPUT_COLUMNS,
+    with_us_qbi_passive_passthrough_assignment,
+)
 from microcosm.build.us_runtime.relationship_inputs import (
     with_us_relationship_inputs,
 )
@@ -231,9 +235,10 @@ pre-clone derivation and a post-clone PUF-imputation pass.
 
 POOL_DERIVE_OPERATOR_ORDER = (
     "_complete_schedule_d_input",
+    "with_us_qbi_passive_passthrough_assignment",
     "with_us_qbi_input_reconciliation",
 )
-"""Whole-pool deterministic operators owned by the derive stage."""
+"""Whole-pool post-transfer operators owned by the derive stage."""
 
 POOL_RANDOM_SEED = 0
 """Fixed seed shared by pool imputations and seeded input stages."""
@@ -345,9 +350,9 @@ POOL_ENGINE_INPUT_PROJECTION_CONTRACT = PoolEngineInputProjectionContract(
 """Exact installed input registry scanned by the disposable projection."""
 
 POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
-    "8247a93e5f8f63d3ae71c1de681c29524d4bb8f07e3c6a50dcaf431b1377020f"
+    "4ec692e3262f396ebacd6144c900b31ef2ae3eabc1062f38e6db6d3ab6f433fa"
 )
-"""Pinned content digest of all 993 post-transfer consumer/input rows."""
+"""Pinned content digest of all 997 post-transfer consumer/input rows."""
 
 
 @dataclass(frozen=True)
@@ -600,6 +605,13 @@ POOL_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
         "transferred tax-unit parents exist only on the physically cloned pool",
         execution_scope=_WHOLE_POOL_EXECUTION_SCOPE,
     ),
+    "with_us_qbi_passive_passthrough_assignment": SourceOperatorContract(
+        "qbi_passive_passthrough",
+        (_POST_CLONE_PHASE,),
+        "the independent seeded passive share draw consumes transferred "
+        "Schedule E components before legacy QBI identity reconciliation",
+        execution_scope=_WHOLE_POOL_EXECUTION_SCOPE,
+    ),
     "with_us_qbi_input_reconciliation": SourceOperatorContract(
         "qbi_reconciliation",
         (_POST_CLONE_PHASE,),
@@ -607,7 +619,7 @@ POOL_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
         execution_scope=_WHOLE_POOL_EXECUTION_SCOPE,
     ),
 }
-"""Total clone-phase registry for all 23 pool-path operator kernels."""
+"""Total clone-phase registry for all 24 pool-path operator kernels."""
 
 POOL_SOURCE_OPERATOR_CONTRACTS = POOL_OPERATOR_CONTRACTS
 """Backward-compatible name for the now-total pool operator registry."""
@@ -1079,7 +1091,7 @@ def pool_remaining_stage_input_manifest(
     """Enumerate and statically provision every remaining-stage data read.
 
     The manifest starts at a validated ``transferred`` checkpoint and covers
-    tail preparation, both derive kernels, all thirteen seed-program branches,
+    tail preparation, all three derive kernels, all thirteen seed-program branches,
     and the terminal SSI simulation.  Simulation leaves come from the pinned
     source-index graph rather than a handwritten dependency list.
     """
@@ -1186,6 +1198,17 @@ def pool_remaining_stage_input_manifest(
         available_by="transferred",
         fallback="derive_from_finite_transferred_parents",
     )
+
+    for variable in US_QBI_PASSIVE_PASSTHROUGH_PERSON_INPUT_COLUMNS:
+        register(
+            "derive",
+            "with_us_qbi_passive_passthrough_assignment",
+            "person",
+            variable,
+            execution_scope="whole_pool",
+            provision=surface_provision(variable),
+            available_by="transferred",
+        )
 
     for variable in US_QBI_RECONCILED_PERSON_COLUMNS:
         register(
@@ -2806,12 +2829,13 @@ def _frame_row_counts(frame: Frame) -> dict[str, int]:
 
 
 def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
-    """Complete deterministic post-transfer inputs without reading a spine.
+    """Complete post-transfer inputs without reading a source-spine label.
 
     Schedule D capital-gain distributions are derived once per tax unit from
     the transferred parent inputs, then carried by the first person only when
     the unit has no pre-existing values. Existing non-null values are never
-    rewritten. The shared QBI reconciliation then restores its documented
+    rewritten. The independent passive pass-through stream then assigns the
+    NIIT input before shared QBI reconciliation restores its documented
     all-or-nothing identities on the imputed PUF-detail surface.
     """
 
@@ -2837,11 +2861,18 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
         operator_names=POOL_DERIVE_OPERATOR_ORDER,
         operators={
             "_complete_schedule_d_input": _complete_schedule_d_input,
+            "with_us_qbi_passive_passthrough_assignment": lambda input_frame: (
+                with_us_qbi_passive_passthrough_assignment(
+                    input_frame,
+                    seed=POOL_RANDOM_SEED,
+                )
+            ),
             "with_us_qbi_input_reconciliation": reconcile_qbi_with_receipt,
         },
     )
     schedule_d_receipt = completed.receipt["suboperators"][0]["kernel_receipt"]
-    qbi_receipt = completed.receipt["suboperators"][1]["kernel_receipt"]
+    passive_receipt = completed.receipt["suboperators"][1]["kernel_receipt"]
+    qbi_receipt = completed.receipt["suboperators"][2]["kernel_receipt"]
     authorized = bind_us_qbi_reconciliation_transition_authority(
         completed.frame,
         qbi_receipt,
@@ -2859,6 +2890,7 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
             "operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
             "remaining_stage_input_manifest": remaining_stage_manifest_receipt,
             "schedule_d_capital_gain_distributions": schedule_d_receipt,
+            "qbi_passive_passthrough_assignment": passive_receipt,
             "qbi_input_reconciliation": dict(qbi_receipt),
         },
         qbi_transition_authority_sha256=qbi_receipt["sha256"],

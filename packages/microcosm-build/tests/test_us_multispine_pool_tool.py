@@ -2307,6 +2307,9 @@ def test_pool_checkpoint_identity_binds_late_producer_schedule(
         pool_tool.us_late_producer_schedule_receipt()
     )
     assert current["pool_code"]["late_producer_schedule"] == expected_schedule
+    assert current["pool_code"]["us_qbi_passive_passthrough_contract"] == (
+        pool_tool.us_qbi_passive_passthrough_contract_identity()
+    )
 
     changed_schedule = copy.deepcopy(expected_schedule)
     changed_schedule["payload_sha256"] = "0" * 64
@@ -2433,6 +2436,9 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
     assert pool_code["us_qbi_reconciliation_contract"] == (
         pool_tool.us_qbi_reconciliation_contract_identity()
     )
+    assert pool_code["us_qbi_passive_passthrough_contract"] == (
+        pool_tool.us_qbi_passive_passthrough_contract_identity()
+    )
     assert pool_code["remaining_stage_input_manifest"] == (
         pool_tool.pool_remaining_stage_input_manifest_receipt()
     )
@@ -2467,6 +2473,17 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
             lambda: qbi_contract,
         )
         stale_qbi = identity()
+    with monkeypatch.context() as changed:
+        passive_contract = copy.deepcopy(
+            pool_tool.us_qbi_passive_passthrough_contract_identity()
+        )
+        passive_contract["sha256"] = "0" * 64
+        changed.setattr(
+            pool_tool,
+            "us_qbi_passive_passthrough_contract_identity",
+            lambda: passive_contract,
+        )
+        stale_passive = identity()
     with monkeypatch.context() as changed:
         changed.setattr(pool_tool, "PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION", 1)
         stale_tail_schema = identity()
@@ -2531,6 +2548,7 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
             stale_qrf,
             stale_acs,
             stale_qbi,
+            stale_passive,
             stale_tail_schema,
             stale_remaining_manifest,
             stale_tail_contract,
@@ -2538,7 +2556,7 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
             stale_source_asset,
         )
     }
-    assert len(digests) == 9
+    assert len(digests) == 10
 
     # Positive control: discovery accepts the exact current semantic identity
     # under the same fixture engine version used to construct it.
@@ -3259,9 +3277,10 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # checkpoint metadata).
         "pool_h5": "ced797ecdd44a638c2a3945f07ad612098a7095ca53a5f458699bca6d6e38b3e",
         "agreement": "f39f0d918bf7ee01dddb5517d8830b8adb541273c5be084307be91397caca3cb",
-        # Exact pre-#653 schema-4/materializer-3 publication bytes from
-        # preserved #652 commit 54d2dee6.
-        "manifest": "14e6b3a409dfe2108253668a65ed32c0365b246f379ad895d8441c939adde65e",
+        # The payload and agreement bytes remain exact; only the publication
+        # manifest changes because #722 content-binds the passive sibling's
+        # evidence, assumptions, and independent RNG contract.
+        "manifest": "79ca1fd98a1aa4ad9f6b8d2b7d840ae7b80fc19bf5f6bd27e6b1904bf0f4ed94",
     }
 
 

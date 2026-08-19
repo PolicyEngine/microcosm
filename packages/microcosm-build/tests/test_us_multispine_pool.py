@@ -84,6 +84,10 @@ from microcosm.build.us_runtime.qbi_inputs import (
     us_qbi_reconciliation_change_receipt,
     with_us_qbi_input_reconciliation,
 )
+from microcosm.build.us_runtime.qbi_passive_passthrough import (
+    US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN,
+    US_QBI_PASSIVE_PASSTHROUGH_PERSON_INPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.spine_agreement import (
     SpineAgreementSpec,
     default_spine_agreement_registry,
@@ -1429,6 +1433,10 @@ def test_remaining_stage_manifest_covers_every_derive_read() -> None:
             ("person", "schedule_d_capital_gain_distributions"),
             ("tax_unit", "tax_unit_id"),
         },
+        "with_us_qbi_passive_passthrough_assignment": {
+            ("person", variable)
+            for variable in US_QBI_PASSIVE_PASSTHROUGH_PERSON_INPUT_COLUMNS
+        },
         "with_us_qbi_input_reconciliation": {
             *{("person", variable) for variable in US_QBI_OUTPUT_COLUMNS},
             ("person", "self_employment_income_before_lsr"),
@@ -1643,9 +1651,9 @@ def test_simulation_projection_defaults_match_pinned_engine_surface() -> None:
 def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     manifest = pool_remaining_stage_input_manifest(_installed_variable_metadata_index())
 
-    assert len(manifest) == 993
+    assert len(manifest) == 997
     assert Counter(entry.stage for entry in manifest) == Counter(
-        {"derive": 34, "seed": 29, "simulate": 930}
+        {"derive": 38, "seed": 29, "simulate": 930}
     )
     assert len(
         {
@@ -1658,9 +1666,9 @@ def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     receipt = pool_remaining_stage_input_manifest_receipt(
         _installed_variable_metadata_index()
     )
-    assert receipt["entry_count"] == 993
+    assert receipt["entry_count"] == 997
     assert receipt["stage_counts"] == {
-        "derive": 34,
+        "derive": 38,
         "seed": 29,
         "simulate": 930,
     }
@@ -2983,8 +2991,8 @@ def test_production_operator_invocations_are_total_and_guarded(
         for phase in contract.phases
     }
     assert observed_placements == registered_placements
-    assert len({name for name, _phase in observed_placements}) == 23
-    assert len(observed_placements) == 24
+    assert len({name for name, _phase in observed_placements}) == 24
+    assert len(observed_placements) == 25
 
 
 def test_derive_stage_rejects_preclone_pool_before_kernels(
@@ -3011,6 +3019,11 @@ def test_derive_stage_rejects_preclone_pool_before_kernels(
         "with_us_qbi_input_reconciliation",
         unexpected_kernel,
     )
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "with_us_qbi_passive_passthrough_assignment",
+        unexpected_kernel,
+    )
 
     with pytest.raises(ValueError, match="post_clone.*incompatible clone provenance"):
         multispine_pool_module.derive_multispine_pool_inputs(assembled)
@@ -3032,15 +3045,19 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
     person["self_employment_income_before_lsr"] = 10.0
     person["SEMP"] = 10.0
     person["sstb_self_employment_income_before_lsr"] = 5.0
+    person["partnership_income"] = 100.0
+    person["s_corp_income"] = 0.0
+    person["rental_income"] = 0.0
+    person["estate_income"] = 0.0
     frame = _replace_person(frame, person)
 
     result = multispine_pool_module.derive_multispine_pool_inputs(frame)
     derived = result.frame.table("person")
 
     assert result.receipt["operator_order"] == list(POOL_DERIVE_OPERATOR_ORDER)
-    assert result.receipt["remaining_stage_input_manifest"]["entry_count"] == 993
+    assert result.receipt["remaining_stage_input_manifest"]["entry_count"] == 997
     assert result.receipt["remaining_stage_input_manifest"]["stage_counts"] == {
-        "derive": 34,
+        "derive": 38,
         "seed": 29,
         "simulate": 930,
     }
@@ -3060,8 +3077,27 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
         == 0
     )
     assert derived["schedule_d_capital_gain_distributions"].notna().all()
+    assert US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN in derived
     assert derived["self_employment_income_before_lsr"].eq(15.0).all()
     assert derived["sstb_self_employment_income_before_lsr"].eq(0.0).all()
+
+
+def test_passive_assignment_preserves_archived_qbi_leaf_bytes() -> None:
+    pytest.importorskip("policyengine_us")
+    frame = _qbi_ready_derive_frame()
+    without_passive = with_us_qbi_input_reconciliation(
+        _complete_schedule_d_input(frame).frame
+    ).table("person")
+
+    with_passive = multispine_pool_module.derive_multispine_pool_inputs(
+        frame
+    ).frame.table("person")
+
+    for column in US_QBI_OUTPUT_COLUMNS:
+        np.testing.assert_array_equal(
+            with_passive[column].to_numpy(),
+            without_passive[column].to_numpy(),
+        )
 
 
 def _qbi_ready_derive_frame() -> Frame:
@@ -3078,6 +3114,10 @@ def _qbi_ready_derive_frame() -> Frame:
     person["self_employment_income_before_lsr"] = 10.0
     person["SEMP"] = 10.0
     person["sstb_self_employment_income_before_lsr"] = 5.0
+    person["partnership_income"] = 100.0
+    person["s_corp_income"] = 0.0
+    person["rental_income"] = 0.0
+    person["estate_income"] = 0.0
     return _replace_person(frame, person)
 
 

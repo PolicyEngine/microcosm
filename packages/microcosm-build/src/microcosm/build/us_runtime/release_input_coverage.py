@@ -76,6 +76,9 @@ from microcosm.build.us_runtime.prior_year_income import (
     US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS,
 )
 from microcosm.build.us_runtime.qbi_inputs import US_QBI_OUTPUT_COLUMNS
+from microcosm.build.us_runtime.qbi_passive_passthrough import (
+    US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN,
+)
 from microcosm.build.us_runtime.relationship_inputs import (
     US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS,
 )
@@ -109,6 +112,7 @@ __all__ = [
     "US_CGD_ROUTE_REQUIRED_INPUTS",
     "US_RELEASE_INPUT_COVERAGE_RESOURCE",
     "POST_REFERENCE_ECPS_REQUIRED_INPUTS",
+    "PROVISIONAL_PENDING_ENGINE_INPUTS",
     "RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS",
     "ReformCoverageProbe",
     "ReleaseInputColumn",
@@ -149,7 +153,15 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         "is_incapable_of_self_care",
         "health_insurance_premiums",
         "is_self_employed",
+        US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN,
     }
+)
+
+# The source column ships ahead of the engine release that consumes it. Keep
+# this exception exact and short-lived: once PolicyEngine-US #9306 is in the
+# installed registry, subtracting it below is a no-op.
+PROVISIONAL_PENDING_ENGINE_INPUTS = frozenset(
+    {US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN}
 )
 
 # Populated inputs in the frozen reference that have been restored from their
@@ -645,9 +657,10 @@ def assert_release_input_coverage_manifest_current(
       reflected here.
     - The three SSI countable-resource asset inputs must be ``required`` with no
       reviewed exclusion — the #368 red-gate guarantee cannot be quietly undone.
-    - Every declared column must be a real PolicyEngine-US input leaf, and every
-      probe's ``binding_inputs`` / ``budget_measure`` must resolve on the live
-      engine, so the contract cannot guard names the engine no longer has.
+    - Every declared column must be a real PolicyEngine-US input leaf, apart
+      from the exact provisional #722 input shipping ahead of its engine
+      release, and every probe's ``binding_inputs`` must resolve on the live
+      engine, so the contract cannot otherwise guard names the engine lacks.
 
     A no-op for the engine-graph half when no engine is available (the workspace
     test environment); the checked-in-facts half always runs.
@@ -704,6 +717,13 @@ def assert_release_input_coverage_manifest_current(
                 "required manifest column (#462)."
             )
 
+    for column in PROVISIONAL_PENDING_ENGINE_INPUTS:
+        if column in reviewed or column not in required:
+            failures.append(
+                f"{column}: provisional pending engine input must remain a hard "
+                "requirement with no reviewed exclusion (#722)."
+            )
+
     for column in RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS:
         if column in reviewed:
             failures.append(
@@ -723,7 +743,9 @@ def assert_release_input_coverage_manifest_current(
         except ImportError:
             input_variables = None
         if input_variables is not None:
-            non_leaves = sorted(declared - input_variables)
+            non_leaves = sorted(
+                declared - input_variables - PROVISIONAL_PENDING_ENGINE_INPUTS
+            )
             if non_leaves:
                 failures.append(
                     "manifest declares column(s) that are not PolicyEngine-US "

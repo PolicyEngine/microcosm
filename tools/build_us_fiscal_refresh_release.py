@@ -87,6 +87,7 @@ from microcosm.build.us_runtime import (
     US_JCT_TAX_EXPENDITURE_REFORMS,
     US_MEDICAID_ENROLLMENT_TARGET_TABLE,
     US_MEDICAID_TAKE_UP_VARIABLE,
+    US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN,
     US_SOURCE_MANIFEST,
     apply_us_medicaid_enrollment_substitutions,
     assert_release_input_coverage_manifest_current,
@@ -184,6 +185,7 @@ from microcosm.build.us_runtime import (
     with_us_other_health_insurance_inputs,
     with_us_pregnancy_inputs,
     with_us_qbi_input_reconciliation,
+    with_us_qbi_passive_passthrough_assignment,
     with_us_relationship_inputs,
     with_us_retirement_contribution_inputs,
     with_us_retirement_distribution_inputs,
@@ -244,6 +246,7 @@ from microcosm.build.us_runtime.puf_capital_gains_tail import (
     assert_puf_capital_gains_tail_survives_selection,
 )
 from microcosm.build.us_runtime.reform_validation import (
+    administrative_aggregate_diagnostic_specs,
     default_baseline_level_specs,
     default_simulate_factory,
     load_default_reform_specs,
@@ -3160,6 +3163,18 @@ def _with_aca_marketplace_source_outputs(
         {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
         frame.strata,
     )
+
+
+def _with_qbi_passive_passthrough_if_missing(
+    frame: Frame,
+    *,
+    seed: int,
+) -> Frame:
+    """Assign the sibling NIIT input only for a legacy support artifact."""
+
+    if US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN in frame.table("person"):
+        return frame
+    return with_us_qbi_passive_passthrough_assignment(frame, seed=seed)
 
 
 def _medicaid_source_target_table(target_specs: tuple) -> pd.DataFrame:
@@ -7257,7 +7272,8 @@ def _write_reform_validation(
     In-sample JCT tax-expenditure reforms come straight from the calibration
     fit; out-of-sample OBBBA provisions are simulated on the freshly written
     release H5 (skipped if ``simulate_out_of_sample`` is False, e.g. for a fast
-    diagnostics-only build).
+    diagnostics-only build). Administrative aggregate diagnostics use the same
+    optional baseline simulation and remain non-gating.
     """
     specs = load_default_reform_specs(period=PERIOD)
     if not simulate_out_of_sample:
@@ -7267,9 +7283,11 @@ def _write_reform_validation(
                     "",
                     "!" * 72,
                     "WARNING: --skip-out-of-sample-reforms is set.",
-                    "reform_validation.json will publish the in-sample JCT rows only;",
+                    "reform_validation.json will publish modeled values for in-sample",
+                    "JCT rows only;",
                     "every out-of-sample (OBBBA / tax-expenditure) row will have a null",
-                    "budget effect and the dashboard will show no fidelity test for them.",
+                    "budget effect, and administrative aggregate rows will have a null",
+                    "modeled total. The dashboard will show no fidelity test for them.",
                     "Do NOT use this for a publishable release.",
                     "!" * 72,
                     "",
@@ -7287,6 +7305,9 @@ def _write_reform_validation(
         in_sample_estimates=_in_sample_estimates(result),
         in_sample_targets=_in_sample_targets(result),
         baseline_levels=default_baseline_level_specs(),
+        administrative_aggregate_diagnostics=(
+            administrative_aggregate_diagnostic_specs()
+        ),
         release_id=release_id,
     )
     write_reform_validation(payload, release_dir / "reform_validation.json")
@@ -8668,6 +8689,10 @@ def main(argv: Sequence[str] | None = None) -> None:
             )
         )
     if pool_frame is None:
+        base_frame = _with_qbi_passive_passthrough_if_missing(
+            base_frame,
+            seed=args.seed,
+        )
         base_frame = with_us_qbi_input_reconciliation(base_frame)
     qbi_inputs_gate = us_qbi_inputs_signal_gate(base_frame)
     if not qbi_inputs_gate.passed:

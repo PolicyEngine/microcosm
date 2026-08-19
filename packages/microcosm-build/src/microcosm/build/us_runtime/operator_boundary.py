@@ -74,6 +74,9 @@ from microcosm.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
 )
 from microcosm.build.us_runtime.qbi_inputs import US_QBI_RECONCILED_PERSON_COLUMNS
+from microcosm.build.us_runtime.qbi_passive_passthrough import (
+    US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN,
+)
 from microcosm.build.us_runtime.relationship_inputs import (
     US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS,
 )
@@ -319,6 +322,9 @@ PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
     },
     "qbi_reconciliation": {
         "person": frozenset(US_QBI_RECONCILED_PERSON_COLUMNS),
+    },
+    "qbi_passive_passthrough": {
+        "person": frozenset({US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN}),
     },
     "housing_assistance": {
         "spm_unit": frozenset(
