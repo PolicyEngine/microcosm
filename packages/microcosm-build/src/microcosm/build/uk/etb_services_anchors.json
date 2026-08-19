@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "country": "uk",
+  "source": {
+    "citation": "DfT rail fare index and NHS 2025/26 budget anchor.",
+    "chronicle_candidate": true
+  },
+  "rail_fare_index_2023": {
+    "value": 1.11,
+    "period": 2023,
+    "parameter_path": "gov.dft.rail.fare_index"
+  },
+  "nhs_budget_2025_26": {
+    "value": 202000000000,
+    "citation": "NHS 2025/26 budget used by incumbent services allocation."
+  },
+  "chronicle": [
+    "E6 committed ETB services and NHS anchors."
+  ]
+}

@@ -103,7 +103,8 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
             "between adjacent seeds, the same realization-variance class "
             "the archived incumbent data repo records at uk-data#448 (4.6x "
             "Wales swing across releases). Register parity at this grain "
-            "is not meaningful until the whole-spine comparison; the "
+            "is not meaningful "
+            "until the whole-spine comparison; the "
             "one-month expiry enforces the end-of-workstream revisit "
             "registered on microcosm#145 (winsorised donor or separate "
             "land imputation are the candidate remedies)."
@@ -143,13 +144,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "5ddd3da9a52b0dc19ba1c97315f0e4f8acdedf2b74ea29bff512cbdb57de1cab"
+    "91ba70060b87eeca1e35d2aebe2ad79da61e33105b8f1352a2a05846e0780d4b"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "8d58fffe5e6542a7f10578076bbcc943cf587f9f22017ccc630450007b5b6166"
+    "4092f5012cddc4c878ea3a727c09f23212475ca246a4555ecea6f39219656a98"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "b7b645deee1b15750403f98a4c7dac09d6e08440a878b8d1ff83a15e9195b809"
+    "59f050a3a1ef1364107140083d548a873a9494b11472d4e4fd2a86f64ea8bb6b"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
@@ -185,6 +186,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "nonnegative_columns",
     ),
     "uk_support": ("support", "terminal", "support"),
+    "uk_aggregate_admin": ("aggregate_admin", "terminal", "aggregate_vs_admin"),
     "uk_export_surface": ("export_surface", "terminal", "export_surface"),
     "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
     "uk_brma_enum_domain": ("enum_domain", "terminal", "enum_domain"),
@@ -771,6 +773,8 @@ def _terminal_gate_details(name: str) -> dict:
         }
     if name == "support":
         return {"columns_checked": 13}
+    if name == "aggregate_vs_admin":
+        return {"anchors_checked": 3}
     if name == "export_surface":
         return {
             "candidate_columns": 1,

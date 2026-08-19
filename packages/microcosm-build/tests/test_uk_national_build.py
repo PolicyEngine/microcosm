@@ -1003,6 +1003,7 @@ def test_national_build_real_terminal_batch_blocks_incomplete_qrf_before_staging
         "uk_weights_audit": "passed",
         "uk_nonnegative_columns": "passed",
         "uk_support": "passed",
+        "uk_aggregate_admin": "evidence_absent",
         "uk_take_up_signal": "passed",
         "uk_brma_enum_domain": "passed",
         # The legacy report omitted unevidenced gates; the battery names

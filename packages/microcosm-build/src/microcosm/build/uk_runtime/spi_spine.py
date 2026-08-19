@@ -250,6 +250,7 @@ class UKSPIIncomeSpineResult:
 class UKFRSHMRCSpineLeavesStageTransform:
     frs_raw_dir: Path
     stage: SourceStageSpec
+    # Populated only by a live run; resume paths must re-run or skip evidence.
     last_result: UKFRSHMRCSpineLeavesResult | None = field(default=None, init=False)
 
     def __init__(self, frs_raw_dir: str | Path, *, stage: SourceStageSpec) -> None:
@@ -295,11 +296,10 @@ class UKFRSHMRCSpineLeavesStageTransform:
         )
         if employee.isna().any() or (employee < 0.0).any():
             raise ValueError(
-                "employee_pension_contributions must be finite and "
-                "non-negative."
+                "employee_pension_contributions must be finite and non-negative."
             )
-        person[EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN] = (
-            3.0 * employee.to_numpy(dtype=float)
+        person[EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN] = 3.0 * employee.to_numpy(
+            dtype=float
         )
         result_frame = uk_national_frame(
             person=person,
@@ -319,9 +319,7 @@ class UKFRSHMRCSpineLeavesStageTransform:
             frame=result_frame,
             source_signal_rows=source_signal_rows,
             structural_zero_columns=tuple(
-                column
-                for column, rows in source_signal_rows.items()
-                if rows == 0
+                column for column, rows in source_signal_rows.items() if rows == 0
             ),
         )
         object.__setattr__(self, "last_result", result)
@@ -341,6 +339,7 @@ class UKFRSHMRCSpineLeavesStageTransform:
 class UKSPISupportChannelStageTransform:
     stage: SourceStageSpec
     seed: int = 42
+    # Populated only by a live run; resume paths must re-run or skip evidence.
     last_result: UKSPISupportResult | None = field(default=None, init=False)
 
     def __call__(self, frame: Frame) -> Frame:
@@ -363,12 +362,22 @@ class UKSPISupportChannelStageTransform:
             mass_log=frame.mass_log,
             zero_weight_declarations=declarations,
         )
+        if result.household_weight_kind is not WeightKind.IMPORTANCE:
+            got = (
+                None
+                if result.household_weight_kind is None
+                else result.household_weight_kind.value
+            )
+            raise ValueError(
+                "SPI support channel builder must return importance household "
+                f"weights, got {got!r}."
+            )
         result_frame = uk_national_frame(
             person=result.person,
             benunit=result.benunit,
             household=result.household,
             time_period=uk_time_period(frame),
-            weight_kind=result.household_weight_kind or WeightKind.IMPORTANCE,
+            weight_kind=result.household_weight_kind,
             household_weights=result.household["household_weight"].to_numpy(
                 dtype=float
             ),
@@ -407,6 +416,7 @@ class UKSPIIncomeSpineStageTransform:
     seed: int = 42
     qrf_estimators: int = 100
     donor_sample_size: int | None = DEFAULT_SPI_DONOR_SAMPLE_SIZE
+    # Populated only by a live run; resume paths must re-run or skip evidence.
     last_result: UKSPIIncomeSpineResult | None = field(default=None, init=False)
 
     def __init__(
@@ -636,7 +646,9 @@ def _support_stage_parameters(
     if allocation.parameters.get("weight_kind_out") != WeightKind.IMPORTANCE.value:
         raise ValueError("SPI support allocation must advance to importance weights.")
     if allocation.parameters.get("conservation") != "exact_total":
-        raise ValueError("SPI support allocation must declare exact-total conservation.")
+        raise ValueError(
+            "SPI support allocation must declare exact-total conservation."
+        )
     strata = tuple(allocation.parameters.get("strata", ()))
     if strata != ("region",):
         raise ValueError("SPI support spine allocation must use strata ['region'].")
@@ -675,7 +687,10 @@ def _assert_income_stage_parameters(
     if stage1.parameters.get("seed") != seed:
         raise ValueError("SPI income stage-1 seed drifted from the reviewed value.")
     if stage2.parameters.get("seed") != seed + 1:
-        raise ValueError("SPI income stage-2 seed drifted from the reviewed value.")
+        raise ValueError(
+            "SPI income stage-2 seed drifted from the reviewed seed + 1 "
+            "derivation convention."
+        )
     if stage1.parameters.get("n_estimators") not in (None, qrf_estimators):
         raise ValueError("SPI income stage-1 estimator count drifted.")
     if stage2.parameters.get("n_estimators") not in (None, qrf_estimators):
@@ -744,7 +759,9 @@ def _artifact_by_table(
     }
     missing = sorted(set(expected) - set(artifacts))
     if missing:
-        raise ValueError(f"Stage {stage.stage!r} is missing tab artifact(s): {missing}.")
+        raise ValueError(
+            f"Stage {stage.stage!r} is missing tab artifact(s): {missing}."
+        )
     return artifacts
 
 

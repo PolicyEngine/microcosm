@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "country": "uk",
+  "source": {
+    "citation": "NTS 2024 ICE vehicle share, DESNZ pump prices, road-fuel volume/population indices, and PolicyEngine UK CPI parameter paths.",
+    "chronicle_candidate": true
+  },
+  "nts_ice_share": {
+    "value": 0.9,
+    "period": 2024,
+    "citation": "National Travel Survey 2024 vehicle fuel-type share."
+  },
+  "fuel_prices_gbp_per_litre": {
+    "2023": {
+      "petrol": 1.4615903846153844,
+      "diesel": 1.5348538461538461
+    }
+  },
+  "cpi": {
+    "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index",
+    "start_period": 2023,
+    "target_period": 2023
+  },
+  "chronicle": [
+    "E6 committed LCFS consumption anchors with parameter paths for lockstep tests."
+  ]
+}

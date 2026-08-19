@@ -458,6 +458,53 @@
   "weight_source": "household_weight"
  },
  "family_coverage": {
+  "etb_services": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "output_weight_kind": "importance",
+   "outputs": [
+    "dfe_education_spending",
+    "rail_subsidy_spending",
+    "bus_subsidy_spending",
+    "rail_usage",
+    "a_and_e_visits",
+    "admitted_patient_visits",
+    "outpatient_visits",
+    "nhs_a_and_e_spending",
+    "nhs_admitted_patient_spending",
+    "nhs_outpatient_spending"
+   ],
+   "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
+   "rewrites": [],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "6b2a523ba9ca9102560b29c723662908a99e0f7d4733f00c2636b814c92af432",
+   "source_vintages": {
+    "source": "UK Data Service SN 8856 Effects of Taxes and Benefits household tab, DfT rail fare index, and public NHS activity/cost table.",
+    "survey": "Effects of Taxes and Benefits 1977-2024 and NHS age-gender public table"
+   },
+   "stage": "etb_services",
+   "status": "required_at_build"
+  },
+  "etb_vat": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "output_weight_kind": "importance",
+   "outputs": [
+    "full_rate_vat_expenditure_rate"
+   ],
+   "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
+   "rewrites": [],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "6b2a523ba9ca9102560b29c723662908a99e0f7d4733f00c2636b814c92af432",
+   "source_vintages": {
+    "source": "UK Data Service SN 8856 Effects of Taxes and Benefits household tab and cited VAT anchor resource.",
+    "survey": "Effects of Taxes and Benefits 1977-2024"
+   },
+   "stage": "etb_vat",
+   "status": "required_at_build"
+  },
   "hmrc_cgt_gains": {
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
    "base_candidate_tier": "frs",
@@ -563,6 +610,43 @@
    "stage": "hmrc_spi_income",
    "status": "required_at_build"
   },
+  "lcfs_consumption": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "output_weight_kind": "importance",
+   "outputs": [
+    "food_and_non_alcoholic_beverages_consumption",
+    "alcohol_and_tobacco_consumption",
+    "clothing_and_footwear_consumption",
+    "housing_water_and_electricity_consumption",
+    "household_furnishings_consumption",
+    "health_consumption",
+    "transport_consumption",
+    "communication_consumption",
+    "recreation_consumption",
+    "education_consumption",
+    "restaurants_and_hotels_consumption",
+    "miscellaneous_consumption",
+    "petrol_spending",
+    "diesel_spending",
+    "bus_fare_spending",
+    "domestic_energy_consumption",
+    "electricity_consumption",
+    "gas_consumption",
+    "has_fuel_consumption"
+   ],
+   "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
+   "rewrites": [],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "6b2a523ba9ca9102560b29c723662908a99e0f7d4733f00c2636b814c92af432",
+   "source_vintages": {
+    "source": "UK Data Service SN 9468 Living Costs and Food Survey 2023-24 household/person tabs, NEED 2023 headline energy tables, Ofgem Q2 2026 unit rates, and WAS round-8 bridge donor.",
+    "survey": "Living Costs and Food Survey 2023-24"
+   },
+   "stage": "lcfs_consumption",
+   "status": "required_at_build"
+  },
   "regional_property_uprating": {
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
    "base_candidate_tier": "frs",
@@ -575,7 +659,7 @@
     "property_wealth"
    ],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "c8eba47691c3e3b4abe833b2c2816acfc091c7039df5131e3768eb4fce393eb3",
+   "source_manifest_sha256": "6b2a523ba9ca9102560b29c723662908a99e0f7d4733f00c2636b814c92af432",
    "source_vintages": {
     "source": "MHCLG dwellings and ONS UK House Price Index December 2025 regional average prices.",
     "survey": "Public regional property reference"
@@ -606,7 +690,7 @@
    "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "c8eba47691c3e3b4abe833b2c2816acfc091c7039df5131e3768eb4fce393eb3",
+   "source_manifest_sha256": "6b2a523ba9ca9102560b29c723662908a99e0f7d4733f00c2636b814c92af432",
    "source_vintages": {
     "source": "Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed 2006-22 household tab.",
     "survey": "Wealth and Assets Survey round 8"

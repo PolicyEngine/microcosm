@@ -45,6 +45,7 @@ from microcosm.build.gate_battery import (
 )
 from microcosm.build.gates import (
     GateResult,
+    aggregate_admin_gate,
     enum_domain_gate,
     nonnegative_columns_gate,
     support_gate,
@@ -89,6 +90,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     uk_qrf_tail_concentration_columns,
     uk_qrf_tail_concentration_gate,
 )
+from microcosm.calibrate.registry import TargetSpec
 
 __all__ = [
     "UK_GATE_REGISTRY",
@@ -268,22 +270,38 @@ def _evaluate_brma_enum_domain(
 def _evaluate_support(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
-    resource_name = parameters.get("support_bounds_resource")
-    if resource_name != "was_wealth_support_bounds.json":
+    resource_names = parameters.get("support_bounds_resources")
+    if resource_names is None:
+        single = parameters.get("support_bounds_resource")
+        resource_names = [single] if isinstance(single, str) else None
+    if not isinstance(resource_names, (list, tuple)) or not all(
+        isinstance(name, str) for name in resource_names
+    ):
         raise ValueError(
-            "uk_support must declare support_bounds_resource "
-            "'was_wealth_support_bounds.json'."
+            "uk_support must declare support_bounds_resources as a list of "
+            "support-bound resource filenames."
         )
-    resource = json.loads(
-        files("microcosm.build.uk").joinpath(str(resource_name)).read_text()
-    )
-    raw_bounds = resource.get("bounds")
-    if not isinstance(raw_bounds, Mapping):
-        raise ValueError("WAS wealth support-bounds resource is missing bounds.")
-    donor_ranges = {
-        str(column): (float(bounds[0]), float(bounds[1]))
-        for column, bounds in raw_bounds.items()
+    allowed = {
+        "was_wealth_support_bounds.json",
+        "lcfs_consumption_support_bounds.json",
+        "etb_vat_support_bounds.json",
+        "etb_services_support_bounds.json",
     }
+    if set(resource_names) - allowed:
+        raise ValueError(
+            "uk_support declared unknown support-bound resource(s): "
+            f"{sorted(set(resource_names) - allowed)}."
+        )
+    donor_ranges: dict[str, tuple[float, float]] = {}
+    for resource_name in resource_names:
+        resource = json.loads(
+            files("microcosm.build.uk").joinpath(str(resource_name)).read_text()
+        )
+        raw_bounds = resource.get("bounds")
+        if not isinstance(raw_bounds, Mapping):
+            raise ValueError(f"{resource_name} is missing bounds.")
+        for column, bounds in raw_bounds.items():
+            donor_ranges[str(column)] = (float(bounds[0]), float(bounds[1]))
     values: dict[str, np.ndarray] = {}
     for entity in context.frame.entities:
         table = context.frame.table(entity)
@@ -291,6 +309,37 @@ def _evaluate_support(
             if column in table.columns:
                 values.setdefault(column, table[column].to_numpy())
     return support_gate(values, donor_ranges)
+
+
+def _evaluate_aggregate_admin(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    aggregate_artifact = context.artifacts["aggregate_admin"]
+    if not isinstance(aggregate_artifact, Mapping):
+        raise ValueError("aggregate_admin artifact must be a mapping.")
+    anchors_payload = parameters.get("anchors")
+    if not isinstance(anchors_payload, (list, tuple)):
+        raise ValueError("aggregate_admin requires an anchors list.")
+    anchors = tuple(
+        TargetSpec(
+            name=str(anchor["name"]),
+            entity=str(anchor.get("entity", "household")),
+            value=float(anchor["value"]),
+            measure=str(anchor.get("measure", anchor["name"])),
+            period=str(anchor.get("period", "2023")),
+            source=str(anchor["source"]),
+            family=str(anchor.get("family", "uk_admin")),
+            tolerance=(
+                None if anchor.get("tolerance") is None else float(anchor["tolerance"])
+            ),
+        )
+        for anchor in anchors_payload
+    )
+    return aggregate_admin_gate(
+        {str(key): float(value) for key, value in aggregate_artifact.items()},
+        anchors,
+        default_rtol=float(parameters.get("default_rtol", 0.5)),
+    )
 
 
 def _stage_names_evidence(
@@ -698,7 +747,17 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     "support": UKGateBinding(
         name="support",
         evaluator=_evaluate_support,
-        parameter_keys=frozenset({"support_bounds_resource"}),
+        parameter_keys=frozenset(
+            {"support_bounds_resource", "support_bounds_resources"}
+        ),
+    ),
+    "aggregate_admin": UKGateBinding(
+        name="aggregate_admin",
+        evaluator=_evaluate_aggregate_admin,
+        parameter_keys=frozenset({"anchors", "default_rtol"}),
+        artifact_keys=frozenset({"aggregate_admin"}),
+        needs_frame=False,
+        legacy_name="aggregate_vs_admin",
     ),
     "degenerate_release_surface": UKGateBinding(
         name="degenerate_release_surface",

@@ -176,6 +176,11 @@ def _run_battery(tables, *, parity=None, fit_records=None, armed=True, clock=CLO
         artifacts["parity_evidence"] = parity
     if armed:
         artifacts["input_mass_reference"] = _reference()
+        artifacts["aggregate_admin"] = {
+            "need_electricity_mean_spending": 882.91463,
+            "need_gas_mean_spending": 700.3661,
+            "nhs_spending_total": 202_000_000_000,
+        }
     # Small synthetic totals exercise battery behavior without disclosing
     # the licensed 131-column reference (same patch as the legacy tests);
     # the binding's declared-pin check compares spec to runtime constant and
@@ -297,7 +302,14 @@ class TestUKSurfaceAdapter:
 
         result = binding.evaluate(
             EvidenceContext(frame=frame, artifacts={}),
-            {"support_bounds_resource": "was_wealth_support_bounds.json"},
+            {
+                "support_bounds_resources": [
+                    "was_wealth_support_bounds.json",
+                    "lcfs_consumption_support_bounds.json",
+                    "etb_vat_support_bounds.json",
+                    "etb_services_support_bounds.json",
+                ]
+            },
         )
 
         assert result.passed is True
@@ -321,6 +333,66 @@ class TestUKSurfaceAdapter:
 
         assert result.passed is False
         assert "cash_isa" in result.failures[0]
+
+    def test_support_binding_checks_e6_support_resources(self) -> None:
+        person, benunit, household = _tables(n=1)
+        household["full_rate_vat_expenditure_rate"] = [999_999.0]
+        frame = uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=household,
+            time_period="2023",
+        )
+        binding = UK_GATE_REGISTRY["support"]
+
+        result = binding.evaluate(
+            EvidenceContext(frame=frame, artifacts={}),
+            {"support_bounds_resources": ["etb_vat_support_bounds.json"]},
+        )
+
+        assert result.passed is False
+        assert "full_rate_vat_expenditure_rate" in result.failures[0]
+
+    def test_aggregate_admin_binding_checks_declared_anchors(self) -> None:
+        binding = UK_GATE_REGISTRY["aggregate_admin"]
+
+        result = binding.evaluate(
+            EvidenceContext(
+                frame=None,
+                artifacts={
+                    "aggregate_admin": {
+                        "need_electricity_mean_spending": 882.91463,
+                        "nhs_spending_total": 202_000_000_000,
+                    }
+                },
+            ),
+            {
+                "default_rtol": 0.15,
+                "anchors": [
+                    {
+                        "name": "need_electricity_mean_spending",
+                        "entity": "household",
+                        "measure": "electricity_consumption",
+                        "value": 882.91463,
+                        "period": "2023",
+                        "source": "test",
+                        "family": "need_energy",
+                    },
+                    {
+                        "name": "nhs_spending_total",
+                        "entity": "person",
+                        "measure": "nhs_spending",
+                        "value": 202_000_000_000,
+                        "period": "2025_26",
+                        "source": "test",
+                        "family": "nhs",
+                    },
+                ],
+            },
+        )
+
+        assert result.passed is True
+        assert result.details["anchors_checked"] == 2
 
 
 class TestUKCompatibility:
@@ -377,8 +449,9 @@ class TestBatteryRegressions:
         ]
         # 11 as on main (uk_nonnegative_columns passes with zero required
         # columns — the scheduled stages declare none), the two E4 stochastic
-        # gates, and the E5 support gate; their evaluators have direct tests.
-        assert len(passed) == 14
+        # gates, the E5 support gate, and the E6 aggregate-admin gate; their
+        # evaluators have direct tests.
+        assert len(passed) == 15
         qrf = by_id["uk_qrf_tail_concentration"]
         assert qrf.status is GateStatus.FAILED
         assert "declared QRF output is absent" in qrf.result.failures[0]
@@ -433,6 +506,7 @@ class TestUnevidencedArms:
             "uk_target_surface",
             "uk_target_fit",
             "uk_input_mass_parity",
+            "uk_aggregate_admin",
         }
         for reason in absent.values():
             assert reason.startswith("missing evidence: ")

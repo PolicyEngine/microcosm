@@ -653,9 +653,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                             "declarations": [
                                 {
                                     "name": "e7_spi_synthetic_preclone",
-                                    "selector": {
-                                        "household_is_spi_synthetic": True
-                                    },
+                                    "selector": {"household_is_spi_synthetic": True},
                                     "maximum_zero_weight_rows": 10000,
                                     "reason": "synthetic driver fixture",
                                 }
@@ -1100,14 +1098,14 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
             [
                 "--frs-raw-dir",
                 str(raw_dir),
-                    "--spine-h5",
-                    str(output),
-                    "--spi-tab",
-                    str(spi_tab),
-                    "--hmrc-ods",
-                    str(hmrc_ods),
-                    "--emit-nonzero-shares",
-                    str(shares),
+                "--spine-h5",
+                str(output),
+                "--spi-tab",
+                str(spi_tab),
+                "--hmrc-ods",
+                str(hmrc_ods),
+                "--emit-nonzero-shares",
+                str(shares),
             ]
         )
         == 0
@@ -1425,14 +1423,28 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
 
     pins = tool._input_artifact_pins(stages)
 
-    assert set(pins) == {"qrf_donor", "was_qrf_donor", "published_fact_surface"}
+    assert set(pins) == {
+        "etb_household_tab",
+        "lcfs_household_tab",
+        "lcfs_person_tab",
+        "published_fact_surface",
+        "qrf_donor",
+        "was_bridge_donor",
+        "was_qrf_donor",
+    }
     for pin in pins.values():
         assert len(str(pin["sha256"])) == 64
         assert int(pin["size_bytes"]) > 0
         assert str(pin["filename"])
     declared = {
         str(artifact["role"]): str(artifact["sha256"])
-        for stage_name in ("hmrc_spi_income_spine", "was_wealth")
+        for stage_name in (
+            "was_wealth",
+            "lcfs_consumption",
+            "etb_vat",
+            "etb_services",
+            "hmrc_spi_income_spine",
+        )
         for artifact in stage_map[stage_name].artifacts
         if "table" not in artifact and "resource" not in artifact
     }

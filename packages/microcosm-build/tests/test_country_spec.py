@@ -286,6 +286,14 @@ class TestUKCountryPackage:
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
+            "need_energy_targets.json",
+            "lcfs_consumption_anchors.json",
+            "etb_policy_anchors.json",
+            "etb_services_anchors.json",
+            "nhs_consumption_by_age_gender.json",
+            "lcfs_consumption_support_bounds.json",
+            "etb_vat_support_bounds.json",
+            "etb_services_support_bounds.json",
             "regional_land_values.json",
             "source_stages.json",
             "take_up_contract.json",
@@ -299,11 +307,11 @@ class TestUKCountryPackage:
             "target_references.json",
         )
 
-    def test_uk_source_manifest_loads_eighteen_stages(self) -> None:
+    def test_uk_source_manifest_loads_twenty_one_stages(self) -> None:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
-        assert len(spec.sources.stages) == 18
+        assert len(spec.sources.stages) == 21
 
 
 class TestExistingPackagesGeneralize:
@@ -338,6 +346,14 @@ class TestExistingPackagesGeneralize:
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
+            "need_energy_targets.json",
+            "lcfs_consumption_anchors.json",
+            "etb_policy_anchors.json",
+            "etb_services_anchors.json",
+            "nhs_consumption_by_age_gender.json",
+            "lcfs_consumption_support_bounds.json",
+            "etb_vat_support_bounds.json",
+            "etb_services_support_bounds.json",
             "regional_land_values.json",
             "source_stages.json",
             "take_up_contract.json",
@@ -562,6 +578,7 @@ class TestUKGatesManifest:
             "uk_weights_audit",
             "uk_nonnegative_columns",
             "uk_support",
+            "uk_aggregate_admin",
             "uk_export_surface",
             "uk_take_up_signal",
             "uk_brma_enum_domain",
@@ -597,21 +614,30 @@ class TestUKGatesManifest:
             params["uk_weight_ratio"]["maximum_max_to_median_ratio"]
             == 1_151.2542195939373
         )
-        assert (
-            params["uk_input_mass_parity"]["relative_tolerance"]
-            == 4.521811483823806
-        )
+        assert params["uk_input_mass_parity"]["relative_tolerance"] == 4.521811483823806
         assert params["uk_input_mass_parity"]["minimum_reference_total"] == 0.0
         assert params["uk_qrf_tail_concentration"]["top_k"] == 100
         assert (
-            params["uk_qrf_tail_concentration"]["max_top_share"]
-            == 0.9970712395200448
+            params["uk_qrf_tail_concentration"]["max_top_share"] == 0.9970712395200448
         )
         assert params["uk_qrf_tail_concentration"]["min_nonzero_records"] == 274
         assert (
             params["uk_target_fit"]["max_abs_relative_error"]
             == terminal_gates.UK_MAX_TARGET_ABS_RELATIVE_ERROR
         )
+        assert params["uk_support"]["support_bounds_resources"] == (
+            "was_wealth_support_bounds.json",
+            "lcfs_consumption_support_bounds.json",
+            "etb_vat_support_bounds.json",
+            "etb_services_support_bounds.json",
+        )
+        aggregate = params["uk_aggregate_admin"]
+        assert aggregate["default_rtol"] == 0.15
+        assert [anchor["name"] for anchor in aggregate["anchors"]] == [
+            "need_electricity_mean_spending",
+            "need_gas_mean_spending",
+            "nhs_spending_total",
+        ]
 
     def test_zero_weight_declarations_match_the_june_strata(self, manifest) -> None:
         params = {gate.id: gate.parameters for gate in manifest.gates}
