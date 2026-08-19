@@ -118,6 +118,13 @@ UK_LCFS_HAS_FUEL_PREDICTORS = (
     "self_employment_income",
     "region",
 )
+# LCFS-native names for the three bridge predictors the WAS donor names
+# differently (incumbent consumption.py:556-574).
+LCFS_TO_WAS_HAS_FUEL_RENAMES = {
+    "hbai_household_net_income": "household_net_income",
+    "is_adult": "num_adults",
+    "is_child": "num_children",
+}
 UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS = (
     "is_adult",
     "is_child",
@@ -392,9 +399,13 @@ def bridge_has_fuel_to_lcfs(
             < NTS_ICE_SHARE
         )
     ).astype(float)
+    # The LCFS frame carries its own names for three of the WAS bridge
+    # predictors (incumbent consumption.py:556-574 renames before predicting).
+    recipient = lcfs.rename(columns=LCFS_TO_WAS_HAS_FUEL_RENAMES)
     donor_encoded, recipient_encoded, predictors = encode_qrf_predictor_pair(
         donor[[*UK_LCFS_HAS_FUEL_PREDICTORS, "has_fuel_consumption", "weight"]],
-        lcfs[list(UK_LCFS_HAS_FUEL_PREDICTORS)],
+        recipient[list(UK_LCFS_HAS_FUEL_PREDICTORS)],
+        predictors=UK_LCFS_HAS_FUEL_PREDICTORS,
     )
     model = RegimeGatedQRF(n_estimators=n_estimators, seed=seed)
     result = model.fit(
@@ -402,7 +413,7 @@ def bridge_has_fuel_to_lcfs(
         list(predictors),
         ["has_fuel_consumption"],
         weights="weight",
-    ).draw(recipient_encoded)
+    ).predict(recipient_encoded)
     out = lcfs.copy()
     out["has_fuel_consumption"] = np.clip(
         np.asarray(result["has_fuel_consumption"], dtype=float), 0.0, 1.0

@@ -156,3 +156,51 @@ def test_support_clip_exempts_raked_energy_columns() -> None:
         5.0,
     ]
     assert clipped["electricity_consumption"].tolist() == [0.0, 10.0]
+
+
+def test_has_fuel_bridge_accepts_lcfs_native_predictor_names() -> None:
+    # Regression for the licensed-build failure: the LCFS donor frame carries
+    # hbai_household_net_income / is_adult / is_child, not the WAS names the
+    # bridge model is fit on. The bridge must rename before predicting.
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_HAS_FUEL_PREDICTORS,
+        bridge_has_fuel_to_lcfs,
+    )
+
+    rng = np.random.default_rng(7)
+    n = 120
+    was = pd.DataFrame(
+        {
+            "household_net_income": rng.uniform(1e4, 6e4, n),
+            "num_adults": rng.integers(1, 4, n).astype(float),
+            "num_children": rng.integers(0, 3, n).astype(float),
+            "private_pension_income": rng.uniform(0, 1e4, n),
+            "employment_income": rng.uniform(0, 5e4, n),
+            "self_employment_income": rng.uniform(0, 1e4, n),
+            "region": rng.choice(["LONDON", "WALES"], n),
+            "num_vehicles": rng.integers(0, 3, n).astype(float),
+            "weight": rng.uniform(0.5, 2.0, n),
+        }
+    )
+    lcfs = pd.DataFrame(
+        {
+            "hbai_household_net_income": [2e4, 3e4, 4e4],
+            "is_adult": [1.0, 2.0, 3.0],
+            "is_child": [0.0, 1.0, 2.0],
+            "private_pension_income": [0.0, 1e3, 2e3],
+            "employment_income": [1e4, 2e4, 3e4],
+            "self_employment_income": [0.0, 0.0, 5e3],
+            "region": ["LONDON", "WALES", "LONDON"],
+        }
+    )
+    assert not set(UK_LCFS_HAS_FUEL_PREDICTORS) <= set(lcfs.columns)
+
+    first, record = bridge_has_fuel_to_lcfs(lcfs, was, seed=0, n_estimators=10)
+    second, _ = bridge_has_fuel_to_lcfs(lcfs, was, seed=0, n_estimators=10)
+
+    assert record.fit_name.endswith("has_fuel")
+    values = first["has_fuel_consumption"].to_numpy(dtype=float)
+    assert ((values >= 0.0) & (values <= 1.0)).all()
+    assert first["has_fuel_consumption"].tolist() == (
+        second["has_fuel_consumption"].tolist()
+    )
