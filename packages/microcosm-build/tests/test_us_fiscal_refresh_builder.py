@@ -11080,6 +11080,12 @@ def test_evidence_mode_conversion_is_pinned_structurally() -> None:
         and node.target.id == "terminal_gate_failures"
     )
 
+    # The exact certified-guard forms — polarity included, so a reversed or
+    # aliased condition cannot pass (round-2 sol mutation probe).
+    certified_guard_tests = {
+        "not args.evidence_release",
+        "not args.evidence_release or evidence_refusal is not None",
+    }
     gate_raises = [
         node
         for node in ast.walk(main_fn)
@@ -11088,18 +11094,20 @@ def test_evidence_mode_conversion_is_pinned_structurally() -> None:
     ]
     assert gate_raises, "main() lost its release-gate raises"
     for raise_node in gate_raises:
-        conditioned = any(
+        ancestor_tests = _ancestor_if_tests(raise_node)
+        guarded = any(test in certified_guard_tests for test in ancestor_tests)
+        mentions_flag = any(
             "args.evidence_release" in test or "evidence_refusal" in test
-            for test in _ancestor_if_tests(raise_node)
+            for test in ancestor_tests
         )
         if raise_node.lineno > accumulator.lineno:
-            assert conditioned, (
-                f"terminal raise at line {raise_node.lineno} is not "
-                "conditioned on --evidence-release; the conversion site "
-                "regressed"
+            assert guarded, (
+                f"terminal raise at line {raise_node.lineno} must sit under "
+                f"one of {sorted(certified_guard_tests)}; the conversion "
+                "site regressed or changed polarity"
             )
         else:
-            assert not conditioned, (
+            assert not mentions_flag, (
                 f"pre-terminal raise at line {raise_node.lineno} is "
                 "conditioned on --evidence-release; preflight/mid-build "
                 "gates must abort in both modes"
@@ -11113,9 +11121,13 @@ def test_evidence_mode_conversion_is_pinned_structurally() -> None:
         in (ast.get_source_segment(source, node) or "")
     ]
     assert len(refusals) == 1, "the all-green evidence refusal must exist once"
-    assert any(
-        test == "args.evidence_release" for test in _ancestor_if_tests(refusals[0])
-    )
+    # Exact guard chain, innermost first: reachable precisely when the flag
+    # is set and no terminal failure was recorded — an extra wrapper (the
+    # unreachability mutation) or a polarity flip breaks the equality.
+    assert _ancestor_if_tests(refusals[0]) == [
+        "not terminal_gate_failures",
+        "args.evidence_release",
+    ]
 
     manifest_calls = [
         node
@@ -11128,5 +11140,43 @@ def test_evidence_mode_conversion_is_pinned_structurally() -> None:
     assert refusals[0].lineno < manifest_calls[0].lineno, (
         "the all-green refusal must precede the manifest write"
     )
-    keywords = {keyword.arg for keyword in manifest_calls[0].keywords}
-    assert "evidence_known_failures" in keywords
+    manifest_keyword = next(
+        keyword
+        for keyword in manifest_calls[0].keywords
+        if keyword.arg == "evidence_known_failures"
+    )
+    # The kwarg must forward the resolved record, not a constant (the
+    # evidence_known_failures=None mutation).
+    assert isinstance(manifest_keyword.value, ast.Name)
+    assert manifest_keyword.value.id == "evidence_known_failures"
+    owned_assignments = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "evidence_known_failures"
+            for target in node.targets
+        )
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "_evidence_known_failures"
+    ]
+    assert len(owned_assignments) == 1, (
+        "the owned record must be assigned from _evidence_known_failures"
+    )
+    assert "args.evidence_release" in _ancestor_if_tests(owned_assignments[0])
+
+    # Every owner-resolution site: the batched conversion, the reform-smoke
+    # and take-up recordings, the coverage-gate recording, and the final
+    # assignment before the manifest write. A dropped site weakens the
+    # unowned-failure refusal.
+    owner_check_calls = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_evidence_known_failures"
+    ]
+    assert len(owner_check_calls) == 5, (
+        f"expected 5 owner-resolution sites in main(), found {len(owner_check_calls)}"
+    )

@@ -3367,15 +3367,67 @@ _ISSUE_REF_RE = re.compile(r"#\d+|github\.com/\S+/(?:issues|pull)/\d+")
 
 
 #: First quoted token in a contract-recomputed critical-fit failure — the
-#: target name (or requirement id) the breach is about, used to bind the
-#: breach to its ``known_failures`` acknowledgment.
+#: fallback binding token when the failure names no diagnostics target.
 _QUOTED_TOKEN_RE = re.compile(r"'([^']+)'")
+
+
+def _token_appears_delimited(token: str, text: str) -> bool:
+    """True if ``token`` appears in ``text`` as a whole name, not merely as a
+    substring of a longer one (``ctc_amount@2024`` must not be satisfied by
+    an entry about ``actc_amount@2024``)."""
+    return (
+        re.search(
+            rf"(?<![A-Za-z0-9_.]){re.escape(token)}(?![A-Za-z0-9_])",
+            text,
+        )
+        is not None
+    )
+
+
+def _recorded_failure_subset_binding(
+    recorded: object,
+    *,
+    recorded_texts: list[str],
+    source: str,
+    failures: list[str],
+    verbatim: bool,
+) -> None:
+    """Require every recorded failure string to ride into ``known_failures``.
+
+    ``verbatim`` demands exact-string membership; otherwise substring
+    containment suffices (the builder records some families with a
+    gate-family prefix around the raw string). Fail-closed on shape: a
+    record that is not a list of strings is itself a violation — absence
+    must never silently disable the binding.
+    """
+    if not isinstance(recorded, list) or any(
+        not isinstance(failure, str) for failure in recorded
+    ):
+        failures.append(
+            f"{source} must be a list of strings for an evidence release; "
+            "the known_failures binding cannot be verified otherwise."
+        )
+        return
+    combined = "\n".join(recorded_texts)
+    if verbatim:
+        missing = [failure for failure in recorded if failure not in recorded_texts]
+        requirement = "verbatim"
+    else:
+        missing = [failure for failure in recorded if failure not in combined]
+        requirement = "within an entry"
+    if missing:
+        failures.append(
+            f"release_manifest.json known_failures must carry every {source} "
+            f"entry {requirement}; missing {_sample_values(missing)}."
+        )
 
 
 def _check_evidence_known_failures_binding(
     *,
     release_manifest: Mapping | None,
     build_manifest: Mapping | None,
+    calibration_diagnostics: Mapping | None,
+    source_coverage_diagnostics: Mapping | None,
     recomputed_critical_failures: list[str],
     failures: list[str],
 ) -> None:
@@ -3383,21 +3435,26 @@ def _check_evidence_known_failures_binding(
 
     The evidence tier's honesty cannot rest on trusting the manifest author:
     everything a local validator can recompute or read back must be
-    acknowledged. Two bindings (a hand-edited record that softens or drops a
-    recorded failure fails here):
+    acknowledged, and every locally checkable record is REQUIRED to be
+    present and well-shaped (fail-closed — deleting a record must never
+    disable its binding). A hand-edited manifest that softens or drops a
+    recorded failure fails here:
 
-    - every failure string the build manifest records under
-      ``gates.calibration.failures`` must appear in ``known_failures``
-      verbatim;
-    - every critical-target breach recomputed from
-      ``calibration_diagnostics.json`` (the same check the certified
-      contract enforces as a hard refusal) must be acknowledged by name in
-      some ``known_failures`` entry.
+    - ``build_manifest.json`` ``gates.calibration.failures`` — verbatim
+      membership in ``known_failures``;
+    - ``calibration_diagnostics.json`` ``build.release_gates.failures``
+      (the run's merged terminal record) — verbatim membership;
+    - ``us_source_coverage.json`` ``gate.failures`` — containment (the
+      builder records these with a gate-family prefix);
+    - every critical-target breach recomputed from the diagnostics (the
+      same check the certified contract enforces as a hard refusal) —
+      acknowledged by delimited name in the record.
 
     The converse direction is deliberately open: ``known_failures`` may
-    carry entries beyond what is locally recomputable (post-battery gate
-    groups record into side artifacts, not contract files), so the tier can
-    over-disclose but never under-disclose.
+    carry entries beyond what is locally recomputable, so the tier can
+    over-disclose but never under-disclose. The binding guarantees each
+    recorded failure is NAMED with an owner — prose sentiment around it is
+    for the human review the #490 register pattern already requires.
     """
     if release_manifest is None:
         return
@@ -3413,30 +3470,73 @@ def _check_evidence_known_failures_binding(
     if build_manifest is not None:
         gates = build_manifest.get("gates")
         calibration = gates.get("calibration") if isinstance(gates, Mapping) else None
-        recorded_gate_failures = (
-            calibration.get("failures") if isinstance(calibration, Mapping) else None
+        _recorded_failure_subset_binding(
+            calibration.get("failures") if isinstance(calibration, Mapping) else None,
+            recorded_texts=recorded_texts,
+            source="build_manifest.json gates.calibration.failures",
+            failures=failures,
+            verbatim=True,
         )
-        if isinstance(recorded_gate_failures, list):
-            missing = [
-                failure
-                for failure in recorded_gate_failures
-                if isinstance(failure, str) and failure not in recorded_texts
-            ]
-            if missing:
-                failures.append(
-                    "release_manifest.json known_failures must carry every "
-                    "build_manifest.json gates.calibration failure verbatim; "
-                    f"missing {_sample_values(missing)}."
-                )
+    if calibration_diagnostics is not None:
+        build = calibration_diagnostics.get("build")
+        release_gates = (
+            build.get("release_gates") if isinstance(build, Mapping) else None
+        )
+        _recorded_failure_subset_binding(
+            (
+                release_gates.get("failures")
+                if isinstance(release_gates, Mapping)
+                else None
+            ),
+            recorded_texts=recorded_texts,
+            source="calibration_diagnostics.json build.release_gates.failures",
+            failures=failures,
+            verbatim=True,
+        )
+    if source_coverage_diagnostics is not None:
+        gate = source_coverage_diagnostics.get("gate")
+        _recorded_failure_subset_binding(
+            gate.get("failures") if isinstance(gate, Mapping) else None,
+            recorded_texts=recorded_texts,
+            source=f"{US_SOURCE_COVERAGE_DIAGNOSTICS_FILE} gate.failures",
+            failures=failures,
+            verbatim=False,
+        )
+    diagnostic_target_names = _diagnostic_target_names(calibration_diagnostics)
     for recomputed in recomputed_critical_failures:
-        match = _QUOTED_TOKEN_RE.search(recomputed)
-        token = match.group(1) if match else None
-        if token is None or token not in combined:
+        tokens = [
+            name
+            for name in diagnostic_target_names
+            if _token_appears_delimited(name, recomputed)
+        ]
+        if not tokens:
+            match = _QUOTED_TOKEN_RE.search(recomputed)
+            tokens = [match.group(1)] if match else []
+        unacknowledged = [
+            token
+            for token in tokens
+            if not _token_appears_delimited(token, combined)
+        ]
+        if not tokens or unacknowledged:
             failures.append(
                 "release_manifest.json known_failures must acknowledge the "
-                f"critical-target breach naming {token or recomputed!r}; the "
-                "evidence tier records failures, it never hides them."
+                "critical-target breach naming "
+                f"{unacknowledged or [recomputed]}; the evidence tier "
+                "records failures, it never hides them."
             )
+
+
+def _diagnostic_target_names(calibration_diagnostics: Mapping | None) -> list[str]:
+    if calibration_diagnostics is None:
+        return []
+    targets = calibration_diagnostics.get("targets")
+    if not isinstance(targets, list):
+        return []
+    return [
+        str(target["name"])
+        for target in targets
+        if isinstance(target, Mapping) and target.get("name")
+    ]
 
 
 def _check_evidence_release_manifest(manifest: Mapping, failures: list[str]) -> None:
@@ -3612,13 +3712,6 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
                     diagnostics, recomputed_critical_failures
                 )
 
-    _check_evidence_known_failures_binding(
-        release_manifest=release_manifest,
-        build_manifest=build_manifest,
-        recomputed_critical_failures=recomputed_critical_failures,
-        failures=failures,
-    )
-
     _check_cross_manifest_consistency(
         build_manifest,
         release_manifest,
@@ -3637,6 +3730,15 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
                 failures,
                 require_gate_passed=False,
             )
+
+    _check_evidence_known_failures_binding(
+        release_manifest=release_manifest,
+        build_manifest=build_manifest,
+        calibration_diagnostics=calibration_diagnostics,
+        source_coverage_diagnostics=source_coverage_diagnostics,
+        recomputed_critical_failures=recomputed_critical_failures,
+        failures=failures,
+    )
 
     _check_us_fiscal_source_consistency(
         calibration_diagnostics, source_coverage_diagnostics, failures

@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import posixpath
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -279,6 +280,14 @@ def publish_release(
     release_artifacts = _release_manifest_release_artifacts(release_dir)
     filenames = _ordered_unique((*contract_files, *release_artifacts, *extra_files))
     for filename in filenames:
+        # Every release-dir upload lands at releases/<id>/<filename> — a name
+        # carrying path components ('../../latest.json') could escape that
+        # prefix once the Hub canonicalizes the path. Bare file names only.
+        if filename in {".", ".."} or "/" in filename or "\\" in filename:
+            raise ValueError(
+                f"release file name {filename!r} must be a bare file name; "
+                "path components cannot ride into the release upload."
+            )
         local = release_dir / filename
         if not local.is_file():
             raise FileNotFoundError(
@@ -287,9 +296,22 @@ def publish_release(
     root_artifacts = _release_manifest_root_artifacts(release_dir)
     # Root artifacts upload at their manifest-declared repo paths — the one
     # surface where a manifest author could smuggle a pointer write past the
-    # tier's pointer selection (an artifact literally named latest.json or
-    # latest-evidence.json). Both pointer paths are reserved on BOTH tiers:
-    # pointers move only via the publisher's own pointer operation.
+    # tier's pointer selection. Two layers, both on BOTH tiers: the declared
+    # path must already be in canonical clean relative form (so './latest.json'
+    # or 'x/../latest.json' cannot dodge a raw-string comparison and be
+    # canonicalized by the Hub afterwards), and the canonical pointer paths
+    # are reserved outright — pointers move only via the publisher's own
+    # pointer operation.
+    for path_in_repo in root_artifacts:
+        if (
+            "\\" in path_in_repo
+            or path_in_repo.startswith("/")
+            or posixpath.normpath(path_in_repo) != path_in_repo
+        ):
+            raise ValueError(
+                f"release_manifest.json root artifact path {path_in_repo!r} "
+                "is not a clean relative POSIX path; refusing to upload it."
+            )
     pointer_collisions = sorted(
         {LATEST_POINTER_PATH, LATEST_EVIDENCE_POINTER_PATH} & set(root_artifacts)
     )

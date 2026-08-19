@@ -11205,6 +11205,12 @@ def main(argv: Sequence[str] | None = None) -> None:
         # The owned failures ride into the release manifest's known_failures
         # block instead of aborting the export; the H5 written below carries
         # the calibrated weights, so the sidecar is not written on this path.
+        # Failures appended AFTER this point (a _TerminalBatchTelemetry crash
+        # line, the smoke/take-up/coverage recordings) are owner-checked at
+        # their own append sites and again before the manifest write; if one
+        # is unowned the run dies post-H5 — weights retained in the written
+        # dataset, per the #568 doctrine for late-gate failures — and no
+        # manifest is minted.
         terminal_batch_telemetry.stage(
             "release_gates",
             status="failed",
@@ -11397,6 +11403,22 @@ def main(argv: Sequence[str] | None = None) -> None:
     write_us_source_coverage_diagnostics(
         coverage, release_dir / "us_source_coverage.json"
     )
+    if args.evidence_release:
+        # The certified path surfaces a failed source-coverage gate at publish
+        # (the contract requires gate.passed); the evidence contract relaxes
+        # that verdict but BINDS gate.failures into known_failures — so an
+        # evidence build must record them here, owner-checked immediately, or
+        # its manifest would be unpublishable by construction.
+        coverage_gate = coverage.get("gate") or {}
+        coverage_gate_failures = [
+            f"Source coverage failed: {failure}"
+            for failure in (coverage_gate.get("failures") or ())
+        ]
+        if coverage_gate_failures:
+            terminal_gate_failures.extend(coverage_gate_failures)
+            _evidence_known_failures(
+                terminal_gate_failures, evidence_failure_owner_patterns
+            )
     if telemetry is not None:
         telemetry.attach_artifact(
             "us_source_coverage",

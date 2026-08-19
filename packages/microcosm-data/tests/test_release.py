@@ -1231,32 +1231,49 @@ def test_pointer_with_swapped_contract_path_is_refused(hub: FakeHub) -> None:
 
 EVIDENCE_RELEASE_ID = "populace-us-2024-evidence-9f1260b-20260611"
 
+EVIDENCE_KNOWN_FAILURE = (
+    "SOI Table 1.4 national dollar fit failed: target "
+    "'irs_soi.ty2023.table_1_4.all.capital_gain_distributions_"
+    "amount@2024' has relative_error=-0.302, exceeding 0.25."
+)
+
 
 @pytest.fixture
 def evidence_release_dir(release_dir: Path) -> Path:
     """The certified fixture re-tiered: evidence id, evidence schema marker,
-    and a non-empty known_failures block."""
+    a non-empty known_failures block, and the recorded gate results the
+    known_failures binding reads back (build gates.calibration and
+    diagnostics build.release_gates)."""
     directory = release_dir.parent / EVIDENCE_RELEASE_ID
     directory.mkdir()
-    for name in ("calibration_diagnostics.json", US_SOURCE_COVERAGE_DIAGNOSTICS_FILE):
-        (directory / name).write_text((release_dir / name).read_text())
+    (directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(
+        (release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).read_text()
+    )
+    diagnostics = json.loads((release_dir / "calibration_diagnostics.json").read_text())
+    diagnostics["build"] = {
+        "release_gates": {"passed": False, "failures": [EVIDENCE_KNOWN_FAILURE]}
+    }
+    (directory / "calibration_diagnostics.json").write_text(json.dumps(diagnostics))
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     build_manifest["build_id"] = EVIDENCE_RELEASE_ID
+    build_manifest["gates"]["calibration"] = {
+        "passed": False,
+        "failures": [EVIDENCE_KNOWN_FAILURE],
+    }
     (directory / "build_manifest.json").write_text(json.dumps(build_manifest))
     manifest = json.loads((release_dir / "release_manifest.json").read_text())
     manifest["schema_version"] = EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION
     manifest["tier"] = "evidence"
     manifest["known_failures"] = [
         {
-            "failure": (
-                "SOI Table 1.4 national dollar fit failed: target "
-                "'irs_soi.ty2023.table_1_4.all.capital_gain_distributions_"
-                "amount@2024' has relative_error=-0.302, exceeding 0.25."
-            ),
+            "failure": EVIDENCE_KNOWN_FAILURE,
             "owner": "PolicyEngine/microcosm#487",
         }
     ]
     manifest["build"]["build_id"] = EVIDENCE_RELEASE_ID
+    manifest["artifacts"]["calibration_diagnostics"]["sha256"] = _sha256(
+        directory / "calibration_diagnostics.json"
+    )
     for artifact in manifest["artifacts"].values():
         artifact["revision"] = EVIDENCE_RELEASE_ID
     (directory / "release_manifest.json").write_text(json.dumps(manifest))
@@ -1501,5 +1518,43 @@ def test_publish_refuses_root_artifacts_at_pointer_paths(
             "policyengine/populace-us",
             api=hub,
             artifact_root=artifact_root,
+        )
+    assert hub.uploads == []
+
+
+def test_publish_refuses_unclean_root_artifact_paths(
+    hub: FakeHub, evidence_release_dir: Path, artifact_root: Path
+) -> None:
+    """'./latest.json' must not dodge the reserved-path comparison and get
+    canonicalized to the pointer by the Hub afterwards (sol round-2)."""
+    _declare_root_artifact(
+        evidence_release_dir, key="smuggled_pointer", path=f"./{LATEST_POINTER_PATH}"
+    )
+    with pytest.raises(ValueError, match="clean relative POSIX path"):
+        publish_release(
+            evidence_release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+            update_latest=False,
+            evidence=True,
+        )
+    assert hub.uploads == []
+
+
+def test_publish_refuses_path_components_in_extra_files(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
+    """extra_files land under releases/<id>/ — a traversal name could escape
+    that prefix once the service canonicalizes the path."""
+    outside = release_dir.parent / "escape.json"
+    outside.write_text("{}")
+    with pytest.raises(ValueError, match="bare file name"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+            extra_files=("../escape.json",),
         )
     assert hub.uploads == []
