@@ -30,13 +30,22 @@ ported into the current `microcosm.*` tree.
 - Confirmed the restricted PUF replay artifact is present and pinned its
   size, digest, row counts, weighted positive pass-through aggregate, and
   provisional Form 8960 midpoint calibration target.
+- Added the reproducible provisional SCF evidence resource. Holding
+  prevalence rises from 3.35% in the nonpositive Schedule-E band to 38.98%
+  above $1 million; conditional-share cells in the three thin middle bands
+  use the documented all-holder fallback.
+- Added the version-1 sibling assignment and assumptions build. The persisted
+  log-odds shift is `-1.157105426398319`; its expected aggregate is the
+  $54.628492 billion midpoint and the seed-0 replay produces $55.021132
+  billion (0.72% high, inside the 5% diagnostic tolerance).
+- Verified the restricted replay (12 focused tests), deterministic assumptions
+  regeneration, strict resource hashes, isolated PCG64 families, latent-form
+  routing, and byte preservation of all 15 existing QBI leaves.
 
 ## Next
 
-- Add the provisional SCF evidence resource and persisted calibration
-  assumptions.
-- Implement and integrate the isolated passive assignment stage while proving
-  prior QBI outputs are byte-identical.
-- Add the diagnostics-only Form 8960 validation rows and restricted replay.
-- Run restricted replay if the declared PUF artifact is present, then run the
-  full workspace tests, lint, contract sweeps, and write the final report.
+- Finish integration of the passive sibling into every base/pool path and its
+  checkpoint, ownership, and release-coverage contracts.
+- Add and verify the diagnostics-only Form 8960 validation rows.
+- Run the full workspace tests, lint, contract sweeps, and write the final
+  report.
