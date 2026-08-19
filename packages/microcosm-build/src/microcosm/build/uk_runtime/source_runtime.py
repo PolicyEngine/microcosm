@@ -62,6 +62,9 @@ def uk_stage_implementations(
     frs_person_draws_transform: Callable[[Frame], Frame] | None = None,
     frs_household_draws_transform: Callable[[Frame], Frame] | None = None,
     frs_brma_transform: Callable[[Frame], Frame] | None = None,
+    frs_hmrc_spine_leaves_transform: Callable[[Frame], Frame] | None = None,
+    spi_support_channel_transform: Callable[[Frame], Frame] | None = None,
+    hmrc_spi_income_spine_transform: Callable[[Frame], Frame] | None = None,
 ) -> dict[str, Callable[[Frame], Frame]]:
     """Return the whole-stage implementation map for the UK source plan."""
 
@@ -81,6 +84,9 @@ def uk_stage_implementations(
         "frs_person_draws": frs_person_draws_transform,
         "frs_household_draws": frs_household_draws_transform,
         "frs_brma": frs_brma_transform,
+        "frs_hmrc_spine_leaves": frs_hmrc_spine_leaves_transform,
+        "spi_support_channel": spi_support_channel_transform,
+        "hmrc_spi_income_spine": hmrc_spi_income_spine_transform,
     }
     implementations.update(
         {

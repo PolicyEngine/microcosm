@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import sys
 import time
 from datetime import UTC, datetime
@@ -48,8 +49,14 @@ from microcosm.build.uk_runtime.frs_spine import (
     uk_frs_spine_seed_frame,
 )
 from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
+from microcosm.build.uk_runtime.hmrc_replay import write_hmrc_replay_report
 from microcosm.build.uk_runtime.national_build import write_uk_national_frame
 from microcosm.build.uk_runtime.national_frame import uk_household_weight_kind
+from microcosm.build.uk_runtime.spi_spine import (
+    UKFRSHMRCSpineLeavesStageTransform,
+    UKSPIIncomeSpineStageTransform,
+    UKSPISupportChannelStageTransform,
+)
 from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
@@ -68,6 +75,9 @@ _STAGE_NAMES = (
     "frs_person_draws",
     "frs_household_draws",
     "frs_brma",
+    "frs_hmrc_spine_leaves",
+    "spi_support_channel",
+    "hmrc_spi_income_spine",
 )
 
 
@@ -90,6 +100,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         required=True,
         help="Output H5 path for the raw FRS spine Frame.",
+    )
+    parser.add_argument(
+        "--spi-tab",
+        type=Path,
+        required=True,
+        help="Pinned local SPI 2022-23 put2223uk.tab path.",
+    )
+    parser.add_argument(
+        "--hmrc-ods",
+        type=Path,
+        required=True,
+        help="Pinned local HMRC collated ODS path.",
     )
     parser.add_argument(
         "--checkpoint-dir",
@@ -116,9 +138,18 @@ def _validate_args(args: argparse.Namespace) -> None:
         )
     if args.spine_h5.suffix != ".h5":
         raise ValueError("--spine-h5 must end with '.h5'.")
+    if not args.spi_tab.is_file():
+        raise ValueError(f"--spi-tab must be an existing file: {args.spi_tab}")
+    if args.spi_tab.name != "put2223uk.tab":
+        raise ValueError("--spi-tab must name put2223uk.tab.")
+    if not args.hmrc_ods.is_file():
+        raise ValueError(f"--hmrc-ods must be an existing file: {args.hmrc_ods}")
+    if args.hmrc_ods.suffix.lower() != ".ods":
+        raise ValueError("--hmrc-ods must end with '.ods'.")
     paths = {
         "spine_h5": args.spine_h5,
         "build_sidecar": args.spine_h5.with_suffix(".build.json"),
+        "hmrc_replay_sidecar": args.spine_h5.with_suffix(".hmrc_replay.json"),
     }
     if args.emit_nonzero_shares is not None:
         paths["emit_nonzero_shares"] = args.emit_nonzero_shares
@@ -187,6 +218,46 @@ def _resource_pins(stages, spec) -> dict[str, str]:
     return dict(sorted(pins.items()))
 
 
+def _input_artifact_pins(stages) -> dict[str, dict[str, object]]:
+    """Caller-supplied private input artifacts, pinned by role.
+
+    Non-table, non-resource artifacts (the SPI donor tab and the HMRC ODS)
+    carry their own sha256/size pins in the manifest. Binding them here puts
+    the pins in the build sidecar and the Logbook input-pins digest, so two
+    runs with different high-impact source inputs can never share build-side
+    provenance (adversarial-review finding on #717).
+    """
+
+    pins: dict[str, dict[str, object]] = {}
+    for stage in stages:
+        for artifact in stage.artifacts:
+            if "table" in artifact or "resource" in artifact:
+                continue
+            if "sha256" not in artifact:
+                continue
+            role = str(artifact.get("role") or artifact.get("filename") or "")
+            if not role:
+                raise ValueError(
+                    f"stage {stage.stage!r} declares a pinned input artifact "
+                    "without a role or filename."
+                )
+            pin = {
+                "filename": str(
+                    artifact.get("filename") or artifact.get("locator") or ""
+                ),
+                "kind": str(artifact.get("kind", "")),
+                "sha256": str(artifact["sha256"]),
+                "size_bytes": int(artifact["size_bytes"]),
+            }
+            if role in pins and pins[role] != pin:
+                raise ValueError(
+                    f"input artifact role {role!r} has inconsistent pins "
+                    "across stages."
+                )
+            pins[role] = pin
+    return dict(sorted(pins.items()))
+
+
 def _role_pins(pins: dict[str, dict[str, object]]) -> dict[str, dict[str, object]]:
     return {
         table: {
@@ -229,6 +300,15 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
             seed = operation.parameters.get("seed")
             if isinstance(output, str) and isinstance(seed, int):
                 stage_seeds[output] = seed
+            elif isinstance(seed, int):
+                if operation.kind == "stack_zero_weight_donors":
+                    stage_seeds["stack_zero_weight_donors"] = seed
+                elif operation.kind == "strict_read_private_table":
+                    stage_seeds["donor_bootstrap"] = seed
+                elif operation.kind == "fit_weighted_qrf_stage1":
+                    stage_seeds["stage1"] = seed
+                elif operation.kind == "fit_weighted_qrf_stage2":
+                    stage_seeds["stage2"] = seed
         if stage_seeds:
             declared[stage.stage] = stage_seeds
     return declared
@@ -241,6 +321,8 @@ def _build_sidecar(
     records,
     artifact_pins,
     resource_pins: dict[str, str],
+    input_artifact_pins: dict[str, dict[str, object]],
+    hmrc_replay: dict[str, object],
     stochastic_contract_sha256: str,
 ) -> dict[str, object]:
     household_weight = frame.weights_for("household")
@@ -254,6 +336,8 @@ def _build_sidecar(
         "entity_row_counts": _entity_row_counts(frame),
         "artifact_pins": artifact_pins,
         "resource_pins": resource_pins,
+        "input_artifact_pins": input_artifact_pins,
+        "hmrc_replay": hmrc_replay,
         "stage_artifact_pins": {
             stage.stage: _stage_artifact_pins(stage) for stage in stages
         },
@@ -342,6 +426,20 @@ def main(argv: list[str] | None = None) -> int:
     spool_dir = args.spine_h5.parent / "logbook-spool"
     try:
         _validate_args(args)
+        # A crash between the H5 write and the sidecar writes must never
+        # leave a stale sidecar beside a fresh H5 (adversarial-review
+        # finding on #717): clear every output up front, and treat the
+        # build sidecar - written last, binding the replay hash - as the
+        # marker that the bundle is complete.
+        stale_outputs = [
+            args.spine_h5,
+            args.spine_h5.with_suffix(".build.json"),
+            args.spine_h5.with_suffix(".hmrc_replay.json"),
+        ]
+        if args.emit_nonzero_shares is not None:
+            stale_outputs.append(args.emit_nonzero_shares)
+        for stale in stale_outputs:
+            stale.unlink(missing_ok=True)
         code_pin = git_code_pin(_REPOSITORY)
         append_phase(state, "configured")
         spec = load_country_spec("uk")
@@ -351,7 +449,16 @@ def main(argv: list[str] | None = None) -> int:
         stages = [stages_by_name[name] for name in _STAGE_NAMES]
         artifact_pins = _artifact_pins(stages)
         resource_pins = _resource_pins(stages, spec)
-        state.input_pins_digest = role_pins_digest(_role_pins(artifact_pins))
+        input_artifact_pins = _input_artifact_pins(stages)
+        overlapping_pin_roles = set(artifact_pins) & set(input_artifact_pins)
+        if overlapping_pin_roles:
+            raise ValueError(
+                "input artifact roles collide with FRS tab names: "
+                f"{sorted(overlapping_pin_roles)}."
+            )
+        state.input_pins_digest = role_pins_digest(
+            _role_pins({**artifact_pins, **input_artifact_pins})
+        )
         run_config = {
             "pipeline": _PIPELINE,
             "stages": list(_STAGE_NAMES),
@@ -364,6 +471,11 @@ def main(argv: list[str] | None = None) -> int:
         append_phase(state, "inputs_pinned")
         engine = _rules_engine()
         stochastic_contract = load_uk_take_up_contract()
+        hmrc_spine_transform = UKSPIIncomeSpineStageTransform(
+            args.spi_tab,
+            args.hmrc_ods,
+            stage=stages_by_name["hmrc_spi_income_spine"],
+        )
         plan = country_stage_plan(
             spec,
             {
@@ -413,6 +525,14 @@ def main(argv: list[str] | None = None) -> int:
                     stage=stages_by_name["frs_brma"],
                     engine=engine,
                 ),
+                "frs_hmrc_spine_leaves": UKFRSHMRCSpineLeavesStageTransform(
+                    args.frs_raw_dir,
+                    stage=stages_by_name["frs_hmrc_spine_leaves"],
+                ),
+                "spi_support_channel": UKSPISupportChannelStageTransform(
+                    stage=stages_by_name["spi_support_channel"],
+                ),
+                "hmrc_spi_income_spine": hmrc_spine_transform,
             },
             stage_names=_STAGE_NAMES,
         )
@@ -425,12 +545,28 @@ def main(argv: list[str] | None = None) -> int:
             write_uk_national_frame(frame, args.checkpoint_dir / "frs_spine.h5")
             append_phase(state, "checkpoint_written")
         sidecar_path = output.with_suffix(".build.json")
+        replay_sidecar_path = output.with_suffix(".hmrc_replay.json")
+        if hmrc_spine_transform.last_result is None:
+            raise RuntimeError("HMRC SPI spine stage did not record replay evidence.")
+        write_hmrc_replay_report(
+            hmrc_spine_transform.last_result.replay_report,
+            replay_sidecar_path,
+        )
+        append_phase(state, "hmrc_replay_sidecar_written")
+        replay_bytes = replay_sidecar_path.read_bytes()
+        replay_binding = {
+            "filename": replay_sidecar_path.name,
+            "report_kind": str(json.loads(replay_bytes).get("report_kind", "")),
+            "sha256": hashlib.sha256(replay_bytes).hexdigest(),
+        }
         sidecar = _build_sidecar(
             frame=frame,
             stages=stages,
             records=records,
             artifact_pins=artifact_pins,
             resource_pins=resource_pins,
+            input_artifact_pins=input_artifact_pins,
+            hmrc_replay=replay_binding,
             stochastic_contract_sha256=stochastic_contract.resource_sha256,
         )
         atomic_write_json(sidecar_path, sidecar)

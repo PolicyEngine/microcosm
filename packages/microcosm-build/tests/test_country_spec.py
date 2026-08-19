@@ -269,6 +269,36 @@ class TestCountryStagePlan:
             )
 
 
+class TestUKCountryPackage:
+    def test_spi_spine_adds_no_country_package_resources(self) -> None:
+        spec = load_country_spec("uk")
+
+        assert spec.resources == (
+            "cgt_source_stages.json",
+            "degenerate_reviewed_exclusions.json",
+            "efrs_parity_known_gaps.json",
+            "efrs_parity_reference.json",
+            "gates.json",
+            "brma_rent_counts.json",
+            "hmrc_income_release_gate_report.json",
+            "hmrc_income_replay_report.json",
+            "hmrc_income_source_stages.json",
+            "source_stages.json",
+            "take_up_contract.json",
+            "input_mass_reviewed_exclusions.json",
+            "national_staging_build_record.json",
+            "qrf_tail_reviewed_exclusions.json",
+            "release_input_coverage_manifest.json",
+            "uk_local_target_census.json",
+        )
+
+    def test_uk_source_manifest_loads_sixteen_stages(self) -> None:
+        spec = load_country_spec("uk")
+
+        assert spec.sources is not None
+        assert len(spec.sources.stages) == 16
+
+
 class TestExistingPackagesGeneralize:
     """The loader is country-neutral: the US and UK packages load unchanged."""
 

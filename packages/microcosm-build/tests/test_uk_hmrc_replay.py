@@ -367,6 +367,14 @@ def test_atomic_writer_uses_exact_caller_json_path(tmp_path) -> None:
     assert not list(output.parent.glob(f".{output.name}.*.tmp"))
 
 
+def test_conservative_report_accepts_spine_mode_report_kind(tmp_path) -> None:
+    report = _report(tmp_path, report_kind="uk_hmrc_spi_income_spine_208_fact_replay")
+
+    assert report.to_payload()["report_kind"] == (
+        "uk_hmrc_spi_income_spine_208_fact_replay"
+    )
+
+
 def test_writer_rejects_non_json_and_symbolic_link_paths(tmp_path) -> None:
     report = _report(tmp_path)
 

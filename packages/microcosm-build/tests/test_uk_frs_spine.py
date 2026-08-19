@@ -30,10 +30,12 @@ from microcosm.build.uk_runtime.frs_spine import (
 )
 from microcosm.build.uk_runtime.national_build import load_uk_national_frame
 from microcosm.build.uk_runtime.national_frame import (
+    uk_household_weight_kind,
+    uk_national_frame,
     uk_time_period,
     validate_uk_national_frame,
 )
-from microcosm.frame import WeightKind
+from microcosm.frame import Frame, WeightKind, engine_tables
 
 _TOOL_PATH = Path(__file__).resolve().parents[3] / "tools" / "build_uk_frs_spine.py"
 
@@ -617,6 +619,109 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         },
                     ),
                 ),
+                source_stage(
+                    "frs_hmrc_spine_leaves",
+                    tables=("adult", "benefits"),
+                    operations=[
+                        {"kind": "retain_adjudicated_frs_hmrc_leaves"},
+                        {
+                            "kind": "derive",
+                            "output": "employer_pension_contributions",
+                        },
+                    ],
+                    outputs=(
+                        "hmrc_spi_pay",
+                        "hmrc_spi_unemployment_benefit_income",
+                        "hmrc_spi_incapacity_benefit_income",
+                        "ossben_identifiable_subset",
+                        "srp_regular_code5",
+                        "employer_pension_contributions",
+                    ),
+                ),
+                source_stage(
+                    "spi_support_channel",
+                    grain="household",
+                    operations=[
+                        {
+                            "kind": "stack_zero_weight_donors",
+                            "count": 10000,
+                            "seed": 42,
+                            "draw": "uniform_without_replacement",
+                        },
+                        {
+                            "kind": "gate_zero_weight_strata",
+                            "declarations": [
+                                {
+                                    "name": "e7_spi_synthetic_preclone",
+                                    "selector": {
+                                        "household_is_spi_synthetic": True
+                                    },
+                                    "maximum_zero_weight_rows": 10000,
+                                    "reason": "synthetic driver fixture",
+                                }
+                            ],
+                        },
+                        {
+                            "kind": "allocate_zero_weight_prior_mass",
+                            "share": 0.5,
+                            "strata": ["region"],
+                        },
+                    ],
+                    outputs=(
+                        "household_is_spi_synthetic",
+                        "person_support_channel",
+                        "person_support_clone_index",
+                        "person_source_id",
+                        "benunit_support_channel",
+                        "benunit_support_clone_index",
+                        "benunit_source_id",
+                        "household_support_channel",
+                        "household_support_clone_index",
+                        "household_source_id",
+                        "source_household_id",
+                        "source_year",
+                        "source_household_key",
+                    ),
+                ),
+                source_stage(
+                    "hmrc_spi_income_spine",
+                    operations=[
+                        {"kind": "verify_pinned_hmrc_source_pair"},
+                        {"kind": "strict_read_private_table", "seed": 42},
+                        {
+                            "kind": "fit_weighted_qrf_stage1",
+                            "seed": 42,
+                            "sample_size": 100000,
+                            "initialize_frs_channel_columns": {
+                                "gift_aid": 0.0,
+                                "charitable_investment_gifts": 0.0,
+                            },
+                        },
+                        {"kind": "fit_weighted_qrf_stage2", "seed": 43},
+                        {
+                            "kind": "redraw_columns_from_fitted_qrf",
+                            "fit": "stage1",
+                            "columns": ["dividend_income"],
+                            "rows": "base_support_channel",
+                        },
+                    ],
+                    outputs=(
+                        "other_investment_income",
+                        "gift_aid",
+                        "charitable_investment_gifts",
+                        "hmrc_spi_employment_benefits",
+                        "hmrc_spi_employment_expenses",
+                        "hmrc_spi_other_social_security_income",
+                        "hmrc_spi_taxable_termination_pay",
+                        "hmrc_spi_miscellaneous_employment_income",
+                        "hmrc_spi_other_income",
+                        "hmrc_spi_state_pension_income",
+                        "hmrc_spi_employed_income",
+                        "hmrc_spi_total_earned_income",
+                        "hmrc_spi_total_investment_income",
+                        "hmrc_spi_assessable_income",
+                    ),
+                ),
             ),
         ),
         geography_spine=None,
@@ -897,6 +1002,70 @@ def _stub_policy_readers(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(sys.modules, "policyengine_uk", None)
 
 
+def _patch_spi_spine_driver_runtime(
+    tool,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> tuple[Path, Path]:
+    spi_tab = tmp_path / "put2223uk.tab"
+    hmrc_ods = tmp_path / "Collated_Tables_3_1_to_3_11_2324.ods"
+    spi_tab.write_text("synthetic\\n", encoding="utf-8")
+    hmrc_ods.write_text("synthetic\\n", encoding="utf-8")
+
+    class _FakeStageTransform:
+        def __init__(self, *args, stage, **kwargs) -> None:
+            self.stage = stage
+            self.last_result = None
+
+        def __call__(self, frame: Frame) -> Frame:
+            tables = engine_tables(frame)
+            person = tables["person"].copy()
+            benunit = tables["benunit"].copy()
+            household = tables["household"].copy()
+            for column in self.stage.outputs:
+                if column.startswith("household_") or column.startswith("source_"):
+                    household[column] = _fake_value(column, len(household))
+                elif column.startswith("benunit_"):
+                    benunit[column] = _fake_value(column, len(benunit))
+                else:
+                    person[column] = _fake_value(column, len(person))
+            result = uk_national_frame(
+                person=person,
+                benunit=benunit,
+                household=household,
+                time_period=uk_time_period(frame),
+                weight_kind=uk_household_weight_kind(frame),
+                household_weights=frame.weights_for("household").values,
+                mass_log=frame.mass_log,
+            )
+            self.last_result = SimpleNamespace(replay_report={"report_kind": "fake"})
+            return result
+
+    def _write_fake_replay(report, path):
+        output = Path(path)
+        output.write_text(
+            json.dumps({"report_kind": "fake_spine_replay"}) + "\n",
+            encoding="utf-8",
+        )
+        return output
+
+    monkeypatch.setattr(tool, "UKFRSHMRCSpineLeavesStageTransform", _FakeStageTransform)
+    monkeypatch.setattr(tool, "UKSPISupportChannelStageTransform", _FakeStageTransform)
+    monkeypatch.setattr(tool, "UKSPIIncomeSpineStageTransform", _FakeStageTransform)
+    monkeypatch.setattr(tool, "write_hmrc_replay_report", _write_fake_replay)
+    return spi_tab, hmrc_ods
+
+
+def _fake_value(column: str, rows: int):
+    if column.endswith("_support_channel"):
+        return ["frs"] * rows
+    if column == "source_household_key":
+        return [f"2023:{index + 1}" for index in range(rows)]
+    if column == "household_is_spi_synthetic":
+        return [False] * rows
+    return np.arange(1, rows + 1, dtype=float)
+
+
 def test_driver_writes_spine_h5_sidecars_and_logbook(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -913,20 +1082,32 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     )
     monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
     _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
     monkeypatch.delenv("POPULACE_LEDGER_URL", raising=False)
     monkeypatch.delenv("POPULACE_LEDGER_KEY", raising=False)
     monkeypatch.delenv("POPULACE_LEDGER_API_KEY", raising=False)
     monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
+
+    # Stale sidecars from an earlier interrupted run must never survive
+    # beside a fresh H5 (adversarial-review finding on #717).
+    stale_replay = output.with_suffix(".hmrc_replay.json")
+    stale_build = output.with_suffix(".build.json")
+    stale_replay.write_text('{"report_kind": "stale_leftover"}')
+    stale_build.write_text('{"stale": true}')
 
     assert (
         tool.main(
             [
                 "--frs-raw-dir",
                 str(raw_dir),
-                "--spine-h5",
-                str(output),
-                "--emit-nonzero-shares",
-                str(shares),
+                    "--spine-h5",
+                    str(output),
+                    "--spi-tab",
+                    str(spi_tab),
+                    "--hmrc-ods",
+                    str(hmrc_ods),
+                    "--emit-nonzero-shares",
+                    str(shares),
             ]
         )
         == 0
@@ -972,6 +1153,25 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     assert set(sidecar["artifact_pins"]) == set(FRS_SPINE_TABLES)
     assert sidecar["declared_seeds"]["frs_take_up"]["would_claim_child_benefit"] == 0
     assert sidecar["declared_seeds"]["frs_brma"] == {"brma": 0}
+    assert sidecar["declared_seeds"]["spi_support_channel"] == {
+        "stack_zero_weight_donors": 42
+    }
+    assert sidecar["declared_seeds"]["hmrc_spi_income_spine"] == {
+        "donor_bootstrap": 42,
+        "stage1": 42,
+        "stage2": 43,
+    }
+    replay_bytes = output.with_suffix(".hmrc_replay.json").read_bytes()
+    assert json.loads(replay_bytes) == {"report_kind": "fake_spine_replay"}
+    # The synthetic spec declares no non-table pinned artifacts, so the pin
+    # map is present but empty; the replay binding must match the file on
+    # disk byte-for-byte.
+    assert sidecar["input_artifact_pins"] == {}
+    assert sidecar["hmrc_replay"] == {
+        "filename": output.with_suffix(".hmrc_replay.json").name,
+        "report_kind": "fake_spine_replay",
+        "sha256": hashlib.sha256(replay_bytes).hexdigest(),
+    }
     assert len(sidecar["stochastic_contract_sha256"]) == 64
     assert sidecar["resource_pins"] == {"brma_rent_counts.json": "f" * 64}
     # Resolve the expected version the way the driver does, so the assertion
@@ -1009,19 +1209,164 @@ def test_driver_writes_payload_identical_h5s(
     )
     monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
     _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
     monkeypatch.delenv("POPULACE_LEDGER_URL", raising=False)
     monkeypatch.delenv("POPULACE_LEDGER_KEY", raising=False)
     monkeypatch.delenv("POPULACE_LEDGER_API_KEY", raising=False)
 
-    assert tool.main(["--frs-raw-dir", str(raw_dir), "--spine-h5", str(output)]) == 0
+    assert (
+        tool.main(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(output),
+                "--spi-tab",
+                str(spi_tab),
+                "--hmrc-ods",
+                str(hmrc_ods),
+            ]
+        )
+        == 0
+    )
     first_frame, _ = load_uk_national_frame(output)
-    assert tool.main(["--frs-raw-dir", str(raw_dir), "--spine-h5", str(output)]) == 0
+    assert (
+        tool.main(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(output),
+                "--spi-tab",
+                str(spi_tab),
+                "--hmrc-ods",
+                str(hmrc_ods),
+            ]
+        )
+        == 0
+    )
     second_frame, _ = load_uk_national_frame(output)
 
     for entity in ("person", "benunit", "household"):
         pd.testing.assert_frame_equal(
             first_frame.table(entity).reset_index(drop=True),
             second_frame.table(entity).reset_index(drop=True),
+        )
+
+
+def test_driver_refuses_missing_spi_tab(tmp_path: Path) -> None:
+    tool = _load_tool()
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    hmrc_ods = tmp_path / "Collated_Tables_3_1_to_3_11_2324.ods"
+    hmrc_ods.write_text("synthetic\n", encoding="utf-8")
+    args = tool._parse_args(
+        [
+            "--frs-raw-dir",
+            str(raw_dir),
+            "--spine-h5",
+            str(tmp_path / "spine.h5"),
+            "--spi-tab",
+            str(tmp_path / "put2223uk.tab"),
+            "--hmrc-ods",
+            str(hmrc_ods),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="--spi-tab must be an existing file"):
+        tool._validate_args(args)
+
+
+def test_driver_refuses_misnamed_spi_tab(tmp_path: Path) -> None:
+    tool = _load_tool()
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    spi_tab = tmp_path / "spi.tab"
+    spi_tab.write_text("synthetic\n", encoding="utf-8")
+    hmrc_ods = tmp_path / "Collated_Tables_3_1_to_3_11_2324.ods"
+    hmrc_ods.write_text("synthetic\n", encoding="utf-8")
+    args = tool._parse_args(
+        [
+            "--frs-raw-dir",
+            str(raw_dir),
+            "--spine-h5",
+            str(tmp_path / "spine.h5"),
+            "--spi-tab",
+            str(spi_tab),
+            "--hmrc-ods",
+            str(hmrc_ods),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="--spi-tab must name put2223uk.tab"):
+        tool._validate_args(args)
+
+
+def test_driver_refuses_missing_hmrc_ods(tmp_path: Path) -> None:
+    tool = _load_tool()
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    spi_tab = tmp_path / "put2223uk.tab"
+    spi_tab.write_text("synthetic\n", encoding="utf-8")
+    args = tool._parse_args(
+        [
+            "--frs-raw-dir",
+            str(raw_dir),
+            "--spine-h5",
+            str(tmp_path / "spine.h5"),
+            "--spi-tab",
+            str(spi_tab),
+            "--hmrc-ods",
+            str(tmp_path / "hmrc.ods"),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="--hmrc-ods must be an existing file"):
+        tool._validate_args(args)
+
+
+def test_driver_refuses_misnamed_hmrc_ods(tmp_path: Path) -> None:
+    tool = _load_tool()
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    spi_tab = tmp_path / "put2223uk.tab"
+    spi_tab.write_text("synthetic\n", encoding="utf-8")
+    hmrc_ods = tmp_path / "hmrc.txt"
+    hmrc_ods.write_text("synthetic\n", encoding="utf-8")
+    args = tool._parse_args(
+        [
+            "--frs-raw-dir",
+            str(raw_dir),
+            "--spine-h5",
+            str(tmp_path / "spine.h5"),
+            "--spi-tab",
+            str(spi_tab),
+            "--hmrc-ods",
+            str(hmrc_ods),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="--hmrc-ods must end with '.ods'"):
+        tool._validate_args(args)
+
+
+def test_driver_has_no_sample_fraction_path(tmp_path: Path) -> None:
+    tool = _load_tool()
+
+    with pytest.raises(SystemExit):
+        tool._parse_args(
+            [
+                "--frs-raw-dir",
+                str(tmp_path),
+                "--spine-h5",
+                str(tmp_path / "spine.h5"),
+                "--spi-tab",
+                str(tmp_path / "put2223uk.tab"),
+                "--hmrc-ods",
+                str(tmp_path / "hmrc.ods"),
+                "--sample-fraction",
+                "0.5",
+            ]
         )
 
 
@@ -1065,3 +1410,26 @@ def test_refuses_nan_in_produced_weight_column(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="produced NaN"):
         build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
+    tool = _load_tool()
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    stage_map = spec.sources.stage_map()
+    stages = [stage_map[name] for name in tool._STAGE_NAMES]
+
+    pins = tool._input_artifact_pins(stages)
+
+    assert set(pins) == {"qrf_donor", "published_fact_surface"}
+    for pin in pins.values():
+        assert len(str(pin["sha256"])) == 64
+        assert int(pin["size_bytes"]) > 0
+        assert str(pin["filename"])
+    income_stage = stage_map["hmrc_spi_income_spine"]
+    declared = {
+        str(artifact["role"]): str(artifact["sha256"])
+        for artifact in income_stage.artifacts
+        if "table" not in artifact and "resource" not in artifact
+    }
+    assert {role: pin["sha256"] for role, pin in pins.items()} == declared
