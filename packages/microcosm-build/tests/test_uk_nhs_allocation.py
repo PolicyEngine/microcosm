@@ -69,10 +69,12 @@ def test_nhs_85_plus_fold_in_and_budget_normalization_use_full_table() -> None:
         NHS_BUDGET_2025_26,
     )
 
+    # The real frame's household table has no household_weight column (weights
+    # live in the typed vector): the allocation must run from the passed array.
     allocated = allocate_nhs_by_age_gender(
         person,
         household_weights=household["household_weight"].to_numpy(dtype=float),
-        household=household,
+        household=household.drop(columns=["household_weight"]),
         nhs_table=_raw_nhs_rows(),
     )
 

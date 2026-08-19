@@ -345,6 +345,12 @@ def allocate_nhs_by_age_gender(
             / "uk/nhs_consumption_by_age_gender.json"
         )
         nhs_table = pd.DataFrame(json.loads(path.read_text(encoding="utf-8"))["rows"])
+    # The frame keeps weights in the typed vector, not as a table column —
+    # thread the caller-supplied weights onto the household table the
+    # weighted person counts read.
+    household = household.assign(
+        household_weight=np.asarray(household_weights, dtype=float)
+    )
     cells = build_nhs_cell_table(nhs_table, person, household)
     output = pd.DataFrame(0.0, index=person.index, columns=UK_NHS_OUTPUT_COLUMNS)
     service_to_columns = {
