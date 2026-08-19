@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import sys
 import time
 from datetime import UTC, datetime
@@ -217,6 +218,46 @@ def _resource_pins(stages, spec) -> dict[str, str]:
     return dict(sorted(pins.items()))
 
 
+def _input_artifact_pins(stages) -> dict[str, dict[str, object]]:
+    """Caller-supplied private input artifacts, pinned by role.
+
+    Non-table, non-resource artifacts (the SPI donor tab and the HMRC ODS)
+    carry their own sha256/size pins in the manifest. Binding them here puts
+    the pins in the build sidecar and the Logbook input-pins digest, so two
+    runs with different high-impact source inputs can never share build-side
+    provenance (adversarial-review finding on #717).
+    """
+
+    pins: dict[str, dict[str, object]] = {}
+    for stage in stages:
+        for artifact in stage.artifacts:
+            if "table" in artifact or "resource" in artifact:
+                continue
+            if "sha256" not in artifact:
+                continue
+            role = str(artifact.get("role") or artifact.get("filename") or "")
+            if not role:
+                raise ValueError(
+                    f"stage {stage.stage!r} declares a pinned input artifact "
+                    "without a role or filename."
+                )
+            pin = {
+                "filename": str(
+                    artifact.get("filename") or artifact.get("locator") or ""
+                ),
+                "kind": str(artifact.get("kind", "")),
+                "sha256": str(artifact["sha256"]),
+                "size_bytes": int(artifact["size_bytes"]),
+            }
+            if role in pins and pins[role] != pin:
+                raise ValueError(
+                    f"input artifact role {role!r} has inconsistent pins "
+                    "across stages."
+                )
+            pins[role] = pin
+    return dict(sorted(pins.items()))
+
+
 def _role_pins(pins: dict[str, dict[str, object]]) -> dict[str, dict[str, object]]:
     return {
         table: {
@@ -280,6 +321,8 @@ def _build_sidecar(
     records,
     artifact_pins,
     resource_pins: dict[str, str],
+    input_artifact_pins: dict[str, dict[str, object]],
+    hmrc_replay: dict[str, object],
     stochastic_contract_sha256: str,
 ) -> dict[str, object]:
     household_weight = frame.weights_for("household")
@@ -293,6 +336,8 @@ def _build_sidecar(
         "entity_row_counts": _entity_row_counts(frame),
         "artifact_pins": artifact_pins,
         "resource_pins": resource_pins,
+        "input_artifact_pins": input_artifact_pins,
+        "hmrc_replay": hmrc_replay,
         "stage_artifact_pins": {
             stage.stage: _stage_artifact_pins(stage) for stage in stages
         },
@@ -381,6 +426,20 @@ def main(argv: list[str] | None = None) -> int:
     spool_dir = args.spine_h5.parent / "logbook-spool"
     try:
         _validate_args(args)
+        # A crash between the H5 write and the sidecar writes must never
+        # leave a stale sidecar beside a fresh H5 (adversarial-review
+        # finding on #717): clear every output up front, and treat the
+        # build sidecar - written last, binding the replay hash - as the
+        # marker that the bundle is complete.
+        stale_outputs = [
+            args.spine_h5,
+            args.spine_h5.with_suffix(".build.json"),
+            args.spine_h5.with_suffix(".hmrc_replay.json"),
+        ]
+        if args.emit_nonzero_shares is not None:
+            stale_outputs.append(args.emit_nonzero_shares)
+        for stale in stale_outputs:
+            stale.unlink(missing_ok=True)
         code_pin = git_code_pin(_REPOSITORY)
         append_phase(state, "configured")
         spec = load_country_spec("uk")
@@ -390,7 +449,16 @@ def main(argv: list[str] | None = None) -> int:
         stages = [stages_by_name[name] for name in _STAGE_NAMES]
         artifact_pins = _artifact_pins(stages)
         resource_pins = _resource_pins(stages, spec)
-        state.input_pins_digest = role_pins_digest(_role_pins(artifact_pins))
+        input_artifact_pins = _input_artifact_pins(stages)
+        overlapping_pin_roles = set(artifact_pins) & set(input_artifact_pins)
+        if overlapping_pin_roles:
+            raise ValueError(
+                "input artifact roles collide with FRS tab names: "
+                f"{sorted(overlapping_pin_roles)}."
+            )
+        state.input_pins_digest = role_pins_digest(
+            _role_pins({**artifact_pins, **input_artifact_pins})
+        )
         run_config = {
             "pipeline": _PIPELINE,
             "stages": list(_STAGE_NAMES),
@@ -485,12 +553,20 @@ def main(argv: list[str] | None = None) -> int:
             replay_sidecar_path,
         )
         append_phase(state, "hmrc_replay_sidecar_written")
+        replay_bytes = replay_sidecar_path.read_bytes()
+        replay_binding = {
+            "filename": replay_sidecar_path.name,
+            "report_kind": str(json.loads(replay_bytes).get("report_kind", "")),
+            "sha256": hashlib.sha256(replay_bytes).hexdigest(),
+        }
         sidecar = _build_sidecar(
             frame=frame,
             stages=stages,
             records=records,
             artifact_pins=artifact_pins,
             resource_pins=resource_pins,
+            input_artifact_pins=input_artifact_pins,
+            hmrc_replay=replay_binding,
             stochastic_contract_sha256=stochastic_contract.resource_sha256,
         )
         atomic_write_json(sidecar_path, sidecar)

@@ -1088,6 +1088,13 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     monkeypatch.delenv("POPULACE_LEDGER_API_KEY", raising=False)
     monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
 
+    # Stale sidecars from an earlier interrupted run must never survive
+    # beside a fresh H5 (adversarial-review finding on #717).
+    stale_replay = output.with_suffix(".hmrc_replay.json")
+    stale_build = output.with_suffix(".build.json")
+    stale_replay.write_text('{"report_kind": "stale_leftover"}')
+    stale_build.write_text('{"stale": true}')
+
     assert (
         tool.main(
             [
@@ -1154,8 +1161,16 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
         "stage1": 42,
         "stage2": 43,
     }
-    assert json.loads(output.with_suffix(".hmrc_replay.json").read_text()) == {
-        "report_kind": "fake_spine_replay"
+    replay_bytes = output.with_suffix(".hmrc_replay.json").read_bytes()
+    assert json.loads(replay_bytes) == {"report_kind": "fake_spine_replay"}
+    # The synthetic spec declares no non-table pinned artifacts, so the pin
+    # map is present but empty; the replay binding must match the file on
+    # disk byte-for-byte.
+    assert sidecar["input_artifact_pins"] == {}
+    assert sidecar["hmrc_replay"] == {
+        "filename": output.with_suffix(".hmrc_replay.json").name,
+        "report_kind": "fake_spine_replay",
+        "sha256": hashlib.sha256(replay_bytes).hexdigest(),
     }
     assert len(sidecar["stochastic_contract_sha256"]) == 64
     assert sidecar["resource_pins"] == {"brma_rent_counts.json": "f" * 64}
@@ -1395,3 +1410,26 @@ def test_refuses_nan_in_produced_weight_column(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="produced NaN"):
         build_uk_frs_spine_frame(tmp_path, stage=stage)
+
+
+def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
+    tool = _load_tool()
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    stage_map = spec.sources.stage_map()
+    stages = [stage_map[name] for name in tool._STAGE_NAMES]
+
+    pins = tool._input_artifact_pins(stages)
+
+    assert set(pins) == {"qrf_donor", "published_fact_surface"}
+    for pin in pins.values():
+        assert len(str(pin["sha256"])) == 64
+        assert int(pin["size_bytes"]) > 0
+        assert str(pin["filename"])
+    income_stage = stage_map["hmrc_spi_income_spine"]
+    declared = {
+        str(artifact["role"]): str(artifact["sha256"])
+        for artifact in income_stage.artifacts
+        if "table" not in artifact and "resource" not in artifact
+    }
+    assert {role: pin["sha256"] for role, pin in pins.items()} == declared

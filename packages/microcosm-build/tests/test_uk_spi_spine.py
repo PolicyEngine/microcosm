@@ -20,6 +20,8 @@ from microcosm.build.uk_runtime.spi_spine import (
     EMPLOYER_PENSION_CONTRIBUTIONS_COLUMN,
     UKFRSHMRCSpineLeavesStageTransform,
     UKSPISupportChannelStageTransform,
+    _assert_income_stage_parameters,
+    _support_stage_parameters,
 )
 from microcosm.build.uk_runtime.spi_support import (
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
@@ -421,3 +423,103 @@ def test_reviewed_absent_incapacity_signal_raises(tmp_path: Path) -> None:
             )
         finally:
             monkeypatch.undo()
+
+
+def _committed_stage(name: str) -> SourceStageSpec:
+    from microcosm.build.country_spec import load_country_spec
+
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    return spec.sources.stage_map()[name]
+
+
+def _with_mutated_operation(
+    stage: SourceStageSpec, kind: str, **overrides: object
+) -> SourceStageSpec:
+    operations = []
+    for operation in stage.operations:
+        payload: dict[str, object] = {"kind": operation.kind, **dict(operation.parameters)}
+        if operation.kind == kind:
+            payload.update(overrides)
+        operations.append(payload)
+    return SourceStageSpec.from_mapping({**stage.__dict__, "operations": operations})
+
+
+def test_income_stage_parameters_accept_the_committed_manifest() -> None:
+    _assert_income_stage_parameters(
+        _committed_stage("hmrc_spi_income_spine"),
+        seed=42,
+        qrf_estimators=100,
+        donor_sample_size=100_000,
+    )
+
+
+def test_income_stage_parameters_refuse_redraw_column_drift() -> None:
+    stage = _with_mutated_operation(
+        _committed_stage("hmrc_spi_income_spine"),
+        "redraw_columns_from_fitted_qrf",
+        columns=["savings_interest_income"],
+    )
+    with pytest.raises(ValueError, match="base redraw columns drifted"):
+        _assert_income_stage_parameters(
+            stage, seed=42, qrf_estimators=100, donor_sample_size=100_000
+        )
+
+
+def test_income_stage_parameters_refuse_frs_initialization_drift() -> None:
+    stage = _with_mutated_operation(
+        _committed_stage("hmrc_spi_income_spine"),
+        "fit_weighted_qrf_stage1",
+        initialize_frs_channel_columns={
+            "gift_aid": 1.0,
+            "charitable_investment_gifts": 0.0,
+        },
+    )
+    with pytest.raises(ValueError, match="initialization map drifted"):
+        _assert_income_stage_parameters(
+            stage, seed=42, qrf_estimators=100, donor_sample_size=100_000
+        )
+
+
+def test_income_stage_parameters_refuse_stage2_output_drift() -> None:
+    committed = _committed_stage("hmrc_spi_income_spine")
+    stage2 = next(
+        operation
+        for operation in committed.operations
+        if operation.kind == "fit_weighted_qrf_stage2"
+    )
+    stage = _with_mutated_operation(
+        committed,
+        "fit_weighted_qrf_stage2",
+        outputs=list(stage2.parameters["outputs"])[:-1],
+    )
+    with pytest.raises(ValueError, match="stage-2 outputs drifted"):
+        _assert_income_stage_parameters(
+            stage, seed=42, qrf_estimators=100, donor_sample_size=100_000
+        )
+
+
+def test_support_stage_parameters_accept_the_committed_manifest() -> None:
+    count, share, strata, declarations = _support_stage_parameters(
+        _committed_stage("spi_support_channel"), seed=42
+    )
+    assert count == 10000
+    assert share == 0.5
+    assert strata == ("region",)
+    assert len(declarations) == 1
+
+
+def test_support_stage_parameters_refuse_gate_declaration_drift() -> None:
+    committed = _committed_stage("spi_support_channel")
+    gate = next(
+        operation
+        for operation in committed.operations
+        if operation.kind == "gate_zero_weight_strata"
+    )
+    declaration = dict(gate.parameters["declarations"][0])
+    declaration["maximum_zero_weight_rows"] = 20000
+    stage = _with_mutated_operation(
+        committed, "gate_zero_weight_strata", declarations=[declaration]
+    )
+    with pytest.raises(ValueError, match="gate declaration drifted"):
+        _support_stage_parameters(stage, seed=42)

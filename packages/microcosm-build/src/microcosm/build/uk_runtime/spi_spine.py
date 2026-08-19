@@ -44,6 +44,7 @@ from microcosm.build.uk_runtime.release_input_coverage import (
 from microcosm.build.uk_runtime.spi_income import (
     DEFAULT_SPI_DONOR_SAMPLE_SIZE,
     SPI_SOURCE_TI_FORMULA,
+    SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS,
     UKSPIIncomeImputationResult,
     assert_frs_hmrc_auxiliary_crosswalk_available,
     impute_uk_spi_income_support,
@@ -52,6 +53,7 @@ from microcosm.build.uk_runtime.spi_income import (
 from microcosm.build.uk_runtime.spi_support import (
     DEFAULT_SPI_PRIOR_MASS_SHARE,
     DEFAULT_SPI_SUPPORT_HOUSEHOLDS,
+    FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
     SPI_HMRC_DERIVED_AUXILIARY_COLUMNS,
     SPI_HMRC_EMPLOYMENT_BENEFITS_COLUMN,
@@ -61,6 +63,7 @@ from microcosm.build.uk_runtime.spi_support import (
     SPI_HMRC_OTHER_SOCIAL_SECURITY_INCOME_COLUMN,
     SPI_HMRC_STATE_PENSION_INCOME_COLUMN,
     SPI_HMRC_TAXABLE_TERMINATION_PAY_COLUMN,
+    SPI_INCOME_QRF_OUTPUT_COLUMNS,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
     UKSPISupportResult,
     build_uk_spi_support_channel,
@@ -155,6 +158,33 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
     FRS_HMRC_UBISJA_COLUMN,
     FRS_HMRC_INCPBEN_COLUMN,
 )
+
+# Reviewed constants for every load-bearing manifest parameter the spine
+# transforms consume. The drift asserts below fail closed on any manifest-only
+# edit (adversarial-review finding on #717): a manifest change to these values
+# requires a matching reviewed code change here.
+SPI_SPINE_STAGE1_PREDICTORS = ("age", "gender", "region")
+SPI_SPINE_STAGE2_PREDICTORS = (
+    "age",
+    "gender",
+    "region",
+    *FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS,
+)
+SPI_SPINE_STAGE2_OUTPUT_COLUMNS = tuple(
+    column
+    for column in UK_SPI_INCOME_SPINE_REWRITE_COLUMNS
+    if column not in FRS_ONLY_SPI_FILL_INCOME_PREDICTOR_COLUMNS
+    and column
+    not in (FRS_HMRC_PAY_COLUMN, FRS_HMRC_UBISJA_COLUMN, FRS_HMRC_INCPBEN_COLUMN)
+)
+SPI_SPINE_FRS_CHANNEL_INITIALIZATION = {
+    "gift_aid": 0.0,
+    "charitable_investment_gifts": 0.0,
+}
+SPI_SPINE_BASE_REDRAW_COLUMNS = ("dividend_income",)
+SPI_SPINE_SUPPORT_CHANNELS = {"base": "frs", "synthetic": SPI_SYNTHETIC_SUPPORT_CHANNEL}
+SPI_SPINE_PRECLONE_GATE_NAME = "e7_spi_synthetic_preclone"
+SPI_SPINE_EFFECTIVE_MASS_COLUMNS = ("gift_aid", "charitable_investment_gifts")
 
 
 @dataclass(frozen=True)
@@ -597,16 +627,37 @@ def _support_stage_parameters(
         raise ValueError("SPI support manifest seed drifted from the reviewed value.")
     if stack.parameters.get("draw") != "uniform_without_replacement":
         raise ValueError("SPI support manifest must declare a uniform donor draw.")
+    if stack.parameters.get("flag_column") != HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN:
+        raise ValueError("SPI support manifest flag column drifted.")
+    if dict(stack.parameters.get("channels", {})) != SPI_SPINE_SUPPORT_CHANNELS:
+        raise ValueError("SPI support manifest channel labels drifted.")
     if allocation.parameters.get("share") != DEFAULT_SPI_PRIOR_MASS_SHARE:
         raise ValueError("SPI support prior-mass share drifted from 0.5.")
+    if allocation.parameters.get("weight_kind_out") != WeightKind.IMPORTANCE.value:
+        raise ValueError("SPI support allocation must advance to importance weights.")
+    if allocation.parameters.get("conservation") != "exact_total":
+        raise ValueError("SPI support allocation must declare exact-total conservation.")
     strata = tuple(allocation.parameters.get("strata", ()))
     if strata != ("region",):
         raise ValueError("SPI support spine allocation must use strata ['region'].")
+    declarations = _coerce_declarations(gate.parameters.get("declarations", ()))
+    if len(declarations) != 1:
+        raise ValueError("SPI support gate must declare exactly one pre-clone stratum.")
+    declaration = declarations[0]
+    if (
+        declaration.name != SPI_SPINE_PRECLONE_GATE_NAME
+        or dict(declaration.selector) != {HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN: True}
+        or declaration.maximum_zero_weight_rows != DEFAULT_SPI_SUPPORT_HOUSEHOLDS
+    ):
+        raise ValueError(
+            "SPI support pre-clone gate declaration drifted from the reviewed "
+            "name/selector/maximum."
+        )
     return (
         int(stack.parameters["count"]),
         float(allocation.parameters["share"]),
         strata,
-        _coerce_declarations(gate.parameters.get("declarations", ())),
+        declarations,
     )
 
 
@@ -620,6 +671,7 @@ def _assert_income_stage_parameters(
     stage1 = _operation(stage, "fit_weighted_qrf_stage1")
     stage2 = _operation(stage, "fit_weighted_qrf_stage2")
     redraw = _operation(stage, "redraw_columns_from_fitted_qrf")
+    effective_mass = _operation(stage, "gate_distributional_effective_mass")
     if stage1.parameters.get("seed") != seed:
         raise ValueError("SPI income stage-1 seed drifted from the reviewed value.")
     if stage2.parameters.get("seed") != seed + 1:
@@ -630,10 +682,45 @@ def _assert_income_stage_parameters(
         raise ValueError("SPI income stage-2 estimator count drifted.")
     if stage1.parameters.get("sample_size") != donor_sample_size:
         raise ValueError("SPI income donor sample size drifted.")
+    if stage1.parameters.get("post_sample_fit_weight") != "uniform":
+        raise ValueError("SPI income donor bootstrap must refit at uniform weight.")
+    if tuple(stage1.parameters.get("predictors", ())) != SPI_SPINE_STAGE1_PREDICTORS:
+        raise ValueError("SPI income stage-1 predictors drifted.")
+    if tuple(stage1.parameters.get("outputs", ())) != SPI_INCOME_QRF_OUTPUT_COLUMNS:
+        raise ValueError("SPI income stage-1 outputs drifted.")
+    initialization = dict(stage1.parameters.get("initialize_frs_channel_columns", {}))
+    if initialization != SPI_SPINE_FRS_CHANNEL_INITIALIZATION:
+        raise ValueError("SPI income FRS-channel initialization map drifted.")
+    if tuple(stage2.parameters.get("predictors", ())) != SPI_SPINE_STAGE2_PREDICTORS:
+        raise ValueError("SPI income stage-2 predictors drifted.")
+    if tuple(stage2.parameters.get("outputs", ())) != SPI_SPINE_STAGE2_OUTPUT_COLUMNS:
+        raise ValueError("SPI income stage-2 outputs drifted.")
+    reviewed_absent = stage2.parameters.get("reviewed_absent_outputs", {})
+    if set(reviewed_absent) != set(SPI_STAGE2_REVIEWED_ABSENT_OUTPUTS):
+        raise ValueError("SPI income stage-2 reviewed-absent outputs drifted.")
     if redraw.parameters.get("fit") != "stage1":
         raise ValueError("SPI income base redraw must use the stage-1 fit.")
     if redraw.parameters.get("rows") != "base_support_channel":
         raise ValueError("SPI income base redraw must target the base support channel.")
+    if tuple(redraw.parameters.get("columns", ())) != SPI_SPINE_BASE_REDRAW_COLUMNS:
+        raise ValueError("SPI income base redraw columns drifted.")
+    if (
+        tuple(effective_mass.parameters.get("columns", ()))
+        != SPI_SPINE_EFFECTIVE_MASS_COLUMNS
+    ):
+        raise ValueError("SPI income effective-mass columns drifted.")
+    if (
+        effective_mass.parameters.get("minimum_nondefault_mass_share")
+        != DEFAULT_MINIMUM_NONDEFAULT_MASS_SHARE
+    ):
+        raise ValueError("SPI income effective-mass floor drifted.")
+    if effective_mass.parameters.get("fail_below_floor") is not True:
+        raise ValueError("SPI income effective-mass gate must fail below the floor.")
+    if (
+        effective_mass.parameters.get("required_support_channel")
+        != SPI_SYNTHETIC_SUPPORT_CHANNEL
+    ):
+        raise ValueError("SPI income effective-mass support channel drifted.")
 
 
 def _operation(stage: SourceStageSpec, kind: str):
