@@ -639,6 +639,12 @@ from microcosm.build.us_runtime.qbi_inputs import (
     us_qbi_inputs_summary,
     with_us_qbi_input_reconciliation,
 )
+from microcosm.build.us_runtime.qbi_passive_passthrough import (
+    US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN,
+    US_QBI_PASSIVE_PASSTHROUGH_PERSON_INPUT_COLUMNS,
+    us_qbi_passive_passthrough_contract_identity,
+    with_us_qbi_passive_passthrough_assignment,
+)
 from microcosm.build.us_runtime.reform_coverage_smoke import (
     us_reform_coverage_smoke_gate,
 )
@@ -1450,6 +1456,10 @@ __all__ = [
     "us_qbi_inputs_stage_spec",
     "us_qbi_inputs_summary",
     "with_us_qbi_input_reconciliation",
+    "US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN",
+    "US_QBI_PASSIVE_PASSTHROUGH_PERSON_INPUT_COLUMNS",
+    "us_qbi_passive_passthrough_contract_identity",
+    "with_us_qbi_passive_passthrough_assignment",
     "US_AOTC_ELIGIBILITY_OUTPUT_COLUMNS",
     "US_EDUCATION_INPUTS_NONCONSTANT_PERSON_COLUMNS",
     "US_EDUCATION_INPUTS_OUTPUT_COLUMNS",

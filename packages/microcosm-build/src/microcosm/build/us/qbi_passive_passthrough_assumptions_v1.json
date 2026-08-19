@@ -1,0 +1,73 @@
+{
+  "assignment_stage": {
+    "architecture": "sibling_before_qbi_reconciliation",
+    "latent_form_treatment": "When a v3 latent entity form is available it routes only partnership and S-corporation records into eligibility; the SCF probability and share remain band-only because active and non-active SCF businesses are not entity-linked.",
+    "output_column": "passive_partnership_s_corp_income",
+    "person_input_columns": [
+      "partnership_income",
+      "s_corp_income",
+      "rental_income",
+      "estate_income"
+    ],
+    "schedule_e_proxy": "partnership_income + s_corp_income + rental_income + estate_income",
+    "version": 1,
+    "versioning_decision": "Use a version-1 sibling rather than QBI simulation version 4: the current renamed tree consumes 15 archived QBI leaves and does not carry the old opt-in simulation stack."
+  },
+  "calibration": {
+    "bounds": {
+      "lower": 0.0,
+      "upper": 109256984000.0
+    },
+    "expected_aggregate": 54628491999.999985,
+    "log_odds_shift": -1.157105426398319,
+    "provisional_target": {
+      "amount": 54628492000.0,
+      "choice": "midpoint_of_unresolved_bounds"
+    },
+    "replay_artifact": {
+      "bytes": 241045964,
+      "filename": "puf_2024.h5",
+      "person_rows": 484015,
+      "person_weight_total": 317181074.5235834,
+      "positive_passthrough_rows": 83820,
+      "positive_passthrough_weighted_aggregate": 1632692702130.5078,
+      "sha256": "8182579ddfecaf5e5b872e2307b88f03e8e8def993171b648f701a19a847f37b",
+      "tax_unit_rows": 207692
+    },
+    "replay_relative_tolerance": 0.05,
+    "seeded_replay": {
+      "aggregate": 55021131518.061035,
+      "positive_assigned_rows": 6207,
+      "relative_error": 0.007187449327011208,
+      "seed": 0
+    },
+    "solver": {
+      "iterations": 128,
+      "lower_bound": -30.0,
+      "method": "bisection_on_expected_weighted_aggregate",
+      "upper_bound": 30.0
+    }
+  },
+  "evidence": {
+    "resource": "qbi_passive_passthrough_v1.json",
+    "schema_version": 1,
+    "sha256": "32fac446d5f208a9c3f73c8234184144dd0c1f322ccdf186e5fb94dd774d61a7"
+  },
+  "notes": [
+    "The target is provisional because Form 8960 line 4c does not decompose passive pass-through income from rental and royalty income.",
+    "Rental income remains unchanged: the current engine includes it fully in NIIT, and this stage assigns only the pass-through leaf.",
+    "The runtime does not read the restricted replay artifact or solve the calibration shift.",
+    "The sibling stage neither invokes nor advances any archived QBI random stream and preserves all 15 existing QBI leaves."
+  ],
+  "provisional": true,
+  "random_streams": {
+    "bit_generator": "PCG64",
+    "draw_policy": "full_length_before_support_masks",
+    "family_entropy": 4722,
+    "presence_family": 0,
+    "root_seed_default": 0,
+    "share_family": 1
+  },
+  "resource": "qbi_passive_passthrough_assumptions",
+  "schema_version": 1
+}
