@@ -62,6 +62,23 @@ class TestAccessors:
         person.loc[0, "x"] = 99.0  # caller mutation must not reach the bundle
         assert bundle.person["x"].tolist() == [1.0]
 
+    def test_owned_loader_tables_are_not_copied(self, simple_schema) -> None:
+        person = pd.DataFrame(
+            {"person_id": [0], "person_household_id": [1], "x": [1.0]}
+        )
+        household = pd.DataFrame({"household_id": [1]})
+        weights = {"household": Weights(values=np.array([2.0]), kind=WeightKind.DESIGN)}
+
+        bundle = Frame._from_owned_tables(
+            {"person": person, "household": household},
+            simple_schema,
+            weights,
+        )
+
+        assert bundle.person is person
+        assert bundle.table("household") is household
+        bundle.revalidate()
+
     def test_missing_entity_table_is_named(self, simple_schema) -> None:
         person = pd.DataFrame({"person_id": [0], "person_household_id": [1]})
         weights = {"household": Weights(values=np.array([1.0]), kind=WeightKind.DESIGN)}
