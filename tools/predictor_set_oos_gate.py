@@ -265,17 +265,17 @@ PHASE_P_CONFIG: dict[str, object] = {
             "candidate": {
                 "stacked_authority_version": 11,
                 "stacked_authority_sha256": (
-                    "5a397d602e3a9549c2ce986eab1e098c47886b597b05c892306ef06757950a71"
+                    "5288232dcdab00f53cd2c0592b2df6c5de7849d264722334f5487db2e3df8c67"
                 ),
                 "gap_fill_plan_sha256": (
-                    "fdee403f065277448ecd97084c4110cc89304e6586d1717fe60d1669dc5c8af9"
+                    "ad4ad0d13d0f447feb0b2bb1a8e5d6ac5a5725b95f57c76799288b165577451f"
                 ),
                 "early_target_bank_identity_sha256": {
                     "asec_survey_to_acs": (
-                        "26c20db9b43eecac36776e63047c324667b46c7eb7bfba7037d5fa5ab79cb474"
+                        "2b81c84c161e84d53c693742937ee4e654258cc27657954451fbe1a2c0e81923"
                     ),
                     "asec_housing_to_acs": (
-                        "fa4ad7c7d8cc696d4d1ee7d8b9d6018a84a8a14f905e52f5e0fb494e7f47c21e"
+                        "dc6758341c193d2a9b5dff99b1263be16a73de5de13eb1eeef44a706b463f4b0"
                     ),
                 },
             },

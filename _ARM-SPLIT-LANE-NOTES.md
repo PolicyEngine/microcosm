@@ -128,6 +128,11 @@ that owns each arm.
   identity `9be8ecdf82356f38998e8b620ee36d9134f554fe89a8eafd8406f438e2b5aad6`;
   no build, network, push, gate-parameter change, `PROGRESS.md` edit, or
   `logbook-pending-chain.txt` access is authorized.
+- Done: refreshed only the candidate integrity bindings in the frozen gate to
+  the investment artifact's receipted stacked authority, gap-fill plan, and two
+  early target-bank identities. All statistical, battery, fold, seed, forest,
+  missingness, bootstrap, ratio-band, and clause values remain byte-equal to
+  round 1's verdict configuration.
 - Next: reproduce round 1's configuration byte-for-byte for the investment
   candidate, verify the emitted verdict and report, and commit that evidence on
   this branch before moving to the next arm.
