@@ -130,3 +130,18 @@ that owns each arm.
   is accepted. The replacement monitor observes the exact spawned gate PID
   (the forest uses in-process threads) and guarantees child cleanup on any
   monitor exception.
+- Excluded fail-closed receipt check: the guarded retry ended after 7.06 seconds
+  at 1,151,860,736 bytes peak RSS with `measurement_integrity` because the
+  round-1 parser required rebuild-only `write_status`/`write_seconds` fields.
+  No family fit or substantive clause ran, so its temporary verdict/report are
+  not evidence.
+- Root cause and fix: all 48 eligibility early-target records are authenticated
+  durable resumes (`source=checkpoint`, `load_status=resumed`). The producing
+  `AcsTransferTargetBankStore.receipt()` contract and its interruption/resume
+  tests intentionally omit write-only fields for this case. The gate now
+  accepts exactly that eight-key resumed variant as well as its original
+  ten-key rebuilt variant; `_read_target_execution` still verifies file size,
+  file SHA-256, identity, content-metadata SHA-256, raw-draw SHA-256, target
+  descriptor, and chain state. No estimand or gate parameter changed.
+- Next: rerun the guarded eligibility measurement; the temporary fail-closed
+  files will be overwritten only by the complete rerun.

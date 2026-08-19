@@ -1028,7 +1028,7 @@ def _load_early_execution_evidence(
                 raise ValueError(
                     f"ACS target receipt {direction}/{target_index} changed."
                 )
-            required_record_keys = {
+            common_record_keys = {
                 "source",
                 "descriptor",
                 "load_status",
@@ -1037,19 +1037,31 @@ def _load_early_execution_evidence(
                 "size_bytes",
                 "raw_draw_sha256",
                 "content_metadata_sha256",
+            }
+            rebuilt_record_keys = common_record_keys | {
                 "write_status",
                 "write_seconds",
             }
-            if (
-                set(record) != required_record_keys
-                or record.get("source") not in {"rebuilt", "checkpoint"}
-                or record.get("load_status") not in {"loaded", "missing"}
-                or record.get("write_status") not in {"rebuilt", "not_required"}
-                or isinstance(record.get("write_seconds"), bool)
-                or not isinstance(record.get("write_seconds"), (int, float))
-                or not math.isfinite(float(record["write_seconds"]))
-                or float(record["write_seconds"]) < 0.0
-            ):
+            rebuilt = (
+                set(record) == rebuilt_record_keys
+                and record.get("source") == "rebuilt"
+                and record.get("load_status") in {"loaded", "missing"}
+                and record.get("write_status") in {"rebuilt", "not_required"}
+                and not isinstance(record.get("write_seconds"), bool)
+                and isinstance(record.get("write_seconds"), (int, float))
+                and math.isfinite(float(record["write_seconds"]))
+                and float(record["write_seconds"]) >= 0.0
+            )
+            # A fully authenticated target resumed from the durable bank has
+            # no write attempt, so the materializer intentionally omits the
+            # two rebuild-only fields.  The checkpoint is still verified
+            # byte-for-byte by _read_target_execution below.
+            resumed = (
+                set(record) == common_record_keys
+                and record.get("source") == "checkpoint"
+                and record.get("load_status") == "resumed"
+            )
+            if not rebuilt and not resumed:
                 raise ValueError(
                     f"ACS target receipt {direction}/{target_index} changed."
                 )
