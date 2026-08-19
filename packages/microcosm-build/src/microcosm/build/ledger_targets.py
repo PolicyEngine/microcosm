@@ -1033,7 +1033,14 @@ def _unique_facts(facts: Iterable[object]) -> tuple[object, ...]:
 
 
 def _fact_matches_selector(fact: object, selector: Mapping[str, object]) -> bool:
-    """Return whether a consumer fact satisfies a structured reference selector."""
+    """Return whether a consumer fact satisfies a structured reference selector.
+
+    A list-valued scalar key matches by membership; an empty list is refused
+    rather than treated as match-nothing, because it reads like match-anything.
+    Note ``dimensions: []`` is NOT an empty membership list — it is the
+    list-form dimensions selector's exact name-set match for the dimensionless
+    total row (see :func:`_dimensions_match`).
+    """
 
     for key, expected in selector.items():
         if key == "dimensions":
@@ -1048,6 +1055,12 @@ def _fact_matches_selector(fact: object, selector: Mapping[str, object]) -> bool
             continue
         candidates = _selector_candidates(fact, str(key))
         if isinstance(expected, (list, tuple)):
+            if not expected:
+                raise ValueError(
+                    f"Ledger fact selector field {key!r} is an empty list: an "
+                    "empty membership list matches nothing while reading like "
+                    "match-anything. Pin at least one value or drop the field."
+                )
             if not any(str(item) in candidates for item in expected):
                 return False
             continue
@@ -1123,12 +1136,29 @@ def _dimensions_match(fact: object, expected: object) -> bool:
 
 
 def _dimension_values_match(fact: object, expected: object) -> bool:
+    """Match dimension-value pins with strict typed equality.
+
+    A pin whose type disagrees with the fact's dimension value (float ``5.0``
+    against int ``5``, ``"5"`` against ``5``) does not error — the fact simply
+    fails to match, so under a resolves-or-defers activation rule the target
+    quietly drops out of the active subset. When a target is unexpectedly
+    inactive, check the authoring-run membership report before suspecting the
+    feed. Empty pin lists are refused for the same reason as empty membership
+    lists in :func:`_fact_matches_selector`.
+    """
+
     if not isinstance(expected, Mapping):
         raise ValueError(
             "Ledger fact selector field 'dimension_values' must be a mapping."
         )
     dimensions = _dimensions(fact)
     for key, expected_value in expected.items():
+        if isinstance(expected_value, list) and not expected_value:
+            raise ValueError(
+                f"dimension_values pin {key!r} is an empty list: an empty pin "
+                "list matches nothing while reading like match-anything. Pin "
+                "at least one value or drop the dimension."
+            )
         if key not in dimensions:
             return False
         actual_value = dimensions[key]

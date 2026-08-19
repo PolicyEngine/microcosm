@@ -752,6 +752,40 @@ class TestLedgerSelectorExtensions:
                 country="us",
             )
 
+    def test_empty_membership_list_raises_instead_of_matching_nothing(self) -> None:
+        reference = LedgerTargetReference(
+            name="empty membership selector",
+            ledger_selector={"source_measure_id": []},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        with pytest.raises(ValueError, match="empty list"):
+            compile_ledger_target_references(
+                [_consumer_fact_row()],
+                [reference],
+                country="us",
+            )
+
+    def test_empty_dimension_values_pin_list_raises(self) -> None:
+        reference = LedgerTargetReference(
+            name="empty pin list selector",
+            ledger_selector={"dimension_values": {"band": []}},
+            entity="tax_unit",
+            measure="adjusted_gross_income",
+            period=2023,
+            family="irs_soi",
+        )
+
+        with pytest.raises(ValueError, match="empty pin"):
+            compile_ledger_target_references(
+                [_consumer_fact_row(dimensions={"band": "A"})],
+                [reference],
+                country="us",
+            )
+
     def test_empty_dimensions_list_matches_dimensionless_fact(self) -> None:
         reference = LedgerTargetReference(
             name="dimensionless selector",
