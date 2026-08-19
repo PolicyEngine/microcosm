@@ -19,7 +19,7 @@ import hashlib
 import pickle
 from collections import defaultdict
 from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Protocol
@@ -27,13 +27,22 @@ from typing import Protocol
 import numpy as np
 import pandas as pd
 
+from .brokers import (
+    BrokerContractError,
+    BrokerReceipt,
+    BrokerSession,
+    KernelBrokerSession,
+    RNGBehaviorIdentity,
+    SourceBehaviorIdentity,
+    deny_all_session_for_node,
+)
 from .canonical import sha256_json
 from .compiler_ir import (
     CompiledNode,
     current_compiler_ir_abi,
     row_classifier_contract,
 )
-from .model import FrozenMap, thaw_json
+from .model import FrozenMap, freeze_json, thaw_json
 from .scope_algebra import ClosedScopeRegistry, ScopeAlgebraError
 
 
@@ -113,6 +122,54 @@ _PRESERVE_OPERATIONS = frozenset({"preserve", "preserve_absent"})
 _TABLE_WRITE_MODES = frozenset({"column_cells", "structural_column"})
 _WEIGHT_KINDS = frozenset({"design", "importance", "calibrated"})
 _NODE_KEY_DOMAIN = "microcosm.spec-engine.static-node-key.v1"
+_NODE_REUSE_KEY_DOMAIN = "microcosm.spec-engine.node-reuse-key.v1"
+_BROKER_RECEIPT_DOMAIN = "microcosm.spec-engine.broker-access-receipt.v1"
+_OPERATIONAL_SURFACE = "operational"
+_RUN_PROVENANCE_FIELDS = frozenset(
+    {
+        "identity_generation",
+        "source_grammar_receipt",
+        "spec_binding",
+        "authority_versions",
+        "code_inventory_digest",
+        "artifact_protocol_inventory",
+        "run_request",
+        "execution_receipt",
+    }
+)
+_SOURCE_GRAMMAR_RECEIPT_FIELDS = frozenset(
+    {"schema_version", "canonicalizer_version", "migration_chain"}
+)
+_SPEC_BINDING_FIELDS = frozenset(
+    {
+        "country",
+        "schema_id",
+        "schema_version",
+        "canonicalizer_version",
+        "spec_sha256",
+        "attestation",
+    }
+)
+_PROVENANCE_ONLY_FIELDS = frozenset(
+    {
+        "access_log",
+        "artifact_protocol_inventory",
+        "authority_versions",
+        "broker_access_log",
+        "broker_receipt",
+        "code_inventory_digest",
+        "config_authority",
+        "execution_receipt",
+        "identity_generation",
+        "provenance",
+        "run_provenance_identity",
+        "run_request",
+        "source_grammar_receipt",
+        "spec_binding",
+        "spec_sha256",
+    }
+)
+_PROVENANCE_ONLY_VALUES = frozenset({_BROKER_RECEIPT_DOMAIN, _OPERATIONAL_SURFACE})
 _VALID_MUTATION_CONTRACTS: Mapping[str, frozenset[tuple[str, str, str]]] = (
     MappingProxyType(
         {
@@ -1089,7 +1146,8 @@ class ExecutionContext:
     attempt_scope: str | None = None
     granted_effects: frozenset[Effect | str] = frozenset()
     require_byte_equivalence: bool = True
-    brokers: object | None = None
+    brokers: BrokerSession | KernelBrokerSession | None = None
+    run_provenance_identity: RunProvenanceIdentity | None = None
 
     def normalized_effects(self) -> frozenset[Effect]:
         try:
@@ -1189,8 +1247,11 @@ class ValidatedPatch:
 
     node_id: str
     node_key: str
+    attempt: int
+    attempt_scope: str | None
     patch: KernelPatch
     diff: FrameDiff
+    broker_receipt: BrokerReceipt
     _base: ImmutableFrameProjection
     _result: ImmutableFrameProjection
     _base_sha256: str
@@ -1198,6 +1259,439 @@ class ValidatedPatch:
     _patch_sha256: str
     _diff_sha256: str
     _envelope_sha256: str
+
+
+def _provenance_sha256(value: object, *, location: str) -> str:
+    if (
+        not isinstance(value, str)
+        or len(value) != 64
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise ExecutorError(f"{location} must be a lowercase sha256")
+    return value
+
+
+def _provenance_positive_int(value: object, *, location: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ExecutorError(f"{location} must be a positive integer")
+    return value
+
+
+def _freeze_provenance_mapping(
+    value: Mapping[str, object], *, location: str
+) -> FrozenMap:
+    if not isinstance(value, Mapping):
+        raise ExecutorError(f"{location} must be an object")
+    frozen = freeze_json(dict(value))
+    if not isinstance(frozen, FrozenMap):  # pragma: no cover - guarded above
+        raise AssertionError(f"{location} did not freeze to an object")
+    return frozen
+
+
+def _source_grammar_receipt(
+    value: Mapping[str, object] | None,
+) -> FrozenMap | None:
+    if value is None:
+        return None
+    row = dict(value)
+    if set(row) != _SOURCE_GRAMMAR_RECEIPT_FIELDS:
+        raise ExecutorError(
+            "source_grammar_receipt must contain exactly schema_version, "
+            "canonicalizer_version, and migration_chain"
+        )
+    _provenance_positive_int(
+        row["schema_version"], location="source_grammar_receipt/schema_version"
+    )
+    _provenance_positive_int(
+        row["canonicalizer_version"],
+        location="source_grammar_receipt/canonicalizer_version",
+    )
+    migration_chain = row["migration_chain"]
+    if not isinstance(migration_chain, Sequence) or isinstance(
+        migration_chain, str | bytes
+    ):
+        raise ExecutorError("source_grammar_receipt/migration_chain must be an array")
+    for index, value in enumerate(migration_chain):
+        if not isinstance(value, Mapping) or set(value) != {"id", "sha256"}:
+            raise ExecutorError(
+                "source_grammar_receipt migration rows require exactly id and sha256"
+            )
+        migration_id = value["id"]
+        if not isinstance(migration_id, str) or not migration_id:
+            raise ExecutorError(
+                f"source_grammar_receipt/migration_chain/{index}/id must be non-empty"
+            )
+        _provenance_sha256(
+            value["sha256"],
+            location=f"source_grammar_receipt/migration_chain/{index}/sha256",
+        )
+    return _freeze_provenance_mapping(row, location="source_grammar_receipt")
+
+
+def _provenance_spec_binding(
+    value: Mapping[str, object] | None,
+) -> FrozenMap | None:
+    if value is None:
+        return None
+    row = dict(value)
+    if set(row) != _SPEC_BINDING_FIELDS:
+        raise ExecutorError(
+            "spec_binding must contain exactly country, schema_id, schema_version, "
+            "canonicalizer_version, spec_sha256, and attestation"
+        )
+    for field_name in ("country", "schema_id"):
+        field_value = row[field_name]
+        if not isinstance(field_value, str) or not field_value:
+            raise ExecutorError(f"spec_binding/{field_name} must be non-empty")
+    _provenance_positive_int(
+        row["schema_version"], location="spec_binding/schema_version"
+    )
+    _provenance_positive_int(
+        row["canonicalizer_version"], location="spec_binding/canonicalizer_version"
+    )
+    _provenance_sha256(row["spec_sha256"], location="spec_binding/spec_sha256")
+    if row["attestation"] not in {"mirror-attested", "bundle-authoritative"}:
+        raise ExecutorError(
+            "spec_binding/attestation must be mirror-attested or bundle-authoritative"
+        )
+    return _freeze_provenance_mapping(row, location="spec_binding")
+
+
+@dataclass(frozen=True, slots=True)
+class RunProvenanceIdentity:
+    """The closed D3 run identity, kept separate from semantic reuse keys."""
+
+    identity_generation: int
+    source_grammar_receipt: FrozenMap | None
+    spec_binding: FrozenMap | None
+    authority_versions: FrozenMap
+    code_inventory_digest: str
+    artifact_protocol_inventory: FrozenMap
+    run_request: FrozenMap
+    execution_receipt: FrozenMap
+
+    def __post_init__(self) -> None:
+        if (
+            isinstance(self.identity_generation, bool)
+            or not isinstance(self.identity_generation, int)
+            or self.identity_generation not in {0, 1}
+        ):
+            raise ExecutorError(
+                "identity_generation must be 0 (historic) or 1 (binding); "
+                "unknown generations are refused"
+            )
+        for field_name in (
+            "authority_versions",
+            "artifact_protocol_inventory",
+            "run_request",
+            "execution_receipt",
+        ):
+            if not isinstance(getattr(self, field_name), FrozenMap):
+                raise ExecutorError(f"run provenance {field_name} must be frozen")
+        _provenance_sha256(
+            self.code_inventory_digest,
+            location="run_provenance_identity/code_inventory_digest",
+        )
+        if self.identity_generation == 0:
+            if self.source_grammar_receipt is not None or self.spec_binding is not None:
+                raise ExecutorError(
+                    "generation 0 provenance cannot be retro-labeled with the D3 triad"
+                )
+            return
+        if self.source_grammar_receipt is None or self.spec_binding is None:
+            raise ExecutorError(
+                "generation 1 provenance requires source_grammar_receipt and spec_binding"
+            )
+        grammar = _wire(self.source_grammar_receipt)
+        binding = _wire(self.spec_binding)
+        assert isinstance(grammar, dict) and isinstance(binding, dict)
+        for field_name in ("schema_version", "canonicalizer_version"):
+            if grammar[field_name] != binding[field_name]:
+                raise ExecutorError(
+                    f"run provenance {field_name} differs between grammar and binding"
+                )
+
+    @property
+    def promotable(self) -> bool:
+        return self.identity_generation == 1
+
+    def to_wire(self) -> dict[str, object]:
+        result = {
+            "identity_generation": self.identity_generation,
+            "source_grammar_receipt": (
+                None
+                if self.source_grammar_receipt is None
+                else _wire(self.source_grammar_receipt)
+            ),
+            "spec_binding": (
+                None if self.spec_binding is None else _wire(self.spec_binding)
+            ),
+            "authority_versions": _wire(self.authority_versions),
+            "code_inventory_digest": self.code_inventory_digest,
+            "artifact_protocol_inventory": _wire(self.artifact_protocol_inventory),
+            "run_request": _wire(self.run_request),
+            "execution_receipt": _wire(self.execution_receipt),
+        }
+        if set(result) != _RUN_PROVENANCE_FIELDS:  # pragma: no cover - literal map
+            raise AssertionError("run provenance wire fields differ from the RFC")
+        return result
+
+
+def build_run_provenance_identity(
+    *,
+    identity_generation: int,
+    source_grammar_receipt: Mapping[str, object] | None,
+    spec_binding: Mapping[str, object] | None,
+    authority_versions: Mapping[str, object],
+    code_inventory_digest: str,
+    artifact_protocol_inventory: Mapping[str, object],
+    run_request: Mapping[str, object],
+    execution_receipt: Mapping[str, object],
+) -> RunProvenanceIdentity:
+    """Build one closed provenance identity; only generation crosses into reuse."""
+
+    if (
+        isinstance(identity_generation, bool)
+        or not isinstance(identity_generation, int)
+        or identity_generation not in {0, 1}
+    ):
+        raise ExecutorError(
+            "identity_generation must be 0 (historic) or 1 (binding); "
+            "unknown generations are refused"
+        )
+    return RunProvenanceIdentity(
+        identity_generation=identity_generation,
+        source_grammar_receipt=_source_grammar_receipt(source_grammar_receipt),
+        spec_binding=_provenance_spec_binding(spec_binding),
+        authority_versions=_freeze_provenance_mapping(
+            authority_versions, location="authority_versions"
+        ),
+        code_inventory_digest=_provenance_sha256(
+            code_inventory_digest, location="code_inventory_digest"
+        ),
+        artifact_protocol_inventory=_freeze_provenance_mapping(
+            artifact_protocol_inventory, location="artifact_protocol_inventory"
+        ),
+        run_request=_freeze_provenance_mapping(run_request, location="run_request"),
+        execution_receipt=_freeze_provenance_mapping(
+            execution_receipt, location="execution_receipt"
+        ),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class NodeReuseIdentity:
+    """One semantic reuse key and the closed payload from which it was made."""
+
+    key: str
+    payload: FrozenMap
+
+    def to_wire(self) -> dict[str, object]:
+        return {"node_reuse_key": self.key, "payload": _wire(self.payload)}
+
+
+def _reject_provenance_fields(
+    value: object,
+    *,
+    location: str,
+    allow_identity_generation_here: bool = False,
+) -> None:
+    if isinstance(value, Mapping):
+        prohibited = _PROVENANCE_ONLY_FIELDS - (
+            {"identity_generation"} if allow_identity_generation_here else set()
+        )
+        forbidden = sorted(set(value) & prohibited)
+        if forbidden:
+            raise CapabilityError(
+                f"node reuse semantic inputs contain provenance fields at "
+                f"{location}: {forbidden!r}"
+            )
+        for key, child in value.items():
+            _reject_provenance_fields(child, location=f"{location}/{key}")
+    elif isinstance(value, Sequence) and not isinstance(value, str | bytes):
+        for index, child in enumerate(value):
+            _reject_provenance_fields(child, location=f"{location}/{index}")
+    elif isinstance(value, str) and value in _PROVENANCE_ONLY_VALUES:
+        raise CapabilityError(
+            f"node reuse semantic inputs contain provenance or operational receipt "
+            f"markers at {location}: {value!r}"
+        )
+
+
+def node_reuse_identity(
+    node: CompiledNode,
+    *,
+    identity_generation: int,
+    behavior_relevant_run_inputs: Mapping[str, object],
+    transitive_input_content_hashes: Mapping[str, str],
+    implementation_dependency_sha256: str,
+    rng_behavior_inputs: RNGBehaviorIdentity,
+    source_behavior_inputs: SourceBehaviorIdentity,
+    artifact_materializer_abis: Mapping[str, object],
+    output_sensitive_backend_abi: Mapping[str, object] | None = None,
+) -> NodeReuseIdentity:
+    """Derive the runtime semantic reuse key, never a run-provenance key.
+
+    The binding generation is an explicit scalar cold-cache boundary.  The
+    rest of ``run_provenance_identity``, configuration-authority mode, and
+    broker access receipts are intentionally impossible inputs to this API.
+    Artifact content identities and actual RNG behavior inputs remain semantic.
+    """
+
+    if not isinstance(node, CompiledNode):
+        raise TypeError("node_reuse_identity requires a CompiledNode")
+    _compiled_contract_consistent(node)
+    if (
+        isinstance(identity_generation, bool)
+        or not isinstance(identity_generation, int)
+        or identity_generation not in {0, 1}
+    ):
+        raise CapabilityError(
+            "node reuse identity_generation must be 0 or 1; unknown generations "
+            "are refused"
+        )
+    if not isinstance(rng_behavior_inputs, RNGBehaviorIdentity):
+        raise TypeError(
+            "node_reuse_identity requires a broker-issued RNGBehaviorIdentity"
+        )
+    if not isinstance(source_behavior_inputs, SourceBehaviorIdentity):
+        raise TypeError(
+            "node_reuse_identity requires a broker-issued SourceBehaviorIdentity"
+        )
+    try:
+        rng_behavior_inputs.validate_issued()
+    except BrokerContractError as error:
+        raise CapabilityError("RNG behavior identity is not broker-issued") from error
+    if rng_behavior_inputs.owner.kind != "producer_node" or (
+        rng_behavior_inputs.owner.id != node.id
+    ):
+        raise CapabilityError("RNG behavior identity owner differs from compiled node")
+    try:
+        source_behavior_inputs.validate_issued()
+    except BrokerContractError as error:
+        raise CapabilityError(
+            "source behavior identity is not broker-issued"
+        ) from error
+    if source_behavior_inputs.owner.kind != "producer_node" or (
+        source_behavior_inputs.owner.id != node.id
+    ):
+        raise CapabilityError(
+            "source behavior identity owner differs from compiled node"
+        )
+    if not source_behavior_inputs.same_session(rng_behavior_inputs):
+        raise CapabilityError(
+            "RNG and source behavior identities come from different broker sessions"
+        )
+    if (
+        rng_behavior_inputs.protocol_id != "legacy-v1"
+        or rng_behavior_inputs.protocol_sha256 != node.seed_protocol_sha256
+    ):
+        raise CapabilityError(
+            "RNG behavior identity protocol differs from compiled node"
+        )
+    rng_wire = rng_behavior_inputs.to_wire()
+    raw_rng_sites = rng_wire["sites"]
+    if not isinstance(raw_rng_sites, list):  # pragma: no cover - typed broker output
+        raise CapabilityError("RNG behavior identity sites must be an array")
+    expected_rng_sites = [
+        {
+            "site_id": site.id,
+            "stream": f"stream:{site.stream}",
+            "contract_sha256": sha256_json(_wire(site.contract)),
+        }
+        for site in node.seed_sites
+    ]
+    actual_rng_sites = []
+    for row in raw_rng_sites:
+        if not isinstance(row, Mapping):
+            raise CapabilityError("RNG behavior identity site must be an object")
+        actual_rng_sites.append(
+            {
+                "site_id": row.get("site_id"),
+                "stream": row.get("stream"),
+                "contract_sha256": row.get("contract_sha256"),
+            }
+        )
+    if actual_rng_sites != expected_rng_sites:
+        raise CapabilityError("RNG behavior identity sites differ from compiled node")
+    if len(implementation_dependency_sha256) != 64 or any(
+        character not in "0123456789abcdef"
+        for character in implementation_dependency_sha256
+    ):
+        raise CapabilityError("implementation dependency digest must be sha256")
+    input_hashes = dict(sorted(transitive_input_content_hashes.items()))
+    for artifact_id, digest in input_hashes.items():
+        if (
+            not artifact_id
+            or len(digest) != 64
+            or any(character not in "0123456789abcdef" for character in digest)
+        ):
+            raise CapabilityError(
+                f"transitive input content hash is invalid for {artifact_id!r}"
+            )
+    source_wire = source_behavior_inputs.to_wire()
+    raw_sources = source_wire["sources"]
+    if not isinstance(raw_sources, list):  # pragma: no cover - typed broker output
+        raise CapabilityError("source behavior identities must contain an array")
+    for row in raw_sources:
+        if not isinstance(row, Mapping):  # pragma: no cover - typed broker output
+            raise CapabilityError("source behavior identity row must be an object")
+        source_id = row.get("source_id")
+        digest = row.get("content_sha256")
+        assert isinstance(source_id, str) and isinstance(digest, str)
+        identity_key = f"declared_source:{source_id}"
+        existing = input_hashes.get(identity_key)
+        if existing is not None and existing != digest:
+            raise CapabilityError(
+                f"transitive input hash conflicts with declared source {source_id!r}"
+            )
+        input_hashes[identity_key] = digest
+    input_hashes = dict(sorted(input_hashes.items()))
+    semantic_inputs = {
+        "behavior_relevant_run_inputs": dict(behavior_relevant_run_inputs),
+        "rng_behavior_inputs": rng_wire,
+        "source_behavior_inputs": source_wire,
+        "artifact_materializer_abis": dict(artifact_materializer_abis),
+        "output_sensitive_backend_abi": None
+        if output_sensitive_backend_abi is None
+        else dict(output_sensitive_backend_abi),
+    }
+    _reject_provenance_fields(semantic_inputs, location="node_reuse")
+    payload = {
+        "domain": _NODE_REUSE_KEY_DOMAIN,
+        "identity_generation": identity_generation,
+        "compiler_ir_abi": _wire(node.compiler_ir_abi),
+        "resolved_transitive_node_slice": node.node_slice_wire(),
+        "behavior_relevant_run_inputs": semantic_inputs["behavior_relevant_run_inputs"],
+        "transitive_input_content_hashes": input_hashes,
+        "declared_source_behavior": semantic_inputs["source_behavior_inputs"],
+        "per_node_implementation_and_dependency": {
+            "kernel": {
+                "ref": node.kernel_ref,
+                "implementation_sha256": node.kernel_implementation_sha256,
+            },
+            "dependency_sha256": implementation_dependency_sha256,
+        },
+        "rng_protocol_and_seed_material": {
+            "seed_protocol_sha256": node.seed_protocol_sha256,
+            "behavior_inputs": semantic_inputs["rng_behavior_inputs"],
+        },
+        "input_and_output_artifact_contracts": {
+            "inputs": [_wire(value) for value in node.inputs],
+            "outputs": [_wire(value) for value in node.outputs],
+        },
+        "per_artifact_materializer_abi": semantic_inputs["artifact_materializer_abis"],
+        "output_sensitive_backend_abi": semantic_inputs["output_sensitive_backend_abi"],
+    }
+    _reject_provenance_fields(
+        payload,
+        location="node_reuse_payload",
+        allow_identity_generation_here=True,
+    )
+    frozen = freeze_json(payload)
+    if not isinstance(frozen, FrozenMap):  # pragma: no cover - root is literal map
+        raise AssertionError("node reuse payload did not freeze to an object")
+    return NodeReuseIdentity(key=sha256_json(payload), payload=frozen)
 
 
 def _pickle_sha256(value: object) -> str:
@@ -1252,20 +1746,29 @@ def _validated_envelope_sha256(
     *,
     node_id: str,
     node_key: str,
+    attempt: int,
+    attempt_scope: str | None,
     base_sha256: str,
     result_sha256: str,
     patch_sha256: str,
     diff_sha256: str,
+    broker_receipt_sha256: str,
 ) -> str:
     return sha256_json(
         {
             "domain": "microcosm.spec-engine.validated-patch-envelope.v1",
             "node_id": node_id,
             "node_key": node_key,
+            "attempt": attempt,
+            "attempt_scope": attempt_scope,
             "base_sha256": base_sha256,
             "result_sha256": result_sha256,
             "patch_sha256": patch_sha256,
             "diff_sha256": diff_sha256,
+            # Operational binding: this does not enter patch bytes, artifact
+            # bytes, or node reuse.  It prevents swapping an audit receipt
+            # between otherwise identical executions.
+            "broker_receipt_sha256": broker_receipt_sha256,
         }
     )
 
@@ -1867,6 +2370,7 @@ def _apply_unchecked(
     *,
     registry: ClosedScopeRegistry,
     row_classifier: RegisteredRowClassifier | None,
+    broker_session: BrokerSession,
 ) -> tuple[
     ImmutableFrameProjection,
     dict[str, dict[Hashable, Hashable]],
@@ -1944,13 +2448,14 @@ def _apply_unchecked(
                 raise PatchScopeError(
                     "row classifier predicate space differs from compiled registry"
                 )
-            raw_classification = row_classifier.function(
-                entity,
-                _deep_copy_frame(table),
-                key,
-                frozenset(added_ids),
-                registry,
-            )
+            with broker_session.classifier_scope():
+                raw_classification = row_classifier.function(
+                    entity,
+                    _deep_copy_frame(table),
+                    key,
+                    frozenset(added_ids),
+                    registry,
+                )
             if not isinstance(raw_classification, Mapping) or set(
                 raw_classification
             ) != set(added_ids):
@@ -2636,7 +3141,11 @@ def _validate_before_dispatch(
     context: ExecutionContext,
 ) -> None:
     _compiled_contract_consistent(node)
-    if context.attempt < 0:
+    if (
+        isinstance(context.attempt, bool)
+        or not isinstance(context.attempt, int)
+        or context.attempt < 0
+    ):
         raise CapabilityError("execution attempt must be non-negative")
     if capabilities.determinism is Determinism.SEEDED and not node.seed_streams:
         raise CapabilityError(
@@ -2659,9 +3168,11 @@ def _validate_before_dispatch(
             "nondeterministic kernel refused in byte-equivalence mode"
         )
     required_effects = capabilities.effects - {Effect.NONE}
-    if not required_effects <= context.normalized_effects():
+    granted_effects = context.normalized_effects()
+    if required_effects != granted_effects:
         raise CapabilityError(
-            f"kernel lacks declared effect grants {sorted(required_effects)!r}"
+            "kernel effect grants must exactly match its compiled declaration; "
+            f"required={sorted(required_effects)!r}, granted={sorted(granted_effects)!r}"
         )
     if (
         capabilities.retry_safety is RetrySafety.ATTEMPT_SCOPED
@@ -3588,10 +4099,50 @@ def execute_node(
         raise TypeError("execute_node requires a CompiledNode")
     if not isinstance(projection, ImmutableFrameProjection):
         raise TypeError("execute_node requires an ImmutableFrameProjection")
-    selected_context = context or ExecutionContext()
+    requested_context = context or ExecutionContext()
+    if not isinstance(requested_context.run_provenance_identity, RunProvenanceIdentity):
+        raise CapabilityError(
+            "execution context requires a closed run_provenance_identity"
+        )
+    run_provenance_wire = requested_context.run_provenance_identity.to_wire()
     capabilities = NodeCapabilities.from_mapping(_wire(node.capabilities))
     contracts = _mutation_contracts(node)
-    _validate_before_dispatch(node, capabilities, contracts, selected_context)
+    _validate_before_dispatch(node, capabilities, contracts, requested_context)
+    if requested_context.brokers is None:
+        try:
+            broker_session = deny_all_session_for_node(
+                node,
+                run_provenance_identity=run_provenance_wire,
+                attempt=requested_context.attempt,
+                attempt_scope=requested_context.attempt_scope,
+                require_byte_equivalence=requested_context.require_byte_equivalence,
+            )
+        except BrokerContractError as error:
+            raise CapabilityError(
+                f"compiled node {node.id!r} requires an explicit bound broker session"
+            ) from error
+        selected_context = replace(
+            requested_context, brokers=broker_session.kernel_view
+        )
+    elif isinstance(requested_context.brokers, BrokerSession):
+        broker_session = requested_context.brokers
+        selected_context = replace(
+            requested_context, brokers=broker_session.kernel_view
+        )
+    else:
+        raise CapabilityError("execution context brokers must be a BrokerSession")
+    try:
+        broker_session.validate_executor_binding(
+            node=node,
+            determinism=capabilities.determinism.value,
+            effects=tuple(effect.value for effect in capabilities.effects),
+            attempt=selected_context.attempt,
+            attempt_scope=selected_context.attempt_scope,
+            require_byte_equivalence=selected_context.require_byte_equivalence,
+            run_provenance_identity=run_provenance_wire,
+        )
+    except BrokerContractError as error:
+        raise CapabilityError(str(error)) from error
     scope_registry = _node_scope_registry(node)
     _validate_mutation_preconditions(contracts, projection)
     _validate_projection_contract(node, projection, scope_registry)
@@ -3627,47 +4178,86 @@ def execute_node(
                 "differs from compiled node"
             )
 
-    immutable_before = projection.detached_copy()
-    kernel_view = projection.detached_copy()
-    patch = registered.function(kernel_view, selected_context)
-    if not isinstance(patch, KernelPatch):
-        raise ExecutorError("kernel must return a KernelPatch")
-    projection_mutation = diff_projections(projection, kernel_view)
-    if not projection_mutation.empty:
-        raise ExecutorError("kernel mutated its immutable input projection")
-    if patch.structural_delta is not capabilities.structural_delta:
-        raise StructuralDiffError(
-            f"patch delta {patch.structural_delta.value!r} differs from capability "
-            f"{capabilities.structural_delta.value!r}"
+    try:
+        broker_session.validate_callable(registered.function, role="kernel")
+        if registered_classifier is not None:
+            broker_session.validate_callable(
+                registered_classifier.function, role="row_classifier"
+            )
+    except Exception:
+        if not broker_session.sealed:
+            broker_session.seal(status="aborted")
+        raise
+
+    try:
+        immutable_before = projection.detached_copy()
+        kernel_view = projection.detached_copy()
+        with broker_session.activate():
+            patch = registered.function(kernel_view, selected_context)
+            if not isinstance(patch, KernelPatch):
+                raise ExecutorError("kernel must return a KernelPatch")
+            projection_mutation = diff_projections(projection, kernel_view)
+            if not projection_mutation.empty:
+                raise ExecutorError("kernel mutated its immutable input projection")
+            if patch.structural_delta is not capabilities.structural_delta:
+                raise StructuralDiffError(
+                    f"patch delta {patch.structural_delta.value!r} differs from "
+                    f"capability {capabilities.structural_delta.value!r}"
+                )
+            # The trusted row classifier executes inside _apply_unchecked.  It
+            # remains under the same guard because ambient classification could
+            # otherwise expand the kernel's write authority.
+            result, added_row_sources = _apply_unchecked(
+                immutable_before,
+                patch,
+                registry=scope_registry,
+                row_classifier=registered_classifier,
+                broker_session=broker_session,
+            )
+        diff = diff_projections(immutable_before, result)
+        _validate_delta_semantics(
+            capabilities.structural_delta, immutable_before, result, diff
         )
-    result, added_row_sources = _apply_unchecked(
-        immutable_before,
-        patch,
-        registry=scope_registry,
-        row_classifier=registered_classifier,
-    )
-    diff = diff_projections(immutable_before, result)
-    _validate_delta_semantics(
-        capabilities.structural_delta, immutable_before, result, diff
-    )
-    _validate_outputs(node, result, diff)
-    _validate_scopes(node, immutable_before, result, diff, scope_registry)
-    _validate_mutation_contracts(
-        contracts,
-        immutable_before,
-        result,
-        diff,
-        added_row_sources=added_row_sources,
-    )
-    base_sha256 = _projection_sha256(immutable_before)
-    result_sha256 = _projection_sha256(result)
-    patch_sha256 = _patch_sha256(patch)
-    diff_sha256 = _pickle_sha256(diff)
+        _validate_outputs(node, result, diff)
+        _validate_scopes(node, immutable_before, result, diff, scope_registry)
+        _validate_mutation_contracts(
+            contracts,
+            immutable_before,
+            result,
+            diff,
+            added_row_sources=added_row_sources,
+        )
+        try:
+            broker_session.validate_executor_binding(
+                node=node,
+                determinism=capabilities.determinism.value,
+                effects=tuple(effect.value for effect in capabilities.effects),
+                attempt=selected_context.attempt,
+                attempt_scope=selected_context.attempt_scope,
+                require_byte_equivalence=selected_context.require_byte_equivalence,
+                run_provenance_identity=run_provenance_wire,
+            )
+        except BrokerContractError as error:
+            raise CapabilityError(
+                "broker authority changed during kernel dispatch"
+            ) from error
+        base_sha256 = _projection_sha256(immutable_before)
+        result_sha256 = _projection_sha256(result)
+        patch_sha256 = _patch_sha256(patch)
+        diff_sha256 = _pickle_sha256(diff)
+        broker_receipt = broker_session.seal()
+    except Exception:
+        if not broker_session.sealed and not broker_session.active:
+            broker_session.seal(status="aborted")
+        raise
     return ValidatedPatch(
         node_id=node.id,
         node_key=node.node_key,
+        attempt=selected_context.attempt,
+        attempt_scope=selected_context.attempt_scope,
         patch=patch,
         diff=diff,
+        broker_receipt=broker_receipt,
         _base=immutable_before,
         _result=result,
         _base_sha256=base_sha256,
@@ -3677,10 +4267,13 @@ def execute_node(
         _envelope_sha256=_validated_envelope_sha256(
             node_id=node.id,
             node_key=node.node_key,
+            attempt=selected_context.attempt,
+            attempt_scope=selected_context.attempt_scope,
             base_sha256=base_sha256,
             result_sha256=result_sha256,
             patch_sha256=patch_sha256,
             diff_sha256=diff_sha256,
+            broker_receipt_sha256=broker_receipt.receipt_sha256,
         ),
     )
 
@@ -3691,14 +4284,36 @@ def apply_patch(
 ) -> ImmutableFrameProjection:
     """Apply a validated patch only to the exact base it was checked against."""
 
+    if not isinstance(patch.broker_receipt, BrokerReceipt):
+        raise ExecutorError("validated patch broker receipt has an invalid type")
+    try:
+        patch.broker_receipt.validate()
+    except BrokerContractError as error:
+        raise ExecutorError("validated broker receipt was mutated") from error
+    receipt = patch.broker_receipt
+    if receipt.status != "complete":
+        raise ExecutorError("validated patch requires a complete broker receipt")
+    if receipt.owner.kind != "producer_node" or receipt.owner.id != patch.node_id:
+        raise ExecutorError("validated broker receipt owner differs from its patch")
+    if receipt.node_key != patch.node_key:
+        raise ExecutorError("validated broker receipt node key differs from its patch")
+    if receipt.attempt != patch.attempt:
+        raise ExecutorError("validated broker receipt attempt differs from its patch")
+    if receipt.attempt_scope != patch.attempt_scope:
+        raise ExecutorError(
+            "validated broker receipt attempt scope differs from its patch"
+        )
     if (
         _validated_envelope_sha256(
             node_id=patch.node_id,
             node_key=patch.node_key,
+            attempt=patch.attempt,
+            attempt_scope=patch.attempt_scope,
             base_sha256=patch._base_sha256,
             result_sha256=patch._result_sha256,
             patch_sha256=patch._patch_sha256,
             diff_sha256=patch._diff_sha256,
+            broker_receipt_sha256=receipt.receipt_sha256,
         )
         != patch._envelope_sha256
     ):
@@ -3924,10 +4539,12 @@ __all__ = [
     "MutationContract",
     "NodeCapabilities",
     "NodeOrderingError",
+    "NodeReuseIdentity",
     "NumericReproducibility",
     "PatchScopeError",
     "RegisteredKernel",
     "RegisteredRowClassifier",
+    "RunProvenanceIdentity",
     "RowClassification",
     "RetrySafety",
     "StructuralDelta",
@@ -3938,7 +4555,9 @@ __all__ = [
     "WeightDiff",
     "WeightState",
     "apply_patch",
+    "build_run_provenance_identity",
     "diff_projections",
     "execute_node",
+    "node_reuse_identity",
     "order_nodes",
 ]

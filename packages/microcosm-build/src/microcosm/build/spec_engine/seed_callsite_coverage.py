@@ -113,6 +113,12 @@ _POOL_TOOL = Path("tools/build_us_multispine_pool.py")
 
 SOURCE_NAMESPACE_EXEMPTIONS = (
     SourceNamespaceExemption(
+        "microcosm.build.spec_engine.brokers",
+        "rng_broker_implementation",
+        "the broker is the sole attested construction boundary for RNG, file, "
+        "environment, and clock primitives; its callers remain in the scan",
+    ),
+    SourceNamespaceExemption(
         "microcosm.build.uk_runtime",
         "uk_only_namespace",
         "UK runtime is a separate country producer graph and is not reachable "

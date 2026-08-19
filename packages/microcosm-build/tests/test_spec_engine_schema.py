@@ -14,6 +14,7 @@ from microcosm.build.spec_engine.errors import (
     SpecSchemaError,
     SpecValidationError,
 )
+from microcosm.build.spec_engine.executor import build_run_provenance_identity
 from microcosm.build.spec_engine.schemas import (
     DRAFT_2020_12,
     SCHEMA_FILENAMES,
@@ -25,6 +26,35 @@ from microcosm.build.spec_engine.schemas import (
 from microcosm.build.spec_engine.seeds import LEGACY_V1_PROTOCOL
 
 SchemaMutation = Callable[[dict[str, dict[str, Any]]], None]
+
+
+def _run_provenance_wire(identity_generation: int) -> dict[str, object]:
+    source_grammar_receipt: dict[str, object] | None = None
+    spec_binding: dict[str, object] | None = None
+    if identity_generation == 1:
+        source_grammar_receipt = {
+            "schema_version": 3,
+            "canonicalizer_version": 1,
+            "migration_chain": [{"id": "fixture-v2-v3", "sha256": "b" * 64}],
+        }
+        spec_binding = {
+            "country": "us",
+            "schema_id": "country-spec",
+            "schema_version": 3,
+            "canonicalizer_version": 1,
+            "spec_sha256": "f" * 64,
+            "attestation": "mirror-attested",
+        }
+    return build_run_provenance_identity(
+        identity_generation=identity_generation,
+        source_grammar_receipt=source_grammar_receipt,
+        spec_binding=spec_binding,
+        authority_versions={"stacked_authority": 10},
+        code_inventory_digest="a" * 64,
+        artifact_protocol_inventory={"parquet": "fixture-v1"},
+        run_request={"config_authority": "bundle", "rung": "f004"},
+        execution_receipt={"resolved_backend": "cpu"},
+    ).to_wire()
 
 
 def _mutated_catalog(
@@ -142,6 +172,63 @@ def test_emitted_bundle_lock_fragment_uses_the_same_registry() -> None:
         instance,
         "locks.schema.json#/$defs/bundle_lock",
     )
+
+
+@pytest.mark.parametrize("identity_generation", [0, 1])
+def test_run_provenance_schema_accepts_executor_wire(
+    identity_generation: int,
+) -> None:
+    load_schema_registry().validate(
+        _run_provenance_wire(identity_generation),
+        "locks.schema.json#/$defs/run_provenance_identity",
+    )
+
+
+def test_run_provenance_schema_enforces_generation_boundary() -> None:
+    generation_zero = _run_provenance_wire(0)
+    generation_one = _run_provenance_wire(1)
+    zero_with_binding = copy.deepcopy(generation_zero)
+    zero_with_binding["source_grammar_receipt"] = generation_one[
+        "source_grammar_receipt"
+    ]
+    one_without_binding = copy.deepcopy(generation_one)
+    one_without_binding["spec_binding"] = None
+    unknown_generation = copy.deepcopy(generation_one)
+    unknown_generation["identity_generation"] = 2
+
+    for invalid in (zero_with_binding, one_without_binding, unknown_generation):
+        with pytest.raises(SpecValidationError):
+            load_schema_registry().validate(
+                invalid,
+                "locks.schema.json#/$defs/run_provenance_identity",
+            )
+
+
+def test_run_provenance_schema_is_closed_through_the_binding_triad() -> None:
+    unexpected_top_level = _run_provenance_wire(1)
+    unexpected_top_level["node_reuse_key"] = "c" * 64
+    unexpected_binding_field = copy.deepcopy(_run_provenance_wire(1))
+    binding = unexpected_binding_field["spec_binding"]
+    assert isinstance(binding, dict)
+    binding["legacy_payload"] = "forbidden"
+    malformed_migration = copy.deepcopy(_run_provenance_wire(1))
+    grammar = malformed_migration["source_grammar_receipt"]
+    assert isinstance(grammar, dict)
+    migration_chain = grammar["migration_chain"]
+    assert isinstance(migration_chain, list)
+    assert isinstance(migration_chain[0], dict)
+    migration_chain[0]["sha256"] = "not-a-sha256"
+
+    for invalid in (
+        unexpected_top_level,
+        unexpected_binding_field,
+        malformed_migration,
+    ):
+        with pytest.raises(SpecValidationError):
+            load_schema_registry().validate(
+                invalid,
+                "locks.schema.json#/$defs/run_provenance_identity",
+            )
 
 
 @pytest.mark.parametrize("invalid_default", [-1, 2**64])

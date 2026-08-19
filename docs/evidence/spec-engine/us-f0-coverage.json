@@ -1,7 +1,7 @@
 {
   "compiler_ir_abi": {
-    "sha256": "845d3963bc03efb68cdc27e013450bd7048598bc55e73903fc16e908e12724ea",
-    "version": 2
+    "sha256": "79a931e68a69bc83577322c0f7f5ffcecd39a7cd830200e73115d64872695804",
+    "version": 3
   },
   "country": "us",
   "documentation_sha256": "aed5b95645a5c605671e374ed2a9d511c7fd9dc29c63760c32a205d9f2db9491",
@@ -759,8 +759,8 @@
   },
   "inventory_coverage": {
     "compiler_ir_abi": {
-      "sha256": "845d3963bc03efb68cdc27e013450bd7048598bc55e73903fc16e908e12724ea",
-      "version": 2
+      "sha256": "79a931e68a69bc83577322c0f7f5ffcecd39a7cd830200e73115d64872695804",
+      "version": 3
     },
     "country": "us",
     "counts": {

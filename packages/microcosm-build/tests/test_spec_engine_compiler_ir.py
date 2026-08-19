@@ -63,6 +63,40 @@ def _mutate_domain(
     return replace(spec, resources=tuple(resources))
 
 
+def test_operational_source_locators_do_not_enter_node_slices_or_keys(
+    resolved_us: ResolvedSpec,
+) -> None:
+    original = compile_spec(resolved_us)
+
+    def mutate(value: dict[str, object]) -> None:
+        stages = value["stages"]
+        assert isinstance(stages, list)
+        first = stages[0]
+        assert isinstance(first, dict)
+        first["source"] = "operational://different-host-path"
+        artifacts = first["artifacts"]
+        assert isinstance(artifacts, list)
+        first_artifact = artifacts[0]
+        assert isinstance(first_artifact, dict)
+        first_artifact["locator"] = "operational://different-locator"
+
+    changed = compile_spec(_mutate_domain(resolved_us, ResourceKind.SOURCES, mutate))
+    assert [node.node_key for node in changed.nodes] == [
+        node.node_key for node in original.nodes
+    ]
+    assert [node.node_slice_sha256 for node in changed.nodes] == [
+        node.node_slice_sha256 for node in original.nodes
+    ]
+    source_params = [
+        thaw_json(param.value)
+        for node in changed.nodes
+        for param in node.resolved_params
+        if param.path.startswith("/sources/stages/")
+    ]
+    assert source_params
+    assert "operational://" not in str(source_params)
+
+
 def test_us_compiles_exact_stage_dag_and_lossless_producer_graph(
     compiled_us: CompiledSpecIR,
 ) -> None:
@@ -206,8 +240,8 @@ def test_us_nodes_have_exact_effective_seed_grants(
 def test_compiled_nodes_lift_immutable_executor_contracts_and_bind_them(
     compiled_us: CompiledSpecIR,
 ) -> None:
-    assert COMPILER_IR_ABI_VERSION == 2
-    assert EXECUTOR_CONTRACT_ABI == "compiled-node-direct-contracts-v1"
+    assert COMPILER_IR_ABI_VERSION == 3
+    assert EXECUTOR_CONTRACT_ABI == "compiled-node-brokered-contracts-v2"
     producer_by_id = {node.id: node for node in compiled_us.producer_graph.nodes}
     assert tuple(node.execution_rank for node in compiled_us.nodes) == tuple(
         range(len(compiled_us.nodes))
@@ -345,6 +379,15 @@ def test_row_classifier_digest_recipe_is_versioned_and_registry_exact(
     assert {
         node.row_classifier_implementation_sha256 for node in compiled_us.nodes
     } == {expected}
+
+
+def test_operational_broker_source_is_not_a_compiler_or_node_identity_input(
+    compiled_us: CompiledSpecIR,
+) -> None:
+    assert all(
+        module != "microcosm.build.spec_engine.brokers"
+        for module, _digest in compiled_us.compiler_ir_abi.source_inventory
+    )
 
 
 def test_dependency_input_and_output_mutations_change_bound_node_keys(

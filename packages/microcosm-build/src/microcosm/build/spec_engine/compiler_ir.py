@@ -30,8 +30,9 @@ from .model import (
 from .resolver import F0_KERNEL_REGISTRY
 from .typed_closure import TypedClosureError, compile_producer_outputs
 
-COMPILER_IR_ABI_VERSION = 2
-EXECUTOR_CONTRACT_ABI = "compiled-node-direct-contracts-v1"
+COMPILER_IR_ABI_VERSION = 3
+EXECUTOR_CONTRACT_ABI = "compiled-node-brokered-contracts-v2"
+BROKER_SEMANTICS_ABI = "legacy-v1-ledger-broker-semantics-v2"
 ROW_CLASSIFIER_IMPLEMENTATION_DOMAIN = (
     "microcosm.spec-engine.row-classifier-implementation.v1"
 )
@@ -128,6 +129,10 @@ def _compiler_ir_abi() -> CompilerIRABI:
                 "row_classifier": ROW_CLASSIFIER_IMPLEMENTATION_DOMAIN,
                 "seed_map": "legacy-v1-exhaustive-owner-map-v1",
                 "executor": EXECUTOR_CONTRACT_ABI,
+                # This explicit semantic ABI changes for broker behavior, while
+                # operational receipt wording and access-log instrumentation do
+                # not indirectly rekey compiled nodes.
+                "brokers": BROKER_SEMANTICS_ABI,
             },
         }
     )
@@ -547,6 +552,21 @@ def _resolved_surfaces(spec: ResolvedSpec) -> FrozenMap:
         },
         location="surfaces",
     )
+
+
+def _surface_resources(
+    spec: ResolvedSpec,
+    surface: Surface,
+) -> dict[str, object]:
+    """Return per-domain compiler inputs projected to one declared surface."""
+
+    resources: dict[str, object] = {}
+    for resource in spec.resources:
+        kind = resource.descriptor.kind
+        if kind in {ResourceKind.SCHEMA, ResourceKind.LEGACY_JSON}:
+            continue
+        resources[kind.value] = _wire(resource.surface(surface))
+    return resources
 
 
 def _typed_inventory(spec: ResolvedSpec) -> FrozenMap:
@@ -1518,6 +1538,7 @@ def _node_resolved_params(
     node: ProducerNodeIR,
     *,
     resources: Mapping[str, object],
+    normative_resources: Mapping[str, object],
     producer_graph: ProducerGraphIR,
     spec: ResolvedSpec,
 ) -> tuple[ResolvedParam, ...]:
@@ -1672,7 +1693,7 @@ def _node_resolved_params(
     params.extend(
         _seed_reference_params(
             _typed_seed_owner_references(params),
-            resources=resources,
+            resources=normative_resources,
         )
     )
     return tuple(params)
@@ -1682,6 +1703,7 @@ def _compile_nodes(
     spec: ResolvedSpec,
     *,
     resources: Mapping[str, object],
+    normative_resources: Mapping[str, object],
     compiler_ir_abi: CompilerIRABI,
     producer_graph: ProducerGraphIR,
     seed_stream_map: SeedStreamMap,
@@ -1706,6 +1728,7 @@ def _compile_nodes(
         params = _node_resolved_params(
             node,
             resources=resources,
+            normative_resources=normative_resources,
             producer_graph=producer_graph,
             spec=spec,
         )
@@ -1810,6 +1833,7 @@ def compile_spec(spec: ResolvedSpec) -> CompiledSpecIR:
     if not isinstance(spec, ResolvedSpec):
         raise TypeError("compile_spec requires a ResolvedSpec")
     resources, frozen_resources = _normalized_resources(spec)
+    normative_resources = _surface_resources(spec, Surface.NORMATIVE)
     compiler_ir_abi = _compiler_ir_abi()
     producer_graph = _compile_producer_graph(resources)
     stage_dag = StageDag(
@@ -1835,6 +1859,7 @@ def compile_spec(spec: ResolvedSpec) -> CompiledSpecIR:
     nodes = _compile_nodes(
         spec,
         resources=resources,
+        normative_resources=normative_resources,
         compiler_ir_abi=compiler_ir_abi,
         producer_graph=producer_graph,
         seed_stream_map=seed_stream_map,

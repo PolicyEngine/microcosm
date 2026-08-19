@@ -9,8 +9,9 @@ the repository journal convention.
 ## State
 
 - Branch: `spec-engine-f1`; no push has been performed.
-- Deliverable 1 is committed as `cd2b1d60`; deliverable 2 is committed in the
-  current executor step; current deliverable: **3 — brokers**.
+- Deliverable 1 is committed as `cd2b1d60`; deliverable 2 is committed as
+  `21297028`. Deliverable 3's implementation and authoritative verification
+  are complete and are being closed by the current broker commit.
 - The required source-reading sequence is complete.
 - The untouched serial baseline was interrupted after 1,489.16 seconds at 10%
   once two independent failures and six cascading fixture errors had appeared.
@@ -25,6 +26,11 @@ the repository journal convention.
   and adversarial fixture suite are complete. The 430-test spec-engine gate is
   green; the authoritative 6,887-test whole-repository suite is also green.
   Deliverable 2 is complete and committed.
+- The legacy-v1 RNG, declared-source file, environment, and clock brokers are
+  complete. Broker behavior inputs are typed node-reuse inputs; operational
+  access receipts carry run provenance but are excluded from both the spec
+  identity and node-reuse identity. The authoritative post-broker suite is
+  green across 6,976 collected tests.
 
 ## Done
 
@@ -78,8 +84,11 @@ the repository journal convention.
 
 ## Next
 
-1. Commit deliverable 2 with the suite green.
-2. Begin deliverable 3: RNG/file/env/clock brokers and operational receipts.
+1. Begin deliverable 4: construct every inventoried pool-tool authority from
+   compiled IR in `config_authority=bundle` mode while leaving constants mode
+   untouched.
+2. Extend the cold fixture identity gate to run both modes and require an
+   empty byte diff over the complete plan-derived artifact vector.
 
 ## 1. Sync, baseline, and authority inventory
 
@@ -553,3 +562,133 @@ the executor deliberately does not introspect or guess Python callable hashes.
 
 1. Implement D3 brokers. Pure/seeded ambient-access instrumentation and the
    legacy-v1 RNG broker must use these compiled capability and seed grants.
+
+## 3. Brokers
+
+### State and identity boundary
+
+- `spec_engine/brokers.py` now supplies the generic RNG, file, environment,
+  and clock broker boundary used by the executor. A `BrokerSession` is bound
+  to one compiled node, one node key, and one `run_provenance_identity`; the
+  kernel receives only the restricted `KernelBrokerSession` projection.
+- The US `spec_sha256` remains
+  `f6ae6cde8c08e8695128ab9f29509168c1ee042faa97a28a3c94977262987309`
+  and the seed-protocol identity remains
+  `5c6ca5ccfbbd3897b23d29dc46196ef1ae110d6d1f2974ce360fac722075a73d`.
+  The generated legacy payload remains byte-identical. The compiler ABI is
+  generation 3 with digest
+  `79a931e68a69bc83577322c0f7f5ffcecd39a7cd830200e73115d64872695804`;
+  it binds executor contract `compiled-node-brokered-contracts-v2` and broker
+  semantics `legacy-v1-ledger-broker-semantics-v2`.
+- Broker event logs are an operational receipt surface. They contain the full
+  provenance triad and a receipt digest, but neither the receipt nor the
+  provenance triad enters `spec_sha256` or `node_reuse_key`. The reuse key
+  admits only the required identity-generation scalar plus typed RNG/source
+  behavior identities, transitive content identities, implementation digest,
+  and materializer/backend ABI inputs. Tests refuse provenance or receipt
+  fields even when disguised under aliases.
+- Source behavior identity is path-free: it binds logical source id, content
+  digest, and byte size. Equal declared bytes at different host paths yield
+  the same reuse identity; content changes rekey it. RNG and source behavior
+  objects are sealed, owner-bound, and same-session-bound, so forged or
+  cross-session values cannot be injected into a reuse key.
+
+### Generic broker contract
+
+- Every RNG stream token is validated against the compiled node's seed grants
+  and the 72-site ledger. Dispatch enforces `rng_family`, exact legacy kernel,
+  ordered seed material, consumption order, and reset boundary. There is no
+  arbitrary integer-seed escape hatch and no caller-owned generator state.
+- The broker-owned adapters cover serialized-state NumPy PCG64 generators,
+  QRF child/target pairs, SHA-derived chained seeds, BLAKE2b and pandas-hash
+  stateless draws, exact pandas sampling, sklearn random-forest fit/predict,
+  and serialized-state Torch generators. Derived seeds are opaque handles and
+  a downstream draw must reference a handle produced earlier in the same
+  session at the ledger-declared boundary.
+- Captured constants-mode vectors prove legacy-v1 semantics for real survey
+  sampling, SCF composite seeding, QRF paired streams, ACS derived QRF seeds,
+  BLAKE2b uniforms, pandas sample ordering, sklearn random-forest predictions,
+  and the Torch reset/uniform sequence. The QRF state-restore path constructs
+  a fixed PCG64 shell before applying state and consumes no ambient entropy.
+- The file broker accepts logical `declared_source_read` grants only, records
+  content digest and byte count, and refuses undeclared or changed sources.
+  Its read lease exposes bytes/text/iteration without exposing the raw stream;
+  an unclosed or privately probed lease taints the receipt and prevents a
+  successful seal.
+- Environment and clock reads are explicit, logged broker operations.
+  Deterministic/pure and seeded kernels execute with ambient file, environment,
+  clock, NumPy/Python RNG, entropy, UUID, process, socket, and loaded-Torch
+  access instrumented and refused. Direct pandas sampling is also guarded.
+  A caught refusal is sticky: the kernel cannot suppress it and then obtain a
+  complete receipt.
+- Kernel callables are required to be plain functions and their prebound
+  object graph is inspected before dispatch. Same-module aliases, captured
+  original ambient primitives, imported-module re-exports, private RNGs,
+  mutable/uninspectable containers, and arbitrary mutable authority objects
+  are refused. Row classifiers run inside the same guard and cannot use the
+  kernel's broker grants.
+- The executor verifies that a complete receipt belongs to the exact node,
+  node key, session, and provenance context before applying its structural
+  transaction. Receipt identity is carried in the operational application
+  envelope while patch, result, and reuse identities remain behavior-only.
+
+This is an instrumented Python execution boundary, not an operating-system
+sandbox. Ordinary kernel code cannot reach private sessions, streams, raw
+generators, or ambient aliases, and the static/dynamic guards are fail-closed
+for supported callable shapes. Python's deliberate reflection primitives such
+as `object.__getattribute__` are outside that threat model; bundle-mode
+adapters must therefore remain reviewed orchestration code rather than
+untrusted plugins.
+
+### Adversarial review and verification
+
+Two independent read-only reviews exercised the initial broker implementation.
+Every reproduced defect was fixed and pinned by a regression test. The final
+dispositions include:
+
+1. raw integer seeds, arbitrary SHA material/chaining, and unproduced derived
+   seeds are refused;
+2. source behavior and RNG behavior are separately typed, path-free where
+   required, and bound to the issuing session and node owner;
+3. kernels receive no raw session and cannot capture raw/imported broker or
+   ambient authority through helpers, module aliases, or container graphs;
+4. generator, Torch, and file leases do not expose their live mutable state;
+5. receipts carry schema-valid run provenance and recursively immutable event
+   details, and caught refusals cannot be sealed as complete; and
+6. operational broker implementation/logging details do not silently rekey
+   nodes: semantic changes require an explicit broker-semantics ABI bump.
+
+Final D3 evidence:
+
+- focused broker + executor + compiler-IR + schema tests: pass;
+- complete `test_spec_engine_*.py` gate: pass;
+- generated US bundle `--check`: pass;
+- coverage generation and `--check`: 41,867/41,867 configuration fields and
+  40/40 inventory checks, with 72 seed sites and 38 compiled nodes;
+- whole-repository Ruff and `git diff --check`: pass;
+- authoritative serial whole-repository suite: 100% green across exactly
+  6,976 collected tests in 2,949.50 seconds (`real`; 3,009.34 user, 793.00
+  system), with only expected skips and the repository's existing warnings.
+
+### Production-routing boundary for deliverable 4
+
+The broker API and executor enforcement boundary are complete, but the pool
+tool has not yet been flipped to invoke production kernels through it. The
+independent source scanner therefore still reports 119 physical stochastic
+bindings whose current constants-mode callsites draw directly. `seeds.py`
+correctly remains `mirror-only-until-f1`; this section does **not** claim the
+acceptance condition that every reachable production stochastic callsite is
+broker-routed. Deliverable 4 must route those callsites through compiled seed
+grants while preserving the exact constants-mode byte behavior, then change
+the enforcement status only after the independent inventory proves it.
+
+### Next
+
+1. Compile the bundle once at pool-tool entry and build a generic immutable
+   runtime-authority object directly from `CompiledSpecIR` (never from the
+   generated legacy payload).
+2. Thread that authority object stage by stage through identity, resume,
+   assembly, gap fill, primary and late imputation, seeding, gates, manifest,
+   publication, and banks, keeping constants mode as the untouched oracle.
+3. Add hostile-constants tests and the cold dual-mode fixture gate before any
+   sample build.

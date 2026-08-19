@@ -1,10 +1,11 @@
 """Immutable F0 seed protocols and the exhaustive legacy-v1 draw ledger.
 
 F0 resolves this compiler-owned protocol from the authored
-``seed_protocol: legacy-v1`` selector.  It does not broker or execute a draw;
-that is F1.  The ledger is nevertheless normative now so every constants-era
-site, seed derivation, ordering rule, and reset boundary enters the emitted
-locks and compiled IR instead of surviving as ambient Python knowledge.
+``seed_protocol: legacy-v1`` selector.  F1's broker is the enforcement target;
+until every production callsite is routed through it, the emitted boundary
+remains explicitly transitional.  Every constants-era site, seed derivation,
+ordering rule, and reset boundary still enters the emitted locks and compiled
+IR instead of surviving as ambient Python knowledge.
 """
 
 from __future__ import annotations

@@ -3,6 +3,207 @@
  "$id": "locks.schema.json",
  "title": "EMITTED artifacts (never authored; reproducible-or-rejected)",
  "$defs": {
+  "broker_receipt_value": {
+   "anyOf": [
+    {"type": "null"},
+    {"type": "boolean"},
+    {"type": "integer"},
+    {"type": "number"},
+    {"type": "string"},
+    {
+     "type": "array",
+     "items": {"$ref": "#/$defs/broker_receipt_value"}
+    },
+    {
+     "type": "object",
+     "additionalProperties": {"$ref": "#/$defs/broker_receipt_value"}
+    }
+   ]
+  },
+  "broker_access_receipt": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "domain",
+    "schema_version",
+    "surface",
+    "owner",
+    "node_key",
+    "attempt",
+    "attempt_scope",
+    "status",
+    "run_provenance_identity",
+    "events",
+    "receipt_sha256"
+   ],
+   "properties": {
+    "domain": {"const": "microcosm.spec-engine.broker-access-receipt.v1"},
+    "schema_version": {"const": 1},
+    "surface": {"const": "operational"},
+    "owner": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["kind", "id"],
+     "properties": {
+      "kind": {
+       "enum": ["producer_node", "source_stage", "pipeline_operation"]
+      },
+      "id": {"type": "string", "minLength": 1}
+     }
+    },
+    "node_key": {
+     "oneOf": [
+      {"type": "null"},
+      {"$ref": "defs.schema.json#/$defs/sha256"}
+     ]
+    },
+    "attempt": {"type": "integer", "minimum": 0},
+    "attempt_scope": {
+     "oneOf": [
+      {"type": "null"},
+      {"type": "string", "minLength": 1}
+     ]
+    },
+    "status": {"enum": ["complete", "aborted"]},
+    "run_provenance_identity": {
+     "$ref": "#/$defs/run_provenance_identity"
+    },
+    "events": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "sequence",
+       "broker",
+       "operation",
+       "resource",
+       "disposition",
+       "reason_code",
+       "details"
+      ],
+      "properties": {
+       "sequence": {"type": "integer", "minimum": 0},
+       "broker": {"enum": ["rng", "file", "environment", "clock", "ambient"]},
+       "operation": {"type": "string", "minLength": 1},
+       "resource": {"type": "string", "minLength": 1},
+       "disposition": {"enum": ["allowed", "refused"]},
+       "reason_code": {"type": "string", "minLength": 1},
+       "details": {
+        "type": "object",
+        "additionalProperties": {"$ref": "#/$defs/broker_receipt_value"}
+       }
+      }
+     }
+    },
+    "receipt_sha256": {"$ref": "defs.schema.json#/$defs/sha256"}
+   }
+  },
+  "run_provenance_identity": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "identity_generation",
+    "source_grammar_receipt",
+    "spec_binding",
+    "authority_versions",
+    "code_inventory_digest",
+    "artifact_protocol_inventory",
+    "run_request",
+    "execution_receipt"
+   ],
+   "properties": {
+    "identity_generation": {"enum": [0, 1]},
+    "source_grammar_receipt": {
+     "oneOf": [
+      {"type": "null"},
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "schema_version",
+        "canonicalizer_version",
+        "migration_chain"
+       ],
+       "properties": {
+        "schema_version": {"type": "integer", "minimum": 1},
+        "canonicalizer_version": {"type": "integer", "minimum": 1},
+        "migration_chain": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "sha256"],
+          "properties": {
+           "id": {"type": "string", "minLength": 1},
+           "sha256": {"$ref": "defs.schema.json#/$defs/sha256"}
+          }
+         }
+        }
+       }
+      }
+     ]
+    },
+    "spec_binding": {
+     "oneOf": [
+      {"type": "null"},
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "country",
+        "schema_id",
+        "schema_version",
+        "canonicalizer_version",
+        "spec_sha256",
+        "attestation"
+       ],
+       "properties": {
+        "country": {"type": "string", "minLength": 1},
+        "schema_id": {"type": "string", "minLength": 1},
+        "schema_version": {"type": "integer", "minimum": 1},
+        "canonicalizer_version": {"type": "integer", "minimum": 1},
+        "spec_sha256": {"$ref": "defs.schema.json#/$defs/sha256"},
+        "attestation": {
+         "enum": ["mirror-attested", "bundle-authoritative"]
+        }
+       }
+      }
+     ]
+    },
+    "authority_versions": {"$ref": "#/$defs/json_object"},
+    "code_inventory_digest": {"$ref": "defs.schema.json#/$defs/sha256"},
+    "artifact_protocol_inventory": {"$ref": "#/$defs/json_object"},
+    "run_request": {"$ref": "#/$defs/json_object"},
+    "execution_receipt": {"$ref": "#/$defs/json_object"}
+   },
+   "allOf": [
+    {
+     "if": {
+      "properties": {"identity_generation": {"const": 0}},
+      "required": ["identity_generation"]
+     },
+     "then": {
+      "properties": {
+       "source_grammar_receipt": {"type": "null"},
+       "spec_binding": {"type": "null"}
+      }
+     }
+    },
+    {
+     "if": {
+      "properties": {"identity_generation": {"const": 1}},
+      "required": ["identity_generation"]
+     },
+     "then": {
+      "properties": {
+       "source_grammar_receipt": {"not": {"type": "null"}},
+       "spec_binding": {"not": {"type": "null"}}
+      }
+     }
+    }
+   ]
+  },
   "bundle_lock": {
    "type": "object",
    "additionalProperties": false,

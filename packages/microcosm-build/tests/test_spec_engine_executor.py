@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import os
+import time
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
@@ -10,6 +13,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import microcosm.build.spec_engine.brokers as broker_module
+from microcosm.build.spec_engine.brokers import (
+    AmbientAccessError,
+    BrokerAccessError,
+    BrokerOwner,
+    BrokerSession,
+    DeclaredSource,
+)
 from microcosm.build.spec_engine.canonical import sha256_json
 from microcosm.build.spec_engine.compiler_ir import (
     CompiledNode,
@@ -31,21 +42,32 @@ from microcosm.build.spec_engine.executor import (
     RegisteredKernel,
     RegisteredRowClassifier,
     RowClassification,
+    RunProvenanceIdentity,
     StructuralDelta,
     StructuralDiffError,
+    ValidatedPatch,
     WeightState,
     apply_patch,
+    build_run_provenance_identity,
     diff_projections,
     execute_node,
+    node_reuse_identity,
     order_nodes,
 )
-from microcosm.build.spec_engine.model import FrozenMap, freeze_json
+from microcosm.build.spec_engine.loader import load_bundle
+from microcosm.build.spec_engine.model import FrozenMap, freeze_json, thaw_json
 from microcosm.build.spec_engine.scope_algebra import ClosedScopeRegistry
 
 _IMPLEMENTATION_SHA256 = "a" * 64
 _SEED_PROTOCOL_SHA256 = "c" * 64
 _NODE_SLICE_DOMAIN = "microcosm.spec-engine.node-slice.v1"
 _NODE_KEY_DOMAIN = "microcosm.spec-engine.static-node-key.v1"
+
+
+def _executor_global_helper() -> float:
+    """Patch target for the transitive prebound-ambient regression test."""
+
+    return 0.0
 
 
 class _StrataWithMetadata(pd.Series):
@@ -420,11 +442,16 @@ def _node(
             stream=stream,
             contract=_frozen_mapping(
                 {
-                    "rng_family": "numpy_randomstate_mt19937",
-                    "kernel": "choice",
-                    "seed_material": "fixture_seed",
-                    "consumption_order": "row_order",
-                    "reset_boundary": "node",
+                    "value_source": "run_request.fixture_seed",
+                    "default": 17,
+                    "rng_family": "numpy.random.Generator(PCG64)",
+                    "rng_version": "fixture-v1",
+                    "kernel": "legacy_v1_direct_draws",
+                    "seed_material": ["fixture_seed"],
+                    "consumption_order": ["row_order"],
+                    "reset_boundary": "fresh_generator_per_call",
+                    "draw_condition": "always",
+                    "derivation": "direct_integer_seed",
                 }
             ),
             owners=(("producer_node", node_id),),
@@ -551,13 +578,44 @@ def _run(
     context: ExecutionContext | None = None,
     row_classifiers: Mapping[str, RegisteredRowClassifier] | None = None,
 ):
+    selected_context = context or ExecutionContext()
+    if selected_context.run_provenance_identity is None:
+        selected_context = replace(
+            selected_context,
+            run_provenance_identity=_fixture_run_provenance(),
+        )
     return execute_node(
         node,
         projection,
         kernels={"kernel:fixture": RegisteredKernel(kernel, _IMPLEMENTATION_SHA256)},
         row_classifiers=row_classifiers,
-        context=context,
+        context=selected_context,
     )
+
+
+def _fixture_run_provenance() -> RunProvenanceIdentity:
+    return build_run_provenance_identity(
+        identity_generation=0,
+        source_grammar_receipt=None,
+        spec_binding=None,
+        authority_versions={"fixture": 1},
+        code_inventory_digest="a" * 64,
+        artifact_protocol_inventory={"fixture": "v1"},
+        run_request={"rung": "fixture"},
+        execution_receipt={"backend": "fixture"},
+    )
+
+
+def _broker_session(node: CompiledNode, **kwargs) -> BrokerSession:
+    return BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance().to_wire(),
+        **kwargs,
+    )
+
+
+def _behavior_session(node: CompiledNode, *, fixture_seed: int = 17) -> BrokerSession:
+    return _broker_session(node, run_inputs={"fixture_seed": fixture_seed})
 
 
 def _row_classifier() -> RegisteredRowClassifier:
@@ -605,9 +663,12 @@ def _filter_patch(
     projection: ImmutableFrameProjection,
     _context: ExecutionContext,
 ) -> KernelPatch:
-    person = projection.table("person").query("person_id != 3").copy()
-    group = projection.table("group").query("group_key != 20").copy()
-    link = projection.link("membership").query("person_id != 3").copy()
+    person_table = projection.table("person")
+    group_table = projection.table("group")
+    link_table = projection.link("membership")
+    person = person_table.loc[person_table["person_id"].ne(3)].copy()
+    group = group_table.loc[group_table["group_key"].ne(20)].copy()
+    link = link_table.loc[link_table["person_id"].ne(3)].copy()
     return KernelPatch(
         StructuralDelta.FILTER,
         tables={"person": person, "group": group},
@@ -1391,6 +1452,84 @@ def test_validated_patch_base_result_and_kernel_patch_tamper_seals(
         apply_patch(projection, patch_tamper)
 
 
+def test_apply_patch_refuses_swapped_and_aborted_broker_receipts(
+    projection: ImmutableFrameProjection,
+) -> None:
+    first = _validated_none_patch(projection)
+
+    def resealed_receipt(**changes):
+        provisional = replace(
+            first.broker_receipt,
+            receipt_sha256="",
+            **changes,
+        )
+        return replace(
+            provisional,
+            receipt_sha256=sha256_json(provisional.body_wire()),
+        )
+
+    second = _run(
+        _node(
+            StructuralDelta.NONE,
+            [_scope("value", "a_rows")],
+            node_id="other_fixture_node",
+        ),
+        projection,
+        _none_patch,
+    )
+    with pytest.raises(ExecutorError, match="receipt owner differs"):
+        apply_patch(projection, replace(first, broker_receipt=second.broker_receipt))
+
+    non_node_owner = resealed_receipt(
+        owner=replace(first.broker_receipt.owner, kind="source_stage")
+    )
+    with pytest.raises(ExecutorError, match="receipt owner differs"):
+        apply_patch(projection, replace(first, broker_receipt=non_node_owner))
+
+    wrong_node_key = resealed_receipt(node_key="f" * 64)
+    with pytest.raises(ExecutorError, match="receipt node key differs"):
+        apply_patch(projection, replace(first, broker_receipt=wrong_node_key))
+
+    aborted = resealed_receipt(status="aborted")
+    aborted.validate()
+    with pytest.raises(ExecutorError, match="complete broker receipt"):
+        apply_patch(projection, replace(first, broker_receipt=aborted))
+
+    with pytest.raises(ExecutorError, match="invalid type"):
+        apply_patch(
+            projection,
+            replace(first, broker_receipt=object()),  # type: ignore[arg-type]
+        )
+
+
+def test_apply_patch_requires_exact_receipt_attempt_and_scope(
+    projection: ImmutableFrameProjection,
+) -> None:
+    node = _node(StructuralDelta.NONE, [_scope("value", "a_rows")])
+    first = _run(
+        node,
+        projection,
+        _none_patch,
+        context=ExecutionContext(attempt=3, attempt_scope="attempt:3"),
+    )
+    assert (first.attempt, first.attempt_scope) == (3, "attempt:3")
+    assert (first.broker_receipt.attempt, first.broker_receipt.attempt_scope) == (
+        3,
+        "attempt:3",
+    )
+
+    for context, expected_message in (
+        (ExecutionContext(attempt=4, attempt_scope="attempt:3"), "attempt differs"),
+        (ExecutionContext(attempt=3, attempt_scope="attempt:other"), "scope differs"),
+    ):
+        other = _run(node, projection, _none_patch, context=context)
+        with pytest.raises(ExecutorError, match=expected_message):
+            apply_patch(
+                projection,
+                replace(first, broker_receipt=other.broker_receipt),
+            )
+
+
 def test_patch_cannot_be_replayed_on_a_different_base(
     projection: ImmutableFrameProjection,
 ) -> None:
@@ -2093,10 +2232,11 @@ def test_compiled_output_contract_enforces_dtype_and_nullability(
         "public_stability": "internal",
         "unit_waiver": None,
     }
+    captured_values = tuple(values)
 
     def kernel(view, _context):
         person = view.table("person")
-        person["joined"] = pd.Series(values, dtype="float64")
+        person["joined"] = pd.Series(captured_values, dtype="float64")
         return KernelPatch(StructuralDelta.JOIN, tables={"person": person})
 
     with pytest.raises(StructuralDiffError, match=message):
@@ -2516,6 +2656,7 @@ def test_authored_kernel_pin_refuses_direct_ref_and_digest_substitution(
             kernels={
                 forged_ref: RegisteredKernel(forged_kernel, forged_sha256),
             },
+            context=ExecutionContext(run_provenance_identity=_fixture_run_provenance()),
         )
     assert calls == 0
 
@@ -2542,6 +2683,707 @@ def test_projection_refuses_a_missing_required_physical_input(
             kernel,
         )
     assert calls == 0
+
+
+@pytest.mark.parametrize("ambient_kind", ["environment", "clock"])
+def test_executor_refuses_ambient_environment_and_clock_before_patch_application(
+    ambient_kind: str,
+    monkeypatch: pytest.MonkeyPatch,
+    projection: ImmutableFrameProjection,
+) -> None:
+    monkeypatch.setenv("MICROCOSM_EXECUTOR_SENTINEL", "visible-outside-guard")
+    if ambient_kind == "clock":
+        monkeypatch.setattr(time, "time", lambda: 123.5)
+    node = _node(StructuralDelta.NONE, [_scope("value", "a_rows")])
+    brokers = _broker_session(node)
+    original = projection.detached_copy()
+
+    def kernel(view, context):
+        assert context.brokers is not None
+        if ambient_kind == "environment":
+            os.environ.get("MICROCOSM_EXECUTOR_SENTINEL")
+        else:
+            time.time()
+        return _none_patch(view, context)
+
+    with pytest.raises(AmbientAccessError, match=f"ambient {ambient_kind}"):
+        _run(
+            node,
+            projection,
+            kernel,
+            context=ExecutionContext(brokers=brokers),
+        )
+    assert diff_projections(original, projection).empty
+    assert brokers.receipt.status == "aborted"
+    assert brokers.receipt.events[-1].disposition == "refused"
+    assert os.environ["MICROCOSM_EXECUTOR_SENTINEL"] == "visible-outside-guard"
+    if ambient_kind == "clock":
+        assert time.time() == 123.5
+
+
+def test_caught_ambient_refusal_still_aborts_the_executor_receipt(
+    projection: ImmutableFrameProjection,
+) -> None:
+    node = _node(StructuralDelta.NONE, [_scope("value", "a_rows")])
+    brokers = _broker_session(node)
+
+    def kernel(view, context):
+        try:
+            time.time()
+        except AmbientAccessError:
+            pass
+        return _none_patch(view, context)
+
+    with pytest.raises(BrokerAccessError, match="recorded a refused access"):
+        _run(
+            node,
+            projection,
+            kernel,
+            context=ExecutionContext(brokers=brokers),
+        )
+    assert brokers.receipt.status == "aborted"
+    assert brokers.receipt.events[-1].disposition == "refused"
+
+
+def test_seeded_kernel_can_only_draw_from_its_compiled_site_token(
+    projection: ImmutableFrameProjection,
+) -> None:
+    node = _node(
+        StructuralDelta.NONE,
+        [_scope("value", "a_rows")],
+        determinism="seeded",
+        seed_streams=("fixture",),
+    )
+    brokers = _broker_session(node, run_inputs={"fixture_seed": 17})
+
+    def kernel(view, context):
+        token = context.brokers.rng.token("fixture_site_0")
+        with context.brokers.rng.generator(token) as generator:
+            assert generator.integers(0, 100, size=3).tolist() == [74, 84, 10]
+        return _none_patch(view, context)
+
+    validated = _run(
+        node,
+        projection,
+        kernel,
+        context=ExecutionContext(brokers=brokers),
+    )
+    assert validated.broker_receipt is brokers.receipt
+    rng_events = [
+        event for event in validated.broker_receipt.events if event.broker == "rng"
+    ]
+    assert rng_events[0].resource == "fixture_site_0"
+    assert rng_events[0].details["stream"] == "stream:fixture"
+
+
+def test_seeded_kernel_private_numpy_rng_is_refused(
+    projection: ImmutableFrameProjection,
+) -> None:
+    node = _node(
+        StructuralDelta.NONE,
+        [_scope("value", "a_rows")],
+        determinism="seeded",
+        seed_streams=("fixture",),
+    )
+    brokers = _broker_session(node, run_inputs={"fixture_seed": 17})
+
+    def kernel(view, context):
+        np.random.default_rng(17)
+        return _none_patch(view, context)
+
+    with pytest.raises(AmbientAccessError, match="ambient rng"):
+        _run(
+            node,
+            projection,
+            kernel,
+            context=ExecutionContext(brokers=brokers),
+        )
+    assert brokers.receipt.status == "aborted"
+
+
+def test_executor_refuses_prebound_clock_alias_before_dispatch(
+    projection: ImmutableFrameProjection,
+) -> None:
+    node = _node(StructuralDelta.NONE, [_scope("value", "a_rows")])
+    brokers = _broker_session(node)
+    captured_time = time.time
+    calls = 0
+
+    def kernel(view, context):
+        nonlocal calls
+        calls += 1
+        captured_time()
+        return _none_patch(view, context)
+
+    with pytest.raises(AmbientAccessError, match="captures prohibited ambient"):
+        _run(
+            node,
+            projection,
+            kernel,
+            context=ExecutionContext(brokers=brokers),
+        )
+    assert calls == 0
+    assert brokers.receipt.status == "aborted"
+    assert brokers.receipt.events[-1].reason_code == "prebound_ambient_access"
+
+
+def test_executor_refuses_clock_alias_reached_through_global_helper(
+    monkeypatch: pytest.MonkeyPatch,
+    projection: ImmutableFrameProjection,
+) -> None:
+    node = _node(StructuralDelta.NONE, [_scope("value", "a_rows")])
+    brokers = _broker_session(node)
+    captured_time = time.time
+
+    def helper() -> float:
+        return captured_time()
+
+    monkeypatch.setitem(globals(), "_executor_global_helper", helper)
+
+    def kernel(view, context):
+        _executor_global_helper()
+        return _none_patch(view, context)
+
+    with pytest.raises(AmbientAccessError, match="captures prohibited ambient"):
+        _run(
+            node,
+            projection,
+            kernel,
+            context=ExecutionContext(brokers=brokers),
+        )
+    assert brokers.receipt.status == "aborted"
+
+
+def test_row_classifier_runs_under_the_same_ambient_guard(
+    projection: ImmutableFrameProjection,
+) -> None:
+    node = _node(
+        StructuralDelta.EXPAND,
+        _filter_or_expand_scopes(),
+        changed_mutations=(
+            "entity_keys",
+            "cardinality",
+            "links",
+            "memberships",
+            "order",
+            "weights",
+        ),
+    )
+    good = _row_classifier()
+    calls = 0
+
+    def classify(entity, table, key, added_ids, registry):
+        nonlocal calls
+        calls += 1
+        time.monotonic()
+        return good.function(entity, table, key, added_ids, registry)
+
+    bad = RegisteredRowClassifier(
+        classify,
+        good.implementation_sha256,
+        good.predicate_space,
+    )
+    brokers = _broker_session(node)
+    with pytest.raises(AmbientAccessError, match="ambient clock"):
+        _run(
+            node,
+            projection,
+            _expand_patch,
+            row_classifiers={node.row_classifier_ref: bad},
+            context=ExecutionContext(brokers=brokers),
+        )
+    assert calls == 1
+    assert brokers.receipt.status == "aborted"
+
+
+def test_row_classifier_cannot_capture_kernel_broker_authority(
+    projection: ImmutableFrameProjection,
+) -> None:
+    node = _node(
+        StructuralDelta.EXPAND,
+        _filter_or_expand_scopes(),
+        changed_mutations=(
+            "entity_keys",
+            "cardinality",
+            "links",
+            "memberships",
+            "order",
+            "weights",
+        ),
+    )
+    good = _row_classifier()
+    brokers = _broker_session(node)
+
+    def classify(entity, table, key, added_ids, registry):
+        try:
+            brokers.environment.get("FORBIDDEN")
+        except BrokerAccessError:
+            pass
+        return good.function(entity, table, key, added_ids, registry)
+
+    classifier = RegisteredRowClassifier(
+        classify,
+        good.implementation_sha256,
+        good.predicate_space,
+    )
+    with pytest.raises(AmbientAccessError, match="captures prohibited ambient"):
+        _run(
+            node,
+            projection,
+            _expand_patch,
+            row_classifiers={node.row_classifier_ref: classifier},
+            context=ExecutionContext(brokers=brokers),
+        )
+    assert brokers.receipt.status == "aborted"
+    assert brokers.receipt.events[-1].reason_code == "prebound_ambient_access"
+
+
+def test_kernel_receives_only_a_tainting_public_broker_projection(
+    projection: ImmutableFrameProjection,
+) -> None:
+    node = _node(StructuralDelta.NONE, [_scope("value", "a_rows")])
+    brokers = _broker_session(node)
+
+    def kernel(view, context):
+        try:
+            _ = context.brokers._log
+        except BrokerAccessError:
+            pass
+        try:
+            _ = context.brokers.rng._issued
+        except BrokerAccessError:
+            pass
+        return _none_patch(view, context)
+
+    with pytest.raises(BrokerAccessError, match="recorded a refused access"):
+        _run(
+            node,
+            projection,
+            kernel,
+            context=ExecutionContext(brokers=brokers),
+        )
+    assert brokers.receipt.status == "aborted"
+    assert {event.reason_code for event in brokers.receipt.events} == {
+        "broker_authority_internals_prohibited"
+    }
+
+
+def test_executor_refuses_module_reexport_of_original_ambient_primitive(
+    projection: ImmutableFrameProjection,
+) -> None:
+    node = _node(StructuralDelta.NONE, [_scope("value", "a_rows")])
+    brokers = _broker_session(node)
+
+    def kernel(view, context):
+        broker_module._ORIGINAL_BUILTINS_OPEN("forbidden", "rb")  # noqa: SLF001
+        return _none_patch(view, context)
+
+    with pytest.raises(AmbientAccessError, match="captures prohibited ambient"):
+        _run(
+            node,
+            projection,
+            kernel,
+            context=ExecutionContext(brokers=brokers),
+        )
+    assert brokers.receipt.status == "aborted"
+    assert brokers.receipt.events[-1].reason_code == "prebound_ambient_access"
+
+
+def test_broker_receipt_is_outside_patch_and_node_identity_seals(
+    projection: ImmutableFrameProjection,
+) -> None:
+    node = _node(
+        StructuralDelta.NONE,
+        [_scope("value", "a_rows")],
+        determinism="seeded",
+        seed_streams=("fixture",),
+    )
+    results: list[ValidatedPatch] = []
+    for draw_count in (1, 2):
+        brokers = _broker_session(node, run_inputs={"fixture_seed": 17})
+
+        def kernel(view, context, count=draw_count):
+            token = context.brokers.rng.token("fixture_site_0")
+            with context.brokers.rng.generator(token) as generator:
+                for _ in range(count):
+                    generator.random(1)
+            return _none_patch(view, context)
+
+        results.append(
+            _run(
+                node,
+                projection,
+                kernel,
+                context=ExecutionContext(brokers=brokers),
+            )
+        )
+    first, second = results
+    assert first.broker_receipt.receipt_sha256 != second.broker_receipt.receipt_sha256
+    assert first.node_key == second.node_key == node.node_key
+    assert first._patch_sha256 == second._patch_sha256
+    assert first._result_sha256 == second._result_sha256
+    assert first._envelope_sha256 != second._envelope_sha256
+    with pytest.raises(ExecutorError, match="envelope seal"):
+        apply_patch(
+            projection,
+            replace(first, broker_receipt=second.broker_receipt),
+        )
+    behavior_session = _behavior_session(node)
+    reuse = node_reuse_identity(
+        node,
+        identity_generation=1,
+        behavior_relevant_run_inputs={"sample_fraction": 0.01},
+        transitive_input_content_hashes={"fixture_input": "d" * 64},
+        implementation_dependency_sha256="e" * 64,
+        rng_behavior_inputs=behavior_session.rng.behavior_identity,
+        source_behavior_inputs=behavior_session.source_behavior_identity,
+        artifact_materializer_abis={"fixture_output": "materializer-v1"},
+    )
+    assert reuse.key not in {
+        first.broker_receipt.receipt_sha256,
+        second.broker_receipt.receipt_sha256,
+    }
+
+
+def test_node_reuse_changes_with_generation_and_seed_but_not_run_provenance() -> None:
+    node = _node(
+        StructuralDelta.NONE,
+        [_scope("value", "a_rows")],
+        determinism="seeded",
+        seed_streams=("fixture",),
+    )
+
+    def reuse(seed: int, *, generation: int = 1):
+        behavior_session = _behavior_session(node, fixture_seed=seed)
+        return node_reuse_identity(
+            node,
+            identity_generation=generation,
+            behavior_relevant_run_inputs={"rung": "f004"},
+            transitive_input_content_hashes={"fixture_input": "d" * 64},
+            implementation_dependency_sha256="e" * 64,
+            rng_behavior_inputs=behavior_session.rng.behavior_identity,
+            source_behavior_inputs=behavior_session.source_behavior_identity,
+            artifact_materializer_abis={"fixture_output": "materializer-v1"},
+            output_sensitive_backend_abi={"numeric_backend": "cpu-bitwise-v1"},
+        )
+
+    common_provenance = {
+        "authority_versions": {"stacked_authority": 10},
+        "code_inventory_digest": "a" * 64,
+        "artifact_protocol_inventory": {"parquet": "fixture-v1"},
+        "execution_receipt": {"resolved_backend": "cpu"},
+    }
+    generation_zero_provenance = build_run_provenance_identity(
+        identity_generation=0,
+        source_grammar_receipt=None,
+        spec_binding=None,
+        run_request={"config_authority": "constants", "rung": "f004"},
+        **common_provenance,
+    )
+    generation_one_provenance = build_run_provenance_identity(
+        identity_generation=1,
+        source_grammar_receipt={
+            "schema_version": 3,
+            "canonicalizer_version": 1,
+            "migration_chain": [{"id": "fixture-v2-v3", "sha256": "b" * 64}],
+        },
+        spec_binding={
+            "country": "us",
+            "schema_id": "country-spec",
+            "schema_version": 3,
+            "canonicalizer_version": 1,
+            "spec_sha256": "f" * 64,
+            "attestation": "mirror-attested",
+        },
+        run_request={"config_authority": "bundle", "rung": "f004"},
+        **common_provenance,
+    )
+    first = reuse(17)
+    second = reuse(17)
+    changed_seed = reuse(18)
+    changed_generation = reuse(17, generation=0)
+    assert isinstance(generation_zero_provenance, RunProvenanceIdentity)
+    assert generation_zero_provenance.promotable is False
+    assert generation_one_provenance.promotable is True
+    assert generation_zero_provenance.to_wire() != generation_one_provenance.to_wire()
+    assert set(generation_one_provenance.to_wire()) == {
+        "identity_generation",
+        "source_grammar_receipt",
+        "spec_binding",
+        "authority_versions",
+        "code_inventory_digest",
+        "artifact_protocol_inventory",
+        "run_request",
+        "execution_receipt",
+    }
+    assert set(generation_one_provenance.to_wire()["spec_binding"]) == {
+        "country",
+        "schema_id",
+        "schema_version",
+        "canonicalizer_version",
+        "spec_sha256",
+        "attestation",
+    }
+    assert first.key == second.key
+    assert changed_seed.key != first.key
+    assert changed_generation.key != first.key
+    payload = thaw_json(first.payload)
+    assert payload["identity_generation"] == 1
+    rendered = str(payload)
+    for forbidden in (
+        "config_authority",
+        "run_provenance_identity",
+        "spec_binding",
+        "spec_sha256",
+        "broker_receipt",
+        "access_log",
+    ):
+        assert forbidden not in rendered
+
+
+def test_node_reuse_binds_declared_source_content_but_not_its_path(
+    tmp_path: Path,
+) -> None:
+    node = _node(
+        StructuralDelta.NONE,
+        [_scope("value", "a_rows")],
+        effects=["declared_source_read"],
+    )
+
+    def session_for(path: Path, payload: bytes) -> BrokerSession:
+        path.write_bytes(payload)
+        return _broker_session(
+            node,
+            sources=(
+                DeclaredSource(
+                    id="fixture_source",
+                    path=path,
+                    sha256=hashlib.sha256(payload).hexdigest(),
+                    byte_size=len(payload),
+                ),
+            ),
+        )
+
+    def reuse(session: BrokerSession, hashes: Mapping[str, str] | None = None):
+        return node_reuse_identity(
+            node,
+            identity_generation=1,
+            behavior_relevant_run_inputs={},
+            transitive_input_content_hashes={} if hashes is None else hashes,
+            implementation_dependency_sha256="e" * 64,
+            rng_behavior_inputs=session.rng.behavior_identity,
+            source_behavior_inputs=session.source_behavior_identity,
+            artifact_materializer_abis={},
+        )
+
+    first = session_for(tmp_path / "first.bin", b"same bytes")
+    relocated = session_for(tmp_path / "relocated.bin", b"same bytes")
+    changed = session_for(tmp_path / "changed.bin", b"changed bytes")
+    assert reuse(first).key == reuse(relocated).key
+    assert reuse(first).key != reuse(changed).key
+    payload = thaw_json(reuse(first).payload)
+    assert (
+        payload["transitive_input_content_hashes"]["declared_source:fixture_source"]
+        == hashlib.sha256(b"same bytes").hexdigest()
+    )
+    assert str(tmp_path) not in str(payload)
+    with pytest.raises(CapabilityError, match="conflicts with declared source"):
+        reuse(first, {"declared_source:fixture_source": "f" * 64})
+    with pytest.raises(CapabilityError, match="different broker sessions"):
+        node_reuse_identity(
+            node,
+            identity_generation=1,
+            behavior_relevant_run_inputs={},
+            transitive_input_content_hashes={},
+            implementation_dependency_sha256="e" * 64,
+            rng_behavior_inputs=first.rng.behavior_identity,
+            source_behavior_inputs=relocated.source_behavior_identity,
+            artifact_materializer_abis={},
+        )
+
+
+def test_node_reuse_requires_an_exact_broker_issued_rng_identity() -> None:
+    node = _node(
+        StructuralDelta.NONE,
+        [_scope("value", "a_rows")],
+        determinism="seeded",
+        seed_streams=("fixture",),
+    )
+    common = {
+        "identity_generation": 1,
+        "behavior_relevant_run_inputs": {"rung": "f004"},
+        "transitive_input_content_hashes": {"fixture_input": "d" * 64},
+        "implementation_dependency_sha256": "e" * 64,
+        "artifact_materializer_abis": {"fixture_output": "materializer-v1"},
+    }
+    behavior_session = _behavior_session(node)
+    common["source_behavior_inputs"] = behavior_session.source_behavior_identity
+    with pytest.raises(TypeError, match="broker-issued"):
+        node_reuse_identity(
+            node,
+            rng_behavior_inputs={"fixture_seed": 17},  # type: ignore[arg-type]
+            **common,
+        )
+
+    wrong_owner = behavior_session.rng.behavior_identity
+    object.__setattr__(
+        wrong_owner, "owner", BrokerOwner("source_stage", "fixture_node")
+    )
+    with pytest.raises(CapabilityError, match="owner differs"):
+        node_reuse_identity(node, rng_behavior_inputs=wrong_owner, **common)
+
+    forged_session = _behavior_session(node)
+    forged = forged_session.rng.behavior_identity
+    rows = [thaw_json(site) for site in forged.sites]
+    rows[0]["opaque_receipt_digest"] = "f" * 64
+    object.__setattr__(
+        forged,
+        "sites",
+        tuple(freeze_json(row) for row in rows),
+    )
+    with pytest.raises(CapabilityError, match="not broker-issued"):
+        node_reuse_identity(
+            node,
+            rng_behavior_inputs=forged,
+            source_behavior_inputs=forged_session.source_behavior_identity,
+            **{
+                key: value
+                for key, value in common.items()
+                if key != "source_behavior_inputs"
+            },
+        )
+
+
+@pytest.mark.parametrize("generation", [-1, 2, True, "1"])
+def test_run_provenance_identity_refuses_unknown_generations(
+    generation: object,
+) -> None:
+    with pytest.raises(ExecutorError, match="identity_generation"):
+        build_run_provenance_identity(
+            identity_generation=generation,  # type: ignore[arg-type]
+            source_grammar_receipt=None,
+            spec_binding=None,
+            authority_versions={},
+            code_inventory_digest="a" * 64,
+            artifact_protocol_inventory={},
+            run_request={},
+            execution_receipt={},
+        )
+
+
+def test_generation_one_provenance_requires_the_binding_receipts() -> None:
+    with pytest.raises(ExecutorError, match="generation 1 provenance requires"):
+        build_run_provenance_identity(
+            identity_generation=1,
+            source_grammar_receipt=None,
+            spec_binding=None,
+            authority_versions={},
+            code_inventory_digest="a" * 64,
+            artifact_protocol_inventory={},
+            run_request={},
+            execution_receipt={},
+        )
+
+
+def test_run_provenance_accepts_the_resolved_us_spec_binding() -> None:
+    resolved = load_bundle("us")
+    provenance = build_run_provenance_identity(
+        identity_generation=1,
+        source_grammar_receipt=resolved.grammar_receipt.to_wire(),
+        spec_binding=resolved.spec_binding.to_wire(),
+        authority_versions={"stacked_authority": 10},
+        code_inventory_digest="a" * 64,
+        artifact_protocol_inventory={"parquet": "fixture-v1"},
+        run_request={"config_authority": "bundle", "rung": "f004"},
+        execution_receipt={"resolved_backend": "cpu"},
+    )
+    assert provenance.to_wire()["spec_binding"] == resolved.spec_binding.to_wire()
+
+    bundle_binding = resolved.spec_binding.to_wire()
+    bundle_binding["attestation"] = "bundle-authoritative"
+    bundle_provenance = build_run_provenance_identity(
+        identity_generation=1,
+        source_grammar_receipt=resolved.grammar_receipt.to_wire(),
+        spec_binding=bundle_binding,
+        authority_versions={"stacked_authority": 10},
+        code_inventory_digest="a" * 64,
+        artifact_protocol_inventory={"parquet": "fixture-v1"},
+        run_request={"config_authority": "bundle", "rung": "f004"},
+        execution_receipt={"resolved_backend": "cpu"},
+    )
+    assert (
+        bundle_provenance.to_wire()["spec_binding"]["attestation"]
+        == "bundle-authoritative"
+    )
+
+    invalid_binding = resolved.spec_binding.to_wire()
+    invalid_binding["attestation"] = "self-asserted"
+    with pytest.raises(ExecutorError, match="attestation"):
+        build_run_provenance_identity(
+            identity_generation=1,
+            source_grammar_receipt=resolved.grammar_receipt.to_wire(),
+            spec_binding=invalid_binding,
+            authority_versions={"stacked_authority": 10},
+            code_inventory_digest="a" * 64,
+            artifact_protocol_inventory={"parquet": "fixture-v1"},
+            run_request={"config_authority": "bundle", "rung": "f004"},
+            execution_receipt={"resolved_backend": "cpu"},
+        )
+
+
+@pytest.mark.parametrize(
+    "forbidden",
+    [
+        "identity_generation",
+        "config_authority",
+        "run_provenance_identity",
+        "spec_binding",
+        "spec_sha256",
+        "broker_receipt",
+        "broker_access_log",
+    ],
+)
+def test_node_reuse_identity_refuses_provenance_and_operational_receipt_fields(
+    forbidden: str,
+) -> None:
+    node = _node(StructuralDelta.NONE, [_scope("value", "a_rows")])
+    behavior_session = _behavior_session(node)
+    with pytest.raises(CapabilityError, match="provenance fields"):
+        node_reuse_identity(
+            node,
+            identity_generation=1,
+            behavior_relevant_run_inputs={"nested": {forbidden: "forbidden"}},
+            transitive_input_content_hashes={"fixture_input": "d" * 64},
+            implementation_dependency_sha256="e" * 64,
+            rng_behavior_inputs=behavior_session.rng.behavior_identity,
+            source_behavior_inputs=behavior_session.source_behavior_identity,
+            artifact_materializer_abis={"fixture_output": "materializer-v1"},
+        )
+
+
+@pytest.mark.parametrize(
+    "aliased_marker",
+    [
+        "microcosm.spec-engine.broker-access-receipt.v1",
+        "operational",
+    ],
+)
+def test_node_reuse_identity_refuses_receipt_markers_under_aliases(
+    aliased_marker: str,
+) -> None:
+    node = _node(StructuralDelta.NONE, [_scope("value", "a_rows")])
+    behavior_session = _behavior_session(node)
+    with pytest.raises(CapabilityError, match="operational receipt markers"):
+        node_reuse_identity(
+            node,
+            identity_generation=1,
+            behavior_relevant_run_inputs={"opaque_alias": aliased_marker},
+            transitive_input_content_hashes={"fixture_input": "d" * 64},
+            implementation_dependency_sha256="e" * 64,
+            rng_behavior_inputs=behavior_session.rng.behavior_identity,
+            source_behavior_inputs=behavior_session.source_behavior_identity,
+            artifact_materializer_abis={"fixture_output": "materializer-v1"},
+        )
 
 
 def test_projection_requires_one_complete_or_of_and_input_alternative(
@@ -2690,7 +3532,7 @@ def test_validated_patch_envelope_seals_its_node_binding(
 ) -> None:
     validated = _validated_none_patch(projection)
     forged = replace(validated, node_id="forged_node")
-    with pytest.raises(ExecutorError, match="node|envelope|seal"):
+    with pytest.raises(ExecutorError, match="node|envelope|seal|receipt|owner"):
         apply_patch(projection, forged)
 
 
