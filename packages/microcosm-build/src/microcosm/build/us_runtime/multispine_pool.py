@@ -26,6 +26,7 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
+from microcosm.build.spec_engine.model import thaw_json
 from microcosm.build.us_runtime.acs_income_universe import (
     ACS_PUMS_EARNINGS_UNIVERSE_PERSON_INPUTS,
 )
@@ -67,6 +68,12 @@ from microcosm.build.us_runtime.medicare_take_up import (
 from microcosm.build.us_runtime.operator_boundary import (
     FORMULA_OWNED_SOURCE_COLUMNS,
     PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
+)
+from microcosm.build.us_runtime.pool_physical_authority import (
+    RemainingStagePhysicalAuthority,
+    SimulationSettings,
+    TakeUpPhysicalAuthority,
+    TakeUpProgramAuthority,
 )
 from microcosm.build.us_runtime.pregnancy import with_us_pregnancy_inputs
 from microcosm.build.us_runtime.prior_year_income import (
@@ -2848,7 +2855,40 @@ def _frame_row_counts(frame: Frame) -> dict[str, int]:
     return {entity: int(len(frame.table(entity))) for entity in frame.entities}
 
 
-def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
+def _resolved_derive_stage_authority(
+    authority: RemainingStagePhysicalAuthority | None,
+) -> tuple[tuple[str, ...], Mapping[str, object]]:
+    """Resolve derive scheduling without consulting two authorities at once."""
+
+    if authority is None:
+        return (
+            POOL_DERIVE_OPERATOR_ORDER,
+            pool_remaining_stage_input_manifest_receipt(),
+        )
+    if not isinstance(authority, RemainingStagePhysicalAuthority):
+        raise TypeError(
+            "remaining_stage_authority must be a "
+            "RemainingStagePhysicalAuthority."
+        )
+    for operator_name in authority.derive_operator_order:
+        authority.require_inputs(stage="derive", consumer=operator_name)
+    checkpoint_receipt = thaw_json(authority.checkpoint_identity_receipt)
+    if not isinstance(checkpoint_receipt, dict):  # pragma: no cover - frozen type
+        raise TypeError("Compiler remaining-stage receipt must be an object.")
+    if checkpoint_receipt.get("manifest_sha256") != authority.manifest_receipt.get(
+        "manifest_sha256"
+    ):
+        raise ValueError(
+            "Compiler remaining-stage checkpoint and manifest receipts differ."
+        )
+    return authority.derive_operator_order, checkpoint_receipt
+
+
+def derive_multispine_pool_inputs(
+    frame: Frame,
+    *,
+    remaining_stage_authority: RemainingStagePhysicalAuthority | None = None,
+) -> PoolStageOutput:
     """Complete deterministic post-transfer inputs without reading a spine.
 
     Schedule D capital-gain distributions are derived once per tax unit from
@@ -2858,7 +2898,9 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
     all-or-nothing identities on the imputed PUF-detail surface.
     """
 
-    remaining_stage_manifest_receipt = pool_remaining_stage_input_manifest_receipt()
+    derive_operator_order, remaining_stage_manifest_receipt = (
+        _resolved_derive_stage_authority(remaining_stage_authority)
+    )
 
     def reconcile_qbi_with_receipt(input_frame: Frame) -> PoolStageOutput:
         reconciled = with_us_qbi_input_reconciliation(input_frame)
@@ -2877,7 +2919,7 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
     completed = _run_source_operator_chain(
         frame,
         phase=_POST_CLONE_PHASE,
-        operator_names=POOL_DERIVE_OPERATOR_ORDER,
+        operator_names=derive_operator_order,
         operators={
             "_complete_schedule_d_input": _complete_schedule_d_input,
             "with_us_qbi_input_reconciliation": reconcile_qbi_with_receipt,
@@ -2899,7 +2941,7 @@ def derive_multispine_pool_inputs(frame: Frame) -> PoolStageOutput:
         authorized,
         {
             "phase": _POST_CLONE_PHASE,
-            "operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
+            "operator_order": list(derive_operator_order),
             "remaining_stage_input_manifest": remaining_stage_manifest_receipt,
             "schedule_d_capital_gain_distributions": schedule_d_receipt,
             "qbi_input_reconciliation": dict(qbi_receipt),
@@ -3010,10 +3052,141 @@ def _complete_schedule_d_input(frame: Frame) -> PoolStageOutput:
     )
 
 
+def _take_up_program_view(program: TakeUpProgramAuthority) -> TakeUpProgram:
+    """Project one compiler-issued runtime row onto the legacy kernel ABI."""
+
+    if not isinstance(program, TakeUpProgramAuthority):
+        raise TypeError(
+            "take_up_authority.programs must contain TakeUpProgramAuthority values."
+        )
+    raw = thaw_json(program.runtime_contract)
+    if not isinstance(raw, dict):  # pragma: no cover - frozen type
+        raise TypeError("Compiler take-up runtime program must be an object.")
+    if raw.get("variable") != program.variable:
+        raise ValueError(
+            "Compiler take-up program variable differs from its runtime contract."
+        )
+    string_fields: dict[str, str] = {}
+    for field_name in (
+        "engine_class",
+        "entity",
+        "value_type",
+        "populace_treatment",
+    ):
+        value = raw.get(field_name)
+        if not isinstance(value, str) or not value:
+            raise ValueError(
+                f"Compiler take-up program requires non-empty {field_name!r}."
+            )
+        string_fields[field_name] = value
+    if "default" not in raw:
+        raise ValueError("Compiler take-up program requires a default value.")
+    return TakeUpProgram(
+        variable=program.variable,
+        engine_class=string_fields["engine_class"],
+        entity=string_fields["entity"],
+        value_type=string_fields["value_type"],
+        default=raw["default"],
+        populace_treatment=string_fields["populace_treatment"],
+        raw=raw,
+    )
+
+
+def _resolved_seed_stage_authorities(
+    *,
+    remaining_stage_authority: RemainingStagePhysicalAuthority | None,
+    take_up_authority: TakeUpPhysicalAuthority | None,
+    simulation_settings: SimulationSettings | None,
+) -> tuple[tuple[TakeUpProgram, ...], set[str], int, int]:
+    """Resolve the closed take-up stage, rejecting mixed authority modes."""
+
+    supplied = (
+        remaining_stage_authority is not None,
+        take_up_authority is not None,
+        simulation_settings is not None,
+    )
+    if not any(supplied):
+        contract = load_take_up_contract()
+        transfer_owned = {
+            column
+            for families in pool_transfer_target_families().values()
+            for columns in families.values()
+            for column in columns
+        }
+        return (
+            contract.programs,
+            transfer_owned,
+            POOL_RANDOM_SEED,
+            POOL_TIME_PERIOD,
+        )
+    if not all(supplied):
+        raise ValueError(
+            "Compiler seed execution requires remaining-stage, take-up, and "
+            "simulation authorities together."
+        )
+    if not isinstance(remaining_stage_authority, RemainingStagePhysicalAuthority):
+        raise TypeError(
+            "remaining_stage_authority must be a "
+            "RemainingStagePhysicalAuthority."
+        )
+    if not isinstance(take_up_authority, TakeUpPhysicalAuthority):
+        raise TypeError("take_up_authority must be a TakeUpPhysicalAuthority.")
+    if not isinstance(simulation_settings, SimulationSettings):
+        raise TypeError("simulation_settings must be SimulationSettings.")
+
+    programs = tuple(
+        _take_up_program_view(program) for program in take_up_authority.programs
+    )
+    observed_bindings = tuple(
+        (program.variable, program.entity, program.populace_treatment)
+        for program in programs
+    )
+    if observed_bindings != take_up_authority.program_bindings:
+        raise ValueError(
+            "Compiler take-up programs differ from their sealed program bindings."
+        )
+
+    input_rows = remaining_stage_authority.require_inputs(
+        stage="seed",
+        consumer="seed_multispine_pool_inputs",
+    )
+    input_by_variable = {row.variable: row for row in input_rows}
+    if len(input_by_variable) != len(input_rows):
+        raise ValueError("Compiler seed-stage input variables must be unique.")
+    program_by_variable = {program.variable: program for program in programs}
+    if set(input_by_variable) != set(program_by_variable):
+        raise ValueError(
+            "Compiler seed-stage inputs differ from the take-up program surface."
+        )
+    entity_mismatches = sorted(
+        variable
+        for variable, program in program_by_variable.items()
+        if input_by_variable[variable].entity != program.entity
+    )
+    if entity_mismatches:
+        raise ValueError(
+            "Compiler seed-stage input entities differ from take-up programs: "
+            f"{entity_mismatches}."
+        )
+
+    transfer_owned = {
+        row.variable for row in input_rows if row.available_by == "transferred"
+    }
+    return (
+        programs,
+        transfer_owned,
+        simulation_settings.model_seed,
+        simulation_settings.target_period,
+    )
+
+
 def seed_multispine_pool_inputs(
     frame: Frame,
     *,
     engine: _PoolRulesEngine | None = None,
+    remaining_stage_authority: RemainingStagePhysicalAuthority | None = None,
+    take_up_authority: TakeUpPhysicalAuthority | None = None,
+    simulation_settings: SimulationSettings | None = None,
 ) -> PoolStageOutput:
     """Seed sourced flags, then disclose and fill unresolved engine defaults.
 
@@ -3024,12 +3197,19 @@ def seed_multispine_pool_inputs(
     the contract treatment, and its scope owner/follow-up evidence.
     """
 
-    contract = load_take_up_contract()
-    before = _take_up_snapshots(frame, contract.programs)
+    programs, transfer_owned, model_seed, target_period = (
+        _resolved_seed_stage_authorities(
+            remaining_stage_authority=remaining_stage_authority,
+            take_up_authority=take_up_authority,
+            simulation_settings=simulation_settings,
+        )
+    )
+    before = _take_up_snapshots(frame, programs)
     seeded = with_us_take_up_inputs(
         frame,
-        seed=POOL_RANDOM_SEED,
-        time_period=POOL_TIME_PERIOD,
+        seed=model_seed,
+        time_period=target_period,
+        programs=tuple(program for program in programs if program.is_seeded),
     )
     _assert_take_up_values_preserved(before, seeded)
 
@@ -3038,18 +3218,12 @@ def seed_multispine_pool_inputs(
         from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
         rules_engine = PolicyEngineUSEngine()
-    names = [program.variable for program in contract.programs]
+    names = [program.variable for program in programs]
     defaults = dict(rules_engine.default_values(names))
-    transfer_owned = {
-        column
-        for families in pool_transfer_target_families().values()
-        for columns in families.values()
-        for column in columns
-    }
 
     tables = {entity: seeded.table(entity).copy() for entity in seeded.entities}
-    programs: dict[str, dict[str, object]] = {}
-    for program in contract.programs:
+    program_receipts: dict[str, dict[str, object]] = {}
+    for program in programs:
         table = tables[program.entity]
         if program.variable in table:
             values = table[program.variable].copy()
@@ -3101,7 +3275,7 @@ def seed_multispine_pool_inputs(
             seeded_rows = 0
 
         rate = program.rate
-        programs[program.variable] = {
+        program_receipts[program.variable] = {
             "entity": program.entity,
             "populace_treatment": program.populace_treatment,
             "provenance_kind": provenance_kind,
@@ -3127,9 +3301,9 @@ def seed_multispine_pool_inputs(
     return PoolStageOutput(
         result,
         {
-            "seed": POOL_RANDOM_SEED,
-            "time_period": POOL_TIME_PERIOD,
-            "programs": programs,
+            "seed": model_seed,
+            "time_period": target_period,
+            "programs": program_receipts,
         },
     )
 
@@ -3138,6 +3312,7 @@ def materialize_multispine_agreement_outputs(
     frame: Frame,
     *,
     engine: _PoolRulesEngine | None = None,
+    simulation_settings: SimulationSettings | None = None,
 ) -> PoolStageOutput:
     """Materialize SSI in fixed household batches on an ephemeral gate view.
 
@@ -3146,6 +3321,19 @@ def materialize_multispine_agreement_outputs(
     instead; persisting ``ssi`` would pin a formula-owned output and mask
     reforms.
     """
+
+    if simulation_settings is None:
+        target_period = POOL_TIME_PERIOD
+        household_batch_size = POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE
+    elif not isinstance(simulation_settings, SimulationSettings):
+        raise TypeError("simulation_settings must be SimulationSettings.")
+    else:
+        target_period = simulation_settings.target_period
+        household_batch_size = simulation_settings.household_batch_size
+        if household_batch_size < 1:
+            raise ValueError(
+                "Compiler simulation household batch size must be positive."
+            )
 
     if any("ssi" in frame.table(entity) for entity in frame.entities):
         raise ValueError(
@@ -3177,17 +3365,15 @@ def materialize_multispine_agreement_outputs(
         dtype=np.float64,
     )
     batch_count = 0
-    for low in range(0, len(household_ids), POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE):
-        selected_households = household_ids[
-            low : low + POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE
-        ]
+    for low in range(0, len(household_ids), household_batch_size):
+        selected_households = household_ids[low : low + household_batch_size]
         person_mask = membership.isin(selected_households).to_numpy()
         selected = simulation_frame.select(person_mask)
         materialized = np.asarray(
             rules_engine.materialize(
                 selected,
                 ["ssi"],
-                POOL_TIME_PERIOD,
+                target_period,
             )["ssi"],
             dtype=np.float64,
         )
@@ -3219,11 +3405,11 @@ def materialize_multispine_agreement_outputs(
             "formula_outputs": {
                 "ssi": {
                     "entity": "person",
-                    "period": POOL_TIME_PERIOD,
+                    "period": target_period,
                     "rows": int(len(person)),
                 }
             },
-            "household_batch_size": POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE,
+            "household_batch_size": household_batch_size,
             "batches": batch_count,
             "engine_input_projection_contract": dict(projection_contract_receipt),
             "simulation_projection_default_fills": default_fills,

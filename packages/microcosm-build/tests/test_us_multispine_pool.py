@@ -8,6 +8,7 @@ import inspect
 import textwrap
 from collections import Counter
 from collections.abc import Callable
+from dataclasses import replace
 from types import SimpleNamespace
 
 import numpy as np
@@ -16,6 +17,11 @@ import pytest
 
 from microcosm.build.gates import GateResult
 from microcosm.build.source_runtime import SourceRuntimeError
+from microcosm.build.spec_engine import (
+    compile_runtime_authorities,
+    compile_spec,
+    load_bundle,
+)
 from microcosm.build.us_runtime import acs_transfer as acs_transfer_module
 from microcosm.build.us_runtime import housing_inputs as housing_inputs_module
 from microcosm.build.us_runtime import multispine_pool as multispine_pool_module
@@ -71,6 +77,11 @@ from microcosm.build.us_runtime.operator_boundary import (
     FORMULA_OWNED_SOURCE_COLUMNS,
     PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
 )
+from microcosm.build.us_runtime.pool_physical_authority import (
+    USPoolPhysicalAuthority,
+    compile_us_pool_physical_authority,
+)
+from microcosm.build.us_runtime.pool_runtime_plan import USPoolRuntimePlan
 from microcosm.build.us_runtime.prior_year_income import (
     with_us_prior_year_income_inputs,
 )
@@ -84,6 +95,7 @@ from microcosm.build.us_runtime.qbi_inputs import (
     us_qbi_reconciliation_change_receipt,
     with_us_qbi_input_reconciliation,
 )
+from microcosm.build.us_runtime.spec_authority import compile_us_spec_authority
 from microcosm.build.us_runtime.spine_agreement import (
     SpineAgreementSpec,
     default_spine_agreement_registry,
@@ -103,6 +115,16 @@ from microcosm.frame.adapters.policyengine_us import (
 )
 
 _FIXTURE_SEED_PERSON_COLUMN = "takes_up_medicaid_if_eligible"
+
+
+@pytest.fixture(scope="module")
+def compiled_pool_physical_authority() -> USPoolPhysicalAuthority:
+    plan = USPoolRuntimePlan.from_spec_authority(
+        compile_us_spec_authority(
+            compile_runtime_authorities(compile_spec(load_bundle("us")))
+        )
+    )
+    return compile_us_pool_physical_authority(plan)
 
 _EXPECTED_POOL_SOURCE_OPERATOR_ORDER = (
     "derive_us_cps_carried_inputs",
@@ -2878,10 +2900,10 @@ def test_production_operator_invocations_are_total_and_guarded(
             {
                 "PoolStageOutput",
                 "_run_source_operator_chain",
+                "_resolved_derive_stage_authority",
                 "bind_us_qbi_reconciliation_transition_authority",
                 "dict",
                 "list",
-                "pool_remaining_stage_input_manifest_receipt",
                 "us_qbi_reconciliation_change_receipt",
                 "validate_us_qbi_reconciliation_live_output",
                 "validate_us_qbi_reconciliation_transition",
@@ -3934,3 +3956,184 @@ def test_deferred_asset_defaults_exist_only_on_disposable_simulation_view() -> N
         }
         for column in POOL_DEFERRED_TRANSFER_INPUTS
     }
+
+
+def _assert_pool_stage_output_exact(
+    expected: PoolStageOutput,
+    observed: PoolStageOutput,
+) -> None:
+    assert observed.receipt == expected.receipt
+    assert (
+        observed.qbi_transition_authority_sha256
+        == expected.qbi_transition_authority_sha256
+    )
+    assert observed.frame.entities == expected.frame.entities
+    assert observed.frame.metadata == expected.frame.metadata
+    assert observed.frame.mass_log == expected.frame.mass_log
+    assert observed.frame.strata.equals(expected.frame.strata)
+    assert observed.frame.weighted_entities == expected.frame.weighted_entities
+    for entity in expected.frame.entities:
+        pd.testing.assert_frame_equal(
+            observed.frame.table(entity),
+            expected.frame.table(entity),
+            check_exact=True,
+        )
+    for entity in expected.frame.weighted_entities:
+        observed_weights = observed.frame.weights_for(entity)
+        expected_weights = expected.frame.weights_for(entity)
+        assert observed_weights.kind is expected_weights.kind
+        assert np.array_equal(observed_weights.values, expected_weights.values)
+
+
+def test_compiler_derive_authority_is_independent_of_retiring_constants(
+    monkeypatch: pytest.MonkeyPatch,
+    compiled_pool_physical_authority: USPoolPhysicalAuthority,
+) -> None:
+    frame = _qbi_ready_derive_frame()
+    expected = multispine_pool_module.derive_multispine_pool_inputs(frame)
+
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "POOL_DERIVE_OPERATOR_ORDER",
+        ("retired_constant_must_not_run",),
+    )
+
+    def fail_legacy_manifest() -> dict[str, object]:
+        raise AssertionError("typed derive reopened the constants manifest")
+
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "pool_remaining_stage_input_manifest_receipt",
+        fail_legacy_manifest,
+    )
+    observed = multispine_pool_module.derive_multispine_pool_inputs(
+        frame,
+        remaining_stage_authority=(
+            compiled_pool_physical_authority.remaining_stage
+        ),
+    )
+
+    _assert_pool_stage_output_exact(expected, observed)
+
+
+def test_compiler_seed_authorities_are_independent_of_retiring_constants(
+    monkeypatch: pytest.MonkeyPatch,
+    compiled_pool_physical_authority: USPoolPhysicalAuthority,
+) -> None:
+    frame = _assembled_cloned_with_partial_take_up()
+    expected = seed_multispine_pool_inputs(frame, engine=_FakeEngine())
+
+    def fail_legacy_authority() -> object:
+        raise AssertionError("typed seed reopened a constants authority")
+
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "load_take_up_contract",
+        fail_legacy_authority,
+    )
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "pool_transfer_target_families",
+        fail_legacy_authority,
+    )
+    monkeypatch.setattr(multispine_pool_module, "POOL_RANDOM_SEED", 2_147_483_647)
+    monkeypatch.setattr(multispine_pool_module, "POOL_TIME_PERIOD", 1900)
+    observed = seed_multispine_pool_inputs(
+        frame,
+        engine=_FakeEngine(),
+        remaining_stage_authority=(
+            compiled_pool_physical_authority.remaining_stage
+        ),
+        take_up_authority=compiled_pool_physical_authority.take_up,
+        simulation_settings=compiled_pool_physical_authority.simulation,
+    )
+
+    _assert_pool_stage_output_exact(expected, observed)
+
+
+def test_compiler_simulation_settings_are_independent_of_retiring_constants(
+    monkeypatch: pytest.MonkeyPatch,
+    compiled_pool_physical_authority: USPoolPhysicalAuthority,
+) -> None:
+    frame = seed_multispine_pool_inputs(
+        _assembled_cloned_with_partial_take_up(),
+        engine=_FakeEngine(),
+    ).frame
+    expected = materialize_multispine_agreement_outputs(
+        frame,
+        engine=_FakeEngine(),
+    )
+
+    monkeypatch.setattr(multispine_pool_module, "POOL_TIME_PERIOD", 1900)
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE",
+        1,
+    )
+    observed = materialize_multispine_agreement_outputs(
+        frame,
+        engine=_FakeEngine(),
+        simulation_settings=compiled_pool_physical_authority.simulation,
+    )
+
+    _assert_pool_stage_output_exact(expected, observed)
+
+
+def test_compiler_seed_authority_rejects_partial_and_mismatched_bundles(
+    compiled_pool_physical_authority: USPoolPhysicalAuthority,
+) -> None:
+    frame = _assembled_cloned_with_partial_take_up()
+    with pytest.raises(ValueError, match="requires remaining-stage, take-up"):
+        seed_multispine_pool_inputs(
+            frame,
+            engine=_FakeEngine(),
+            take_up_authority=compiled_pool_physical_authority.take_up,
+        )
+
+    removed_seed_input = next(
+        row
+        for row in compiled_pool_physical_authority.remaining_stage.inputs
+        if row.stage == "seed" and row.consumer == "seed_multispine_pool_inputs"
+    )
+    missing_input = replace(
+        compiled_pool_physical_authority.remaining_stage,
+        inputs=tuple(
+            row
+            for row in compiled_pool_physical_authority.remaining_stage.inputs
+            if row is not removed_seed_input
+        ),
+    )
+    with pytest.raises(ValueError, match="inputs differ from the take-up"):
+        seed_multispine_pool_inputs(
+            frame,
+            engine=_FakeEngine(),
+            remaining_stage_authority=missing_input,
+            take_up_authority=compiled_pool_physical_authority.take_up,
+            simulation_settings=compiled_pool_physical_authority.simulation,
+        )
+
+def test_compiler_leaf_seams_reject_untyped_authorities(
+    compiled_pool_physical_authority: USPoolPhysicalAuthority,
+) -> None:
+    frame = _assembled_cloned_with_partial_take_up()
+    with pytest.raises(TypeError, match="RemainingStagePhysicalAuthority"):
+        multispine_pool_module.derive_multispine_pool_inputs(
+            frame,
+            remaining_stage_authority=object(),  # type: ignore[arg-type]
+        )
+    with pytest.raises(TypeError, match="TakeUpPhysicalAuthority"):
+        seed_multispine_pool_inputs(
+            frame,
+            engine=_FakeEngine(),
+            remaining_stage_authority=(
+                compiled_pool_physical_authority.remaining_stage
+            ),
+            take_up_authority=object(),  # type: ignore[arg-type]
+            simulation_settings=compiled_pool_physical_authority.simulation,
+        )
+    with pytest.raises(TypeError, match="SimulationSettings"):
+        materialize_multispine_agreement_outputs(
+            frame,
+            engine=_FakeEngine(),
+            simulation_settings=object(),  # type: ignore[arg-type]
+        )
