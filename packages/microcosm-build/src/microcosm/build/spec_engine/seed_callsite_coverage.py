@@ -1777,6 +1777,28 @@ _NON_DRAW_HASH_CLASSIFICATIONS = (
     ),
     _hash_classification(
         "content_identity",
+        "microcosm.build.spec_engine.artifact_comparison",
+        "_artifact_row",
+    ),
+    _hash_classification(
+        "content_identity",
+        "microcosm.build.spec_engine.artifact_comparison",
+        "_artifact_row",
+        occurrence=1,
+    ),
+    _hash_classification(
+        "content_identity",
+        "microcosm.build.spec_engine.artifact_comparison",
+        "_receipt_rule_row",
+    ),
+    _hash_classification(
+        "content_identity",
+        "microcosm.build.spec_engine.artifact_comparison",
+        "_receipt_rule_row",
+        occurrence=1,
+    ),
+    _hash_classification(
+        "content_identity",
         "microcosm.build.spec_engine.compiler_ir",
         "_compiler_ir_abi",
     ),
@@ -1844,6 +1866,11 @@ _NON_DRAW_HASH_CLASSIFICATIONS = (
         "content_identity",
         "microcosm.build.spec_engine.vintage_authorities",
         "resolve_vintage_authorities",
+    ),
+    _hash_classification(
+        "content_identity",
+        "microcosm.build.us_runtime.checkpoint_authority",
+        "_legacy_sha256",
     ),
     _hash_classification(
         "content_identity",

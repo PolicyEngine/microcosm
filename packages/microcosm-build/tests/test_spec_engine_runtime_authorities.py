@@ -13,7 +13,16 @@ from microcosm.build.spec_engine import (
     compile_spec,
     load_bundle,
 )
+from microcosm.build.spec_engine.artifact_comparison import (
+    GenerationExpectation,
+    checkpoint_receipt_surface,
+    compare_artifact_sets,
+)
 from microcosm.build.spec_engine.canonical import normalize_and_project
+from microcosm.build.spec_engine.compiler_ir import (
+    CHECKPOINT_RECEIPT_OPERATIONAL_POINTER,
+)
+from microcosm.build.spec_engine.executor import build_run_provenance_identity
 from microcosm.build.spec_engine.legacy_adapter import compile_to_legacy_payload
 from microcosm.build.spec_engine.model import ResolvedSpec, ResourceKind, thaw_json
 from microcosm.build.spec_engine.schemas import load_schema_registry
@@ -58,6 +67,22 @@ def _mutate_domain(
         projections=projections,
     )
     return replace(spec, resources=tuple(resources))
+
+
+def _checkpoint_sidecar(stage: str, *, root: str) -> dict[str, object]:
+    return {
+        "artifact_kind": "populace_us_stacked_pool_checkpoint_operational_receipts",
+        "schema_version": 1,
+        "materializer_version": 11,
+        "stage": stage,
+        "identity_sha256": "a" * 64,
+        "checkpoint": {
+            "filename": f"pool-{stage}.h5",
+            "sha256": "b" * 64,
+            "size_bytes": 123,
+        },
+        "operational_stage_receipts": {"impute": {"path": root}},
+    }
 
 
 def test_runtime_capability_is_immutable_and_does_not_expose_full_ir(
@@ -136,6 +161,16 @@ def test_execution_abi_is_plan_derived_concrete_and_fail_closed(
         row["id"] for row in execution["durable_checkpoints"]
     ]
     assert stages[-1]["durable_checkpoint"] is False
+    assert [stage["operational_receipts_sidecar"] for stage in stages] == [
+        "forbidden",
+        "required",
+        "required",
+        "not_applicable",
+    ]
+    assert [
+        checkpoint["operational_receipts_sidecar"]
+        for checkpoint in execution["durable_checkpoints"]
+    ] == ["forbidden", "required", "required"]
 
     artifacts = execution["normative_artifact_vector"]
     assert len(artifacts) == 30
@@ -163,9 +198,142 @@ def test_execution_abi_is_plan_derived_concrete_and_fail_closed(
         {(row["artifact_role"], row["json_pointer_pattern"]) for row in rules}
     ) == (len(rules))
     assert all("**" not in row["json_pointer_pattern"] for row in rules)
+    checkpoint_receipt_rules = [
+        row for row in rules if row["category"] == "checkpoint_operational_receipt"
+    ]
+    assert checkpoint_receipt_rules == [
+        {
+            "artifact_role": f"checkpoint:{checkpoint['id']}:receipts",
+            "json_pointer_pattern": CHECKPOINT_RECEIPT_OPERATIONAL_POINTER,
+            "rule": "operational_excluded",
+            "category": "checkpoint_operational_receipt",
+        }
+        for checkpoint in execution["durable_checkpoints"]
+    ]
     assert execution["code_abi"]["receipt_difference_match"] == (
         "exactly_one_sealed_rule"
     )
+
+
+def test_live_execution_abi_accepts_only_the_closed_dual_mode_receipt_shape(
+    authorities: RuntimeAuthorities,
+) -> None:
+    execution = thaw_json(authorities.execution_abi)
+    artifacts = {
+        row["id"]: f"fixture:{row['id']}".encode()
+        for row in execution["normative_artifact_vector"]
+    }
+    constants_provenance = build_run_provenance_identity(
+        identity_generation=0,
+        source_grammar_receipt=None,
+        spec_binding=None,
+        authority_versions={},
+        code_inventory_digest="0" * 64,
+        artifact_protocol_inventory={},
+        run_request={},
+        execution_receipt={},
+    )
+    bundle_provenance = authorities.run_provenance_identity(
+        run_request={},
+        execution_receipt={},
+    )
+    constants_receipts: dict[str, object] = {}
+    bundle_receipts: dict[str, object] = {}
+    for checkpoint in execution["durable_checkpoints"]:
+        manifest_role = f"checkpoint:{checkpoint['id']}:manifest"
+        receipts_role = f"checkpoint:{checkpoint['id']}:receipts"
+        manifest = {"stage": checkpoint["id"], "identity_sha256": "a" * 64}
+        constants_receipts[manifest_role] = manifest
+        bundle_receipts[manifest_role] = manifest
+        if checkpoint["operational_receipts_sidecar"] == "forbidden":
+            constants_sidecar = None
+            bundle_sidecar = None
+        else:
+            constants_sidecar = _checkpoint_sidecar(
+                checkpoint["id"],
+                root=f"/constants/{checkpoint['id']}",
+            )
+            bundle_sidecar = _checkpoint_sidecar(
+                checkpoint["id"],
+                root=f"/bundle/{checkpoint['id']}",
+            )
+        constants_receipts[receipts_role] = checkpoint_receipt_surface(
+            constants_sidecar
+        )
+        bundle_receipts[receipts_role] = checkpoint_receipt_surface(bundle_sidecar)
+    constants_receipts["publication_manifest"] = {
+        "run_config": {
+            "config_authority": "constants",
+            "spec_binding_status": "absent",
+            "identity_generation": 0,
+            "run_provenance_identity": constants_provenance.to_wire(),
+        },
+        "release_id": "populace-us-2024-fixture",
+        "publication_run_id": "constants-run",
+        "provenance_pins": [{"path": "/constants/input"}],
+        "pool_h5": {"path": "/constants/pool.h5"},
+        "agreement_diagnostics": {"path": "/constants/gates.json"},
+        "primary_qrf_checkpoint_dir": "/constants/primary",
+        "acs_transfer_checkpoint_dir": "/constants/transfer",
+    }
+    bundle_receipts["publication_manifest"] = {
+        "run_config": {
+            "config_authority": "bundle",
+            "spec_binding_status": "resolved",
+            "identity_generation": 1,
+            "run_provenance_identity": bundle_provenance.to_wire(),
+        },
+        "release_id": "microcosm-us-2024-fixture",
+        "publication_run_id": "bundle-run",
+        "provenance_pins": [{"path": "/bundle/input"}],
+        "pool_h5": {"path": "/bundle/pool.h5"},
+        "agreement_diagnostics": {"path": "/bundle/gates.json"},
+        "primary_qrf_checkpoint_dir": "/bundle/primary",
+        "acs_transfer_checkpoint_dir": "/bundle/transfer",
+    }
+    constants_receipts["terminal_gates"] = {
+        "release_id": "populace-us-2024-fixture",
+        "publication_run_id": "constants-run",
+    }
+    bundle_receipts["terminal_gates"] = {
+        "release_id": "microcosm-us-2024-fixture",
+        "publication_run_id": "bundle-run",
+    }
+    expectations = {
+        (
+            "publication_manifest",
+            "/run_config/config_authority",
+        ): GenerationExpectation("constants", "bundle"),
+        (
+            "publication_manifest",
+            "/run_config/spec_binding_status",
+        ): GenerationExpectation("absent", "resolved"),
+        (
+            "publication_manifest",
+            "/run_config/identity_generation",
+        ): GenerationExpectation(0, 1),
+        (
+            "publication_manifest",
+            "/run_config/run_provenance_identity",
+        ): GenerationExpectation(
+            constants_provenance.to_wire(),
+            bundle_provenance.to_wire(),
+        ),
+    }
+
+    receipt = compare_artifact_sets(
+        authorities.execution_abi,
+        constants_artifacts=artifacts,
+        bundle_artifacts=artifacts,
+        constants_receipts=constants_receipts,
+        bundle_receipts=bundle_receipts,
+        generation_expectations=expectations,
+        bundle_run_provenance_identity=bundle_provenance,
+    )
+
+    assert receipt.passed is True
+    assert len(receipt.artifact_rows) == 30
+    assert len(receipt.receipt_rows) == len(execution["receipt_comparison_vector"])
 
 
 @pytest.mark.parametrize("country", ["be", "uk"])

@@ -49,6 +49,22 @@ _NO_WRITE_ACTIONS = frozenset(
     }
 )
 
+EXECUTION_RESUME_IDENTITY_FIELDS = (
+    "artifact_protocol",
+    "input_pins",
+    "sampling_request",
+    "clone_attachment_request",
+    "node_reuse_keys",
+)
+EXECUTION_RESUME_INTEGRITY_VALIDATORS = (
+    "missing_payload",
+    "missing_manifest",
+    "content_digest_mismatch",
+    "identity_mismatch",
+    "incomplete_stage_receipt",
+)
+CHECKPOINT_RECEIPT_OPERATIONAL_POINTER = "/operational"
+
 _RECEIPT_COMPARISON_VECTOR = (
     (
         "publication_manifest",
@@ -59,6 +75,12 @@ _RECEIPT_COMPARISON_VECTOR = (
     (
         "publication_manifest",
         "/run_config/spec_binding_status",
+        "expected_to_differ_by_generation",
+        "identity_generation",
+    ),
+    (
+        "publication_manifest",
+        "/run_config/identity_generation",
         "expected_to_differ_by_generation",
         "identity_generation",
     ),
@@ -2123,6 +2145,22 @@ def _compile_execution_abi(
             raise CompilerIRError(
                 f"execution_stages/{stage_index}/durable_checkpoint: boolean required"
             )
+        receipts_policy = _string(
+            stage.get("operational_receipts_sidecar"),
+            location=(
+                "spine/pipeline_contract/execution_stages/"
+                f"{stage_index}/operational_receipts_sidecar"
+            ),
+        )
+        allowed_receipts_policies = (
+            {"forbidden", "required"} if durable else {"not_applicable"}
+        )
+        if receipts_policy not in allowed_receipts_policies:
+            expected = "forbidden or required" if durable else "not_applicable"
+            raise CompilerIRError(
+                "execution_stages/"
+                f"{stage_index}/operational_receipts_sidecar: {expected} required"
+            )
         producer_nodes = list(stage_dag.order) if graph_operation is not None else []
         logical_stages.append(
             {
@@ -2132,6 +2170,7 @@ def _compile_execution_abi(
                 "producer_graph_operation": graph_operation,
                 "producer_nodes": producer_nodes,
                 "durable_checkpoint": durable,
+                "operational_receipts_sidecar": receipts_policy,
             }
         )
         for operation in stage_operations:
@@ -2154,6 +2193,7 @@ def _compile_execution_abi(
                     "ordinal": len(durable_checkpoints),
                     "after_operation": stage_operations[-1],
                     "covers_operations": list(covered_operations),
+                    "operational_receipts_sidecar": receipts_policy,
                     "artifact_roles": [
                         f"checkpoint:{stage_id}:payload",
                         f"checkpoint:{stage_id}:manifest",
@@ -2352,13 +2392,22 @@ def _compile_execution_abi(
         }
         for artifact_role, path, rule, category in _RECEIPT_COMPARISON_VECTOR
     ]
+    comparison_vector.extend(
+        {
+            "artifact_role": f"checkpoint:{checkpoint['id']}:receipts",
+            "json_pointer_pattern": CHECKPOINT_RECEIPT_OPERATIONAL_POINTER,
+            "rule": "operational_excluded",
+            "category": "checkpoint_operational_receipt",
+        }
+        for checkpoint in durable_checkpoints
+    )
     selector_refs = sorted(
         {str(row["content_selector_ref"]) for row in artifact_vector}
     )
     code_abi_unsigned = {
         "domain": EXECUTION_ABI,
         "content_selectors": selector_refs,
-        "locator_grammar": "closed-runtime-output-and-plan-ref-v1",
+        "locator_grammar": "closed-runtime-output-plan-and-checkpoint-receipt-v2",
         "receipt_difference_match": "exactly_one_sealed_rule",
     }
     code_abi = {
@@ -2393,20 +2442,8 @@ def _compile_execution_abi(
                 str(row["id"]) for row in reversed(durable_checkpoints)
             ],
             "required_artifact_roles_by_stage": required_by_stage,
-            "identity_fields": [
-                "artifact_protocol",
-                "input_pins",
-                "sampling_request",
-                "clone_attachment_request",
-                "node_reuse_keys",
-            ],
-            "integrity_validators": [
-                "missing_payload",
-                "missing_manifest",
-                "content_digest_mismatch",
-                "identity_mismatch",
-                "incomplete_stage_receipt",
-            ],
+            "identity_fields": list(EXECUTION_RESUME_IDENTITY_FIELDS),
+            "integrity_validators": list(EXECUTION_RESUME_INTEGRITY_VALIDATORS),
             "last_durable_stage": last_durable_stage_id,
         },
     }
@@ -2493,7 +2530,10 @@ def compile_spec(spec: ResolvedSpec) -> CompiledSpecIR:
 
 __all__ = [
     "COMPILER_IR_ABI_VERSION",
+    "CHECKPOINT_RECEIPT_OPERATIONAL_POINTER",
     "EXECUTOR_CONTRACT_ABI",
+    "EXECUTION_RESUME_IDENTITY_FIELDS",
+    "EXECUTION_RESUME_INTEGRITY_VALIDATORS",
     "ROW_CLASSIFIER_IMPLEMENTATION_DOMAIN",
     "CompiledNode",
     "CompiledSpecIR",

@@ -1,12 +1,12 @@
 {
   "compiler_ir_abi": {
-    "sha256": "10e17024929eb7304e00dd655c29e300d275d524c0ebf72b4453361523f0f56e",
+    "sha256": "8067bd5ee91af2e5e3b096d41e61fd61c9a712a8832fc1fac4f3b3df9ca3a265",
     "version": 4
   },
   "country": "us",
   "documentation_sha256": "2691fb532dfd2f9f3ee54e5641102a7c74aa7b186af526d4bffec6a5ce0ecf45",
   "field_usage": {
-    "authored_normative_field_count": 32237,
+    "authored_normative_field_count": 32241,
     "claim_count": 48,
     "claims": [
       {
@@ -608,8 +608,8 @@
         "legacy_sinks": [],
         "mode": "compiler_semantic",
         "pointer_class": "all",
-        "pointer_count": 19,
-        "pointer_sha256": "49e18f2e42dfd9333c847912991c09fbd5e5906cb0f3c780e04f0abd387ad4c4",
+        "pointer_count": 23,
+        "pointer_sha256": "70cb14ea5d371672ad15b81fd1f297d77a62866b4b262d0f2de0140f0c0e8c04",
         "rationale": null,
         "relative_sink_prefix": null,
         "source_prefix": "/authored/spec~1spine.yaml/pipeline_contract/execution_stages",
@@ -754,26 +754,26 @@
         "verifier": "vintages"
       }
     ],
-    "configuration_field_count": 41886,
-    "consumed_field_count": 41886,
+    "configuration_field_count": 41890,
+    "consumed_field_count": 41890,
     "generation0_effect_counts": {
       "legacy_behavior": 37718,
-      "no_generation0_effect": 4168
+      "no_generation0_effect": 4172
     },
     "mode_counts": {
-      "compiler_semantic": 28167,
+      "compiler_semantic": 28171,
       "front_end_validation": 346,
       "identity_only": 128,
       "legacy_behavior": 13245
     },
     "multiple_primary_use_field_count": 0,
-    "pointer_inventory_sha256": "1756a3b230cac656fe7f5bbadc939c936cd81ade70ffcb067113983a07d6be23",
+    "pointer_inventory_sha256": "ffeeb52f5cdff5e4d516f270a4e45011b2cca255cab4c17c59d50a673a88e522",
     "resolved_binding_field_count": 9649,
     "unused_field_count": 0
   },
   "inventory_coverage": {
     "compiler_ir_abi": {
-      "sha256": "10e17024929eb7304e00dd655c29e300d275d524c0ebf72b4453361523f0f56e",
+      "sha256": "8067bd5ee91af2e5e3b096d41e61fd61c9a712a8832fc1fac4f3b3df9ca3a265",
       "version": 4
     },
     "country": "us",
@@ -2471,7 +2471,7 @@
       "country": "us",
       "schema_id": "country_spec",
       "schema_version": 1,
-      "spec_sha256": "a57b484c8993ec81e1c2c0edb9ef29dbae33c17051bdec58ed710774d73906b2"
+      "spec_sha256": "f8508f6d00de1ccd79f951d7aeaa6d0f13b46db2e9f7b4ab7155cb010bea9f18"
     }
   },
   "report_schema_version": 3,
@@ -2481,7 +2481,7 @@
     "country": "us",
     "schema_id": "country_spec",
     "schema_version": 1,
-    "spec_sha256": "a57b484c8993ec81e1c2c0edb9ef29dbae33c17051bdec58ed710774d73906b2"
+    "spec_sha256": "f8508f6d00de1ccd79f951d7aeaa6d0f13b46db2e9f7b4ab7155cb010bea9f18"
   },
   "status": "pass"
 }

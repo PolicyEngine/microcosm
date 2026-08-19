@@ -68,6 +68,10 @@ def test_pipeline_contract_is_an_exact_generation_zero_projection() -> None:
         }
     )
     assert contract["stacked_operator_order"] == list(US_STACKED_POOL_OPERATOR_ORDER)
+    assert [
+        stage["operational_receipts_sidecar"]
+        for stage in contract["execution_stages"]
+    ] == ["forbidden", "required", "required", "not_applicable"]
     assert contract["pre_clone_source_operator_order"] == list(
         POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER
     )
@@ -181,3 +185,26 @@ def test_pipeline_contract_and_seed_bindings_are_all_or_nothing(
         del mutated[field]
         with pytest.raises(IdentityContractError, match="declared together"):
             _resolve(mutated, source_stages)
+
+
+@pytest.mark.parametrize(
+    ("stage_index", "policy", "message"),
+    [
+        (0, "not_applicable", "forbidden or required"),
+        (-1, "required", "not_applicable"),
+    ],
+)
+def test_checkpoint_receipt_sidecar_policy_matches_durable_boundary(
+    identity_documents: tuple[dict[str, object], list[dict[str, object]]],
+    stage_index: int,
+    policy: str,
+    message: str,
+) -> None:
+    spine, source_stages = identity_documents
+    mutated = copy.deepcopy(spine)
+    mutated["pipeline_contract"]["execution_stages"][stage_index][
+        "operational_receipts_sidecar"
+    ] = policy
+
+    with pytest.raises(IdentityContractError, match=message):
+        _resolve(mutated, source_stages)

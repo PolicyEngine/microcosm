@@ -93,6 +93,7 @@ US_STACKED_POOL_EXECUTION_STAGES = (
         "id": "assembled",
         "operations": ("assemble_stacked_spine",),
         "durable_checkpoint": True,
+        "operational_receipts_sidecar": "forbidden",
     },
     {
         "id": "transferred",
@@ -102,6 +103,7 @@ US_STACKED_POOL_EXECUTION_STAGES = (
             "run_stacked_late_producer_dag",
         ),
         "durable_checkpoint": True,
+        "operational_receipts_sidecar": "required",
         "producer_graph_operation": "run_stacked_late_producer_dag",
     },
     {
@@ -113,6 +115,7 @@ US_STACKED_POOL_EXECUTION_STAGES = (
             "materialize_multispine_agreement_outputs",
         ),
         "durable_checkpoint": True,
+        "operational_receipts_sidecar": "required",
     },
     {
         "id": "terminal",
@@ -121,6 +124,7 @@ US_STACKED_POOL_EXECUTION_STAGES = (
             "by_origin_battery",
         ),
         "durable_checkpoint": False,
+        "operational_receipts_sidecar": "not_applicable",
     },
 )
 """Ordered logical stages; operations form an exact partition of the pipeline."""

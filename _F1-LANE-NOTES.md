@@ -791,3 +791,100 @@ the enforcement status only after the independent inventory proves it.
    overlaying the static default projection.
 3. Add the plan-derived raw-byte/receipt comparator and the cold dual-mode
    fixture gate before attempting any 1% receipt run.
+
+### Sealed pool plan, materializers, and comparison authority
+
+The authority-selection seam is now narrowed once more before physical use.
+`USPoolRuntimePlan` is the single immutable pool capability derived from
+`USSpecAuthority`. Its own recursive seal covers every domain authority,
+compiled node, seed map, and typed execution/checkpoint wrapper, so a frozen
+dataclass replacement cannot forge a plan after compiler validation. The plan
+contains 10 physical operations, four logical stages, three durable
+checkpoints, 30 required normative artifacts, 16 sealed receipt rules, seven
+declared sources, 72 seed sites owned by 57 typed owners, and 38 compiled
+producer nodes.
+
+Source materializers now accept only the plan's `SourceAuthority`, not the
+broader US capability. That authority contains the compiler-issued declared
+source registry, authored source and vintage contracts, and resolved vintage
+records. The reconstructed ACS manifest is exactly equal to the constants
+oracle without invoking its packaged JSON loader. Dynamic stacked-checkpoint
+identity construction similarly accepts only the sealed pool plan and combines
+its one dedicated static projection with the actual input pins, stack receipt,
+sampling request, and clone-attachment request. It updates the nested late
+resource binding as well as the top-level request and preserves the legacy
+ASCII canonical hash codec.
+
+The plan-derived comparator is fail closed:
+
+- every normative artifact is required and compared as raw bytes;
+- receipt differences are accepted only when exactly one compiler-emitted
+  rule names the concrete field;
+- `populace` to `microcosm` is the only release-prefix normalization;
+- generation transitions are sealed as constants to bundle, absent to
+  resolved, identity generation 0 to 1, and a typed generation-one
+  `run_provenance_identity` whose execution-ABI binding is revalidated;
+- the full receipt surface is digested even though declared operational fields
+  are excluded from equality; and
+- checkpoint receipt sidecars are split only by a trusted raw-sidecar
+  constructor. Their outer binding stays exact and only the nested operational
+  receipt is excluded.
+
+An adversarial review found that optional checkpoint sidecars could otherwise
+be absent in both modes and pass. The generic stage contract now authors
+`operational_receipts_sidecar` as `forbidden`, `required`, or
+`not_applicable`, with durable/policy coherence enforced by schema, identity
+contracts, compiler IR, the sealed runtime plan, and the comparator. The
+current compiled order declares assembled forbidden, transferred required,
+simulated required, and terminal not applicable. Resume remains deliberately
+independent of these operational receipts, preserving generation-0 behavior;
+certification nevertheless fails if required evidence is missing or forbidden
+evidence appears. This metadata is single-authored through the inert
+generation-0 execution-stage registry and the bundle generator, not manually
+duplicated in YAML or inferred from stage names.
+
+This reviewed change moves the committed checkpoint identities as follows:
+
+- US `spec_sha256`:
+  `a57b484c8993ec81e1c2c0edb9ef29dbae33c17051bdec58ed710774d73906b2`
+  -> `f8508f6d00de1ccd79f951d7aeaa6d0f13b46db2e9f7b4ab7155cb010bea9f18`;
+- compiler-IR ABI:
+  `10e17024929eb7304e00dd655c29e300d275d524c0ebf72b4453361523f0f56e`
+  -> `8067bd5ee91af2e5e3b096d41e61fd61c9a712a8832fc1fac4f3b3df9ca3a265`;
+- execution ABI:
+  `694bb34e1d41a23143b9c02194810161b54e2228df8810f0cdeafdfd81fff80`
+  -> `f3be6359c4497d794b0101198da8a71ae2a1a0b7f182d877332d0ec653a5231a`;
+- runtime authority:
+  `853ce81c5ddb44273c6c8e19094d0eb9d7b06c2199c7fd0f6e506d47e578005e`
+  -> `b35ed037c1ae8a0cb0708285c50345b1d7ccd9bd4b86dcedb9f5ff3c26d5f9b1`;
+- narrow US capability seal:
+  `76af83aee649a45ee7b50f21a11986a2bc0a1c904098cd14718e1a50028ce5b2`;
+  and
+- pool-plan seal:
+  `aa444c078da472523963459cbba3fb34e46aaddc137973b8614112e79a7ba079`.
+
+Verification at this checkpoint:
+
+- generated US bundle `--check`: pass at the new spec SHA;
+- coverage generation and `--check`: 41,890/41,890 configuration fields and
+  40/40 inventory items, with the pointer inventory re-pinned to
+  `ffeeb52f5cdff5e4d516f270a4e45011b2cca255cab4c17c59d50a673a88e522`;
+- focused comparator, identity-contract, runtime-authority, source,
+  checkpoint, and sealed-plan gates: pass;
+- focused plan/source/checkpoint seam: 47 tests pass; and
+- Ruff and diff whitespace checks on the touched authority layer: pass.
+
+No sample build was run. Production artifact collection and physical stage
+threading are still pending; this subsection does not claim the dual-mode
+fixture gate or that physical stochastic calls have all moved behind brokers.
+
+### Next after the sealed-plan checkpoint
+
+1. Retain only `USPoolRuntimePlan` beside runtime provenance in bundle mode and
+   thread its identity, rung, release, checkpoint, publication, source,
+   imputation, take-up, remaining-stage, battery, and seed authorities through
+   the physical tool.
+2. Collect the actual plan-derived normative vector and raw checkpoint
+   sidecars through trusted locator/selector implementations.
+3. Run the cold constants-versus-bundle fixture comparison and require an
+   empty difference vector before considering any sample certification.

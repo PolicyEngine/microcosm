@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_237
+EXPECTED_AUTHORED_FIELD_COUNT = 32_241
 EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_649
-EXPECTED_CONFIGURATION_FIELD_COUNT = 41_886
+EXPECTED_CONFIGURATION_FIELD_COUNT = 41_890
 
 
 class FieldUsageError(AssertionError):
@@ -455,8 +455,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "c6e63034c73b2b3ad06df26d03fbf7d63d52aec3a7c3a176b228bacf08d18975",
     ),
     "spine_pipeline_execution_stages": (
-        19,
-        "49e18f2e42dfd9333c847912991c09fbd5e5906cb0f3c780e04f0abd387ad4c4",
+        23,
+        "70cb14ea5d371672ad15b81fd1f297d77a62866b4b262d0f2de0140f0c0e8c04",
     ),
     "spine_sampling": (
         17,
@@ -1214,6 +1214,9 @@ def _verify_execution_abi(
             "operations": list(authored.get("operations", ())),
             "producer_graph_operation": authored.get("producer_graph_operation"),
             "durable_checkpoint": authored.get("durable_checkpoint"),
+            "operational_receipts_sidecar": authored.get(
+                "operational_receipts_sidecar"
+            ),
         }
         actual = {name: compiled.get(name) for name in expected}
         if actual != expected:

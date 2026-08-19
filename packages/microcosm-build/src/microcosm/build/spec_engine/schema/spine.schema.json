@@ -300,11 +300,19 @@
      "items": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "operations", "durable_checkpoint"],
+      "required": [
+       "id",
+       "operations",
+       "durable_checkpoint",
+       "operational_receipts_sidecar"
+      ],
       "properties": {
        "id": {"$ref": "#/$defs/operator_id"},
        "operations": {"$ref": "#/$defs/operator_order"},
        "durable_checkpoint": {"type": "boolean"},
+       "operational_receipts_sidecar": {
+        "enum": ["forbidden", "required", "not_applicable"]
+       },
        "producer_graph_operation": {"$ref": "#/$defs/operator_id"}
       }
      }

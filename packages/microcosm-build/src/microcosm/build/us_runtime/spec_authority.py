@@ -12,17 +12,22 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from microcosm.build.spec_engine.compiler_ir import CompiledNode
+from microcosm.build.spec_engine.canonical import sha256_json
+from microcosm.build.spec_engine.compiler_ir import CompiledNode, SeedStreamMap
 from microcosm.build.spec_engine.model import (
     FrozenMap,
     FrozenValue,
     ResourceKind,
+    thaw_json,
 )
 from microcosm.build.spec_engine.runtime_authorities import RuntimeAuthorities
 
 
 class USSpecAuthorityError(ValueError):
     """A compiler capability cannot be narrowed to the US build contract."""
+
+
+_US_CAPABILITY_DOMAIN = "microcosm.us-runtime.spec-authority.v1"
 
 
 class USAuthorityProjection(StrEnum):
@@ -192,6 +197,42 @@ def _node_matches(node: CompiledNode, query: NodeQuery) -> bool:
     return True
 
 
+def _capability_identity(
+    *,
+    authority_sha256: str,
+    spec_sha256: str,
+    identity_generation: int,
+    behavior: FrozenMap,
+    projections: FrozenMap,
+    declared_sources: FrozenMap,
+    generated_authorities: FrozenMap,
+    vintage_authorities: FrozenMap,
+    execution_abi: FrozenMap,
+    seed_stream_map: SeedStreamMap,
+    nodes: tuple[CompiledNode, ...],
+) -> dict[str, object]:
+    """Return the complete narrow-capability identity surface."""
+
+    return {
+        "domain": _US_CAPABILITY_DOMAIN,
+        "authority_sha256": authority_sha256,
+        "spec_sha256": spec_sha256,
+        "identity_generation": identity_generation,
+        "behavior": thaw_json(behavior),
+        "projections": thaw_json(projections),
+        "declared_sources": thaw_json(declared_sources),
+        "generated_authorities": thaw_json(generated_authorities),
+        "vintage_authorities": thaw_json(vintage_authorities),
+        "execution_abi": thaw_json(execution_abi),
+        "seed_stream_map": seed_stream_map.to_wire(),
+        "nodes": [node.to_wire() for node in nodes],
+    }
+
+
+def _capability_sha256(**values: object) -> str:
+    return sha256_json(_capability_identity(**values))  # type: ignore[arg-type]
+
+
 @dataclass(frozen=True, slots=True)
 class USSpecAuthority:
     """Immutable US-only view of a generation-1 runtime capability."""
@@ -202,7 +243,67 @@ class USSpecAuthority:
     _behavior: FrozenMap = field(repr=False)
     _projections: FrozenMap = field(repr=False)
     _declared_sources: FrozenMap = field(repr=False)
+    _generated_authorities: FrozenMap = field(repr=False)
+    _vintage_authorities: FrozenMap = field(repr=False)
+    _execution_abi: FrozenMap = field(repr=False)
+    _seed_stream_map: SeedStreamMap = field(repr=False)
     _nodes: tuple[CompiledNode, ...] = field(repr=False)
+    _seal_sha256: str = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if self.identity_generation != 1 or isinstance(self.identity_generation, bool):
+            raise USSpecAuthorityError(
+                "US runtime capability requires identity_generation 1"
+            )
+        for name in ("authority_sha256", "spec_sha256", "_seal_sha256"):
+            digest = getattr(self, name)
+            if (
+                not isinstance(digest, str)
+                or len(digest) != 64
+                or any(character not in "0123456789abcdef" for character in digest)
+            ):
+                raise USSpecAuthorityError(
+                    f"US runtime capability {name} must be a lowercase SHA-256"
+                )
+        for name in (
+            "_behavior",
+            "_projections",
+            "_declared_sources",
+            "_generated_authorities",
+            "_vintage_authorities",
+            "_execution_abi",
+        ):
+            if not isinstance(getattr(self, name), FrozenMap):
+                raise USSpecAuthorityError(
+                    f"US runtime capability {name} must be compiler-frozen"
+                )
+        if not isinstance(self._seed_stream_map, SeedStreamMap):
+            raise USSpecAuthorityError(
+                "US runtime capability seed stream map must be compiler-issued"
+            )
+        if not isinstance(self._nodes, tuple) or not all(
+            isinstance(node, CompiledNode) for node in self._nodes
+        ):
+            raise USSpecAuthorityError(
+                "US runtime capability nodes must be compiler-issued"
+            )
+        values = {
+            "authority_sha256": self.authority_sha256,
+            "spec_sha256": self.spec_sha256,
+            "identity_generation": self.identity_generation,
+            "behavior": self._behavior,
+            "projections": self._projections,
+            "declared_sources": self._declared_sources,
+            "generated_authorities": self._generated_authorities,
+            "vintage_authorities": self._vintage_authorities,
+            "execution_abi": self._execution_abi,
+            "seed_stream_map": self._seed_stream_map,
+            "nodes": self._nodes,
+        }
+        if self._seal_sha256 != _capability_sha256(**values):
+            raise USSpecAuthorityError(
+                "US runtime capability seal differs from its compiler surfaces"
+            )
 
     @property
     def behavior_resources(self) -> FrozenMap:
@@ -251,6 +352,30 @@ class USSpecAuthority:
                 f"matched {len(matches)}"
             )
         return matches[0]
+
+    @property
+    def generated_authorities(self) -> FrozenMap:
+        """Return compiler-generated authorities without reopening resources."""
+
+        return self._generated_authorities
+
+    @property
+    def vintage_authorities(self) -> FrozenMap:
+        """Return compiler-resolved vintage authorities."""
+
+        return self._vintage_authorities
+
+    @property
+    def execution_abi(self) -> FrozenMap:
+        """Return the compiler-issued physical execution contract."""
+
+        return self._execution_abi
+
+    @property
+    def seed_stream_map(self) -> SeedStreamMap:
+        """Return the typed, compiler-issued stochastic stream map."""
+
+        return self._seed_stream_map
 
     def projection(self, projection: USAuthorityProjection | str) -> FrozenMap:
         """Return one closed compatibility projection by typed name."""
@@ -364,6 +489,19 @@ def compile_us_spec_authority(
     for projection in USAuthorityProjection:
         authorities.projection(projection.value)
 
+    values = {
+        "authority_sha256": authorities.authority_sha256,
+        "spec_sha256": authorities.spec_binding.spec_sha256,
+        "identity_generation": authorities.identity_generation,
+        "behavior": behavior,
+        "projections": authorities.projections,
+        "declared_sources": authorities.declared_sources,
+        "generated_authorities": authorities.generated_authorities,
+        "vintage_authorities": authorities.vintage_authorities,
+        "execution_abi": authorities.execution_abi,
+        "seed_stream_map": authorities.seed_stream_map,
+        "nodes": authorities.nodes,
+    }
     return USSpecAuthority(
         authority_sha256=authorities.authority_sha256,
         spec_sha256=authorities.spec_binding.spec_sha256,
@@ -371,7 +509,12 @@ def compile_us_spec_authority(
         _behavior=behavior,
         _projections=authorities.projections,
         _declared_sources=authorities.declared_sources,
+        _generated_authorities=authorities.generated_authorities,
+        _vintage_authorities=authorities.vintage_authorities,
+        _execution_abi=authorities.execution_abi,
+        _seed_stream_map=authorities.seed_stream_map,
         _nodes=authorities.nodes,
+        _seal_sha256=_capability_sha256(**values),
     )
 
 

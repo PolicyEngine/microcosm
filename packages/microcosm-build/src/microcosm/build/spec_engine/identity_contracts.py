@@ -86,6 +86,20 @@ def _pipeline_operation_ids(spine: Mapping[str, object]) -> frozenset[str]:
         stage_operations = _unique_strings(
             stage.get("operations"), location=f"{location}/operations"
         )
+        durable = stage.get("durable_checkpoint")
+        if not isinstance(durable, bool):
+            raise IdentityContractError(
+                f"{location}/durable_checkpoint: boolean required"
+            )
+        receipts_policy = stage.get("operational_receipts_sidecar")
+        allowed_receipts_policies = (
+            {"forbidden", "required"} if durable else {"not_applicable"}
+        )
+        if receipts_policy not in allowed_receipts_policies:
+            expected = "forbidden or required" if durable else "not_applicable"
+            raise IdentityContractError(
+                f"{location}/operational_receipts_sidecar: {expected} required"
+            )
         graph_operation = stage.get("producer_graph_operation")
         if graph_operation is not None:
             if graph_operation not in stage_operations:

@@ -369,11 +369,11 @@ def test_production_callsites_are_independent_exact_classified_and_attested() ->
     }
     modules = discover_production_source_modules(root)
     callsites = discover_production_callsites(root)
-    assert len(modules) == 204
-    assert len(callsites) == 275
+    assert len(modules) == 208
+    assert len(callsites) == 280
     assert len(LEGACY_V1_PRODUCTION_BINDINGS) == 119
-    assert len(LEGACY_V1_PRODUCTION_EXEMPTIONS) == 156
-    assert len(LEGACY_V1_HASH_CLASSIFICATIONS) == 155
+    assert len(LEGACY_V1_PRODUCTION_EXEMPTIONS) == 161
+    assert len(LEGACY_V1_HASH_CLASSIFICATIONS) == 160
     assert {row.kind for row in LEGACY_V1_HASH_CLASSIFICATIONS} == (
         HASH_CLASSIFICATION_KINDS
     )

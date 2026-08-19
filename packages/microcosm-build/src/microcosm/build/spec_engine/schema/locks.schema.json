@@ -638,7 +638,8 @@
        "operations",
        "producer_graph_operation",
        "producer_nodes",
-       "durable_checkpoint"
+       "durable_checkpoint",
+       "operational_receipts_sidecar"
       ],
       "properties": {
        "id": {"type": "string", "minLength": 1},
@@ -657,7 +658,10 @@
         "type": "array",
         "items": {"type": "string", "minLength": 1}
        },
-       "durable_checkpoint": {"type": "boolean"}
+       "durable_checkpoint": {"type": "boolean"},
+       "operational_receipts_sidecar": {
+        "enum": ["forbidden", "required", "not_applicable"]
+       }
       }
      }
     },
@@ -671,7 +675,8 @@
        "ordinal",
        "after_operation",
        "covers_operations",
-       "artifact_roles"
+       "artifact_roles",
+       "operational_receipts_sidecar"
       ],
       "properties": {
        "id": {"type": "string", "minLength": 1},
@@ -684,6 +689,9 @@
        "artifact_roles": {
         "type": "array",
         "items": {"type": "string", "minLength": 1}
+       },
+       "operational_receipts_sidecar": {
+        "enum": ["forbidden", "required"]
        }
       }
      }

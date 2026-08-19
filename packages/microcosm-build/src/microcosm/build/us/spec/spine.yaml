@@ -21,12 +21,14 @@ pipeline_contract:
     operations:
     - assemble_stacked_spine
     durable_checkpoint: true
+    operational_receipts_sidecar: forbidden
   - id: transferred
     operations:
     - prepare_multispine_source_inputs_for_clone
     - gap_fill_stacked_spine
     - run_stacked_late_producer_dag
     durable_checkpoint: true
+    operational_receipts_sidecar: required
     producer_graph_operation: run_stacked_late_producer_dag
   - id: simulated
     operations:
@@ -35,11 +37,13 @@ pipeline_contract:
     - seed_multispine_pool_inputs
     - materialize_multispine_agreement_outputs
     durable_checkpoint: true
+    operational_receipts_sidecar: required
   - id: terminal
     operations:
     - stacked_completeness_gate
     - by_origin_battery
     durable_checkpoint: false
+    operational_receipts_sidecar: not_applicable
   pre_clone_source_operator_order:
   - derive_us_cps_carried_inputs
   - with_us_hours_worked_inputs

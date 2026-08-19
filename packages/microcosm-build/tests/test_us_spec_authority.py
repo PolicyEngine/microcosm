@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -56,10 +57,21 @@ def test_adapter_exposes_only_frozen_compiler_authorities(
         "csv_hus.zip"
     )
     assert authority.spec_sha256 == runtime_authorities.spec_binding.spec_sha256
+    assert authority.generated_authorities is runtime_authorities.generated_authorities
+    assert authority.vintage_authorities is runtime_authorities.vintage_authorities
+    assert authority.execution_abi is runtime_authorities.execution_abi
+    assert authority.seed_stream_map is runtime_authorities.seed_stream_map
     assert not hasattr(authority, "compiled")
     assert not hasattr(authority, "normalized_resources")
     with pytest.raises(TypeError):
         authority.behavior_resource("spine")["assembly"] = "changed"  # type: ignore[index]
+
+
+def test_adapter_capability_seal_rejects_divergent_surfaces(
+    authority: USSpecAuthority,
+) -> None:
+    with pytest.raises(USSpecAuthorityError, match="capability seal"):
+        replace(authority, _declared_sources=FrozenMap())
 
 
 def test_adapter_exposes_all_pool_authority_projections_directly(
