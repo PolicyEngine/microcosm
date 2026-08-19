@@ -122,3 +122,11 @@ that owns each arm.
   no build, network, push, `PROGRESS.md` edit, or pending-chain access occurs.
 - Next: run the eligibility measurement under the 20-GiB RSS monitor, verify
   the complete verdict/report, and commit that evidence on this branch.
+- Excluded monitor launch: the first wrapper asked psutil for system-wide child
+  enumeration, which the macOS sandbox refused at `sysctl(KERN_PROC_ALL)`
+  before the gate reached a family fit. The wrapper exited; `lsof` found no
+  process holding either selected checkpoint or the intended output directory,
+  and no eligibility verdict/report existed. No measurement from that launch
+  is accepted. The replacement monitor observes the exact spawned gate PID
+  (the forest uses in-process threads) and guarantees child cleanup on any
+  monitor exception.
