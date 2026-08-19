@@ -8237,8 +8237,8 @@ producer_graph:
     kind: post_clone_source
     kernel: kernel:with_us_education_inputs
     capabilities:
-      determinism: seeded
-      numeric_reproducibility: tolerance_bound
+      determinism: deterministic
+      numeric_reproducibility: bitwise
       effects:
       - declared_source_read
       structural_delta: none
@@ -9851,8 +9851,8 @@ producer_graph:
     kind: post_clone_source
     kernel: kernel:with_us_medicare_take_up_input
     capabilities:
-      determinism: seeded
-      numeric_reproducibility: tolerance_bound
+      determinism: deterministic
+      numeric_reproducibility: bitwise
       effects:
       - declared_source_read
       structural_delta: none

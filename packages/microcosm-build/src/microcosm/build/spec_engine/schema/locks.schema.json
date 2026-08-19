@@ -742,17 +742,20 @@
    "additionalProperties": false,
    "required": [
     "id",
+    "execution_rank",
     "node_key",
     "node_slice_sha256",
     "kernel",
     "depends_on",
     "inputs",
     "outputs",
+    "row_classifier",
     "seed_streams",
     "node_slice"
    ],
    "properties": {
     "id": {"type": "string", "minLength": 1},
+    "execution_rank": {"type": "integer", "minimum": 0},
     "node_key": {"$ref": "defs.schema.json#/$defs/sha256"},
     "node_slice_sha256": {"$ref": "defs.schema.json#/$defs/sha256"},
     "kernel": {
@@ -779,6 +782,18 @@
      "type": "array",
      "items": {
       "$ref": "imputation.schema.json#/$defs/producer_graph/properties/nodes/items/properties/outputs/items"
+     }
+    },
+    "row_classifier": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["ref", "implementation_sha256"],
+     "properties": {
+      "ref": {
+       "type": "string",
+       "pattern": "^classifier:[A-Za-z0-9][A-Za-z0-9_.:-]*$"
+      },
+      "implementation_sha256": {"$ref": "defs.schema.json#/$defs/sha256"}
      }
     },
     "seed_streams": {

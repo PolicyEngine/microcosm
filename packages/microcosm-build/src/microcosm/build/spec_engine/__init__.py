@@ -1,8 +1,4 @@
-"""The Microcosm country specification compiler front end.
-
-F0 stops at resolved configuration and generated compatibility payloads.  It
-does not execute stages or construct bundle-mode authority.
-"""
+"""The Microcosm country specification compiler and execution core."""
 
 from .calibration_semantics import (
     CALIBRATION_SUMMARY_ALIASES,
@@ -19,6 +15,7 @@ from .compiler_ir import (
     CompiledSpecIR,
     CompilerIRError,
     compile_spec,
+    kernel_implementation_contract,
 )
 from .engine_abi import (
     ENGINE_ABI_LOCK_FILENAME,
@@ -35,6 +32,26 @@ from .errors import (
     SpecParseError,
     SpecSchemaError,
     SpecValidationError,
+)
+from .executor import (
+    CapabilityError,
+    ExecutionContext,
+    ExecutorError,
+    ImmutableFrameProjection,
+    KernelPatch,
+    NodeOrderingError,
+    PatchScopeError,
+    RegisteredKernel,
+    RegisteredRowClassifier,
+    RowClassification,
+    StructuralDelta,
+    StructuralDiffError,
+    ValidatedPatch,
+    WeightState,
+    apply_patch,
+    diff_projections,
+    execute_node,
+    order_nodes,
 )
 from .legacy_adapter import (
     LegacyFieldDiff,
@@ -85,6 +102,7 @@ from .resolver import (
     SpecResolutionError,
 )
 from .schemas import SchemaRegistry, load_schema_registry
+from .scope_algebra import CanonicalScope, ClosedScopeRegistry, ScopeAlgebraError
 from .seeds import (
     LEGACY_V1_PROTOCOL,
     DrawSiteProtocol,
@@ -105,6 +123,9 @@ __all__ = [
     "CANONICALIZER_VERSION",
     "CALIBRATION_SUMMARY_ALIASES",
     "ColumnSpec",
+    "CanonicalScope",
+    "CapabilityError",
+    "ClosedScopeRegistry",
     "CompiledSpecIR",
     "CompilerIRError",
     "DrawSiteProtocol",
@@ -115,16 +136,26 @@ __all__ = [
     "GrammarReceipt",
     "GENERATED_LOCK_FILENAMES",
     "KernelRegistry",
+    "KernelPatch",
     "KernelAttestation",
     "LEGACY_V1_PROTOCOL",
     "LegacyFieldDiff",
     "LegacyPayloadMismatchError",
+    "ExecutionContext",
+    "ExecutorError",
+    "ImmutableFrameProjection",
+    "NodeOrderingError",
+    "PatchScopeError",
     "PlanLockError",
     "ResolvedSpec",
+    "RegisteredKernel",
+    "RegisteredRowClassifier",
+    "RowClassification",
     "ResourceDescriptor",
     "ResourceKind",
     "SchemaRegistry",
     "ScopeSpec",
+    "ScopeAlgebraError",
     "SeedProtocol",
     "SeedSiteBinding",
     "SeedSiteOwner",
@@ -137,13 +168,20 @@ __all__ = [
     "SpecValidationError",
     "Surface",
     "SurfaceObjects",
+    "StructuralDelta",
+    "StructuralDiffError",
+    "ValidatedPatch",
+    "WeightState",
+    "apply_patch",
     "bundle_lock_bytes",
     "bundle_lock_payload",
     "canonical_yaml_bytes",
     "canonical_json_bytes",
     "compile_spec",
+    "kernel_implementation_contract",
     "compile_to_legacy_payload",
     "diff_legacy_payloads",
+    "diff_projections",
     "derive_calibration_summary_aliases",
     "assert_engine_abi_lock_current",
     "emit_engine_abi_lock",
@@ -154,11 +192,13 @@ __all__ = [
     "engine_abi_lock_bytes_from_domains",
     "engine_abi_lock_payload",
     "engine_abi_lock_payload_from_domains",
+    "execute_node",
     "scoped_take_up_manifest_program_bindings",
     "load_bundle",
     "load_schema_registry",
     "load_yaml12",
     "load_yaml12_file",
+    "order_nodes",
     "project_legacy_take_up_contract",
     "project_legacy_take_up_identity",
     "project_legacy_calibration_contract",

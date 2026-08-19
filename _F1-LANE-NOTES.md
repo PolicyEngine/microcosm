@@ -9,7 +9,8 @@ the repository journal convention.
 ## State
 
 - Branch: `spec-engine-f1`; no push has been performed.
-- Current deliverable: **1 — sync, baseline, and authority inventory**.
+- Deliverable 1 is committed as `cd2b1d60`; deliverable 2 is committed in the
+  current executor step; current deliverable: **3 — brokers**.
 - The required source-reading sequence is complete.
 - The untouched serial baseline was interrupted after 1,489.16 seconds at 10%
   once two independent failures and six cascading fixture errors had appeared.
@@ -19,7 +20,11 @@ the repository journal convention.
   invocations. The itemized defect is corrected in this lane by an
   independent source-callsite scanner and a 72-site protocol. Generator,
   coverage, focused regression, whole-repository lint, and the complete serial
-  suite all pass. Deliverable 1 is complete pending its required commit.
+  suite all pass.
+- The generic executor, closed row-scope algebra, compiler direct-node lifts,
+  and adversarial fixture suite are complete. The 430-test spec-engine gate is
+  green; the authoritative 6,887-test whole-repository suite is also green.
+  Deliverable 2 is complete and committed.
 
 ## Done
 
@@ -73,8 +78,8 @@ the repository journal convention.
 
 ## Next
 
-1. Commit deliverable 1 with the suite green.
-2. Begin the generic executor core and its fixture-scale adversarial tests.
+1. Commit deliverable 2 with the suite green.
+2. Begin deliverable 3: RNG/file/env/clock brokers and operational receipts.
 
 ## 1. Sync, baseline, and authority inventory
 
@@ -415,3 +420,136 @@ The owner resolved the apparent contradiction on 2026-08-19 in
 
 This ruling permits the lane to proceed through deliverable 4 without changing
 constants mode or weakening normative byte identity.
+
+## 2. Generic executor core
+
+### State
+
+- D2 source, fixture coverage, and the authoritative full suite are complete;
+  no pool build or sample rung has been invoked.
+- New generic code is confined to `spec_engine/executor.py` and
+  `spec_engine/scope_algebra.py`, with direct compiler projections in
+  `compiler_ir.py`. The executor and scope modules contain no country or
+  program literals and do not import the pool runtime.
+- The F1 compiler ABI is version 2 with digest
+  `845d3963bc03efb68cdc27e013450bd7048598bc55e73903fc16e908e12724ea`.
+  The D1 ABI was version 1 at
+  `3f6996bc1d4d187d669c55b525ff3910d6f19dc8ccadff464c4561aeca127f27`.
+
+### Done
+
+- `CompiledNode` now carries compiler-bound execution rank, dependencies,
+  inputs, outputs, orthogonal capabilities, mutation triples, exact write
+  scopes, the closed scope registry, row-classifier pin, kernel pin, effective
+  seed sites/streams, and transitive node slices. Each direct lift is checked
+  against its hashed resolved parameter before dispatch. The compiler emits a
+  separate kernel projection so changing a kernel ref or pin cannot be hidden
+  by recomputing `node_key` while leaving the authored node unchanged.
+- Producer ordering uses the compiled ranks with a deterministic Kahn order.
+  It rejects missing/duplicate/noncontiguous ranks, backward or unknown
+  dependencies, cycles, an incorrect transitive dependency closure, and
+  incomparable nodes with overlapping exact or structural write authority.
+  The empty graph has the total order `()`.
+- The scope registry implements the finite Boolean algebra over compiler-owned
+  atoms, including canonical union/intersection/complement/difference,
+  equality, overlap, exhaustiveness, serialization identity, and refusal of
+  unknown predicates. Runtime classifiers are orchestration-owned and must
+  match the compiler-bound classifier ref, digest, and predicate space before
+  an expand kernel runs.
+- `execute_node` gives a kernel a detached immutable projection and accepts
+  only a declarative `KernelPatch`. It deep-copies object cells, detects direct
+  input mutation, applies to a private projection, computes an exact structural
+  diff, checks delta semantics and all executable mutation pre/postconditions,
+  validates entity/column/row scope, and returns a sealed transaction. Base,
+  result, patch, diff, node id, and node key are bound in the application
+  envelope, and a patch cannot be replayed on another base.
+- The full diff covers table/link cells, stable keys, row order and index
+  association, exact dtype representations, column and row axis contracts,
+  DataFrame flags/attrs/subclass metadata, typed weights and storage order,
+  strata values/name/attrs/dtype/index/subclass metadata, links, memberships,
+  virtual receipts, mass history, frame metadata, row atoms, and all inventory
+  order/target contracts. Exact comparison distinguishes `1` from `True`,
+  `+0.0` from `-0.0`, and `None` from `NaN`.
+- All seven `structural_delta` kinds have executable fixture kernels. The
+  validator refuses stable-key rewrites, unrelated cell/strata/index effects,
+  non-exact membership/link mirrors, column additions outside JOIN, output
+  order/dtype/nullability violations, weight-kind changes outside REWEIGHT,
+  invalid filter alignment, malformed clone lineage/block order/remapping,
+  and failure to conserve mass per source lineage.
+- Input projection validation is fail-closed: undeclared columns are hidden,
+  every physical input must exist, ordered OR-of-AND alternatives enforce
+  `column_present`/`finite_numeric`/`non_null` over the declared closed row
+  scope, and an explicit absence receipt can excuse only actual absence, never
+  a present-but-invalid value. Physical outputs require a compiled column
+  contract before dispatch and are validated after execution even when the
+  column already existed.
+- The generator no longer labels seedless post-clone nodes `seeded` through a
+  program-name exception. It derives effective seed ownership generically from
+  typed node/source joins. This corrected two F0 declaration defects
+  (`with_us_education_inputs` and `with_us_medicare_take_up_input`) to
+  deterministic/bitwise without changing the generation-0 payload or runtime
+  behavior. The compiled US plan has 34 seeded and four deterministic nodes.
+- The resulting semantic identities are US `spec_sha256`
+  `f6ae6cde8c08e8695128ab9f29509168c1ee042faa97a28a3c94977262987309`
+  (D1: `9699f76c5c3146b36c9300be3726471d3272576748d816d9684b50f6cde795d8`)
+  and authored producer-node digest
+  `754cccfa2e9fdcb0137669e76f0f7b839a263ff047550e5e560231ae80d7f95a`
+  (D1: `a83363de26cad0144b5a98b36b4bca49542e37a7b9fee3d7e541f692deeff864`).
+  The generated legacy payload remains byte-identical; schedule/order and the
+  72-site legacy-v1 protocol are unchanged. Node keys intentionally change
+  because the ABI and their direct kernel/execution projections changed.
+- Adding the executor introduced one deterministic SHA-256 content-identity
+  call and two production modules to the independent seed scan. The closed D2
+  census is 202 modules and 275 physical calls: 119 ledger bindings plus 156
+  typed exemptions; all 155 hash calls are independently classified. There
+  are zero unbound, stale, or conflicting callsite rows.
+
+### Adversarial review and verification
+
+Two independent read-only reviews reproduced twelve fail-closed defects in
+the initial implementation. None was waived. Regression tests now prove the
+disposition of every finding:
+
+1. categorical dtype order, DataFrame flags, row-axis contracts, strata
+   metadata, and Series subclass metadata cannot piggyback on a valid write;
+2. stable key bytes and membership/link mirrors use representation-exact
+   equality, and REORDER cannot mutate an unrelated entity index;
+3. kernel direct lifts, required inputs and alternatives, existing output
+   contracts, node-envelope identity, and dependency transitive slices are
+   checked independently; and
+4. absence receipts cannot mask malformed present inputs and EXPAND cannot
+   promote a typed-weight kind.
+
+Final D2 fixture evidence:
+
+- executor: 89 tests pass;
+- executor + scope algebra + compiler IR: 138 tests pass in 21.38 seconds;
+- compiler IR + plan lock + executor + scope algebra + country bundles: 159
+  tests pass after the three final regressions;
+- complete spec-engine plus US-bundle gate: 430 tests pass in 542.57 seconds;
+- generated US bundle `--check`: pass at the spec identity above;
+- coverage generation and `--check`: 41,867/41,867 fields and 40/40 inventory
+  checks;
+- focused Ruff, Python compilation, and `git diff --check`: pass.
+- authoritative serial whole-repository suite: 100% green across 6,887
+  collected tests in 2,633.70 seconds (`real`; 2,786.77 user, 557.83 system).
+
+The first authoritative D2 full-suite attempt was stopped at 54% after
+1,490.90 seconds when the constants-adapter pool-tool test found two assertions
+still pinned to the D1 US `spec_sha256`. Runtime resolution produced the
+reviewed D2 identity above and the live-constants payload equality assertion
+had already passed. Both stale expectations now name the generated D2 digest;
+their focused tests pass 2/2. This was an identity-fixture update, not a gate,
+seed, threshold, or runtime behavior change.
+
+The kernel and row-classifier registries are explicit trusted orchestration
+boundaries: a caller cannot substitute a different ref/digest than the
+compiler pin, but the F0 kernel namespace digest inventories implementation
+ids rather than callable bytecode. Deliverable 4 must bind the actual adapter
+implementation/code inventory before the final `node_reuse_key` is certified;
+the executor deliberately does not introspect or guess Python callable hashes.
+
+### Next
+
+1. Implement D3 brokers. Pure/seeded ambient-access instrumentation and the
+   legacy-v1 RNG broker must use these compiled capability and seed grants.

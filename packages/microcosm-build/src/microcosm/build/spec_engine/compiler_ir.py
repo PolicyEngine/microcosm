@@ -30,7 +30,11 @@ from .model import (
 from .resolver import F0_KERNEL_REGISTRY
 from .typed_closure import TypedClosureError, compile_producer_outputs
 
-COMPILER_IR_ABI_VERSION = 1
+COMPILER_IR_ABI_VERSION = 2
+EXECUTOR_CONTRACT_ABI = "compiled-node-direct-contracts-v1"
+ROW_CLASSIFIER_IMPLEMENTATION_DOMAIN = (
+    "microcosm.spec-engine.row-classifier-implementation.v1"
+)
 _NODE_SLICE_DOMAIN = "microcosm.spec-engine.node-slice.v1"
 _NODE_KEY_DOMAIN = "microcosm.spec-engine.static-node-key.v1"
 _NO_WRITE_ACTIONS = frozenset(
@@ -95,6 +99,14 @@ def _compiler_ir_abi() -> CompilerIRABI:
             Path(__file__).resolve(),
         ),
         (
+            "microcosm.build.spec_engine.executor",
+            Path(__file__).resolve().with_name("executor.py"),
+        ),
+        (
+            "microcosm.build.spec_engine.scope_algebra",
+            Path(__file__).resolve().with_name("scope_algebra.py"),
+        ),
+        (
             "microcosm.build.spec_engine.typed_closure",
             Path(__file__).resolve().with_name("typed_closure.py"),
         ),
@@ -113,7 +125,9 @@ def _compiler_ir_abi() -> CompilerIRABI:
             "contracts": {
                 "graph": "raw-dependencies-plus-closed-cell-write-scopes-v1",
                 "node_slice": _NODE_SLICE_DOMAIN,
+                "row_classifier": ROW_CLASSIFIER_IMPLEMENTATION_DOMAIN,
                 "seed_map": "legacy-v1-exhaustive-owner-map-v1",
+                "executor": EXECUTOR_CONTRACT_ABI,
             },
         }
     )
@@ -121,6 +135,62 @@ def _compiler_ir_abi() -> CompilerIRABI:
         version=COMPILER_IR_ABI_VERSION,
         sha256=digest,
         source_inventory=inventory,
+    )
+
+
+def current_compiler_ir_abi() -> CompilerIRABI:
+    """Return the ABI attestation for the currently installed executor stack."""
+
+    return _compiler_ir_abi()
+
+
+def row_classifier_contract(
+    compiler_ir_abi: CompilerIRABI,
+    scope_registry: FrozenMap,
+) -> tuple[str, str]:
+    """Return the closed classifier reference and implementation attestation."""
+
+    registry_wire = _mapping(
+        _wire(scope_registry), location="producer_graph/scope_registry"
+    )
+    predicate_space = _string(
+        registry_wire.get("predicate_space"),
+        location="producer_graph/scope_registry/predicate_space",
+    )
+    classifier_ref = f"classifier:{predicate_space}"
+    implementation_sha256 = sha256_json(
+        {
+            "domain": ROW_CLASSIFIER_IMPLEMENTATION_DOMAIN,
+            "compiler_ir_abi": compiler_ir_abi.to_wire(),
+            "scope_registry": registry_wire,
+        }
+    )
+    return classifier_ref, implementation_sha256
+
+
+def kernel_implementation_contract(kernel_ref: str) -> str:
+    """Return the installed compiler registry's pin for one kernel reference.
+
+    The resolved authored node owns the reference.  The installed compiler
+    owns the closed implementation namespace used to derive its pin.  Keeping
+    this derivation in one place lets the executor independently re-derive the
+    direct ``CompiledNode`` lift instead of trusting self-consistent hashes on
+    an object supplied at dispatch time.
+    """
+
+    if not isinstance(kernel_ref, str) or not kernel_ref.startswith("kernel:"):
+        raise CompilerIRError(f"invalid executable kernel reference {kernel_ref!r}")
+    if not F0_KERNEL_REGISTRY.contains(kernel_ref):
+        raise CompilerIRError(f"unknown executable kernel reference {kernel_ref!r}")
+    if not F0_KERNEL_REGISTRY.has_implementation(kernel_ref):
+        raise CompilerIRError(
+            f"kernel reference {kernel_ref!r} has no executable implementation"
+        )
+    return sha256_json(
+        {
+            "registry_sha256": F0_KERNEL_REGISTRY.implementation_sha256,
+            "kernel": kernel_ref,
+        }
     )
 
 
@@ -165,6 +235,8 @@ class ProducerNodeIR:
     kind: str
     kernel: str
     source: FrozenMap
+    capabilities: FrozenMap
+    mutations: FrozenMap
     depends_on: tuple[str, ...]
     inputs: tuple[FrozenMap, ...]
     outputs: tuple[FrozenMap, ...]
@@ -189,7 +261,10 @@ class ProducerNodeIR:
                     "column": output["column"],
                     "coverage_scope": output["coverage_scope"],
                 }
-                for output in (_mapping(_wire(row), location="compiled output") for row in self.outputs)
+                for output in (
+                    _mapping(_wire(row), location="compiled output")
+                    for row in self.outputs
+                )
             ],
         }
 
@@ -198,6 +273,7 @@ class ProducerNodeIR:
 class ProducerGraphIR:
     present: bool
     authored: FrozenMap | None
+    scope_registry: FrozenMap | None
     nodes: tuple[ProducerNodeIR, ...]
     external_stages: tuple[str, ...]
     edges: tuple[tuple[str, str], ...]
@@ -256,9 +332,7 @@ class ProducerGraphIR:
                 "edges": [],
                 "waves": [],
                 "order": [],
-                "incomparable_node_policy": _wire(
-                    self.incomparable_node_policy
-                ),
+                "incomparable_node_policy": _wire(self.incomparable_node_policy),
                 "schedule_sha256": self.schedule_sha256,
             }
         assert self.authored is not None
@@ -318,11 +392,7 @@ class SeedStreamMap:
 
     def owner(self, kind: str, owner_id: str) -> SeedOwnerIR | None:
         return next(
-            (
-                row
-                for row in self.owners
-                if row.kind == kind and row.id == owner_id
-            ),
+            (row for row in self.owners if row.kind == kind and row.id == owner_id),
             None,
         )
 
@@ -362,6 +432,7 @@ class TransitiveNodeSlice:
 @dataclass(frozen=True, slots=True)
 class CompiledNode:
     id: str
+    execution_rank: int
     node_key: str
     node_slice_sha256: str
     kernel_ref: str
@@ -369,6 +440,15 @@ class CompiledNode:
     depends_on: tuple[str, ...]
     inputs: tuple[FrozenMap, ...]
     outputs: tuple[FrozenMap, ...]
+    capabilities: FrozenMap
+    mutations: FrozenMap
+    write_scopes: tuple[FrozenMap, ...]
+    scope_registry: FrozenMap
+    row_classifier_ref: str
+    row_classifier_implementation_sha256: str
+    compiler_ir_abi: FrozenMap
+    seed_protocol_sha256: str
+    seed_sites: tuple[SeedSiteIR, ...]
     seed_streams: tuple[str, ...]
     resolved_params: tuple[ResolvedParam, ...]
     transitive_nodes: tuple[TransitiveNodeSlice, ...]
@@ -383,6 +463,7 @@ class CompiledNode:
     def to_wire(self) -> dict[str, object]:
         return {
             "id": self.id,
+            "execution_rank": self.execution_rank,
             "node_key": self.node_key,
             "node_slice_sha256": self.node_slice_sha256,
             "kernel": {
@@ -392,6 +473,10 @@ class CompiledNode:
             "depends_on": list(self.depends_on),
             "inputs": [_wire(row) for row in self.inputs],
             "outputs": [_wire(row) for row in self.outputs],
+            "row_classifier": {
+                "ref": self.row_classifier_ref,
+                "implementation_sha256": (self.row_classifier_implementation_sha256),
+            },
             "seed_streams": [f"stream:{stream}" for stream in self.seed_streams],
             "node_slice": self.node_slice_wire(),
         }
@@ -473,9 +558,7 @@ def _typed_inventory(spec: ResolvedSpec) -> FrozenMap:
                     "id": artifact.id,
                     "kind": artifact.kind,
                     "producing_stages": list(artifact.producing_stages),
-                    "entity": (
-                        None if artifact.entity is None else artifact.entity.id
-                    ),
+                    "entity": (None if artifact.entity is None else artifact.entity.id),
                     "key": artifact.key,
                     "lifetime": artifact.lifetime,
                     "validation": artifact.validation,
@@ -595,9 +678,7 @@ def _validate_ownership_matrix(
                 )
             owns_final = action.get("owns_final")
             if not isinstance(owns_final, bool):
-                raise CompilerIRError(
-                    f"{action_location}/owns_final: boolean required"
-                )
+                raise CompilerIRError(f"{action_location}/owns_final: boolean required")
             if owns_final:
                 final_actions.append(producer)
         if final_actions != [final_owner]:
@@ -789,9 +870,7 @@ def _incomparable_policy(
     return _frozen_mapping(
         {
             "requirement": "commute_or_disjoint_writes",
-            "proof_method": (
-                "transitive_closure_and_closed_cell_segment_intersection"
-            ),
+            "proof_method": ("transitive_closure_and_closed_cell_segment_intersection"),
             "overlap_rule": "explicit_commutativity_proof_required",
             "commutativity_proofs": [],
             "incomparable_pair_count": incomparable,
@@ -829,6 +908,7 @@ def _compile_producer_graph(resources: Mapping[str, object]) -> ProducerGraphIR:
         return ProducerGraphIR(
             present=False,
             authored=None,
+            scope_registry=None,
             nodes=(),
             external_stages=(),
             edges=(),
@@ -856,13 +936,9 @@ def _compile_producer_graph(resources: Mapping[str, object]) -> ProducerGraphIR:
     rank: dict[str, int] = {}
     for index, row in enumerate(node_rows):
         node_id = _string(row.get("id"), location=f"producer_graph/nodes/{index}/id")
-        name = _string(
-            row.get("name"), location=f"producer_graph/nodes/{index}/name"
-        )
+        name = _string(row.get("name"), location=f"producer_graph/nodes/{index}/name")
         if node_id != name:
-            raise CompilerIRError(
-                f"producer_graph/nodes/{index}: id must equal name"
-            )
+            raise CompilerIRError(f"producer_graph/nodes/{index}: id must equal name")
         if node_id in node_by_id:
             raise CompilerIRError(
                 f"producer_graph/nodes/{index}/id: duplicate {node_id!r}"
@@ -901,6 +977,10 @@ def _compile_producer_graph(resources: Mapping[str, object]) -> ProducerGraphIR:
     )
     scope_coverage = _mapping(
         graph.get("scope_coverage", {}), location="producer_graph/scope_coverage"
+    )
+    scope_registry = _frozen_mapping(
+        graph.get("scope_registry"),
+        location="producer_graph/scope_registry",
     )
     declared_scopes = _mapping(
         scope_coverage.get("declared", {}),
@@ -981,8 +1061,7 @@ def _compile_producer_graph(resources: Mapping[str, object]) -> ProducerGraphIR:
         )
         if not wave:
             raise CompilerIRError(
-                "producer_graph: dependency cycle among "
-                f"{sorted(remaining)!r}"
+                f"producer_graph: dependency cycle among {sorted(remaining)!r}"
             )
         waves.append(wave)
         remaining.difference_update(wave)
@@ -1030,9 +1109,15 @@ def _compile_producer_graph(resources: Mapping[str, object]) -> ProducerGraphIR:
                 kind=_string(node.get("kind"), location=f"{node_id}/kind"),
                 kernel=kernel,
                 source=_frozen_mapping(node, location=f"{node_id}/source"),
-                depends_on=tuple(
-                    sorted(predecessors[node_id], key=rank.__getitem__)
+                capabilities=_frozen_mapping(
+                    node.get("capabilities"),
+                    location=f"{node_id}/capabilities",
                 ),
+                mutations=_frozen_mapping(
+                    node.get("mutations"),
+                    location=f"{node_id}/mutations",
+                ),
+                depends_on=tuple(sorted(predecessors[node_id], key=rank.__getitem__)),
                 inputs=input_rows,
                 outputs=output_rows,
                 write_scopes=write_scopes,
@@ -1047,6 +1132,7 @@ def _compile_producer_graph(resources: Mapping[str, object]) -> ProducerGraphIR:
     provisional = ProducerGraphIR(
         present=True,
         authored=authored,
+        scope_registry=scope_registry,
         nodes=tuple(nodes),
         external_stages=external_stages,
         edges=edges,
@@ -1058,6 +1144,7 @@ def _compile_producer_graph(resources: Mapping[str, object]) -> ProducerGraphIR:
     return ProducerGraphIR(
         present=True,
         authored=authored,
+        scope_registry=scope_registry,
         nodes=tuple(nodes),
         external_stages=external_stages,
         edges=edges,
@@ -1183,16 +1270,269 @@ def _resolved_param(
     )
 
 
+def _node_take_up_params(
+    node: ProducerNodeIR,
+    *,
+    resources: Mapping[str, object],
+) -> tuple[ResolvedParam, ...]:
+    """Resolve take-up rows whose typed output variable is owned by ``node``.
+
+    The relation is an exact column join, not an id/name convention.  It is
+    needed for mixed measured/transferred surfaces whose source-stage pointer
+    lives in the take-up contract rather than in a producer virtual resource.
+    """
+
+    take_up_value = resources.get("take_up")
+    if take_up_value is None:
+        return ()
+    take_up = _mapping(take_up_value, location="take_up")
+    output_columns = {
+        str(output["column"])
+        for output in (
+            _mapping(_wire(value), location="compiled output") for value in node.outputs
+        )
+        if not str(output["column"]).startswith("@")
+    }
+    result: list[ResolvedParam] = []
+    for index, program_value in enumerate(
+        _array(take_up.get("programs", []), location="take_up/programs")
+    ):
+        program = _mapping(program_value, location=f"take_up/programs/{index}")
+        variable = program.get("variable")
+        if isinstance(variable, str) and variable in output_columns:
+            result.append(_resolved_param(f"/take_up/programs/{index}", program))
+    return tuple(result)
+
+
+def _typed_seed_owner_references(
+    params: Sequence[ResolvedParam],
+) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
+    """Find only schema-typed seed-owner references in resolved node inputs.
+
+    Owner ids are ordinary strings on the wire, so a recursive value/name
+    search would be authority by coincidence.  These four field shapes are
+    the closed reference grammar used by producer and take-up contracts.
+    """
+
+    locations: dict[tuple[str, str], list[str]] = {}
+
+    def add(kind: str, owner_id: object, *, location: str) -> None:
+        if not isinstance(owner_id, str) or not owner_id:
+            raise CompilerIRError(f"{location}: non-empty {kind} reference required")
+        paths = locations.setdefault((kind, owner_id), [])
+        if location not in paths:
+            paths.append(location)
+
+    def walk(value: object, *, location: str) -> None:
+        if isinstance(value, Mapping):
+            if "source_stage_ref" in value:
+                reference = value["source_stage_ref"]
+                if reference is not None:
+                    reference_row = _mapping(
+                        reference,
+                        location=f"{location}/source_stage_ref",
+                    )
+                    add(
+                        SeedSiteOwnerKind.SOURCE_STAGE.value,
+                        reference_row.get("stage_id"),
+                        location=f"{location}/source_stage_ref/stage_id",
+                    )
+            if "source_operation_ref" in value:
+                reference_row = _mapping(
+                    value["source_operation_ref"],
+                    location=f"{location}/source_operation_ref",
+                )
+                add(
+                    SeedSiteOwnerKind.SOURCE_STAGE.value,
+                    reference_row.get("stage"),
+                    location=f"{location}/source_operation_ref/stage",
+                )
+            if "source_operator" in value:
+                add(
+                    SeedSiteOwnerKind.PIPELINE_OPERATION.value,
+                    value["source_operator"],
+                    location=f"{location}/source_operator",
+                )
+            if "source_operator_registry" in value:
+                for index, owner_id in enumerate(
+                    _array(
+                        value["source_operator_registry"],
+                        location=f"{location}/source_operator_registry",
+                    )
+                ):
+                    add(
+                        SeedSiteOwnerKind.PIPELINE_OPERATION.value,
+                        owner_id,
+                        location=f"{location}/source_operator_registry/{index}",
+                    )
+            for key, child in value.items():
+                walk(child, location=f"{location}/{key}")
+        elif isinstance(value, list | tuple):
+            for index, child in enumerate(value):
+                walk(child, location=f"{location}/{index}")
+
+    for param in params:
+        walk(_wire(param.value), location=param.path)
+    return tuple(
+        (kind, owner_id, tuple(paths))
+        for (kind, owner_id), paths in sorted(locations.items())
+    )
+
+
+def _seed_reference_params(
+    references: Sequence[tuple[str, str, tuple[str, ...]]],
+    *,
+    resources: Mapping[str, object],
+) -> tuple[ResolvedParam, ...]:
+    """Bind the normalized records that typed owner references resolve to."""
+
+    source_rows = {
+        _string(row.get("stage"), location=f"sources/stages/{index}/stage"): (
+            index,
+            row,
+        )
+        for index, row in enumerate(
+            _mapping(value, location=f"sources/stages/{index}")
+            for index, value in enumerate(
+                _array(
+                    _mapping(resources.get("sources", {}), location="sources").get(
+                        "stages", []
+                    ),
+                    location="sources/stages",
+                )
+            )
+        )
+    }
+    spine = _mapping(resources.get("spine", {}), location="spine")
+    pipeline_value = spine.get("pipeline_contract")
+    pipeline = (
+        _mapping(pipeline_value, location="spine/pipeline_contract")
+        if pipeline_value is not None
+        else {}
+    )
+    pipeline_fields = (
+        "stacked_operator_order",
+        "pre_clone_source_operator_order",
+        "post_clone_source_operator_order",
+        "derive_operator_order",
+        "auxiliary_operations",
+    )
+    pipeline_memberships: dict[str, list[dict[str, object]]] = {}
+    for field in pipeline_fields:
+        for index, operation in enumerate(
+            _array(
+                pipeline.get(field, []),
+                location=f"spine/pipeline_contract/{field}",
+            )
+        ):
+            operation_id = _string(
+                operation,
+                location=f"spine/pipeline_contract/{field}/{index}",
+            )
+            pipeline_memberships.setdefault(operation_id, []).append(
+                {"field": field, "index": index}
+            )
+
+    result: list[ResolvedParam] = []
+    seen: set[tuple[str, str]] = set()
+    for kind, owner_id, _ in references:
+        key = (kind, owner_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        if kind == SeedSiteOwnerKind.SOURCE_STAGE.value:
+            if owner_id not in source_rows:
+                raise CompilerIRError(
+                    f"typed source_stage reference is dangling: {owner_id!r}"
+                )
+            index, row = source_rows[owner_id]
+            result.append(_resolved_param(f"/sources/stages/{index}", row))
+        elif kind == SeedSiteOwnerKind.PIPELINE_OPERATION.value:
+            memberships = pipeline_memberships.get(owner_id)
+            if memberships is None:
+                raise CompilerIRError(
+                    f"typed pipeline_operation reference is dangling: {owner_id!r}"
+                )
+            result.append(
+                _resolved_param(
+                    f"/spine/pipeline_contract@operation={owner_id}",
+                    {"id": owner_id, "memberships": memberships},
+                )
+            )
+        else:  # pragma: no cover - closed by the caller's grammar
+            raise CompilerIRError(f"unknown seed-owner reference kind {kind!r}")
+    return tuple(result)
+
+
+def _effective_seed_grant(
+    node: ProducerNodeIR,
+    *,
+    params: Sequence[ResolvedParam],
+    seed_stream_map: SeedStreamMap,
+) -> tuple[ResolvedParam, tuple[SeedSiteIR, ...], tuple[str, ...]]:
+    """Compile the node's direct and typed-reference seed authority."""
+
+    references = _typed_seed_owner_references(params)
+    contributing: list[SeedOwnerIR] = []
+    direct = seed_stream_map.owner(SeedSiteOwnerKind.PRODUCER_NODE.value, node.id)
+    if direct is not None:
+        contributing.append(direct)
+    for kind, owner_id, _ in references:
+        owner = seed_stream_map.owner(kind, owner_id)
+        if owner is not None and owner not in contributing:
+            contributing.append(owner)
+
+    site_ids = {site_id for owner in contributing for site_id in owner.sites}
+    sites = tuple(site for site in seed_stream_map.sites if site.id in site_ids)
+    streams = tuple(dict.fromkeys(site.stream for site in sites))
+    determinism = _string(
+        node.capabilities.get("determinism"),
+        location=f"{node.id}/capabilities/determinism",
+    )
+    if determinism == "seeded" and not sites:
+        raise CompilerIRError(
+            f"producer node {node.id!r} declares seeded determinism but has "
+            "no effective seed-site grant"
+        )
+    if determinism == "deterministic" and sites:
+        raise CompilerIRError(
+            f"producer node {node.id!r} declares deterministic behavior but "
+            "has an effective seed-site grant"
+        )
+
+    grant = _resolved_param(
+        f"/compiled/effective_seed_grant@producer={node.id}",
+        {
+            "configuration_references": [
+                {"kind": kind, "id": owner_id, "paths": list(paths)}
+                for kind, owner_id, paths in references
+            ],
+            "grant_sources": [owner.to_wire() for owner in contributing],
+            "sites": [site.to_wire() for site in sites],
+        },
+    )
+    return grant, sites, streams
+
+
 def _node_resolved_params(
     node: ProducerNodeIR,
     *,
     resources: Mapping[str, object],
     producer_graph: ProducerGraphIR,
-    seed_stream_map: SeedStreamMap,
     spec: ResolvedSpec,
 ) -> tuple[ResolvedParam, ...]:
     params: list[ResolvedParam] = [
-        _resolved_param(f"/imputation/producer_graph/nodes/{node.id}", _wire(node.source)),
+        _resolved_param(
+            f"/imputation/producer_graph/nodes/{node.id}", _wire(node.source)
+        ),
+        _resolved_param(
+            f"/compiled/producer_graph/nodes/{node.id}/depends_on",
+            list(node.depends_on),
+        ),
+        _resolved_param(
+            f"/compiled/producer_graph/nodes/{node.id}/inputs",
+            [_wire(input_row) for input_row in node.inputs],
+        ),
         _resolved_param(
             f"/compiled/producer_graph/nodes/{node.id}/outputs",
             [_wire(output) for output in node.outputs],
@@ -1202,6 +1542,16 @@ def _node_resolved_params(
             [_wire(scope) for scope in node.write_scopes],
         ),
     ]
+    if producer_graph.scope_registry is None:
+        raise CompilerIRError(
+            f"producer node {node.id!r} has no compiled scope registry"
+        )
+    params.append(
+        _resolved_param(
+            "/imputation/producer_graph/scope_registry",
+            _wire(producer_graph.scope_registry),
+        )
+    )
     imputation = _mapping(resources.get("imputation", {}), location="imputation")
     family_matches: list[tuple[int, Mapping[str, object]]] = []
     for index, family_value in enumerate(
@@ -1223,9 +1573,7 @@ def _node_resolved_params(
         )
     if family_matches:
         family_index, family = family_matches[0]
-        params.append(
-            _resolved_param(f"/imputation/families/{family_index}", family)
-        )
+        params.append(_resolved_param(f"/imputation/families/{family_index}", family))
         models = _mapping(imputation.get("models", {}), location="imputation/models")
         model = family.get("model")
         if isinstance(model, str):
@@ -1295,8 +1643,7 @@ def _node_resolved_params(
     output_keys = {
         f"{output['entity']}.{output['column']}"
         for output in (
-            _mapping(_wire(value), location="compiled output")
-            for value in node.outputs
+            _mapping(_wire(value), location="compiled output") for value in node.outputs
         )
         if not str(output["column"]).startswith("@")
         or output["column"] == "@resolved_weight"
@@ -1321,15 +1668,13 @@ def _node_resolved_params(
         params.append(
             _resolved_param(f"/compiled/columns@producer={node.id}", column_rows)
         )
-    owner = seed_stream_map.owner(SeedSiteOwnerKind.PRODUCER_NODE.value, node.id)
-    if owner is not None:
-        site_by_id = {site.id: site for site in seed_stream_map.sites}
-        params.append(
-            _resolved_param(
-                f"/compiled/seed_stream_map@producer={node.id}",
-                [site_by_id[site_id].to_wire() for site_id in owner.sites],
-            )
+    params.extend(_node_take_up_params(node, resources=resources))
+    params.extend(
+        _seed_reference_params(
+            _typed_seed_owner_references(params),
+            resources=resources,
         )
+    )
     return tuple(params)
 
 
@@ -1344,18 +1689,53 @@ def _compile_nodes(
     if not producer_graph.nodes:
         return ()
     node_by_id = {node.id: node for node in producer_graph.nodes}
+    if producer_graph.scope_registry is None:
+        raise CompilerIRError("compiled producer graph has no scope registry")
+    compiler_ir_abi_wire = _frozen_mapping(
+        compiler_ir_abi.to_wire(), location="compiler_ir_abi"
+    )
+    row_classifier_ref, row_classifier_implementation_sha256 = row_classifier_contract(
+        compiler_ir_abi, producer_graph.scope_registry
+    )
     local_sha256: dict[str, str] = {}
     ancestor_ids: dict[str, set[str]] = {}
     compiled: list[CompiledNode] = []
-    for node_id in producer_graph.order:
+    for execution_rank, node_id in enumerate(producer_graph.order):
         node = node_by_id[node_id]
+        kernel_implementation_sha256 = kernel_implementation_contract(node.kernel)
         params = _node_resolved_params(
             node,
             resources=resources,
             producer_graph=producer_graph,
-            seed_stream_map=seed_stream_map,
             spec=spec,
         )
+        params = (
+            *params,
+            _resolved_param(
+                f"/compiled/producer_graph/nodes/{node.id}/execution_rank",
+                execution_rank,
+            ),
+            _resolved_param(
+                f"/compiled/producer_graph/nodes/{node.id}/kernel",
+                {
+                    "ref": node.kernel,
+                    "implementation_sha256": kernel_implementation_sha256,
+                },
+            ),
+            _resolved_param(
+                f"/compiled/producer_graph/nodes/{node.id}/row_classifier",
+                {
+                    "ref": row_classifier_ref,
+                    "implementation_sha256": (row_classifier_implementation_sha256),
+                },
+            ),
+        )
+        grant_param, sites, streams = _effective_seed_grant(
+            node,
+            params=params,
+            seed_stream_map=seed_stream_map,
+        )
+        params = (*params, grant_param)
         local_wire = [param.to_wire() for param in params]
         local_sha256[node_id] = sha256_json(local_wire)
         ancestors = set(node.depends_on)
@@ -1370,22 +1750,12 @@ def _compile_nodes(
             for candidate in producer_graph.order
             if candidate in ancestors
         )
-        owner = seed_stream_map.owner(
-            SeedSiteOwnerKind.PRODUCER_NODE.value, node_id
-        )
-        streams = () if owner is None else owner.streams
         slice_wire = {
             "domain": _NODE_SLICE_DOMAIN,
             "resolved_params": local_wire,
             "transitive_nodes": [row.to_wire() for row in transitive],
         }
         node_slice_sha256 = sha256_json(slice_wire)
-        kernel_implementation_sha256 = sha256_json(
-            {
-                "registry_sha256": F0_KERNEL_REGISTRY.implementation_sha256,
-                "kernel": node.kernel,
-            }
-        )
         node_key = sha256_json(
             {
                 "domain": _NODE_KEY_DOMAIN,
@@ -1401,6 +1771,7 @@ def _compile_nodes(
         compiled.append(
             CompiledNode(
                 id=node_id,
+                execution_rank=execution_rank,
                 node_key=node_key,
                 node_slice_sha256=node_slice_sha256,
                 kernel_ref=node.kernel,
@@ -1408,6 +1779,17 @@ def _compile_nodes(
                 depends_on=node.depends_on,
                 inputs=node.inputs,
                 outputs=node.outputs,
+                capabilities=node.capabilities,
+                mutations=node.mutations,
+                write_scopes=node.write_scopes,
+                scope_registry=producer_graph.scope_registry,
+                row_classifier_ref=row_classifier_ref,
+                row_classifier_implementation_sha256=(
+                    row_classifier_implementation_sha256
+                ),
+                compiler_ir_abi=compiler_ir_abi_wire,
+                seed_protocol_sha256=seed_stream_map.implementation_sha256,
+                seed_sites=sites,
                 seed_streams=streams,
                 resolved_params=params,
                 transitive_nodes=transitive,
@@ -1474,6 +1856,8 @@ def compile_spec(spec: ResolvedSpec) -> CompiledSpecIR:
 
 __all__ = [
     "COMPILER_IR_ABI_VERSION",
+    "EXECUTOR_CONTRACT_ABI",
+    "ROW_CLASSIFIER_IMPLEMENTATION_DOMAIN",
     "CompiledNode",
     "CompiledSpecIR",
     "CompilerIRABI",
@@ -1486,4 +1870,5 @@ __all__ = [
     "StageDag",
     "StageDagNode",
     "compile_spec",
+    "row_classifier_contract",
 ]

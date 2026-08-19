@@ -13,7 +13,7 @@ from collections.abc import Mapping, Sequence
 from copy import deepcopy
 
 from .canonical import canonical_json_bytes, sha256_json
-from .compiler_ir import CompiledSpecIR, compile_spec
+from .compiler_ir import COMPILER_IR_ABI_VERSION, CompiledSpecIR, compile_spec
 from .imputation_semantics import derive_primary_effective_predictor_tuples
 from .legacy_adapter import compile_to_legacy_payload
 from .model import FrozenValue, ResolvedSpec, thaw_json
@@ -353,7 +353,7 @@ EXPECTED_HASHES = {
     "early_families": "e26a90e2b5c16e23e7c17424d1c2e4ab18ed66b1d0e129248e87c0bab9b3fd5d",
     "full_checkpoint": "2972db18e0f69ac4df4079916355a1bcd9ec5c12f3e19d5650fc47b5a8a0e3e8",
     "gap_fill_schedule": "96aefe2853de91ae95f50bc2ccc2c1dd94802c27f21c643981152bbcb13c4e10",
-    "graph_nodes": "a83363de26cad0144b5a98b36b4bca49542e37a7b9fee3d7e541f692deeff864",
+    "graph_nodes": "754cccfa2e9fdcb0137669e76f0f7b839a263ff047550e5e560231ae80d7f95a",
     "late_families": "a160432fc12a85df20ba7fd6687673b3c31786df7a983e2477604ab923b26d18",
     "late_resource_semantics": "9206aa072ce360ef87dc7d832351fcae2e0d1da71abcacc5af0d43ef88582dee",
     "late_schedule": "b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5",
@@ -489,8 +489,7 @@ def _without_operational_bindings(value: object) -> object:
         return {
             key: _without_operational_bindings(item)
             for key, item in value.items()
-            if key != "worker_execution"
-            and not (drop_self_hash and key == "sha256")
+            if key != "worker_execution" and not (drop_self_hash and key == "sha256")
         }
     if isinstance(value, list):
         return [_without_operational_bindings(item) for item in value]
@@ -1539,9 +1538,9 @@ def build_inventory_coverage(
             full_resource_semantics.get("producers"),
             "full checkpoint resource-semantics producers",
         )
-        if _mapping(
-            value, "full checkpoint resource-semantics producer"
-        ).get("producer")
+        if _mapping(value, "full checkpoint resource-semantics producer").get(
+            "producer"
+        )
         == "primary_puf_qrf"
     ]
     primary_resource_row = (
@@ -1577,9 +1576,7 @@ def build_inventory_coverage(
                 "alpha": {"sha256": "a" * 64, "size_bytes": 17},
                 "zeta": {"sha256": "b" * 64, "size_bytes": 23},
             },
-            "full checkpoint sampling vector differs": full_checkpoint.get(
-                "sampling"
-            )
+            "full checkpoint sampling vector differs": full_checkpoint.get("sampling")
             == {
                 "sample_fraction": 0.25,
                 "fraction_token": "f025",
@@ -1611,9 +1608,7 @@ def build_inventory_coverage(
         observed={
             "sha256": _operational_free_sha256(full_checkpoint),
             "field_names": sorted(full_checkpoint),
-            "input_roles": list(
-                _mapping(full_checkpoint["inputs"], "full inputs")
-            ),
+            "input_roles": list(_mapping(full_checkpoint["inputs"], "full inputs")),
             "fraction_token": _mapping(
                 full_checkpoint["sampling"], "full sampling"
             ).get("fraction_token"),
@@ -1982,8 +1977,10 @@ def assert_inventory_coverage_complete(report: Mapping[str, object]) -> None:
         ):
             failures.append("inventory spec_binding contract differs")
         spec_sha256 = binding.get("spec_sha256")
-        if not isinstance(spec_sha256, str) or len(spec_sha256) != 64 or any(
-            character not in "0123456789abcdef" for character in spec_sha256
+        if (
+            not isinstance(spec_sha256, str)
+            or len(spec_sha256) != 64
+            or any(character not in "0123456789abcdef" for character in spec_sha256)
         ):
             failures.append("inventory spec_binding SHA-256 is invalid")
 
@@ -1991,13 +1988,16 @@ def assert_inventory_coverage_complete(report: Mapping[str, object]) -> None:
     if not isinstance(compiler_abi, Mapping):
         failures.append("inventory compiler_ir_abi is missing")
     else:
-        if set(compiler_abi) != {"version", "sha256"} or compiler_abi.get(
-            "version"
-        ) != 1:
+        if (
+            set(compiler_abi) != {"version", "sha256"}
+            or compiler_abi.get("version") != COMPILER_IR_ABI_VERSION
+        ):
             failures.append("inventory compiler IR ABI contract differs")
         abi_sha256 = compiler_abi.get("sha256")
-        if not isinstance(abi_sha256, str) or len(abi_sha256) != 64 or any(
-            character not in "0123456789abcdef" for character in abi_sha256
+        if (
+            not isinstance(abi_sha256, str)
+            or len(abi_sha256) != 64
+            or any(character not in "0123456789abcdef" for character in abi_sha256)
         ):
             failures.append("inventory compiler IR ABI SHA-256 is invalid")
 
@@ -2047,8 +2047,7 @@ def assert_inventory_coverage_complete(report: Mapping[str, object]) -> None:
             not isinstance(homes, list)
             or not homes
             or any(
-                not isinstance(home, str) or not home.startswith("/")
-                for home in homes
+                not isinstance(home, str) or not home.startswith("/") for home in homes
             )
         ):
             failures.append(f"{name}: bundle_homes are malformed or empty")
@@ -2078,8 +2077,7 @@ def assert_inventory_coverage_complete(report: Mapping[str, object]) -> None:
     recomputed_covered = recomputed_required - len(recomputed_missing)
     if recomputed_missing:
         failures.append(
-            "inventory has missing required items: "
-            + ", ".join(recomputed_missing)
+            "inventory has missing required items: " + ", ".join(recomputed_missing)
         )
     expected_summaries = {
         "required_item_count": recomputed_required,

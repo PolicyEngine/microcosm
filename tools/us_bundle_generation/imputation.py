@@ -1000,8 +1000,7 @@ def _normalise_virtual_resource(
             clone_attachment.get("fraction") != _LEGACY_CLONE_ATTACHMENT_FRACTION
             or clone_attachment.get("seed") != _LEGACY_CLONE_ATTACHMENT_SEED
             or clone_attachment.get("puf_clone_index") != 1
-            or clone_attachment.get("support_channels")
-            != ["asec", "puf_tax_detail"]
+            or clone_attachment.get("support_channels") != ["asec", "puf_tax_detail"]
         ):
             raise RuntimeError(
                 "Primary clone attachment differs from the spine-owned contract."
@@ -1240,8 +1239,7 @@ def _assert_family_node_kinds(
     )
     if unlinked:
         raise RuntimeError(
-            "Modeled producer nodes must resolve exactly one family: "
-            f"{unlinked!r}."
+            f"Modeled producer nodes must resolve exactly one family: {unlinked!r}."
         )
 
 
@@ -1307,13 +1305,149 @@ def _compile_node_outputs(
         raise RuntimeError("Producer graph must be the document's authored graph.")
     return {
         producer: [deepcopy(dict(row)) for row in rows]
-        for producer, rows in compile_producer_outputs(
-            {"imputation": document}
-        ).items()
+        for producer, rows in compile_producer_outputs({"imputation": document}).items()
     }
 
 
-def _node_capabilities(kind: str) -> dict[str, object]:
+def _seed_owner_sites(
+    seed_site_bindings: Sequence[object],
+) -> dict[tuple[str, str], frozenset[str]]:
+    """Index the authored draw-site ledger by its exact typed owner identity."""
+
+    sites_by_owner: dict[tuple[str, str], set[str]] = {}
+    for binding_index, binding_value in enumerate(seed_site_bindings):
+        binding = _mapping_like(
+            binding_value,
+            f"seed site binding {binding_index}",
+        )
+        site = binding.get("site")
+        if not isinstance(site, str) or not site:
+            raise RuntimeError(
+                f"Seed site binding {binding_index} has no non-empty site id."
+            )
+        for owner_index, owner_value in enumerate(
+            _array_like(
+                binding.get("owners"),
+                f"seed site binding {binding_index} owners",
+            )
+        ):
+            owner = _mapping_like(
+                owner_value,
+                f"seed site binding {binding_index} owner {owner_index}",
+            )
+            kind = owner.get("kind")
+            owner_id = owner.get("id")
+            if not isinstance(kind, str) or not kind:
+                raise RuntimeError(
+                    f"Seed site binding {binding_index} owner {owner_index} "
+                    "has no non-empty kind."
+                )
+            if not isinstance(owner_id, str) or not owner_id:
+                raise RuntimeError(
+                    f"Seed site binding {binding_index} owner {owner_index} "
+                    "has no non-empty id."
+                )
+            sites_by_owner.setdefault((kind, owner_id), set()).add(site)
+    return {owner: frozenset(sites) for owner, sites in sorted(sites_by_owner.items())}
+
+
+def _typed_seed_owner_references(value: object) -> frozenset[tuple[str, str]]:
+    """Read only the schema-typed seed-owner reference fields in ``value``."""
+
+    references: set[tuple[str, str]] = set()
+
+    def add(kind: str, owner_id: object, *, location: str) -> None:
+        if not isinstance(owner_id, str) or not owner_id:
+            raise RuntimeError(f"{location} must be a non-empty {kind} id.")
+        references.add((kind, owner_id))
+
+    def walk(item: object, *, location: str) -> None:
+        if isinstance(item, Mapping):
+            if "source_stage_ref" in item:
+                reference = item["source_stage_ref"]
+                if reference is not None:
+                    row = _mapping_like(reference, f"{location}/source_stage_ref")
+                    add(
+                        "source_stage",
+                        row.get("stage_id"),
+                        location=f"{location}/source_stage_ref/stage_id",
+                    )
+            if "source_operation_ref" in item:
+                row = _mapping_like(
+                    item["source_operation_ref"],
+                    f"{location}/source_operation_ref",
+                )
+                add(
+                    "source_stage",
+                    row.get("stage"),
+                    location=f"{location}/source_operation_ref/stage",
+                )
+            if "source_operator" in item:
+                add(
+                    "pipeline_operation",
+                    item["source_operator"],
+                    location=f"{location}/source_operator",
+                )
+            if "source_operator_registry" in item:
+                for index, owner_id in enumerate(
+                    _array_like(
+                        item["source_operator_registry"],
+                        f"{location}/source_operator_registry",
+                    )
+                ):
+                    add(
+                        "pipeline_operation",
+                        owner_id,
+                        location=f"{location}/source_operator_registry/{index}",
+                    )
+            for key, child in item.items():
+                walk(child, location=f"{location}/{key}")
+        elif isinstance(item, Sequence) and not isinstance(item, str | bytes):
+            for index, child in enumerate(item):
+                walk(child, location=f"{location}/{index}")
+
+    walk(value, location="post_clone_source")
+    return frozenset(references)
+
+
+def _post_clone_source_has_seed_grant(
+    *,
+    node: Mapping[str, object],
+    take_up_document: Mapping[str, object],
+    sites_by_owner: Mapping[tuple[str, str], frozenset[str]],
+) -> bool:
+    """Mirror the compiler's direct-plus-typed-reference seed grant join."""
+
+    node_id = node.get("id")
+    if not isinstance(node_id, str) or not node_id:
+        raise RuntimeError("Post-clone producer node has no non-empty id.")
+    references = {("producer_node", node_id)}
+    references.update(_typed_seed_owner_references(node))
+
+    output_variables = {
+        str(output["column"])
+        for value in _array_like(node.get("outputs"), "post-clone node outputs")
+        for output in [_mapping_like(value, "post-clone node output")]
+        if not str(output["column"]).startswith("@")
+    }
+    for program_index, program_value in enumerate(
+        _array_like(take_up_document.get("programs"), "take-up programs")
+    ):
+        program = _mapping_like(program_value, f"take-up program {program_index}")
+        variable = program.get("variable")
+        if isinstance(variable, str) and variable in output_variables:
+            references.update(_typed_seed_owner_references(program))
+
+    return any(sites_by_owner.get(reference) for reference in references)
+
+
+def _node_capabilities(
+    kind: str,
+    *,
+    node: Mapping[str, object],
+    take_up_document: Mapping[str, object],
+    sites_by_owner: Mapping[tuple[str, str], frozenset[str]],
+) -> dict[str, object]:
     if kind == "acs_earnings_universe":
         return {
             "determinism": "deterministic",
@@ -1331,9 +1465,14 @@ def _node_capabilities(kind: str) -> dict[str, object]:
             "retry_safety": "attempt_scoped",
         }
     if kind == "post_clone_source":
+        seeded = _post_clone_source_has_seed_grant(
+            node=node,
+            take_up_document=take_up_document,
+            sites_by_owner=sites_by_owner,
+        )
         return {
-            "determinism": "seeded",
-            "numeric_reproducibility": "tolerance_bound",
+            "determinism": "seeded" if seeded else "deterministic",
+            "numeric_reproducibility": ("tolerance_bound" if seeded else "bitwise"),
             "effects": ["declared_source_read"],
             "structural_delta": "none",
             "retry_safety": "idempotent",
@@ -1626,6 +1765,8 @@ def _producer_graph(
     resource_semantics: Mapping[str, object],
     ownership: Mapping[str, object],
     families: Sequence[object],
+    take_up_document: Mapping[str, object],
+    seed_site_bindings: Sequence[object],
 ) -> dict[str, object]:
     canonical = json.loads(CANONICAL_US_LATE_PRODUCER_SCHEDULE.canonical_json)
     if _canonical_sha256(canonical) != CANONICAL_US_LATE_PRODUCER_SCHEDULE.sha256:
@@ -1633,30 +1774,44 @@ def _producer_graph(
     resources_by_producer = {
         row["producer"]: row["resources"] for row in resource_semantics["producers"]
     }
+    sites_by_owner = _seed_owner_sites(seed_site_bindings)
     nodes = []
     for contract in canonical["contracts"]:
         name = contract["name"]
+        outputs = [_typed_output(output) for output in contract["outputs"]]
+        virtual_resources = [
+            _normalise_virtual_resource(
+                producer=name,
+                resource_id=resource_id,
+                resource=_mapping_like(
+                    resource,
+                    f"resource semantics {name}/{resource_id}",
+                ),
+            )
+            for resource_id, resource in resources_by_producer[name].items()
+        ]
+        capability_inputs = {
+            "id": name,
+            "outputs": outputs,
+            "virtual_resources": virtual_resources,
+        }
+        capabilities = _node_capabilities(
+            contract["kind"],
+            node=capability_inputs,
+            take_up_document=take_up_document,
+            sites_by_owner=sites_by_owner,
+        )
         nodes.append(
             {
                 "id": name,
                 "name": name,
                 "kind": contract["kind"],
                 "kernel": _node_kernel(name, contract["kind"]),
-                "capabilities": _node_capabilities(contract["kind"]),
+                "capabilities": capabilities,
                 "mutations": _node_mutations(contract["kind"]),
                 "inputs": contract["inputs"],
-                "outputs": [_typed_output(output) for output in contract["outputs"]],
-                "virtual_resources": [
-                    _normalise_virtual_resource(
-                        producer=name,
-                        resource_id=resource_id,
-                        resource=_mapping_like(
-                            resource,
-                            f"resource semantics {name}/{resource_id}",
-                        ),
-                    )
-                    for resource_id, resource in resources_by_producer[name].items()
-                ],
+                "outputs": outputs,
+                "virtual_resources": virtual_resources,
             }
         )
     nodes = _strip_family_owned_node_outputs(nodes=nodes, families=families)
@@ -1733,9 +1888,7 @@ def _spine_support_role(
         if _mapping_like(value, "spine support role").get("id") == role_id
     ]
     if len(matches) != 1:
-        raise RuntimeError(
-            f"Spine must declare exactly one support role {role_id!r}."
-        )
+        raise RuntimeError(f"Spine must declare exactly one support role {role_id!r}.")
     return matches[0]
 
 
@@ -1906,6 +2059,7 @@ def derive_primary_effective_predictor_tuples(
 
     return _derive_primary_effective_predictor_tuples(document)
 
+
 def project_imputation_legacy_payloads(
     document: Mapping[str, object],
     *,
@@ -1921,6 +2075,7 @@ def project_imputation_legacy_payloads(
         spine_document=spine_document,
         bundle_document=bundle_document,
     )
+
 
 def _split_after() -> list[dict[str, object]]:
     late_batches = [
@@ -2102,15 +2257,13 @@ def _assert_invariants(
         spine_document,
         role_id=_PUF_ATTACHMENT_REF["support_role"],
     )
-    attachment = _mapping_like(
-        attachment_role["attachment"], "spine PUF attachment"
-    )
+    attachment = _mapping_like(attachment_role["attachment"], "spine PUF attachment")
     attachment_fraction = _mapping_like(
         attachment["fraction"], "spine PUF attachment fraction"
     )["default"]
-    attachment_seed = _mapping_like(
-        attachment["seed"], "spine PUF attachment seed"
-    )["default"]
+    attachment_seed = _mapping_like(attachment["seed"], "spine PUF attachment seed")[
+        "default"
+    ]
     build_model_seed = _build_model_seed_default(
         _mapping_like(
             _mapping_like(
@@ -2182,11 +2335,15 @@ def _assert_invariants(
 def build_imputation() -> dict[str, object]:
     """Build the complete constants-era US imputation declaration."""
 
+    from tools.us_bundle_generation.contracts import build_take_up
     from tools.us_bundle_generation.core import build_bundle, build_sources, build_spine
+    from tools.us_bundle_generation.identity_contracts import build_seed_site_bindings
 
     metadata = PolicyEngineUSVariableMetadataIndex()
     sources_document = build_sources()
     spine_document = build_spine()
+    take_up_document = build_take_up()
+    seed_site_bindings = build_seed_site_bindings(sources_document)
     bundle_document = build_bundle()
     base_transfer_contract = _json_ready(acs_transfer_execution_contract_identity())
     resource_semantics = _portable_resource_semantics(n_estimators=DEFAULT_N_ESTIMATORS)
@@ -2267,6 +2424,8 @@ def build_imputation() -> dict[str, object]:
             resource_semantics=resource_semantics,
             ownership=ownership,
             families=families,
+            take_up_document=take_up_document,
+            seed_site_bindings=seed_site_bindings,
         ),
     }
 

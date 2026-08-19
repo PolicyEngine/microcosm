@@ -847,9 +847,22 @@
       "preserve_absent",
       "append_remapped_clone_keys",
       "expand_complete_household_graphs",
+      "append_relinked_clone_links",
       "append_relinked_clone_memberships",
       "append_clone_blocks_preserving_native_order",
-      "split_mass_across_clone_descendants"
+      "split_mass_across_clone_descendants",
+      "filter_entity_keys",
+      "filter_entity_rows",
+      "filter_link_rows",
+      "filter_membership_rows",
+      "filter_rows_preserving_order",
+      "filter_row_weights",
+      "relink_references",
+      "relink_memberships",
+      "reorder_rows",
+      "realign_row_weights",
+      "replace_weights",
+      "append_mass_history"
      ]
     },
     "precondition": {
@@ -881,9 +894,22 @@
       "all_entity_keys_unique",
       "clone_roles_materialized",
       "link_tables_absent",
+      "clone_links_reference_remapped_keys",
       "clone_memberships_reference_remapped_keys",
       "clone_blocks_follow_native_rows",
-      "household_mass_conserved"
+      "household_mass_conserved",
+      "remaining_entity_keys_unique",
+      "entity_cardinality_filtered",
+      "links_reference_surviving_keys",
+      "memberships_reference_surviving_keys",
+      "surviving_entity_order_preserved",
+      "weights_aligned_to_surviving_keys",
+      "links_valid",
+      "memberships_valid",
+      "entity_order_permuted",
+      "weights_preserve_key_mapping",
+      "weights_valid",
+      "mass_history_extended"
      ]
     }
    }

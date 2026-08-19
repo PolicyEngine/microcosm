@@ -342,15 +342,18 @@ def test_constant_derived_domain_counts_are_complete(
     producer_graph = imputation["producer_graph"]
     assert len(producer_graph["nodes"]) == 38
     assert len(producer_graph["ownership_matrix"]) == 18
-    assert not {
-        "edges",
-        "input_inventories",
-        "incomparable_node_policy",
-        "order",
-        "ordering",
-        "transfer_groups",
-        "waves",
-    } & producer_graph.keys()
+    assert (
+        not {
+            "edges",
+            "input_inventories",
+            "incomparable_node_policy",
+            "order",
+            "ordering",
+            "transfer_groups",
+            "waves",
+        }
+        & producer_graph.keys()
+    )
     assert all(
         "depends_on" not in node and "write_scopes" not in node
         for node in producer_graph["nodes"]
@@ -359,11 +362,14 @@ def test_constant_derived_domain_counts_are_complete(
         node for node in producer_graph["nodes"] if node["id"] == "primary_puf_qrf"
     )
     assert len(primary_node["outputs"]) == 35
-    assert sum(
-        len(node["outputs"])
-        for node in producer_graph["nodes"]
-        if node["kind"] == "late_transfer"
-    ) == 0
+    assert (
+        sum(
+            len(node["outputs"])
+            for node in producer_graph["nodes"]
+            if node["kind"] == "late_transfer"
+        )
+        == 0
+    )
     assert sum(len(node["outputs"]) for node in producer_graph["nodes"]) == 92
     compiled_schedule = project_imputation_legacy_payloads(
         imputation,
@@ -411,18 +417,11 @@ def test_constant_derived_domain_counts_are_complete(
     source_backed_steps = [
         step for step in take_up_steps if "source_operation_ref" in step
     ]
-    local_steps = [
-        step for step in take_up_steps if "source_operation_ref" not in step
-    ]
+    local_steps = [step for step in take_up_steps if "source_operation_ref" not in step]
     assert len(source_backed_steps) == 17
     assert len(local_steps) == 7
     assert (
-        len(
-            {
-                step["source_operation_ref"]["stage"]
-                for step in source_backed_steps
-            }
-        )
+        len({step["source_operation_ref"]["stage"] for step in source_backed_steps})
         == 8
     )
     source_operations = {
@@ -432,9 +431,7 @@ def test_constant_derived_domain_counts_are_complete(
         assert "operation_id" not in step
         reference = step["source_operation_ref"]
         assert set(reference) == {"stage", "operation_index", "operation_id"}
-        operation = source_operations[reference["stage"]][
-            reference["operation_index"]
-        ]
+        operation = source_operations[reference["stage"]][reference["operation_index"]]
         assert reference["operation_id"] == operation["kind"]
     assert all(
         isinstance(step["operation_id"], str) and step["operation_id"]
@@ -787,14 +784,135 @@ def test_imputation_schema_refuses_malformed_external_asset_sha256(
         primary_binding = next(
             resource["binding"]
             for resource in primary_node["virtual_resources"]
-            if resource["binding"]["resource_kind"]
-            == "primary_puf_execution_config"
+            if resource["binding"]["resource_kind"] == "primary_puf_execution_config"
         )
         primary_binding["capital_gains_tail"]["soi_e19200_agi_bands"][
             "asset_sha256"
         ] = "not-a-sha256"
 
     with pytest.raises(SpecValidationError, match="asset_sha256"):
+        load_schema_registry().validate(imputation, "imputation.schema.json")
+
+
+def _structural_mutations_for_delta(
+    imputation: dict[str, object],
+    delta: str,
+) -> dict[str, object]:
+    graph = imputation["producer_graph"]
+    assert isinstance(graph, dict)
+    nodes = graph["nodes"]
+    assert isinstance(nodes, list)
+    if delta == "expand":
+        expansion_node = next(
+            node
+            for node in nodes
+            if node["capabilities"]["structural_delta"] == "expand"
+        )
+        return copy.deepcopy(expansion_node["mutations"])
+
+    preserving_node = next(
+        node for node in nodes if node["capabilities"]["structural_delta"] == "none"
+    )
+    mutations = copy.deepcopy(preserving_node["mutations"])
+    changed_by_delta = {
+        "filter": {
+            "entity_keys": (
+                "filter_entity_keys",
+                "entity_keys_valid",
+                "remaining_entity_keys_unique",
+            ),
+            "cardinality": (
+                "filter_entity_rows",
+                "entity_cardinality_valid",
+                "entity_cardinality_filtered",
+            ),
+            "links": (
+                "filter_link_rows",
+                "links_valid",
+                "links_reference_surviving_keys",
+            ),
+            "memberships": (
+                "filter_membership_rows",
+                "memberships_valid",
+                "memberships_reference_surviving_keys",
+            ),
+            "order": (
+                "filter_rows_preserving_order",
+                "entity_order_valid",
+                "surviving_entity_order_preserved",
+            ),
+            "weights": (
+                "filter_row_weights",
+                "weights_valid",
+                "weights_aligned_to_surviving_keys",
+            ),
+        },
+        "relink": {
+            "links": ("relink_references", "links_valid", "links_valid"),
+            "memberships": (
+                "relink_memberships",
+                "memberships_valid",
+                "memberships_valid",
+            ),
+        },
+        "reorder": {
+            "order": (
+                "reorder_rows",
+                "entity_order_valid",
+                "entity_order_permuted",
+            ),
+            "weights": (
+                "realign_row_weights",
+                "weights_valid",
+                "weights_preserve_key_mapping",
+            ),
+        },
+        "reweight": {
+            "weights": ("replace_weights", "weights_valid", "weights_valid"),
+            "mass_history": (
+                "append_mass_history",
+                "mass_history_valid",
+                "mass_history_extended",
+            ),
+        },
+    }
+    for axis, contract in changed_by_delta.get(delta, {}).items():
+        operation, precondition, postcondition = contract
+        mutations[axis] = {
+            "operation": operation,
+            "precondition": precondition,
+            "postcondition": postcondition,
+        }
+    return mutations
+
+
+@pytest.mark.parametrize(
+    "structural_delta",
+    ["none", "filter", "expand", "join", "relink", "reorder", "reweight"],
+)
+def test_imputation_schema_accepts_closed_structural_mutation_contracts(
+    structural_delta: str,
+) -> None:
+    imputation = load_yaml12_file(US_SPEC_ROOT / "imputation.yaml")
+    node = imputation["producer_graph"]["nodes"][0]
+    node["capabilities"]["structural_delta"] = structural_delta
+    node["mutations"] = _structural_mutations_for_delta(
+        imputation,
+        structural_delta,
+    )
+
+    load_schema_registry().validate(imputation, "imputation.schema.json")
+
+
+@pytest.mark.parametrize("field", ["operation", "precondition", "postcondition"])
+def test_imputation_schema_refuses_unknown_structural_mutation_vocabulary(
+    field: str,
+) -> None:
+    imputation = load_yaml12_file(US_SPEC_ROOT / "imputation.yaml")
+    node = imputation["producer_graph"]["nodes"][0]
+    node["mutations"]["entity_keys"][field] = "unknown_structural_contract_term"
+
+    with pytest.raises(SpecValidationError, match="unknown_structural_contract_term"):
         load_schema_registry().validate(imputation, "imputation.schema.json")
 
 

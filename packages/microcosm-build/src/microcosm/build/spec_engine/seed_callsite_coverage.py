@@ -1776,6 +1776,11 @@ _NON_DRAW_HASH_CLASSIFICATIONS = (
     ),
     _hash_classification(
         "content_identity",
+        "microcosm.build.spec_engine.executor",
+        "_pickle_sha256",
+    ),
+    _hash_classification(
+        "content_identity",
         "microcosm.build.spec_engine.engine_abi",
         "_fresh_remaining_stage_input_manifest",
     ),
