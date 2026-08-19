@@ -177,3 +177,28 @@ that owns each arm.
 - Next: run the complete eligibility gate with the 19.5-GiB stop guard; accept
   it only with complete 32-family/118-target/74-money evidence and kernel
   `ru_maxrss` below 20 GiB.
+- Accepted eligibility gate: the guarded run completed all 32 families, 118
+  targets, 74 money targets, and 211 battery legs in 886.359440 seconds. The
+  exact-PID monitor sampled a maximum RSS of 9,900,949,504 bytes; kernel
+  `ru_maxrss` was 10,046,619,648 bytes, the 20-GiB limit was not crossed, and
+  the 19.5-GiB stop guard did not fire. Exit 1 is the substantive red verdict.
+- Configuration audit: after removing only the per-candidate artifact-role
+  binding, the eligibility and round-1 configuration hashes are both
+  `10f29427d83c340973869fb735188967aff9a4eea770b066f604e7a28a0b5e5a`.
+  No fold, seed, forest, bootstrap, threshold, ratio band, battery, or clause
+  parameter changed.
+- Eligibility verdict: clause A FAIL (CHAMPVA ratio 3.72025867636884 to
+  3.0739130288991374; 0.2616509977893486 progress), clause B FAIL (five
+  significantly worsened money targets), and clause C FAIL (six battery legs
+  left band; six entered). Social-security-retirement pinball instead changed
+  114.63718321141073 to 113.23606657519205, delta -1.4011166362186742 with
+  CI [-3.2000114150660317, 0.2620452172778749]; this arm does not reproduce
+  the round-1 retirement blowup.
+- Evidence hashes: `verdict.json`
+  `bf531f48f4efa6969680c306718f2e46fb88876ccf46f5cfa1fb543429beb79d`;
+  `report.md`
+  `553bcb6fddf10a5b64b9f8826a9a6e7459d311589892b8f8779aa68fa2d2de05`;
+  gate implementation
+  `da6e952b4f902e444b95cd51483271e1f1febab61c16d389878ada32c96fe0ce`.
+- Next: commit the accepted eligibility evidence, then measure the order arm
+  with the same frozen gate configuration and bounded loader.
