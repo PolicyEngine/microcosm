@@ -936,6 +936,12 @@ def _canonical_late_transfer_receipt(
         groups[group.name] = {
             "producer": group.name,
             "ordered_targets": list(group.targets),
+            "donor_selection": (
+                "owner_projection_of_asec_origin_clone_"
+                f"{group.donor_clone_index}"
+            ),
+            "donor_channel": stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL,
+            "donor_clone_index": group.donor_clone_index,
             "targets": group_targets,
         }
         for target in group.targets:
@@ -957,6 +963,18 @@ def _canonical_late_transfer_receipt(
             for producer in stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
             if producer != stacked_spine_module.US_LATE_PRIMARY_PUF_STAGE
         ],
+        "donor_selection": "per_group_owner_projection_of_asec_origin_clone",
+        "donor_projections": {
+            group.name: {
+                "donor_selection": (
+                    "owner_projection_of_asec_origin_clone_"
+                    f"{group.donor_clone_index}"
+                ),
+                "donor_channel": stacked_spine_module.BASE_ASEC_SUPPORT_CHANNEL,
+                "donor_clone_index": group.donor_clone_index,
+            }
+            for group in pool_tool.CANONICAL_US_LATE_TRANSFER_GROUPS
+        },
         "groups": groups,
         "targets": targets,
         "completion": {
@@ -1475,6 +1493,7 @@ def _install_stacked_entrypoint_stubs(
                 "entity": group.entity,
                 "family": group.family,
                 "ordered_targets": list(group.targets),
+                "donor_clone_index": group.donor_clone_index,
             }
         dag_receipt = _canonical_late_dag_receipt(
             pool_tool,
@@ -2386,7 +2405,7 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
     current = identity()
     pool_code = current["pool_code"]
     assert current["materializer_version"] == 11
-    assert current["stacked_authority"]["version"] == 10
+    assert current["stacked_authority"]["version"] == 11
     assert pool_code["operator_order"] == [
         "assemble_stacked_spine",
         "prepare_multispine_source_inputs_for_clone",

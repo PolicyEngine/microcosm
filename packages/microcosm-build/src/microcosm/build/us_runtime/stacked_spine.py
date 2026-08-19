@@ -44,7 +44,7 @@ import struct
 import sys
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from importlib.resources import files
 from pathlib import Path
 from types import MappingProxyType
@@ -92,6 +92,7 @@ from microcosm.build.us_runtime.acs_transfer import (
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     AcsTransferResult,
     AcsTransferTargetBank,
+    AcsTransferTargetCheckpoint,
     TargetFamilies,
     transfer_acs_inputs,
 )
@@ -191,6 +192,7 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_PRODUCER_REGISTRY,
     CANONICAL_US_LATE_PRODUCER_SCHEDULE,
     CANONICAL_US_LATE_TRANSFER_GROUPS,
+    US_ADULT_CARE_DONOR_COMPARATOR_CLONE_INDEX,
     US_LATE_ACS_EARNINGS_UNIVERSE_CONFIG_INPUT,
     US_LATE_ACS_EARNINGS_UNIVERSE_RECEIPT_INPUT,
     US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
@@ -205,8 +207,10 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     US_LATE_SOURCE_FINALIZER_STAGE,
     US_LATE_TRANSFER_MODEL_CONFIG_INPUT,
     US_LATE_TRANSFER_TARGET_BANK_INPUT,
+    TransferProducerGroup,
     us_late_producer_schedule_receipt,
 )
+from microcosm.fit import QRFChainState
 from microcosm.frame import US_SCHEMA, Frame
 
 __all__ = [
@@ -1688,11 +1692,13 @@ _GAP_FILL_ASEC_TO_ACS = "asec_survey_to_acs"
 _GAP_FILL_ASEC_HOUSING_TO_ACS = "asec_housing_to_acs"
 _GAP_FILL_HOUSING_FAMILY = "housing"
 _STACKED_AUTHORITY_ID = "us_stacked_spine_authority"
-# v10 binds the primary-PUF whole-pool output-universe declaration. v9 bound
-# the content-hashed execution/transition-authority schema in addition to the
-# import-validated producer/input DAG. Version 8 named the graph but did not
-# authenticate its live input/output transition.
-_STACKED_AUTHORITY_VERSION = 10
+# v11 binds the per-group late-transfer donor clone, including the adult-care
+# clone-0 donor/battery alignment. v10 bound the primary-PUF whole-pool
+# output-universe declaration. v9 bound the content-hashed
+# execution/transition-authority schema in addition to the import-validated
+# producer/input DAG. Version 8 named the graph but did not authenticate its
+# live input/output transition.
+_STACKED_AUTHORITY_VERSION = 11
 _CANONICAL_AUTHORITY_FORM = "CANONICAL"
 _NONCANONICAL_AUTHORITY_FORM = "NON-CANONICAL"
 _PRE_CLONE_PREPARATION_STAGE = "prepare_multispine_source_inputs_for_clone"
@@ -2321,11 +2327,24 @@ def _authority_component_payloads(
     puf_capital_gains_tail_support_contract: Mapping[str, object],
     late_producer_schedule: Mapping[str, object],
 ) -> dict[str, object]:
+    late_schedule = _json_ready(late_producer_schedule)
+    transfer_groups = _late_transfer_donor_projection_rows(late_schedule)
+    donor_projections = [
+        {
+            "producer": group["name"],
+            "entity": group["entity"],
+            "family": group["family"],
+            "targets": list(group["targets"]),
+            "support_channel": BASE_ASEC_SUPPORT_CHANNEL,
+            "support_clone_index": group["donor_clone_index"],
+        }
+        for group in transfer_groups
+    ]
     return {
         "gap_fill_plan": _plan_payload(gap_fill_plan),
         "post_puf_transfer_surface": {
             "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
-            "donor_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+            "donor_projections": donor_projections,
             "recipient_selection": (
                 "target_specific_complement_of_declared_producer_rows"
             ),
@@ -2342,7 +2361,7 @@ def _authority_component_payloads(
         "puf_capital_gains_tail_support_contract": _json_ready(
             puf_capital_gains_tail_support_contract
         ),
-        "late_producer_schedule": _json_ready(late_producer_schedule),
+        "late_producer_schedule": late_schedule,
     }
 
 
@@ -2511,6 +2530,207 @@ def _test_metric_registry_for_surface(
             metric = "monetary_sign_separated"
         registry[key] = metric
     return MappingProxyType(registry)
+
+
+def _late_transfer_donor_projection_rows(
+    late_producer_schedule: Mapping[str, object],
+) -> tuple[dict[str, object], ...]:
+    """Return the hash-bound per-group donor declarations from the schedule."""
+
+    raw_groups = late_producer_schedule.get("transfer_groups")
+    if not isinstance(raw_groups, (list, tuple)):
+        raise ValueError(
+            "Late producer schedule must declare its transfer-group donor "
+            "projections."
+        )
+    rows: list[dict[str, object]] = []
+    for raw_group in raw_groups:
+        if not isinstance(raw_group, Mapping):
+            raise ValueError(
+                "Late producer schedule transfer-group declarations must be "
+                "mappings."
+            )
+        expected_fields = {
+            "name",
+            "entity",
+            "family",
+            "targets",
+            "donor_clone_index",
+        }
+        if set(raw_group) != expected_fields:
+            raise ValueError(
+                "Late producer schedule transfer-group donor declaration "
+                f"schema drifted; missing={sorted(expected_fields - set(raw_group))}, "
+                f"extra={sorted(set(raw_group) - expected_fields)}."
+            )
+        clone_index = raw_group.get("donor_clone_index")
+        if (
+            isinstance(clone_index, bool)
+            or not isinstance(clone_index, int)
+            or clone_index < 0
+        ):
+            raise ValueError(
+                "Late producer schedule transfer-group donor clone must be a "
+                f"non-negative integer; got {clone_index!r}."
+            )
+        targets = raw_group.get("targets")
+        if not isinstance(targets, (list, tuple)) or any(
+            not isinstance(target, str) or not target for target in targets
+        ):
+            raise ValueError(
+                "Late producer schedule transfer-group targets must be named."
+            )
+        rows.append(
+            {
+                "name": raw_group.get("name"),
+                "entity": raw_group.get("entity"),
+                "family": raw_group.get("family"),
+                "targets": tuple(targets),
+                "donor_clone_index": clone_index,
+            }
+        )
+    names = [row["name"] for row in rows]
+    if len(set(names)) != len(names):
+        raise ValueError("Late producer schedule repeats a transfer-group donor.")
+    return tuple(rows)
+
+
+def _late_transfer_group_schedule_failures(
+    *,
+    late_producer_schedule: Mapping[str, object],
+    groups: Sequence[TransferProducerGroup] | None = None,
+) -> list[str]:
+    """Compare live runtime groups with the hash-bound schedule declaration."""
+
+    try:
+        declared = _late_transfer_donor_projection_rows(late_producer_schedule)
+    except (TypeError, ValueError) as error:
+        return [str(error)]
+    live_groups = tuple(
+        CANONICAL_US_LATE_TRANSFER_GROUPS if groups is None else groups
+    )
+    live = tuple(
+        {
+            "name": group.name,
+            "entity": group.entity,
+            "family": group.family,
+            "targets": tuple(group.targets),
+            "donor_clone_index": group.donor_clone_index,
+        }
+        for group in live_groups
+    )
+    if live == declared:
+        return []
+    return [
+        "Live late-transfer groups differ from the hash-bound late-producer "
+        f"schedule; live={live!r}, declared={declared!r}."
+    ]
+
+
+def _late_transfer_groups_bound_to_schedule(
+    *,
+    late_producer_schedule: Mapping[str, object] | None = None,
+    boundary: str,
+) -> tuple[TransferProducerGroup, ...]:
+    """Return live groups only after exact schedule/declaration alignment."""
+
+    schedule = (
+        us_late_producer_schedule_receipt()
+        if late_producer_schedule is None
+        else late_producer_schedule
+    )
+    failures = _late_transfer_group_schedule_failures(
+        late_producer_schedule=schedule,
+    )
+    if failures:
+        raise ValueError(f"{boundary}:\n  " + "\n  ".join(failures))
+    return tuple(CANONICAL_US_LATE_TRANSFER_GROUPS)
+
+
+def _late_transfer_group_bound_to_schedule(
+    group_name: str,
+    *,
+    late_producer_schedule: Mapping[str, object] | None = None,
+    boundary: str,
+) -> TransferProducerGroup:
+    """Resolve one runtime group through the hash-bound schedule."""
+
+    groups = _late_transfer_groups_bound_to_schedule(
+        late_producer_schedule=late_producer_schedule,
+        boundary=boundary,
+    )
+    group = next((item for item in groups if item.name == group_name), None)
+    if group is None:
+        raise ValueError(
+            f"{boundary}: unknown canonical US late-transfer producer "
+            f"{group_name!r}; expected one of {sorted(item.name for item in groups)}."
+        )
+    return group
+
+
+def _late_transfer_donor_comparator_alignment_failures(
+    *,
+    late_producer_schedule: Mapping[str, object],
+    metric_registry: Mapping[tuple[str, str, str, int], str],
+) -> list[str]:
+    """Require adult-care's two-target donor to use its battery clone leg."""
+
+    try:
+        rows = _late_transfer_donor_projection_rows(late_producer_schedule)
+    except (TypeError, ValueError) as error:
+        return [str(error)]
+    adult_rows = [
+        row
+        for row in rows
+        if row["entity"] == "person" and row["family"] == "adult_care"
+    ]
+    if len(adult_rows) != 1:
+        return [
+            "Adult-care donor/comparator alignment requires exactly one "
+            f"person/adult_care transfer group; found {len(adult_rows)}."
+        ]
+    adult = adult_rows[0]
+    declared_targets = tuple(adult["targets"])
+    required_targets = (
+        "is_incapable_of_self_care",
+        "pre_subsidy_care_expenses",
+    )
+    failures: list[str] = []
+    if declared_targets != required_targets:
+        failures.append(
+            "Adult-care donor/comparator alignment requires the ordered targets "
+            f"{required_targets!r}; got {declared_targets!r}."
+        )
+    for target in required_targets:
+        comparator_legs = {
+            clone_index
+            for entity, family, column, clone_index in metric_registry
+            if entity == "person" and family == "adult_care" and column == target
+        }
+        if comparator_legs != {adult["donor_clone_index"]}:
+            failures.append(
+                "Adult-care donor/comparator clone mismatch for "
+                f"person/adult_care/{target}: donor clone "
+                f"{adult['donor_clone_index']}, battery comparator legs "
+                f"{sorted(comparator_legs)}."
+            )
+    return failures
+
+
+def _validate_late_transfer_donor_comparator_alignment(
+    *,
+    late_producer_schedule: Mapping[str, object],
+    metric_registry: Mapping[tuple[str, str, str, int], str],
+    boundary: str,
+) -> None:
+    """Fail closed when the adult-care donor and battery clone legs differ."""
+
+    failures = _late_transfer_donor_comparator_alignment_failures(
+        late_producer_schedule=late_producer_schedule,
+        metric_registry=metric_registry,
+    )
+    if failures:
+        raise ValueError(f"{boundary}:\n  " + "\n  ".join(failures))
 
 
 def _terminal_surface_from_pool_registry() -> TargetFamilies:
@@ -2965,7 +3185,16 @@ def _explicit_origin_battery_metric_registry(
     surface: TargetFamilies,
 ) -> Mapping[tuple[str, str, str, int], str]:
     registry = {
-        (entity, family, column, 0): metric
+        (
+            entity,
+            family,
+            column,
+            (
+                US_ADULT_CARE_DONOR_COMPARATOR_CLONE_INDEX
+                if entity == "person" and family == "adult_care"
+                else 0
+            ),
+        ): metric
         for metric, declarations in _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS.items()
         for entity, family, column in declarations
     }
@@ -3027,6 +3256,11 @@ CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE = _BatterySupportProfile(
     profile_id="us_stacked_origin_battery_support",
     version=1,
     min_effective_support=5,
+)
+_validate_late_transfer_donor_comparator_alignment(
+    late_producer_schedule=us_late_producer_schedule_receipt(),
+    metric_registry=CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY,
+    boundary="Canonical adult-care donor/comparator alignment",
 )
 
 _CANONICAL_STACKED_DECLARED_SURFACE_ANCHOR = CANONICAL_STACKED_DECLARED_SURFACE
@@ -3112,6 +3346,10 @@ def _production_stacked_authority(
     ),
 ) -> _StackedAuthority:
     live_late_producer_schedule = us_late_producer_schedule_receipt()
+    _late_transfer_groups_bound_to_schedule(
+        late_producer_schedule=live_late_producer_schedule,
+        boundary="production stacked authority late-transfer declaration",
+    )
     identity = (
         _STACKED_GAP_FILL_PLAN is _canonical_plan
         and _STACKED_GAP_FILL_SURFACE is _canonical_gap_surface
@@ -3353,6 +3591,9 @@ def _authority_receipt(
 ) -> dict[str, object]:
     """Receipt live content, claimed digests, identity, and component counts."""
 
+    transfer_donor_projections = _late_transfer_donor_projection_rows(
+        authority.late_producer_schedule
+    )
     live_components, live_bundle = _authority_live_digests(authority)
     component_integrity = {
         name: digest == authority.declared_component_sha256[name]
@@ -3398,7 +3639,16 @@ def _authority_receipt(
                 _surface_target_keys(authority.post_puf_source_producer_surface)
             ),
             "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
-            "donor_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+            "donor_projections": [
+                {
+                    "producer": row["name"],
+                    "entity": row["entity"],
+                    "family": row["family"],
+                    "targets": list(row["targets"]),
+                    "donor_clone_index": row["donor_clone_index"],
+                }
+                for row in transfer_donor_projections
+            ],
             "recipient_selection": (
                 "target_specific_complement_of_declared_producer_rows"
             ),
@@ -3518,6 +3768,17 @@ def _authority_validation_failures(
         }
     )
     if production:
+        failures.extend(
+            _late_transfer_group_schedule_failures(
+                late_producer_schedule=authority.late_producer_schedule,
+            )
+        )
+        failures.extend(
+            _late_transfer_donor_comparator_alignment_failures(
+                late_producer_schedule=authority.late_producer_schedule,
+                metric_registry=authority.metric_registry,
+            )
+        )
         failures.extend(
             _gap_fill_producer_precedence_failures(
                 authority.gap_fill_plan,
@@ -3730,7 +3991,11 @@ def validate_stacked_post_puf_transfer_receipt(
             "match the derived late-producer schedule; production manifest "
             "emission is forbidden."
         )
-    expected_groups = {group.name: group for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    bound_groups = _late_transfer_groups_bound_to_schedule(
+        late_producer_schedule=expected_schedule,
+        boundary=f"{boundary} late-transfer group declaration",
+    )
+    expected_groups = {group.name: group for group in bound_groups}
     groups = receipt.get("groups")
     if not isinstance(groups, Mapping) or set(groups) != set(expected_groups):
         raise ValueError(
@@ -3740,15 +4005,41 @@ def validate_stacked_post_puf_transfer_receipt(
         )
     for name, group in expected_groups.items():
         group_receipt = groups[name]
+        expected_donor_selection = (
+            f"owner_projection_of_asec_origin_clone_{group.donor_clone_index}"
+        )
         if (
             not isinstance(group_receipt, Mapping)
             or group_receipt.get("producer") != name
             or tuple(group_receipt.get("ordered_targets", ())) != group.targets
+            or group_receipt.get("donor_selection") != expected_donor_selection
+            or group_receipt.get("donor_channel") != BASE_ASEC_SUPPORT_CHANNEL
+            or group_receipt.get("donor_clone_index") != group.donor_clone_index
         ):
             raise ValueError(
                 f"{boundary}: stacked post-PUF transfer group {name!r} is "
                 "misbound; production manifest emission is forbidden."
             )
+    expected_donor_projections = {
+        group.name: {
+            "donor_selection": (
+                f"owner_projection_of_asec_origin_clone_{group.donor_clone_index}"
+            ),
+            "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
+            "donor_clone_index": group.donor_clone_index,
+        }
+        for group in bound_groups
+    }
+    if (
+        receipt.get("donor_selection")
+        != "per_group_owner_projection_of_asec_origin_clone"
+        or receipt.get("donor_projections") != expected_donor_projections
+    ):
+        raise ValueError(
+            f"{boundary}: stacked post-PUF transfer donor projections do not "
+            "match the canonical per-group owners; production manifest emission "
+            "is forbidden."
+        )
     expected_target_labels = {
         f"{entity}/{family}/{target}"
         for entity, families in CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
@@ -4083,7 +4374,7 @@ def _late_resource_binding_schema_version(column: str) -> int:
         "primary_puf_execution_config": 4,
         "post_clone_source_execution_config": 3,
         "source_finalizer_execution_config": 2,
-        "late_transfer_model_config": 3,
+        "late_transfer_model_config": 4,
     }.get(kind, 1)
 
 
@@ -4398,15 +4689,11 @@ def _validate_late_resource_binding(
                 "transfer_execution_contract",
             }
         )
-        group = next(
-            (
-                item
-                for item in CANONICAL_US_LATE_TRANSFER_GROUPS
-                if item.name == producer
-            ),
-            None,
+        group = _late_transfer_group_bound_to_schedule(
+            producer,
+            boundary=f"{boundary} late transfer model declaration",
         )
-        if group is None or any(
+        if any(
             binding.get(key) != value
             for key, value in {
                 "producer": group.name,
@@ -4418,7 +4705,7 @@ def _validate_late_resource_binding(
                 "donor_selection": ("all_rows_from_post_puf_asec_origin_projection"),
                 "donor_projection": {
                     "support_channel": BASE_ASEC_SUPPORT_CHANNEL,
-                    "support_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+                    "support_clone_index": group.donor_clone_index,
                 },
             }.items()
         ):
@@ -5420,9 +5707,22 @@ def _late_transfer_model_config_binding(
 ) -> dict[str, object]:
     """Return every static model and donor-selection control for one group."""
 
+    group = _late_transfer_group_bound_to_schedule(
+        group_name,
+        boundary="late transfer model config declaration",
+    )
+    if (
+        group.entity != entity
+        or group.family != family
+        or group.targets != tuple(targets)
+    ):
+        raise ValueError(
+            f"Late transfer model config {group_name!r} is not bound to its "
+            "canonical entity, family, and ordered targets."
+        )
     return {
         "resource_kind": "late_transfer_model_config",
-        "schema_version": 3,
+        "schema_version": 4,
         "producer": group_name,
         "entity": entity,
         "family": family,
@@ -5435,7 +5735,7 @@ def _late_transfer_model_config_binding(
         "donor_selection": "all_rows_from_post_puf_asec_origin_projection",
         "donor_projection": {
             "support_channel": BASE_ASEC_SUPPORT_CHANNEL,
-            "support_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+            "support_clone_index": group.donor_clone_index,
         },
         "transfer_execution_contract": (
             acs_transfer_runtime.acs_transfer_execution_contract_identity(
@@ -5544,7 +5844,11 @@ def stacked_late_producer_resource_semantics_receipt(
     """
 
     schedule_receipt = us_late_producer_schedule_receipt()
-    group_by_name = {group.name: group for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    bound_groups = _late_transfer_groups_bound_to_schedule(
+        late_producer_schedule=schedule_receipt,
+        boundary="stacked late-producer resource semantics",
+    )
+    group_by_name = {group.name: group for group in bound_groups}
     producer_rows: list[dict[str, object]] = []
     for producer_name in CANONICAL_US_LATE_PRODUCER_SCHEDULE.order:
         contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[producer_name]
@@ -5656,6 +5960,7 @@ def stacked_late_producer_resource_semantics_receipt(
                                 "entity": group.entity,
                                 "family": group.family,
                                 "ordered_targets": list(group.targets),
+                                "donor_clone_index": group.donor_clone_index,
                             },
                         },
                     },
@@ -7000,7 +7305,11 @@ def validate_stacked_late_producer_receipt(
         for target in targets
     }
     reconstructed_targets: dict[str, object] = {}
-    for group in CANONICAL_US_LATE_TRANSFER_GROUPS:
+    bound_groups = _late_transfer_groups_bound_to_schedule(
+        late_producer_schedule=receipt["producer_schedule"],
+        boundary=f"{boundary} aggregate late-transfer declaration",
+    )
+    for group in bound_groups:
         row_receipt = execution_by_name[group.name]["producer_receipt"]
         if _json_ready(row_receipt) != _json_ready(groups[group.name]):
             raise ValueError(
@@ -8207,6 +8516,58 @@ class StackedPostPufTransferResult:
 
 
 @dataclass(frozen=True)
+class _OffsetAcsTransferTargetBank:
+    """Present one bounded group as a slice of a legacy whole-surface bank."""
+
+    bank: AcsTransferTargetBank
+    target_offset: int
+    total_targets: int
+
+    def load_target(
+        self,
+        *,
+        target_index: int,
+        total_targets: int,
+        entity: str,
+        family: str,
+        family_targets: tuple[str, ...],
+        model_targets: tuple[str, ...],
+        model_target: str,
+        exported_targets: tuple[str, ...],
+        recipient_rows: int,
+        expected_states: Mapping[str, QRFChainState],
+    ) -> AcsTransferTargetCheckpoint | None:
+        checkpoint = self.bank.load_target(
+            target_index=self.target_offset + target_index,
+            total_targets=self.total_targets,
+            entity=entity,
+            family=family,
+            family_targets=family_targets,
+            model_targets=model_targets,
+            model_target=model_target,
+            exported_targets=exported_targets,
+            recipient_rows=recipient_rows,
+            expected_states=expected_states,
+        )
+        if checkpoint is None:
+            return None
+        return replace(
+            checkpoint,
+            target_index=target_index,
+            total_targets=total_targets,
+        )
+
+    def write_target(self, checkpoint: AcsTransferTargetCheckpoint) -> None:
+        self.bank.write_target(
+            replace(
+                checkpoint,
+                target_index=self.target_offset + checkpoint.target_index,
+                total_targets=self.total_targets,
+            )
+        )
+
+
+@dataclass(frozen=True)
 class StackedLateProducerResult:
     """A fully executed late-producer DAG and its aggregate provenance."""
 
@@ -8254,24 +8615,63 @@ def transfer_stacked_post_puf_group(
 ) -> StackedPostPufTransferResult:
     """Execute one canonical bounded late-transfer producer."""
 
-    groups = {group.name: group for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
-    if group_name not in groups:
-        raise ValueError(
-            f"Unknown canonical US late-transfer producer {group_name!r}; "
-            f"expected one of {sorted(groups)}."
-        )
-    group = groups[group_name]
     authority = _production_stacked_authority()
+    group = _late_transfer_group_bound_to_schedule(
+        group_name,
+        late_producer_schedule=authority.late_producer_schedule,
+        boundary="stacked post-PUF group transfer declaration",
+    )
+    canonical_execution_contract = (
+        acs_transfer_runtime.acs_transfer_execution_contract_identity(
+            targets=group.targets,
+            derive_schedule_d=False,
+        )
+    )
+    if execution_contract is not None and dict(execution_contract) != (
+        canonical_execution_contract
+    ):
+        raise ValueError(
+            "Canonical late-transfer group execution contract requires "
+            "derive_schedule_d=False."
+        )
+    return _transfer_stacked_post_puf_group_evaluate(
+        frame,
+        authority=authority,
+        group=group,
+        seed=seed,
+        n_estimators=n_estimators,
+        max_targets_per_fit=max_targets_per_fit,
+        target_bank=target_bank,
+        derive_schedule_d=False,
+        execution_contract=canonical_execution_contract,
+    )
+
+
+def _transfer_stacked_post_puf_group_evaluate(
+    frame: Frame,
+    *,
+    authority: _StackedAuthority,
+    group: TransferProducerGroup,
+    seed: int,
+    n_estimators: int,
+    max_targets_per_fit: int,
+    target_bank: AcsTransferTargetBank | None,
+    derive_schedule_d: bool,
+    execution_contract: Mapping[str, object],
+) -> StackedPostPufTransferResult:
+    """Execute a schedule-bound group, including the legacy Schedule-D seam."""
+
     result = _transfer_stacked_post_puf_inputs_evaluate(
         frame,
         authority=authority,
         production=True,
+        donor_clone_index=group.donor_clone_index,
         seed=seed,
         n_estimators=n_estimators,
         max_targets_per_fit=max_targets_per_fit,
         target_bank=target_bank,
         target_families=group.target_families,
-        derive_schedule_d=False,
+        derive_schedule_d=derive_schedule_d,
         execution_contract=execution_contract,
     )
     return StackedPostPufTransferResult(
@@ -8295,19 +8695,108 @@ def transfer_stacked_post_puf_inputs(
     max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     target_bank: AcsTransferTargetBank | None = None,
 ) -> StackedPostPufTransferResult:
-    """Transfer canonical late-produced inputs after source completion."""
+    """Transfer the adult-care family and the unchanged remaining surface.
 
-    return _transfer_stacked_post_puf_inputs_evaluate(
+    The production DAG remains the canonical orchestrator. This compatibility
+    entry point isolates only adult care on its clone-0 owner, then transfers
+    the remaining surface together from the established clone-1 owner. Its one
+    durable bank remains globally indexed across those two legs.
+    """
+
+    authority = _production_stacked_authority()
+    bound_groups = _late_transfer_groups_bound_to_schedule(
+        late_producer_schedule=authority.late_producer_schedule,
+        boundary="whole-surface post-PUF transfer declaration",
+    )
+    adult_group = next(
+        group
+        for group in bound_groups
+        if group.entity == "person" and group.family == "adult_care"
+    )
+    remaining_groups = tuple(
+        group for group in bound_groups if group.name != adult_group.name
+    )
+    remaining_clone_indexes = {
+        group.donor_clone_index for group in remaining_groups
+    }
+    if remaining_clone_indexes != {PUF_TAX_DETAIL_CLONE_INDEX}:
+        raise ValueError(
+            "Whole-surface late transfer supports the declared adult-care leg "
+            "plus one canonical remaining-surface donor; got remaining clone "
+            f"indexes {sorted(remaining_clone_indexes)}."
+        )
+    remaining_surface = _freeze_target_families(
+        {
+            entity: {
+                family: targets
+                for family, targets in families.items()
+                if (entity, family) != (adult_group.entity, adult_group.family)
+            }
+            for entity, families in authority.post_puf_transfer_surface.items()
+        }
+    )
+    adult_target_count = len(
+        acs_transfer_runtime._model_target_names(adult_group.targets)
+    )
+    total_targets = sum(
+        len(acs_transfer_runtime._model_target_names(group.targets))
+        for group in bound_groups
+    )
+    adult_bank = (
+        None
+        if target_bank is None
+        else _OffsetAcsTransferTargetBank(
+            target_bank,
+            target_offset=0,
+            total_targets=total_targets,
+        )
+    )
+    remaining_bank = (
+        None
+        if target_bank is None
+        else _OffsetAcsTransferTargetBank(
+            target_bank,
+            target_offset=adult_target_count,
+            total_targets=total_targets,
+        )
+    )
+    adult_result = _transfer_stacked_post_puf_inputs_evaluate(
         frame,
-        authority=_production_stacked_authority(),
+        authority=authority,
         production=True,
+        donor_clone_index=adult_group.donor_clone_index,
         seed=seed,
         n_estimators=n_estimators,
         max_targets_per_fit=max_targets_per_fit,
-        target_bank=target_bank,
-        target_families=None,
+        target_bank=adult_bank,
+        target_families=adult_group.target_families,
+        derive_schedule_d=False,
+        execution_contract=(
+            acs_transfer_runtime.acs_transfer_execution_contract_identity(
+                targets=adult_group.targets,
+                derive_schedule_d=False,
+            )
+        ),
+    )
+    remaining_result = _transfer_stacked_post_puf_inputs_evaluate(
+        adult_result.frame,
+        authority=authority,
+        production=True,
+        donor_clone_index=PUF_TAX_DETAIL_CLONE_INDEX,
+        seed=seed,
+        n_estimators=n_estimators,
+        max_targets_per_fit=max_targets_per_fit,
+        target_bank=remaining_bank,
+        target_families=remaining_surface,
         derive_schedule_d=True,
         execution_contract=None,
+    )
+    return _aggregate_whole_surface_transfer_result(
+        remaining_result.frame,
+        adult_group=adult_group,
+        bound_groups=bound_groups,
+        adult_result=adult_result,
+        remaining_result=remaining_result,
     )
 
 
@@ -8315,6 +8804,7 @@ def _transfer_stacked_post_puf_inputs_with_test_authority(
     frame: Frame,
     *,
     authority: _StackedAuthority,
+    donor_clone_index: int,
     seed: int = 0,
     n_estimators: int = 100,
     max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
@@ -8327,6 +8817,7 @@ def _transfer_stacked_post_puf_inputs_with_test_authority(
         frame,
         authority=authority,
         production=False,
+        donor_clone_index=donor_clone_index,
         seed=seed,
         n_estimators=n_estimators,
         max_targets_per_fit=max_targets_per_fit,
@@ -8342,6 +8833,7 @@ def _transfer_stacked_post_puf_inputs_evaluate(
     *,
     authority: _StackedAuthority,
     production: bool,
+    donor_clone_index: int,
     seed: int,
     n_estimators: int,
     max_targets_per_fit: int,
@@ -8401,8 +8893,12 @@ def _transfer_stacked_post_puf_inputs_evaluate(
         target_families=surface,
         puf_producer_families=puf_producer_surface,
         source_producer_families=source_producer_surface,
+        donor_clone_index=donor_clone_index,
     )
-    donor = _post_puf_donor_projection(frame)
+    donor = _post_puf_donor_projection(
+        frame,
+        donor_clone_index=donor_clone_index,
+    )
     puf_producer_keys = set(_surface_target_keys(puf_producer_surface))
     source_producer_keys = set(_surface_target_keys(source_producer_surface))
     producer_snapshot = {
@@ -8447,9 +8943,11 @@ def _transfer_stacked_post_puf_inputs_evaluate(
         frame=transfer.frame,
         receipt={
             "authority": authority_receipt,
-            "donor_selection": "owner_projection_of_asec_origin_clone_1",
+            "donor_selection": (
+                f"owner_projection_of_asec_origin_clone_{donor_clone_index}"
+            ),
             "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
-            "donor_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+            "donor_clone_index": donor_clone_index,
             "recipient_selection": (
                 "target_specific_complement_of_declared_producer_rows"
             ),
@@ -8464,21 +8962,35 @@ def _transfer_stacked_post_puf_inputs_evaluate(
     )
 
 
-def _post_puf_role_mask(frame: Frame, *, entity: str) -> pd.Series:
+def _post_puf_role_mask(
+    frame: Frame,
+    *,
+    entity: str,
+    donor_clone_index: int,
+) -> pd.Series:
     table = frame.table(entity)
     return table[support_channel_column(entity)].astype(str).eq(
         BASE_ASEC_SUPPORT_CHANNEL
     ) & pd.to_numeric(
         table[support_clone_index_column(entity)],
         errors="raise",
-    ).eq(PUF_TAX_DETAIL_CLONE_INDEX)
+    ).eq(donor_clone_index)
 
 
-def _post_puf_donor_projection(frame: Frame) -> Frame:
-    person_mask = _post_puf_role_mask(frame, entity=frame.schema.person_entity)
+def _post_puf_donor_projection(
+    frame: Frame,
+    *,
+    donor_clone_index: int,
+) -> Frame:
+    person_mask = _post_puf_role_mask(
+        frame,
+        entity=frame.schema.person_entity,
+        donor_clone_index=donor_clone_index,
+    )
     if not person_mask.any():
         raise ValueError(
-            "Stacked post-PUF transfer has no ASEC-origin clone-1 donor rows."
+            "Stacked post-PUF transfer has no ASEC-origin "
+            f"clone-{donor_clone_index} donor rows."
         )
     return frame.select(person_mask.to_numpy(dtype=bool))
 
@@ -8562,6 +9074,7 @@ def _verify_post_puf_transfer_activation_authority(
     target_families: TargetFamilies,
     puf_producer_families: TargetFamilies,
     source_producer_families: TargetFamilies,
+    donor_clone_index: int,
 ) -> dict[tuple[str, str], dict[str, int]]:
     """Require complete declared producers before authorizing recipient nulls."""
 
@@ -8572,12 +9085,16 @@ def _verify_post_puf_transfer_activation_authority(
     source_producer_keys = set(_surface_target_keys(source_producer_families))
     for entity, families in target_families.items():
         table = frame.table(entity)
-        donor_rows = _post_puf_role_mask(frame, entity=entity)
+        donor_rows = _post_puf_role_mask(
+            frame,
+            entity=entity,
+            donor_clone_index=donor_clone_index,
+        )
         donor_count = int(donor_rows.sum())
         if donor_count == 0:
             failures.append(
-                f"post_puf_transfer/{entity}: declared ASEC clone-1 donor role "
-                "has no live rows."
+                f"post_puf_transfer/{entity}: declared ASEC "
+                f"clone-{donor_clone_index} donor role has no live rows."
             )
         for family, targets in families.items():
             for target in targets:
@@ -9065,14 +9582,18 @@ def _aggregate_late_transfer_result(
 ) -> StackedPostPufTransferResult:
     """Bind all bounded group outcomes into the canonical 70-target receipt."""
 
-    expected_groups = tuple(group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS)
+    authority = _production_stacked_authority()
+    bound_groups = _late_transfer_groups_bound_to_schedule(
+        late_producer_schedule=authority.late_producer_schedule,
+        boundary="US late-transfer finalization declaration",
+    )
+    expected_groups = tuple(group.name for group in bound_groups)
     if set(group_results) != set(expected_groups):
         raise ValueError(
             "US late-transfer finalization requires every canonical group once; "
             f"missing={sorted(set(expected_groups) - set(group_results))}, "
             f"extra={sorted(set(group_results) - set(expected_groups))}."
         )
-    authority = _production_stacked_authority()
     canonical_family = {
         (entity, target): family
         for entity, families in authority.post_puf_transfer_surface.items()
@@ -9085,8 +9606,9 @@ def _aggregate_late_transfer_result(
     deferred_inputs: list[str] = []
     resolved_channels: set[str | None] = set()
     group_receipts: dict[str, object] = {}
+    donor_projections: dict[str, object] = {}
     residual_null_rows = 0
-    for group in CANONICAL_US_LATE_TRANSFER_GROUPS:
+    for group in bound_groups:
         (
             group_receipt,
             group_imputed_inputs,
@@ -9097,6 +9619,21 @@ def _aggregate_late_transfer_result(
         if group_receipt.get("producer") != group.name:
             raise ValueError(
                 f"US late-transfer group receipt for {group.name!r} is misbound."
+            )
+        expected_donor_selection = (
+            f"owner_projection_of_asec_origin_clone_{group.donor_clone_index}"
+        )
+        if any(
+            group_receipt.get(key) != value
+            for key, value in {
+                "donor_selection": expected_donor_selection,
+                "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
+                "donor_clone_index": group.donor_clone_index,
+            }.items()
+        ):
+            raise ValueError(
+                f"US late-transfer group {group.name!r} receipt disagrees with "
+                "its declared donor projection."
             )
         raw_targets = group_receipt.get("targets")
         if not isinstance(raw_targets, Mapping):
@@ -9124,6 +9661,11 @@ def _aggregate_late_transfer_result(
             else:
                 residual_null_rows += int(table[target].isna().sum())
         group_receipts[group.name] = dict(group_receipt)
+        donor_projections[group.name] = {
+            "donor_selection": expected_donor_selection,
+            "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
+            "donor_clone_index": group.donor_clone_index,
+        }
         imputed_inputs.extend(group_imputed_inputs)
         fit_records.extend(group_fit_records)
         deferred_inputs.extend(group_deferred_inputs)
@@ -9149,9 +9691,8 @@ def _aggregate_late_transfer_result(
         "authority": _authority_receipt(authority),
         "producer_schedule": dict(us_late_producer_schedule_receipt()),
         "producer_execution_order": list(execution_order),
-        "donor_selection": "owner_projection_of_asec_origin_clone_1",
-        "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
-        "donor_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+        "donor_selection": "per_group_owner_projection_of_asec_origin_clone",
+        "donor_projections": donor_projections,
         "recipient_selection": ("target_specific_complement_of_declared_producer_rows"),
         "resolved_donor_channel": aggregate.resolved_donor_channel,
         "groups": group_receipts,
@@ -9171,6 +9712,169 @@ def _aggregate_late_transfer_result(
         receipt,
         boundary="US late-transfer DAG finalization",
     )
+    return StackedPostPufTransferResult(frame, receipt, aggregate)
+
+
+def _aggregate_whole_surface_transfer_result(
+    frame: Frame,
+    *,
+    adult_group: TransferProducerGroup,
+    bound_groups: Sequence[TransferProducerGroup],
+    adult_result: StackedPostPufTransferResult,
+    remaining_result: StackedPostPufTransferResult,
+) -> StackedPostPufTransferResult:
+    """Aggregate two compatibility legs without claiming full-DAG execution."""
+
+    authority = _production_stacked_authority()
+    canonical_groups = _late_transfer_groups_bound_to_schedule(
+        late_producer_schedule=authority.late_producer_schedule,
+        boundary="whole-surface transfer finalization declaration",
+    )
+    if tuple(bound_groups) != canonical_groups or adult_group not in canonical_groups:
+        raise ValueError(
+            "Whole-surface late-transfer legs differ from the canonical "
+            "schedule-bound declarations."
+        )
+    expected_adult_selection = (
+        f"owner_projection_of_asec_origin_clone_{adult_group.donor_clone_index}"
+    )
+    expected_remaining_selection = (
+        f"owner_projection_of_asec_origin_clone_{PUF_TAX_DETAIL_CLONE_INDEX}"
+    )
+    for result, selection, clone_index, label in (
+        (
+            adult_result,
+            expected_adult_selection,
+            adult_group.donor_clone_index,
+            "adult-care",
+        ),
+        (
+            remaining_result,
+            expected_remaining_selection,
+            PUF_TAX_DETAIL_CLONE_INDEX,
+            "remaining-surface",
+        ),
+    ):
+        if any(
+            result.receipt.get(key) != value
+            for key, value in {
+                "donor_selection": selection,
+                "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
+                "donor_clone_index": clone_index,
+            }.items()
+        ):
+            raise ValueError(
+                f"Whole-surface {label} receipt disagrees with its declared "
+                "donor projection."
+            )
+    expected_target_labels = {
+        f"{entity}/{family}/{target}"
+        for entity, families in authority.post_puf_transfer_surface.items()
+        for family, targets in families.items()
+        for target in targets
+    }
+    adult_targets = adult_result.receipt.get("targets")
+    remaining_targets = remaining_result.receipt.get("targets")
+    if not isinstance(adult_targets, Mapping) or not isinstance(
+        remaining_targets, Mapping
+    ):
+        raise ValueError("Whole-surface late-transfer legs require target receipts.")
+    overlap = set(adult_targets) & set(remaining_targets)
+    aggregate_targets = {**remaining_targets, **adult_targets}
+    if overlap or set(aggregate_targets) != expected_target_labels:
+        raise ValueError(
+            "Whole-surface late-transfer target partition drifted; "
+            f"overlap={sorted(overlap)}, "
+            f"missing={sorted(expected_target_labels - set(aggregate_targets))}, "
+            f"extra={sorted(set(aggregate_targets) - expected_target_labels)}."
+        )
+    residual_null_rows = sum(
+        len(frame.table(entity))
+        if target not in frame.table(entity)
+        else int(frame.table(entity)[target].isna().sum())
+        for entity, families in authority.post_puf_transfer_surface.items()
+        for targets in families.values()
+        for target in targets
+    )
+    if residual_null_rows:
+        raise ValueError(
+            "Whole-surface late-transfer finalization found "
+            f"{residual_null_rows} residual null target cell(s); zero are allowed."
+        )
+    resolved_channels = {
+        channel
+        for channel in (
+            adult_result.transfer_result.resolved_donor_channel,
+            remaining_result.transfer_result.resolved_donor_channel,
+        )
+        if channel is not None
+    }
+    if len(resolved_channels) > 1:
+        raise ValueError(
+            "Whole-surface late-transfer legs disagree on resolved donor "
+            f"channel: {sorted(map(str, resolved_channels))}."
+        )
+    aggregate = AcsTransferResult(
+        frame=frame,
+        imputed_inputs=(
+            *adult_result.transfer_result.imputed_inputs,
+            *remaining_result.transfer_result.imputed_inputs,
+        ),
+        fit_records=(
+            *adult_result.transfer_result.fit_records,
+            *remaining_result.transfer_result.fit_records,
+        ),
+        deferred_inputs=tuple(
+            dict.fromkeys(
+                (
+                    *adult_result.transfer_result.deferred_inputs,
+                    *remaining_result.transfer_result.deferred_inputs,
+                )
+            )
+        ),
+        resolved_donor_channel=next(iter(resolved_channels), None),
+    )
+    donor_projections = {
+        group.name: {
+            "donor_selection": (
+                f"owner_projection_of_asec_origin_clone_{group.donor_clone_index}"
+            ),
+            "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
+            "donor_clone_index": group.donor_clone_index,
+        }
+        for group in canonical_groups
+    }
+    receipt = {
+        "authority": _authority_receipt(authority),
+        "execution_scope": "adult_care_then_remaining_late_transfer_surface",
+        "donor_selection": "per_group_owner_projection_of_asec_origin_clone",
+        "donor_projections": donor_projections,
+        "recipient_selection": "target_specific_complement_of_declared_producer_rows",
+        "resolved_donor_channel": aggregate.resolved_donor_channel,
+        "transfer_legs": {
+            "adult_care": {
+                "donor_selection": expected_adult_selection,
+                "donor_clone_index": adult_group.donor_clone_index,
+                "target_count": len(adult_targets),
+            },
+            "remaining_late_transfer_surface": {
+                "donor_selection": expected_remaining_selection,
+                "donor_clone_index": PUF_TAX_DETAIL_CLONE_INDEX,
+                "target_count": len(remaining_targets),
+            },
+        },
+        "targets": dict(aggregate_targets),
+        "fit_records": [
+            {"fit_name": record.fit_name, "weight_kind": record.weight_kind}
+            for record in aggregate.fit_records
+        ],
+        "completion": {
+            "status": "whole_surface_complete",
+            "leg_count": 2,
+            "target_count": len(aggregate_targets),
+            "residual_null_rows": 0,
+        },
+    }
     return StackedPostPufTransferResult(frame, receipt, aggregate)
 
 
@@ -9220,7 +9924,12 @@ def run_stacked_late_producer_dag(
             "US late-producer DAG entry already carries a transition authority; "
             "refusing to execute the transition twice."
         )
-    expected_groups = {group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    schedule_receipt = _json_ready(us_late_producer_schedule_receipt())
+    bound_groups = _late_transfer_groups_bound_to_schedule(
+        late_producer_schedule=schedule_receipt,
+        boundary="US late-producer DAG transfer declaration",
+    )
+    expected_groups = {group.name for group in bound_groups}
     banks = {} if target_banks is None else dict(target_banks)
     if target_banks is not None and set(banks) != expected_groups:
         raise ValueError(
@@ -9231,7 +9940,6 @@ def run_stacked_late_producer_dag(
     declared_absence = {} if absence_receipts is None else dict(absence_receipts)
     current = frame
     input_frame_sha256 = _late_frame_content_sha256(frame)
-    schedule_receipt = _json_ready(us_late_producer_schedule_receipt())
     previous_execution_sha256 = _late_execution_genesis_sha256(
         producer_schedule_sha256=schedule_receipt["payload_sha256"],
         input_frame_sha256=input_frame_sha256,
@@ -9251,7 +9959,7 @@ def run_stacked_late_producer_dag(
             str | None,
         ],
     ] = {}
-    group_by_name = {group.name: group for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    group_by_name = {group.name: group for group in bound_groups}
     for schedule_index, producer_name in enumerate(
         CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
     ):
