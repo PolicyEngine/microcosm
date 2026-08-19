@@ -34,13 +34,9 @@ DEFAULT_OUTPUT = (
 )
 SCF_ARCHIVE_MEMBER = "p22i6.dta"
 
-SCF_ARCHIVE_SHA256 = (
-    "409e6811df895766d50b2f597c10b1b3c5813e7d3e0e45d910ad26c0cb07f4eb"
-)
+SCF_ARCHIVE_SHA256 = "409e6811df895766d50b2f597c10b1b3c5813e7d3e0e45d910ad26c0cb07f4eb"
 SCF_ARCHIVE_SIZE_BYTES = 8_856_125
-SCF_MEMBER_SHA256 = (
-    "61e2fceb1594e4009eb996d6e25d38a5d8e4874930fc2bfce3c87ffa6946ad0a"
-)
+SCF_MEMBER_SHA256 = "61e2fceb1594e4009eb996d6e25d38a5d8e4874930fc2bfce3c87ffa6946ad0a"
 SCF_MEMBER_SIZE_BYTES = 236_952_250
 
 REPRODUCTION_COMMAND = (
@@ -147,9 +143,7 @@ def read_scf_source(
                 with extracted.open("wb") as destination:
                     for chunk in iter(lambda: source_stream.read(1024 * 1024), b""):
                         destination.write(chunk)
-            member_record = _input_record(
-                extracted, role="scf_2022_archive_member"
-            )
+            member_record = _input_record(extracted, role="scf_2022_archive_member")
             member_record["container_filename"] = source.name
             if require_reviewed_bytes:
                 _verify_pin(

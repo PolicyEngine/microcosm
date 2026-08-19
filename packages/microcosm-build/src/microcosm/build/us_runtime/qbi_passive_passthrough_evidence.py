@@ -90,9 +90,7 @@ FORM_8960_LINE_4B_AMOUNT = -1_076_350_273_000.0
 FORM_8960_LINE_4B_RETURNS = 4_038_235
 FORM_8960_LINE_4C_AMOUNT = 109_256_984_000.0
 FORM_8960_LINE_4C_RETURNS = 2_260_296
-FORM_8960_LINE_4C_TO_4A_RATIO = (
-    FORM_8960_LINE_4C_AMOUNT / FORM_8960_LINE_4A_AMOUNT
-)
+FORM_8960_LINE_4C_TO_4A_RATIO = FORM_8960_LINE_4C_AMOUNT / FORM_8960_LINE_4A_AMOUNT
 
 _QUANTILE_NAMES = ("q05", "q25", "q50", "q75", "q95")
 _RESOURCE_NAME = "qbi_passive_passthrough_v1.json"
@@ -180,9 +178,7 @@ def _farm_business_value(source: pd.DataFrame) -> np.ndarray:
     # subtracting its business share.  Its subsequent X1136 allocation uses
     # those reduced copies, not the original balances.
     first_reduced = np.where(first_farm, first * (1.0 - business_fraction), first)
-    second_reduced = np.where(
-        second_farm, second * (1.0 - business_fraction), second
-    )
+    second_reduced = np.where(second_farm, second * (1.0 - business_fraction), second)
     third_reduced = np.where(third_farm, third * (1.0 - business_fraction), third)
     other_mortgage = source["x1136"].to_numpy(dtype=np.float64)
     mortgage_total = first_reduced + second_reduced + third_reduced
@@ -250,9 +246,7 @@ def build_scf_passive_passthrough_records(frame: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("SCF X42001 must be positive for every implicate.")
 
     active = (
-        source["x3103"].eq(1)
-        & source["x3104"].eq(1)
-        & source["x3105"].ge(1)
+        source["x3103"].eq(1) & source["x3104"].eq(1) & source["x3105"].ge(1)
     ).to_numpy()
     if not active.any():
         raise ValueError("SCF frame contains no actively managed business households.")
@@ -311,7 +305,9 @@ def weighted_inverse_cdf(
         or not np.isfinite(weight_array).all()
         or (weight_array <= 0.0).any()
     ):
-        raise ValueError("Weighted quantiles require finite values and positive weights.")
+        raise ValueError(
+            "Weighted quantiles require finite values and positive weights."
+        )
     if (
         not np.isfinite(probability_array).all()
         or (probability_array < 0.0).any()
@@ -518,8 +514,7 @@ def build_qbi_passive_passthrough_resource(
 
     records = build_scf_passive_passthrough_records(frame)
     pooled_holders = records.loc[
-        records["holds_nonactive_business"]
-        & records["positive_share_denominator"]
+        records["holds_nonactive_business"] & records["positive_share_denominator"]
     ]
     if pooled_holders.empty:
         raise ValueError("SCF records contain no eligible non-active business holders.")
@@ -565,9 +560,7 @@ def build_qbi_passive_passthrough_resource(
                     "source_counts": _counts(presence_sample),
                 },
                 "conditional_share": {
-                    "conditional_on": (
-                        "X3401 == 1 and ACTBUS + NONACTBUS > 0"
-                    ),
+                    "conditional_on": ("X3401 == 1 and ACTBUS + NONACTBUS > 0"),
                     "requested_mean": _weighted_mean(eligible_holders),
                     "requested_quantiles": _quantiles(eligible_holders),
                     "selected_mean": _weighted_mean(share_sample),
@@ -657,7 +650,9 @@ def _validate_counts(value: object, location: str) -> Mapping[str, Any]:
         number = _finite_number(counts.get(name), f"{location}.{name}")
         if number < 0.0:
             raise ValueError(f"{location}.{name} must be nonnegative.")
-    pooled = _finite_number(counts["pooled_record_count"], f"{location}.pooled_record_count")
+    pooled = _finite_number(
+        counts["pooled_record_count"], f"{location}.pooled_record_count"
+    )
     effective = _finite_number(
         counts["implicate_adjusted_unweighted_n"],
         f"{location}.implicate_adjusted_unweighted_n",
@@ -727,7 +722,9 @@ def validate_qbi_passive_passthrough_resource(
         presence = _require_mapping(
             cell.get("holding_prevalence"), f"cells[{index}].holding_prevalence"
         )
-        _probability(presence.get("estimate"), f"cells[{index}].holding_prevalence.estimate")
+        _probability(
+            presence.get("estimate"), f"cells[{index}].holding_prevalence.estimate"
+        )
         _probability(
             presence.get("requested_estimate"),
             f"cells[{index}].holding_prevalence.requested_estimate",
@@ -817,7 +814,9 @@ def validate_qbi_passive_passthrough_resource(
     for line, (amount, returns_count) in expected_lines.items():
         row = _require_mapping(form.get(line), f"external_anchor.form_8960.{line}")
         if _finite_number(row.get("amount"), f"{line}.amount") != amount:
-            raise ValueError(f"external_anchor.form_8960.{line}.amount is not reviewed.")
+            raise ValueError(
+                f"external_anchor.form_8960.{line}.amount is not reviewed."
+            )
         if row.get("returns_count") != returns_count:
             raise ValueError(
                 f"external_anchor.form_8960.{line}.returns_count is not reviewed."
@@ -862,9 +861,7 @@ def load_qbi_passive_passthrough_resource(
     """Load and validate the packaged or explicitly supplied evidence JSON."""
 
     resource_path = (
-        default_qbi_passive_passthrough_resource_path()
-        if path is None
-        else Path(path)
+        default_qbi_passive_passthrough_resource_path() if path is None else Path(path)
     )
     payload = json.loads(resource_path.read_text(encoding="utf-8"))
     validate_qbi_passive_passthrough_resource(payload)

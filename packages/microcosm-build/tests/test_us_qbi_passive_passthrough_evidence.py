@@ -179,12 +179,14 @@ def test_pooled_implicates_and_independent_thin_cell_fallbacks() -> None:
     assert thin["holding_prevalence"]["estimate_level"] == "exact"
     assert thin["conditional_share"]["estimate_level"] == "all_income_bands"
     assert thin["conditional_share"]["source_income_band"] == "all"
-    assert thin["requested_counts"][
-        "nonactive_holder_implicate_adjusted_unweighted_n"
-    ] == 1.0
-    assert thin["conditional_share"]["selected_quantiles"] == payload["cells"][
-        2
-    ]["conditional_share"]["selected_quantiles"]
+    assert (
+        thin["requested_counts"]["nonactive_holder_implicate_adjusted_unweighted_n"]
+        == 1.0
+    )
+    assert (
+        thin["conditional_share"]["selected_quantiles"]
+        == payload["cells"][2]["conditional_share"]["selected_quantiles"]
+    )
 
 
 def test_holding_screener_retains_reported_zero_value_holders() -> None:
@@ -196,8 +198,7 @@ def test_holding_screener_retains_reported_zero_value_holders() -> None:
 
     assert first["requested_counts"]["nonactive_holder_pooled_record_count"] == 150
     first_band_holders = records.loc[
-        records["income_band"].eq("nonpositive")
-        & records["holds_nonactive_business"]
+        records["income_band"].eq("nonpositive") & records["holds_nonactive_business"]
     ]
     assert first_band_holders["nonactive_business_value_share"].eq(0.0).sum() == 5
 
@@ -253,9 +254,7 @@ def test_schema_rejects_deprovisionalized_or_inconsistent_payload() -> None:
         validate_qbi_passive_passthrough_resource(broken)
 
     broken = deepcopy(payload)
-    broken["external_anchor"]["passive_passthrough_bounds"]["upper"][
-        "amount"
-    ] = 1.0
+    broken["external_anchor"]["passive_passthrough_bounds"]["upper"]["amount"] = 1.0
     with pytest.raises(ValueError, match="upper bound"):
         validate_qbi_passive_passthrough_resource(broken)
 

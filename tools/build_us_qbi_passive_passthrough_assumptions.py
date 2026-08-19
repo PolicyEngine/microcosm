@@ -134,9 +134,7 @@ def read_replay_artifact(
 
     passthrough = person_values["partnership_s_corp_income"]
     schedule_e = (
-        passthrough
-        + person_values["rental_income"]
-        + person_values["estate_income"]
+        passthrough + person_values["rental_income"] + person_values["estate_income"]
     )
     metadata = {
         "filename": artifact_path.name,
@@ -150,9 +148,7 @@ def read_replay_artifact(
 def build_assumptions(arguments: argparse.Namespace) -> dict[str, Any]:
     evidence_path = Path(arguments.evidence)
     evidence = load_qbi_passive_passthrough_resource(evidence_path)
-    passthrough, schedule_e, weights, artifact = read_replay_artifact(
-        arguments.puf_h5
-    )
+    passthrough, schedule_e, weights, artifact = read_replay_artifact(arguments.puf_h5)
     return build_qbi_passive_passthrough_assumptions_payload(
         evidence=evidence,
         evidence_sha256=_sha256(evidence_path),

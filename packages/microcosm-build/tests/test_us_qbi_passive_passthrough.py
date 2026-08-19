@@ -135,9 +135,9 @@ def test_packaged_assumptions_are_strict_and_pin_evidence_digest(
         files("microcosm.build.us").joinpath(QBI_PASSIVE_EVIDENCE_RESOURCE).read_bytes()
     )
 
-    assert assumptions["evidence"]["sha256"] == hashlib.sha256(
-        evidence_bytes
-    ).hexdigest()
+    assert (
+        assumptions["evidence"]["sha256"] == hashlib.sha256(evidence_bytes).hexdigest()
+    )
     assert assumptions["calibration"]["provisional_target"]["amount"] == (
         PROVISIONAL_TARGET
     )
@@ -365,7 +365,9 @@ def test_frame_wrapper_preserves_all_existing_qbi_columns_byte_for_byte() -> Non
     assert passive.between(0.0, passthrough.clip(lower=0.0)).all()
 
 
-def test_calibration_solver_hits_a_synthetic_target_and_rejects_impossible_one() -> None:
+def test_calibration_solver_hits_a_synthetic_target_and_rejects_impossible_one() -> (
+    None
+):
     evidence = _constant_evidence(prevalence=0.5, shares=[0.5] * 6)
     passthrough = np.array([100.0, 200.0])
     schedule_e = np.array([1.0, 1.0])

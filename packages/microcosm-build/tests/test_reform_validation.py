@@ -1073,14 +1073,12 @@ def test_state_reform_specs_shipped_config_loads():
     )
     # Federal rows score federal income tax against JCT/CBO published figures.
     assert all(
-        spec.budget_measure == "income_tax"
-        for spec in by_category["Federal reform"]
+        spec.budget_measure == "income_tax" for spec in by_category["Federal reform"]
     )
     # Mechanical rows measure the reform's own spending variable, so the
     # benchmark is an exact external anchor (population x amount).
     assert all(
-        spec.jct_score_type == "mechanical"
-        for spec in by_category["Mechanical check"]
+        spec.jct_score_type == "mechanical" for spec in by_category["Mechanical check"]
     )
 
 
