@@ -103,6 +103,20 @@ UK_WAS_ENGINE_PREDICTOR_ENTITIES: Mapping[str, str] = {
     "is_renting": "household",
 }
 
+#: UKDS negative sentinel codes observed in the round-8 household tab.
+#: Recoded to zero ONLY for columns whose domain cannot be negative and
+#: which the 2026-08-19 licensed audit found carrying them: vcarnr8 (2 rows
+#: of -8) and HBedRmR8 (95.8% -8 - the bedrooms question is effectively
+#: unasked in the WAS household file; the predictor-quality question is
+#: registered for the end-of-workstream revisit on microcosm#145).
+#: DVPriRntR8's -9 is structural not-applicable (not a private renter), so
+#: the is_renting == 1 mapping is already correct; genuinely negative
+#: domains (net financial wealth, self-employment losses, BHC income) are
+#: never recoded. Signed difference vs the incumbent, which trains on the
+#: raw sentinel values.
+_SENTINEL_CODES = (-9.0, -8.0, -7.0, -6.0)
+_SENTINEL_RECODE_COLUMNS = ("num_vehicles", "num_bedrooms")
+
 _RAW_TO_CLEAN = {
     "R8xshhwgt": "weight",
     "DVLUKValR8_sum": "owned_land",
@@ -234,6 +248,9 @@ def clean_was_household_table(raw: pd.DataFrame) -> pd.DataFrame:
     for column in cleaned.columns:
         cleaned[column] = pd.to_numeric(cleaned[column], errors="coerce")
     cleaned = cleaned.fillna(0)
+    for column in _SENTINEL_RECODE_COLUMNS:
+        values = cleaned[column]
+        cleaned[column] = values.where(~values.isin(_SENTINEL_CODES), 0)
     cleaned["is_renting"] = cleaned["private_rent_code"] == 1
     cleaned["corporate_wealth_excl_isa"] = (
         cleaned["pensions"]

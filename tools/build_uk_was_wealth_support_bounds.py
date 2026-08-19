@@ -47,7 +47,14 @@ def build_support_bounds(tab_path: Path) -> dict[str, object]:
             "tab_sha256": tab_sha256,
             "sdc_treatment": (
                 "Exact donor min/max values are rounded outward to one "
-                "significant figure before commit."
+                "significant figure before commit, so no committed number "
+                "is an exact unit-record value. Caveat considered and "
+                "accepted: WAS applies top-coding and a round top-code can "
+                "survive outward rounding unchanged; top-codes are "
+                "published survey methodology rather than unit-record "
+                "disclosures. Adjudicated acceptable under the UKDS EUL "
+                "disclosure rules by juaristi22 on 2026-08-19 "
+                "(microcosm#714)."
             ),
         },
         "bounds": {

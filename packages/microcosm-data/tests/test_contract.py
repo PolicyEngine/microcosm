@@ -92,7 +92,27 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
         "adjudication": "microcosm#630",
         "approved_on": "2026-08-17",
         "expires_on": "2027-02-17",
-    }
+    },
+    "owned_land": {
+        "reason": (
+            "Sparse heavy-tailed WAS donor column (0.7 percent weighted "
+            "nonzero share) whose weighted total is dominated by a handful "
+            "of large farm/estate records: the E5 stability receipt "
+            "(data/ukds/acceptance/e5/owned_land_stability_receipt.json) "
+            "measures a 37.7 percent national and 2.41x London swing "
+            "between adjacent seeds, the same realization-variance class "
+            "policyengine-uk-data#448 records for the incumbent (4.6x "
+            "Wales swing across releases). Register parity at this grain "
+            "is not meaningful until the whole-spine comparison; the "
+            "one-month expiry enforces the end-of-workstream revisit "
+            "registered on microcosm#145 (winsorised donor or separate "
+            "land imputation are the candidate remedies)."
+        ),
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#714",
+        "approved_on": "2026-08-19",
+        "expires_on": "2026-09-19",
+    },
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
@@ -135,7 +155,7 @@ UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "a77111e4acecd3945d69f77f58209bf6a58eb72d39a47de9cb01e5b73d2592f4"
+    "b098312c7a6a713e66b4fc0d03505b779f7998563e7b9dc07cbc31578198d508"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {

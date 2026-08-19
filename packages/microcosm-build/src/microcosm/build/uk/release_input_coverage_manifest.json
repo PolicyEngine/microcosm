@@ -575,7 +575,7 @@
     "property_wealth"
    ],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "dcb2d72ac4fa09f0e096c08e096e55f30b779f7d23cea8615cd09b8fbb2d0c10",
+   "source_manifest_sha256": "c75195c9a210dcedea7c4510678a1bf33329cad709a72cdf131af0dfc22b17e4",
    "source_vintages": {
     "source": "MHCLG dwellings and ONS UK House Price Index December 2025 regional average prices.",
     "survey": "Public regional property reference"
@@ -606,7 +606,7 @@
    "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
-   "source_manifest_sha256": "dcb2d72ac4fa09f0e096c08e096e55f30b779f7d23cea8615cd09b8fbb2d0c10",
+   "source_manifest_sha256": "c75195c9a210dcedea7c4510678a1bf33329cad709a72cdf131af0dfc22b17e4",
    "source_vintages": {
     "source": "Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed 2006-22 household tab.",
     "survey": "Wealth and Assets Survey round 8"

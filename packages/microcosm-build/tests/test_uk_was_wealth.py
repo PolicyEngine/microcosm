@@ -160,6 +160,21 @@ def test_was_donor_cleaning_arithmetic_and_exact_case_insensitive_columns() -> N
     assert 3 not in REGIONS
 
 
+def test_was_donor_sentinel_codes_recode_to_zero_for_nonnegative_domains() -> None:
+    raw = _raw_was()
+    raw.loc[0, "vcarnr8"] = -8
+    raw.loc[1, "HBedRmR8"] = -8
+    raw.loc[0, "HFINWNTR8_Sum"] = -8.0
+
+    donor = clean_was_household_table(raw)
+
+    assert donor["num_vehicles"].tolist()[0] == 0
+    assert donor["num_bedrooms"].tolist()[1] == 0
+    # Genuinely negative domains are never recoded: -8 is a legal net
+    # financial wealth value.
+    assert donor["net_financial_wealth"].tolist()[0] == -8.0
+
+
 def test_was_donor_missing_cash_isa_fails_closed() -> None:
     raw = _raw_was().drop(columns=["DVCISAVR8_aggr"])
 
