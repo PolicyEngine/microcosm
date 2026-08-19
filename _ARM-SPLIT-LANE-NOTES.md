@@ -103,3 +103,22 @@ that owns each arm.
   2,019.224 seconds. The machine-readable pytest receipt was written to
   `/private/tmp/arm-eligibility-full-suite.xml`; this journal-only follow-up
   does not change the tested runtime.
+
+## Arm-gate continuation (2026-08-19)
+
+- State: begin the frozen Phase-P attribution gate from `arm-eligibility` at
+  `986578f09d55d73113e8d52fb164b48e46e2edbc`.
+- Done: read the tip fix and its regression test. Raw `DEAR`, `DEYE`, and
+  `HINS3` codes now bypass only the generic dtype gate; strict numeric coercion
+  and supported-code validation still fail closed, including for object-backed
+  checkpoint values.
+- Done: refreshed only the candidate integrity bindings in the frozen gate to
+  the eligibility artifact's receipted stacked authority, gap-fill plan, and
+  two early target-bank identities. All statistical, battery, fold, seed,
+  forest, missingness, bootstrap, ratio-band, and clause values remain
+  byte-equal to round 1's verdict configuration.
+- Fixed boundary: baseline remains read-only identity
+  `9be8ecdf82356f38998e8b620ee36d9134f554fe89a8eafd8406f438e2b5aad6`;
+  no build, network, push, `PROGRESS.md` edit, or pending-chain access occurs.
+- Next: run the eligibility measurement under the 20-GiB RSS monitor, verify
+  the complete verdict/report, and commit that evidence on this branch.
