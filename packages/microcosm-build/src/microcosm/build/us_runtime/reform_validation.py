@@ -4,9 +4,8 @@ compare the budget effect to the authority's (JCT's) official score.
 Where ``calibration_diagnostics.json`` reports how well the calibrated weights
 reproduce their *calibration targets*, ``reform_validation.json`` reports a
 downstream property the calibration did not directly optimize: how closely the
-dataset reproduces the *budget effects of scored policy reforms*. Two kinds of
-reform are validated, and each row is labelled so a consumer can tell them
-apart:
+dataset reproduces the *budget effects of scored policy reforms*. Reform rows
+and aggregate diagnostics are labelled so a consumer can tell them apart:
 
 * **in-sample** — the JCT tax-expenditure reforms that are themselves
   calibration targets (``US_JCT_TAX_EXPENDITURE_REFORMS``). The dataset was
@@ -15,6 +14,9 @@ apart:
 * **out-of-sample** — reforms the calibration never saw (e.g. provisions of
   the 2025 One Big Beautiful Bill Act), curated in ``obbba_reforms.json`` with
   their JCT scores. These are the genuine test of dataset fidelity.
+* **administrative aggregate diagnostics** — plain baseline totals compared
+  with published amounts, kept in a separate non-gating table. These are not
+  reforms or calibration targets.
 
 The simulation is isolated behind an injected ``simulate`` callable so the
 payload assembly is unit-testable without policyengine-us; the default factory
@@ -48,7 +50,9 @@ _STATE_FIPS: dict[str, int] = {
 
 __all__ = [
     "REFORM_VALIDATION_SCHEMA_VERSION",
+    "AdministrativeAggregateDiagnosticSpec",
     "BaselineLevelSpec",
+    "administrative_aggregate_diagnostic_specs",
     "state_spm_poverty_level_specs",
     "ReformValidationSpec",
     "in_sample_reform_specs",
@@ -65,8 +69,9 @@ __all__ = [
 ]
 
 #: Schema version of reform_validation.json. The calibration-diagnostics
-#: dashboard keys its reader on it; bump with any shape change.
-REFORM_VALIDATION_SCHEMA_VERSION = 1
+#: dashboard keys its reader on it; v2 adds a standing, diagnostics-only
+#: administrative aggregate table.
+REFORM_VALIDATION_SCHEMA_VERSION = 2
 
 #: The budget effect of a reform is the weighted-sum change of this variable
 #: between the reform and baseline simulations, unless a spec overrides it. For
@@ -500,8 +505,194 @@ class BaselineLevelSpec:
             raise ValueError(f"Rate level {self.id} cannot use cap_variable.")
 
 
+@dataclass(frozen=True)
+class AdministrativeAggregateDiagnosticSpec:
+    """One published aggregate compared with a plain baseline total.
+
+    This is deliberately distinct from :class:`ReformValidationSpec`: an
+    administrative aggregate does not construct a reform, neutralize a
+    variable, or participate in any release gate.
+    """
+
+    id: str
+    name: str
+    variable: str
+    period: int
+    benchmark_value: float
+    benchmark_year: str
+    source: str
+    source_url: str
+    description: str
+    comparison_role: str
+    provisional: bool
+    diagnostics_only: bool
+    lower_bound: float | None = None
+    upper_bound: float | None = None
+
+    def __post_init__(self) -> None:
+        if not self.id or not self.name or not self.variable:
+            raise ValueError(
+                "AdministrativeAggregateDiagnosticSpec requires id, name, and variable."
+            )
+        if self.period <= 0:
+            raise ValueError(f"{self.id}: period must be a positive year.")
+        if not math.isfinite(self.benchmark_value) or self.benchmark_value <= 0:
+            raise ValueError(f"{self.id}: benchmark must be finite and positive.")
+        if self.comparison_role not in {"point_estimate", "upper_bound"}:
+            raise ValueError(
+                f"{self.id}: comparison_role must be 'point_estimate' or 'upper_bound'."
+            )
+        if not self.diagnostics_only:
+            raise ValueError(f"{self.id}: diagnostics_only must be true.")
+        if self.lower_bound is not None and (
+            not math.isfinite(self.lower_bound) or self.lower_bound < 0
+        ):
+            raise ValueError(f"{self.id}: lower_bound must be finite and nonnegative.")
+        if self.upper_bound is not None and (
+            not math.isfinite(self.upper_bound) or self.upper_bound <= 0
+        ):
+            raise ValueError(f"{self.id}: upper_bound must be finite and positive.")
+        if (
+            self.lower_bound is not None
+            and self.upper_bound is not None
+            and self.lower_bound > self.upper_bound
+        ):
+            raise ValueError(f"{self.id}: lower_bound cannot exceed upper_bound.")
+        if self.comparison_role == "upper_bound":
+            if self.lower_bound is None or self.upper_bound is None:
+                raise ValueError(f"{self.id}: upper-bound rows require both bounds.")
+            if self.benchmark_value != self.upper_bound:
+                raise ValueError(
+                    f"{self.id}: benchmark must equal upper_bound for an "
+                    "upper-bound comparison."
+                )
+
+
 def _soi_baseline_levels_config_path() -> Path:
     return Path(str(files("microcosm.build.us").joinpath("soi_baseline_levels.json")))
+
+
+def _administrative_aggregate_diagnostics_config_path() -> Path:
+    return Path(
+        str(files("microcosm.build.us").joinpath("repeal_revenue_benchmarks.json"))
+    )
+
+
+def administrative_aggregate_diagnostic_specs(
+    path: Path | None = None,
+) -> tuple[AdministrativeAggregateDiagnosticSpec, ...]:
+    """Load the standing, non-gating administrative aggregate diagnostics."""
+    config_path = path or _administrative_aggregate_diagnostics_config_path()
+    if not config_path.exists():
+        return ()
+    payload = json.loads(config_path.read_text())
+    if payload.get("schema_version") != 1:
+        raise ValueError(
+            f"{config_path}: aggregate diagnostic schema_version must be 1."
+        )
+    rows = payload.get("administrative_aggregate_diagnostics")
+    if not isinstance(rows, list):
+        raise ValueError(
+            f"{config_path}: administrative_aggregate_diagnostics must be a JSON array."
+        )
+
+    specs: list[AdministrativeAggregateDiagnosticSpec] = []
+    seen_ids: set[str] = set()
+    for index, raw in enumerate(rows):
+        context = f"{config_path}: administrative_aggregate_diagnostics[{index}]"
+        if not isinstance(raw, dict):
+            raise ValueError(f"{context} must be a JSON object.")
+        required = {
+            "id",
+            "name",
+            "variable",
+            "period",
+            "benchmark",
+            "comparison_role",
+            "provisional",
+            "diagnostics_only",
+            "description",
+        }
+        missing = sorted(required - raw.keys())
+        if missing:
+            raise ValueError(f"{context} is missing required fields {missing}.")
+        diagnostic_id = raw["id"]
+        if not isinstance(diagnostic_id, str) or not diagnostic_id.strip():
+            raise ValueError(f"{context}.id must be a non-empty string.")
+        if diagnostic_id in seen_ids:
+            raise ValueError(f"{context}.id duplicates {diagnostic_id!r}.")
+        seen_ids.add(diagnostic_id)
+        for field in ("name", "variable", "comparison_role", "description"):
+            value = raw[field]
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{context}.{field} must be a non-empty string.")
+        row_period = raw["period"]
+        if isinstance(row_period, bool) or not isinstance(row_period, int):
+            raise ValueError(f"{context}.period must be an integer year.")
+        for field in ("provisional", "diagnostics_only"):
+            if not isinstance(raw[field], bool):
+                raise ValueError(f"{context}.{field} must be a boolean.")
+        benchmark = raw["benchmark"]
+        if not isinstance(benchmark, dict):
+            raise ValueError(f"{context}.benchmark must be a JSON object.")
+        missing_benchmark_fields = sorted(
+            {"value", "year", "source", "source_url"} - benchmark.keys()
+        )
+        if missing_benchmark_fields:
+            raise ValueError(
+                f"{context}.benchmark is missing required fields "
+                f"{missing_benchmark_fields}."
+            )
+        if isinstance(benchmark["value"], bool):
+            raise ValueError(f"{context}.benchmark.value must be a number.")
+        try:
+            benchmark_value = float(benchmark["value"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(f"{context}.benchmark.value must be a number.") from error
+        for field in ("year", "source", "source_url"):
+            value = benchmark.get(field, "")
+            if not isinstance(value, str):
+                raise ValueError(f"{context}.benchmark.{field} must be a string.")
+        if not benchmark["year"].strip() or not benchmark["source"].strip():
+            raise ValueError(
+                f"{context}.benchmark.year and source must be non-empty strings."
+            )
+        bounds = raw.get("bounds")
+        if bounds is not None and not isinstance(bounds, dict):
+            raise ValueError(f"{context}.bounds must be a JSON object.")
+        if bounds is not None:
+            for field in ("lower", "upper"):
+                value = bounds.get(field)
+                if isinstance(value, bool) or not isinstance(value, int | float):
+                    raise ValueError(f"{context}.bounds.{field} must be a number.")
+
+        specs.append(
+            AdministrativeAggregateDiagnosticSpec(
+                id=diagnostic_id,
+                name=raw["name"],
+                variable=raw["variable"],
+                period=row_period,
+                benchmark_value=benchmark_value,
+                benchmark_year=benchmark.get("year", ""),
+                source=benchmark.get("source", ""),
+                source_url=benchmark.get("source_url", ""),
+                description=raw["description"],
+                comparison_role=raw["comparison_role"],
+                provisional=raw["provisional"],
+                diagnostics_only=raw["diagnostics_only"],
+                lower_bound=(
+                    None
+                    if bounds is None or bounds.get("lower") is None
+                    else float(bounds["lower"])
+                ),
+                upper_bound=(
+                    None
+                    if bounds is None or bounds.get("upper") is None
+                    else float(bounds["upper"])
+                ),
+            )
+        )
+    return tuple(specs)
 
 
 def _baseline_level_specs_from_config(
@@ -697,6 +888,9 @@ def reform_validation_payload(
     in_sample_estimates: dict[str, float] | None = None,
     in_sample_targets: dict[str, float] | None = None,
     baseline_levels: Sequence[BaselineLevelSpec] = (),
+    administrative_aggregate_diagnostics: Sequence[
+        AdministrativeAggregateDiagnosticSpec
+    ] = (),
     release_id: str | None = None,
 ) -> dict[str, Any]:
     """Score each reform on the dataset and render the JSON-stable payload.
@@ -719,6 +913,11 @@ def reform_validation_payload(
     incremental effect given the lines above it — so the per-line effects sum to
     the bill total, matching JCT (see ``stacked_obbba_effects``). The shape
     matches the calibration-diagnostics dashboard's reform_validation reader.
+
+    ``administrative_aggregate_diagnostics`` shares the same baseline object,
+    but remains outside ``reforms`` and ``out_of_sample_simulated``. Each row is
+    a plain weighted total with no counterfactual, threshold, or pass/fail
+    meaning; failures are contained on the affected row.
     """
     estimates = in_sample_estimates or {}
     targets = in_sample_targets or {}
@@ -991,8 +1190,71 @@ def reform_validation_payload(
             }
         )
 
-    # microcosm#456: the shared baseline simulation has served every reform row
-    # and baseline-level row by now; release it before assembling the payload.
+    aggregate_diagnostic_rows: list[dict[str, Any]] = []
+    for diagnostic in administrative_aggregate_diagnostics:
+        error_message: str | None = None
+        try:
+            modeled_total = (
+                None
+                if simulate is None
+                else baseline_total(diagnostic.variable, diagnostic.period)
+            )
+        except Exception as error:
+            # Administrative aggregates are explicitly diagnostics-only. A
+            # missing engine variable or calculation failure is recorded on
+            # its row and must not block release payload construction.
+            modeled_total = None
+            error_message = f"{type(error).__name__}: {error}"
+        relative_gap = (
+            None
+            if modeled_total is None
+            else modeled_total / diagnostic.benchmark_value - 1
+        )
+        within_bounds = (
+            None
+            if modeled_total is None
+            or diagnostic.lower_bound is None
+            or diagnostic.upper_bound is None
+            else diagnostic.lower_bound <= modeled_total <= diagnostic.upper_bound
+        )
+        aggregate_row: dict[str, Any] = {
+            "id": diagnostic.id,
+            "name": diagnostic.name,
+            "period": diagnostic.period,
+            "unit": "currency-USD",
+            "diagnostics_only": diagnostic.diagnostics_only,
+            "provisional": diagnostic.provisional,
+            "description": diagnostic.description,
+            "variable": diagnostic.variable,
+            "benchmark": _finite(diagnostic.benchmark_value),
+            "benchmark_year": diagnostic.benchmark_year or None,
+            "benchmark_source": diagnostic.source or None,
+            "benchmark_source_url": diagnostic.source_url or None,
+            "comparison_role": diagnostic.comparison_role,
+            "lower_bound": (
+                None
+                if diagnostic.lower_bound is None
+                else _finite(diagnostic.lower_bound)
+            ),
+            "upper_bound": (
+                None
+                if diagnostic.upper_bound is None
+                else _finite(diagnostic.upper_bound)
+            ),
+            "modeled_total": (
+                None if modeled_total is None else _finite(modeled_total)
+            ),
+            "relative_gap": (None if relative_gap is None else _finite(relative_gap)),
+            "within_bounds": within_bounds,
+        }
+        if error_message is not None:
+            aggregate_row["status"] = "error"
+            aggregate_row["message"] = error_message
+        aggregate_diagnostic_rows.append(aggregate_row)
+
+    # microcosm#456: the shared baseline simulation has served every reform,
+    # baseline-level, and administrative-aggregate row by now; release it
+    # before assembling the payload.
     if baseline is not None:
         release_engine_simulation(baseline)
         baseline = None
@@ -1005,9 +1267,15 @@ def reform_validation_payload(
     payload: dict[str, Any] = {
         "schema_version": REFORM_VALIDATION_SCHEMA_VERSION,
         "baseline_period": int(period),
-        "scoring_window": "see per-reform jct.window",
+        "scoring_window": "see per-row reform or benchmark window",
         "out_of_sample_simulated": out_of_sample_simulated,
         "reforms": rows,
+        "administrative_aggregate_diagnostics": {
+            "diagnostics_only": True,
+            "simulated": simulate is not None
+            or not administrative_aggregate_diagnostics,
+            "rows": aggregate_diagnostic_rows,
+        },
     }
     if release_id is not None:
         payload["release_id"] = release_id
