@@ -101,7 +101,7 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
             "(data/ukds/acceptance/e5/owned_land_stability_receipt.json) "
             "measures a 37.7 percent national and 2.41x London swing "
             "between adjacent seeds, the same realization-variance class "
-            "policyengine-uk-data#448 records for the incumbent (4.6x "
+            "the archived incumbent data repo records at uk-data#448 (4.6x "
             "Wales swing across releases). Register parity at this grain "
             "is not meaningful until the whole-spine comparison; the "
             "one-month expiry enforces the end-of-workstream revisit "
@@ -155,7 +155,7 @@ UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "b098312c7a6a713e66b4fc0d03505b779f7998563e7b9dc07cbc31578198d508"
+    "df74556909990345bc9032f6f5db7f817d9c273f75522a85ab6e332dd8dc7355"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {

@@ -413,7 +413,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
 # canonical hash; this pins the wrapped digest so the entry's evidence line
 # still binds the enhanced-FRS incumbent totals.
 _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "b098312c7a6a713e66b4fc0d03505b779f7998563e7b9dc07cbc31578198d508"
+    "df74556909990345bc9032f6f5db7f817d9c273f75522a85ab6e332dd8dc7355"
 )
 # The degenerate binding's evidence payload digests the resolved exclusion
 # records; for a release that must be the committed register, so its digest

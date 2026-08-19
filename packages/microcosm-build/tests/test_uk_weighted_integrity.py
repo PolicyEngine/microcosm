@@ -659,7 +659,8 @@ def test_committed_exclusion_registers_load() -> None:
 
     assert set(input_mass) == {"efrs-post-calibration"}
     assert set(input_mass["efrs-post-calibration"]) == {
-        "charitable_investment_gifts"
+        "charitable_investment_gifts",
+        "owned_land",
     }
     assert qrf_tail == {}
     assert uk_default_input_mass_reviewed_exclusions() is (
