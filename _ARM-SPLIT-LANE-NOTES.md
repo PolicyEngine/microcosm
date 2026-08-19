@@ -190,3 +190,26 @@ that owns each arm.
   stop guard. Require complete 32-family/118-target/74-money/211-leg evidence,
   kernel `ru_maxrss` below 20 GiB, and exact statistical equality to the first
   investment verdict before replacing it.
+- Accepted replacement: the guarded run completed all 32 families, 118
+  targets, 74 money targets, and 211 battery legs in 948.358285 seconds. The
+  exact-PID monitor sampled a maximum RSS of 9,849,470,976 bytes; kernel
+  `ru_maxrss` was 9,958,277,120 bytes, the 20-GiB limit was not crossed, and
+  the 19.5-GiB stop guard did not fire. Exit 1 is the substantive red verdict.
+- Equality audit: after deleting only `gate_implementation`, the original and
+  replacement verdict JSON hashes are identically
+  `f2f7ea73b27172afe53cca051ac92c1f7aeb2c5ff463921432150f1e801b97b0`.
+  After deleting only the candidate artifact-role binding, the replacement and
+  round-1 configuration hashes are identically
+  `10f29427d83c340973869fb735188967aff9a4eea770b066f604e7a28a0b5e5a`.
+- Confirmed verdict: clause A FAIL, clause B PASS, and clause C FAIL, with the
+  exact values recorded above. Three money targets significantly improve and
+  none significantly worsen; the same three battery legs leave band and none
+  enters. Social-security-retirement remains exactly unchanged.
+- Replacement evidence hashes: `verdict.json`
+  `c430aa4f625f9b00956a91ee3d6bb57809562aa933b6e2628b3f8675f83be22c`;
+  `report.md`
+  `16ab98b1160380a177f3966e10290e04404707758a0af68e59c3213e863105e3`;
+  gate implementation
+  `a9cd60f245221498090d23a2b684dd76165fa873a7e4b4e2784d385c0377f479`.
+- Next: commit the replacement evidence and synthesize the round-1 bundle plus
+  all three complete arm verdicts on `arm-split-base`.
