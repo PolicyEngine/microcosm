@@ -103,7 +103,7 @@ jobs:
               print(module.__name__, module.__version__, path)
           PY
       - name: Spec identity section digests (cross-environment diffing aid)
-        run: env -u PYTHONPATH /tmp/wheels-venv/bin/python -I tools/spec_envelope_digests.py be uk --dump seed_protocol
+        run: env -u PYTHONPATH /tmp/wheels-venv/bin/python -I tools/spec_envelope_digests.py be uk
       - name: Run the suite against the installed wheels
         run: |
           env -u PYTHONPATH /tmp/wheels-venv/bin/python -I -m pytest \
