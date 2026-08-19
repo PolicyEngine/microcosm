@@ -1648,13 +1648,21 @@ _GAP_FILL_TEST_PLAN = (
 )
 
 
-def test_production_entrypoints_take_no_authority_parameters() -> None:
-    production_entrypoints = (
-        gap_fill_stacked_spine,
-        transfer_stacked_post_puf_inputs,
-        stacked_completeness_gate,
-        by_origin_battery,
-    )
+def test_production_entrypoints_expose_only_typed_optional_authority_seams() -> None:
+    production_entrypoints = {
+        stacked_spine_module.assemble_stacked_spine: {"assembly_authority"},
+        gap_fill_stacked_spine: {"runtime_authority", "gap_fill_authority"},
+        stacked_spine_module.run_stacked_puf_pass: {"qrf_authority"},
+        stacked_spine_module.run_stacked_late_producer_dag: {
+            "late_authority",
+            "runtime_authority",
+            "qrf_authority",
+        },
+        stacked_spine_module.transfer_stacked_post_puf_group: {"runtime_authority"},
+        transfer_stacked_post_puf_inputs: {"runtime_authority"},
+        stacked_completeness_gate: {"runtime_authority"},
+        by_origin_battery: {"runtime_authority"},
+    }
     authority_parameter_tokens = {
         "authority",
         "canonical",
@@ -1668,16 +1676,15 @@ def test_production_entrypoints_take_no_authority_parameters() -> None:
         "surface",
     }
 
-    for entrypoint in production_entrypoints:
+    for entrypoint, expected_authority_parameters in production_entrypoints.items():
         authority_parameters = {
             parameter
             for parameter in inspect.signature(entrypoint).parameters
             if authority_parameter_tokens.intersection(parameter.split("_"))
         }
-        assert not authority_parameters, (
-            f"{entrypoint.__name__} exposes caller-controlled authority "
-            f"parameter(s): {sorted(authority_parameters)}"
-        )
+        assert authority_parameters == expected_authority_parameters
+        for parameter in expected_authority_parameters:
+            assert inspect.signature(entrypoint).parameters[parameter].default is None
 
 
 def test_canonical_authority_objects_are_deeply_immutable() -> None:
@@ -4147,6 +4154,86 @@ def test_late_transfer_resources_bind_all_callback_controls() -> None:
         "preserve_preexisting_nonnull": True,
         "share_asset": None,
     }
+
+
+def test_compiler_primary_qrf_authority_drives_resource_receipt_bytes() -> None:
+    donor = pd.DataFrame({"compiler_donor": [1.0]})
+    common = {
+        "primary_qrf_checkpoint_identity_sha256": "0" * 64,
+        "clone_attachment_fraction": 1.0,
+        "clone_attachment_seed": 578,
+        "seed": 0,
+        "n_estimators": 100,
+        "fit_records_enabled": True,
+        "tail_bound_diagnostics_enabled": True,
+    }
+    canonical_authority = stacked_spine_module.StackedPrimaryQrfAuthority(
+        predictors=tuple(stacked_spine_module.PUF_TAX_DETAIL_DEFAULT_PREDICTORS),
+        person_outputs=tuple(
+            stacked_spine_module.PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+        ),
+        tax_unit_outputs=tuple(
+            stacked_spine_module.PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+        ),
+        target_order=tuple(stacked_spine_module.PRIMARY_QRF_TARGET_ORDER),
+        target_order_sha256=stacked_spine_module.PRIMARY_QRF_TARGET_ORDER_SHA256,
+        checkpoint_schema_version=(
+            stacked_spine_module.PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION
+        ),
+        manifest_filename=stacked_spine_module.PRIMARY_QRF_MANIFEST_FILENAME,
+    )
+    legacy = stacked_spine_module.stacked_late_primary_resource_receipts(
+        donor,
+        **common,
+    )
+    compiler_compatible = stacked_spine_module.stacked_late_primary_resource_receipts(
+        donor,
+        qrf_authority=canonical_authority,
+        **common,
+    )
+    assert compiler_compatible == legacy
+
+    target_order = ("compiler_person_output", "compiler_tax_unit_output")
+    compiler_authority = stacked_spine_module.StackedPrimaryQrfAuthority(
+        predictors=("compiler_predictor",),
+        person_outputs=(target_order[0],),
+        tax_unit_outputs=(target_order[1],),
+        target_order=target_order,
+        target_order_sha256=stacked_spine_module._canonical_sha256(list(target_order)),
+        checkpoint_schema_version=99,
+        manifest_filename="compiler-manifest.json",
+    )
+    resources = stacked_spine_module.stacked_late_primary_resource_receipts(
+        donor,
+        qrf_authority=compiler_authority,
+        **common,
+    )
+    checkpoint = resources["tax_unit.@primary_qrf_checkpoint"]["binding"]
+    assert checkpoint["checkpoint_schema_version"] == 99
+    assert checkpoint["manifest_filename"] == "compiler-manifest.json"
+    assert checkpoint["target_order"] == list(target_order)
+    config = resources[
+        f"tax_unit.{stacked_spine_module.US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT}"
+    ]["binding"]
+    assert config["qrf"]["predictors"] == ["compiler_predictor"]
+    assert config["qrf"]["person_outputs"] == [target_order[0]]
+    assert config["qrf"]["tax_unit_outputs"] == [target_order[1]]
+    assert config["qrf"]["invocation_mode"] == {
+        "predictors": "canonical_default",
+        "person_outputs": "canonical_default",
+        "tax_unit_outputs": "canonical_default",
+    }
+
+
+def test_compiler_transfer_group_requires_its_terminal_authority() -> None:
+    group = stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS[0]
+
+    with pytest.raises(ValueError, match="require their terminal authority"):
+        stacked_spine_module.transfer_stacked_post_puf_group(
+            object(),  # type: ignore[arg-type]
+            group_name=group.name,
+            group=group,
+        )
 
 
 def test_late_transfer_refuses_a_stale_bound_execution_contract(

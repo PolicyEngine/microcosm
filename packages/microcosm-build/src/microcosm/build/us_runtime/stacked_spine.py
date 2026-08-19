@@ -100,6 +100,8 @@ from microcosm.build.us_runtime.late_producer_dag import (
     ProducerInput,
     ProducerInputColumn,
     ProducerOutput,
+    ProducerSchedule,
+    derive_producer_schedule,
     run_producer_when_ready,
 )
 from microcosm.build.us_runtime.multispine_pool import (
@@ -205,6 +207,7 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     US_LATE_SOURCE_FINALIZER_STAGE,
     US_LATE_TRANSFER_MODEL_CONFIG_INPUT,
     US_LATE_TRANSFER_TARGET_BANK_INPUT,
+    TransferProducerGroup,
     us_late_producer_schedule_receipt,
 )
 from microcosm.frame import US_SCHEMA, Frame
@@ -233,6 +236,11 @@ __all__ = [
     "GapFillResult",
     "OriginBatterySpec",
     "StackedPufPassResult",
+    "StackedAssemblyAuthority",
+    "StackedGapFillAuthority",
+    "StackedLateProducerAuthority",
+    "StackedPrimaryQrfAuthority",
+    "StackedTerminalAuthority",
     "StackedLateProducerResult",
     "StackedPostPufTransferResult",
     "StackedSpineResult",
@@ -258,6 +266,7 @@ __all__ = [
     "validate_stacked_late_producer_transition_authority",
     "validate_stacked_post_puf_transfer_receipt",
     "validate_stacked_spine_frame",
+    "materialize_stacked_terminal_authority",
 ]
 
 ACS_STACKED_SUPPORT_CHANNEL = "acs"
@@ -270,6 +279,39 @@ DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES: Mapping[str, float] = {
     BASE_ASEC_SUPPORT_CHANNEL: 0.5,
     ACS_STACKED_SUPPORT_CHANNEL: 0.5,
 }
+
+
+@dataclass(frozen=True)
+class StackedAssemblyAuthority:
+    """Compiler-supplied physical controls for stacked-spine assembly."""
+
+    household_mass_shares: Mapping[str, float]
+    mass_anchor_channel: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.household_mass_shares, Mapping):
+            raise TypeError("Stacked assembly mass shares must be a mapping.")
+        shares: dict[str, float] = {}
+        for channel, value in self.household_mass_shares.items():
+            if not isinstance(channel, str) or not channel:
+                raise ValueError(
+                    "Stacked assembly channel names must be non-empty strings."
+                )
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise TypeError(
+                    f"Stacked assembly share for {channel!r} must be numeric."
+                )
+            shares[channel] = float(value)
+        if not isinstance(self.mass_anchor_channel, str) or not (
+            self.mass_anchor_channel
+        ):
+            raise ValueError("Stacked assembly mass anchor must be a non-empty string.")
+        object.__setattr__(
+            self,
+            "household_mass_shares",
+            MappingProxyType(shares),
+        )
+
 
 STACKED_SPINE_MANIFEST_KEY = "us_stacked_spine_manifest"
 US_PUF_S_CORP_UNIVERSE_ZERO_RULE_ID = "puf_tax_detail_s_corp_income_universe_zero_v1"
@@ -549,6 +591,7 @@ def assemble_stacked_spine(
     sample_seed: int | None = None,
     household_mass_shares: Mapping[str, float] | None = None,
     mass_anchor_channel: str = BASE_ASEC_SUPPORT_CHANNEL,
+    assembly_authority: StackedAssemblyAuthority | None = None,
 ) -> StackedSpineResult:
     """Assemble uniformly sampled ASEC and ACS survey arms into one spine.
 
@@ -570,11 +613,27 @@ def assemble_stacked_spine(
         frozen manifest as a JSON-ready mapping.
     """
 
-    shares = (
-        dict(DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES)
-        if household_mass_shares is None
-        else dict(household_mass_shares)
-    )
+    if assembly_authority is not None:
+        if not isinstance(assembly_authority, StackedAssemblyAuthority):
+            raise TypeError("assembly_authority must be a StackedAssemblyAuthority.")
+        if household_mass_shares is not None:
+            raise ValueError(
+                "Compiler assembly authority and explicit household mass shares "
+                "are mutually exclusive."
+            )
+        if mass_anchor_channel != BASE_ASEC_SUPPORT_CHANNEL:
+            raise ValueError(
+                "Compiler assembly authority and an explicit mass anchor are "
+                "mutually exclusive."
+            )
+        shares = dict(assembly_authority.household_mass_shares)
+        mass_anchor_channel = assembly_authority.mass_anchor_channel
+    else:
+        shares = (
+            dict(DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES)
+            if household_mass_shares is None
+            else dict(household_mass_shares)
+        )
     uses_pilot_controls = acs_sample_fraction is not None or acs_sample_seed is not None
     uses_production_controls = sample_fraction is not None or sample_seed is not None
     if uses_pilot_controls == uses_production_controls:
@@ -1850,6 +1909,88 @@ class GapFillResult:
     transfer_results: Mapping[str, AcsTransferResult] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class StackedGapFillAuthority:
+    """Compiler-issued early-transfer plan and producer schedule receipt."""
+
+    directions: tuple[GapFillDirection, ...]
+    schedule_receipt: Mapping[str, object]
+    execution_contracts: Mapping[str, Mapping[str, object]] | None = None
+
+    def __post_init__(self) -> None:
+        raw_directions = tuple(self.directions)
+        directions = tuple(
+            _materialize_gap_fill_direction(value) for value in raw_directions
+        )
+        if not directions:
+            raise ValueError("Compiler gap-fill authority requires directions.")
+        names = tuple(direction.name for direction in directions)
+        if len(names) != len(set(names)):
+            raise ValueError("Compiler gap-fill authority repeats directions.")
+        receipt = _json_ready(self.schedule_receipt)
+        rows = receipt.get("directions")
+        if not isinstance(rows, list):
+            raise ValueError("Compiler gap-fill schedule has no direction rows.")
+        if [row.get("name") for row in rows if isinstance(row, Mapping)] != list(names):
+            raise ValueError(
+                "Compiler gap-fill schedule order differs from its directions."
+            )
+        target_count = sum(
+            len(targets)
+            for direction in directions
+            for families in direction.target_families.values()
+            for targets in families.values()
+        )
+        if (
+            receipt.get("direction_count") != len(directions)
+            or receipt.get("target_count") != target_count
+        ):
+            raise ValueError(
+                "Compiler gap-fill schedule counts differ from its directions."
+            )
+        unsigned = dict(receipt)
+        digest = unsigned.pop("sha256", None)
+        _validate_sha256(digest, boundary="Compiler gap-fill schedule")
+        if digest != _canonical_sha256(unsigned):
+            raise ValueError("Compiler gap-fill schedule digest changed.")
+        if self.execution_contracts is None:
+            try:
+                contracts = {
+                    direction.name: direction.transfer_execution_contract
+                    for direction in raw_directions
+                }
+            except AttributeError as exc:
+                raise ValueError(
+                    "Compiler gap-fill authority requires an execution contract "
+                    "for every direction."
+                ) from exc
+        else:
+            contracts = dict(self.execution_contracts)
+        if set(contracts) != set(names) or any(
+            not isinstance(contract, Mapping) for contract in contracts.values()
+        ):
+            raise ValueError(
+                "Compiler gap-fill execution contracts must exactly cover its "
+                "directions."
+            )
+        object.__setattr__(self, "directions", directions)
+        object.__setattr__(
+            self,
+            "schedule_receipt",
+            _freeze_authority_payload(receipt),
+        )
+        object.__setattr__(
+            self,
+            "execution_contracts",
+            MappingProxyType(
+                {
+                    name: _freeze_authority_payload(contract)
+                    for name, contract in contracts.items()
+                }
+            ),
+        )
+
+
 def _build_stacked_gap_fill_plan(
     families: TargetFamilies,
 ) -> tuple[GapFillDirection, ...]:
@@ -1952,6 +2093,7 @@ class _StackedAuthority:
     declared_component_sha256: Mapping[str, str]
     declared_sha256: str
     declared_form: str
+    compiler_issued: bool = field(default=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.authority_id, str) or not self.authority_id.strip():
@@ -2042,6 +2184,8 @@ class _StackedAuthority:
             _NONCANONICAL_AUTHORITY_FORM,
         }:
             raise ValueError(f"Unknown stacked authority form {self.declared_form!r}.")
+        if not isinstance(self.compiler_issued, bool):
+            raise TypeError("Stacked authority compiler_issued must be boolean.")
 
 
 def _validate_sha256(value: object, *, boundary: str) -> None:
@@ -2405,6 +2549,7 @@ def _make_stacked_authority(
     | None = None,
     declared_component_sha256: Mapping[str, str] | None = None,
     declared_sha256: str | None = None,
+    compiler_issued: bool = False,
 ) -> _StackedAuthority:
     frozen_plan = tuple(gap_fill_plan)
     frozen_post_puf_surface = _freeze_target_families(post_puf_transfer_surface)
@@ -2475,6 +2620,7 @@ def _make_stacked_authority(
         ),
         declared_sha256=live_bundle if declared_sha256 is None else declared_sha256,
         declared_form=declared_form,
+        compiler_issued=compiler_issued,
     )
 
 
@@ -3086,6 +3232,217 @@ _CANONICAL_STACKED_AUTHORITY = _make_stacked_authority(
 _CANONICAL_STACKED_AUTHORITY_ANCHOR = _CANONICAL_STACKED_AUTHORITY
 
 
+@dataclass(frozen=True)
+class StackedTerminalAuthority:
+    """Authenticated compiler projection for gap-fill and terminal kernels."""
+
+    _physical: _StackedAuthority = field(repr=False)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self._physical, _StackedAuthority):
+            raise TypeError(
+                "StackedTerminalAuthority requires a materialized authority."
+            )
+        if not self._physical.compiler_issued:
+            raise ValueError(
+                "StackedTerminalAuthority requires a compiler-issued projection."
+            )
+        _validate_production_authority_receipt(
+            _authority_receipt(self._physical),
+            boundary="compiler-issued stacked terminal authority",
+        )
+
+    @property
+    def gap_fill_plan(self) -> tuple[GapFillDirection, ...]:
+        return self._physical.gap_fill_plan
+
+    @property
+    def post_puf_transfer_surface(self) -> TargetFamilies:
+        return self._physical.post_puf_transfer_surface
+
+    @property
+    def declared_surface(self) -> TargetFamilies:
+        return self._physical.declared_surface
+
+
+def _materialize_gap_fill_direction(value: object) -> GapFillDirection:
+    if isinstance(value, GapFillDirection):
+        return value
+    try:
+        raw_rules = tuple(value.recipient_absence_rules)
+        rules = tuple(
+            rule
+            if isinstance(rule, GapFillAbsenceRule)
+            else GapFillAbsenceRule(
+                rule_id=rule.rule_id,
+                entity=rule.entity,
+                column=rule.column,
+                selection=rule.selection,
+                reason=rule.reason,
+            )
+            for rule in raw_rules
+        )
+        return GapFillDirection(
+            name=value.name,
+            recipient_channel=value.recipient_channel,
+            donor_channel=value.donor_channel,
+            target_families=value.target_families,
+            recipient_absence_rules=rules,
+        )
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise TypeError(
+            "Compiler gap-fill directions must expose the structural runtime fields."
+        ) from exc
+
+
+def _materialize_metric_registry(
+    values: Mapping[tuple[str, str, str, int], str] | Sequence[Mapping[str, object]],
+) -> Mapping[tuple[str, str, str, int], str]:
+    if isinstance(values, Mapping):
+        return values
+    result: dict[tuple[str, str, str, int], str] = {}
+    for row in values:
+        if not isinstance(row, Mapping):
+            raise TypeError("Compiler battery metric rows must be mappings.")
+        key = (
+            row.get("entity"),
+            row.get("family"),
+            row.get("column"),
+            row.get("clone_index"),
+        )
+        metric = row.get("metric")
+        if not isinstance(metric, str):
+            raise TypeError("Compiler battery metric rows require a metric.")
+        result[key] = metric  # type: ignore[index]
+    return result
+
+
+def _materialize_joint_metric_registry(
+    values: Mapping[tuple[str, str, tuple[str, ...], int], str]
+    | Sequence[Mapping[str, object]],
+) -> Mapping[tuple[str, str, tuple[str, ...], int], str]:
+    if isinstance(values, Mapping):
+        return values
+    result: dict[tuple[str, str, tuple[str, ...], int], str] = {}
+    for row in values:
+        if not isinstance(row, Mapping):
+            raise TypeError("Compiler joint battery metric rows must be mappings.")
+        columns = row.get("columns")
+        if not isinstance(columns, (list, tuple)):
+            raise TypeError("Compiler joint battery rows require columns.")
+        key = (
+            row.get("entity"),
+            row.get("family"),
+            tuple(columns),
+            row.get("clone_index"),
+        )
+        metric = row.get("metric")
+        if not isinstance(metric, str):
+            raise TypeError("Compiler joint battery rows require a metric.")
+        result[key] = metric  # type: ignore[index]
+    return result
+
+
+def materialize_stacked_terminal_authority(
+    *,
+    gap_fill_directions: Sequence[object],
+    post_puf_transfer_surface: TargetFamilies,
+    post_puf_puf_producer_surface: TargetFamilies,
+    post_puf_source_producer_surface: TargetFamilies,
+    declared_surface: TargetFamilies,
+    metric_registry: Mapping[tuple[str, str, str, int], str]
+    | Sequence[Mapping[str, object]],
+    joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str]
+    | Sequence[Mapping[str, object]],
+    support_profile: Mapping[str, object],
+    puf_capital_gains_tail_support_contract: Mapping[str, object],
+    late_producer_schedule: Mapping[str, object],
+    compatibility_receipt: Mapping[str, object],
+) -> StackedTerminalAuthority:
+    """Materialize and authenticate one compiler-issued legacy-compatible view."""
+
+    receipt = _json_ready(compatibility_receipt)
+    components = receipt.get("components")
+    if not isinstance(components, Mapping):
+        raise ValueError("Compiler stacked authority receipt has no components.")
+    component_names = {
+        "gap_fill_plan",
+        "post_puf_transfer_surface",
+        "declared_surface",
+        "metric_registry",
+        "joint_metric_registry",
+        "support_profile",
+        "puf_capital_gains_tail_support_contract",
+        "late_producer_schedule",
+    }
+    if set(components) != component_names:
+        raise ValueError("Compiler stacked authority component surface changed.")
+    component_sha256: dict[str, str] = {}
+    for name in sorted(component_names):
+        component = components[name]
+        if not isinstance(component, Mapping):
+            raise TypeError(f"Compiler stacked authority {name} must be an object.")
+        digest = component.get("sha256")
+        _validate_sha256(digest, boundary=f"Compiler stacked authority {name}")
+        assert isinstance(digest, str)
+        component_sha256[name] = digest
+    profile = _BatterySupportProfile(
+        profile_id=str(support_profile.get("profile_id")),
+        version=int(support_profile.get("version")),
+        min_effective_support=int(support_profile.get("min_effective_support")),
+    )
+    authority_id = receipt.get("authority_id")
+    version = receipt.get("version")
+    declared_form = receipt.get("declared_authority_form")
+    declared_sha256 = receipt.get("declared_sha256")
+    if not isinstance(authority_id, str) or not authority_id:
+        raise ValueError("Compiler stacked authority id is invalid.")
+    if isinstance(version, bool) or not isinstance(version, int):
+        raise ValueError("Compiler stacked authority version is invalid.")
+    if not isinstance(declared_form, str):
+        raise ValueError("Compiler stacked authority form is invalid.")
+    _validate_sha256(declared_sha256, boundary="Compiler stacked authority")
+    assert isinstance(declared_sha256, str)
+    physical = _make_stacked_authority(
+        authority_id=authority_id,
+        version=version,
+        gap_fill_plan=tuple(
+            _materialize_gap_fill_direction(value) for value in gap_fill_directions
+        ),
+        post_puf_transfer_surface=post_puf_transfer_surface,
+        post_puf_puf_producer_surface=post_puf_puf_producer_surface,
+        post_puf_source_producer_surface=post_puf_source_producer_surface,
+        declared_surface=declared_surface,
+        metric_registry=_materialize_metric_registry(metric_registry),
+        joint_metric_registry=_materialize_joint_metric_registry(joint_metric_registry),
+        support_profile=profile,
+        puf_capital_gains_tail_support_contract=(
+            puf_capital_gains_tail_support_contract
+        ),
+        late_producer_schedule=late_producer_schedule,
+        declared_component_sha256=component_sha256,
+        declared_sha256=declared_sha256,
+        declared_form=declared_form,
+        compiler_issued=True,
+    )
+    observed = _authority_receipt(physical)
+    if observed != receipt:
+        raise ValueError(
+            "Compiler stacked authority values differ from their compatibility receipt."
+        )
+    return StackedTerminalAuthority(physical)
+
+
+def _resolved_terminal_authority(
+    authority: StackedTerminalAuthority | None,
+) -> _StackedAuthority:
+    if authority is None:
+        return _production_stacked_authority()
+    if not isinstance(authority, StackedTerminalAuthority):
+        raise TypeError("runtime_authority must be a StackedTerminalAuthority.")
+    return authority._physical
+
+
 def _production_stacked_authority(
     *,
     _canonical_authority: _StackedAuthority = _CANONICAL_STACKED_AUTHORITY,
@@ -3261,9 +3618,16 @@ def stacked_gap_fill_plan() -> tuple[GapFillDirection, ...]:
     return _STACKED_GAP_FILL_PLAN
 
 
-def stacked_gap_fill_producer_schedule_receipt() -> Mapping[str, object]:
+def stacked_gap_fill_producer_schedule_receipt(
+    *,
+    gap_fill_authority: StackedGapFillAuthority | None = None,
+) -> Mapping[str, object]:
     """Return the live channel-aware proof that every producer precedes its check."""
 
+    if gap_fill_authority is not None:
+        if not isinstance(gap_fill_authority, StackedGapFillAuthority):
+            raise TypeError("gap_fill_authority must be a StackedGapFillAuthority.")
+        return gap_fill_authority.schedule_receipt
     plan = stacked_gap_fill_plan()
     schedule = _build_gap_fill_producer_schedule(
         pool_pre_clone_gap_fill_target_families()
@@ -3361,7 +3725,7 @@ def _authority_receipt(
     integrity = all(component_integrity.values()) and (
         live_bundle == authority.declared_sha256
     )
-    canonical_identity = authority is _canonical_authority
+    canonical_identity = authority is _canonical_authority or authority.compiler_issued
     canonical_content = (
         authority.authority_id == _STACKED_AUTHORITY_ID
         and authority.version == _STACKED_AUTHORITY_VERSION
@@ -3700,6 +4064,8 @@ def validate_stacked_post_puf_transfer_receipt(
     receipt: Mapping[str, object],
     *,
     boundary: str,
+    late_authority: StackedLateProducerAuthority | None = None,
+    runtime_authority: StackedTerminalAuthority | None = None,
 ) -> None:
     """Reject a late-transfer receipt unless its full DAG proof is canonical."""
 
@@ -3713,7 +4079,9 @@ def validate_stacked_post_puf_transfer_receipt(
         )
     _validate_production_authority_receipt(authority, boundary=boundary)
     schedule = receipt.get("producer_schedule")
-    expected_schedule = _json_ready(us_late_producer_schedule_receipt())
+    resolved_late_authority = _resolved_late_producer_authority(late_authority)
+    resolved_runtime_authority = _resolved_terminal_authority(runtime_authority)
+    expected_schedule = _json_ready(resolved_late_authority.schedule_receipt)
     if not isinstance(schedule, Mapping) or _json_ready(schedule) != expected_schedule:
         raise ValueError(
             f"{boundary}: stacked post-PUF transfer receipt has no canonical "
@@ -3721,7 +4089,7 @@ def validate_stacked_post_puf_transfer_receipt(
         )
     expected_execution_order = [
         producer
-        for producer in CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
+        for producer in resolved_late_authority.schedule.order
         if producer != US_LATE_PRIMARY_PUF_STAGE
     ]
     if receipt.get("producer_execution_order") != expected_execution_order:
@@ -3730,7 +4098,9 @@ def validate_stacked_post_puf_transfer_receipt(
             "match the derived late-producer schedule; production manifest "
             "emission is forbidden."
         )
-    expected_groups = {group.name: group for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    expected_groups = {
+        group.name: group for group in resolved_late_authority.transfer_groups
+    }
     groups = receipt.get("groups")
     if not isinstance(groups, Mapping) or set(groups) != set(expected_groups):
         raise ValueError(
@@ -3751,7 +4121,9 @@ def validate_stacked_post_puf_transfer_receipt(
             )
     expected_target_labels = {
         f"{entity}/{family}/{target}"
-        for entity, families in CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
+        for entity, families in (
+            resolved_runtime_authority.post_puf_transfer_surface.items()
+        )
         for family, targets in families.items()
         for target in targets
     }
@@ -3774,8 +4146,8 @@ def validate_stacked_post_puf_transfer_receipt(
     completion = receipt.get("completion")
     if completion != {
         "status": "complete",
-        "group_count": 19,
-        "target_count": 70,
+        "group_count": len(expected_groups),
+        "target_count": len(expected_target_labels),
         "residual_null_rows": 0,
     }:
         raise ValueError(
@@ -4110,9 +4482,15 @@ def _validate_late_resource_binding(
     entity: str,
     column: str,
     boundary: str,
+    expected_transfer_group: TransferProducerGroup | None = None,
+    expected_qrf_authority: StackedPrimaryQrfAuthority | None = None,
 ) -> None:
     """Reject hash-consistent resource claims with incomplete semantics."""
 
+    if expected_qrf_authority is not None and not isinstance(
+        expected_qrf_authority, StackedPrimaryQrfAuthority
+    ):
+        raise TypeError("expected_qrf_authority must be a StackedPrimaryQrfAuthority.")
     kind = _late_virtual_resource_kind(column)
 
     def require_keys(expected: set[str]) -> None:
@@ -4177,13 +4555,11 @@ def _validate_late_resource_binding(
             binding.get("checkpoint_identity_sha256"),
             boundary=f"{boundary} primary-QRF checkpoint identity",
         )
-        expected = {
-            "mode": "identity_bound_checkpoint",
-            "checkpoint_schema_version": PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
-            "manifest_filename": PRIMARY_QRF_MANIFEST_FILENAME,
-            "target_order": list(PRIMARY_QRF_TARGET_ORDER),
-            "target_order_sha256": PRIMARY_QRF_TARGET_ORDER_SHA256,
-        }
+        expected = _late_primary_qrf_checkpoint_static_binding(
+            qrf_authority=expected_qrf_authority,
+        )
+        expected.pop("resource_kind")
+        expected.pop("schema_version")
         if any(binding.get(key) != value for key, value in expected.items()):
             raise ValueError(
                 f"{boundary}: late primary-QRF checkpoint semantics changed."
@@ -4288,9 +4664,21 @@ def _validate_late_resource_binding(
                 f"{boundary}: late primary-QRF invocation mode is invalid."
             )
         defaults = {
-            "predictors": list(PUF_TAX_DETAIL_DEFAULT_PREDICTORS),
-            "person_outputs": list(PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS),
-            "tax_unit_outputs": list(PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS),
+            "predictors": list(
+                PUF_TAX_DETAIL_DEFAULT_PREDICTORS
+                if expected_qrf_authority is None
+                else expected_qrf_authority.predictors
+            ),
+            "person_outputs": list(
+                PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+                if expected_qrf_authority is None
+                else expected_qrf_authority.person_outputs
+            ),
+            "tax_unit_outputs": list(
+                PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+                if expected_qrf_authority is None
+                else expected_qrf_authority.tax_unit_outputs
+            ),
         }
         for field, default in defaults.items():
             values = qrf.get(field)
@@ -4398,14 +4786,16 @@ def _validate_late_resource_binding(
                 "transfer_execution_contract",
             }
         )
-        group = next(
-            (
-                item
-                for item in CANONICAL_US_LATE_TRANSFER_GROUPS
-                if item.name == producer
-            ),
-            None,
-        )
+        group = expected_transfer_group
+        if group is None:
+            group = next(
+                (
+                    item
+                    for item in CANONICAL_US_LATE_TRANSFER_GROUPS
+                    if item.name == producer
+                ),
+                None,
+            )
         if group is None or any(
             binding.get(key) != value
             for key, value in {
@@ -4468,6 +4858,8 @@ def _late_available_input_receipt(
     column: str,
     rows: int,
     binding: Mapping[str, object],
+    expected_transfer_group: TransferProducerGroup | None = None,
+    expected_qrf_authority: StackedPrimaryQrfAuthority | None = None,
 ) -> dict[str, object]:
     """Create one exact, hash-bound virtual-resource availability receipt."""
 
@@ -4505,6 +4897,8 @@ def _late_available_input_receipt(
         entity=entity,
         column=column,
         boundary="US late-producer resource construction",
+        expected_transfer_group=expected_transfer_group,
+        expected_qrf_authority=expected_qrf_authority,
     )
     return receipt
 
@@ -4516,6 +4910,8 @@ def _validate_late_available_input_receipt(
     entity: str,
     column: str,
     boundary: str,
+    expected_transfer_group: TransferProducerGroup | None = None,
+    expected_qrf_authority: StackedPrimaryQrfAuthority | None = None,
 ) -> None:
     """Validate one virtual input receipt without trusting a row count alone."""
 
@@ -4580,6 +4976,8 @@ def _validate_late_available_input_receipt(
         entity=entity,
         column=column,
         boundary=boundary,
+        expected_transfer_group=expected_transfer_group,
+        expected_qrf_authority=expected_qrf_authority,
     )
 
 
@@ -4589,6 +4987,8 @@ def _late_available_input_receipt_is_valid(
     producer: str,
     entity: str,
     column: str,
+    expected_transfer_group: TransferProducerGroup | None = None,
+    expected_qrf_authority: StackedPrimaryQrfAuthority | None = None,
 ) -> bool:
     try:
         _validate_late_available_input_receipt(
@@ -4597,6 +4997,8 @@ def _late_available_input_receipt_is_valid(
             entity=entity,
             column=column,
             boundary="US late-producer readiness",
+            expected_transfer_group=expected_transfer_group,
+            expected_qrf_authority=expected_qrf_authority,
         )
     except (TypeError, ValueError):
         return False
@@ -4710,25 +5112,44 @@ def _late_primary_execution_config_binding(
     tax_unit_outputs: Sequence[str] | None,
     fit_records_enabled: bool,
     tail_bound_diagnostics_enabled: bool,
+    qrf_authority: StackedPrimaryQrfAuthority | None = None,
     capital_gains_tail_spec: PufAggregateDisaggregationSpec | None = None,
     capital_gains_tail_agi_bands: Sequence[PufE19200AgiBand] | None = None,
 ) -> dict[str, object]:
     """Return every non-Frame control consumed by the primary callback."""
 
+    if qrf_authority is not None and not isinstance(
+        qrf_authority, StackedPrimaryQrfAuthority
+    ):
+        raise TypeError("qrf_authority must be a StackedPrimaryQrfAuthority.")
     resolved_predictors = _late_string_sequence(
-        PUF_TAX_DETAIL_DEFAULT_PREDICTORS if predictors is None else predictors,
+        (
+            qrf_authority.predictors
+            if qrf_authority is not None
+            else PUF_TAX_DETAIL_DEFAULT_PREDICTORS
+            if predictors is None
+            else predictors
+        ),
         label="predictors",
     )
     resolved_person_outputs = _late_string_sequence(
-        PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
-        if person_outputs is None
-        else person_outputs,
+        (
+            qrf_authority.person_outputs
+            if qrf_authority is not None
+            else PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+            if person_outputs is None
+            else person_outputs
+        ),
         label="person_outputs",
     )
     resolved_tax_unit_outputs = _late_string_sequence(
-        PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
-        if tax_unit_outputs is None
-        else tax_unit_outputs,
+        (
+            qrf_authority.tax_unit_outputs
+            if qrf_authority is not None
+            else PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS
+            if tax_unit_outputs is None
+            else tax_unit_outputs
+        ),
         label="tax_unit_outputs",
     )
     tail_inputs = puf_capital_gains_tail_execution_inputs_identity(
@@ -4755,13 +5176,19 @@ def _late_primary_execution_config_binding(
             "tax_unit_outputs": resolved_tax_unit_outputs,
             "invocation_mode": {
                 "predictors": (
-                    "canonical_default" if predictors is None else "explicit"
+                    "canonical_default"
+                    if qrf_authority is not None or predictors is None
+                    else "explicit"
                 ),
                 "person_outputs": (
-                    "canonical_default" if person_outputs is None else "explicit"
+                    "canonical_default"
+                    if qrf_authority is not None or person_outputs is None
+                    else "explicit"
                 ),
                 "tax_unit_outputs": (
-                    "canonical_default" if tax_unit_outputs is None else "explicit"
+                    "canonical_default"
+                    if qrf_authority is not None or tax_unit_outputs is None
+                    else "explicit"
                 ),
             },
             "tail_bound_quantiles": (puf_tax_detail_tail_bound_quantiles_identity()),
@@ -4809,17 +5236,40 @@ def _late_puf_donor_resource_semantics_binding() -> dict[str, object]:
     }
 
 
-def _late_primary_qrf_checkpoint_static_binding() -> dict[str, object]:
+def _late_primary_qrf_checkpoint_static_binding(
+    *,
+    qrf_authority: StackedPrimaryQrfAuthority | None = None,
+) -> dict[str, object]:
     """Return the non-recursive primary-QRF bank semantics."""
 
+    if qrf_authority is not None and not isinstance(
+        qrf_authority, StackedPrimaryQrfAuthority
+    ):
+        raise TypeError("qrf_authority must be a StackedPrimaryQrfAuthority.")
     return {
         "resource_kind": "primary_qrf_checkpoint",
         "schema_version": 1,
         "mode": "identity_bound_checkpoint",
-        "checkpoint_schema_version": PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
-        "manifest_filename": PRIMARY_QRF_MANIFEST_FILENAME,
-        "target_order": list(PRIMARY_QRF_TARGET_ORDER),
-        "target_order_sha256": PRIMARY_QRF_TARGET_ORDER_SHA256,
+        "checkpoint_schema_version": (
+            PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION
+            if qrf_authority is None
+            else qrf_authority.checkpoint_schema_version
+        ),
+        "manifest_filename": (
+            PRIMARY_QRF_MANIFEST_FILENAME
+            if qrf_authority is None
+            else qrf_authority.manifest_filename
+        ),
+        "target_order": list(
+            PRIMARY_QRF_TARGET_ORDER
+            if qrf_authority is None
+            else qrf_authority.target_order
+        ),
+        "target_order_sha256": (
+            PRIMARY_QRF_TARGET_ORDER_SHA256
+            if qrf_authority is None
+            else qrf_authority.target_order_sha256
+        ),
     }
 
 
@@ -4836,6 +5286,7 @@ def stacked_late_primary_resource_receipts(
     predictors: Sequence[str] | None = None,
     person_outputs: Sequence[str] | None = None,
     tax_unit_outputs: Sequence[str] | None = None,
+    qrf_authority: StackedPrimaryQrfAuthority | None = None,
     capital_gains_tail_spec: PufAggregateDisaggregationSpec | None = None,
     capital_gains_tail_agi_bands: Sequence[PufE19200AgiBand] | None = None,
 ) -> dict[str, dict[str, object]]:
@@ -4873,6 +5324,23 @@ def stacked_late_primary_resource_receipts(
         tail_bound_diagnostics_enabled, bool
     ):
         raise TypeError("US late primary-PUF audit-sink modes must be booleans.")
+    if qrf_authority is not None:
+        if not isinstance(qrf_authority, StackedPrimaryQrfAuthority):
+            raise TypeError("qrf_authority must be a StackedPrimaryQrfAuthority.")
+        collisions = sorted(
+            name
+            for name, value in {
+                "predictors": predictors,
+                "person_outputs": person_outputs,
+                "tax_unit_outputs": tax_unit_outputs,
+            }.items()
+            if value is not None
+        )
+        if collisions:
+            raise ValueError(
+                "Compiler primary-QRF authority and explicit resource receipts "
+                f"are mutually exclusive; explicit={collisions}."
+            )
     normalized_donor = canonicalize_table_string_dtypes(
         donor_tax_units,
         boundary="late primary-PUF donor resource binding",
@@ -4888,7 +5356,9 @@ def stacked_late_primary_resource_receipts(
         "dtypes": [str(dtype) for dtype in normalized_donor.dtypes],
     }
     checkpoint_binding = {
-        **_late_primary_qrf_checkpoint_static_binding(),
+        **_late_primary_qrf_checkpoint_static_binding(
+            qrf_authority=qrf_authority,
+        ),
         "checkpoint_identity_sha256": primary_qrf_checkpoint_identity_sha256,
     }
     config_binding = _late_primary_execution_config_binding(
@@ -4896,11 +5366,12 @@ def stacked_late_primary_resource_receipts(
         clone_attachment_seed=clone_attachment_seed,
         seed=seed,
         n_estimators=n_estimators,
-        predictors=predictors,
-        person_outputs=person_outputs,
-        tax_unit_outputs=tax_unit_outputs,
+        predictors=(None if qrf_authority is not None else predictors),
+        person_outputs=(None if qrf_authority is not None else person_outputs),
+        tax_unit_outputs=(None if qrf_authority is not None else tax_unit_outputs),
         fit_records_enabled=fit_records_enabled,
         tail_bound_diagnostics_enabled=tail_bound_diagnostics_enabled,
+        qrf_authority=qrf_authority,
         capital_gains_tail_spec=capital_gains_tail_spec,
         capital_gains_tail_agi_bands=capital_gains_tail_agi_bands,
     )
@@ -4918,6 +5389,7 @@ def stacked_late_primary_resource_receipts(
             column="@primary_qrf_checkpoint",
             rows=1,
             binding=checkpoint_binding,
+            expected_qrf_authority=qrf_authority,
         ),
         f"tax_unit.{US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT}": (
             _late_available_input_receipt(
@@ -4926,6 +5398,7 @@ def stacked_late_primary_resource_receipts(
                 column=US_LATE_PRIMARY_EXECUTION_CONFIG_INPUT,
                 rows=1,
                 binding=config_binding,
+                expected_qrf_authority=qrf_authority,
             )
         ),
     }
@@ -4935,6 +5408,8 @@ def _validate_stacked_late_primary_checkpoint_input_binding(
     binding: object,
     *,
     boundary: str,
+    late_authority: StackedLateProducerAuthority | None = None,
+    qrf_authority: StackedPrimaryQrfAuthority | None = None,
 ) -> None:
     """Authenticate the sidecar that prevents stale primary-QRF bank reuse."""
 
@@ -4952,7 +5427,9 @@ def _validate_stacked_late_primary_checkpoint_input_binding(
     ):
         raise ValueError(f"{boundary}: primary-QRF input binding identity changed.")
     resources = binding.get("primary_resource_receipts")
-    contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[US_LATE_PRIMARY_PUF_STAGE]
+    contract = _resolved_late_producer_authority(late_authority).registry[
+        US_LATE_PRIMARY_PUF_STAGE
+    ]
     expected_resources = _late_contract_available_input_keys(contract)
     if not isinstance(resources, Mapping) or set(resources) != expected_resources:
         raise ValueError(
@@ -4967,6 +5444,7 @@ def _validate_stacked_late_primary_checkpoint_input_binding(
             entity=entity,
             column=column,
             boundary=boundary,
+            expected_qrf_authority=qrf_authority,
         )
     unsigned = dict(binding)
     sha256 = unsigned.pop("sha256")
@@ -4977,6 +5455,9 @@ def _validate_stacked_late_primary_checkpoint_input_binding(
 
 def stacked_late_primary_checkpoint_input_binding(
     primary_resource_receipts: Mapping[str, Mapping[str, object]],
+    *,
+    late_authority: StackedLateProducerAuthority | None = None,
+    qrf_authority: StackedPrimaryQrfAuthority | None = None,
 ) -> dict[str, object]:
     """Build the durable input sidecar for the primary-QRF checkpoint bank."""
 
@@ -4993,6 +5474,8 @@ def stacked_late_primary_checkpoint_input_binding(
     _validate_stacked_late_primary_checkpoint_input_binding(
         payload,
         boundary="US stacked late primary-QRF input-binding construction",
+        late_authority=late_authority,
+        qrf_authority=qrf_authority,
     )
     return payload
 
@@ -5417,6 +5900,7 @@ def _late_transfer_model_config_binding(
     seed: int,
     n_estimators: int,
     max_targets_per_fit: int,
+    execution_contract: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Return every static model and donor-selection control for one group."""
 
@@ -5442,6 +5926,8 @@ def _late_transfer_model_config_binding(
                 targets=targets,
                 derive_schedule_d=False,
             )
+            if execution_contract is None
+            else _json_ready(execution_contract)
         ),
     }
 
@@ -5480,47 +5966,88 @@ def _late_transfer_target_bank_binding(
 
 def _late_transfer_resource_receipts(
     *,
-    group_name: str,
-    entity: str,
-    family: str,
-    targets: Sequence[str],
+    group: TransferProducerGroup | None = None,
+    group_name: str | None = None,
+    entity: str | None = None,
+    family: str | None = None,
+    targets: Sequence[str] | None = None,
+    execution_contract: Mapping[str, object] | None = None,
     seed: int,
     n_estimators: int,
     max_targets_per_fit: int,
     target_bank: AcsTransferTargetBank | None,
 ) -> dict[str, dict[str, object]]:
-    """Bind model controls and durable-bank identity for one transfer node."""
+    """Bind model controls and durable-bank identity for one transfer node.
+
+    ``group`` is the compiler-issued path.  The individual group fields remain
+    accepted so existing constants-mode callers retain their original API.
+    """
+
+    legacy_fields = (group_name, entity, family, targets)
+    if group is not None and any(value is not None for value in legacy_fields):
+        raise TypeError("Pass either a transfer group or its legacy fields, not both.")
+    if group is None:
+        missing = [
+            label
+            for label, value in zip(
+                ("group_name", "entity", "family", "targets"),
+                legacy_fields,
+                strict=True,
+            )
+            if value is None
+        ]
+        if missing:
+            raise TypeError(
+                "Legacy late-transfer resource binding is missing "
+                + ", ".join(missing)
+                + "."
+            )
+        assert group_name is not None
+        assert entity is not None
+        assert family is not None
+        assert targets is not None
+        materialized_targets = tuple(targets)
+        group = TransferProducerGroup(
+            name=group_name,
+            entity=entity,
+            family=family,
+            targets=materialized_targets,
+            target_families={entity: {family: materialized_targets}},
+        )
 
     model_binding = _late_transfer_model_config_binding(
-        group_name=group_name,
-        entity=entity,
-        family=family,
-        targets=targets,
+        group_name=group.name,
+        entity=group.entity,
+        family=group.family,
+        targets=group.targets,
         seed=seed,
         n_estimators=n_estimators,
         max_targets_per_fit=max_targets_per_fit,
+        execution_contract=execution_contract,
     )
     bank_binding = _late_transfer_target_bank_binding(
-        group_name=group_name,
+        group_name=group.name,
         target_bank=target_bank,
     )
     return {
-        f"{entity}.{US_LATE_TRANSFER_MODEL_CONFIG_INPUT}": (
+        f"{group.entity}.{US_LATE_TRANSFER_MODEL_CONFIG_INPUT}": (
             _late_available_input_receipt(
-                producer=group_name,
-                entity=entity,
+                producer=group.name,
+                entity=group.entity,
                 column=US_LATE_TRANSFER_MODEL_CONFIG_INPUT,
                 rows=1,
                 binding=model_binding,
+                expected_transfer_group=group,
             )
         ),
-        f"{entity}.{US_LATE_TRANSFER_TARGET_BANK_INPUT}": (
+        f"{group.entity}.{US_LATE_TRANSFER_TARGET_BANK_INPUT}": (
             _late_available_input_receipt(
-                producer=group_name,
-                entity=entity,
+                producer=group.name,
+                entity=group.entity,
                 column=US_LATE_TRANSFER_TARGET_BANK_INPUT,
                 rows=1,
                 binding=bank_binding,
+                expected_transfer_group=group,
             )
         ),
     }
@@ -5535,6 +6062,8 @@ def stacked_late_producer_resource_semantics_receipt(
     transfer_seed: int,
     transfer_n_estimators: int,
     transfer_max_targets_per_fit: int,
+    late_authority: StackedLateProducerAuthority | None = None,
+    qrf_authority: StackedPrimaryQrfAuthority | None = None,
 ) -> dict[str, object]:
     """Bind every static or derivation-mode resource in the late DAG.
 
@@ -5543,11 +6072,23 @@ def stacked_late_producer_resource_semantics_receipt(
     complete resource doctrine without recursively embedding its own digest.
     """
 
-    schedule_receipt = us_late_producer_schedule_receipt()
-    group_by_name = {group.name: group for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    resolved_late_authority = _resolved_late_producer_authority(late_authority)
+    if qrf_authority is not None and not isinstance(
+        qrf_authority, StackedPrimaryQrfAuthority
+    ):
+        raise TypeError("qrf_authority must be a StackedPrimaryQrfAuthority.")
+    schedule_receipt = _json_ready(resolved_late_authority.schedule_receipt)
+    group_by_name = {
+        group.name: group for group in resolved_late_authority.transfer_groups
+    }
+    source_operators = tuple(
+        name.removeprefix("source:")
+        for name in resolved_late_authority.schedule.order
+        if resolved_late_authority.registry[name].kind == "post_clone_source"
+    )
     producer_rows: list[dict[str, object]] = []
-    for producer_name in CANONICAL_US_LATE_PRODUCER_SCHEDULE.order:
-        contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[producer_name]
+    for producer_name in resolved_late_authority.schedule.order:
+        contract = resolved_late_authority.registry[producer_name]
         expected_keys = _late_contract_available_input_keys(contract)
         resources: dict[str, object]
         if contract.kind == "acs_earnings_universe":
@@ -5565,7 +6106,9 @@ def stacked_late_producer_resource_semantics_receipt(
                 },
                 "tax_unit.@primary_qrf_checkpoint": {
                     "resolution": "outer_identity_derived",
-                    "binding": _late_primary_qrf_checkpoint_static_binding(),
+                    "binding": _late_primary_qrf_checkpoint_static_binding(
+                        qrf_authority=qrf_authority,
+                    ),
                     "dynamic_field": {
                         "name": "checkpoint_identity_sha256",
                         "derivation": (
@@ -5585,6 +6128,7 @@ def stacked_late_producer_resource_semantics_receipt(
                         tax_unit_outputs=None,
                         fit_records_enabled=True,
                         tail_bound_diagnostics_enabled=True,
+                        qrf_authority=qrf_authority,
                     ),
                 },
             }
@@ -5618,7 +6162,7 @@ def stacked_late_producer_resource_semantics_receipt(
                             },
                         },
                     }
-                    for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+                    for operator in source_operators
                 }
             )
         elif contract.kind == "late_transfer":
@@ -5634,6 +6178,11 @@ def stacked_late_producer_resource_semantics_receipt(
                         seed=transfer_seed,
                         n_estimators=transfer_n_estimators,
                         max_targets_per_fit=transfer_max_targets_per_fit,
+                        execution_contract=(
+                            resolved_late_authority.transfer_execution_contracts[
+                                group.name
+                            ]
+                        ),
                     ),
                 },
                 f"{group.entity}.{US_LATE_TRANSFER_TARGET_BANK_INPUT}": {
@@ -5754,6 +6303,8 @@ def _late_input_column_evidence(
     required_scope: str,
     producer_name: str,
     available_input_receipts: Mapping[str, Mapping[str, object]],
+    expected_transfer_group: TransferProducerGroup | None = None,
+    expected_qrf_authority: StackedPrimaryQrfAuthority | None = None,
 ) -> dict[str, object]:
     """Bind one declared physical or virtual input to its live content."""
 
@@ -5763,6 +6314,8 @@ def _late_input_column_evidence(
         required_scope=required_scope,
         producer_name=producer_name,
         available_input_receipts=available_input_receipts,
+        expected_transfer_group=expected_transfer_group,
+        expected_qrf_authority=expected_qrf_authority,
     )
     payload: dict[str, object] = {
         "entity": input_column.entity,
@@ -5852,6 +6405,8 @@ def _late_declared_input_evidence(
     available_input_receipts: Mapping[str, Mapping[str, object]],
     unfilled_rows: Mapping[ProducerInput, int],
     invalid_rows: Mapping[ProducerInput, int],
+    expected_transfer_group: TransferProducerGroup | None = None,
+    expected_qrf_authority: StackedPrimaryQrfAuthority | None = None,
 ) -> list[dict[str, object]]:
     """Build the exact, content-bound readiness surface for one producer."""
 
@@ -5866,6 +6421,8 @@ def _late_declared_input_evidence(
                         required_scope=requirement.required_scope,
                         producer_name=contract.name,
                         available_input_receipts=available_input_receipts,
+                        expected_transfer_group=expected_transfer_group,
+                        expected_qrf_authority=expected_qrf_authority,
                     )
                     for column in alternative
                 ]
@@ -6116,6 +6673,8 @@ def _validate_late_execution_row(
     execution_index: int,
     expected_previous_sha256: str,
     boundary: str,
+    expected_transfer_group: TransferProducerGroup | None = None,
+    expected_qrf_authority: StackedPrimaryQrfAuthority | None = None,
 ) -> str:
     """Re-run one persisted readiness proof without invoking its callback."""
 
@@ -6556,6 +7115,8 @@ def _validate_late_execution_row(
             entity=entity,
             column=column,
             boundary=f"{boundary} late producer {contract.name!r}",
+            expected_transfer_group=expected_transfer_group,
+            expected_qrf_authority=expected_qrf_authority,
         )
         if evidenced_available_sha256.get(key) != _canonical_sha256(
             _json_ready(receipt)
@@ -6783,10 +7344,19 @@ def validate_stacked_late_producer_transition_authority(
     *,
     boundary: str,
     expected_transition_authority_sha256: str,
+    late_authority: StackedLateProducerAuthority | None = None,
+    runtime_authority: StackedTerminalAuthority | None = None,
+    qrf_authority: StackedPrimaryQrfAuthority | None = None,
 ) -> None:
     """Validate the anchor after declared downstream operators have run."""
 
-    validate_stacked_late_producer_receipt(receipt, boundary=boundary)
+    validate_stacked_late_producer_receipt(
+        receipt,
+        boundary=boundary,
+        late_authority=late_authority,
+        runtime_authority=runtime_authority,
+        qrf_authority=qrf_authority,
+    )
     _validate_late_transition_authority(
         frame,
         receipt,
@@ -6802,6 +7372,9 @@ def validate_stacked_late_producer_receipt(
     boundary: str,
     frame: Frame | None = None,
     expected_transition_authority_sha256: str | None = None,
+    late_authority: StackedLateProducerAuthority | None = None,
+    runtime_authority: StackedTerminalAuthority | None = None,
+    qrf_authority: StackedPrimaryQrfAuthority | None = None,
 ) -> None:
     """Authenticate the complete derived execution and source/transfer proof."""
 
@@ -6828,7 +7401,9 @@ def validate_stacked_late_producer_receipt(
         raise ValueError(
             f"{boundary}: stacked late-producer DAG receipt version changed."
         )
-    expected_schedule = _json_ready(us_late_producer_schedule_receipt())
+    resolved_late_authority = _resolved_late_producer_authority(late_authority)
+    resolved_runtime_authority = _resolved_terminal_authority(runtime_authority)
+    expected_schedule = _json_ready(resolved_late_authority.schedule_receipt)
     schedule = receipt.get("producer_schedule")
     if not isinstance(schedule, Mapping) or _json_ready(schedule) != expected_schedule:
         raise ValueError(
@@ -6844,7 +7419,7 @@ def validate_stacked_late_producer_receipt(
             receipt.get(digest_field), boundary=f"{boundary} {digest_field}"
         )
     execution = receipt.get("execution")
-    expected_order = CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
+    expected_order = resolved_late_authority.schedule.order
     if not isinstance(execution, list) or len(execution) != len(expected_order):
         raise ValueError(
             f"{boundary}: stacked late-producer DAG must carry exactly "
@@ -6854,15 +7429,24 @@ def validate_stacked_late_producer_receipt(
         producer_schedule_sha256=schedule["payload_sha256"],
         input_frame_sha256=receipt["input_frame_sha256"],
     )
+    transfer_group_by_name = {
+        group.name: group for group in resolved_late_authority.transfer_groups
+    }
     execution_by_name: dict[str, Mapping[str, object]] = {}
     for index, producer_name in enumerate(expected_order):
         raw_row = execution[index]
         previous_sha256 = _validate_late_execution_row(
             raw_row,
-            contract=CANONICAL_US_LATE_PRODUCER_REGISTRY[producer_name],
+            contract=resolved_late_authority.registry[producer_name],
             execution_index=index,
             expected_previous_sha256=previous_sha256,
             boundary=boundary,
+            expected_transfer_group=transfer_group_by_name.get(producer_name),
+            expected_qrf_authority=(
+                qrf_authority
+                if resolved_late_authority.registry[producer_name].kind == "primary_puf"
+                else None
+            ),
         )
         assert isinstance(raw_row, Mapping)
         execution_by_name[producer_name] = raw_row
@@ -6990,17 +7574,22 @@ def validate_stacked_late_producer_receipt(
         raise ValueError(
             f"{boundary}: stacked late-producer DAG transfer proof is absent."
         )
-    validate_stacked_post_puf_transfer_receipt(transfer, boundary=boundary)
+    validate_stacked_post_puf_transfer_receipt(
+        transfer,
+        boundary=boundary,
+        late_authority=resolved_late_authority,
+        runtime_authority=runtime_authority,
+    )
     groups = transfer["groups"]
     assert isinstance(groups, Mapping)
     canonical_family = {
         (entity, target): family
-        for entity, families in CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
+        for entity, families in resolved_runtime_authority.post_puf_transfer_surface.items()
         for family, targets in families.items()
         for target in targets
     }
     reconstructed_targets: dict[str, object] = {}
-    for group in CANONICAL_US_LATE_TRANSFER_GROUPS:
+    for group in resolved_late_authority.transfer_groups:
         row_receipt = execution_by_name[group.name]["producer_receipt"]
         if _json_ready(row_receipt) != _json_ready(groups[group.name]):
             raise ValueError(
@@ -7541,17 +8130,36 @@ def gap_fill_stacked_spine(
     n_estimators: int = 100,
     max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     target_banks: Mapping[str, AcsTransferTargetBank] | None = None,
+    runtime_authority: StackedTerminalAuthority | None = None,
+    gap_fill_authority: StackedGapFillAuthority | None = None,
 ) -> GapFillResult:
     """Run the canonical stacked gap-fill plan with no caller authority."""
 
+    resolved_runtime_authority = _resolved_terminal_authority(runtime_authority)
+    if gap_fill_authority is not None:
+        if runtime_authority is None:
+            raise ValueError(
+                "Compiler gap-fill execution requires its terminal authority."
+            )
+        if not isinstance(gap_fill_authority, StackedGapFillAuthority):
+            raise TypeError("gap_fill_authority must be a StackedGapFillAuthority.")
+        if gap_fill_authority.directions != resolved_runtime_authority.gap_fill_plan:
+            raise ValueError(
+                "Compiler gap-fill authority differs from the terminal authority."
+            )
     return _gap_fill_stacked_spine_evaluate(
         frame,
-        authority=_production_stacked_authority(),
+        authority=resolved_runtime_authority,
         production=True,
         seed=seed,
         n_estimators=n_estimators,
         max_targets_per_fit=max_targets_per_fit,
         target_banks=target_banks,
+        execution_contracts=(
+            None
+            if gap_fill_authority is None
+            else gap_fill_authority.execution_contracts
+        ),
     )
 
 
@@ -7575,6 +8183,7 @@ def _gap_fill_stacked_spine_with_test_authority(
         n_estimators=n_estimators,
         max_targets_per_fit=max_targets_per_fit,
         target_banks=target_banks,
+        execution_contracts=None,
     )
 
 
@@ -7587,6 +8196,7 @@ def _gap_fill_stacked_spine_evaluate(
     n_estimators: int,
     max_targets_per_fit: int,
     target_banks: Mapping[str, AcsTransferTargetBank] | None,
+    execution_contracts: Mapping[str, Mapping[str, object]] | None,
 ) -> GapFillResult:
     """Gap-fill survey-specific fields cross-origin on the stacked spine.
 
@@ -7644,6 +8254,10 @@ def _gap_fill_stacked_spine_evaluate(
             raise ValueError(
                 f"target_banks name unknown gap-fill direction(s): {unknown_banks}."
             )
+    if execution_contracts is not None and set(execution_contracts) != set(names):
+        raise ValueError(
+            "Stacked gap-fill execution contracts must exactly cover directions."
+        )
 
     person_clone = frame.table("person")[support_clone_index_column("person")]
     if not person_clone.eq(0).all():
@@ -7679,6 +8293,7 @@ def _gap_fill_stacked_spine_evaluate(
             n_estimators=n_estimators,
             max_targets_per_fit=max_targets_per_fit,
             target_bank=(target_banks or {}).get(direction.name),
+            execution_contract=(execution_contracts or {}).get(direction.name),
         )
         transfer_results[direction.name] = result
         current = result.frame
@@ -8218,6 +8833,167 @@ class StackedLateProducerResult:
     transition_authority_sha256: str
 
 
+def _materialize_transfer_group(value: object) -> TransferProducerGroup:
+    if isinstance(value, TransferProducerGroup):
+        return value
+    try:
+        return TransferProducerGroup(
+            name=value.name,
+            entity=value.entity,
+            family=value.family,
+            targets=tuple(value.targets),
+            target_families=value.target_families,
+        )
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise TypeError(
+            "Compiler late-transfer groups must expose the structural runtime fields."
+        ) from exc
+
+
+@dataclass(frozen=True)
+class StackedLateProducerAuthority:
+    """Compiler-issued producer registry, schedule, and transfer partition."""
+
+    registry: Mapping[str, ProducerContract]
+    schedule: ProducerSchedule
+    schedule_receipt: Mapping[str, object]
+    transfer_groups: tuple[TransferProducerGroup, ...]
+    transfer_execution_contracts: Mapping[str, Mapping[str, object]] | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.registry, Mapping) or not self.registry:
+            raise TypeError("Late-producer registry must be a nonempty mapping.")
+        registry = dict(self.registry)
+        if any(
+            not isinstance(name, str)
+            or not name
+            or not isinstance(contract, ProducerContract)
+            or contract.name != name
+            for name, contract in registry.items()
+        ):
+            raise TypeError(
+                "Late-producer registry keys must match ProducerContract names."
+            )
+        if not isinstance(self.schedule, ProducerSchedule):
+            raise TypeError("Late-producer schedule must be a ProducerSchedule.")
+        if set(registry) != set(self.schedule.order):
+            raise ValueError("Late-producer registry nodes differ from its schedule.")
+        receipt = _json_ready(self.schedule_receipt)
+        external_stages = receipt.get("external_stages")
+        if not isinstance(external_stages, list) or any(
+            not isinstance(stage, str) or not stage for stage in external_stages
+        ):
+            raise ValueError(
+                "Late-producer schedule receipt has invalid external stages."
+            )
+        derived = derive_producer_schedule(
+            registry,
+            external_stages=tuple(external_stages),
+        )
+        if (
+            derived.order != self.schedule.order
+            or derived.waves != self.schedule.waves
+            or derived.edges != self.schedule.edges
+            or derived.sha256 != self.schedule.sha256
+        ):
+            raise ValueError(
+                "Late-producer registry does not derive its supplied schedule."
+            )
+        if (
+            receipt.get("order") != list(self.schedule.order)
+            or receipt.get("waves") != [list(wave) for wave in self.schedule.waves]
+            or receipt.get("edges") != [list(edge) for edge in self.schedule.edges]
+            or receipt.get("schedule_sha256") != self.schedule.sha256
+        ):
+            raise ValueError(
+                "Late-producer schedule receipt differs from its typed schedule."
+            )
+        raw_groups = tuple(self.transfer_groups)
+        groups = tuple(_materialize_transfer_group(group) for group in raw_groups)
+        names = tuple(group.name for group in groups)
+        if len(names) != len(set(names)):
+            raise ValueError("Late-producer transfer groups repeat names.")
+        if any(
+            name not in registry or registry[name].kind != "late_transfer"
+            for name in names
+        ):
+            raise ValueError(
+                "Late-producer transfer groups must name late-transfer contracts."
+            )
+        receipt_groups = receipt.get("transfer_groups")
+        if not isinstance(receipt_groups, list) or receipt_groups != [
+            {
+                "name": group.name,
+                "entity": group.entity,
+                "family": group.family,
+                "targets": list(group.targets),
+            }
+            for group in groups
+        ]:
+            raise ValueError(
+                "Late-producer transfer groups differ from their schedule receipt."
+            )
+        if self.transfer_execution_contracts is None:
+            try:
+                execution_contracts = {
+                    group.name: group.transfer_execution_contract
+                    for group in raw_groups
+                }
+            except AttributeError as exc:
+                raise ValueError(
+                    "Compiler late-transfer authority requires one execution "
+                    "contract per group."
+                ) from exc
+        else:
+            execution_contracts = dict(self.transfer_execution_contracts)
+        if set(execution_contracts) != set(names) or any(
+            not isinstance(contract, Mapping)
+            for contract in execution_contracts.values()
+        ):
+            raise ValueError(
+                "Late-transfer execution contracts must exactly cover groups."
+            )
+        object.__setattr__(self, "registry", MappingProxyType(registry))
+        object.__setattr__(self, "schedule_receipt", _freeze_authority_payload(receipt))
+        object.__setattr__(self, "transfer_groups", groups)
+        object.__setattr__(
+            self,
+            "transfer_execution_contracts",
+            MappingProxyType(
+                {
+                    name: _freeze_authority_payload(contract)
+                    for name, contract in execution_contracts.items()
+                }
+            ),
+        )
+
+
+def _canonical_late_producer_authority() -> StackedLateProducerAuthority:
+    return StackedLateProducerAuthority(
+        registry=CANONICAL_US_LATE_PRODUCER_REGISTRY,
+        schedule=CANONICAL_US_LATE_PRODUCER_SCHEDULE,
+        schedule_receipt=us_late_producer_schedule_receipt(),
+        transfer_groups=CANONICAL_US_LATE_TRANSFER_GROUPS,
+        transfer_execution_contracts={
+            group.name: acs_transfer_runtime.acs_transfer_execution_contract_identity(
+                targets=group.targets,
+                derive_schedule_d=False,
+            )
+            for group in CANONICAL_US_LATE_TRANSFER_GROUPS
+        },
+    )
+
+
+def _resolved_late_producer_authority(
+    authority: StackedLateProducerAuthority | None,
+) -> StackedLateProducerAuthority:
+    if authority is None:
+        return _canonical_late_producer_authority()
+    if not isinstance(authority, StackedLateProducerAuthority):
+        raise TypeError("late_authority must be a StackedLateProducerAuthority.")
+    return authority
+
+
 def _producer_role_surface_for_group(
     group_surface: TargetFamilies,
     producer_surface: TargetFamilies,
@@ -8251,17 +9027,29 @@ def transfer_stacked_post_puf_group(
     max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     target_bank: AcsTransferTargetBank | None = None,
     execution_contract: Mapping[str, object] | None = None,
+    group: TransferProducerGroup | None = None,
+    runtime_authority: StackedTerminalAuthority | None = None,
 ) -> StackedPostPufTransferResult:
     """Execute one canonical bounded late-transfer producer."""
 
-    groups = {group.name: group for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
-    if group_name not in groups:
+    compiler_group_supplied = group is not None
+    if group is None:
+        groups = {item.name: item for item in CANONICAL_US_LATE_TRANSFER_GROUPS}
+        if group_name not in groups:
+            raise ValueError(
+                f"Unknown canonical US late-transfer producer {group_name!r}; "
+                f"expected one of {sorted(groups)}."
+            )
+        group = groups[group_name]
+    elif not isinstance(group, TransferProducerGroup):
+        raise TypeError("group must be a TransferProducerGroup.")
+    elif group.name != group_name:
+        raise ValueError("Late-transfer group name differs from its lookup key.")
+    if compiler_group_supplied and runtime_authority is None:
         raise ValueError(
-            f"Unknown canonical US late-transfer producer {group_name!r}; "
-            f"expected one of {sorted(groups)}."
+            "Compiler late-transfer groups require their terminal authority."
         )
-    group = groups[group_name]
-    authority = _production_stacked_authority()
+    authority = _resolved_terminal_authority(runtime_authority)
     result = _transfer_stacked_post_puf_inputs_evaluate(
         frame,
         authority=authority,
@@ -8294,12 +9082,13 @@ def transfer_stacked_post_puf_inputs(
     n_estimators: int = 100,
     max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     target_bank: AcsTransferTargetBank | None = None,
+    runtime_authority: StackedTerminalAuthority | None = None,
 ) -> StackedPostPufTransferResult:
     """Transfer canonical late-produced inputs after source completion."""
 
     return _transfer_stacked_post_puf_inputs_evaluate(
         frame,
-        authority=_production_stacked_authority(),
+        authority=_resolved_terminal_authority(runtime_authority),
         production=True,
         seed=seed,
         n_estimators=n_estimators,
@@ -8765,6 +9554,8 @@ def _late_input_readiness_rows(
     contract: ProducerContract,
     *,
     available_input_receipts: Mapping[str, Mapping[str, object]] | None = None,
+    expected_transfer_group: TransferProducerGroup | None = None,
+    expected_qrf_authority: StackedPrimaryQrfAuthority | None = None,
 ) -> tuple[dict[ProducerInput, int], dict[ProducerInput, int]]:
     """Count missing rows and invalid values as distinct readiness states."""
 
@@ -8781,6 +9572,8 @@ def _late_input_readiness_rows(
                 required_scope=requirement.required_scope,
                 producer_name=contract.name,
                 available_input_receipts=available,
+                expected_transfer_group=expected_transfer_group,
+                expected_qrf_authority=expected_qrf_authority,
             )
             for alternative in requirement.alternatives
             for input_column in alternative
@@ -8805,6 +9598,8 @@ def _late_unfilled_input_rows(
     contract: ProducerContract,
     *,
     available_input_receipts: Mapping[str, Mapping[str, object]] | None = None,
+    expected_transfer_group: TransferProducerGroup | None = None,
+    expected_qrf_authority: StackedPrimaryQrfAuthority | None = None,
 ) -> dict[ProducerInput, int]:
     """Compatibility projection of the distinct late-input readiness state."""
 
@@ -8812,6 +9607,8 @@ def _late_unfilled_input_rows(
         frame,
         contract,
         available_input_receipts=available_input_receipts,
+        expected_transfer_group=expected_transfer_group,
+        expected_qrf_authority=expected_qrf_authority,
     )
     return unfilled
 
@@ -8823,6 +9620,8 @@ def _late_input_column_readiness_rows(
     required_scope: str,
     producer_name: str,
     available_input_receipts: Mapping[str, Mapping[str, object]],
+    expected_transfer_group: TransferProducerGroup | None = None,
+    expected_qrf_authority: StackedPrimaryQrfAuthority | None = None,
 ) -> tuple[int, int]:
     """Return ``(missing_rows, invalid_values)`` for one declared column."""
 
@@ -8858,6 +9657,8 @@ def _late_input_column_readiness_rows(
             producer=producer_name,
             entity=input_column.entity,
             column=input_column.column,
+            expected_transfer_group=expected_transfer_group,
+            expected_qrf_authority=expected_qrf_authority,
         ):
             return 0, 0
         return max(1, int(scope.sum())), 0
@@ -8907,10 +9708,18 @@ def _late_declared_absence_receipts(
     return receipts
 
 
-def _assert_primary_puf_stage_complete(frame: Frame) -> None:
+def _assert_primary_puf_stage_complete(
+    frame: Frame,
+    *,
+    contract: ProducerContract | None = None,
+) -> None:
     """Validate the already-executed root producer before DAG dispatch."""
 
-    contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[US_LATE_PRIMARY_PUF_STAGE]
+    contract = (
+        CANONICAL_US_LATE_PRODUCER_REGISTRY[US_LATE_PRIMARY_PUF_STAGE]
+        if contract is None
+        else contract
+    )
     failures: list[str] = []
     for output in contract.outputs:
         if output.entity == "frame":
@@ -9062,17 +9871,19 @@ def _aggregate_late_transfer_result(
         ],
     ],
     execution_order: Sequence[str],
+    late_authority: StackedLateProducerAuthority,
+    runtime_authority: StackedTerminalAuthority | None,
 ) -> StackedPostPufTransferResult:
     """Bind all bounded group outcomes into the canonical 70-target receipt."""
 
-    expected_groups = tuple(group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS)
+    expected_groups = tuple(group.name for group in late_authority.transfer_groups)
     if set(group_results) != set(expected_groups):
         raise ValueError(
             "US late-transfer finalization requires every canonical group once; "
             f"missing={sorted(set(expected_groups) - set(group_results))}, "
             f"extra={sorted(set(group_results) - set(expected_groups))}."
         )
-    authority = _production_stacked_authority()
+    authority = _resolved_terminal_authority(runtime_authority)
     canonical_family = {
         (entity, target): family
         for entity, families in authority.post_puf_transfer_surface.items()
@@ -9086,7 +9897,7 @@ def _aggregate_late_transfer_result(
     resolved_channels: set[str | None] = set()
     group_receipts: dict[str, object] = {}
     residual_null_rows = 0
-    for group in CANONICAL_US_LATE_TRANSFER_GROUPS:
+    for group in late_authority.transfer_groups:
         (
             group_receipt,
             group_imputed_inputs,
@@ -9147,7 +9958,7 @@ def _aggregate_late_transfer_result(
     )
     receipt = {
         "authority": _authority_receipt(authority),
-        "producer_schedule": dict(us_late_producer_schedule_receipt()),
+        "producer_schedule": _json_ready(late_authority.schedule_receipt),
         "producer_execution_order": list(execution_order),
         "donor_selection": "owner_projection_of_asec_origin_clone_1",
         "donor_channel": BASE_ASEC_SUPPORT_CHANNEL,
@@ -9170,6 +9981,8 @@ def _aggregate_late_transfer_result(
     validate_stacked_post_puf_transfer_receipt(
         receipt,
         boundary="US late-transfer DAG finalization",
+        late_authority=late_authority,
+        runtime_authority=runtime_authority,
     )
     return StackedPostPufTransferResult(frame, receipt, aggregate)
 
@@ -9184,15 +9997,27 @@ def run_stacked_late_producer_dag(
     max_targets_per_fit: int = DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     target_banks: Mapping[str, AcsTransferTargetBank | None] | None = None,
     absence_receipts: Mapping[str, Mapping[str, object]] | None = None,
+    late_authority: StackedLateProducerAuthority | None = None,
+    runtime_authority: StackedTerminalAuthority | None = None,
+    qrf_authority: StackedPrimaryQrfAuthority | None = None,
 ) -> StackedLateProducerResult:
     """Derive and execute the complete late stage from producer contracts."""
 
     from microcosm.build.us_runtime.multispine_pool import (
-        POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
         finalize_multispine_source_inputs,
         run_multispine_post_clone_source_operator,
     )
 
+    if late_authority is not None and runtime_authority is None:
+        raise ValueError(
+            "Compiler late-producer execution requires its terminal authority."
+        )
+    resolved_late_authority = _resolved_late_producer_authority(late_authority)
+    source_operator_order = tuple(
+        producer_name.removeprefix("source:")
+        for producer_name in resolved_late_authority.schedule.order
+        if resolved_late_authority.registry[producer_name].kind == "post_clone_source"
+    )
     if max_targets_per_fit != DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT:
         raise ValueError(
             "Canonical US late-producer groups require "
@@ -9206,7 +10031,7 @@ def run_stacked_late_producer_dag(
             "US late-producer DAG primary resource receipts must be a mapping."
         )
     expected_primary_resources = _late_contract_available_input_keys(
-        CANONICAL_US_LATE_PRODUCER_REGISTRY[US_LATE_PRIMARY_PUF_STAGE]
+        resolved_late_authority.registry[US_LATE_PRIMARY_PUF_STAGE]
     )
     if set(primary_resource_receipts) != expected_primary_resources:
         raise ValueError(
@@ -9220,7 +10045,7 @@ def run_stacked_late_producer_dag(
             "US late-producer DAG entry already carries a transition authority; "
             "refusing to execute the transition twice."
         )
-    expected_groups = {group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    expected_groups = {group.name for group in resolved_late_authority.transfer_groups}
     banks = {} if target_banks is None else dict(target_banks)
     if target_banks is not None and set(banks) != expected_groups:
         raise ValueError(
@@ -9231,7 +10056,7 @@ def run_stacked_late_producer_dag(
     declared_absence = {} if absence_receipts is None else dict(absence_receipts)
     current = frame
     input_frame_sha256 = _late_frame_content_sha256(frame)
-    schedule_receipt = _json_ready(us_late_producer_schedule_receipt())
+    schedule_receipt = _json_ready(resolved_late_authority.schedule_receipt)
     previous_execution_sha256 = _late_execution_genesis_sha256(
         producer_schedule_sha256=schedule_receipt["payload_sha256"],
         input_frame_sha256=input_frame_sha256,
@@ -9251,26 +10076,32 @@ def run_stacked_late_producer_dag(
             str | None,
         ],
     ] = {}
-    group_by_name = {group.name: group for group in CANONICAL_US_LATE_TRANSFER_GROUPS}
+    group_by_name = {
+        group.name: group for group in resolved_late_authority.transfer_groups
+    }
     for schedule_index, producer_name in enumerate(
-        CANONICAL_US_LATE_PRODUCER_SCHEDULE.order
+        resolved_late_authority.schedule.order
     ):
-        contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[producer_name]
-        if producer_name == US_LATE_ACS_EARNINGS_UNIVERSE_STAGE:
+        contract = resolved_late_authority.registry[producer_name]
+        expected_transfer_group = group_by_name.get(producer_name)
+        expected_qrf_authority = (
+            qrf_authority if contract.kind == "primary_puf" else None
+        )
+        if contract.kind == "acs_earnings_universe":
             node_available_inputs = _late_acs_earnings_universe_resource_receipts()
-        elif producer_name == US_LATE_PRIMARY_PUF_STAGE:
+        elif contract.kind == "primary_puf":
             node_available_inputs = dict(primary_resource_receipts)
         elif contract.kind == "post_clone_source":
             node_available_inputs = _late_source_resource_receipts(
                 producer_name=producer_name,
             )
-        elif producer_name == US_LATE_SOURCE_FINALIZER_STAGE:
+        elif contract.kind == "source_finalizer":
             node_available_inputs = _late_source_finalizer_resource_receipts()
             node_available_inputs.update(
                 {
                     f"person.@source_receipt:{operator}": (
                         _late_available_input_receipt(
-                            producer=US_LATE_SOURCE_FINALIZER_STAGE,
+                            producer=producer_name,
                             entity="person",
                             column=f"@source_receipt:{operator}",
                             rows=len(current.table("person")),
@@ -9284,17 +10115,17 @@ def run_stacked_late_producer_dag(
                             },
                         )
                     )
-                    for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
+                    for operator in source_operator_order
                     if operator in source_receipts
                 }
             )
         elif contract.kind == "late_transfer":
             group = group_by_name[producer_name]
             node_available_inputs = _late_transfer_resource_receipts(
-                group_name=group.name,
-                entity=group.entity,
-                family=group.family,
-                targets=group.targets,
+                group=group,
+                execution_contract=(
+                    resolved_late_authority.transfer_execution_contracts[group.name]
+                ),
                 seed=seed,
                 n_estimators=n_estimators,
                 max_targets_per_fit=max_targets_per_fit,
@@ -9306,6 +10137,8 @@ def run_stacked_late_producer_dag(
             current,
             contract,
             available_input_receipts=node_available_inputs,
+            expected_transfer_group=expected_transfer_group,
+            expected_qrf_authority=expected_qrf_authority,
         )
         node_absence_receipts = _late_declared_absence_receipts(
             contract,
@@ -9325,6 +10158,8 @@ def run_stacked_late_producer_dag(
             available_input_receipts=node_available_inputs,
             unfilled_rows=unfilled_rows,
             invalid_rows=invalid_rows,
+            expected_transfer_group=expected_transfer_group,
+            expected_qrf_authority=expected_qrf_authority,
         )
         outcome: dict[str, object] = {}
 
@@ -9376,6 +10211,8 @@ def run_stacked_late_producer_dag(
                     max_targets_per_fit=max_targets_per_fit,
                     target_bank=banks.get(bound_producer_name),
                     execution_contract=execution_contract,
+                    group=(group if late_authority is not None else None),
+                    runtime_authority=runtime_authority,
                 )
             else:
                 raise AssertionError(
@@ -9430,6 +10267,9 @@ def run_stacked_late_producer_dag(
                     seed=seed,
                     n_estimators=n_estimators,
                     max_targets_per_fit=max_targets_per_fit,
+                    execution_contract=(
+                        resolved_late_authority.transfer_execution_contracts[group.name]
+                    ),
                 ),
             )
             _assert_late_callback_consumed_bound_config(
@@ -9501,7 +10341,7 @@ def run_stacked_late_producer_dag(
                 raise TypeError(
                     "US primary-PUF producer callback must return StackedPufPassResult."
                 )
-            _assert_primary_puf_stage_complete(current)
+            _assert_primary_puf_stage_complete(current, contract=contract)
             primary_puf_result = result
             continue
 
@@ -9533,6 +10373,8 @@ def run_stacked_late_producer_dag(
         current,
         group_results=group_results,
         execution_order=execution_order,
+        late_authority=resolved_late_authority,
+        runtime_authority=runtime_authority,
     )
     late_receipt: dict[str, object] = {
         "version": US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION,
@@ -9548,6 +10390,9 @@ def run_stacked_late_producer_dag(
     validate_stacked_late_producer_receipt(
         late_receipt,
         boundary="US late-producer DAG finalization",
+        late_authority=resolved_late_authority,
+        runtime_authority=runtime_authority,
+        qrf_authority=qrf_authority,
     )
     authorized_frame, transition_authority_sha256 = (
         _bind_late_producer_transition_authority(aggregate.frame, late_receipt)
@@ -9557,6 +10402,8 @@ def run_stacked_late_producer_dag(
         boundary="US late-producer DAG live-output finalization",
         frame=authorized_frame,
         expected_transition_authority_sha256=transition_authority_sha256,
+        late_authority=resolved_late_authority,
+        runtime_authority=runtime_authority,
     )
     return StackedLateProducerResult(
         frame=authorized_frame,
@@ -9731,6 +10578,64 @@ class StackedPufPassResult:
     receipt: Mapping[str, object]
 
 
+@dataclass(frozen=True)
+class StackedPrimaryQrfAuthority:
+    """Compiler-issued primary-QRF resources accepted by the legacy kernel."""
+
+    predictors: tuple[str, ...]
+    person_outputs: tuple[str, ...]
+    tax_unit_outputs: tuple[str, ...]
+    target_order: tuple[str, ...]
+    target_order_sha256: str
+    checkpoint_schema_version: int
+    manifest_filename: str = PRIMARY_QRF_MANIFEST_FILENAME
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "predictors",
+            "person_outputs",
+            "tax_unit_outputs",
+            "target_order",
+        ):
+            values = tuple(getattr(self, field_name))
+            if not values or any(
+                not isinstance(value, str) or not value for value in values
+            ):
+                raise ValueError(
+                    f"Stacked primary-QRF {field_name} requires named values."
+                )
+            if len(values) != len(set(values)):
+                raise ValueError(f"Stacked primary-QRF {field_name} repeats values.")
+            object.__setattr__(self, field_name, values)
+        if self.target_order != self.person_outputs + self.tax_unit_outputs:
+            raise ValueError(
+                "Stacked primary-QRF target order must be person outputs followed "
+                "by tax-unit outputs."
+            )
+        _validate_sha256(
+            self.target_order_sha256,
+            boundary="Stacked primary-QRF target order",
+        )
+        if _canonical_sha256(list(self.target_order)) != self.target_order_sha256:
+            raise ValueError("Stacked primary-QRF target-order digest changed.")
+        if (
+            isinstance(self.checkpoint_schema_version, bool)
+            or not isinstance(self.checkpoint_schema_version, int)
+            or self.checkpoint_schema_version <= 0
+        ):
+            raise ValueError(
+                "Stacked primary-QRF checkpoint schema version must be positive."
+            )
+        if not isinstance(self.manifest_filename, str) or not self.manifest_filename:
+            raise ValueError(
+                "Stacked primary-QRF manifest filename must be a non-empty string."
+            )
+        if Path(self.manifest_filename).name != self.manifest_filename:
+            raise ValueError(
+                "Stacked primary-QRF manifest filename must be a plain filename."
+            )
+
+
 def run_stacked_puf_pass(
     frame: Frame,
     donor_tax_units: pd.DataFrame,
@@ -9746,6 +10651,7 @@ def run_stacked_puf_pass(
     tail_bound_diagnostics: list[dict[str, object]] | None = None,
     primary_qrf_checkpoint_dir: str | Path | None = None,
     primary_qrf_input_binding: Mapping[str, object] | None = None,
+    qrf_authority: StackedPrimaryQrfAuthority | None = None,
 ) -> StackedPufPassResult:
     """Run the resumable primary QRF and clone-2 tail over the stacked spine.
 
@@ -9772,6 +10678,7 @@ def run_stacked_puf_pass(
         tail_bound_diagnostics=tail_bound_diagnostics,
         primary_qrf_checkpoint_dir=primary_qrf_checkpoint_dir,
         primary_qrf_input_binding=primary_qrf_input_binding,
+        qrf_authority=qrf_authority,
         apply_capital_gains_tail=True,
     )
 
@@ -9806,24 +10713,46 @@ def _run_stacked_puf_pass_evaluate(
     tail_bound_diagnostics: list[dict[str, object]] | None = None,
     primary_qrf_checkpoint_dir: str | Path | None = None,
     primary_qrf_input_binding: Mapping[str, object] | None = None,
+    qrf_authority: StackedPrimaryQrfAuthority | None = None,
     apply_capital_gains_tail: bool,
 ) -> StackedPufPassResult:
     """Internal evaluator with one explicit fixture-only tail seam."""
 
-    if primary_qrf_input_binding is not None:
-        noncanonical = {
+    if qrf_authority is not None:
+        if not isinstance(qrf_authority, StackedPrimaryQrfAuthority):
+            raise TypeError("qrf_authority must be a StackedPrimaryQrfAuthority.")
+        explicit = {
             "predictors": predictors,
             "person_outputs": person_outputs,
             "tax_unit_outputs": tax_unit_outputs,
         }
-        explicit = sorted(
-            name for name, value in noncanonical.items() if value is not None
+        collisions = sorted(
+            name for name, value in explicit.items() if value is not None
         )
-        if explicit:
+        if collisions:
             raise ValueError(
-                "Stacked production primary QRF requires the import-declared "
-                f"canonical predictor/output surface; explicit={explicit}."
+                "Compiler primary-QRF authority and explicit resources are "
+                f"mutually exclusive; explicit={collisions}."
             )
+        predictors = qrf_authority.predictors
+        person_outputs = qrf_authority.person_outputs
+        tax_unit_outputs = qrf_authority.tax_unit_outputs
+
+    if primary_qrf_input_binding is not None:
+        if qrf_authority is None:
+            noncanonical = {
+                "predictors": predictors,
+                "person_outputs": person_outputs,
+                "tax_unit_outputs": tax_unit_outputs,
+            }
+            explicit = sorted(
+                name for name, value in noncanonical.items() if value is not None
+            )
+            if explicit:
+                raise ValueError(
+                    "Stacked production primary QRF requires the import-declared "
+                    f"canonical predictor/output surface; explicit={explicit}."
+                )
         missing_sinks = [
             name
             for name, value in {
@@ -9839,7 +10768,10 @@ def _run_stacked_puf_pass_evaluate(
             )
     canonical_tail_bounds = (
         puf_tax_detail_tail_bound_quantiles_identity()
-        if person_outputs is None and tax_unit_outputs is None
+        if (
+            (person_outputs is None and tax_unit_outputs is None)
+            or qrf_authority is not None
+        )
         else None
     )
     tail_spec, tail_agi_bands = resolve_puf_capital_gains_tail_execution_inputs()
@@ -9927,6 +10859,7 @@ def _run_stacked_puf_pass_evaluate(
         _validate_stacked_late_primary_checkpoint_input_binding(
             primary_qrf_input_binding,
             boundary="stacked primary-QRF checkpoint entry",
+            qrf_authority=qrf_authority,
         )
         assert isinstance(primary_qrf_input_binding, Mapping)
         normalized_input_binding = _json_ready(primary_qrf_input_binding)
@@ -9957,9 +10890,10 @@ def _run_stacked_puf_pass_evaluate(
             n_estimators=n_estimators,
             fit_records_enabled=fit_records is not None,
             tail_bound_diagnostics_enabled=(tail_bound_diagnostics is not None),
-            predictors=predictors,
-            person_outputs=person_outputs,
-            tax_unit_outputs=tax_unit_outputs,
+            predictors=(None if qrf_authority is not None else predictors),
+            person_outputs=(None if qrf_authority is not None else person_outputs),
+            tax_unit_outputs=(None if qrf_authority is not None else tax_unit_outputs),
+            qrf_authority=qrf_authority,
             capital_gains_tail_spec=tail_spec,
             capital_gains_tail_agi_bands=tail_agi_bands,
         )
@@ -9969,7 +10903,11 @@ def _run_stacked_puf_pass_evaluate(
                 "declared late-producer donor/config resources."
             )
         primary_resource_receipts_sha256 = _canonical_sha256(bound_resources)
-        manifest_path = checkpoint_dir / PRIMARY_QRF_MANIFEST_FILENAME
+        manifest_path = checkpoint_dir / (
+            PRIMARY_QRF_MANIFEST_FILENAME
+            if qrf_authority is None
+            else qrf_authority.manifest_filename
+        )
         input_binding_path = checkpoint_dir / _LATE_PRIMARY_QRF_INPUT_BINDING_FILENAME
         if manifest_path.exists():
             if not input_binding_path.is_file():
@@ -9989,6 +10927,7 @@ def _run_stacked_puf_pass_evaluate(
             _validate_stacked_late_primary_checkpoint_input_binding(
                 observed_input_binding,
                 boundary="stacked primary-QRF checkpoint resume",
+                qrf_authority=qrf_authority,
             )
             if observed_input_binding != normalized_input_binding:
                 raise ValueError(
@@ -10847,12 +11786,13 @@ def stacked_completeness_gate(
     *,
     absence_proofs: Sequence[AbsenceProof] = (),
     tail_manifest: Mapping[str, object] | None = None,
+    runtime_authority: StackedTerminalAuthority | None = None,
 ) -> GateResult:
     """Evaluate the canonical declared surface with no caller authority."""
 
     return _stacked_completeness_gate_evaluate(
         frame,
-        authority=_production_stacked_authority(),
+        authority=_resolved_terminal_authority(runtime_authority),
         production=True,
         absence_proofs=absence_proofs,
         tail_manifest=tail_manifest,
@@ -11367,12 +12307,13 @@ def by_origin_battery(
     frame: Frame,
     *,
     tail_manifest: Mapping[str, object] | None = None,
+    runtime_authority: StackedTerminalAuthority | None = None,
 ) -> GateResult:
     """Run the canonical 131-target plus joint by-origin battery."""
 
     return _by_origin_battery_evaluate(
         frame,
-        authority=_production_stacked_authority(),
+        authority=_resolved_terminal_authority(runtime_authority),
         production=True,
         tail_manifest=tail_manifest,
     )
