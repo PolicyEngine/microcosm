@@ -81,3 +81,23 @@ def test_nhs_85_plus_fold_in_and_budget_normalization_use_full_table() -> None:
     assert allocated.loc[0, "nhs_a_and_e_spending"] < allocated.loc[
         1, "nhs_a_and_e_spending"
     ]
+
+
+def test_nhs_age_bounds_parse_every_committed_resource_label() -> None:
+    # Regression for the licensed-build crash on "01-04 years": the parser
+    # must handle the committed resource's REAL labels, not just synthetic
+    # fixtures.
+    import json
+    from pathlib import Path
+
+    resource = (
+        Path(__file__).resolve().parents[1]
+        / "src/microcosm/build/uk/nhs_consumption_by_age_gender.json"
+    )
+    payload = json.loads(resource.read_text(encoding="utf-8"))
+    labels = sorted({row["Age group"] for row in payload["rows"]})
+    assert labels, "committed NHS resource has no rows"
+    bounds = [parse_nhs_age_bounds(label) for label in labels]
+    assert parse_nhs_age_bounds("01-04 years") == (1, 5)
+    for lower, upper in bounds:
+        assert 0 <= lower < upper <= 120

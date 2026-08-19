@@ -286,8 +286,11 @@ def parse_nhs_age_bounds(age_group: str) -> tuple[int, int]:
         return 0, 1
     if age_group == "95 years or older":
         return 95, 120
-    if "-" in age_group:
-        lo, hi = age_group.split("-", maxsplit=1)
+    # Banded labels read "01-04 years": strip the unit suffix before
+    # splitting (the incumbent slices the first five characters).
+    stripped = age_group.removesuffix(" years").strip()
+    if "-" in stripped:
+        lo, hi = stripped.split("-", maxsplit=1)
         return int(lo.strip()), int(hi.strip()) + 1
     raise ValueError(f"unsupported NHS age group {age_group!r}")
 
