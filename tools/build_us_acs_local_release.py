@@ -48,6 +48,7 @@ import argparse
 import gc
 import hashlib
 import json
+import re
 import resource
 import shutil
 import subprocess
@@ -68,8 +69,29 @@ if str(_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_TOOLS_DIR))
 
 PERIOD = 2024
-RELEASE_NAMESPACE = "buildo_acs_local"
-RELEASE_ID_PREFIX = "populace-us-2024-buildo-acs-local"
+# The campaign letter names the donor lineage, so it derives from the
+# pinned donor release id at package time (falling back to the letter this
+# tool line was born under only when no donor identity is pinned).
+_FALLBACK_CAMPAIGN = "buildo"
+_CAMPAIGN_TOKEN_RE = re.compile(r"-(build[a-z0-9]+)-")
+
+
+def release_campaign(donor_release: dict | None) -> str:
+    """The campaign token of the pinned donor release (e.g. ``buildp``)."""
+
+    release_id = (donor_release or {}).get("release_id") or ""
+    match = _CAMPAIGN_TOKEN_RE.search(release_id)
+    return match.group(1) if match else _FALLBACK_CAMPAIGN
+
+
+def release_namespace(donor_release: dict | None) -> str:
+    return f"{release_campaign(donor_release)}_acs_local"
+
+
+def release_id_prefix(donor_release: dict | None) -> str:
+    return f"populace-us-2024-{release_campaign(donor_release)}-acs-local"
+
+
 ARTIFACT_NAME = "populace_us_2024_acs_local"
 ARTIFACT_FILENAME = f"{ARTIFACT_NAME}.h5"
 HF_REPO_ID = "policyengine/populace-us"
@@ -1622,9 +1644,10 @@ def do_package(args) -> dict:
             "Refusing to package: the finalized summary is not simulation_ready."
         )
 
+    donor_release = (staging_summary.get("base") or {}).get("donor_release")
     code = _repo_code_identity(args.allow_dirty)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    release_id = f"{RELEASE_ID_PREFIX}-{code['sha']}-{timestamp}"
+    release_id = f"{release_id_prefix(donor_release)}-{code['sha']}-{timestamp}"
     release_dir = args.out / "releases" / release_id
     release_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1680,7 +1703,6 @@ def do_package(args) -> dict:
         except Exception:
             return "unknown"
 
-    donor_release = (staging_summary.get("base") or {}).get("donor_release")
     refresh_recipe = {
         "note": (
             "When the next certified default publishes (e.g. the microcosm#508 "
@@ -1810,7 +1832,7 @@ def do_package(args) -> dict:
         "default_datasets": {},
         "dataset_role": "non_default_local_area",
         "is_default": False,
-        "namespace": RELEASE_NAMESPACE,
+        "namespace": release_namespace(donor_release),
         "build": {
             "build_id": release_id,
             "built_at": datetime.now(UTC).isoformat(),
