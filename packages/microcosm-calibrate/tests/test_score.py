@@ -58,6 +58,9 @@ def test_score_targets_evaluates_existing_weights_without_calibrating() -> None:
     assert result.diagnostics[0].initial_estimate == 800.0
     assert result.diagnostics[0].final_estimate == 800.0
     assert result.diagnostics[1].final_estimate == 5.0
+    np.testing.assert_allclose(result.target_loss_weights, [1.0, 1.0])
+    np.testing.assert_allclose(result.target_loss_scales, [1_000.0, 5.0])
+    assert result.target_loss_cap == 1.0
     expected = relative_error_loss(
         np.asarray([800.0, 5.0]),
         np.asarray([1_000.0, 5.0]),
@@ -89,3 +92,40 @@ def test_score_targets_rejects_misaligned_weight_vector() -> None:
 
     with pytest.raises(ValueError, match="weights must align"):
         score_targets(frame, targets, weights=np.asarray([1.0]))
+
+
+def test_score_targets_retains_loss_basis_after_skipped_target_alignment() -> None:
+    frame = _frame()
+    targets = TargetSet(
+        (
+            Target(name="income", entity="household", value=500.0, measure="income"),
+            Target(
+                name="ghost",
+                entity="household",
+                value=1.0,
+                measure="no_such_column",
+            ),
+            Target(
+                name="households",
+                entity="household",
+                value=5.0,
+                measure="household_count",
+            ),
+        )
+    )
+
+    result = score_targets(
+        frame,
+        targets,
+        target_loss_weights=np.asarray([2.0, 99.0, 6.0]),
+        target_loss_scales=np.asarray([500.0, 99.0, 5.0]),
+        target_loss_cap=0.75,
+    )
+
+    assert [diagnostic.name for diagnostic in result.diagnostics] == [
+        "income@0",
+        "households@0",
+    ]
+    np.testing.assert_allclose(result.target_loss_weights, [2.0, 6.0])
+    np.testing.assert_allclose(result.target_loss_scales, [500.0, 5.0])
+    assert result.target_loss_cap == 0.75

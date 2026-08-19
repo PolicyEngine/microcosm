@@ -19,11 +19,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from microcosm.calibrate._target_loss_attribution import (
+    TARGET_LOSS_ATTRIBUTION_WARNING_CODES,
+    TargetLossAttributionError,
+    assemble_target_loss_attribution,
+)
 from microcosm.calibrate.solve import CalibrationResult
 
 __all__ = [
@@ -40,7 +46,12 @@ __all__ = [
 #: v5 added the ``past_cap_census`` block (rows past the loss cap at
 #: initialization and at final, escaped/frozen/pushed-out counts, and the
 #: pushed-out row list).
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 5
+#: v6 added authoritative final per-target loss attribution and an explicit
+#: warning-only degradation state when that supplementary attribution cannot
+#: be validated.
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 6
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _finite(value: float) -> float | None:
@@ -234,12 +245,12 @@ def past_cap_census(result: CalibrationResult) -> dict[str, object] | None:
       its scaled misses, worst final miss first.
 
     ``init_rel`` / ``final_rel`` are scaled absolute misses on the default
-    scale rule ``max(abs(target), 1)`` — the units the cap applies to. A run
-    that supplied custom ``target_loss_scales`` is censused on the default
-    rule (the custom scales do not travel with the result); its options
-    record that the scales were provided. Rows with a non-finite target or
-    estimate are excluded from every count. Returns ``None`` when the
-    result's options record no cap — there is nothing to census against.
+    scale rule ``max(abs(target), 1)``. This block intentionally preserves its
+    schema-version-5 semantics: a run that supplied custom scales is still
+    censused on the default rule even though schema version 6 separately
+    retains and reports its actual aligned loss scales. Rows with a non-finite
+    target or estimate are excluded from every count. Returns ``None`` when
+    the result's options record no cap — there is nothing to census against.
     """
     cap = _result_target_loss_cap(getattr(result, "options", None))
     if cap is None:
@@ -317,6 +328,17 @@ def diagnostics_payload(
         floats become ``null``).
     """
     registry_specs = _registry_spec_lookup(target_registry)
+    target_rows = [
+        _target_row(
+            diagnostic,
+            target,
+            compiled_target=result.problem.target_vector[index],
+            spec=registry_specs.get(diagnostic.name),
+        )
+        for index, (diagnostic, target) in enumerate(
+            zip(result.diagnostics, result.problem.targets, strict=True)
+        )
+    ]
     payload = {
         "schema_version": CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
         "weight_entity": result.weight_entity,
@@ -336,18 +358,45 @@ def diagnostics_payload(
             {"name": skip.target.name, "reason": skip.reason} for skip in result.skipped
         ],
         "past_cap_census": past_cap_census(result),
-        "targets": [
-            _target_row(
-                diagnostic,
-                target,
-                compiled_target=result.problem.target_vector[index],
-                spec=registry_specs.get(diagnostic.name),
-            )
-            for index, (diagnostic, target) in enumerate(
-                zip(result.diagnostics, result.problem.targets, strict=True)
-            )
-        ],
+        "diagnostic_warnings": [],
+        "targets": target_rows,
     }
+    try:
+        attribution = assemble_target_loss_attribution(result)
+    except TargetLossAttributionError as error:
+        _LOGGER.warning(
+            "TARGET LOSS ATTRIBUTION UNAVAILABLE [%s]: %s",
+            error.code,
+            error,
+        )
+        payload["diagnostic_warnings"].append(
+            {
+                "code": error.code,
+                "severity": "warning",
+                "message": str(error),
+            }
+        )
+    except Exception as error:  # pragma: no cover - defensive build protection
+        code = TARGET_LOSS_ATTRIBUTION_WARNING_CODES["assembly_error"]
+        _LOGGER.exception(
+            "TARGET LOSS ATTRIBUTION UNAVAILABLE [%s]: unexpected attribution "
+            "assembly error",
+            code,
+        )
+        payload["diagnostic_warnings"].append(
+            {
+                "code": code,
+                "severity": "warning",
+                "message": (
+                    "Unexpected target-loss attribution assembly error: "
+                    f"{type(error).__name__}: {error}"
+                ),
+            }
+        )
+    else:
+        payload["target_loss_basis"] = attribution.basis
+        for row, attribution_row in zip(target_rows, attribution.rows, strict=True):
+            row.update(attribution_row)
     registry = _registry_payload(target_registry)
     if registry is not None:
         payload["target_registry"] = registry
