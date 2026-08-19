@@ -33,6 +33,13 @@ from microcosm.build.uk_runtime.frs_take_up import (
 )
 from microcosm.build.uk_runtime.national_build import load_uk_national_frame
 from microcosm.build.uk_runtime.national_frame import uk_time_period
+from microcosm.build.uk_runtime.regional_uprating import (
+    load_regional_land_values_resource,
+    uprate_household_property_by_region,
+)
+from microcosm.build.uk_runtime.was_wealth import (
+    allocate_student_loan_balance_to_people,
+)
 
 
 def identity_stability_receipt(
@@ -166,33 +173,198 @@ def e4_identity_receipt(
     }
 
 
+def e5_identity_receipt(
+    frame,
+    *,
+    regional_resource: Mapping[str, object] | None = None,
+    permutation_seed: int,
+) -> dict[str, object]:
+    """Receipt E5 deterministic layers under row permutation by entity id."""
+
+    resource = regional_resource or load_regional_land_values_resource()
+
+    def recompute(person_t, benunit_t, household_t) -> dict[str, pd.DataFrame]:
+        del benunit_t
+        household = household_t.copy()
+        person = pd.DataFrame(index=person_t["person_id"].to_numpy())
+        household_out = pd.DataFrame(index=household_t["household_id"].to_numpy())
+        if {"corporate_wealth_excl_isa", "stocks_and_shares_isa"} <= set(
+            household.columns
+        ):
+            household_out["corporate_wealth"] = household[
+                "corporate_wealth_excl_isa"
+            ].to_numpy(dtype=float) + household["stocks_and_shares_isa"].to_numpy(
+                dtype=float
+            )
+            household["corporate_wealth"] = household_out["corporate_wealth"].to_numpy()
+        if {"region", "main_residence_value", "property_wealth"} <= set(
+            household.columns
+        ):
+            uprated = uprate_household_property_by_region(household, resource)
+            household_out["main_residence_value"] = uprated[
+                "main_residence_value"
+            ].to_numpy()
+            household_out["property_wealth"] = uprated["property_wealth"].to_numpy()
+        if "student_loan_balance" in household.columns:
+            person["student_loan_balance"] = allocate_student_loan_balance_to_people(
+                household_balances=household["student_loan_balance"],
+                household_ids=household["household_id"],
+                person=person_t,
+            )
+        elif {"student_loan_balance", "person_household_id"} <= set(person_t.columns):
+            # The stage consumed the household-level balance; the allocation
+            # conserves mass, so the household balance is reconstructible as
+            # the per-household sum of the person column, and the waterfall
+            # can be re-run from it. Sums and proportional splits are float
+            # arithmetic, so this layer is compared at fp tolerance rather
+            # than bitwise (the math, not the summation order, is the
+            # contract).
+            canonical = person_t.sort_values("person_id")
+            reconstructed = (
+                pd.Series(
+                    canonical["student_loan_balance"].to_numpy(dtype=float),
+                    index=canonical["person_household_id"].to_numpy(),
+                )
+                .groupby(level=0)
+                .sum()
+            )
+            balances = (
+                reconstructed.reindex(household_t["household_id"].to_numpy())
+                .fillna(0.0)
+                .to_numpy()
+            )
+            person["student_loan_balance"] = allocate_student_loan_balance_to_people(
+                household_balances=pd.Series(balances),
+                household_ids=household_t["household_id"],
+                person=person_t,
+            )
+        return {"household": household_out, "person": person}
+
+    person = frame.table("person")
+    benunit = frame.table("benunit")
+    household = frame.table("household")
+    # Scope to the FRS spine rows: the SPI channel stages stack synthetic
+    # households AFTER the E5 stages ran (with their own channel-imputed
+    # property values), so the deterministic-layer identity claims apply
+    # only to the population the wealth and uprating stages actually saw.
+    # The stacked rows are E7's receipt surface, not E5's.
+    if "household_is_spi_synthetic" in household.columns:
+        spine_mask = ~household["household_is_spi_synthetic"].astype(bool)
+        household = household.loc[spine_mask].reset_index(drop=True)
+        spine_household_ids = set(household["household_id"].tolist())
+        person = person.loc[
+            person["person_household_id"].isin(spine_household_ids)
+        ].reset_index(drop=True)
+    original = recompute(person, benunit, household)
+    rng = np.random.default_rng(permutation_seed)
+    permuted = recompute(
+        person.iloc[rng.permutation(len(person))].reset_index(drop=True),
+        benunit.iloc[rng.permutation(len(benunit))].reset_index(drop=True),
+        household.iloc[rng.permutation(len(household))].reset_index(drop=True),
+    )
+    # Permutation comparison is bitwise for the uprating layer (its factor
+    # is computed order-independently). The stored-column cross-check re-
+    # applies uprating to already-uprated values: the fixed point holds
+    # exactly only in exact arithmetic, so one rounding generation of
+    # tolerance applies there, as it does to the waterfall re-allocation
+    # (sums and proportional splits are float arithmetic).
+    tolerances = {("person", "student_loan_balance"): (1e-12, 1e-6)}
+    stored_tolerances = {
+        ("household", "main_residence_value"): (1e-12, 1e-6),
+        ("household", "property_wealth"): (1e-12, 1e-6),
+        ("person", "student_loan_balance"): (1e-12, 1e-6),
+    }
+    mismatches: dict[str, list[str]] = {}
+    stored_mismatches: dict[str, list[str]] = {}
+    stored_tables = {"household": household, "person": person}
+    for entity, values in original.items():
+        for column in values.columns:
+            rtol, atol = tolerances.get((entity, column), (0.0, 0.0))
+            left = values[column]
+            right = permuted[entity][column].reindex(left.index)
+            if not np.allclose(
+                left.to_numpy(dtype=float),
+                right.to_numpy(dtype=float),
+                rtol=rtol,
+                atol=atol,
+            ):
+                mismatches.setdefault(entity, []).append(column)
+            stored_table = stored_tables[entity]
+            if column in stored_table.columns:
+                stored_rtol, stored_atol = stored_tolerances.get(
+                    (entity, column), (rtol, atol)
+                )
+                if not np.allclose(
+                    left.to_numpy(dtype=float),
+                    stored_table[column].to_numpy(dtype=float),
+                    rtol=stored_rtol,
+                    atol=stored_atol,
+                ):
+                    stored_mismatches.setdefault(entity, []).append(column)
+    return {
+        "check": "uk_e5_identity_stability",
+        "permutation_seed": permutation_seed,
+        "identical_under_permutation": not mismatches,
+        "permutation_mismatches": mismatches,
+        "matches_stored_columns": not stored_mismatches,
+        "stored_column_mismatches": stored_mismatches,
+        "tolerance_policy": (
+            "permutation: bitwise for the regional-uprating rewrite "
+            "(order-independent factor), rtol 1e-12 / atol 1e-6 GBP for the "
+            "waterfall re-allocation; stored-column cross-check: rtol 1e-12 "
+            "/ atol 1e-6 GBP for both layers (re-applying uprating to the "
+            "uprated fixed point and re-summing allocations each cost one "
+            "float rounding generation); corporate_wealth fold not "
+            "reconstructible from the artifact (components consumed) - "
+            "unit-tested only"
+        ),
+        "columns_by_entity": {
+            entity: list(values.columns) for entity, values in original.items()
+        },
+        "qrf_draw_columns_scope": (
+            "excluded: seeded-stream QRF draws are covered by twin-build "
+            "determinism rather than identity-keyed row permutation"
+        ),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-h5", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--check", choices=("e4", "e5"), default="e4")
     parser.add_argument("--permutation-seed", type=int, default=123)
     args = parser.parse_args()
 
-    from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
-    from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
-
     frame, _provenance = load_uk_national_frame(args.input_h5)
-    engine = PolicyEngineUKEngine()
-    lha_category = engine.materialize(frame, ("LHA_category",), uk_time_period(frame))[
-        "LHA_category"
-    ]
-    receipt = e4_identity_receipt(
-        frame,
-        contract=load_uk_take_up_contract(),
-        count_resource=load_brma_count_resource(),
-        lha_category=lha_category,
-        permutation_seed=args.permutation_seed,
-    )
+    if args.check == "e4":
+        from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
+        from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
+
+        engine = PolicyEngineUKEngine()
+        lha_category = engine.materialize(
+            frame, ("LHA_category",), uk_time_period(frame)
+        )["LHA_category"]
+        receipt = e4_identity_receipt(
+            frame,
+            contract=load_uk_take_up_contract(),
+            count_resource=load_brma_count_resource(),
+            lha_category=lha_category,
+            permutation_seed=args.permutation_seed,
+        )
+        ok = bool(
+            receipt["identical_under_permutation"] and receipt["matches_stored_columns"]
+        )
+    else:
+        receipt = e5_identity_receipt(
+            frame,
+            permutation_seed=args.permutation_seed,
+        )
+        ok = bool(
+            receipt["identical_under_permutation"] and receipt["matches_stored_columns"]
+        )
     receipt["input_h5"] = str(args.input_h5)
     args.output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
-    ok = bool(
-        receipt["identical_under_permutation"] and receipt["matches_stored_columns"]
-    )
     print(
         "identity stability:",
         "PASS" if ok else f"FAIL ({args.output})",

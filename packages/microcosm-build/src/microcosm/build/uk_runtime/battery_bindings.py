@@ -28,11 +28,15 @@ QRF tail concentration) read the frame directly and skip it.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import date, datetime
+from importlib.resources import files
 from types import MappingProxyType
 from typing import Any
+
+import numpy as np
 
 from microcosm.build.gate_battery import (
     DEFAULT_REGISTRY,
@@ -43,6 +47,7 @@ from microcosm.build.gates import (
     GateResult,
     enum_domain_gate,
     nonnegative_columns_gate,
+    support_gate,
     weights_audit_gate,
 )
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_signal_gate
@@ -258,6 +263,34 @@ def _evaluate_brma_enum_domain(
         {"brma": context.frame.table("household")["brma"]},
         {"brma": domain},
     )
+
+
+def _evaluate_support(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    resource_name = parameters.get("support_bounds_resource")
+    if resource_name != "was_wealth_support_bounds.json":
+        raise ValueError(
+            "uk_support must declare support_bounds_resource "
+            "'was_wealth_support_bounds.json'."
+        )
+    resource = json.loads(
+        files("microcosm.build.uk").joinpath(str(resource_name)).read_text()
+    )
+    raw_bounds = resource.get("bounds")
+    if not isinstance(raw_bounds, Mapping):
+        raise ValueError("WAS wealth support-bounds resource is missing bounds.")
+    donor_ranges = {
+        str(column): (float(bounds[0]), float(bounds[1]))
+        for column, bounds in raw_bounds.items()
+    }
+    values: dict[str, np.ndarray] = {}
+    for entity in context.frame.entities:
+        table = context.frame.table(entity)
+        for column in donor_ranges:
+            if column in table.columns:
+                values.setdefault(column, table[column].to_numpy())
+    return support_gate(values, donor_ranges)
 
 
 def _stage_names_evidence(
@@ -661,6 +694,11 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         name="enum_domain",
         evaluator=_evaluate_brma_enum_domain,
         parameter_keys=frozenset({"columns"}),
+    ),
+    "support": UKGateBinding(
+        name="support",
+        evaluator=_evaluate_support,
+        parameter_keys=frozenset({"support_bounds_resource"}),
     ),
     "degenerate_release_surface": UKGateBinding(
         name="degenerate_release_surface",

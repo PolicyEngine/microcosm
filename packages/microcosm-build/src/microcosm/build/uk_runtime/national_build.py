@@ -765,30 +765,50 @@ def _validate_stages(stages: tuple[PlanStage, ...]) -> None:
         names.add(stage.name)
 
 
+#: Stage names that perform production fits and therefore owe the terminal
+#: weights audit their :class:`FitWeightRecord` evidence even when a swapped
+#: or hollow transform stops exposing it.
+_UK_FITTING_STAGE_NAMES = frozenset({"hmrc_spi_income", "was_wealth"})
+
+
 def _stage_fit_weight_records(
     stages: tuple[PlanStage, ...],
 ) -> tuple[object, ...] | None:
-    """The weights-audit evidence artifact: present iff the HMRC stage is.
+    """The weights-audit evidence artifact, aggregated across fitting stages.
 
-    ``None`` (no HMRC stage) leaves the artifact unsupplied, so the audit is
-    a named ``evidence_absent`` gap. A present stage always supplies the
-    artifact — records that are missing, unreadable, or empty coerce to
-    ``()``, which the UK audit binding fails: an absent audit is not a
-    passing audit.
+    A stage counts as fitting when its name is a declared fitting stage
+    (HMRC SPI income, WAS wealth) or its transform exposes
+    ``fit_weight_records``; each contributes records in stage order.
+    ``None`` (no fitting stage scheduled) leaves the artifact unsupplied,
+    so the audit is a named ``evidence_absent`` gap. A present fitting
+    stage always supplies the artifact — records that are missing,
+    unreadable, or empty coerce to ``()``, which the UK audit binding
+    fails: an absent audit is not a passing audit.
     """
 
-    hmrc_stage = next(
-        (stage for stage in stages if stage.name == "hmrc_spi_income"),
-        None,
+    fitting_stages = tuple(
+        stage
+        for stage in stages
+        if stage.name in _UK_FITTING_STAGE_NAMES
+        or hasattr(stage.transform, "fit_weight_records")
     )
-    if hmrc_stage is None:
+    if not fitting_stages:
         return None
-    try:
-        records = getattr(hmrc_stage.transform, "fit_weight_records", None)
-        return () if records is None else tuple(records)
-    except Exception:  # noqa: BLE001 - unreadable records coerce to () and
-        # fail the audit as missing evidence rather than crashing the batch.
-        return ()
+    collected: list[object] = []
+    for stage in fitting_stages:
+        try:
+            records = tuple(stage.transform.fit_weight_records or ())
+        except Exception:  # noqa: BLE001 - unreadable records coerce to ()
+            # and fail the audit as missing evidence rather than crashing
+            # the batch.
+            return ()
+        if not records:
+            # A scheduled fitting stage with no records is missing evidence;
+            # it must fail the audit, not be absorbed by another stage's
+            # records.
+            return ()
+        collected.extend(records)
+    return tuple(collected)
 
 
 def _brma_enum_domain(engine: object) -> tuple[str, ...] | None:

@@ -32,6 +32,10 @@ E4_STAGE_NAMES = [
     "frs_household_draws",
     "frs_brma",
 ]
+E5_STAGE_NAMES = [
+    "was_wealth",
+    "regional_property_uprating",
+]
 E7_STAGE_NAMES = [
     "frs_hmrc_spine_leaves",
     "spi_support_channel",
@@ -41,6 +45,7 @@ UK_SOURCE_STAGE_NAMES = [
     "frs_spine",
     *E3_STAGE_NAMES,
     *E4_STAGE_NAMES,
+    *E5_STAGE_NAMES,
     *E7_STAGE_NAMES,
     "frs_hmrc_retained_leaves",
     "hmrc_spi_income",
@@ -201,6 +206,8 @@ class TestUKSourceStagesManifest:
                     "frs_person_draws": _identity,
                     "frs_household_draws": _identity,
                     "frs_brma": _identity,
+                    "was_wealth": _identity,
+                    "regional_property_uprating": _identity,
                     "frs_hmrc_spine_leaves": _identity,
                     "spi_support_channel": _identity,
                     "hmrc_spi_income_spine": _identity,
@@ -277,6 +284,13 @@ class TestDeclaredOutputsAreWrittenColumns:
             FRS_TAKE_UP_NONNEGATIVE_OUTPUT_COLUMNS,
             FRS_TAKE_UP_OUTPUT_COLUMNS,
         )
+        from microcosm.build.uk_runtime.regional_uprating import (
+            UK_REGIONAL_PROPERTY_REWRITES,
+        )
+        from microcosm.build.uk_runtime.was_wealth import (
+            UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS,
+            UK_WAS_WEALTH_OUTPUT_COLUMNS,
+        )
 
         spec = load_country_spec("uk")
         stages = {stage.stage: stage for stage in spec.sources.stages}
@@ -307,6 +321,16 @@ class TestDeclaredOutputsAreWrittenColumns:
             stages["frs_household_draws"].outputs == FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS
         )
         assert stages["frs_brma"].outputs == FRS_BRMA_OUTPUT_COLUMNS
+        assert stages["was_wealth"].outputs == UK_WAS_WEALTH_OUTPUT_COLUMNS
+        assert (
+            stages["was_wealth"].nonnegative_outputs
+            == UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert stages["regional_property_uprating"].outputs == ()
+        assert (
+            stages["regional_property_uprating"].rewrites
+            == UK_REGIONAL_PROPERTY_REWRITES
+        )
 
     def test_e7_outputs_and_rewrites_are_backed_by_runtime_constants(self) -> None:
         from microcosm.build.uk_runtime.spi_spine import (
@@ -415,6 +439,17 @@ class TestE3ManifestLockstep:
             "materialize_rules_engine_predictors",
             "sample_categorical_from_count_table",
         ]
+        assert [op.kind for op in stages["was_wealth"].operations] == [
+            "derive",
+            "materialize_rules_engine_predictors",
+            "fit_weighted_qrf_chain",
+            "fold_into",
+            "support_clip",
+            "allocate_within_group_waterfall",
+        ]
+        assert [op.kind for op in stages["regional_property_uprating"].operations] == [
+            "uprate_to_regional_reference",
+        ]
         assert [op.kind for op in stages["frs_hmrc_spine_leaves"].operations] == [
             "retain_adjudicated_frs_hmrc_leaves",
             "derive",
@@ -447,6 +482,10 @@ class TestE3ManifestLockstep:
         from microcosm.build.uk_runtime.frs_take_up import (
             UK_TAKE_UP_ANCHOR_AGGREGATES,
         )
+        from microcosm.build.uk_runtime.was_wealth import (
+            UK_WAS_ENGINE_PREDICTORS,
+            UK_WAS_WEALTH_PREDICTORS,
+        )
 
         spec = load_country_spec("uk")
         stages = {stage.stage: stage for stage in spec.sources.stages}
@@ -469,6 +508,14 @@ class TestE3ManifestLockstep:
         assert (
             tuple(stages["frs_brma"].operations[0].parameters["predictors"])
             == UK_BRMA_PREDICTORS
+        )
+        assert (
+            tuple(stages["was_wealth"].operations[1].parameters["predictors"])
+            == UK_WAS_ENGINE_PREDICTORS
+        )
+        assert (
+            tuple(stages["was_wealth"].operations[2].parameters["predictors"])
+            == UK_WAS_WEALTH_PREDICTORS
         )
         rate_keys = [
             op.parameters["rate_key"]
@@ -516,6 +563,15 @@ class TestE3ManifestLockstep:
                 }:
                     assert isinstance(operation.parameters.get("seed"), int)
 
+    def test_e5_qrf_operation_declares_integer_seed(self) -> None:
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+
+        qrf = stages["was_wealth"].operations[2]
+
+        assert qrf.kind == "fit_weighted_qrf_chain"
+        assert qrf.parameters["seed"] == 0
+
     def test_e7_declared_seed_lockstep(self) -> None:
         spec = load_country_spec("uk")
         stages = {stage.stage: stage for stage in spec.sources.stages}
@@ -530,7 +586,7 @@ class TestE3ManifestLockstep:
             stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 43
         )
 
-    def test_full_uk_source_stage_plan_compiles_with_e7_stages(self) -> None:
+    def test_full_uk_source_stage_plan_compiles_with_e4_stages(self) -> None:
         spec = load_country_spec("uk")
         implementations = {name: _identity for name in UK_SOURCE_STAGE_NAMES}
 

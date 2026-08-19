@@ -1143,7 +1143,11 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
     sidecar = json.loads(output.with_suffix(".build.json").read_text())
     assert sidecar["pipeline"] == "uk-frs-spine"
     assert sidecar["schema_version"] == 2
-    assert sidecar["stages"] == list(tool._STAGE_NAMES)
+    assert sidecar["stages"] == [
+        name
+        for name in tool._STAGE_NAMES
+        if name in _synthetic_spec(stage).sources.stage_map()
+    ]
     assert sidecar["entity_row_counts"] == {
         "person": 3,
         "benunit": 2,
@@ -1421,15 +1425,15 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
 
     pins = tool._input_artifact_pins(stages)
 
-    assert set(pins) == {"qrf_donor", "published_fact_surface"}
+    assert set(pins) == {"qrf_donor", "was_qrf_donor", "published_fact_surface"}
     for pin in pins.values():
         assert len(str(pin["sha256"])) == 64
         assert int(pin["size_bytes"]) > 0
         assert str(pin["filename"])
-    income_stage = stage_map["hmrc_spi_income_spine"]
     declared = {
         str(artifact["role"]): str(artifact["sha256"])
-        for artifact in income_stage.artifacts
+        for stage_name in ("hmrc_spi_income_spine", "was_wealth")
+        for artifact in stage_map[stage_name].artifacts
         if "table" not in artifact and "resource" not in artifact
     }
     assert {role: pin["sha256"] for role, pin in pins.items()} == declared
