@@ -2,11 +2,11 @@
 
 ## State
 
-Implementation is in progress on `passive-pass-through-722`, based on
-`origin/main` at `9c20c1d2`. The verified #530 QBI branch chain was inspected
-and is not used as a base because its tip still has the retired pre-rename
-namespace and package layout. Only the required QBI v3 concepts will be
-ported into the current `microcosm.*` tree.
+Implementation and offline verification are complete on
+`passive-pass-through-722`, based on `origin/main` at `9c20c1d2`. The
+verified #530 QBI branch chain was inspected and was not used as a base because
+its tip still has the retired pre-rename namespace and package layout. Only the
+required QBI v3 concepts were ported into the current `microcosm.*` tree.
 
 ## Done
 
@@ -51,9 +51,20 @@ ported into the current `microcosm.*` tree.
 - Added separate, diagnostics-only Form 8960 line 12 and line 4c aggregate
   rows. They cannot affect the release gate and retain row-local error
   containment under the currently locked pre-#9306 engine.
+- Completed the exact final-tree workspace suite: 6,394 passed and 73 skipped
+  in 42m45s. The restricted artifact replay separately passed all 12 tests.
+- Completed repository-wide `ruff check .`, changed-file Ruff format checks,
+  `git diff --check`, the spec-only/entrypoint guards, and a manual incumbent
+  package-name sweep over the branch diff. The manual sweep is required because
+  the ordinary tree guard deliberately excludes `.claude/` worktrees.
+- Added and committed the towncrier fragment and wrote the completion report
+  to `FINAL_REPORT.md`.
 
 ## Next
 
-- Run the full workspace tests, lint, manual incumbent sweep, and worktree
-  guard sanity check.
-- Write and commit the final report.
+- No in-scope work remains for #722.
+- After PolicyEngine-US #9306 is present in the locked engine, remove the exact
+  temporary registry exception and rerun the live NIIT diagnostics.
+- Resolve the Form 8960 line 4c rental/royalty versus passive pass-through
+  decomposition before replacing the provisional midpoint with a promoted
+  administrative target.
