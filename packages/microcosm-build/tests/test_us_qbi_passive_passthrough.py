@@ -349,13 +349,17 @@ def test_frame_wrapper_preserves_all_existing_qbi_columns_byte_for_byte() -> Non
     }
 
     result = with_us_qbi_passive_passthrough_assignment(frame, seed=31)
+    alternate_seed = with_us_qbi_passive_passthrough_assignment(frame, seed=32)
     after = result.table("person")
+    alternate = alternate_seed.table("person")
 
     assert US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN not in before
     assert US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN in after
     for name, (dtype, raw) in qbi_bytes.items():
         assert after[name].dtype.str == dtype
         assert after[name].to_numpy(copy=False).tobytes() == raw
+        assert alternate[name].dtype.str == dtype
+        assert alternate[name].to_numpy(copy=False).tobytes() == raw
     passthrough = after["partnership_income"] + after["s_corp_income"]
     passive = after[US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN]
     assert passive.between(0.0, passthrough.clip(lower=0.0)).all()

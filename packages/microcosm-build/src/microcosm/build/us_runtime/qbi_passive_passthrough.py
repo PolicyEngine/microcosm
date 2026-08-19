@@ -42,12 +42,8 @@ __all__ = [
 ]
 
 QBI_PASSIVE_EVIDENCE_RESOURCE = "qbi_passive_passthrough_v1.json"
-QBI_PASSIVE_ASSUMPTIONS_RESOURCE = (
-    "qbi_passive_passthrough_assumptions_v1.json"
-)
-US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN = (
-    "passive_partnership_s_corp_income"
-)
+QBI_PASSIVE_ASSUMPTIONS_RESOURCE = "qbi_passive_passthrough_assumptions_v1.json"
+US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN = "passive_partnership_s_corp_income"
 US_QBI_PASSIVE_PASSTHROUGH_PERSON_INPUT_COLUMNS: tuple[str, ...] = (
     "partnership_income",
     "s_corp_income",
@@ -239,9 +235,7 @@ def _inverse_cdf_means(
 ) -> np.ndarray:
     left = quantiles[:, 0] * probabilities[0]
     middle = np.sum(
-        (quantiles[:, :-1] + quantiles[:, 1:])
-        * np.diff(probabilities)
-        / 2.0,
+        (quantiles[:, :-1] + quantiles[:, 1:]) * np.diff(probabilities) / 2.0,
         axis=1,
     )
     right = quantiles[:, -1] * (1.0 - probabilities[-1])
@@ -430,8 +424,7 @@ def load_qbi_passive_passthrough_assumptions() -> dict[str, Any]:
     actual_evidence_sha = _resource_sha256(QBI_PASSIVE_EVIDENCE_RESOURCE)
     if expected_evidence_sha != actual_evidence_sha:
         raise ValueError(
-            "Passive assumptions evidence digest does not match the packaged "
-            "resource."
+            "Passive assumptions evidence digest does not match the packaged resource."
         )
     return payload
 
@@ -473,9 +466,7 @@ def assign_passive_partnership_s_corp_income(
     if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
         raise ValueError("Passive assignment seed must be a nonnegative integer.")
     evidence_payload = (
-        load_qbi_passive_passthrough_evidence()
-        if evidence is None
-        else dict(evidence)
+        load_qbi_passive_passthrough_evidence() if evidence is None else dict(evidence)
     )
     assumptions_payload = (
         load_qbi_passive_passthrough_assumptions()
@@ -484,13 +475,11 @@ def assign_passive_partnership_s_corp_income(
     )
     validate_qbi_passive_passthrough_assumptions(assumptions_payload)
     shift = float(assumptions_payload["calibration"]["log_odds_shift"])
-    passthrough, band_index, shifted, probabilities, quantiles = (
-        _assignment_inputs(
-            partnership_s_corp_income,
-            schedule_e_income,
-            evidence=evidence_payload,
-            log_odds_shift=shift,
-        )
+    passthrough, band_index, shifted, probabilities, quantiles = _assignment_inputs(
+        partnership_s_corp_income,
+        schedule_e_income,
+        evidence=evidence_payload,
+        log_odds_shift=shift,
     )
     length = len(passthrough)
     eligible = _latent_form_eligibility(latent_entity_form, length=length)
@@ -515,7 +504,9 @@ def assign_passive_partnership_s_corp_income(
             quantiles[band],
         )
     present = presence_draw < shifted[band_index]
-    return np.where(eligible & (passthrough > 0.0) & present, passthrough * sampled_share, 0.0)
+    return np.where(
+        eligible & (passthrough > 0.0) & present, passthrough * sampled_share, 0.0
+    )
 
 
 def qbi_passive_expected_aggregate(
@@ -534,13 +525,11 @@ def qbi_passive_expected_aggregate(
     )
     if np.any(arrays["person_weights"] < 0.0):
         raise ValueError("Passive replay person weights must be nonnegative.")
-    passthrough, band_index, shifted, probabilities, quantiles = (
-        _assignment_inputs(
-            arrays["partnership_s_corp_income"],
-            arrays["schedule_e_income"],
-            evidence=evidence,
-            log_odds_shift=log_odds_shift,
-        )
+    passthrough, band_index, shifted, probabilities, quantiles = _assignment_inputs(
+        arrays["partnership_s_corp_income"],
+        arrays["schedule_e_income"],
+        evidence=evidence,
+        log_odds_shift=log_odds_shift,
     )
     eligible = _latent_form_eligibility(
         latent_entity_form,
@@ -725,6 +714,9 @@ def build_qbi_passive_passthrough_assumptions_payload(
             "the calibration shift.",
             "The sibling stage neither invokes nor advances any archived QBI "
             "random stream and preserves all 15 existing QBI leaves.",
+            "The TY2023 administrative target is applied to the pinned "
+            "2024-shaped replay without a population-vintage backcast; this "
+            "period mismatch is another reason the target remains provisional.",
         ],
     }
     assigned = assign_passive_partnership_s_corp_income(
@@ -786,8 +778,7 @@ def with_us_qbi_passive_passthrough_assignment(
     )
     if missing:
         raise ValueError(
-            "Passive pass-through assignment requires person input(s): "
-            f"{missing}."
+            f"Passive pass-through assignment requires person input(s): {missing}."
         )
     if US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN in person:
         raise ValueError(
@@ -799,10 +790,9 @@ def with_us_qbi_passive_passthrough_assignment(
     ].apply(pd.to_numeric, errors="coerce")
     if not np.isfinite(numeric.to_numpy(dtype=np.float64)).all():
         raise ValueError("Passive pass-through assignment inputs must be finite.")
-    passthrough = (
-        numeric["partnership_income"].to_numpy(dtype=np.float64)
-        + numeric["s_corp_income"].to_numpy(dtype=np.float64)
-    )
+    passthrough = numeric["partnership_income"].to_numpy(dtype=np.float64) + numeric[
+        "s_corp_income"
+    ].to_numpy(dtype=np.float64)
     schedule_e = (
         passthrough
         + numeric["rental_income"].to_numpy(dtype=np.float64)

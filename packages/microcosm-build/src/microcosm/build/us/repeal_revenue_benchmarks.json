@@ -16,7 +16,7 @@
       "comparison_role": "point_estimate",
       "provisional": true,
       "diagnostics_only": true,
-      "description": "Weighted baseline net investment income compared with the TY2023 Form 8960 line 12 administrative amount. Line 12 is net of Form 8960 deductions and modifications, while the modeled variable follows the engine's configured investment-income source list; any expense-coverage difference is part of the diagnostic interpretation. The administrative line covers Forms 8960 filed by individuals, estates, and trusts, while the household microdata do not separately represent every estate or trust return. This is therefore a provisional diagnostic rather than a release gate."
+      "description": "Weighted baseline net investment income compared with the TY2023 Form 8960 line 12 administrative amount. The diagnostic uses the 2023 policy period on the release artifact's 2024-shaped population without a population-vintage backcast. Line 12 is net of Form 8960 deductions and modifications, while the modeled variable follows the engine's configured investment-income source list; any expense-coverage difference is part of the diagnostic interpretation. The administrative line covers Forms 8960 filed by individuals, estates, and trusts, while the household microdata do not separately represent every estate or trust return. This is therefore a provisional diagnostic rather than a release gate."
     },
     {
       "id": "form_8960_line_4c_passive_flowthrough_upper_bound",
@@ -36,7 +36,7 @@
       },
       "provisional": true,
       "diagnostics_only": true,
-      "description": "Line 4c combines rental real estate, royalties, partnerships, S corporations, trusts, and other trade-or-business flow-through amounts after the non-section-1411 adjustment. It does not identify the passive partnership/S-corporation component. The lower bound assumes all line 4c income is rental or royalty income; the upper bound assumes all of it is passive pass-through income. Rental income already enters the engine NIIT base in full, so overlap remains an explicit open question and no rental treatment changes here."
+      "description": "Line 4c combines rental real estate, royalties, partnerships, S corporations, trusts, and other trade-or-business flow-through amounts after the non-section-1411 adjustment. It does not identify the passive partnership/S-corporation component. The diagnostic uses the 2023 policy period on the release artifact's 2024-shaped population without a population-vintage backcast. The lower bound assumes all line 4c income is rental or royalty income; the upper bound assumes all of it is passive pass-through income. Rental income already enters the engine NIIT base in full, so overlap remains an explicit open question and no rental treatment changes here."
     }
   ]
 }

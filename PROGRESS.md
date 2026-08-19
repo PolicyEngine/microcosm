@@ -41,11 +41,19 @@ ported into the current `microcosm.*` tree.
 - Verified the restricted replay (12 focused tests), deterministic assumptions
   regeneration, strict resource hashes, isolated PCG64 families, latent-form
   routing, and byte preservation of all 15 existing QBI leaves.
+- Integrated the sibling between Schedule-D completion and QBI reconciliation
+  in multispine and direct support builds, while preserving already-assigned
+  rebuilt support. The 997-row remaining-stage audit and support/pool
+  checkpoint identities now bind the evidence, assumptions, shift, and RNG.
+- Added the new output to ownership, L0 export, and release-coverage contracts.
+  The exact pending-engine exception is limited to the input arriving in
+  PolicyEngine-US PR #9306 and becomes a no-op once that engine version lands.
+- Added separate, diagnostics-only Form 8960 line 12 and line 4c aggregate
+  rows. They cannot affect the release gate and retain row-local error
+  containment under the currently locked pre-#9306 engine.
 
 ## Next
 
-- Finish integration of the passive sibling into every base/pool path and its
-  checkpoint, ownership, and release-coverage contracts.
-- Add and verify the diagnostics-only Form 8960 validation rows.
-- Run the full workspace tests, lint, contract sweeps, and write the final
-  report.
+- Run the full workspace tests, lint, manual incumbent sweep, and worktree
+  guard sanity check.
+- Write and commit the final report.
