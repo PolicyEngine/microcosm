@@ -68,6 +68,10 @@ from microcosm.build.us_runtime.qbi_inputs import (
     US_QBI_BOOLEAN_OUTPUT_COLUMNS,
     US_QBI_OUTPUT_COLUMNS,
 )
+from microcosm.build.us_runtime.qbi_passive_passthrough import (
+    US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN,
+    US_QBI_PASSIVE_PASSTHROUGH_PERSON_INPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
 from microcosm.build.us_runtime.stacked_spine import (
     DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES,
@@ -1292,6 +1296,8 @@ def test_puf_finalize_masks_earnings_allocation_to_age_15_plus() -> None:
     person = frame.table("person")
     for column in US_QBI_OUTPUT_COLUMNS:
         person[column] = False if column in US_QBI_BOOLEAN_OUTPUT_COLUMNS else 0.0
+    for column in US_QBI_PASSIVE_PASSTHROUGH_PERSON_INPUT_COLUMNS:
+        person[column] = 0.0
     person["long_term_capital_gains_before_response"] = 0.0
     person["non_sch_d_capital_gains"] = 0.0
     tax_unit = frame.table("tax_unit")
@@ -1363,6 +1369,7 @@ def test_puf_finalize_masks_earnings_allocation_to_age_15_plus() -> None:
     derived_person = derived.frame.table("person")
     qbi_receipt = derived.receipt["qbi_input_reconciliation"]
 
+    assert derived_person[US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN].eq(0.0).all()
     assert (
         derived_person.loc[native_child, "self_employment_income_before_lsr"]
         .eq(0.0)
