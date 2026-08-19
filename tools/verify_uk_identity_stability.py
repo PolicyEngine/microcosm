@@ -211,6 +211,33 @@ def e5_identity_receipt(
                 household_ids=household["household_id"],
                 person=person_t,
             )
+        elif {"student_loan_balance", "person_household_id"} <= set(person_t.columns):
+            # The stage consumed the household-level balance; the allocation
+            # conserves mass, so the household balance is reconstructible as
+            # the per-household sum of the person column, and the waterfall
+            # can be re-run from it. Sums and proportional splits are float
+            # arithmetic, so this layer is compared at fp tolerance rather
+            # than bitwise (the math, not the summation order, is the
+            # contract).
+            canonical = person_t.sort_values("person_id")
+            reconstructed = (
+                pd.Series(
+                    canonical["student_loan_balance"].to_numpy(dtype=float),
+                    index=canonical["person_household_id"].to_numpy(),
+                )
+                .groupby(level=0)
+                .sum()
+            )
+            balances = (
+                reconstructed.reindex(household_t["household_id"].to_numpy())
+                .fillna(0.0)
+                .to_numpy()
+            )
+            person["student_loan_balance"] = allocate_student_loan_balance_to_people(
+                household_balances=pd.Series(balances),
+                household_ids=household_t["household_id"],
+                person=person_t,
+            )
         return {"household": household_out, "person": person}
 
     person = frame.table("person")
@@ -223,23 +250,62 @@ def e5_identity_receipt(
         benunit.iloc[rng.permutation(len(benunit))].reset_index(drop=True),
         household.iloc[rng.permutation(len(household))].reset_index(drop=True),
     )
+    # Permutation comparison is bitwise for the uprating layer (its factor
+    # is computed order-independently). The stored-column cross-check re-
+    # applies uprating to already-uprated values: the fixed point holds
+    # exactly only in exact arithmetic, so one rounding generation of
+    # tolerance applies there, as it does to the waterfall re-allocation
+    # (sums and proportional splits are float arithmetic).
+    tolerances = {("person", "student_loan_balance"): (1e-12, 1e-6)}
+    stored_tolerances = {
+        ("household", "main_residence_value"): (1e-12, 1e-6),
+        ("household", "property_wealth"): (1e-12, 1e-6),
+        ("person", "student_loan_balance"): (1e-12, 1e-6),
+    }
     mismatches: dict[str, list[str]] = {}
+    stored_mismatches: dict[str, list[str]] = {}
+    stored_tables = {"household": household, "person": person}
     for entity, values in original.items():
         for column in values.columns:
+            rtol, atol = tolerances.get((entity, column), (0.0, 0.0))
             left = values[column]
             right = permuted[entity][column].reindex(left.index)
             if not np.allclose(
                 left.to_numpy(dtype=float),
                 right.to_numpy(dtype=float),
-                rtol=0.0,
-                atol=0.0,
+                rtol=rtol,
+                atol=atol,
             ):
                 mismatches.setdefault(entity, []).append(column)
+            stored_table = stored_tables[entity]
+            if column in stored_table.columns:
+                stored_rtol, stored_atol = stored_tolerances.get(
+                    (entity, column), (rtol, atol)
+                )
+                if not np.allclose(
+                    left.to_numpy(dtype=float),
+                    stored_table[column].to_numpy(dtype=float),
+                    rtol=stored_rtol,
+                    atol=stored_atol,
+                ):
+                    stored_mismatches.setdefault(entity, []).append(column)
     return {
         "check": "uk_e5_identity_stability",
         "permutation_seed": permutation_seed,
         "identical_under_permutation": not mismatches,
         "permutation_mismatches": mismatches,
+        "matches_stored_columns": not stored_mismatches,
+        "stored_column_mismatches": stored_mismatches,
+        "tolerance_policy": (
+            "permutation: bitwise for the regional-uprating rewrite "
+            "(order-independent factor), rtol 1e-12 / atol 1e-6 GBP for the "
+            "waterfall re-allocation; stored-column cross-check: rtol 1e-12 "
+            "/ atol 1e-6 GBP for both layers (re-applying uprating to the "
+            "uprated fixed point and re-summing allocations each cost one "
+            "float rounding generation); corporate_wealth fold not "
+            "reconstructible from the artifact (components consumed) - "
+            "unit-tested only"
+        ),
         "columns_by_entity": {
             entity: list(values.columns) for entity, values in original.items()
         },
@@ -282,7 +348,9 @@ def main() -> int:
             frame,
             permutation_seed=args.permutation_seed,
         )
-        ok = bool(receipt["identical_under_permutation"])
+        ok = bool(
+            receipt["identical_under_permutation"] and receipt["matches_stored_columns"]
+        )
     receipt["input_h5"] = str(args.input_h5)
     args.output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n")
     print(

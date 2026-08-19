@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from importlib.resources import files
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceStageSpec
@@ -90,7 +91,13 @@ def uprate_household_property_by_region(
         )
         if not owners_mask.any():
             continue
-        imputed_mean = float(result.loc[owners_mask, "main_residence_value"].mean())
+        # Sort before summing so the unweighted mean is independent of row
+        # order: the stage is receipted bitwise under row permutation, and
+        # float addition is not associative.
+        owner_values = np.sort(
+            result.loc[owners_mask, "main_residence_value"].to_numpy(dtype=float)
+        )
+        imputed_mean = float(owner_values.sum() / len(owner_values))
         if imputed_mean <= 0:
             continue
         factor = hpi_price / imputed_mean
