@@ -136,3 +136,36 @@ that owns each arm.
 - Next: reproduce round 1's configuration byte-for-byte for the investment
   candidate, verify the emitted verdict and report, and commit that evidence on
   this branch before moving to the next arm.
+
+### `arm-investment` frozen gate (2026-08-19)
+
+- Done: the serialized gate completed all 32 baseline and 32 candidate family
+  fits in 928.63 seconds and returned rc=1 for a substantive `FAIL`. The emitted
+  verdict has `measurement_complete=true`, 118 targets, all 74 money targets,
+  and all 211 physical battery legs. Its frozen configuration is byte-equal to
+  round 1 after excluding only the candidate artifact-role receipt binding.
+- Clause A FAIL: the CHAMPVA battery ratio moves from 3.720258676368841 to
+  5.02792444674042; the baseline-minus-candidate ratio CI is
+  [-1.8322351158693908, -0.9364953705201008].
+- Clause B PASS: zero of 74 money targets has a candidate-minus-baseline OOS
+  pinball-loss CI strictly above zero. In particular,
+  `social_security_retirement` is exactly unchanged at 114.63718321141073 in
+  both arms, with delta and CI [0.0, 0.0].
+- Clause C FAIL: three legs leave the band:
+  `person/source_operator_relationship_inputs/is_separated[clone_0]`
+  (0.9946284697730712 -> 1.268146835387516),
+  `spm_unit/model_required_boolean/is_tanf_enrolled[clone_0]`
+  (0.9565667955075946 -> 1.623317491512484), and
+  `spm_unit/model_required_numeric/spm_unit_pre_subsidy_childcare_expenses[clone_0]/positive`
+  (0.989957173017115 -> 0.7183714602383162). No leg enters the band.
+- Evidence: `experiments/phase_p_arm_split/investment/verdict.json` (SHA-256
+  `bceed0b14f738d8f7664834225252fa5d85d1f2ad64c24ae8c32b1fc4c810a83`)
+  and adjacent `report.md` (SHA-256
+  `65d5d463e311c1cf3e69b378c2d8d9555de6b5dcd8d50c9b4c62a28b144e3b3a`).
+- Resource note: BLAS pools were held to one thread while the frozen forest
+  retained `n_jobs=4`, and no other gate or build ran concurrently. The host
+  sandbox denied `/usr/bin/time -l` its `kern.clockrate` query, so this run does
+  not claim a measured peak-RSS number.
+- State: investment evidence is complete and ready for synthesis.
+- Next: switch to `arm-eligibility`, bind only its candidate integrity
+  receipts, run the same frozen gate, and commit that branch's evidence.
