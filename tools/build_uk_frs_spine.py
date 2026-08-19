@@ -490,6 +490,11 @@ def main(argv: list[str] | None = None) -> int:
         append_phase(state, "inputs_pinned")
         engine = _rules_engine()
         stochastic_contract = load_uk_take_up_contract()
+        hmrc_spine_transform = UKSPIIncomeSpineStageTransform(
+            args.spi_tab,
+            args.hmrc_ods,
+            stage=stages_by_name["hmrc_spi_income_spine"],
+        )
         implementations = {
             "frs_spine": UKFRSSpineStageTransform(
                 args.frs_raw_dir,

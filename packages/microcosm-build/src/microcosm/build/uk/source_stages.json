@@ -816,7 +816,7 @@
       },
       "artifacts": [
         {
-          "role": "qrf_donor",
+          "role": "was_qrf_donor",
           "kind": "private_microdata",
           "ukds_study_number": 7215,
           "doi": "10.5255/UKDA-SN-7215-20",

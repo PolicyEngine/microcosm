@@ -563,10 +563,10 @@ def _string_person(person: pd.DataFrame, column: str, default: str) -> np.ndarra
 
 def _donor_artifact(stage: SourceStageSpec) -> Mapping[str, Any]:
     for artifact in stage.artifacts:
-        if artifact.get("role") == "qrf_donor":
+        if artifact.get("role") == "was_qrf_donor":
             return artifact
     raise ValueError(
-        "was_wealth stage declares no qrf_donor artifact; refusing to read "
+        "was_wealth stage declares no was_qrf_donor artifact; refusing to read "
         "an unpinned WAS tab."
     )
 

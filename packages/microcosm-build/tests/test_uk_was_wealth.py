@@ -337,7 +337,7 @@ def test_stage_transform_refuses_sha_mismatched_tab(tmp_path) -> None:
             "grain": "household",
             "artifacts": [
                 {
-                    "role": "qrf_donor",
+                    "role": "was_qrf_donor",
                     "kind": "private_microdata",
                     "filename": "was.tab",
                     "sha256": "0" * 64,
