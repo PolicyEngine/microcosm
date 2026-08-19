@@ -8,10 +8,23 @@ downstream lane, a false NO costs another merge-ref re-pin cycle
 (main is hot — two UK-lane merges landed during this PR's CI alone).
 
 Repo: /Users/maxghenis/PolicyEngine/_worktrees/microcosm-spec-engine
-(branch spec-engine-schema @ b027dcb0). READ-ONLY: do not edit, do not
-run builds; running `uv run pytest <paths>` for spot verification is
-allowed (keep under 15 min total; the full suite is already green in
-CI four ways — checks run 32227903431).
+(branch spec-engine-schema @ 4d6b67f9 — two more mechanical main-folds
+landed since this charter was first written; same pattern as the ones
+you are reviewing). READ-ONLY: do not edit, do not run builds; `uv run
+pytest <paths>` spot checks allowed (under 10 min total; CI is green
+four ways on the current head).
+
+## SCOPE CAP (added after runtime interruptions)
+
+Host restarts have killed three long-form attempts; your context does
+not survive them. Fit the review in ONE sitting (~45 min of tool
+time). Concretely: do NOT read the full diff vs origin/main (the v3
+design was already adversarially reviewed by you in round 2 and
+approved). Review ONLY `git log --oneline 9becb709..HEAD` — the
+post-approval operational commits — reading each commit's diff
+directly (`git show <sha>`), and answer the six questions from those
+plus targeted file reads. Verdict on that basis is sufficient; say so
+in EVIDENCE.
 
 ## Context you must load first
 
