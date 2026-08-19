@@ -392,7 +392,11 @@ def e6_identity_receipt(
     # households AFTER the E6 stages ran (clones inherit their donors'
     # consumption/services values), so the deterministic-layer identity
     # claims apply to the population the consumption stages actually saw.
-    # The stacked rows are E7's receipt surface, not E6's.
+    # The stacked rows are E7's receipt surface, not E6's. The
+    # spi_support_channel stage also scales the survey channel's weights by
+    # (1 - share) after the E6 stages ran; the NHS allocation's budget
+    # normalization is absolute, so restore the stage-time grossing scale
+    # from the declared share before recomputing.
     if "household_is_spi_synthetic" in household.columns:
         spine_mask = ~household["household_is_spi_synthetic"].astype(bool)
         household = household.loc[spine_mask].reset_index(drop=True)
@@ -400,6 +404,26 @@ def e6_identity_receipt(
         person = person.loc[
             person["person_household_id"].isin(spine_household_ids)
         ].reset_index(drop=True)
+        from importlib.resources import files as _files
+
+        spec = json.loads(
+            _files("microcosm.build.uk")
+            .joinpath("source_stages.json")
+            .read_text(encoding="utf-8")
+        )
+        channel = next(
+            (s for s in spec["stages"] if s["stage"] == "spi_support_channel"),
+            None,
+        )
+        if channel is not None:
+            share = next(
+                op["share"]
+                for op in channel["operations"]
+                if op["kind"] == "allocate_zero_weight_prior_mass"
+            )
+            household["household_weight"] = household[
+                "household_weight"
+            ].to_numpy(dtype=float) / (1.0 - float(share))
     original = recompute(person, benunit, household)
     rng = np.random.default_rng(permutation_seed)
     permuted = recompute(
