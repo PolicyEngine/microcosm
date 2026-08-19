@@ -888,3 +888,27 @@ fixture gate or that physical stochastic calls have all moved behind brokers.
    sidecars through trusted locator/selector implementations.
 3. Run the cold constants-versus-bundle fixture comparison and require an
    empty difference vector before considering any sample certification.
+
+### Plan-derived artifact collector
+
+The execution-ABI vector now has a generic fail-closed materialization
+boundary. `ArtifactLocatorRegistry` binds only opaque compiler locator refs to
+construction-time paths or compiler JSON values; it rejects duplicate or
+extra bindings, paths outside explicit roots, symlinks, special files, and
+incomplete inventories. `collect_artifact_surfaces` validates both execution
+ABI seals, applies all seven declared selectors, preserves raw structural
+receipts, enforces checkpoint sidecar presence policy, and cross-authenticates
+each checkpoint payload, manifest, and raw sidecar before comparison. The live
+30-artifact fixture produces equal selected bytes from copied constants and
+bundle trees while retaining their raw receipt differences. Ten focused tests,
+Ruff, formatting, and whitespace checks pass.
+
+Two production integration gaps remain explicit rather than inferred from
+names. A deep transferred/simulated resume does not instantiate the 22 bank
+stores, while the current IR carries opaque bank locators but no sealed
+relative-path recipes. The collector therefore requires exact caller bindings
+and refuses to decode producer ids or import constants. The execution code ABI
+also currently seals selector names and locator grammar, not a detailed
+selector framing contract; that contract must be compiler-emitted before the
+collector can claim a cryptographic selector implementation binding. No sample
+build was run in this step.
