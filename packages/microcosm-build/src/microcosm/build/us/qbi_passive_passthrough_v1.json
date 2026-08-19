@@ -1,0 +1,442 @@
+{
+  "cells": [
+    {
+      "conditional_share": {
+        "conditional_on": "X3401 == 1 and ACTBUS + NONACTBUS > 0",
+        "estimate_level": "exact",
+        "requested_mean": 0.6020802648193814,
+        "requested_quantiles": {
+          "q05": 0.02912621359223301,
+          "q25": 0.18181818181818182,
+          "q50": 0.84472049689441,
+          "q75": 1.0,
+          "q95": 1.0
+        },
+        "selected_mean": 0.6020802648193814,
+        "selected_quantiles": {
+          "q05": 0.02912621359223301,
+          "q25": 0.18181818181818182,
+          "q50": 0.84472049689441,
+          "q75": 1.0,
+          "q95": 1.0
+        },
+        "source_counts": {
+          "implicate_adjusted_unweighted_n": 63.0,
+          "pooled_record_count": 315,
+          "weighted_households": 359517.357858932
+        },
+        "source_income_band": "nonpositive"
+      },
+      "holding_prevalence": {
+        "estimate": 0.03349291816162936,
+        "estimate_level": "exact",
+        "requested_estimate": 0.03349291816162936,
+        "source_counts": {
+          "implicate_adjusted_unweighted_n": 454.4,
+          "pooled_record_count": 2272,
+          "weighted_households": 10734130.604087148
+        },
+        "source_income_band": "nonpositive"
+      },
+      "income_band": "nonpositive",
+      "requested_counts": {
+        "active_implicate_adjusted_unweighted_n": 454.4,
+        "active_pooled_record_count": 2272,
+        "active_weighted_households": 10734130.604087148,
+        "nonactive_holder_implicate_adjusted_unweighted_n": 63.0,
+        "nonactive_holder_pooled_record_count": 315,
+        "nonactive_holder_weighted_households": 359517.357858932,
+        "positive_denominator_holder_implicate_adjusted_unweighted_n": 63.0,
+        "positive_denominator_holder_pooled_record_count": 315,
+        "positive_denominator_holder_weighted_households": 359517.357858932
+      }
+    },
+    {
+      "conditional_share": {
+        "conditional_on": "X3401 == 1 and ACTBUS + NONACTBUS > 0",
+        "estimate_level": "all_income_bands",
+        "requested_mean": 0.2790077931286368,
+        "requested_quantiles": {
+          "q05": 0.0,
+          "q25": 0.002613240418118467,
+          "q50": 0.06976744186046512,
+          "q75": 0.6097560975609756,
+          "q95": 0.9935897435897436
+        },
+        "selected_mean": 0.4106054515053052,
+        "selected_quantiles": {
+          "q05": 0.0,
+          "q25": 0.06976744186046512,
+          "q50": 0.3333333333333333,
+          "q75": 0.7170827214880078,
+          "q95": 1.0
+        },
+        "source_counts": {
+          "implicate_adjusted_unweighted_n": 236.0,
+          "pooled_record_count": 1180,
+          "weighted_households": 930929.1390162968
+        },
+        "source_income_band": "all"
+      },
+      "holding_prevalence": {
+        "estimate": 0.041323551642333756,
+        "estimate_level": "exact",
+        "requested_estimate": 0.041323551642333756,
+        "source_counts": {
+          "implicate_adjusted_unweighted_n": 102.6,
+          "pooled_record_count": 513,
+          "weighted_households": 2165633.7738445457
+        },
+        "source_income_band": "0_to_25k"
+      },
+      "income_band": "0_to_25k",
+      "requested_counts": {
+        "active_implicate_adjusted_unweighted_n": 102.6,
+        "active_pooled_record_count": 513,
+        "active_weighted_households": 2165633.7738445457,
+        "nonactive_holder_implicate_adjusted_unweighted_n": 13.8,
+        "nonactive_holder_pooled_record_count": 69,
+        "nonactive_holder_weighted_households": 89491.67909184723,
+        "positive_denominator_holder_implicate_adjusted_unweighted_n": 13.8,
+        "positive_denominator_holder_pooled_record_count": 69,
+        "positive_denominator_holder_weighted_households": 89491.67909184723
+      }
+    },
+    {
+      "conditional_share": {
+        "conditional_on": "X3401 == 1 and ACTBUS + NONACTBUS > 0",
+        "estimate_level": "all_income_bands",
+        "requested_mean": 0.44704119295026856,
+        "requested_quantiles": {
+          "q05": 0.0,
+          "q25": 0.4,
+          "q50": 0.4,
+          "q75": 0.5827505827505828,
+          "q95": 0.9362898188632105
+        },
+        "selected_mean": 0.4106054515053052,
+        "selected_quantiles": {
+          "q05": 0.0,
+          "q25": 0.06976744186046512,
+          "q50": 0.3333333333333333,
+          "q75": 0.7170827214880078,
+          "q95": 1.0
+        },
+        "source_counts": {
+          "implicate_adjusted_unweighted_n": 236.0,
+          "pooled_record_count": 1180,
+          "weighted_households": 930929.1390162968
+        },
+        "source_income_band": "all"
+      },
+      "holding_prevalence": {
+        "estimate": 0.0645329198764294,
+        "estimate_level": "exact",
+        "requested_estimate": 0.0645329198764294,
+        "source_counts": {
+          "implicate_adjusted_unweighted_n": 121.2,
+          "pooled_record_count": 606,
+          "weighted_households": 2454506.560942089
+        },
+        "source_income_band": "25k_to_100k"
+      },
+      "income_band": "25k_to_100k",
+      "requested_counts": {
+        "active_implicate_adjusted_unweighted_n": 121.2,
+        "active_pooled_record_count": 606,
+        "active_weighted_households": 2454506.560942089,
+        "nonactive_holder_implicate_adjusted_unweighted_n": 11.4,
+        "nonactive_holder_pooled_record_count": 57,
+        "nonactive_holder_weighted_households": 158396.4752334461,
+        "positive_denominator_holder_implicate_adjusted_unweighted_n": 11.4,
+        "positive_denominator_holder_pooled_record_count": 57,
+        "positive_denominator_holder_weighted_households": 158396.4752334461
+      }
+    },
+    {
+      "conditional_share": {
+        "conditional_on": "X3401 == 1 and ACTBUS + NONACTBUS > 0",
+        "estimate_level": "all_income_bands",
+        "requested_mean": 0.1889671863895858,
+        "requested_quantiles": {
+          "q05": 0.022222222222222223,
+          "q25": 0.034974093264248704,
+          "q50": 0.1724137931034483,
+          "q75": 0.1736111111111111,
+          "q95": 0.7203591107733232
+        },
+        "selected_mean": 0.4106054515053052,
+        "selected_quantiles": {
+          "q05": 0.0,
+          "q25": 0.06976744186046512,
+          "q50": 0.3333333333333333,
+          "q75": 0.7170827214880078,
+          "q95": 1.0
+        },
+        "source_counts": {
+          "implicate_adjusted_unweighted_n": 236.0,
+          "pooled_record_count": 1180,
+          "weighted_households": 930929.1390162968
+        },
+        "source_income_band": "all"
+      },
+      "holding_prevalence": {
+        "estimate": 0.09654342380984532,
+        "estimate_level": "exact",
+        "requested_estimate": 0.09654342380984532,
+        "source_counts": {
+          "implicate_adjusted_unweighted_n": 82.6,
+          "pooled_record_count": 413,
+          "weighted_households": 971818.2959718417
+        },
+        "source_income_band": "100k_to_250k"
+      },
+      "income_band": "100k_to_250k",
+      "requested_counts": {
+        "active_implicate_adjusted_unweighted_n": 82.6,
+        "active_pooled_record_count": 413,
+        "active_weighted_households": 971818.2959718417,
+        "nonactive_holder_implicate_adjusted_unweighted_n": 17.2,
+        "nonactive_holder_pooled_record_count": 86,
+        "nonactive_holder_weighted_households": 93822.6656141712,
+        "positive_denominator_holder_implicate_adjusted_unweighted_n": 17.2,
+        "positive_denominator_holder_pooled_record_count": 86,
+        "positive_denominator_holder_weighted_households": 93822.6656141712
+      }
+    },
+    {
+      "conditional_share": {
+        "conditional_on": "X3401 == 1 and ACTBUS + NONACTBUS > 0",
+        "estimate_level": "exact",
+        "requested_mean": 0.14374098966992677,
+        "requested_quantiles": {
+          "q05": 0.0,
+          "q25": 0.0009000900090009,
+          "q50": 0.03932584269662921,
+          "q75": 0.16666666666666666,
+          "q95": 0.6962676962676962
+        },
+        "selected_mean": 0.14374098966992677,
+        "selected_quantiles": {
+          "q05": 0.0,
+          "q25": 0.0009000900090009,
+          "q50": 0.03932584269662921,
+          "q75": 0.16666666666666666,
+          "q95": 0.6962676962676962
+        },
+        "source_counts": {
+          "implicate_adjusted_unweighted_n": 35.2,
+          "pooled_record_count": 176,
+          "weighted_households": 125777.33801387913
+        },
+        "source_income_band": "250k_to_1m"
+      },
+      "holding_prevalence": {
+        "estimate": 0.2122687904327135,
+        "estimate_level": "exact",
+        "requested_estimate": 0.2122687904327135,
+        "source_counts": {
+          "implicate_adjusted_unweighted_n": 117.2,
+          "pooled_record_count": 586,
+          "weighted_households": 592538.0634500245
+        },
+        "source_income_band": "250k_to_1m"
+      },
+      "income_band": "250k_to_1m",
+      "requested_counts": {
+        "active_implicate_adjusted_unweighted_n": 117.2,
+        "active_pooled_record_count": 586,
+        "active_weighted_households": 592538.0634500245,
+        "nonactive_holder_implicate_adjusted_unweighted_n": 35.2,
+        "nonactive_holder_pooled_record_count": 176,
+        "nonactive_holder_weighted_households": 125777.33801387913,
+        "positive_denominator_holder_implicate_adjusted_unweighted_n": 35.2,
+        "positive_denominator_holder_pooled_record_count": 176,
+        "positive_denominator_holder_weighted_households": 125777.33801387913
+      }
+    },
+    {
+      "conditional_share": {
+        "conditional_on": "X3401 == 1 and ACTBUS + NONACTBUS > 0",
+        "estimate_level": "exact",
+        "requested_mean": 0.32907709570621996,
+        "requested_quantiles": {
+          "q05": 0.014393086449806773,
+          "q25": 0.13549459684123025,
+          "q50": 0.29411764705882354,
+          "q75": 0.40508684863523575,
+          "q95": 0.8722044728434505
+        },
+        "selected_mean": 0.32907709570621996,
+        "selected_quantiles": {
+          "q05": 0.014393086449806773,
+          "q25": 0.13549459684123025,
+          "q50": 0.29411764705882354,
+          "q75": 0.40508684863523575,
+          "q95": 0.8722044728434505
+        },
+        "source_counts": {
+          "implicate_adjusted_unweighted_n": 95.4,
+          "pooled_record_count": 477,
+          "weighted_households": 103923.6232040211
+        },
+        "source_income_band": "over_1m"
+      },
+      "holding_prevalence": {
+        "estimate": 0.38980634752196003,
+        "estimate_level": "exact",
+        "requested_estimate": 0.38980634752196003,
+        "source_counts": {
+          "implicate_adjusted_unweighted_n": 229.0,
+          "pooled_record_count": 1145,
+          "weighted_households": 266603.2091695646
+        },
+        "source_income_band": "over_1m"
+      },
+      "income_band": "over_1m",
+      "requested_counts": {
+        "active_implicate_adjusted_unweighted_n": 229.0,
+        "active_pooled_record_count": 1145,
+        "active_weighted_households": 266603.2091695646,
+        "nonactive_holder_implicate_adjusted_unweighted_n": 95.4,
+        "nonactive_holder_pooled_record_count": 477,
+        "nonactive_holder_weighted_households": 103923.6232040211,
+        "positive_denominator_holder_implicate_adjusted_unweighted_n": 95.4,
+        "positive_denominator_holder_pooled_record_count": 477,
+        "positive_denominator_holder_weighted_households": 103923.6232040211
+      }
+    }
+  ],
+  "external_anchor": {
+    "caveats": [
+      "Line 4c includes rental and royalty net investment income as well as passive partnership and S-corporation income; it is not a passive pass-through point estimate.",
+      "The engine counts rental_income in NIIT in full. Schedule E rental income is frequently passive, so using line 4c without a rental decomposition would overlap an existing NIIT leg. Rental handling is unchanged here.",
+      "No entity-side SOI passive split exists: partnership tables 23pa01, 23pa04, 23pa06, 23pa10, and 23pa23 were checked, and IRS Table 1.4 likewise has no passive split. Form 8960 line 4 is the only administrative level available for this provisional evidence surface."
+    ],
+    "form_8960": {
+      "line_4a": {
+        "amount": 1185607258000.0,
+        "description": "gross rental, royalty, partnership, S corporation, trust, and trade-or-business flow-through",
+        "returns_count": 4988033
+      },
+      "line_4b": {
+        "amount": -1076350273000.0,
+        "description": "non-section-1411 trade-or-business amount removed",
+        "returns_count": 4038235
+      },
+      "line_4c": {
+        "amount": 109256984000.0,
+        "description": "line 4a plus line 4b; amount remaining in the NIIT base",
+        "returns_count": 2260296
+      }
+    },
+    "line_4c_to_4a_survival_ratio": 0.09215276244538645,
+    "passive_passthrough_bounds": {
+      "decomposition_status": "open question: no administrative source on disk decomposes line 4c between rental or royalty income and passive partnership or S-corporation income",
+      "lower": {
+        "amount": 0.0,
+        "assumption": "all Form 8960 line 4c is rental or royalty income"
+      },
+      "upper": {
+        "amount": 109256984000.0,
+        "assumption": "all Form 8960 line 4c is passive pass-through income"
+      }
+    },
+    "source": "IRS Publication 4801, Form 8960 statistics, tax year 2023",
+    "units": "dollars"
+  },
+  "methodology": {
+    "estimands": {
+      "conditional_share": "NONACTBUS / (ACTBUS + NONACTBUS), conditional on X3401 == 1 and a positive denominator",
+      "holding_prevalence": "P(X3401 == 1 | actively managed business, X5714 income band)"
+    },
+    "fallback_order": [
+      "income_band",
+      "all_income_bands"
+    ],
+    "implicate_count": 5,
+    "income_bands": [
+      {
+        "definition": "X5714 <= 0",
+        "id": "nonpositive"
+      },
+      {
+        "definition": "0 < X5714 <= 25,000",
+        "id": "0_to_25k"
+      },
+      {
+        "definition": "25,000 < X5714 <= 100,000",
+        "id": "25k_to_100k"
+      },
+      {
+        "definition": "100,000 < X5714 <= 250,000",
+        "id": "100k_to_250k"
+      },
+      {
+        "definition": "250,000 < X5714 <= 1,000,000",
+        "id": "250k_to_1m"
+      },
+      {
+        "definition": "X5714 > 1,000,000",
+        "id": "over_1m"
+      }
+    ],
+    "minimum_effective_n": 30.0,
+    "quantile_method": "weighted inverse CDF",
+    "quantile_probabilities": [
+      0.05,
+      0.25,
+      0.5,
+      0.75,
+      0.95
+    ]
+  },
+  "notes": [
+    "SCF X3119 identifies the legal form of the largest actively managed business, not the non-actively-managed holding. There is no defensible entity-form link, so these estimates are band-only.",
+    "The SCF value share is a survey shape, not an income-share level. The separate assumptions build supplies the provisional administrative calibration and persists its solved shift.",
+    "A household with X3401 == 1 remains a holder when NONACTBUS is zero; this preserves the requested holding concept."
+  ],
+  "provenance": {
+    "deterministic": true,
+    "generated_by": "tools/build_us_qbi_passive_passthrough_evidence.py",
+    "inputs": [
+      {
+        "bytes": 8856125,
+        "filename": "scf2022s.zip",
+        "role": "scf_2022_source",
+        "sha256": "409e6811df895766d50b2f597c10b1b3c5813e7d3e0e45d910ad26c0cb07f4eb"
+      },
+      {
+        "bytes": 236952250,
+        "container_filename": "scf2022s.zip",
+        "filename": "p22i6.dta",
+        "role": "scf_2022_archive_member",
+        "sha256": "61e2fceb1594e4009eb996d6e25d38a5d8e4874930fc2bfce3c87ffa6946ad0a"
+      }
+    ],
+    "random_draws": "none",
+    "run_command": "uv run python tools/build_us_qbi_passive_passthrough_evidence.py --scf /path/to/scf2022s.zip"
+  },
+  "provisional": true,
+  "resource": "us_qbi_passive_passthrough_evidence",
+  "schema_version": 1,
+  "source": {
+    "public_extract": "full public data, pooled multiple-imputation file p22i6.dta",
+    "record_selection": "X3103 == 1 and X3104 == 1 and X3105 >= 1; one record per household implicate. A non-active holding is X3401 == 1, even when the reported NONACTBUS value is zero.",
+    "survey": "Federal Reserve Survey of Consumer Finances",
+    "variables": {
+      "active_business_value": "SCFP ACTBUS: active-business net values and family-business loan adjustments for X3121-X3335, plus FARMBUS",
+      "active_management_screeners": [
+        "X3103",
+        "X3104",
+        "X3105"
+      ],
+      "nonactive_business_value": "SCFP NONACTBUS: sum of nonnegative X3408, X3412, X3416, X3420, X3452, and X3428",
+      "nonactive_holding_screener": "X3401",
+      "schedule_e_income_band": "X5714"
+    },
+    "vintage": 2022,
+    "weight": "X42001 divided by five implicates"
+  },
+  "survey_year": 2022
+}
