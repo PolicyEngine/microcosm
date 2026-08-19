@@ -159,3 +159,26 @@ that owns each arm.
 - Next: commit this gate binding, run it serially under the 19.5-GiB stop
   guard, and accept only complete 32-family/118-target/74-money/211-leg
   evidence with kernel `ru_maxrss` below 20 GiB.
+- Accepted order gate: the guarded run completed all 32 families, 118 targets,
+  74 money targets, and 211 battery legs in 833.442561 seconds. The exact-PID
+  monitor sampled a maximum RSS of 9,875,210,240 bytes; kernel `ru_maxrss` was
+  9,959,161,856 bytes, the 20-GiB limit was not crossed, and the 19.5-GiB stop
+  guard did not fire. Exit 1 is the substantive red verdict.
+- Configuration audit: after removing only the per-candidate artifact-role
+  binding, the order and round-1 configuration hashes are both
+  `10f29427d83c340973869fb735188967aff9a4eea770b066f604e7a28a0b5e5a`.
+- Order verdict: clause A FAIL (CHAMPVA ratio 3.72025867636884 to
+  4.814388427077644; progress -0.4429211244860887), clause B PASS (zero
+  significantly worsened money targets), and clause C PASS (zero battery legs
+  left band). No money target significantly improved either, no battery leg
+  entered band, and social-security-retirement was exactly unchanged at
+  114.63718321141073 with delta/CI [0, 0].
+- Evidence hashes: `verdict.json`
+  `75e74a8e7cf4615eb12b5cb9efad189cc8b0f57a82f42a3315e0914f881f9059`;
+  `report.md`
+  `1dc0a1e2fe85b9b80effb93cc42047b3bc58f9a0ec815c7954b4a9b40ce184ba`;
+  gate implementation
+  `319cd4292577c5c88322fcfe6205e176a354094950b98ca45047f7f2bb320ca1`.
+- Next: commit the accepted order evidence, then replace the earlier
+  investment evidence with a run using this bounded loader and an auditable
+  sub-20-GiB resource receipt before synthesis.
