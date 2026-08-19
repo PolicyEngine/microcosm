@@ -14,6 +14,7 @@ from microcosm.build.uk_runtime import (
     SPI_INCOME_IMPUTATION_COLUMNS,
     SPI_PRIOR_MASS_CHANGE_REASON,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
+    build_uk_spi_support_channel,
     create_uk_spi_support_tables,
     fill_support_channel_from_source,
     replace_uk_spi_support_tables,
@@ -22,6 +23,7 @@ from microcosm.build.uk_runtime import (
     support_clone_index_column,
     support_source_id_column,
 )
+from microcosm.build.uk_runtime.terminal_gates import UKZeroWeightStratumDeclaration
 from microcosm.frame import MassChangeRecord, WeightKind
 
 
@@ -318,6 +320,88 @@ def test_replace_spi_support_preserves_quotas_and_allocates_real_mass() -> None:
     assert record.new_total == original_total
     assert record.declared_factor == 1.0
     assert record.reason == SPI_PRIOR_MASS_CHANGE_REASON
+
+
+def test_build_spi_support_channel_fresh_stack_allocates_region_mass() -> None:
+    prior_record = MassChangeRecord(
+        entity="household",
+        old_total=30.0,
+        new_total=60.0,
+        declared_factor=2.0,
+        reason="prior raw FRS calibration",
+    )
+
+    result = build_uk_spi_support_channel(
+        person=person_frame(),
+        benunit=benunit_frame(),
+        household=household_frame(),
+        spi_household_count=3,
+        seed=42,
+        source_year=2023,
+        strata_columns=("region",),
+        input_weight_kind=WeightKind.DESIGN,
+        mass_log=(prior_record,),
+        zero_weight_declarations=(
+            UKZeroWeightStratumDeclaration(
+                name="e7_spi_synthetic_preclone",
+                selector={HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN: True},
+                maximum_zero_weight_rows=3,
+                reason="synthetic test declaration",
+            ),
+        ),
+    )
+
+    assert result.household_weight_kind is WeightKind.IMPORTANCE
+    assert result.mass_log[:-1] == (prior_record,)
+    assert result.mass_log[-1].old_total == 60.0
+    assert result.mass_log[-1].new_total == 60.0
+    channel = support_channel_column("household")
+    base = result.household[result.household[channel] == BASE_FRS_SUPPORT_CHANNEL]
+    spi = result.household[result.household[channel] == SPI_SYNTHETIC_SUPPORT_CHANNEL]
+    assert base["household_weight"].sum() == pytest.approx(30.0)
+    assert spi["household_weight"].sum() == pytest.approx(30.0)
+    pd.testing.assert_series_equal(
+        result.household.groupby("region")["household_weight"].sum(),
+        household_frame().groupby("region")["household_weight"].sum(),
+    )
+
+
+def test_build_spi_support_channel_fails_on_undeclared_zero_weight_row() -> None:
+    with pytest.raises(ValueError, match="match no declared stratum"):
+        build_uk_spi_support_channel(
+            person=person_frame(),
+            benunit=benunit_frame(),
+            household=household_frame(),
+            spi_household_count=3,
+            zero_weight_declarations=(
+                UKZeroWeightStratumDeclaration(
+                    name="nonmatching",
+                    selector={HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN: False},
+                    maximum_zero_weight_rows=0,
+                    reason="synthetic test declaration",
+                ),
+            ),
+        )
+
+
+def test_build_spi_support_channel_fails_missing_positive_region_support() -> None:
+    with pytest.raises(ValueError, match="positive-mass UK base stratum"):
+        build_uk_spi_support_channel(
+            person=person_frame(),
+            benunit=benunit_frame(),
+            household=household_frame(),
+            spi_household_count=2,
+            seed=1,
+            strata_columns=("region",),
+            zero_weight_declarations=(
+                UKZeroWeightStratumDeclaration(
+                    name="e7_spi_synthetic_preclone",
+                    selector={HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN: True},
+                    maximum_zero_weight_rows=2,
+                    reason="synthetic test declaration",
+                ),
+            ),
+        )
 
 
 def test_replace_spi_support_builds_importance_pool_from_calibrated_base() -> None:
