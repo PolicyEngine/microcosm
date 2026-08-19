@@ -1,0 +1,1 @@
+Move the UK input-mass and QRF-tail thresholds into `uk/gates.json` parameters at their receipted measured edges and retire the five CLI arming flags; a missing licensed reference sidecar now records `evidence_absent` instead of silently disarming the gate, and the exclusion overrides stay as self-describing review-time flags.

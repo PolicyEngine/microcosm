@@ -392,7 +392,7 @@ REFORM_VECTOR_CACHE_CONTEXT_KEYS: tuple[str, ...] = (
     # so pre-#557 release-refitted surfaces cannot mix with preserved surfaces.
     "target_frame_materializer_identity_sha256",
 )
-TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
+TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 2
 # 2: the medicaid_take_up stage (microcosm #331) changed base_frame's
 # takes_up_medicaid_if_eligible before target-frame materialization, so
 # medicaid_enrolled target columns differ from version-1 checkpoints; the
@@ -423,7 +423,10 @@ TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION = 1
 # 10: #557 preserves the staged retirement-distribution surface through
 # release materialization; pre-#557 checkpoints can carry QRF-refitted leaves
 # and must not serve the preserved-surface baseline.
-TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 10
+# 11: target-frame checkpoint columns now preserve nullable booleans as
+# canonical bool values plus an explicit uint8 null mask. Older checkpoints
+# cannot attest this lossless physical representation.
+TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION = 11
 DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE = 5_000
 DEFAULT_L0_REFIT_LAMBDA_SHARE = 0.8
 DEFAULT_US_FISCAL_CALIBRATION_EPOCHS = 1_500
@@ -2285,11 +2288,26 @@ def _read_checkpoint_series(group) -> pd.Series:
 def _write_checkpoint_column(group, series: pd.Series) -> None:
     import h5py
 
+    from microcosm.frame import nullable_boolean_values_and_mask
+
     dtype = series.dtype
     group.attrs["pandas_dtype"] = str(dtype)
     if pd.api.types.is_bool_dtype(dtype):
         group.attrs["storage_kind"] = "bool"
-        values = series.to_numpy(dtype=np.bool_)
+        if isinstance(dtype, pd.BooleanDtype):
+            values, null_mask = nullable_boolean_values_and_mask(series)
+            group.attrs["nullable"] = True
+            group.attrs["has_null_mask"] = bool(null_mask.any())
+            if null_mask.any():
+                group.create_dataset(
+                    "null_mask",
+                    data=null_mask.astype(np.uint8, copy=False),
+                    compression="gzip",
+                )
+        else:
+            values = series.to_numpy(dtype=np.bool_, copy=False)
+            group.attrs["nullable"] = False
+            group.attrs["has_null_mask"] = False
         group.create_dataset("values", data=values, compression="gzip")
     elif pd.api.types.is_integer_dtype(dtype):
         if bool(series.isna().any()):
@@ -2325,7 +2343,60 @@ def _read_checkpoint_column(group) -> np.ndarray:
     if storage_kind == "string":
         return np.asarray(dataset.asstr()[()], dtype=object)
     if storage_kind == "bool":
-        return np.asarray(dataset[()], dtype=np.bool_)
+        values = np.asarray(dataset[()])
+        if values.ndim != 1 or values.dtype != np.dtype(np.bool_):
+            raise RuntimeError(
+                "Target-frame checkpoint boolean values must be a "
+                "one-dimensional bool array."
+            )
+        nullable = group.attrs.get("nullable")
+        has_null_mask = group.attrs.get("has_null_mask")
+        if not isinstance(nullable, (bool, np.bool_)) or not isinstance(
+            has_null_mask, (bool, np.bool_)
+        ):
+            raise RuntimeError(
+                "Target-frame checkpoint boolean metadata must declare "
+                "nullable and has_null_mask booleans."
+            )
+        nullable = bool(nullable)
+        has_null_mask = bool(has_null_mask)
+        if not nullable and has_null_mask:
+            raise RuntimeError(
+                "Native target-frame checkpoint boolean cannot carry a null mask."
+            )
+        if has_null_mask:
+            if "null_mask" not in group:
+                raise RuntimeError(
+                    "Nullable target-frame checkpoint boolean is missing its "
+                    "declared null mask."
+                )
+            null_mask = np.asarray(group["null_mask"])
+            if (
+                null_mask.ndim != 1
+                or null_mask.dtype != np.dtype(np.uint8)
+                or len(null_mask) != len(values)
+                or ((null_mask != 0) & (null_mask != 1)).any()
+                or not null_mask.any()
+            ):
+                raise RuntimeError(
+                    "Target-frame checkpoint nullable boolean null mask must "
+                    "be an aligned, nonempty uint8 0/1 array."
+                )
+            mask = null_mask.astype(np.bool_, copy=False)
+            if values[mask].any():
+                raise RuntimeError(
+                    "Target-frame checkpoint nullable boolean null mask covers "
+                    "noncanonical true value bits."
+                )
+        else:
+            if "null_mask" in group:
+                raise RuntimeError(
+                    "Target-frame checkpoint boolean has an unexpected null mask."
+                )
+            mask = np.zeros(len(values), dtype=np.bool_)
+        if nullable:
+            return pd.arrays.BooleanArray(values, mask, copy=False)
+        return values
     if storage_kind == "int64":
         return np.asarray(dataset[()], dtype=np.int64)
     if storage_kind == "float64":

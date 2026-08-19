@@ -9,7 +9,7 @@ row-wise local geography.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -20,6 +20,10 @@ from microcosm.build.uk_runtime.hmrc_income import (
     HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
 )
 from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
+from microcosm.build.uk_runtime.terminal_gates import (
+    UKZeroWeightStratumDeclaration,
+    uk_zero_weight_strata_gate,
+)
 from microcosm.frame import (
     MassChangeRecord,
     WeightKind,
@@ -337,9 +341,13 @@ def replace_uk_spi_support_tables(
     plus a zero-weight SPI-synthetic channel. This transform removes that dead
     channel, samples replacement source households within the exact reviewed
     clone/capital-gains/region quotas, rebuilds linked rows once, and allocates
-    a fixed share of national household mass to the new channel. The allocation
-    advances weights to ``IMPORTANCE`` and records a deliberate, factor-one
-    :class:`MassChangeRecord`; national mass never doubles or disappears.
+    a fixed share of every stratum's household mass to the new channel. Because
+    the source draw is uniform within each stratum, its SPI design weight is the
+    stratum's allocated mass divided by its sampled quota; selected donors do
+    not propagate their incoming calibrated weights. The allocation advances
+    weights to ``IMPORTANCE`` and records a deliberate, factor-one
+    :class:`MassChangeRecord`; national and stratum mass never double or
+    disappear.
     """
 
     if not isinstance(input_weight_kind, WeightKind):
@@ -420,6 +428,7 @@ def replace_uk_spi_support_tables(
         spi_prior_mass_share=share,
         input_weight_kind=input_weight_kind,
         mass_log=mass_log,
+        strata_columns=stratum_columns,
     )
     return UKSPISupportResult(
         person=allocated.person,
@@ -431,6 +440,67 @@ def replace_uk_spi_support_tables(
         mass_log=allocated.mass_log,
         replaced_spi_households=int(synthetic.sum()),
         spi_prior_mass_share=share,
+    )
+
+
+def build_uk_spi_support_channel(
+    person: pd.DataFrame,
+    benunit: pd.DataFrame,
+    household: pd.DataFrame,
+    *,
+    spi_household_count: int = DEFAULT_SPI_SUPPORT_HOUSEHOLDS,
+    seed: int = 42,
+    source_year: int | None = None,
+    spi_prior_mass_share: float = DEFAULT_SPI_PRIOR_MASS_SHARE,
+    strata_columns: Sequence[str] = ("region",),
+    input_weight_kind: WeightKind = WeightKind.DESIGN,
+    mass_log: tuple[MassChangeRecord, ...] = (),
+    zero_weight_declarations: (
+        Sequence[UKZeroWeightStratumDeclaration] | Sequence[Mapping[str, Any]]
+    ) = (),
+) -> UKSPISupportResult:
+    """Stack the E7 SPI support channel and allocate prior mass by stratum."""
+
+    if not isinstance(input_weight_kind, WeightKind):
+        raise TypeError("input_weight_kind must be a WeightKind.")
+    if not isinstance(mass_log, tuple) or any(
+        not isinstance(record, MassChangeRecord) for record in mass_log
+    ):
+        raise TypeError("mass_log must be a tuple of MassChangeRecord.")
+    if not isinstance(seed, int):
+        raise ValueError("seed must be an integer.")
+    share = float(spi_prior_mass_share)
+    if not np.isfinite(share) or not 0.0 < share < 1.0:
+        raise ValueError("spi_prior_mass_share must be finite and in (0, 1).")
+    stratum_columns = tuple(str(column) for column in strata_columns)
+    if not stratum_columns or any(not column for column in stratum_columns):
+        raise ValueError("strata_columns must contain non-empty column names.")
+
+    stacked = create_uk_spi_support_tables(
+        person=person,
+        benunit=benunit,
+        household=household,
+        spi_household_count=spi_household_count,
+        seed=seed,
+        source_year=source_year,
+    )
+    declarations = _coerce_zero_weight_declarations(zero_weight_declarations)
+    if declarations:
+        gate = uk_zero_weight_strata_gate(
+            stacked.household,
+            declarations=declarations,
+        )
+        if not gate.passed:
+            raise ValueError(
+                "UK SPI support pre-clone zero-weight gate failed: "
+                f"{list(gate.failures)}."
+            )
+    return _allocate_spi_prior_mass(
+        stacked,
+        spi_prior_mass_share=share,
+        input_weight_kind=input_weight_kind,
+        mass_log=mass_log,
+        strata_columns=stratum_columns,
     )
 
 
@@ -506,6 +576,23 @@ def fill_support_channel_from_source(
     for column in values:
         out.loc[mask, column] = aligned[column].to_numpy()
     return out
+
+
+def _coerce_zero_weight_declarations(
+    declarations: Sequence[UKZeroWeightStratumDeclaration] | Sequence[Mapping[str, Any]],
+) -> tuple[UKZeroWeightStratumDeclaration, ...]:
+    materialized: list[UKZeroWeightStratumDeclaration] = []
+    for declaration in declarations:
+        if isinstance(declaration, UKZeroWeightStratumDeclaration):
+            materialized.append(declaration)
+        elif isinstance(declaration, Mapping):
+            materialized.append(UKZeroWeightStratumDeclaration(**dict(declaration)))
+        else:
+            raise TypeError(
+                "zero_weight_declarations must contain "
+                "UKZeroWeightStratumDeclaration instances or mappings."
+            )
+    return tuple(materialized)
 
 
 def support_channel_column(entity: str) -> str:
@@ -691,6 +778,7 @@ def _allocate_spi_prior_mass(
     spi_prior_mass_share: float,
     input_weight_kind: WeightKind,
     mass_log: tuple[MassChangeRecord, ...],
+    strata_columns: tuple[str, ...],
 ) -> UKSPISupportResult:
     household = result.household.copy()
     channels = household[support_channel_column("household")]
@@ -705,24 +793,50 @@ def _allocate_spi_prior_mass(
         household["household_weight"], errors="coerce"
     ).to_numpy(dtype=float, na_value=np.nan)
     old_total = float(pre_weights.sum())
-    source_weights = pd.Series(
-        pre_weights[base_mask],
-        index=household.loc[base_mask, "household_id"].to_numpy(),
+    _require_columns(household, strata_columns, label="rebuilt household")
+    allocation = household[list(strata_columns)].copy()
+    allocation["_base_mass"] = np.where(base_mask, pre_weights, 0.0)
+    allocation["_spi_count"] = spi_mask.astype(np.int64)
+    grouped = allocation.groupby(
+        list(strata_columns),
+        sort=False,
+        dropna=False,
     )
-    spi_source_ids = household.loc[
-        spi_mask,
-        support_source_id_column("household"),
-    ]
-    spi_raw = spi_source_ids.map(source_weights).to_numpy(dtype=np.float64)
-    if not np.isfinite(spi_raw).all() or not (spi_raw > 0.0).all():
-        raise ValueError(
-            "Every rebuilt SPI household must inherit a strictly positive "
-            "source-household prior."
+    stratum_base_mass = grouped["_base_mass"].transform("sum").to_numpy(dtype=float)
+    stratum_spi_count = grouped["_spi_count"].transform("sum").to_numpy(
+        dtype=np.int64
+    )
+    unrepresented_base = base_mask & (stratum_base_mass > 0.0) & (
+        stratum_spi_count == 0
+    )
+    if unrepresented_base.any():
+        examples = (
+            household.loc[unrepresented_base, list(strata_columns)]
+            .drop_duplicates()
+            .head(5)
+            .to_dict(orient="records")
         )
+        raise ValueError(
+            "Every positive-mass UK base stratum must have rebuilt SPI support; "
+            f"missing stratum example(s): {examples}."
+        )
+    invalid_spi = spi_mask & (
+        ~np.isfinite(stratum_base_mass)
+        | (stratum_base_mass <= 0.0)
+        | (stratum_spi_count <= 0)
+    )
+    if invalid_spi.any():
+        raise ValueError(
+            "Every rebuilt SPI stratum must resolve to positive finite base "
+            "mass and a positive support quota."
+        )
+
     final_weights = np.zeros_like(pre_weights)
     final_weights[base_mask] = pre_weights[base_mask] * (1.0 - spi_prior_mass_share)
-    final_weights[spi_mask] = spi_raw * (
-        old_total * spi_prior_mass_share / float(spi_raw.sum())
+    final_weights[spi_mask] = (
+        stratum_base_mass[spi_mask]
+        * spi_prior_mass_share
+        / stratum_spi_count[spi_mask]
     )
 
     # This is a newly assembled two-channel population, not an in-place
@@ -1067,6 +1181,7 @@ __all__ = [
     "SPI_REPLACEMENT_STRATA_COLUMNS",
     "UKSPISupportResult",
     "UK_SPI_SUPPORT_STAGE_NAME",
+    "build_uk_spi_support_channel",
     "create_uk_spi_support_tables",
     "fill_support_channel_from_source",
     "replace_uk_spi_support_tables",

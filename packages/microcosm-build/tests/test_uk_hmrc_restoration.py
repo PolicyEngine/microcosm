@@ -109,6 +109,7 @@ def _tampered_dataset() -> Frame:
         benunit=frame.table("benunit"),
         household=frame.table("household"),
         time_period=HMRC_SPI_BUILD_PERIOD,
+        household_weights=frame.weights_for("household").values,
     )
 
 
@@ -229,7 +230,7 @@ def _support_and_imputation(
     benunit = pd.DataFrame({"benunit_id": np.arange(1, row_count + 1)})
     mass_record = MassChangeRecord(
         entity="household",
-        old_total=float(dataset.table("household")["household_weight"].sum()),
+        old_total=float(dataset.weights_for("household").total),
         new_total=float(sum(household_weights)),
         declared_factor=1.0,
         reason="reviewed test allocation to one positive-mass SPI channel",
@@ -509,6 +510,7 @@ def test_restoration_binds_loaded_candidate_bytes_before_source_io(
         benunit=base.table("benunit"),
         household=base.table("household"),
         time_period=HMRC_SPI_BUILD_PERIOD,
+        household_weights=base.weights_for("household").values,
     )
     write_uk_national_frame(replacement, candidate_path)
     loaded_replacement, replacement_provenance = load_uk_national_frame(candidate_path)
@@ -653,6 +655,43 @@ def test_restoration_runs_replay_without_calibration_and_emits_208_facts(
         "output_weight_kind": "importance",
     }
     assert evidence["post_draw_identity"]["exact"] is True
+
+
+def test_sampled_rung_defers_the_effective_mass_floor_to_the_terminal_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A #627 rung build records a thin imputed column instead of aborting.
+
+    Sparse imputed columns can legitimately restore near-zero effective mass
+    on a small sample; the declared rung defers the mid-stage floor to the
+    terminal input-coverage gate, whose verdict is receipted. The strict
+    raise is unchanged without the declaration.
+    """
+
+    candidate = _candidate_identity(tmp_path)
+    dataset, provenance = _dataset_from_source(candidate.path)
+    _install_replay_mocks(monkeypatch, dataset, tmp_path)
+    monkeypatch.setattr(
+        hmrc_restoration,
+        "_distributional_mass_shares",
+        lambda _frame: {"charitable_investment_gifts": 1e-7},
+    )
+
+    with pytest.raises(RuntimeError, match="did not restore required effective-mass"):
+        _restore(dataset, candidate, tmp_path, provenance=provenance)
+
+    restored = restore_uk_hmrc_income_family(
+        dataset,
+        spi_tab_path=tmp_path / "put2223uk.tab",
+        hmrc_ods_path=tmp_path / "hmrc.ods",
+        certified_candidate=candidate,
+        staging_provenance=provenance,
+        frs_source_evidence=_FRS_SOURCE_EVIDENCE,
+        sampled_rung=True,
+    )
+    # The thin share still reaches the replay report's evidence surface.
+    assert restored.distributional_mass_shares == {"charitable_investment_gifts": 1e-7}
 
 
 def test_post_draw_total_income_identity_is_exact_not_tolerance_based(

@@ -190,6 +190,14 @@ def _gates_manifest_payload(gates: GatesManifest) -> dict[str, object]:
                 "criticality": entry.criticality,
                 "parameters": _json_safe(entry.parameters),
                 "not_applicable": entry.not_applicable,
+                # Present iff armed: a true flag must ride the policy hash,
+                # while the false default stays out so unflagged entries
+                # (and the US manifest) keep their serialized form.
+                **(
+                    {"evidence_absent_blocks": True}
+                    if entry.evidence_absent_blocks
+                    else {}
+                ),
                 "notes": entry.notes,
             }
             for entry in gates.gates
@@ -234,9 +242,16 @@ class GateBinding(Protocol):
     is the country-agnostic adapter that knows what evidence the comparison
     needs, where in the :class:`EvidenceContext` it lives, and how declared
     spec parameters map onto gate keyword arguments.
+
+    ``parameter_keys`` is the binding's declared parameter vocabulary: the
+    complete set of spec ``parameters`` keys it can route into the gate.
+    :func:`validate_gate_parameters` refuses any declared key outside it
+    before a single gate runs, so a typo'd or speculative parameter cannot
+    sit inside ``policy_sha256`` while governing nothing.
     """
 
     name: str
+    parameter_keys: frozenset[str]
 
     def required_artifacts(self, parameters: Mapping[str, Any]) -> frozenset[str]:
         """Artifact keys the gate needs, checked before evaluation."""
@@ -273,6 +288,9 @@ class FunctionBinding:
         name: The allowlisted gate name.
         gate: The pure gate function returning a
             :class:`~microcosm.build.gates.GateResult` whose ``name`` matches.
+        parameter_keys: The spec parameter keys this binding routes — the
+            gate function's declarable keyword surface. Fail-closed empty by
+            default: a binding that declares nothing accepts no parameters.
         artifact_arguments: Gate keyword argument -> context artifact key.
         frame_argument: Gate keyword argument receiving the phase frame, or
             ``None`` for frameless gates.
@@ -282,6 +300,7 @@ class FunctionBinding:
 
     name: str
     gate: Callable[..., GateResult]
+    parameter_keys: frozenset[str] = frozenset()
     artifact_arguments: Mapping[str, str] = field(default_factory=dict)
     frame_argument: str | None = None
     evidence: Callable[[EvidenceContext, Mapping[str, Any]], object] | None = None
@@ -332,11 +351,21 @@ DEFAULT_REGISTRY: Mapping[str, GateBinding] = {
     "weights_audit": FunctionBinding(
         name="weights_audit",
         gate=weights_audit_gate,
+        parameter_keys=frozenset({"allowed_unweighted"}),
         artifact_arguments={"fit_records": "fit_weight_records"},
     ),
     "input_mass_parity": FunctionBinding(
         name="input_mass_parity",
         gate=input_mass_parity_gate,
+        parameter_keys=frozenset(
+            {
+                "candidate_name",
+                "reference_name",
+                "relative_tolerance",
+                "minimum_reference_total",
+                "reviewed_exclusions",
+            }
+        ),
         artifact_arguments={
             "candidate_totals": "candidate_input_mass_totals",
             "reference_totals": "reference_input_mass_totals",
@@ -346,6 +375,14 @@ DEFAULT_REGISTRY: Mapping[str, GateBinding] = {
     "tail_concentration": FunctionBinding(
         name="tail_concentration",
         gate=tail_concentration_gate,
+        parameter_keys=frozenset(
+            {
+                "top_k",
+                "max_top_share",
+                "min_nonzero_records",
+                "reviewed_exclusions",
+            }
+        ),
         artifact_arguments={
             "column_values": "tail_concentration_values",
             "column_weights": "tail_concentration_weights",
@@ -458,7 +495,11 @@ class GatePhaseReport:
         build without, say, an incumbent parity snapshot gets an honest
         non-shippable report instead of a crash, while a release build
         cannot excuse missing evidence — a missing frozen reference is not
-        a passing gate. Diagnostic entries never block.
+        a passing gate. An entry declaring ``evidence_absent_blocks`` opts
+        out of that dev-posture leniency: its absence blocks every posture
+        (the legacy UK weights-audit strictness, ported during the #654
+        schema-3 retirement — "an absent audit is not a passing audit").
+        Diagnostic entries never block.
         """
 
         blocking = []
@@ -467,7 +508,9 @@ class GatePhaseReport:
                 continue
             if outcome.status is GateStatus.FAILED:
                 blocking.append(outcome)
-            elif outcome.status is GateStatus.EVIDENCE_ABSENT and release_candidate:
+            elif outcome.status is GateStatus.EVIDENCE_ABSENT and (
+                release_candidate or outcome.entry.evidence_absent_blocks
+            ):
                 blocking.append(outcome)
         return tuple(blocking)
 
@@ -491,11 +534,12 @@ class GatePhaseReport:
 def _evaluate_gate(name: str, evaluator: Callable[[], GateResult]) -> GateResult:
     """Run one evaluator, failing closed on any misbehaviour.
 
-    Lifted verbatim from the UK terminal battery: a raising evaluator
-    becomes a failed result (the batch must keep evaluating — a crash that
-    masked the remaining gates would hide exactly the failures the battery
-    exists to surface), and a result under the wrong name fails rather than
-    letting one gate impersonate another.
+    The one fail-closed wrapper for every battery, shared with the legacy UK
+    terminal report: a raising evaluator becomes a failed result (the batch
+    must keep evaluating — a crash that masked the remaining gates would
+    hide exactly the failures the battery exists to surface), and a result
+    under the wrong name fails rather than letting one gate impersonate
+    another.
     """
 
     try:
@@ -597,6 +641,43 @@ def _resolve_entry(
     )
 
 
+def validate_gate_parameters(
+    gates: GatesManifest,
+    registry: Mapping[str, GateBinding],
+) -> None:
+    """Refuse declared parameters outside their binding's vocabulary.
+
+    The entry-level schema check (``GateSelectionSpec.from_mapping``) closes
+    the world one level up; this closes it inside ``parameters``, where the
+    same argument applies: a key the binding cannot route would ship inside
+    ``policy_sha256`` while governing nothing — declared intent with no
+    effect on the verdict. Runs over the whole manifest so a typo in any
+    phase surfaces before the first gate does.
+
+    Entries whose gate has no binding are skipped: they resolve to
+    ``evidence_absent`` and run nothing, so their parameters govern nothing
+    *visibly*. A binding that does not declare ``parameter_keys`` accepts no
+    parameters — fail closed, never fail open.
+
+    Raises:
+        ValueError: Naming the first offending entry and its unknown keys.
+    """
+
+    for entry in gates.gates:
+        binding = registry.get(entry.gate)
+        if binding is None:
+            continue
+        allowed = getattr(binding, "parameter_keys", frozenset())
+        unknown = sorted(set(entry.parameters) - set(allowed))
+        if unknown:
+            raise ValueError(
+                f"gate entry {entry.id!r} declares parameters {unknown} that "
+                f"the {entry.gate!r} binding does not route; vocabulary: "
+                f"{sorted(allowed)}. A silently ignored parameter would sit "
+                "inside policy_sha256 while governing nothing."
+            )
+
+
 def evaluate_phase(
     gates: GatesManifest,
     phase: str,
@@ -612,14 +693,17 @@ def evaluate_phase(
     persistence, via :class:`GateBatteryRun`.
 
     Raises:
-        ValueError: If ``phase`` is not in the manifest's declared order —
-            a configuration error, not a gate verdict.
+        ValueError: If ``phase`` is not in the manifest's declared order, or
+            if any entry declares parameters outside its binding's
+            vocabulary (:func:`validate_gate_parameters`) — configuration
+            errors, not gate verdicts.
     """
 
     if phase not in gates.phases:
         raise ValueError(
             f"phase {phase!r} is not in the declared order {list(gates.phases)}."
         )
+    validate_gate_parameters(gates, registry)
     outcomes = tuple(
         _resolve_entry(entry, context, registry)
         for entry in gates.gates
@@ -680,6 +764,11 @@ class GateBatteryRun:
             cannot excuse absent evidence; dev builds record it and
             continue.
         registry: Gate bindings; defaults to :data:`DEFAULT_REGISTRY`.
+        release_evidence: Digests of release inputs the gates themselves do
+            not consume but the release contract links (for the UK, the
+            calibration-diagnostics digest). Carried in the report and the
+            signed attestation, so the linkage survives the build that
+            attested it.
     """
 
     def __init__(
@@ -690,14 +779,25 @@ class GateBatteryRun:
         report_path: Path | str,
         release_candidate: bool,
         registry: Mapping[str, GateBinding] = DEFAULT_REGISTRY,
+        release_evidence: Mapping[str, str] | None = None,
     ) -> None:
         if not isinstance(release_id, str) or not release_id.strip():
             raise ValueError("release_id must be a non-empty string.")
+        validate_gate_parameters(gates, registry)
+        evidence = dict(release_evidence or {})
+        for key, value in evidence.items():
+            if not isinstance(key, str) or not key.strip():
+                raise ValueError("release_evidence keys must be non-empty strings.")
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(
+                    f"release_evidence[{key!r}] must be a non-empty string digest."
+                )
         self._gates = gates
         self._release_id = release_id
         self._report_path = Path(report_path)
         self._release_candidate = bool(release_candidate)
         self._registry = dict(registry)
+        self._release_evidence = dict(sorted(evidence.items()))
         self._gates_manifest_sha256 = _canonical_sha256(
             _gates_manifest_payload(self._gates)
         )
@@ -718,6 +818,16 @@ class GateBatteryRun:
     @property
     def phases_evaluated(self) -> tuple[str, ...]:
         return tuple(self._phase_reports)
+
+    def phase_report(self, phase: str) -> GatePhaseReport:
+        """The evaluated report for ``phase``; refuses a phase that has not run."""
+
+        try:
+            return self._phase_reports[phase]
+        except KeyError:
+            raise ValueError(
+                f"phase {phase!r} has not run; evaluated: {list(self._phase_reports)}."
+            ) from None
 
     def _next_phase(self) -> str | None:
         for phase in self._gates.phases:
@@ -820,6 +930,14 @@ class GateBatteryRun:
                     "criticality": entry.criticality,
                     "parameters": _json_safe(dict(entry.parameters)),
                     "not_applicable": entry.not_applicable,
+                    # Enforcement policy rides the policy hash when armed;
+                    # the false default stays out so unflagged entries keep
+                    # their digest.
+                    **(
+                        {"evidence_absent_blocks": True}
+                        if entry.evidence_absent_blocks
+                        else {}
+                    ),
                 }
                 for entry in sorted(self._gates.gates, key=lambda e: e.id)
             ]
@@ -852,7 +970,6 @@ class GateBatteryRun:
             and self._blocked_at_phase is None
             and blocking_ok
             and signing_key is not None
-            and self._gates_manifest_sha256 is not None
         )
         attestation: dict[str, object] = {
             "schema_version": GATE_BATTERY_ATTESTATION_SCHEMA_VERSION,
@@ -866,6 +983,7 @@ class GateBatteryRun:
             "phases": list(self._gates.phases),
             "phases_evaluated": list(self._phase_reports),
             "blocked_at_phase": self._blocked_at_phase,
+            "release_evidence": dict(self._release_evidence),
             "evidence_sha256": dict(evidence_sha256),
             "gate_outcomes_sha256": _canonical_sha256(gates_payload),
             "signature_algorithm": GATE_BATTERY_SIGNATURE_ALGORITHM,
@@ -891,6 +1009,7 @@ class GateBatteryRun:
             "shippable": shippable,
             "gates": gates_payload,
             "policy_sha256": policy_sha256,
+            "release_evidence": dict(self._release_evidence),
             "evidence_sha256": dict(evidence_sha256),
             "attestation": attestation,
         }

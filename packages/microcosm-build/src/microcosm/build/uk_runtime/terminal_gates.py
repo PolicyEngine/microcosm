@@ -11,17 +11,11 @@ represented by placeholder passes.
 
 from __future__ import annotations
 
-import base64
-import binascii
-import hashlib
-import hmac
-import json
+import functools
 import math
-import os
-import uuid
-from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
-from pathlib import Path
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from datetime import date
 from types import MappingProxyType
 from typing import Any
 
@@ -29,28 +23,25 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import (
-    FitWeightRecord,
-    GateReport,
     GateResult,
     export_surface_gate,
-    weights_audit_gate,
 )
 from microcosm.build.gates import (
     target_surface_gate as _target_surface_gate,
 )
 from microcosm.build.uk_runtime.diagnostics import uk_weight_summary
-from microcosm.build.uk_runtime.release_input_coverage import (
-    uk_release_input_coverage_gate,
-)
 from microcosm.build.uk_runtime.weighted_integrity import (
-    UK_INPUT_MASS_PARITY_GATE_NAME,
-    UK_QRF_TAIL_CONCENTRATION_GATE_NAME,
+    UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
     UKInputMassReference,
     UKQRFTailConcentrationPolicy,
-    uk_dataset_input_mass_totals,
+    UKReviewedExclusion,
+    _expired_exclusion_failure,
+    _premature_exclusion_failure,
+    coerce_reviewed_exclusions,
+    exclusion_evaluation_date,
+    load_uk_reviewed_exclusion_register,
     uk_input_mass_parity_gate,
-    uk_qrf_tail_concentration_columns,
     uk_qrf_tail_concentration_gate,
 )
 
@@ -60,139 +51,27 @@ __all__ = [
     "UK_DEFAULT_ZERO_WEIGHT_STRATA",
     "UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS",
     "UK_MAX_TARGET_ABS_RELATIVE_ERROR",
-    "UK_MAX_TO_MEDIAN_WEIGHT_RATIO",
-    "UK_MIN_ESS_FRACTION",
-    "UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION",
-    "UK_TERMINAL_GATE_POLICY_SHA256",
-    "UK_TERMINAL_GATE_PRODUCER",
-    "UK_TERMINAL_GATE_SIGNATURE_ALGORITHM",
-    "UK_TERMINAL_GATE_SIGNING_KEY_ENV",
     "UK_REFERENCE_DATASET_NAME",
     "UK_REVIEWED_EXPORT_EXCLUSIONS",
-    "UK_TERMINAL_GATE_SCHEMA_VERSION",
     "UKInputMassParityPolicy",
     "UKInputMassReference",
     "UKQRFTailConcentrationPolicy",
-    "UKReleaseParityEvidence",
     "UKZeroWeightStratumDeclaration",
+    "uk_default_degenerate_reviewed_exclusions",
     "uk_degenerate_release_surface_gate",
     "uk_export_surface_gate",
     "uk_input_mass_parity_gate",
     "uk_qrf_tail_concentration_gate",
     "uk_target_fit_gate",
     "uk_target_surface_gate",
-    "uk_terminal_gate_report",
     "uk_weight_ess_gate",
     "uk_weight_ratio_gate",
     "uk_zero_weight_strata_gate",
-    "write_uk_terminal_gate_report",
 ]
 
-UK_TERMINAL_GATE_SCHEMA_VERSION = 3
-UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 5
-UK_TERMINAL_GATE_PRODUCER = (
-    "microcosm.build.uk_runtime.terminal_gates.uk_terminal_gate_report"
-)
-UK_TERMINAL_GATE_SIGNATURE_ALGORITHM = "hmac-sha256"
-UK_TERMINAL_GATE_SIGNING_KEY_ENV = "POPULACE_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_CANDIDATE_DATASET_NAME = "populace_uk_2023"
 UK_REFERENCE_DATASET_NAME = "enhanced_frs_2023_24_recalibrated"
 UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
-
-# The certified June artifact is at 0.039953 ESS fraction.  Its measured
-# max/positive-median ratio is exactly 1,151.2542195939373 (maximum weight
-# 18,652.802734375 / positive median 16.202157974243164).  Under the #578
-# acceptance rule, a candidate must not regress the incumbent on battery
-# observables: this boundary has no discretionary headroom.  Raising it
-# requires an explicit future adjudication.  These are acceptance fences, not
-# solver knobs.
-UK_MIN_ESS_FRACTION = 0.01
-UK_MAX_TO_MEDIAN_WEIGHT_RATIO = 1_151.2542195939373
-
-_UK_ALWAYS_APPLICABLE_GATE_NAMES = (
-    "uk_release_input_coverage",
-    "degenerate_release_surface",
-    "zero_weight_strata",
-    "weight_ess",
-    "weight_ratio",
-)
-_UK_HMRC_GATE_NAMES = ("weights_audit",)
-_UK_PARITY_GATE_NAMES = ("export_surface", "target_surface", "target_fit")
-_UK_INPUT_MASS_GATE_NAMES = (UK_INPUT_MASS_PARITY_GATE_NAME,)
-_UK_QRF_TAIL_GATE_NAMES = (UK_QRF_TAIL_CONCENTRATION_GATE_NAME,)
-_UK_WEIGHT_SUMMARY_FIELDS = (
-    "n_records",
-    "positive_weight_records",
-    "zero_weight_records",
-    "total_weight",
-    "effective_sample_size",
-    "ess_fraction",
-    "median_positive_weight",
-    "max_weight",
-    "max_to_median_positive_weight",
-    "top_1pct_weight_share",
-)
-
-
-def _canonical_sha256(value: object) -> str:
-    return hashlib.sha256(_canonical_json_bytes(value)).hexdigest()
-
-
-def _canonical_json_bytes(value: object) -> bytes:
-    return json.dumps(
-        value,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    ).encode("utf-8")
-
-
-def _terminal_gate_signing_key() -> bytes:
-    """Read the 256-bit release-attestation key from the build environment."""
-
-    encoded = os.environ.get(UK_TERMINAL_GATE_SIGNING_KEY_ENV)
-    if not encoded:
-        raise RuntimeError(
-            f"{UK_TERMINAL_GATE_SIGNING_KEY_ENV} must contain a base64-encoded "
-            "32-byte key before writing a UK terminal gate report."
-        )
-    try:
-        key = base64.b64decode(encoded, validate=True)
-    except (binascii.Error, ValueError) as exc:
-        raise RuntimeError(
-            f"{UK_TERMINAL_GATE_SIGNING_KEY_ENV} must be valid base64."
-        ) from exc
-    if len(key) != 32:
-        raise RuntimeError(
-            f"{UK_TERMINAL_GATE_SIGNING_KEY_ENV} must decode to exactly 32 bytes."
-        )
-    return key
-
-
-def _terminal_gate_signature(key: bytes, payload: object) -> str:
-    return hmac.new(key, _canonical_json_bytes(payload), hashlib.sha256).hexdigest()
-
-
-def _validate_attested_release_identity(
-    release_id: object,
-    calibration_diagnostics_sha256: object,
-) -> tuple[str, str]:
-    """Validate the external release coordinates covered by the signature."""
-
-    if not isinstance(release_id, str) or not release_id.strip():
-        raise ValueError("UK terminal release_id must be a non-empty string.")
-    if (
-        not isinstance(calibration_diagnostics_sha256, str)
-        or len(calibration_diagnostics_sha256) != 64
-        or any(
-            character not in "0123456789abcdef"
-            for character in calibration_diagnostics_sha256
-        )
-    ):
-        raise ValueError(
-            "UK terminal calibration_diagnostics_sha256 must be a lowercase sha256."
-        )
-    return release_id, calibration_diagnostics_sha256
 
 
 _SPI_FLAG = "household_is_spi_synthetic"
@@ -278,6 +157,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "benunit.child_benefit_opts_out",
     "household.bus_fare_spending",
     "household.bus_subsidy_spending",
+    "household.cash_isa",
     "household.clone_index",
     "household.constituency_code_oa",
     "household.consumer_debt",
@@ -295,6 +175,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.property_purchased",
     "household.rail_usage",
     "household.region_code_oa",
+    "household.stocks_and_shares_isa",
     "person.aa_category",
     "person.age_started_or_accepted_current_education_or_training",
     "person.attends_private_school_random_draw",
@@ -305,7 +186,6 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.esa_support_group_proxy",
     "person.employment_sector",
     "person.gift_aid",
-    "person.higher_earner_tie_break",
     "person.highest_education",
     "person.is_before_universal_credit_qualifying_young_person_terminal_date",
     "person.is_in_non_advanced_education",
@@ -343,476 +223,15 @@ _STRUCTURAL_COLUMNS: Mapping[str, frozenset[str]] = {
 }
 
 
-def _policy_mapping(value: object) -> object:
-    if not isinstance(value, Mapping):
-        return {"invalid_type": f"{type(value).__module__}.{type(value).__qualname__}"}
-    return {
-        str(key): str(item)
-        for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
-    }
+@functools.cache
+def uk_default_degenerate_reviewed_exclusions() -> Mapping[str, UKReviewedExclusion]:
+    """The committed degenerate-surface register (#630), loaded lazily."""
 
-
-def _weighted_integrity_policy_payload(policy: object) -> object:
-    """Project an armed weighted-integrity policy into the sealed payload.
-
-    ``None`` records that the gate is unarmed; an unexpected type is recorded
-    (not raised) so the policy digest still seals what the caller supplied
-    while the evaluator fails closed with the named type error.
-    """
-
-    if policy is None:
-        return None
-    if isinstance(policy, (UKInputMassParityPolicy, UKQRFTailConcentrationPolicy)):
-        return policy.policy_payload()
-    return {"invalid_type": f"{type(policy).__module__}.{type(policy).__qualname__}"}
-
-
-def _terminal_gate_policy_payload(
-    *,
-    builtin_coverage_evaluator: bool,
-    reviewed_degenerate_exclusions: object,
-    zero_weight_declarations: Sequence[object],
-    minimum_ess_fraction: object,
-    maximum_max_to_median_ratio: object,
-    input_mass_policy: object = None,
-    qrf_tail_policy: object = None,
-) -> dict[str, object]:
-    declarations: list[dict[str, object]] = []
-    for declaration in zero_weight_declarations:
-        if isinstance(declaration, UKZeroWeightStratumDeclaration):
-            declarations.append(
-                {
-                    "name": declaration.name,
-                    "selector": dict(declaration.selector),
-                    "maximum_zero_weight_rows": declaration.maximum_zero_weight_rows,
-                    "reason": declaration.reason,
-                }
-            )
-        else:
-            declarations.append(
-                {
-                    "invalid_type": (
-                        f"{type(declaration).__module__}."
-                        f"{type(declaration).__qualname__}"
-                    )
-                }
-            )
-    try:
-        ess = float(minimum_ess_fraction)
-    except (TypeError, ValueError):
-        ess = repr(minimum_ess_fraction)
-    try:
-        ratio = float(maximum_max_to_median_ratio)
-    except (TypeError, ValueError):
-        ratio = repr(maximum_max_to_median_ratio)
-    return {
-        "coverage_evaluator": "builtin" if builtin_coverage_evaluator else "injected",
-        "reviewed_degenerate_exclusions": (
-            {}
-            if reviewed_degenerate_exclusions is None
-            else _policy_mapping(reviewed_degenerate_exclusions)
-        ),
-        "zero_weight_declarations": declarations,
-        "minimum_ess_fraction": ess,
-        "maximum_max_to_median_ratio": ratio,
-        "maximum_target_abs_relative_error": UK_MAX_TARGET_ABS_RELATIVE_ERROR,
-        "allowed_extra_export_columns": list(UK_ALLOWED_EXTRA_EXPORT_COLUMNS),
-        "known_missing_reference_export_columns": list(
-            UK_KNOWN_MISSING_REFERENCE_EXPORT_COLUMNS
-        ),
-        "reviewed_export_exclusions": dict(
-            sorted(UK_REVIEWED_EXPORT_EXCLUSIONS.items())
-        ),
-        "input_mass_parity": _weighted_integrity_policy_payload(input_mass_policy),
-        "qrf_tail_concentration": _weighted_integrity_policy_payload(qrf_tail_policy),
-    }
-
-
-UK_TERMINAL_GATE_POLICY_SHA256 = _canonical_sha256(
-    _terminal_gate_policy_payload(
-        builtin_coverage_evaluator=True,
-        reviewed_degenerate_exclusions=None,
-        zero_weight_declarations=UK_DEFAULT_ZERO_WEIGHT_STRATA,
-        minimum_ess_fraction=UK_MIN_ESS_FRACTION,
-        maximum_max_to_median_ratio=UK_MAX_TO_MEDIAN_WEIGHT_RATIO,
+    return MappingProxyType(
+        load_uk_reviewed_exclusion_register(
+            None, resource=UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE
+        )
     )
-)
-
-
-@dataclass(frozen=True)
-class UKReleaseParityEvidence:
-    """Complete real evidence needed to run the June parity-gate trio."""
-
-    candidate_columns: Iterable[str]
-    reference_columns: Iterable[str]
-    candidate_targets: Iterable[str]
-    reference_targets: Iterable[str]
-    target_relative_errors: Mapping[str, float]
-
-    def __post_init__(self) -> None:
-        for field_name in (
-            "candidate_columns",
-            "reference_columns",
-            "candidate_targets",
-            "reference_targets",
-        ):
-            raw = getattr(self, field_name)
-            materialized = tuple(sorted({str(value) for value in raw}))
-            if not materialized or any(not value for value in materialized):
-                raise ValueError(f"UK parity evidence {field_name} must be non-empty.")
-            object.__setattr__(self, field_name, materialized)
-        errors = {
-            str(name): float(error)
-            for name, error in self.target_relative_errors.items()
-        }
-        if not errors or any(not math.isfinite(error) for error in errors.values()):
-            raise ValueError(
-                "UK parity evidence target_relative_errors must be non-empty and "
-                "finite."
-            )
-        if set(errors) != set(self.candidate_targets):
-            raise ValueError(
-                "UK parity evidence target_relative_errors must exactly cover "
-                "candidate_targets."
-            )
-        object.__setattr__(self, "target_relative_errors", dict(sorted(errors.items())))
-
-
-def _gate_results_payload(results: Sequence[GateResult]) -> dict[str, object]:
-    return {
-        result.name: {
-            "passed": result.passed,
-            "failures": list(result.failures),
-            "details": dict(result.details),
-        }
-        for result in results
-    }
-
-
-def _unsigned_terminal_gate_attestation(
-    results: Sequence[GateResult],
-    *,
-    release_id: str,
-    calibration_diagnostics_sha256: str,
-    policy_sha256: str,
-    evidence_sha256: Mapping[str, str],
-) -> dict[str, object]:
-    """Return the provenance fields covered by the release signature."""
-
-    gates = _gate_results_payload(results)
-    return {
-        "schema_version": UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION,
-        "producer": UK_TERMINAL_GATE_PRODUCER,
-        "release_id": release_id,
-        "calibration_diagnostics_sha256": calibration_diagnostics_sha256,
-        "policy_sha256": policy_sha256,
-        "evaluated_gates": [result.name for result in results],
-        "evidence_sha256": dict(evidence_sha256),
-        "gate_results_sha256": _canonical_sha256(gates),
-    }
-
-
-def _terminal_gate_report_payload(
-    results: Sequence[GateResult],
-    attestation: Mapping[str, object],
-    *,
-    signature_available: bool,
-) -> dict[str, object]:
-    return {
-        "schema_version": UK_TERMINAL_GATE_SCHEMA_VERSION,
-        "enforced": True,
-        "passed": all(result.passed for result in results) and signature_available,
-        "gates": _gate_results_payload(results),
-        "attestation": dict(attestation),
-    }
-
-
-def _release_dataset_evidence_payload(
-    results: Sequence[GateResult],
-) -> dict[str, object]:
-    """Bind the attestation to the evaluated release's weight observables.
-
-    The ratio gate receives the final shipped household-weight vector and
-    records the same ten-field summary written to ``uk_diagnostics.weights``.
-    Projecting that summary gives the publication contract an independently
-    reconstructible release-data digest.  Erroring gates deliberately project
-    missing fields as null so a failed terminal report can still be written.
-    """
-
-    ratio = next((result for result in results if result.name == "weight_ratio"), None)
-    details = ratio.details if ratio is not None else {}
-    return {
-        "weights": {
-            field: _json_scalar(details.get(field))
-            for field in _UK_WEIGHT_SUMMARY_FIELDS
-        }
-    }
-
-
-@dataclass(frozen=True)
-class _AttestedUKTerminalGateReport(GateReport):
-    """Aggregator-signed report sealed against post-evaluation mutation."""
-
-    release_id: str
-    calibration_diagnostics_sha256: str
-    policy_sha256: str
-    evidence_sha256: Mapping[str, str]
-    attestation: Mapping[str, object]
-    _signing_error: RuntimeError | None = field(repr=False, compare=False)
-    _sealed_sha256: str = field(init=False, repr=False, compare=False)
-
-    def __post_init__(self) -> None:
-        release_id, calibration_diagnostics_sha256 = (
-            _validate_attested_release_identity(
-                self.release_id,
-                self.calibration_diagnostics_sha256,
-            )
-        )
-        names = tuple(result.name for result in self.results)
-        if len(names) != len(set(names)):
-            raise ValueError("Attested UK terminal gate names must be unique.")
-        if len(self.policy_sha256) != 64 or any(
-            character not in "0123456789abcdef" for character in self.policy_sha256
-        ):
-            raise ValueError("UK terminal policy digest must be a lowercase sha256.")
-        evidence = dict(sorted(self.evidence_sha256.items()))
-        if not evidence or any(
-            not isinstance(name, str)
-            or not isinstance(digest, str)
-            or len(digest) != 64
-            or any(character not in "0123456789abcdef" for character in digest)
-            for name, digest in evidence.items()
-        ):
-            raise ValueError("UK terminal evidence digests must be named sha256s.")
-        evidence_names = set(evidence)
-        if "release_dataset" not in evidence_names:
-            raise ValueError(
-                "UK terminal evidence must include the release_dataset digest."
-            )
-        unknown_evidence = sorted(
-            evidence_names
-            - {
-                "release_dataset",
-                "hmrc_spi_income",
-                "release_parity",
-                "input_mass_parity",
-                "qrf_tail_concentration",
-            }
-        )
-        if unknown_evidence:
-            raise ValueError(
-                f"UK terminal evidence has unknown stages: {unknown_evidence}."
-            )
-        expected_names = list(_UK_ALWAYS_APPLICABLE_GATE_NAMES)
-        if "hmrc_spi_income" in evidence_names:
-            expected_names.extend(_UK_HMRC_GATE_NAMES)
-        if "release_parity" in evidence_names:
-            expected_names.extend(_UK_PARITY_GATE_NAMES)
-        if "input_mass_parity" in evidence_names:
-            expected_names.extend(_UK_INPUT_MASS_GATE_NAMES)
-        if "qrf_tail_concentration" in evidence_names:
-            expected_names.extend(_UK_QRF_TAIL_GATE_NAMES)
-        if names != tuple(expected_names):
-            raise ValueError(
-                "UK terminal gate membership must follow the attested evidence "
-                f"stages; expected {expected_names}, got {list(names)}."
-            )
-        object.__setattr__(self, "evidence_sha256", MappingProxyType(evidence))
-        expected_unsigned = _unsigned_terminal_gate_attestation(
-            self.results,
-            release_id=release_id,
-            calibration_diagnostics_sha256=calibration_diagnostics_sha256,
-            policy_sha256=self.policy_sha256,
-            evidence_sha256=evidence,
-        )
-        attestation = dict(self.attestation)
-        expected_fields = {
-            *expected_unsigned,
-            "signature_algorithm",
-            "signing_key_sha256",
-            "signature",
-        }
-        if set(attestation) != expected_fields:
-            raise ValueError(
-                "UK terminal attestation must contain the complete signed schema."
-            )
-        if any(
-            attestation.get(name) != value for name, value in expected_unsigned.items()
-        ):
-            raise ValueError(
-                "UK terminal attestation must bind the evaluated gates and evidence."
-            )
-        if (
-            attestation.get("signature_algorithm")
-            != UK_TERMINAL_GATE_SIGNATURE_ALGORITHM
-        ):
-            raise ValueError("UK terminal attestation signature algorithm is invalid.")
-        signature_values = (
-            attestation.get("signing_key_sha256"),
-            attestation.get("signature"),
-        )
-        if self._signing_error is None:
-            if any(
-                not isinstance(value, str)
-                or len(value) != 64
-                or any(character not in "0123456789abcdef" for character in value)
-                for value in signature_values
-            ):
-                raise ValueError(
-                    "Signed UK terminal attestations require lowercase sha256 values."
-                )
-        elif signature_values != (None, None):
-            raise ValueError(
-                "A failed UK terminal signature must not claim signature values."
-            )
-        object.__setattr__(self, "attestation", MappingProxyType(attestation))
-        object.__setattr__(self, "_sealed_sha256", self._current_attestation_sha256())
-
-    @property
-    def evaluated_gates(self) -> tuple[str, ...]:
-        return tuple(result.name for result in self.results)
-
-    @property
-    def passed(self) -> bool:
-        """True iff the sealed terminal report is publishable."""
-
-        return bool(self.report_payload()["passed"])
-
-    def _current_attestation_sha256(self) -> str:
-        return _canonical_sha256(
-            _terminal_gate_report_payload(
-                self.results,
-                self.attestation,
-                signature_available=self._signing_error is None,
-            )
-        )
-
-    def report_payload(self) -> dict[str, object]:
-        """Return the sealed aggregator output without granting signing power."""
-
-        if self._current_attestation_sha256() != self._sealed_sha256:
-            raise ValueError("UK terminal gate attestation changed after evaluation.")
-        return _terminal_gate_report_payload(
-            self.results,
-            self.attestation,
-            signature_available=self._signing_error is None,
-        )
-
-
-def _fit_evidence_payload(
-    records: tuple[object, ...] | None,
-    *,
-    required: bool,
-    materialization_error: Exception | None,
-) -> dict[str, object]:
-    payload: dict[str, object] = {"required": required}
-    if materialization_error is not None:
-        payload["materialization_error"] = {
-            "type": type(materialization_error).__name__,
-            "message": str(materialization_error),
-        }
-        return payload
-    payload["fit_weight_records"] = [
-        (
-            {"fit_name": record.fit_name, "weight_kind": record.weight_kind}
-            if isinstance(record, FitWeightRecord)
-            else {
-                "invalid_type": (
-                    f"{type(record).__module__}.{type(record).__qualname__}"
-                )
-            }
-        )
-        for record in (records or ())
-    ]
-    return payload
-
-
-def _parity_evidence_payload(evidence: object) -> dict[str, object]:
-    if not isinstance(evidence, UKReleaseParityEvidence):
-        return {
-            "invalid_type": f"{type(evidence).__module__}.{type(evidence).__qualname__}"
-        }
-    return {
-        "candidate_columns": list(evidence.candidate_columns),
-        "reference_columns": list(evidence.reference_columns),
-        "candidate_targets": list(evidence.candidate_targets),
-        "reference_targets": list(evidence.reference_targets),
-        "target_relative_errors": dict(evidence.target_relative_errors),
-    }
-
-
-def _input_mass_evidence_payload(reference: object) -> dict[str, object]:
-    """Bind the attestation to the frozen input-mass reference.
-
-    An armed gate with no reference still produces a digest — recording the
-    absence the evaluator fails closed on — so the report cannot silently
-    drop the stage.
-    """
-
-    if reference is None:
-        return {"reference": None}
-    if not isinstance(reference, UKInputMassReference):
-        return {
-            "invalid_type": (
-                f"{type(reference).__module__}.{type(reference).__qualname__}"
-            )
-        }
-    return {
-        "reference": {
-            "identity": dict(reference.identity),
-            "totals": {name: float(total) for name, total in reference.totals.items()},
-        }
-    }
-
-
-def _json_tree(value: object) -> object:
-    if isinstance(value, Mapping):
-        return {
-            str(key): _json_tree(item)
-            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
-        }
-    if isinstance(value, (list, tuple)):
-        return [_json_tree(item) for item in value]
-    return _json_scalar(value)
-
-
-_UK_QRF_TAIL_EVIDENCE_FIELDS = (
-    "columns_checked",
-    "top_k",
-    "max_top_share",
-    "min_nonzero_records",
-    "top_share",
-    "carrier_counts",
-    "thin_columns",
-    "surface",
-)
-
-
-def _qrf_tail_evidence_payload(results: Sequence[GateResult]) -> dict[str, object]:
-    """Bind the attestation to the evaluated QRF tail observables.
-
-    Like ``_release_dataset_evidence_payload``, this projects the gate's own
-    recorded observables (per-column top shares, carrier counts, and the
-    manifest-derived surface) rather than hashing raw column arrays, giving
-    consumers an independently reconstructible digest. Erroring gates
-    project missing fields as null so a failed report can still be written.
-    """
-
-    gate = next(
-        (
-            result
-            for result in results
-            if result.name == UK_QRF_TAIL_CONCENTRATION_GATE_NAME
-        ),
-        None,
-    )
-    details = gate.details if gate is not None else {}
-    return {
-        "tail_concentration": {
-            field: _json_tree(details.get(field))
-            for field in _UK_QRF_TAIL_EVIDENCE_FIELDS
-        }
-    }
 
 
 def _entity_tables(dataset: Any) -> tuple[tuple[str, pd.DataFrame], ...]:
@@ -875,11 +294,22 @@ def _degenerate_kind(series: pd.Series) -> tuple[str, object | None] | None:
 def uk_degenerate_release_surface_gate(
     dataset: Any,
     *,
-    reviewed_exclusions: Mapping[str, str] | None = None,
+    reviewed_exclusions: Mapping[str, UKReviewedExclusion] | None = None,
+    now: date | None = None,
 ) -> GateResult:
-    """Reject every all-null, all-zero, or constant nonstructural column."""
+    """Reject every all-null, all-zero, or constant nonstructural column.
 
-    exclusions = _reviewed_reasons(reviewed_exclusions)
+    ``reviewed_exclusions`` are schema-2 approval records (#610); an entry
+    suppresses from its ``approved_on`` through its ``expires_on``, and any
+    out-of-force entry fails the gate with correct-or-renew context — even
+    when its column is absent or carries signal, so the register cannot rot
+    silently at any column state (matching the input-mass and QRF wrappers).
+    """
+
+    evaluated_on = exclusion_evaluation_date(now)
+    exclusions = coerce_reviewed_exclusions(
+        reviewed_exclusions, label="UK degenerate-surface"
+    )
     present: set[str] = set()
     live: dict[str, dict[str, object]] = {}
     excluded: dict[str, dict[str, object]] = {}
@@ -898,25 +328,86 @@ def uk_degenerate_release_surface_gate(
                 continue
             kind, value = finding
             detail = {"kind": kind, "value": value}
-            if name in exclusions:
-                excluded[name] = {**detail, "reason": exclusions[name]}
+            record = exclusions.get(name)
+            if (
+                record is not None
+                and not record.expired(evaluated_on)
+                and not record.premature(evaluated_on)
+            ):
+                excluded[name] = {
+                    **detail,
+                    "reason": record.reason,
+                    "approved_by": record.approved_by,
+                    "adjudication": record.adjudication,
+                    "expires_on": record.expires_on,
+                }
                 continue
             live[name] = detail
-            failures.append(
+            degenerate_message = (
                 f"{name}: persisted release column is {kind.replace('_', '-')}"
                 + (f" at {value!r}" if kind == "constant" else "")
-                + "; populate it with signal, drop it, or record a reviewed "
-                "exclusion."
             )
+            if record is not None and record.expired(evaluated_on):
+                failures.append(
+                    f"{degenerate_message}; its reviewed exclusion expired "
+                    f"{record.expires_on} (approved_by {record.approved_by}, "
+                    f"{record.adjudication}) — renew the adjudication or "
+                    "remove the entry."
+                )
+            elif record is not None:
+                failures.append(
+                    f"{degenerate_message}; its reviewed exclusion takes force "
+                    f"{record.approved_on} (approved_by {record.approved_by}, "
+                    f"{record.adjudication}) — correct the receipt's "
+                    "approved_on or wait for it."
+                )
+            else:
+                failures.append(
+                    f"{degenerate_message}; populate it with signal, drop it, "
+                    "or record a reviewed exclusion."
+                )
 
+    expired = sorted(
+        name for name, record in exclusions.items() if record.expired(evaluated_on)
+    )
+    premature = sorted(
+        name for name, record in exclusions.items() if record.premature(evaluated_on)
+    )
+    # Stale probing covers in-force entries only: an out-of-force entry gets
+    # receipt-context failures below, never "now carry signal; remove them."
     stale = sorted(
-        name for name in exclusions if name in present and name not in excluded
+        name
+        for name in exclusions
+        if name in present
+        and name not in excluded
+        and name not in live
+        and name not in expired
+        and name not in premature
     )
     dormant = sorted(set(exclusions) - present)
     if stale:
         failures.append(
             "Stale reviewed degenerate-column exclusions now carry signal; remove "
             f"them: {stale}."
+        )
+    # Out-of-force entries whose column did not fail above (absent, or
+    # present without a degenerate finding) must still fail the gate: the
+    # register cannot rot just because its column moved. Live columns
+    # already carry per-column receipt context, so only the remainder gets
+    # the combined message (one failure per condition, never two per entry).
+    unreported_expired = [name for name in expired if name not in live]
+    if unreported_expired:
+        failures.append(
+            _expired_exclusion_failure(
+                exclusions, unreported_expired, family="degenerate-column"
+            )
+        )
+    unreported_premature = [name for name in premature if name not in live]
+    if unreported_premature:
+        failures.append(
+            _premature_exclusion_failure(
+                exclusions, unreported_premature, family="degenerate-column"
+            )
         )
     by_kind = {
         kind: sorted(name for name, detail in live.items() if detail["kind"] == kind)
@@ -935,6 +426,9 @@ def uk_degenerate_release_surface_gate(
             "reviewed_exclusions": dict(sorted(excluded.items())),
             "stale_exclusions": stale,
             "dormant_exclusions": dormant,
+            "expired_exclusions": expired,
+            "premature_exclusions": premature,
+            "exclusions_evaluated_on": evaluated_on.isoformat(),
         },
     )
 
@@ -1064,7 +558,7 @@ def uk_zero_weight_strata_gate(
 def uk_weight_ess_gate(
     weights: Sequence[float] | np.ndarray,
     *,
-    minimum_ess_fraction: float = UK_MIN_ESS_FRACTION,
+    minimum_ess_fraction: float,
 ) -> GateResult:
     """Require the shipped household weights to retain effective support."""
 
@@ -1090,7 +584,7 @@ def uk_weight_ess_gate(
 def uk_weight_ratio_gate(
     weights: Sequence[float] | np.ndarray,
     *,
-    maximum_max_to_median_ratio: float = UK_MAX_TO_MEDIAN_WEIGHT_RATIO,
+    maximum_max_to_median_ratio: float,
 ) -> GateResult:
     """Backstop a shipped-weight max/positive-median concentration blowout."""
 
@@ -1261,312 +755,3 @@ def _missing_fit_weight_evidence_gate() -> GateResult:
         ),
         details={"fits_checked": 0, "evidence_missing": True},
     )
-
-
-def _evaluate_gate(name: str, evaluator: Callable[[], GateResult]) -> GateResult:
-    try:
-        result = evaluator()
-    except Exception as exc:  # noqa: BLE001 - terminal batch must keep evaluating
-        return GateResult(
-            name=name,
-            passed=False,
-            failures=(
-                f"Gate evaluation failed closed with {type(exc).__name__}: {exc}",
-            ),
-            details={
-                "evaluation_error": {
-                    "type": type(exc).__name__,
-                    "message": str(exc),
-                }
-            },
-        )
-    if not isinstance(result, GateResult):
-        return GateResult(
-            name=name,
-            passed=False,
-            failures=(
-                "Gate evaluation failed closed because the evaluator did not "
-                "return GateResult.",
-            ),
-            details={"returned_type": type(result).__name__},
-        )
-    if result.name != name:
-        return GateResult(
-            name=name,
-            passed=False,
-            failures=(
-                f"Gate evaluator returned name {result.name!r}, expected {name!r}.",
-            ),
-            details={"returned_gate": result.name},
-        )
-    return result
-
-
-def uk_terminal_gate_report(
-    dataset: Any,
-    coverage_engine: Any,
-    *,
-    release_id: str,
-    calibration_diagnostics_sha256: str,
-    input_coverage_evaluator: Callable[[], GateResult] | None = None,
-    reviewed_degenerate_exclusions: Mapping[str, str] | None = None,
-    zero_weight_declarations: Sequence[UKZeroWeightStratumDeclaration] = (
-        UK_DEFAULT_ZERO_WEIGHT_STRATA
-    ),
-    minimum_ess_fraction: float = UK_MIN_ESS_FRACTION,
-    maximum_max_to_median_ratio: float = UK_MAX_TO_MEDIAN_WEIGHT_RATIO,
-    fit_weight_records: Iterable[FitWeightRecord] | None = None,
-    require_fit_weight_records: bool = False,
-    parity_evidence: UKReleaseParityEvidence | None = None,
-    input_mass_reference: UKInputMassReference | None = None,
-    input_mass_policy: UKInputMassParityPolicy | None = None,
-    qrf_tail_policy: UKQRFTailConcentrationPolicy | None = None,
-) -> GateReport:
-    """Evaluate every evidenced UK terminal gate and seal its provenance."""
-
-    release_id, calibration_diagnostics_sha256 = _validate_attested_release_identity(
-        release_id,
-        calibration_diagnostics_sha256,
-    )
-    builtin_coverage_evaluator = input_coverage_evaluator is None
-    coverage = input_coverage_evaluator or (
-        lambda: uk_release_input_coverage_gate(dataset, coverage_engine)
-    )
-    fit_stage_present = fit_weight_records is not None or require_fit_weight_records
-    materialized_fit_records: tuple[object, ...] | None = None
-    fit_materialization_error: Exception | None = None
-    if fit_weight_records is not None:
-        try:
-            materialized_fit_records = tuple(fit_weight_records)
-        except Exception as exc:  # noqa: BLE001 - gate records the failed evidence
-            materialized_fit_records = ()
-            fit_materialization_error = exc
-    evaluators: list[tuple[str, Callable[[], GateResult]]] = [
-        ("uk_release_input_coverage", coverage),
-        (
-            "degenerate_release_surface",
-            lambda: uk_degenerate_release_surface_gate(
-                dataset,
-                reviewed_exclusions=reviewed_degenerate_exclusions,
-            ),
-        ),
-        (
-            "zero_weight_strata",
-            lambda: uk_zero_weight_strata_gate(
-                dict(_entity_tables(dataset))["household"],
-                declarations=zero_weight_declarations,
-            ),
-        ),
-        (
-            "weight_ess",
-            lambda: uk_weight_ess_gate(
-                _household_weights(dict(_entity_tables(dataset))["household"]),
-                minimum_ess_fraction=minimum_ess_fraction,
-            ),
-        ),
-        (
-            "weight_ratio",
-            lambda: uk_weight_ratio_gate(
-                _household_weights(dict(_entity_tables(dataset))["household"]),
-                maximum_max_to_median_ratio=maximum_max_to_median_ratio,
-            ),
-        ),
-    ]
-
-    if fit_stage_present:
-
-        def fit_weight_evaluator() -> GateResult:
-            if fit_materialization_error is not None:
-                raise fit_materialization_error
-            if fit_weight_records is None:
-                return _missing_fit_weight_evidence_gate()
-            if not materialized_fit_records:
-                return _missing_fit_weight_evidence_gate()
-            return weights_audit_gate(materialized_fit_records)
-
-        evaluators.append(
-            (
-                "weights_audit",
-                fit_weight_evaluator,
-            )
-        )
-
-    if parity_evidence is not None:
-
-        def checked_parity_evidence() -> UKReleaseParityEvidence:
-            if not isinstance(parity_evidence, UKReleaseParityEvidence):
-                raise TypeError("parity_evidence must be UKReleaseParityEvidence.")
-            return parity_evidence
-
-        evaluators.extend(
-            (
-                (
-                    "export_surface",
-                    lambda: uk_export_surface_gate(
-                        checked_parity_evidence().candidate_columns,
-                        checked_parity_evidence().reference_columns,
-                    ),
-                ),
-                (
-                    "target_surface",
-                    lambda: uk_target_surface_gate(
-                        checked_parity_evidence().candidate_targets,
-                        checked_parity_evidence().reference_targets,
-                    ),
-                ),
-                (
-                    "target_fit",
-                    lambda: uk_target_fit_gate(
-                        checked_parity_evidence().target_relative_errors,
-                    ),
-                ),
-            )
-        )
-
-    input_mass_armed = input_mass_reference is not None or input_mass_policy is not None
-    if input_mass_armed:
-
-        def input_mass_evaluator() -> GateResult:
-            if input_mass_reference is None:
-                raise ValueError(
-                    "input_mass_parity is armed but no UKInputMassReference "
-                    "was supplied; a missing frozen reference is not a "
-                    "passing gate."
-                )
-            if input_mass_policy is None:
-                raise ValueError(
-                    "input_mass_parity is armed without reviewed thresholds; "
-                    "supply a UKInputMassParityPolicy measured per the #609 "
-                    "measurement pass."
-                )
-            return uk_input_mass_parity_gate(
-                uk_dataset_input_mass_totals(dataset),
-                input_mass_reference,
-                policy=input_mass_policy,
-            )
-
-        evaluators.append((UK_INPUT_MASS_PARITY_GATE_NAME, input_mass_evaluator))
-
-    if qrf_tail_policy is not None:
-
-        def qrf_tail_evaluator() -> GateResult:
-            if not isinstance(qrf_tail_policy, UKQRFTailConcentrationPolicy):
-                raise TypeError("qrf_tail_policy must be UKQRFTailConcentrationPolicy.")
-            values, weights, surface = uk_qrf_tail_concentration_columns(dataset)
-            return uk_qrf_tail_concentration_gate(
-                values,
-                weights,
-                policy=qrf_tail_policy,
-                surface=surface,
-            )
-
-        evaluators.append((UK_QRF_TAIL_CONCENTRATION_GATE_NAME, qrf_tail_evaluator))
-
-    names = [name for name, _evaluator in evaluators]
-    duplicates = sorted({name for name in names if names.count(name) > 1})
-    if duplicates:
-        raise ValueError(f"UK terminal gate names must be unique: {duplicates}.")
-    results = tuple(_evaluate_gate(name, evaluator) for name, evaluator in evaluators)
-    evidence_sha256 = {
-        "release_dataset": _canonical_sha256(_release_dataset_evidence_payload(results))
-    }
-    if fit_stage_present:
-        evidence_sha256["hmrc_spi_income"] = _canonical_sha256(
-            _fit_evidence_payload(
-                materialized_fit_records,
-                required=require_fit_weight_records,
-                materialization_error=fit_materialization_error,
-            )
-        )
-    if parity_evidence is not None:
-        evidence_sha256["release_parity"] = _canonical_sha256(
-            _parity_evidence_payload(parity_evidence)
-        )
-    if input_mass_armed:
-        evidence_sha256["input_mass_parity"] = _canonical_sha256(
-            _input_mass_evidence_payload(input_mass_reference)
-        )
-    if qrf_tail_policy is not None:
-        evidence_sha256["qrf_tail_concentration"] = _canonical_sha256(
-            _qrf_tail_evidence_payload(results)
-        )
-    policy_sha256 = _canonical_sha256(
-        _terminal_gate_policy_payload(
-            builtin_coverage_evaluator=builtin_coverage_evaluator,
-            reviewed_degenerate_exclusions=reviewed_degenerate_exclusions,
-            zero_weight_declarations=zero_weight_declarations,
-            minimum_ess_fraction=minimum_ess_fraction,
-            maximum_max_to_median_ratio=maximum_max_to_median_ratio,
-            input_mass_policy=input_mass_policy,
-            qrf_tail_policy=qrf_tail_policy,
-        )
-    )
-    unsigned_attestation = _unsigned_terminal_gate_attestation(
-        results,
-        release_id=release_id,
-        calibration_diagnostics_sha256=calibration_diagnostics_sha256,
-        policy_sha256=policy_sha256,
-        evidence_sha256=evidence_sha256,
-    )
-    signing_error: RuntimeError | None = None
-    try:
-        signing_key = _terminal_gate_signing_key()
-    except RuntimeError as exc:
-        signing_key = None
-        signing_error = exc
-    attestation = {
-        **unsigned_attestation,
-        "signature_algorithm": UK_TERMINAL_GATE_SIGNATURE_ALGORITHM,
-        "signing_key_sha256": (
-            hashlib.sha256(signing_key).hexdigest() if signing_key is not None else None
-        ),
-    }
-    if signing_key is None:
-        attestation["signature"] = None
-    else:
-        unsigned_report = _terminal_gate_report_payload(
-            results,
-            attestation,
-            signature_available=True,
-        )
-        attestation["signature"] = _terminal_gate_signature(
-            signing_key,
-            unsigned_report,
-        )
-    return _AttestedUKTerminalGateReport(
-        results,
-        release_id=release_id,
-        calibration_diagnostics_sha256=calibration_diagnostics_sha256,
-        policy_sha256=policy_sha256,
-        evidence_sha256=evidence_sha256,
-        attestation=attestation,
-        _signing_error=signing_error,
-    )
-
-
-def write_uk_terminal_gate_report(
-    report: GateReport,
-    path: str | Path,
-) -> Path:
-    """Atomically persist an aggregator-signed report without signing input."""
-
-    if type(report) is not _AttestedUKTerminalGateReport:
-        raise TypeError(
-            "UK terminal gate report writer requires the attested report "
-            "returned by uk_terminal_gate_report()."
-        )
-    output = Path(path)
-    payload = report.report_payload()
-    encoded = json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n"
-    output.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output.with_name(f".{output.name}.{uuid.uuid4().hex}.tmp")
-    try:
-        temporary.write_text(encoded, encoding="utf-8")
-        temporary.replace(output)
-    finally:
-        temporary.unlink(missing_ok=True)
-    if report._signing_error is not None:
-        raise RuntimeError(
-            f"{report._signing_error} Unsigned failed report was written to {output}."
-        ) from report._signing_error
-    return output

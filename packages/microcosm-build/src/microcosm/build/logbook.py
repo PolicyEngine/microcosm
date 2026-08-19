@@ -1,6 +1,6 @@
 """Durable, append-only Logbook client for terminal build attempts.
 
-``record_build_attempt`` is the adoption seam owned by microcosm#616. Callers
+``record_build_attempt`` is the adoption seam owned by microcosm#665/#666. Callers
 provide a complete terminal attempt receipt and the digest of the chain head
 they are extending. Logbook validates and hashes the receipt, durably writes
 ``<row_digest>.json`` beneath the caller's spool directory, and only then makes
@@ -30,8 +30,8 @@ The Supabase key must identify the migration's ``logbook_writer`` role, not
 the service role. Hosted Supabase projects should additionally provide the
 project gateway key as ``POPULACE_LEDGER_API_KEY``; single-key deployments may
 omit it. The ``logbook`` schema must also be enabled in the hosted project's
-PostgREST exposed-schema setting. This module deliberately wires no build
-tool; adoption remains in microcosm#616.
+PostgREST exposed-schema setting. The US stacked driver and the three UK
+drivers record through this seam; this module remains driver-agnostic.
 """
 
 from __future__ import annotations
@@ -90,7 +90,7 @@ BUILD_DISPOSITIONS = frozenset(
 )
 _DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _BUILD_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$")
-LOGBOOK_RUNGS = frozenset({"f001", "f010", "f100"})
+LOGBOOK_RUNGS = frozenset({"f001", "f004", "f010", "f025", "f100"})
 LEDGER_API_KEY_ENV = "POPULACE_LEDGER_API_KEY"
 LOGBOOK_ROW_FIELDS = frozenset(
     {
@@ -964,7 +964,7 @@ def _normalize_timestamp(value: str | datetime, field: str) -> str:
 def _validate_rung(value: str) -> str:
     if not isinstance(value, str) or value not in LOGBOOK_RUNGS:
         raise ValueError(
-            "rung must be a #624 fraction token: 'f001', 'f010', or 'f100'."
+            "rung must be a #624 fraction token: 'f001', 'f004', 'f010', 'f025', or 'f100'."
         )
     return value
 

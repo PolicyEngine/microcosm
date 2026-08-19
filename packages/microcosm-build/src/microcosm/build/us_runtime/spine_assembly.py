@@ -296,8 +296,10 @@ def _validate_shared_column_dtypes(frames: Mapping[str, Frame]) -> None:
             if not all(dtype == values[0][1] for _, dtype in values[1:])
         }
         if mismatches:
+            # repr, not str: pandas string dtypes with different storages all
+            # str() as 'str', which renders the mismatch invisible.
             details = ", ".join(
-                f"{column}={[(channel, str(dtype)) for channel, dtype in values]}"
+                f"{column}={[(channel, repr(dtype)) for channel, dtype in values]}"
                 for column, values in sorted(mismatches.items())
             )
             raise ValueError(

@@ -32,6 +32,7 @@ from zipfile import ZipFile
 import numpy as np
 import pandas as pd
 
+from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from microcosm.frame.units import assign_us_unit_structure
 
@@ -308,6 +309,14 @@ def build_acs_pums_unit_frame(
                 "placeholder; WGTP otherwise"
             ),
         }
+    )
+    # This parse is a serialization boundary: freshly cast string columns
+    # otherwise carry the environment-resolved pandas string storage, which
+    # diverges from checkpoint-restored channels when pyarrow is installed.
+    frame = canonicalize_frame_string_dtypes(
+        frame,
+        boundary="ACS PUMS source parse",
+        in_place=True,
     )
     return frame, metadata
 

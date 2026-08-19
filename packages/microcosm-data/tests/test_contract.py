@@ -32,7 +32,13 @@ UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
 UK_TERMINAL_GATE_PRODUCER = (
     "microcosm.build.uk_runtime.terminal_gates.uk_terminal_gate_report"
 )
+# The current reviewed policy digest (with the #630 source_year degenerate
+# exclusion in the committed register); the legacy digest is what the
+# grandfathered June release attests.
 UK_TERMINAL_GATE_POLICY_SHA256 = (
+    "ae93bd10a02362a523eb077bcbd32b362cef31f0447acbc40537df696e30c757"
+)
+UK_TERMINAL_GATE_POLICY_SHA256_LEGACY = (
     "74c9cd474d76e2b8d4ca5b298c19fc6348ac1a90746594afc8a81283a0398b68"
 )
 UK_TERMINAL_GATE_SIGNATURE_ALGORITHM = "hmac-sha256"
@@ -64,8 +70,50 @@ UK_INPUT_MASS_REFERENCE_IDENTITY = {
     "vintage": "2023_24",
 }
 UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
-    "11b22dd439a188e32cec5d2be157dd6b65f415d4317cd304c17f5349522a3914"
+    "c36c015a60f796ad9199a4a5652706f5310909cb572b1c90092ef9df1fa7187e"
 )
+UK_INPUT_MASS_ACTIVE_REFERENCE = "efrs-post-calibration"
+UK_INPUT_MASS_REFERENCE_SCOPE_NOTE = (
+    "Post-calibration eFRS production incumbent; structurally lacks the SPI "
+    "clone channel, so SPI-channel-exclusive columns are comparable only "
+    "through per-reference reviewed exclusions."
+)
+UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
+    "charitable_investment_gifts": {
+        "reason": (
+            "SPI-channel-exclusive column on a channel-blind reference: the "
+            "efrs-post-calibration incumbent structurally lacks the SPI clone "
+            "channel, so its reference mass is survey-side scraps while the "
+            "staged candidate's mass is the admin-captured SPI channel "
+            "functioning as designed (microcosm#630 case 2). Compared "
+            "normally against any future channel-aware reference."
+        ),
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#630",
+        "approved_on": "2026-08-17",
+        "expires_on": "2027-02-17",
+    },
+    "owned_land": {
+        "reason": (
+            "Sparse heavy-tailed WAS donor column (0.7 percent weighted "
+            "nonzero share) whose weighted total is dominated by a handful "
+            "of large farm/estate records: the E5 stability receipt "
+            "(data/ukds/acceptance/e5/owned_land_stability_receipt.json) "
+            "measures a 37.7 percent national and 2.41x London swing "
+            "between adjacent seeds, the same realization-variance class "
+            "the archived incumbent data repo records at uk-data#448 (4.6x "
+            "Wales swing across releases). Register parity at this grain "
+            "is not meaningful until the whole-spine comparison; the "
+            "one-month expiry enforces the end-of-workstream revisit "
+            "registered on microcosm#145 (winsorised donor or separate "
+            "land imputation are the candidate remedies)."
+        ),
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#714",
+        "approved_on": "2026-08-19",
+        "expires_on": "2026-09-19",
+    },
+}
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
 CALIBRATION_SHA = "a" * 64
@@ -83,6 +131,78 @@ UK_JUNE_FIXTURE_DIR = (
 def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
     monkeypatch.setenv(
         UK_TERMINAL_GATE_SIGNING_KEY_ENV,
+        TEST_UK_TERMINAL_GATE_SIGNING_KEY,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Schema-4 gate-battery mirrors. Local copies in the schema-3 style; the
+# lockstep test below holds them equal to the contract module's pins, and the
+# build-shard sync tests hold the contract module equal to the producer.
+# ---------------------------------------------------------------------------
+UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
+UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
+UK_GATE_BATTERY_POLICY_SHA256 = (
+    "5ddd3da9a52b0dc19ba1c97315f0e4f8acdedf2b74ea29bff512cbdb57de1cab"
+)
+UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
+    "8d58fffe5e6542a7f10578076bbcc943cf587f9f22017ccc630450007b5b6166"
+)
+UK_GATE_BATTERY_SPEC_FINGERPRINT = (
+    "b7b645deee1b15750403f98a4c7dac09d6e08440a878b8d1ff83a15e9195b809"
+)
+UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
+    "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
+)
+UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
+    "df74556909990345bc9032f6f5db7f817d9c273f75522a85ab6e332dd8dc7355"
+)
+#: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
+UK_GATE_BATTERY_ENTRIES = {
+    "uk_release_input_coverage_manifest_current": (
+        "release_input_coverage",
+        "preflight",
+        None,
+    ),
+    "uk_release_family_build_stages": ("source_coverage", "preflight", None),
+    "uk_release_input_coverage": (
+        "release_input_coverage",
+        "terminal",
+        "uk_release_input_coverage",
+    ),
+    "uk_degenerate_release_surface": (
+        "degenerate_release_surface",
+        "terminal",
+        "degenerate_release_surface",
+    ),
+    "uk_zero_weight_strata": ("zero_weight_strata", "terminal", "zero_weight_strata"),
+    "uk_weight_ess": ("weight_ess", "terminal", "weight_ess"),
+    "uk_weight_ratio": ("weight_ratio", "terminal", "weight_ratio"),
+    "uk_weights_audit": ("weights_audit", "terminal", "weights_audit"),
+    "uk_nonnegative_columns": (
+        "nonnegative_columns",
+        "terminal",
+        "nonnegative_columns",
+    ),
+    "uk_support": ("support", "terminal", "support"),
+    "uk_export_surface": ("export_surface", "terminal", "export_surface"),
+    "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
+    "uk_brma_enum_domain": ("enum_domain", "terminal", "enum_domain"),
+    "uk_target_surface": ("target_surface", "terminal", "target_surface"),
+    "uk_target_fit": ("target_fit", "terminal", "target_fit"),
+    "uk_input_mass_parity": ("input_mass_parity", "terminal", "input_mass_parity"),
+    "uk_qrf_tail_concentration": (
+        "tail_concentration",
+        "terminal",
+        "qrf_tail_concentration",
+    ),
+}
+
+
+@pytest.fixture(autouse=True)
+def _trusted_gate_battery_signing_key(monkeypatch) -> None:
+    monkeypatch.setenv(
+        UK_GATE_BATTERY_SIGNING_KEY_ENV,
         TEST_UK_TERMINAL_GATE_SIGNING_KEY,
     )
 
@@ -233,7 +353,7 @@ def _release_manifest(
 
 def _calibration_diagnostics() -> dict:
     return {
-        "schema_version": 5,
+        "schema_version": 6,
         "weight_entity": "household",
         "options": {"epochs": 120},
         "target_surface": {
@@ -601,6 +721,9 @@ def _terminal_gate_details(name: str) -> dict:
             "reviewed_exclusions": {},
             "stale_exclusions": [],
             "dormant_exclusions": [],
+            "expired_exclusions": [],
+            "premature_exclusions": [],
+            "exclusions_evaluated_on": "2026-08-11",
         }
     if name == "zero_weight_strata":
         return {
@@ -636,6 +759,18 @@ def _terminal_gate_details(name: str) -> dict:
             "allowed_unweighted": {},
             "unused_allowed_unweighted": [],
         }
+    if name == "nonnegative_columns":
+        return {
+            "columns_checked": 1,
+            "negative_counts": {},
+            "minima": {"employment_income": 1.0},
+            "reviewed_exclusions": {},
+            "unused_reviewed_exclusions": [],
+            "atol": 0.0,
+            "chunk_size": 1_000_000,
+        }
+    if name == "support":
+        return {"columns_checked": 13}
     if name == "export_surface":
         return {
             "candidate_columns": 1,
@@ -661,30 +796,38 @@ def _terminal_gate_details(name: str) -> dict:
         return {
             "candidate_name": "uk_release_candidate",
             "reference_name": UK_INPUT_MASS_REFERENCE_IDENTITY["filename"],
-            "relative_tolerance": 0.5,
+            "relative_tolerance": 4.521811483823806,
             "minimum_reference_total": 0.0,
             "columns_checked": 1,
             "columns_below_reference_floor": 0,
             "candidate_only_columns": [],
-            "worst_drifts": {"person.employment_income": 0.0},
+            "worst_drifts": {"employment_income": 0.0},
             "reviewed_exclusions": {},
             "unused_reviewed_exclusions": [],
             "stale_exclusions": [],
             "dormant_exclusions": [],
+            "expired_exclusions": [],
+            "premature_exclusions": [],
+            "exclusions_evaluated_on": "2026-08-11",
+            "reference": UK_INPUT_MASS_ACTIVE_REFERENCE,
+            "reference_scope_note": UK_INPUT_MASS_REFERENCE_SCOPE_NOTE,
             "reference_identity": dict(UK_INPUT_MASS_REFERENCE_IDENTITY),
         }
     if name == "qrf_tail_concentration":
         return {
             "columns_checked": 1,
-            "top_k": 1,
-            "max_top_share": 0.75,
-            "min_nonzero_records": 2,
+            "top_k": 100,
+            "max_top_share": 0.9970712395200448,
+            "min_nonzero_records": 274,
             "top_share": {"self_employment_income": 0.5},
-            "carrier_counts": {"self_employment_income": 10},
+            "carrier_counts": {"self_employment_income": 274},
             "thin_columns": {},
             "reviewed_exclusions": {},
             "stale_exclusions": [],
             "dormant_exclusions": [],
+            "expired_exclusions": [],
+            "premature_exclusions": [],
+            "exclusions_evaluated_on": "2026-08-11",
             "surface": {
                 "declared_qrf_outputs": 1,
                 "checked_columns": ["self_employment_income"],
@@ -692,6 +835,24 @@ def _terminal_gate_details(name: str) -> dict:
                 "non_numeric_columns": [],
                 "density_filter": "none: every declared output is checked (#609)",
             },
+        }
+    if name == "take_up_signal":
+        # Mirrors uk_take_up_signal_gate's per-column detail block.
+        return {
+            "benunit.would_claim_uc": {
+                "weighted_share": 0.55,
+                "target": 0.55,
+                "absolute_deviation": 0.0,
+                "unique_count": 2,
+            }
+        }
+    if name == "enum_domain":
+        # Mirrors enum_domain_gate's detail block.
+        return {
+            "columns_checked": 1,
+            "invalid_counts": {},
+            "invalid_examples": {},
+            "allowed_values": {"brma": ["CENTRAL_LONDON"]},
         }
     raise AssertionError(f"No terminal fixture details for {name!r}")
 
@@ -817,6 +978,132 @@ def _refresh_terminal_manifest_hashes(release_dir: Path) -> None:
     release = json.loads(release_path.read_text())
     release["artifacts"]["terminal_gates"]["sha256"] = digest
     release_path.write_text(json.dumps(release))
+
+
+def _resign_gate_battery(
+    payload: dict,
+    *,
+    signing_key: bytes = TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES,
+) -> None:
+    """Rebuild the schema-4 attestation from the body and sign, as the
+    producer does: the signature covers the canonical payload with the
+    signature slot nulled."""
+
+    attestation = {
+        "schema_version": 6,
+        "producer": UK_GATE_BATTERY_PRODUCER,
+        "country": payload["country"],
+        "release_id": payload["release_id"],
+        "release_candidate": payload["release_candidate"],
+        "spec_fingerprint": payload["spec_fingerprint"],
+        "gates_manifest_sha256": payload["gates_manifest_sha256"],
+        "policy_sha256": payload["policy_sha256"],
+        "phases": payload["phases"],
+        "phases_evaluated": payload["phases_evaluated"],
+        "blocked_at_phase": payload["blocked_at_phase"],
+        "release_evidence": payload["release_evidence"],
+        "evidence_sha256": payload["evidence_sha256"],
+        "gate_outcomes_sha256": _canonical_sha256(payload["gates"]),
+        "signature_algorithm": UK_TERMINAL_GATE_SIGNATURE_ALGORITHM,
+        "signing_key_sha256": hashlib.sha256(signing_key).hexdigest(),
+        "signature": None,
+    }
+    payload["attestation"] = attestation
+    attestation["signature"] = hmac.new(
+        signing_key, _canonical_json_bytes(payload), hashlib.sha256
+    ).hexdigest()
+
+
+def _gate_battery_payload(
+    *,
+    release_id: str,
+    calibration_diagnostics_sha256: str,
+    signing_key: bytes = TEST_UK_TERMINAL_GATE_SIGNING_KEY_BYTES,
+) -> tuple[dict, dict[str, str]]:
+    """A fully-armed, all-passing, signed schema-4 battery report."""
+
+    stage_names = ["frs_hmrc_retained_leaves", "hmrc_spi_income"]
+    gates: dict[str, dict] = {}
+    for entry_id, (gate, phase, detail_name) in UK_GATE_BATTERY_ENTRIES.items():
+        if entry_id == "uk_release_input_coverage_manifest_current":
+            details: dict = {"check": "manifest_current"}
+        elif entry_id == "uk_release_family_build_stages":
+            details = {"stage_names": list(stage_names)}
+        else:
+            details = _terminal_gate_details(detail_name)
+        gates[entry_id] = {
+            "gate": gate,
+            "phase": phase,
+            "criticality": "release_blocking",
+            "status": "passed",
+            "failures": [],
+            "details": details,
+            "reason": None,
+        }
+    evidence = {
+        "uk_release_family_build_stages": _canonical_sha256(
+            {"stage_names": list(stage_names)}
+        ),
+        "uk_degenerate_release_surface": UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256,
+        "uk_input_mass_parity": UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256,
+    }
+    payload = {
+        "schema_version": 4,
+        "country": "uk",
+        "release_id": release_id,
+        "release_candidate": True,
+        "spec_fingerprint": UK_GATE_BATTERY_SPEC_FINGERPRINT,
+        "gates_manifest_sha256": UK_GATE_BATTERY_GATES_MANIFEST_SHA256,
+        "phases": ["preflight", "terminal"],
+        "phases_evaluated": ["preflight", "terminal"],
+        "blocked_at_phase": None,
+        "shippable": True,
+        "gates": gates,
+        "policy_sha256": UK_GATE_BATTERY_POLICY_SHA256,
+        "release_evidence": {
+            "calibration_diagnostics_sha256": calibration_diagnostics_sha256
+        },
+        "evidence_sha256": evidence,
+    }
+    _resign_gate_battery(payload, signing_key=signing_key)
+    return payload, evidence
+
+
+def _upgrade_release_to_gate_battery(directory: Path) -> dict:
+    """Swap a fixture release's schema-3 report for a valid schema-4 one."""
+
+    payload, evidence = _gate_battery_payload(
+        release_id=UK_EXACT_K_RELEASE_ID,
+        calibration_diagnostics_sha256=_sha256(
+            directory / "calibration_diagnostics.json"
+        ),
+    )
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = evidence
+    build_path.write_text(json.dumps(build))
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+    return payload
+
+
+def _write_battery_release(tmp_path: Path) -> tuple[Path, dict]:
+    directory = _write_uk_release_dir(tmp_path, UK_EXACT_K_RELEASE_ID, tier="frs")
+    payload = _upgrade_release_to_gate_battery(directory)
+    return directory, payload
+
+
+def _rewrite_battery_report(
+    directory: Path, payload: dict, *, resign: bool = True
+) -> None:
+    if resign:
+        _resign_gate_battery(payload)
+    _write_terminal_and_refresh_manifest_hashes(directory, payload)
+
+
+def _battery_failures(directory: Path) -> str:
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+    return "\n".join(excinfo.value.failures)
 
 
 def _write_uk_release_dir(
@@ -1602,7 +1889,7 @@ def test_legacy_diagnostics_exemption_is_scoped_to_the_exact_june_id(
         payload=diagnostics,
     )
 
-    with pytest.raises(ReleaseContractError, match="publishes version 5"):
+    with pytest.raises(ReleaseContractError, match="publishes version 6"):
         validate_release_dir(directory)
 
 
@@ -2002,7 +2289,7 @@ def test_exact_k_uk_terminal_rejects_unreviewed_input_mass_identity(
         validate_release_dir(directory)
 
     failures = "\n".join(excinfo.value.failures)
-    assert "reference_identity must match the reviewed" in failures
+    assert "reference_identity must match the active reviewed" in failures
 
 
 def test_exact_k_uk_terminal_rejects_substituted_input_mass_totals(
@@ -2024,7 +2311,7 @@ def test_exact_k_uk_terminal_rejects_substituted_input_mass_totals(
         {
             "reference": {
                 "identity": dict(UK_INPUT_MASS_REFERENCE_IDENTITY),
-                "totals": {"person.employment_income": 1.0},
+                "totals": {"employment_income": 1.0},
             }
         }
     )
@@ -2166,6 +2453,24 @@ def test_exact_k_uk_terminal_report_rejects_non_aggregator_producer(
         ReleaseContractError, match="honest UK terminal gate aggregator"
     ):
         validate_release_dir(directory)
+
+
+def test_uk_terminal_policy_pins_are_in_lockstep_with_the_contract() -> None:
+    """Both reviewed digests — current and grandfathered — match the
+    contract module's private literals, so a typo in either constant is
+    detectable even while the legacy branch stays defensively unreachable
+    (the June id is not an exact-k id, so its report is never checked)."""
+
+    from microcosm.data import contract as contract_module
+
+    assert (
+        contract_module._UK_TERMINAL_GATE_POLICY_SHA256
+        == UK_TERMINAL_GATE_POLICY_SHA256
+    )
+    assert (
+        contract_module._UK_TERMINAL_GATE_POLICY_SHA256_LEGACY
+        == UK_TERMINAL_GATE_POLICY_SHA256_LEGACY
+    )
 
 
 def test_exact_k_uk_terminal_report_rejects_uncertified_policy(
@@ -3331,6 +3636,45 @@ def test_exact_k_uk_terminal_rejects_boolean_qrf_carrier_count(
     assert "attestation.signature does not authenticate" not in failures
 
 
+def test_exact_k_uk_terminal_rejects_mixed_exclusion_evaluation_dates(
+    tmp_path: Path,
+) -> None:
+    """One report evaluates every register on one date; a hand-composed
+    collection mixing evaluation dates is not the aggregator's output
+    (adversarial-review finding: expiry enforcement was otherwise
+    invisible to the contract)."""
+
+    directory, payload = _resignable_qrf_release(tmp_path)
+    degenerate = payload["gates"]["degenerate_release_surface"]["details"]
+    degenerate["exclusions_evaluated_on"] = "2020-01-01"
+    _write_resigned_qrf_release(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+    failures = "\n".join(excinfo.value.failures)
+    assert "share one details.exclusions_evaluated_on" in failures
+
+
+def test_exact_k_uk_terminal_requires_the_exclusion_receipt_fields(
+    tmp_path: Path,
+) -> None:
+    """A key-signed report cannot simply omit expired_exclusions to dodge
+    the empty-list expectation: the fields are part of the required detail
+    schema (adversarial-review finding — the checks previously defaulted
+    absent fields to empty)."""
+
+    directory, payload = _resignable_qrf_release(tmp_path)
+    degenerate = payload["gates"]["degenerate_release_surface"]["details"]
+    del degenerate["expired_exclusions"]
+    _write_resigned_qrf_release(directory, payload)
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(directory)
+    failures = "\n".join(excinfo.value.failures)
+    assert "honest aggregator detail schema" in failures
+    assert "expired_exclusions" in failures
+
+
 def test_exact_k_uk_terminal_accepts_high_qrf_share_with_live_exclusion(
     tmp_path: Path,
 ) -> None:
@@ -3377,3 +3721,445 @@ def test_exact_k_uk_terminal_rejects_invalid_qrf_observable_values(
     failures = "\n".join(excinfo.value.failures)
     assert match in failures
     assert "attestation.signature does not authenticate" not in failures
+
+
+# ---------------------------------------------------------------------------
+# Schema-4 gate-battery reports (the #611 executor).
+# ---------------------------------------------------------------------------
+
+
+def test_uk_gate_battery_pins_are_in_lockstep_with_the_contract() -> None:
+    from microcosm.data import contract as contract_module
+
+    assert contract_module._UK_GATE_BATTERY_PRODUCER == UK_GATE_BATTERY_PRODUCER
+    assert (
+        contract_module._UK_GATE_BATTERY_SIGNING_KEY_ENV
+        == UK_GATE_BATTERY_SIGNING_KEY_ENV
+    )
+    assert (
+        contract_module._UK_GATE_BATTERY_POLICY_SHA256 == UK_GATE_BATTERY_POLICY_SHA256
+    )
+    assert (
+        contract_module._UK_GATE_BATTERY_GATES_MANIFEST_SHA256
+        == UK_GATE_BATTERY_GATES_MANIFEST_SHA256
+    )
+    assert (
+        contract_module._UK_GATE_BATTERY_SPEC_FINGERPRINT
+        == UK_GATE_BATTERY_SPEC_FINGERPRINT
+    )
+    assert contract_module._UK_GATE_BATTERY_ENTRY_IDS == frozenset(
+        UK_GATE_BATTERY_ENTRIES
+    )
+    assert contract_module._UK_GATE_BATTERY_ENTRY_GATES == {
+        entry_id: (gate, phase)
+        for entry_id, (gate, phase, _detail) in UK_GATE_BATTERY_ENTRIES.items()
+    }
+    assert (
+        contract_module._UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256
+        == UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256
+    )
+    assert (
+        contract_module._UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256
+        == UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256
+    )
+    assert UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 == _canonical_sha256(
+        {
+            "reference": UK_INPUT_MASS_ACTIVE_REFERENCE,
+            "reference_evidence_sha256": UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
+            "exclusions_policy": "committed",
+            "reviewed_exclusions": UK_INPUT_MASS_REVIEWED_EXCLUSIONS,
+        }
+    )
+
+
+def test_exact_k_uk_gate_battery_report_validates_end_to_end(tmp_path: Path) -> None:
+    directory, _payload = _write_battery_release(tmp_path)
+
+    validate_release_dir(directory)
+
+
+def test_exact_k_uk_gate_battery_rejects_unknown_report_schema(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    payload["schema_version"] = 5
+    _rewrite_battery_report(directory, payload, resign=False)
+
+    assert "schema_version must be 3" in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_rejects_a_non_candidate_report(
+    tmp_path: Path,
+) -> None:
+    # A report produced off the candidate posture excused absent evidence;
+    # promoting it into a release dir must fail even when honestly signed.
+    directory, payload = _write_battery_release(tmp_path)
+    payload["release_candidate"] = False
+    _rewrite_battery_report(directory, payload)
+
+    assert "release_candidate must be true" in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_rejects_loosened_input_mass_tolerance(
+    tmp_path: Path,
+) -> None:
+    # The tolerance is committed spec, not report self-description: an
+    # honestly re-signed report claiming a looser fence still refuses.
+    directory, payload = _write_battery_release(tmp_path)
+    details = payload["gates"]["uk_input_mass_parity"]["details"]
+    details["relative_tolerance"] = 50.0
+    _rewrite_battery_report(directory, payload)
+
+    assert "relative_tolerance must equal the committed spec value" in (
+        _battery_failures(directory)
+    )
+
+
+def test_exact_k_uk_gate_battery_rejects_loosened_qrf_thresholds(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    details = payload["gates"]["uk_qrf_tail_concentration"]["details"]
+    details["max_top_share"] = 0.999999
+    _rewrite_battery_report(directory, payload)
+
+    assert "max_top_share to equal the committed spec value" in (
+        _battery_failures(directory)
+    )
+
+
+def test_exact_k_uk_gate_battery_rejects_shrunken_qrf_tail(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    details = payload["gates"]["uk_qrf_tail_concentration"]["details"]
+    details["top_k"] = 5
+    details["min_nonzero_records"] = 6
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert "top_k to equal the committed spec value" in failures
+    assert "min_nonzero_records to equal the committed spec value" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_a_blocked_report(tmp_path: Path) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    payload["blocked_at_phase"] = "terminal"
+    _rewrite_battery_report(directory, payload)
+
+    assert "blocked_at_phase must be null" in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_recomputes_shippability(tmp_path: Path) -> None:
+    # shippable: true is asserted but never trusted — a failed blocking
+    # entry inside an honestly re-signed report still refuses.
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_weight_ratio"]
+    entry["status"] = "failed"
+    entry["failures"] = ["seeded ratio failure"]
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert "release-blocking with status 'failed'" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_passed_entry_with_failures(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_weight_ratio"]
+    entry["status"] = "failed"
+    entry["failures"] = ["seeded ratio failure"]
+    entry["status"] = "passed"
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert "passed entries cannot carry failure text" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_passed_entry_with_reason(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_weight_ratio"]
+    entry["reason"] = "seeded caveat"
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert "passed entries cannot carry a reason" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_absent_evidence_without_reason(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_input_mass_parity"]
+    entry["status"] = "evidence_absent"
+    entry["details"] = {}
+    entry["reason"] = None
+    del payload["evidence_sha256"]["uk_input_mass_parity"]
+    _rewrite_battery_report(directory, payload)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = dict(payload["evidence_sha256"])
+    build_path.write_text(json.dumps(build))
+    _refresh_terminal_manifest_hashes(directory)
+
+    failures = _battery_failures(directory)
+    assert "evidence_absent entries must carry a non-empty string reason" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_failed_entry_without_failures(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_weight_ratio"]
+    entry["status"] = "failed"
+    entry["failures"] = []
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert "failed entries must carry non-empty failure text" in failures
+
+
+def test_exact_k_uk_gate_battery_reports_details_and_failures_type_errors(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_weight_ratio"]
+    entry["details"] = []
+    entry["failures"] = "seeded failure"
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert ".details must be an object" in failures
+    assert ".failures must be a list" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_excused_absent_evidence(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_input_mass_parity"]
+    entry["status"] = "evidence_absent"
+    entry["details"] = {}
+    entry["reason"] = "missing evidence: input_mass_reference"
+    del payload["evidence_sha256"]["uk_input_mass_parity"]
+    _rewrite_battery_report(directory, payload)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = dict(payload["evidence_sha256"])
+    build_path.write_text(json.dumps(build))
+    _refresh_terminal_manifest_hashes(directory)
+
+    failures = _battery_failures(directory)
+    assert "release-blocking with status 'evidence_absent'" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_a_missing_entry(tmp_path: Path) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    del payload["gates"]["uk_weight_ess"]
+    _rewrite_battery_report(directory, payload)
+
+    assert "exactly the declared UK entry ids" in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_rejects_an_uncertified_policy(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    payload["policy_sha256"] = "b" * 64
+    _rewrite_battery_report(directory, payload)
+
+    assert "certified UK gate policy" in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_rejects_a_moved_manifest_digest(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    payload["gates_manifest_sha256"] = "b" * 64
+    _rewrite_battery_report(directory, payload)
+
+    assert "committed uk/gates.json" in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_rejects_a_moved_spec_fingerprint(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    payload["spec_fingerprint"] = "b" * 64
+    _rewrite_battery_report(directory, payload)
+
+    assert "spec_fingerprint does not match" in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_rejects_a_broken_diagnostics_link(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    payload["release_evidence"] = {"calibration_diagnostics_sha256": "b" * 64}
+    _rewrite_battery_report(directory, payload)
+
+    assert (
+        "release_evidence.calibration_diagnostics_sha256 must match"
+        in _battery_failures(directory)
+    )
+
+
+def test_exact_k_uk_gate_battery_rejects_a_mixed_exclusion_clock(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    details = payload["gates"]["uk_degenerate_release_surface"]["details"]
+    details["exclusions_evaluated_on"] = "2026-01-01"
+    _rewrite_battery_report(directory, payload)
+
+    assert "exclusion-consuming gates must" in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_no_resign_tamper_fails_authentication(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    payload["gates"]["uk_weight_ratio"]["details"]["max_weight"] = 1.0e9
+    _rewrite_battery_report(directory, payload, resign=False)
+
+    failures = _battery_failures(directory)
+    assert "attestation.signature does not authenticate" in failures
+    assert "attestation.gate_outcomes_sha256 does not match" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_a_forged_key(tmp_path: Path) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    _resign_gate_battery(payload, signing_key=FORGED_UK_TERMINAL_GATE_SIGNING_KEY_BYTES)
+    _rewrite_battery_report(directory, payload, resign=False)
+
+    failures = _battery_failures(directory)
+    assert "signing_key_sha256 does not identify the trusted release key" in failures
+
+
+def test_exact_k_uk_gate_battery_requires_the_executor_key_env(
+    tmp_path: Path, monkeypatch
+) -> None:
+    directory, _payload = _write_battery_release(tmp_path)
+    monkeypatch.delenv(UK_GATE_BATTERY_SIGNING_KEY_ENV)
+
+    assert UK_GATE_BATTERY_SIGNING_KEY_ENV in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_rejects_a_recorded_signing_error(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    _resign_gate_battery(payload)
+    payload["attestation"]["signing_error"] = "key was absent at build time"
+    _rewrite_battery_report(directory, payload, resign=False)
+
+    assert "attestation must contain exactly" in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_rejects_an_unpinned_input_mass_evidence(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    payload["evidence_sha256"]["uk_input_mass_parity"] = "b" * 64
+    _rewrite_battery_report(directory, payload)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = dict(payload["evidence_sha256"])
+    build_path.write_text(json.dumps(build))
+    _refresh_terminal_manifest_hashes(directory)
+
+    assert "bind the reviewed enhanced-FRS" in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_rejects_mixed_manifest_evidence_vocabulary(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = {
+        "release_dataset": "a" * 64,
+        **dict(payload["evidence_sha256"]),
+    }
+    build_path.write_text(json.dumps(build))
+
+    failures = _battery_failures(directory)
+    assert "mixes the legacy stage vocabulary" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_a_diagnostic_relabel(tmp_path: Path) -> None:
+    # Every entry in this vintage is release_blocking; a failed entry
+    # relabeled diagnostic would dodge the shippability recompute.
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_weight_ratio"]
+    entry["status"] = "failed"
+    entry["failures"] = ["seeded ratio failure"]
+    entry["criticality"] = "diagnostic"
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert "criticality must be 'release_blocking'" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_a_not_applicable_excuse(
+    tmp_path: Path,
+) -> None:
+    # No entry in this spec vintage declares an excuse, so not_applicable
+    # cannot skip a gate's observables or drop its evidence requirement.
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_qrf_tail_concentration"]
+    entry["status"] = "not_applicable"
+    entry["details"] = {}
+    entry["reason"] = "declared excused"
+    _rewrite_battery_report(directory, payload)
+
+    assert "no entry in this spec vintage declares an excuse" in _battery_failures(
+        directory
+    )
+
+
+def test_exact_k_uk_gate_battery_pins_each_entrys_gate_and_phase(
+    tmp_path: Path,
+) -> None:
+    directory, payload = _write_battery_release(tmp_path)
+    entry = payload["gates"]["uk_weight_ratio"]
+    entry["gate"] = "export_surface"
+    entry["phase"] = "preflight"
+    _rewrite_battery_report(directory, payload)
+
+    failures = _battery_failures(directory)
+    assert "gate must be 'weight_ratio'" in failures
+    assert "phase must be 'terminal'" in failures
+
+
+def test_exact_k_uk_gate_battery_rejects_a_float_schema_version(
+    tmp_path: Path,
+) -> None:
+    # 4.0 == 4 in Python; the dispatch and the checker must not let a
+    # non-integer vintage route as one.
+    directory, payload = _write_battery_release(tmp_path)
+    payload["schema_version"] = 4.0
+    _rewrite_battery_report(directory, payload, resign=False)
+
+    assert "schema_version must be 3" in _battery_failures(directory)
+
+
+def test_exact_k_uk_gate_battery_rejects_an_overridden_exclusion_register(
+    tmp_path: Path,
+) -> None:
+    # The committed register is the policy of record: an overridden
+    # register's evidence digest is never releasable, however honestly
+    # the report self-describes it.
+    directory, payload = _write_battery_release(tmp_path)
+    payload["evidence_sha256"]["uk_degenerate_release_surface"] = "b" * 64
+    _rewrite_battery_report(directory, payload)
+    build_path = directory / "build_manifest.json"
+    build = json.loads(build_path.read_text())
+    build["terminal_gate_evidence"] = dict(payload["evidence_sha256"])
+    build_path.write_text(json.dumps(build))
+    _refresh_terminal_manifest_hashes(directory)
+
+    assert "bind the committed exclusion register" in _battery_failures(directory)

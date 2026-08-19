@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache
 from importlib import import_module
@@ -334,6 +335,8 @@ def impute_uk_spi_income_support(
     donor_sample_size: int | None = DEFAULT_SPI_DONOR_SAMPLE_SIZE,
     build_period: int | str = 2023,
     verified_donor: VerifiedSPIDonorIdentity | None = None,
+    initialize_frs_channel_columns: Mapping[str, float] | None = None,
+    stage1_base_redraw_columns: Sequence[str] = (),
 ) -> UKSPIIncomeImputationResult:
     """Run strict SPI-income and FRS-only QRFs on rebuilt positive support."""
 
@@ -403,6 +406,22 @@ def impute_uk_spi_income_support(
     spi_people = person[person_channel] == SPI_SYNTHETIC_SUPPORT_CHANNEL
     if not spi_people.any():
         raise ValueError("SPI support has no person rows to impute.")
+    base_people = person[person_channel] == BASE_FRS_SUPPORT_CHANNEL
+    if not base_people.any():
+        raise ValueError("SPI support has no FRS base rows.")
+    if initialize_frs_channel_columns is not None:
+        person = _initialize_frs_channel_columns(
+            person,
+            base_people=base_people,
+            columns=initialize_frs_channel_columns,
+        )
+    base_redraw_columns = tuple(stage1_base_redraw_columns)
+    unknown_redraw = sorted(set(base_redraw_columns) - set(SPI_INCOME_QRF_OUTPUT_COLUMNS))
+    if unknown_redraw:
+        raise ValueError(
+            "SPI stage-1 base redraw columns must be stage-1 QRF outputs; "
+            f"unknown column(s): {unknown_redraw}."
+        )
     person = _seed_frs_hmrc_auxiliary_leaves(person, spi_people=spi_people)
 
     recipient_predictors = _person_predictors(
@@ -506,6 +525,32 @@ def impute_uk_spi_income_support(
     for column in stage2_outputs:
         person.loc[spi_people, column] = stage2_draws[column].to_numpy()
 
+    if base_redraw_columns:
+        base_predictors = _person_predictors(
+            person.loc[base_people],
+            household,
+            income_predictors=(),
+        )
+        _, encoded_base = _encode_predictor_pair(
+            donor[["age", "gender", "region"]],
+            base_predictors,
+        )
+        base_draws = stage1.predict(encoded_base)
+        _validate_predictions(
+            base_draws,
+            expected=SPI_INCOME_QRF_OUTPUT_COLUMNS,
+            label="SPI stage-1 base redraw",
+        )
+        if (
+            base_draws[list(base_redraw_columns)]
+            .to_numpy(dtype=np.float64)
+            .min(initial=0.0)
+            < 0.0
+        ):
+            raise ValueError("SPI stage-1 base redraw produced negative outputs.")
+        for column in base_redraw_columns:
+            person.loc[base_people, column] = base_draws[column].to_numpy()
+
     tax_free = person.loc[spi_people, "tax_free_savings_income"].to_numpy(
         dtype=np.float64
     )
@@ -538,6 +583,31 @@ def impute_uk_spi_income_support(
         spi_prediction_rows=int(spi_people.sum()),
         reviewed_absent_stage2_outputs=reviewed_absent,
     )
+
+
+def _initialize_frs_channel_columns(
+    person: pd.DataFrame,
+    *,
+    base_people: pd.Series,
+    columns: Mapping[str, float],
+) -> pd.DataFrame:
+    if not isinstance(columns, Mapping):
+        raise TypeError("initialize_frs_channel_columns must be a mapping.")
+    if not base_people.index.equals(person.index):
+        raise ValueError("FRS base mask must align to the person table.")
+    result = person.copy()
+    for column, value in columns.items():
+        if not isinstance(column, str) or not column:
+            raise ValueError("initialize_frs_channel_columns keys must be strings.")
+        numeric = float(value)
+        if not np.isfinite(numeric):
+            raise ValueError(
+                f"initialize_frs_channel_columns[{column!r}] must be finite."
+            )
+        if column not in result:
+            result[column] = np.nan
+        result.loc[base_people, column] = numeric
+    return result
 
 
 def _prepare_spi_donor(raw: pd.DataFrame, *, seed: int) -> pd.DataFrame:

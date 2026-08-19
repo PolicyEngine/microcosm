@@ -31,6 +31,7 @@ from microcosm.calibrate import (
     effective_sample_size,
 )
 from microcosm.calibrate.solve import CalibrationResult
+from microcosm.frame import Frame
 
 __all__ = [
     "UK_DIAGNOSTICS_SCHEMA_VERSION",
@@ -402,7 +403,7 @@ def _target_pass_rates(
 
 def uk_calibration_diagnostics_payload(
     result: CalibrationResult,
-    household: pd.DataFrame,
+    frame: Frame,
     *,
     target_geography_levels: Mapping[str, object],
     target_registry: TargetRegistry,
@@ -417,14 +418,11 @@ def uk_calibration_diagnostics_payload(
     """
 
     registry = _require_uk_target_registry(target_registry)
-    if not isinstance(household, pd.DataFrame):
-        raise TypeError("UK diagnostic household data must be a pandas DataFrame.")
-    if "household_weight" not in household:
-        raise ValueError(
-            "UK diagnostic household data must contain 'household_weight'."
-        )
+    if not isinstance(frame, Frame):
+        raise TypeError("UK diagnostic data must be a Frame.")
+    household = frame.table("household")
     result_weights = _as_weights(result.weights)
-    shipped_weights = _as_weights(household["household_weight"].to_numpy())
+    shipped_weights = _as_weights(frame.weights_for("household").values)
     if shipped_weights.shape != result_weights.shape or not np.array_equal(
         shipped_weights,
         result_weights,
@@ -465,7 +463,7 @@ def uk_calibration_diagnostics_payload(
 def write_uk_calibration_diagnostics(
     result: CalibrationResult,
     path: Path | str,
-    household: pd.DataFrame,
+    frame: Frame,
     *,
     target_geography_levels: Mapping[str, object],
     target_registry: TargetRegistry,
@@ -478,7 +476,7 @@ def write_uk_calibration_diagnostics(
     encoded = json.dumps(
         uk_calibration_diagnostics_payload(
             result,
-            household,
+            frame,
             target_geography_levels=target_geography_levels,
             target_registry=target_registry,
             stratum_columns=stratum_columns,

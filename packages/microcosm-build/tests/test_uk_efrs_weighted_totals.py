@@ -100,11 +100,11 @@ def test_totals_are_weighted_and_keyed_by_owning_entity(synthetic_efrs) -> None:
     expected_employment = (
         30_000.0 * weights[1] + 25_000.0 * weights[2] + 10_000.0 * weights[2]
     )
-    assert totals["person.employment_income"] == pytest.approx(expected_employment)
-    assert totals["household.council_tax"] == pytest.approx(
+    assert totals["employment_income"] == pytest.approx(expected_employment)
+    assert totals["council_tax"] == pytest.approx(
         1_000.0 * weights[1] + 2_000.0 * weights[2] + 3_000.0 * weights[3]
     )
-    assert totals["person.age"] == pytest.approx(
+    assert totals["age"] == pytest.approx(
         (40 + 38) * weights[1] + (35 + 33) * weights[2] + (70 + 68) * weights[3]
     )
 
@@ -113,17 +113,17 @@ def test_structural_and_unknown_columns_are_not_input_mass(synthetic_efrs) -> No
     totals = TOOL.build_weighted_totals(synthetic_efrs)["totals"]
 
     # The weight vector is plumbing, not mass, even though the engine knows it.
-    assert "household.household_weight" not in totals
+    assert "household_weight" not in totals
     for structural in (
-        "person.person_id",
-        "person.person_household_id",
-        "person.person_benunit_id",
-        "benunit.benunit_id",
-        "household.household_id",
+        "person_id",
+        "person_household_id",
+        "person_benunit_id",
+        "benunit_id",
+        "household_id",
     ):
         assert structural not in totals
     # A pipeline scratch column the engine does not know is out of scope.
-    assert "person.microcosm_scratch_column" not in totals
+    assert "populace_scratch_column" not in totals
 
 
 def test_payload_pins_the_reference_identity_the_gate_records(
@@ -149,6 +149,8 @@ def test_payload_loads_as_a_gate_reference(
 
     from microcosm.build.uk_runtime import weighted_integrity
     from microcosm.build.uk_runtime.weighted_integrity import (
+        UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
+        UK_INPUT_MASS_REFERENCE_REGISTRY,
         UKInputMassParityPolicy,
         load_uk_input_mass_reference,
         uk_input_mass_parity_gate,
@@ -162,13 +164,15 @@ def test_payload_loads_as_a_gate_reference(
     # The reviewed 131-column digest is covered by the runtime regressions.
     monkeypatch.setattr(
         weighted_integrity,
-        "_validate_input_mass_reference",
-        lambda _reference: None,
+        "_input_mass_reference_evidence_sha256",
+        lambda _reference: UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
     )
+    descriptor = UK_INPUT_MASS_REFERENCE_REGISTRY["efrs-post-calibration"]
     reference = load_uk_input_mass_reference(path)
     identical = uk_input_mass_parity_gate(
         dict(reference.totals),
         reference,
+        descriptor=descriptor,
         policy=UKInputMassParityPolicy(
             relative_tolerance=0.0,
             minimum_reference_total=0.0,
@@ -177,6 +181,7 @@ def test_payload_loads_as_a_gate_reference(
     zeroed = uk_input_mass_parity_gate(
         {name: 0.0 for name in reference.totals},
         reference,
+        descriptor=descriptor,
         policy=UKInputMassParityPolicy(
             relative_tolerance=0.0,
             minimum_reference_total=0.0,

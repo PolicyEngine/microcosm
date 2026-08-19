@@ -70,6 +70,7 @@ from microcosm.build.gate_battery import (  # noqa: E402 - after the compat gate
     GatePhaseReport,
     GateStatus,
     evaluate_phase,
+    validate_gate_parameters,
 )
 from microcosm.build.gates import (  # noqa: E402 - after the compat gate
     FitWeightRecord,
@@ -159,6 +160,7 @@ __all__ = [
     "GateStatus",
     "GatesManifest",
     "evaluate_phase",
+    "validate_gate_parameters",
     "GeographySpineManifest",
     "GeographySpineSpec",
     "ReleaseContractManifest",

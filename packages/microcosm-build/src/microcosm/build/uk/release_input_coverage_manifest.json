@@ -458,6 +458,27 @@
   "weight_source": "household_weight"
  },
  "family_coverage": {
+  "hmrc_cgt_gains": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "calibration_permitted": false,
+   "effective_mass_requirements": {},
+   "fact_fence_id": "cgt_band_facts_policy_endogenous_proxy_conditioned",
+   "fenced_fact_count": 76,
+   "output_weight_kind": "importance",
+   "outputs": [
+    "capital_gains"
+   ],
+   "required_mass_change_reason": "Amounts-only capital gains redraw: household weights pass through unchanged and total household mass is conserved.",
+   "source_manifest": "cgt_source_stages.json",
+   "source_manifest_sha256": "16b68f1d222116278421b210d3d9de0d06edcdf25d68f5a29dbf0f52ca63384a",
+   "source_vintages": {
+    "hmrc_surface": "2023-24",
+    "mapped_build_period": "2023"
+   },
+   "stage": "hmrc_cgt_gains",
+   "status": "required_at_build"
+  },
   "hmrc_spi_income": {
    "band_measure": "hmrc_spi_assessable_income",
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
@@ -540,6 +561,57 @@
    },
    "spi_prior_national_household_mass_share": 0.5,
    "stage": "hmrc_spi_income",
+   "status": "required_at_build"
+  },
+  "regional_property_uprating": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "output_weight_kind": "importance",
+   "outputs": [],
+   "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
+   "rewrites": [
+    "main_residence_value",
+    "property_wealth"
+   ],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "c8eba47691c3e3b4abe833b2c2816acfc091c7039df5131e3768eb4fce393eb3",
+   "source_vintages": {
+    "source": "MHCLG dwellings and ONS UK House Price Index December 2025 regional average prices.",
+    "survey": "Public regional property reference"
+   },
+   "stage": "regional_property_uprating",
+   "status": "required_at_build"
+  },
+  "was_wealth": {
+   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
+   "base_candidate_tier": "frs",
+   "effective_mass_requirements": {},
+   "output_weight_kind": "importance",
+   "outputs": [
+    "owned_land",
+    "property_wealth",
+    "corporate_wealth",
+    "gross_financial_wealth",
+    "net_financial_wealth",
+    "main_residence_value",
+    "other_residential_property_value",
+    "non_residential_property_value",
+    "savings",
+    "num_vehicles",
+    "cash_isa",
+    "stocks_and_shares_isa",
+    "student_loan_balance"
+   ],
+   "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
+   "rewrites": [],
+   "source_manifest": "source_stages.json",
+   "source_manifest_sha256": "c8eba47691c3e3b4abe833b2c2816acfc091c7039df5131e3768eb4fce393eb3",
+   "source_vintages": {
+    "source": "Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed 2006-22 household tab.",
+    "survey": "Wealth and Assets Survey round 8"
+   },
+   "stage": "was_wealth",
    "status": "required_at_build"
   }
  },

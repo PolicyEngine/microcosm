@@ -10,6 +10,11 @@ from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.calibrate.solve import (
     CalibrationResult,
     TargetDiagnostic,
+    _target_loss_scale_options,
+    _target_loss_weight_options,
+    _validate_target_loss_cap,
+    _validate_target_loss_scales,
+    _validate_target_loss_weights,
     default_target_loss_scales,
     relative_error_loss,
 )
@@ -77,16 +82,72 @@ def score_targets(
             f"{score_weights.shape} vs {initial_weights.shape}."
         )
 
-    estimates = problem.estimates(score_weights)
-    scales = (
-        default_target_loss_scales(problem.target_vector)
-        if target_loss_scales is None
-        else np.asarray(target_loss_scales, dtype=np.float64)
+    target_loss_cap = _validate_target_loss_cap(target_loss_cap)
+    target_loss_weights_input = _validate_target_loss_weights(
+        target_loss_weights,
+        (len(targets),),
     )
+    target_loss_scales_input = (
+        None
+        if target_loss_scales is None
+        else _validate_target_loss_scales(
+            target_loss_scales,
+            (len(targets),),
+            targets=np.asarray([target.value for target in targets], dtype=np.float64),
+        )
+    )
+    if target_loss_weights_input is None:
+        aligned_target_loss_weights = np.ones(
+            problem.target_vector.shape,
+            dtype=np.float64,
+        )
+        loss_weights = None
+    else:
+        weights_by_key = {
+            target.key: weight
+            for target, weight in zip(
+                targets,
+                target_loss_weights_input,
+                strict=True,
+            )
+        }
+        aligned_target_loss_weights = _validate_target_loss_weights(
+            np.asarray(
+                [weights_by_key[target.key] for target in problem.targets],
+                dtype=np.float64,
+            ),
+            problem.target_vector.shape,
+        )
+        if aligned_target_loss_weights is None:  # pragma: no cover - guarded above
+            raise RuntimeError(
+                "Provided target loss weights were lost during alignment."
+            )
+        loss_weights = aligned_target_loss_weights
+
+    estimates = problem.estimates(score_weights)
+    if target_loss_scales_input is None:
+        scales = default_target_loss_scales(problem.target_vector)
+    else:
+        scales_by_key = {
+            target.key: scale
+            for target, scale in zip(
+                targets,
+                target_loss_scales_input,
+                strict=True,
+            )
+        }
+        scales = _validate_target_loss_scales(
+            np.asarray(
+                [scales_by_key[target.key] for target in problem.targets],
+                dtype=np.float64,
+            ),
+            problem.target_vector.shape,
+            targets=problem.target_vector,
+        )
     loss = relative_error_loss(
         estimates,
         problem.target_vector,
-        target_loss_weights=target_loss_weights,
+        target_loss_weights=loss_weights,
         target_loss_scales=scales,
         target_loss_cap=target_loss_cap,
     )
@@ -103,12 +164,22 @@ def score_targets(
         l0_lambda=0.0,
         n_nonzero=int((score_weights > prune_atol).sum()),
         closing_loss=loss,
+        target_loss_weights=aligned_target_loss_weights.copy(),
+        target_loss_scales=scales.copy(),
+        target_loss_cap=target_loss_cap,
         options={
             "method": "score_only",
             "target_loss_cap": float(target_loss_cap),
-            "target_loss_weights": "provided"
-            if target_loss_weights is not None
-            else "uniform",
+            "target_loss_weights": _target_loss_weight_options(
+                loss_weights,
+            ),
+            "target_loss_scales": _target_loss_scale_options(
+                scales,
+                kind="provided"
+                if target_loss_scales_input is not None
+                else "default_target",
+                target_loss_cap=target_loss_cap,
+            ),
             **dict(options or {}),
         },
         gate_open_probabilities=None,

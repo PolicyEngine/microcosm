@@ -1,0 +1,1 @@
+Materialize the certified exact-zero S-corporation income universe across the stacked US pool before whole-pool QBI reconciliation, and bind an exhaustive derive/seed/simulate input manifest into stacked checkpoint identity so missing late-stage inputs fail before long builds.

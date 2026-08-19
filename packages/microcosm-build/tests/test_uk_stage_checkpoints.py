@@ -8,6 +8,7 @@ whose content identity matches what was checkpointed.
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import pandas as pd
@@ -84,6 +85,22 @@ def test_round_trip_restores_metadata_and_content(tmp_path: Path) -> None:
     assert uk_time_period(predecessor.frame) == "2023"
 
 
+def test_uk_no_extension_checkpoint_keeps_its_schema_2_byte_golden(
+    tmp_path: Path,
+) -> None:
+    frame = _frame()
+    completed = _runtime(tmp_path).complete(
+        "retain",
+        frame,
+        metadata=uk_stage_metadata(frame),
+    )
+
+    assert completed.path.name == "000_retain.frame.h5"
+    assert hashlib.sha256(completed.path.read_bytes()).hexdigest() == (
+        "65952080dbebd4149051659c0b367a5384ff5ad9206a6f8d90b1dba89ff5b631"
+    )
+
+
 def test_checkpoint_without_frame_metadata_fails_closed(tmp_path: Path) -> None:
     frame = _frame()
     runtime = _runtime(tmp_path)
@@ -137,9 +154,7 @@ def test_nested_frame_metadata_round_trips_through_the_stage_record(
                 }
             ),
             "benunit": pd.DataFrame({"benunit_id": [11]}),
-            "household": pd.DataFrame(
-                {"household_id": [101], "household_weight": [10.0]}
-            ),
+            "household": pd.DataFrame({"household_id": [101]}),
         },
         EntitySchema(group_entities=("benunit", "household")),
         {"household": Weights(np.array([10.0], dtype=np.float64), WeightKind.DESIGN)},
@@ -186,9 +201,7 @@ def test_set_metadata_round_trips_with_an_unchanged_content_identity(
                 }
             ),
             "benunit": pd.DataFrame({"benunit_id": [11]}),
-            "household": pd.DataFrame(
-                {"household_id": [101], "household_weight": [10.0]}
-            ),
+            "household": pd.DataFrame({"household_id": [101]}),
         },
         EntitySchema(group_entities=("benunit", "household")),
         {"household": Weights(np.array([10.0], dtype=np.float64), WeightKind.DESIGN)},

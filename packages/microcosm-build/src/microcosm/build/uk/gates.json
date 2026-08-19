@@ -1,0 +1,263 @@
+{
+  "version": 1,
+  "country": "uk",
+  "policy": "The certified June UK national battery declared as data (microcosm#611): the two build preflights plus the terminal battery. Every gate carries its thresholds as entry parameters at exact certified or receipted values; microcosm#630 landed the weighted-integrity pair as reviewed parameter edits with receipts in the entry notes, and the weight-ratio fence keeps its exact certified June value (the #630 breach was an SPI allocation defect fixed upstream in microcosm#710). The #680 stochastic layer delivers the take-up signal gate; every gate the UK runs today is declared below.",
+  "phases": [
+    "preflight",
+    "terminal"
+  ],
+  "gates": [
+    {
+      "id": "uk_release_input_coverage_manifest_current",
+      "gate": "release_input_coverage",
+      "phase": "preflight",
+      "criticality": "release_blocking",
+      "parameters": {
+        "check": "manifest_current"
+      },
+      "notes": "Frameless preflight mirror of the US cheap preflight: the committed coverage manifest must match the engine's current variable surface, aborting before source stages on graph or reference drift."
+    },
+    {
+      "id": "uk_release_family_build_stages",
+      "gate": "source_coverage",
+      "phase": "preflight",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "notes": "Frameless preflight over the materialized stage names: every family the coverage manifest marks required_at_build must have its build stage scheduled before any stage runs."
+    },
+    {
+      "id": "uk_release_input_coverage",
+      "gate": "release_input_coverage",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "notes": "The release input-coverage contract over the built frame: required columns present and populated per the committed manifest resource in this package."
+    },
+    {
+      "id": "uk_degenerate_release_surface",
+      "gate": "degenerate_release_surface",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "reviewed_exclusions_resource": "degenerate_reviewed_exclusions.json"
+      },
+      "notes": "No constant non-structural columns on any entity table. Reviewed exclusions come from the committed schema-2 register (the microcosm#630 source-year adjudication landed there via microcosm#658, approval receipt with expiry included); the battery runs the same policy of record the terminal report resolves."
+    },
+    {
+      "id": "uk_zero_weight_strata",
+      "gate": "zero_weight_strata",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "declarations": [
+          {
+            "name": "june_spi_synthetic_base",
+            "selector": {
+              "household_is_capital_gains_clone": false,
+              "household_is_spi_synthetic": true
+            },
+            "maximum_zero_weight_rows": 100000,
+            "reason": "The certified June FRS-derived artifact ships 100,000 zero-weight SPI-synthetic non-capital-gains rows."
+          },
+          {
+            "name": "june_spi_synthetic_capital_gains",
+            "selector": {
+              "household_is_capital_gains_clone": true,
+              "household_is_spi_synthetic": true
+            },
+            "maximum_zero_weight_rows": 100000,
+            "reason": "The certified June FRS-derived artifact ships 100,000 zero-weight SPI-synthetic capital-gains-clone rows."
+          }
+        ]
+      },
+      "notes": "Zero household weight is legal only inside the two reviewed June SPI-synthetic strata, each capped at its shipped size."
+    },
+    {
+      "id": "uk_weight_ess",
+      "gate": "weight_ess",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "minimum_ess_fraction": 0.01
+      },
+      "notes": "Effective sample size of the positive household weights must stay above one percent of the positive-weight count (microcosm#609)."
+    },
+    {
+      "id": "uk_weight_ratio",
+      "gate": "weight_ratio",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "maximum_max_to_median_ratio": 1151.2542195939373
+      },
+      "notes": "Exact certified June measurement (max positive weight over positive median), an acceptance fence with no discretionary headroom. The microcosm#630 finding-2 breach (1590.53) was adjudicated NOT a re-baseline case: adversarial decomposition showed 11-12 SPI-synthetic clone rows from two donor lineages carried pathological inherited weights, fixed upstream by the per-stratum allocation in microcosm#710 (post-fix full-scale ratio well inside this fence). The fence held and stays at the June bound; raising it requires an explicit future adjudication with a receipted measurement, never loosen-to-pass."
+    },
+    {
+      "id": "uk_weights_audit",
+      "gate": "weights_audit",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "evidence_absent_blocks": true,
+      "notes": "Every fit-produced weight column carries a completed audit record. Armed by the SPI income stage; an absent audit is not a passing audit \u2014 and blocks every posture, not only release candidates: the legacy schema-3 path's strictness, ported during the #654 retirement (microcosm#691 review)."
+    },
+    {
+      "id": "uk_nonnegative_columns",
+      "gate": "nonnegative_columns",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "notes": "Every UK source-stage column declared in source_stages.json nonnegative_outputs must be finite and non-negative on the terminal frame; this makes the shared nonnegative column gate live for UK."
+    },
+    {
+      "id": "uk_support",
+      "gate": "support",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "support_bounds_resource": "was_wealth_support_bounds.json"
+      },
+      "notes": "Every WAS-imputed wealth output must remain inside the committed disclosure-safe donor support bounds. Exact donor ranges are used in-run for clipping; this release gate uses outward-rounded reviewed bounds so unit-record WAS minima and maxima are never committed."
+    },
+    {
+      "id": "uk_export_surface",
+      "gate": "export_surface",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "allowed_extra_columns": [
+          "benunit.child_benefit_opts_out",
+          "household.bus_fare_spending",
+          "household.bus_subsidy_spending",
+          "household.cash_isa",
+          "household.clone_index",
+          "household.constituency_code_oa",
+          "household.consumer_debt",
+          "household.electricity_consumption",
+          "household.gas_consumption",
+          "household.has_fuel_consumption",
+          "household.household_is_capital_gains_clone",
+          "household.household_is_spi_synthetic",
+          "household.la_code_oa",
+          "household.lsoa_code",
+          "household.mortgage_debt",
+          "household.msoa_code",
+          "household.num_vehicles",
+          "household.oa_code",
+          "household.property_purchased",
+          "household.rail_usage",
+          "household.region_code_oa",
+          "household.stocks_and_shares_isa",
+          "person.aa_category",
+          "person.age_started_or_accepted_current_education_or_training",
+          "person.attends_private_school_random_draw",
+          "person.charitable_investment_gifts",
+          "person.dla_m_category",
+          "person.dla_sc_category",
+          "person.esa_health_condition_proxy",
+          "person.esa_support_group_proxy",
+          "person.employment_sector",
+          "person.gift_aid",
+          "person.highest_education",
+          "person.is_before_universal_credit_qualifying_young_person_terminal_date",
+          "person.is_in_non_advanced_education",
+          "person.is_parent",
+          "person.legacy_jobseeker_proxy",
+          "person.pension_contributions_via_salary_sacrifice",
+          "person.pip_dl_category",
+          "person.pip_m_category",
+          "person.receives_benefits_in_own_right",
+          "person.salary_sacrifice_asked",
+          "person.salary_sacrifice_reported",
+          "person.sic_industry_division",
+          "person.student_loan_balance",
+          "person.student_loan_plan",
+          "person.would_claim_marriage_allowance",
+          "person.would_claim_scp"
+        ],
+        "reviewed_exclusions": {
+          "person.incapacity_benefit_reported": "The enhanced FRS stores this legacy reported-benefit input as an all-zero layer; the candidate must drop dead zero layers."
+        }
+      },
+      "notes": "Reviewed candidate-only fields from the June UK prototype (source provenance or genuine additional model inputs, not incumbent-surface losses) plus the one reviewed reference-side exclusion. The two hard-required columns that may never be waived stay a code-level guard, per the microcosm#327 rule that a parity comparison's registers are declared inputs. During the migration window the runtime merges the exclusion register with the legacy constant and the spec-pin tests hold the two equal; the register becomes solely load-bearing when the constant retires."
+    },
+    {
+      "id": "uk_take_up_signal",
+      "gate": "take_up_signal",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "maximum_share_deviation": 0.05
+      },
+      "notes": "Every contract-driven stochastic flag must be non-constant and have a weighted share within +/-0.05 of its contract target."
+    },
+    {
+      "id": "uk_brma_enum_domain",
+      "gate": "enum_domain",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "columns": [
+          "brma"
+        ]
+      },
+      "notes": "The household BRMA assignment must remain inside the PolicyEngine-UK brma enum domain."
+    },
+    {
+      "id": "uk_target_surface",
+      "gate": "target_surface",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "notes": "Candidate and incumbent calibration target surfaces must agree exactly; the gate takes no tunable parameters."
+    },
+    {
+      "id": "uk_target_fit",
+      "gate": "target_fit",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "max_abs_relative_error": 0.25
+      },
+      "notes": "Every calibration target within twenty-five percent absolute relative error, the certified June acceptance bound."
+    },
+    {
+      "id": "uk_input_mass_parity",
+      "gate": "input_mass_parity",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "reference": "efrs-post-calibration",
+        "reference_registry": {
+          "efrs-post-calibration": {
+            "identity": {
+              "filename": "enhanced_frs_2023_24.h5",
+              "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
+              "sha256": "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
+              "vintage": "2023_24"
+            },
+            "totals_sha256": "c36c015a60f796ad9199a4a5652706f5310909cb572b1c90092ef9df1fa7187e",
+            "scope_note": "Post-calibration eFRS production incumbent; structurally lacks the SPI clone channel, so SPI-channel-exclusive columns are comparable only through per-reference reviewed exclusions."
+          }
+        },
+        "relative_tolerance": 4.521811483823806,
+        "minimum_reference_total": 0.0,
+        "reviewed_exclusions_resource": "input_mass_reviewed_exclusions.json"
+      },
+      "notes": "Weighted input-mass parity against the active named reference in the registry, with reviewed exclusions scoped per reference so a channel-blind reference exclusion does not suppress comparison against a future channel-aware reference. The tolerance is the worst surviving measured drift at the reviewed floor, exact, with no headroom; the sole breach, charitable_investment_gifts at +15,168.8% on the post-#710 surface, is the per-reference exclusion. The 0.0 floor excludes only arithmetically meaningless zero-mass denominators. Totals stay uncommitted under the UKDS licence, supplied per-run and pinned by totals_sha256; missing sidecar evidence records evidence_absent. Totals keys are flat frame column names since the #611 A4 dedup; that digest re-freeze was keys-only against the #610 values (identity unchanged, values byte-identical). Sensitivity floor, recorded rather than silent (microcosm#706 review): the tolerance is the worst surviving measured drift, and that edge is currently set by a column whose deviation is explained (vintage plus SPI composition, microcosm#703's head-to-head receipt), so at this value the gate is a gross mass-loss/explosion fence rather than a regression detector \u2014 the compared population sits at median 0.24 and p90 0.63. Tightening runs through this register: each explained top drift that earns a receipt lets the tolerance re-mint at the worst unexplained survivor, with the full distribution and the exclusions-versus-tolerance tradeoff in experiments/630-uk-gate-adjudication-receipts.md."
+    },
+    {
+      "id": "uk_qrf_tail_concentration",
+      "gate": "tail_concentration",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "reviewed_exclusions_resource": "qrf_tail_reviewed_exclusions.json",
+        "top_k": 100,
+        "max_top_share": 0.9970712395200448,
+        "min_nonzero_records": 274
+      },
+      "notes": "Weighted tail-concentration audit of the QRF-imputed output columns derived from the HMRC source manifest. Thresholds sit at the measured edges from the microcosm#630 measurement pass: top_k 100 as the grid anchor, max_top_share at the exact measured maximum, and min_nonzero_records at the thinnest measured column, with no headroom. A future thinner column goes thin visibly in the signed details, never a silent pass. Reviewed exclusions live in the named register resource of this package."
+    }
+  ]
+}

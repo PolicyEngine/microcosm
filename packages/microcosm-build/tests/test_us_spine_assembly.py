@@ -307,6 +307,52 @@ def test_assemble_spines__rejects_shared_dtype_mismatch() -> None:
         )
 
 
+def test_assemble_spines__string_storage_mismatch_is_named_in_the_error() -> None:
+    """Divergent pandas string storages must be visible in the refusal.
+
+    Both python- and pyarrow-backed 'str' dtypes print identically under
+    str(); the first full-scale run failed with an error whose two sides both
+    read 'str'. The refusal must render repr so the storages are legible.
+    """
+
+    pytest.importorskip("pyarrow")
+
+    def _with_probe(frame: Frame, storage: str, value: str) -> Frame:
+        tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+        person = tables["person"]
+        person["stacked_probe_label"] = pd.Series(
+            [value] * len(person),
+            index=person.index,
+        ).astype(pd.StringDtype(storage=storage, na_value=np.nan))
+        return Frame(
+            tables,
+            US_SCHEMA,
+            {"household": frame.weights_for("household")},
+            frame.strata,
+        )
+
+    with pytest.raises(
+        ValueError, match="identical dtypes.*stacked_probe_label"
+    ) as excinfo:
+        assemble_spines(
+            {
+                "asec": _with_probe(_asec_frame(), "python", "x"),
+                "acs": _with_probe(_acs_frame(), "pyarrow", "y"),
+            },
+            household_mass_shares={"asec": 0.5, "acs": 0.5},
+        )
+    message = str(excinfo.value)
+    # The python-backed side names its storage explicitly; pandas omits the
+    # storage kwarg from the repr of the environment-default (pyarrow) side.
+    # Both reprs must appear and must differ — under str() both sides
+    # rendered as 'str' and the mismatch was unreadable.
+    asec_repr = repr(pd.StringDtype(storage="python", na_value=np.nan))
+    acs_repr = repr(pd.StringDtype(storage="pyarrow", na_value=np.nan))
+    assert asec_repr != acs_repr
+    assert asec_repr in message
+    assert acs_repr in message
+
+
 def test_assemble_spines__owns_support_provenance() -> None:
     asec = _asec_frame()
     tables = {entity: asec.table(entity).copy() for entity in asec.entities}

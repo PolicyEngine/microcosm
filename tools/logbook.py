@@ -94,7 +94,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     render.add_argument(
         "--rung",
-        help="Include only this Logbook rung token (f001, f010, or f100).",
+        help="Include only this Logbook rung token (f001, f004, f010, f025, or f100).",
     )
     render.add_argument(
         "--disposition",

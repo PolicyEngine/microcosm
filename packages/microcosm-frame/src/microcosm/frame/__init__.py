@@ -16,7 +16,14 @@ from microcosm.frame.accounting import (
     wsum,
 )
 from microcosm.frame.bundle import CONSERVE_MASS, DEFAULT_STRATUM, Frame
-from microcosm.frame.materialize import engine_tables
+from microcosm.frame.materialize import (
+    PyTablesBooleanMaterialization,
+    engine_tables,
+    materialize_nullable_booleans_for_pytables,
+    nullable_boolean_values_and_mask,
+    put_frame_table,
+    read_frame_table,
+)
 from microcosm.frame.rules import ExportContract, RulesEngine
 from microcosm.frame.schema import EntitySchema, LinkSpec, VariableMetadata
 from microcosm.frame.units import (
@@ -49,6 +56,7 @@ __all__ = [
     "LinkSpec",
     "MassChange",
     "MassChangeRecord",
+    "PyTablesBooleanMaterialization",
     "RulesEngine",
     "VariableMetadata",
     "WeightKind",
@@ -58,6 +66,10 @@ __all__ = [
     "engine_tables",
     "gini",
     "groupby_wsum",
+    "materialize_nullable_booleans_for_pytables",
+    "nullable_boolean_values_and_mask",
+    "put_frame_table",
+    "read_frame_table",
     "wmean",
     "wmedian",
     "wquantile",

@@ -1,5 +1,5 @@
 {
- "schema_version": 1,
+ "schema_version": 2,
  "description": "Reviewed QRF tail-concentration exclusions for the UK terminal battery (#609). Each entry maps a declared fit_weighted_qrf_stage* output column to a non-empty reason naming the tracked defect or the genuinely concentrated instrument. The shared gate reports dormant entries (columns absent from the declared surface) and FAILS stale ones (columns now below the concentration threshold), so this register cannot rot. Empty until an incident or adjudication earns an entry.",
  "exclusions": {}
 }

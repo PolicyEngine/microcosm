@@ -21,6 +21,7 @@ from microcosm.build import (
     load_country_spec,
 )
 from microcosm.build.trace import canonical_json_bytes
+from microcosm.build.uk_runtime import terminal_gates, weighted_integrity
 
 GOLDEN = Path(__file__).parent / "golden" / "be_country_spec.json"
 
@@ -218,6 +219,77 @@ class TestCountryStagePlan:
         with pytest.raises(ValueError, match="Unknown stage implementation"):
             country_stage_plan(spec, {name: (lambda frame: frame) for name in names})
 
+    def test_default_stage_selection_still_requires_all_declared_stages(self) -> None:
+        spec = load_country_spec("be")
+
+        with pytest.raises(ValueError, match="missing \\['clone_assign_communes'\\]"):
+            country_stage_plan(spec, {"silc_load": lambda frame: frame})
+
+    def test_explicit_stage_subset_uses_manifest_order(self) -> None:
+        spec = load_country_spec("be")
+        plan = country_stage_plan(
+            spec,
+            {
+                "silc_load": lambda frame: frame,
+                "clone_assign_communes": lambda frame: frame,
+            },
+            stage_names=("clone_assign_communes", "silc_load"),
+        )
+
+        assert [stage.name for stage in plan.stages] == [
+            "silc_load",
+            "clone_assign_communes",
+        ]
+
+    def test_explicit_stage_subset_refuses_empty_or_unknown_names(self) -> None:
+        spec = load_country_spec("be")
+        implementations = {
+            "silc_load": lambda frame: frame,
+            "clone_assign_communes": lambda frame: frame,
+        }
+
+        with pytest.raises(ValueError, match="stage_names must not be empty"):
+            country_stage_plan(spec, implementations, stage_names=())
+
+        with pytest.raises(ValueError, match="Unknown stage selection"):
+            country_stage_plan(
+                spec,
+                implementations,
+                stage_names=("silc_load", "silc_load_fallback"),
+            )
+
+
+class TestUKCountryPackage:
+    def test_spi_spine_adds_no_country_package_resources(self) -> None:
+        spec = load_country_spec("uk")
+
+        assert spec.resources == (
+            "cgt_source_stages.json",
+            "degenerate_reviewed_exclusions.json",
+            "efrs_parity_known_gaps.json",
+            "efrs_parity_reference.json",
+            "gates.json",
+            "brma_rent_counts.json",
+            "hmrc_income_release_gate_report.json",
+            "hmrc_income_replay_report.json",
+            "hmrc_income_source_stages.json",
+            "regional_land_values.json",
+            "source_stages.json",
+            "take_up_contract.json",
+            "input_mass_reviewed_exclusions.json",
+            "national_staging_build_record.json",
+            "qrf_tail_reviewed_exclusions.json",
+            "release_input_coverage_manifest.json",
+            "was_wealth_support_bounds.json",
+            "uk_local_target_census.json",
+        )
+
+    def test_uk_source_manifest_loads_eighteen_stages(self) -> None:
+        spec = load_country_spec("uk")
+
+        assert spec.sources is not None
+        assert len(spec.sources.stages) == 18
+
 
 class TestExistingPackagesGeneralize:
     """The loader is country-neutral: the US and UK packages load unchanged."""
@@ -236,16 +308,160 @@ class TestExistingPackagesGeneralize:
         spec = load_country_spec("uk")
         assert spec.country == "uk"
         assert spec.resources == (
+            "cgt_source_stages.json",
+            "degenerate_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
             "efrs_parity_reference.json",
+            "gates.json",
+            "brma_rent_counts.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
+            "regional_land_values.json",
+            "source_stages.json",
+            "take_up_contract.json",
             "input_mass_reviewed_exclusions.json",
             "national_staging_build_record.json",
             "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
+            "was_wealth_support_bounds.json",
             "uk_local_target_census.json",
+        )
+
+
+class TestUKGatesManifest:
+    """The UK battery declared as data (microcosm#611 increment 1).
+
+    Every threshold in ``uk/gates.json`` is pinned against the module
+    constant the legacy battery still runs on, so spec and code cannot
+    drift apart during the migration window (the constants retire when
+    the national build swaps onto the battery executor).
+    """
+
+    @pytest.fixture(scope="class")
+    def manifest(self):
+        return load_country_spec("uk").gates
+
+    def test_declares_the_two_uk_phases_in_order(self, manifest) -> None:
+        assert manifest is not None
+        assert manifest.phases == ("preflight", "terminal")
+
+    def test_declares_the_full_june_battery(self, manifest) -> None:
+        assert [gate.id for gate in manifest.gates] == [
+            "uk_release_input_coverage_manifest_current",
+            "uk_release_family_build_stages",
+            "uk_release_input_coverage",
+            "uk_degenerate_release_surface",
+            "uk_zero_weight_strata",
+            "uk_weight_ess",
+            "uk_weight_ratio",
+            "uk_weights_audit",
+            "uk_nonnegative_columns",
+            "uk_support",
+            "uk_export_surface",
+            "uk_take_up_signal",
+            "uk_brma_enum_domain",
+            "uk_target_surface",
+            "uk_target_fit",
+            "uk_input_mass_parity",
+            "uk_qrf_tail_concentration",
+        ]
+        # Legacy behaviour: every evaluated failure raises, so every
+        # declared entry blocks release.
+        assert all(g.criticality == "release_blocking" for g in manifest.gates)
+
+    def test_only_the_weights_audit_blocks_on_absent_evidence(self, manifest) -> None:
+        # "An absent audit is not a passing audit" — the retired schema-3
+        # path blocked every posture on a missing fit-weight audit, and the
+        # battery keeps that strictness via the entry flag (#654, #691
+        # review). No other entry opts out of the dev-posture leniency.
+        flagged = [g.id for g in manifest.gates if g.evidence_absent_blocks]
+        assert flagged == ["uk_weights_audit"]
+        assert all(g.not_applicable is None for g in manifest.gates)
+
+    def test_gate_names_are_country_neutral(self, manifest) -> None:
+        by_id = {gate.id: gate.gate for gate in manifest.gates}
+        # The two legacy names the bindings re-mint to the shared vocabulary.
+        assert by_id["uk_release_input_coverage"] == "release_input_coverage"
+        assert by_id["uk_qrf_tail_concentration"] == "tail_concentration"
+        assert not any(name.startswith("uk_") for name in by_id.values())
+
+    def test_thresholds_match_the_schema4_manifest(self, manifest) -> None:
+        params = {gate.id: gate.parameters for gate in manifest.gates}
+        assert params["uk_weight_ess"]["minimum_ess_fraction"] == 0.01
+        assert (
+            params["uk_weight_ratio"]["maximum_max_to_median_ratio"]
+            == 1_151.2542195939373
+        )
+        assert (
+            params["uk_input_mass_parity"]["relative_tolerance"]
+            == 4.521811483823806
+        )
+        assert params["uk_input_mass_parity"]["minimum_reference_total"] == 0.0
+        assert params["uk_qrf_tail_concentration"]["top_k"] == 100
+        assert (
+            params["uk_qrf_tail_concentration"]["max_top_share"]
+            == 0.9970712395200448
+        )
+        assert params["uk_qrf_tail_concentration"]["min_nonzero_records"] == 274
+        assert (
+            params["uk_target_fit"]["max_abs_relative_error"]
+            == terminal_gates.UK_MAX_TARGET_ABS_RELATIVE_ERROR
+        )
+
+    def test_zero_weight_declarations_match_the_june_strata(self, manifest) -> None:
+        params = {gate.id: gate.parameters for gate in manifest.gates}
+        declared = params["uk_zero_weight_strata"]["declarations"]
+        strata = terminal_gates.UK_DEFAULT_ZERO_WEIGHT_STRATA
+        assert len(declared) == len(strata)
+        for entry, stratum in zip(declared, strata, strict=True):
+            assert entry["name"] == stratum.name
+            assert dict(entry["selector"]) == stratum.selector
+            assert entry["maximum_zero_weight_rows"] == (
+                stratum.maximum_zero_weight_rows
+            )
+            assert entry["reason"] == stratum.reason
+
+    def test_export_surface_registers_match_the_reviewed_constants(
+        self, manifest
+    ) -> None:
+        params = {gate.id: gate.parameters for gate in manifest.gates}
+        export = params["uk_export_surface"]
+        assert (
+            export["allowed_extra_columns"]
+            == terminal_gates.UK_ALLOWED_EXTRA_EXPORT_COLUMNS
+        )
+        assert (
+            dict(export["reviewed_exclusions"])
+            == terminal_gates.UK_REVIEWED_EXPORT_EXCLUSIONS
+        )
+
+    def test_input_mass_reference_is_a_declared_pinned_input(self, manifest) -> None:
+        # The microcosm#327 rule: a parity gate's reference and exclusion
+        # register are declared per-country inputs, never implicit code.
+        params = {gate.id: gate.parameters for gate in manifest.gates}
+        input_mass = params["uk_input_mass_parity"]
+        assert input_mass["reference"] in input_mass["reference_registry"]
+        expected_registry = {
+            name: descriptor.spec_payload()
+            for name, descriptor in (
+                weighted_integrity.UK_INPUT_MASS_REFERENCE_REGISTRY.items()
+            )
+        }
+        assert input_mass["reference_registry"] == expected_registry
+        assert (
+            input_mass["reviewed_exclusions_resource"]
+            == weighted_integrity.UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE
+        )
+        qrf = params["uk_qrf_tail_concentration"]
+        assert (
+            qrf["reviewed_exclusions_resource"]
+            == weighted_integrity.UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE
+        )
+        degenerate = params["uk_degenerate_release_surface"]
+        assert (
+            degenerate["reviewed_exclusions_resource"]
+            == weighted_integrity.UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE
         )
 
 
@@ -276,6 +492,25 @@ class TestRefusals:
         files["gates.json"]["gates"][0]["gate"] = "vibes"
         package_dir = _write_package(tmp_path, files)
         with pytest.raises(ValueError, match="unknown gate function 'vibes'"):
+            load_country_spec(package_dir)
+
+    def test_non_bool_evidence_absent_blocks_is_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["gates.json"]["gates"][0]["evidence_absent_blocks"] = "yes"
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="evidence_absent_blocks must be"):
+            load_country_spec(package_dir)
+
+    def test_evidence_absent_blocks_on_an_excused_entry_is_refused(
+        self, tmp_path
+    ) -> None:
+        files = _minimal_package()
+        entry = files["gates.json"]["gates"][0]
+        entry.pop("parameters", None)
+        entry["not_applicable"] = "reviewed: no surface yet"
+        entry["evidence_absent_blocks"] = True
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="mutually exclusive"):
             load_country_spec(package_dir)
 
     def test_all_diagnostic_gates_are_refused(self, tmp_path) -> None:
@@ -318,6 +553,15 @@ class TestRefusals:
         files["gates.json"]["phases"] = ["terminal", "terminal"]
         package_dir = _write_package(tmp_path, files)
         with pytest.raises(ValueError, match="duplicate phase"):
+            load_country_spec(package_dir)
+
+    def test_unknown_gate_entry_key_is_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["gates.json"]["gates"][0]["paramters"] = {"within": 0.1}
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(
+            ValueError, match=r"gate entry 'fit' has unknown keys \['paramters'\]"
+        ):
             load_country_spec(package_dir)
 
     def test_not_applicable_with_parameters_is_refused(self, tmp_path) -> None:

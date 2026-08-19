@@ -14,6 +14,7 @@ from microcosm.build.uk_runtime import (
     SPI_INCOME_IMPUTATION_COLUMNS,
     SPI_PRIOR_MASS_CHANGE_REASON,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
+    build_uk_spi_support_channel,
     create_uk_spi_support_tables,
     fill_support_channel_from_source,
     replace_uk_spi_support_tables,
@@ -22,6 +23,7 @@ from microcosm.build.uk_runtime import (
     support_clone_index_column,
     support_source_id_column,
 )
+from microcosm.build.uk_runtime.terminal_gates import UKZeroWeightStratumDeclaration
 from microcosm.frame import MassChangeRecord, WeightKind
 
 
@@ -303,6 +305,14 @@ def test_replace_spi_support_preserves_quotas_and_allocates_real_mass() -> None:
         dead_spi.groupby(strata, dropna=False).size(),
         spi.groupby(strata, dropna=False).size(),
     )
+    incoming_base = dead.household[
+        ~dead.household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN]
+    ]
+    pd.testing.assert_series_equal(
+        result.household.groupby(strata, dropna=False)["household_weight"].sum(),
+        incoming_base.groupby(strata, dropna=False)["household_weight"].sum(),
+    )
+    assert spi.groupby(strata, dropna=False)["household_weight"].nunique().eq(1).all()
     assert len(result.mass_log) == 1
     record = result.mass_log[-1]
     assert record.entity == "household"
@@ -310,6 +320,88 @@ def test_replace_spi_support_preserves_quotas_and_allocates_real_mass() -> None:
     assert record.new_total == original_total
     assert record.declared_factor == 1.0
     assert record.reason == SPI_PRIOR_MASS_CHANGE_REASON
+
+
+def test_build_spi_support_channel_fresh_stack_allocates_region_mass() -> None:
+    prior_record = MassChangeRecord(
+        entity="household",
+        old_total=30.0,
+        new_total=60.0,
+        declared_factor=2.0,
+        reason="prior raw FRS calibration",
+    )
+
+    result = build_uk_spi_support_channel(
+        person=person_frame(),
+        benunit=benunit_frame(),
+        household=household_frame(),
+        spi_household_count=3,
+        seed=42,
+        source_year=2023,
+        strata_columns=("region",),
+        input_weight_kind=WeightKind.DESIGN,
+        mass_log=(prior_record,),
+        zero_weight_declarations=(
+            UKZeroWeightStratumDeclaration(
+                name="e7_spi_synthetic_preclone",
+                selector={HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN: True},
+                maximum_zero_weight_rows=3,
+                reason="synthetic test declaration",
+            ),
+        ),
+    )
+
+    assert result.household_weight_kind is WeightKind.IMPORTANCE
+    assert result.mass_log[:-1] == (prior_record,)
+    assert result.mass_log[-1].old_total == 60.0
+    assert result.mass_log[-1].new_total == 60.0
+    channel = support_channel_column("household")
+    base = result.household[result.household[channel] == BASE_FRS_SUPPORT_CHANNEL]
+    spi = result.household[result.household[channel] == SPI_SYNTHETIC_SUPPORT_CHANNEL]
+    assert base["household_weight"].sum() == pytest.approx(30.0)
+    assert spi["household_weight"].sum() == pytest.approx(30.0)
+    pd.testing.assert_series_equal(
+        result.household.groupby("region")["household_weight"].sum(),
+        household_frame().groupby("region")["household_weight"].sum(),
+    )
+
+
+def test_build_spi_support_channel_fails_on_undeclared_zero_weight_row() -> None:
+    with pytest.raises(ValueError, match="match no declared stratum"):
+        build_uk_spi_support_channel(
+            person=person_frame(),
+            benunit=benunit_frame(),
+            household=household_frame(),
+            spi_household_count=3,
+            zero_weight_declarations=(
+                UKZeroWeightStratumDeclaration(
+                    name="nonmatching",
+                    selector={HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN: False},
+                    maximum_zero_weight_rows=0,
+                    reason="synthetic test declaration",
+                ),
+            ),
+        )
+
+
+def test_build_spi_support_channel_fails_missing_positive_region_support() -> None:
+    with pytest.raises(ValueError, match="positive-mass UK base stratum"):
+        build_uk_spi_support_channel(
+            person=person_frame(),
+            benunit=benunit_frame(),
+            household=household_frame(),
+            spi_household_count=2,
+            seed=1,
+            strata_columns=("region",),
+            zero_weight_declarations=(
+                UKZeroWeightStratumDeclaration(
+                    name="e7_spi_synthetic_preclone",
+                    selector={HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN: True},
+                    maximum_zero_weight_rows=2,
+                    reason="synthetic test declaration",
+                ),
+            ),
+        )
 
 
 def test_replace_spi_support_builds_importance_pool_from_calibrated_base() -> None:
@@ -339,6 +431,100 @@ def test_replace_spi_support_builds_importance_pool_from_calibrated_base() -> No
     assert result.mass_log[-1].reason == SPI_PRIOR_MASS_CHANGE_REASON
     assert result.mass_log[-1].old_total == original_total
     assert result.mass_log[-1].new_total == original_total
+
+
+def _repeated_outlier_lineage_support():
+    """Two extreme donor lineages repeated across ten real-shaped clone strata."""
+
+    household_rows: list[dict[str, object]] = []
+    dead_source_ids: list[int] = []
+    person_rows: list[dict[str, int]] = []
+    benunit_rows: list[dict[str, int]] = []
+    next_household_id = 1
+    for clone_index in range(10):
+        for region, lineage, outlier_weight in (
+            ("LONDON", 11_852, 1_000.0),
+            ("SCOTLAND", 14_876, 800.0),
+        ):
+            for position in range(100):
+                household_id = next_household_id
+                next_household_id += 1
+                source_lineage = lineage if position == 0 else household_id
+                household_rows.append(
+                    {
+                        "household_id": household_id,
+                        "household_weight": outlier_weight if position == 0 else 1.0,
+                        "region": region,
+                        "clone_index": clone_index,
+                        "household_is_capital_gains_clone": False,
+                        "source_household_id": source_lineage,
+                    }
+                )
+                if position < 60:
+                    dead_source_ids.append(household_id)
+                person_rows.append(
+                    {
+                        "person_id": household_id,
+                        "person_household_id": household_id,
+                        "person_benunit_id": household_id,
+                    }
+                )
+                benunit_rows.append({"benunit_id": household_id})
+    return create_uk_spi_support_tables(
+        person=pd.DataFrame(person_rows),
+        benunit=pd.DataFrame(benunit_rows),
+        household=pd.DataFrame(household_rows),
+        selected_household_ids=dead_source_ids,
+        source_year=2023,
+    )
+
+
+def test_spi_prior_spreads_stratum_mass_instead_of_propagating_outliers() -> None:
+    """#630: selected descendants must not each inherit an extreme donor weight."""
+
+    dead = _repeated_outlier_lineage_support()
+    result = replace_uk_spi_support_tables(
+        person=dead.person,
+        benunit=dead.benunit,
+        household=dead.household,
+        seed=42,
+        source_year=2023,
+    )
+    channel = support_channel_column("household")
+    source_id = support_source_id_column("household")
+    spi = result.household[result.household[channel] == SPI_SYNTHETIC_SUPPORT_CHANNEL]
+    incoming_base = dead.household[
+        ~dead.household[HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN]
+    ]
+    incoming_weights = incoming_base.set_index("household_id")["household_weight"]
+    selected_source_weights = spi[source_id].map(incoming_weights).to_numpy(dtype=float)
+    old_total = float(incoming_weights.sum())
+
+    # Reconstruct the removed behavior: copy selected calibrated weights and
+    # normalize them once across the whole SPI channel. Seed 42 selects twelve
+    # descendants of the two extreme lineages, matching the real defect's
+    # 11-12-row shape, and the legacy prior breaches the certified June fence.
+    legacy = np.concatenate(
+        (
+            incoming_weights.to_numpy(dtype=float) * 0.5,
+            selected_source_weights
+            * (old_total * 0.5 / float(selected_source_weights.sum())),
+        )
+    )
+    legacy_median = float(np.median(legacy[legacy > 0.0]))
+    old_fence = 1151.2542195939373
+    assert int((legacy > old_fence * legacy_median).sum()) == 12
+    assert float(legacy.max() / legacy_median) > old_fence
+
+    fixed = result.household["household_weight"].to_numpy(dtype=float)
+    fixed_median = float(np.median(fixed[fixed > 0.0]))
+    assert float(fixed.max() / fixed_median) < old_fence
+    strata = ["clone_index", "household_is_capital_gains_clone", "region"]
+    assert spi.groupby(strata, dropna=False)["household_weight"].nunique().eq(1).all()
+    pd.testing.assert_series_equal(
+        result.household.groupby(strata, dropna=False)["household_weight"].sum(),
+        incoming_base.groupby(strata, dropna=False)["household_weight"].sum(),
+    )
 
 
 def test_replace_spi_support_corrects_rounding_residue_to_exact_mass() -> None:

@@ -30,6 +30,12 @@ All gate losses use the calibrator's capped weighted-MAPE helper
 `weighted_mean(min(abs((estimate − target) / scale), cap))` — scorers consume
 the same functions, so there is no calibrator-vs-scorer objective mismatch.
 
+How gates are *selected, batched, reported, and enforced* per country is the
+country-agnostic gate battery (`gate_battery.py`), with gate policy declared
+as data in each country package's `gates.json`. The consumer contract — what
+a country declares and what its build supplies — is
+[docs/gate-battery-contract.md](../../docs/gate-battery-contract.md).
+
 ## Target source contract
 
 Microcosm calibration targets are Ledger-owned. Production Microcosm builds must

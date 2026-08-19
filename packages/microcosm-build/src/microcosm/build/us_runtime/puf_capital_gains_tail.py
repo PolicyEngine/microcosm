@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,9 @@ from microcosm.build.us_runtime.puf_aggregate_records import (
 )
 from microcosm.build.us_runtime.puf_interest_components import (
     US_PUF_E19200_AGI_BANDS,
+    PufE19200AgiBand,
+    puf_e19200_agi_bands_runtime_identity,
+    puf_e19200_interest_components_asset_identity,
 )
 from microcosm.build.us_runtime.puf_support import (
     PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN,
@@ -40,25 +44,43 @@ __all__ = [
     "PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN",
     "PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN",
     "PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION",
+    "PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MAX_TOP_SHARE",
+    "PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS",
+    "PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_TOP_K",
     "PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS",
     "PUF_CAPITAL_GAINS_TAIL_POSITIVE_MASS_FIVE_X_TARGET",
     "PUF_CAPITAL_GAINS_TAIL_QUANTILE",
+    "PUF_CAPITAL_GAINS_TAIL_REFERENCE_QUANTILE",
+    "PUF_CAPITAL_GAINS_TAIL_ASEC_CAPITAL_GAINS_TOPCODE",
+    "PUF_CAPITAL_GAINS_TAIL_SUPPORT_CONTRACT_VERSION",
     "PUF_CAPITAL_GAINS_TAIL_STAGE_NAME",
     "PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL",
     "PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS",
     "PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN",
+    "PUF_CAPITAL_GAINS_TAIL_WORSENING_SHARE_TOLERANCE",
     "assert_puf_capital_gains_tail_survives_selection",
     "puf_capital_gains_tail_concentration_gate",
+    "puf_capital_gains_tail_concentration_controls_identity",
+    "puf_capital_gains_tail_execution_inputs_identity",
+    "puf_capital_gains_tail_spec_identity",
+    "puf_capital_gains_tail_support_contract_identity",
+    "puf_capital_gains_tail_terminal_support_receipt",
+    "resolve_puf_capital_gains_tail_execution_inputs",
     "select_puf_capital_gains_tail_donors",
     "transfer_puf_capital_gains_tail",
     "validate_puf_capital_gains_tail_manifest",
+    "validate_puf_capital_gains_tail_terminal_support_receipt",
     "write_puf_capital_gains_tail_manifest",
 ]
 
 PUF_CAPITAL_GAINS_TAIL_STAGE_NAME = "capital_gains_tail_transfer"
 PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL = PUF_TAX_DETAIL_SUPPORT_CHANNEL
-PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION = 1
+PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION = 2
+PUF_CAPITAL_GAINS_TAIL_SUPPORT_CONTRACT_VERSION = 1
 PUF_CAPITAL_GAINS_TAIL_POSITIVE_MASS_FIVE_X_TARGET = 1_270_900_000_000.0
+PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_TOP_K = 100
+PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MAX_TOP_SHARE = 0.75
+PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS = 500
 
 # microcosm#567 diagnostic geometry: recipient predictors are bounded by the
 # $1,999,998 ASEC capital-gains topcode. Weighted q99.5 of positive donor
@@ -66,8 +88,8 @@ PUF_CAPITAL_GAINS_TAIL_POSITIVE_MASS_FIVE_X_TARGET = 1_270_900_000_000.0
 # above the recipient ceiling. This is a declared source stratum boundary,
 # not a calibration knob or target multiplier.
 PUF_CAPITAL_GAINS_TAIL_QUANTILE = 0.995
-_NEXT_REFERENCE_QUANTILE = 0.999
-_ASEC_CAPITAL_GAINS_TOPCODE = 1_999_998.0
+PUF_CAPITAL_GAINS_TAIL_REFERENCE_QUANTILE = 0.999
+PUF_CAPITAL_GAINS_TAIL_ASEC_CAPITAL_GAINS_TOPCODE = 1_999_998.0
 
 PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS = (
     "short_term_capital_gains",
@@ -128,20 +150,151 @@ _RECIPIENT_AGI_PROXY_COLUMNS = (
     "short_term_capital_gains",
     "long_term_capital_gains_before_response",
 )
-_AGI_UPPER_BOUNDS = np.asarray(
-    [
-        band.upper_bound
-        for band in US_PUF_E19200_AGI_BANDS
-        if band.upper_bound is not None
-    ],
-    dtype=np.float64,
-)
+
+
+def puf_capital_gains_tail_support_contract_identity(
+    agi_bands: Sequence[PufE19200AgiBand] | None = None,
+) -> dict[str, object]:
+    """Return the immutable per-filing-status recipient-support doctrine."""
+
+    resolved_agi_bands = tuple(
+        US_PUF_E19200_AGI_BANDS if agi_bands is None else agi_bands
+    )
+    return {
+        "contract_id": "puf_capital_gains_tail_per_filing_status_support",
+        "version": PUF_CAPITAL_GAINS_TAIL_SUPPORT_CONTRACT_VERSION,
+        "partition": "filing_status",
+        "filing_statuses": [
+            {"filing_status_code": code, "filing_status": name}
+            for code, name in _FILING_STATUS_BY_CODE.items()
+        ],
+        "candidate_universe": (
+            "unique single-tax-unit PUF-detail recipient households with "
+            "weight capacity for the global maximum assigned tail-donor weight"
+        ),
+        "required_minimum": "selected_q99_5_tail_donor_count_in_filing_status",
+        "insufficient_support_action": (
+            "skip_entire_filing_status_attachment_without_widening"
+        ),
+        "agi_band_policy": (
+            "nearest_band_first_then_all_agi_bands_within_filing_status"
+        ),
+        "agi_band_count": len(resolved_agi_bands),
+    }
+
+
+def puf_capital_gains_tail_spec_identity(
+    spec: PufAggregateDisaggregationSpec | None = None,
+) -> dict[str, object]:
+    """Return the exact resolved aggregate-disaggregation input to tail selection."""
+
+    resolved = (
+        load_default_puf_aggregate_disaggregation_spec() if spec is None else spec
+    )
+    resolved.validate()
+    return {
+        "enabled": resolved.enabled,
+        "forbes_top_tail": resolved.forbes_top_tail,
+        "source": resolved.source,
+        "aggregate_recids": list(resolved.aggregate_recids),
+        "synthetic_recid_start": resolved.synthetic_recid_start,
+        "screened_fields": list(resolved.screened_fields),
+        "synthetic_tail_support_eligible": (resolved.synthetic_tail_support_eligible),
+        "buckets": [
+            {
+                "recid": recid,
+                "description": bucket.description,
+                "agi_lower": bucket.agi_lower,
+                "agi_upper": bucket.agi_upper,
+                "synthetic_agi_upper": bucket.synthetic_agi_upper,
+            }
+            for recid, bucket in sorted(resolved.buckets.items())
+        ],
+    }
+
+
+def puf_capital_gains_tail_concentration_controls_identity() -> dict[str, object]:
+    """Return the explicit selected-tail and produced-frame gate controls."""
+
+    return {
+        "schema_version": 2,
+        "selection_quantile": PUF_CAPITAL_GAINS_TAIL_QUANTILE,
+        "selection_comparison": "strictly_greater_than",
+        "reference_quantile": PUF_CAPITAL_GAINS_TAIL_REFERENCE_QUANTILE,
+        "recipient_capital_gains_topcode": (
+            PUF_CAPITAL_GAINS_TAIL_ASEC_CAPITAL_GAINS_TOPCODE
+        ),
+        "positive_mass_five_x_target": (
+            PUF_CAPITAL_GAINS_TAIL_POSITIVE_MASS_FIVE_X_TARGET
+        ),
+        "worsening_share_tolerance": (PUF_CAPITAL_GAINS_TAIL_WORSENING_SHARE_TOLERANCE),
+        "ordered_recipient_agi_proxy_columns": list(_RECIPIENT_AGI_PROXY_COLUMNS),
+        "ordered_joint_vector_columns": list(_JOINT_VECTOR_COLUMNS),
+        "recipient_owned_candidate_overlap": sorted(_RECIPIENT_OWNED_CANDIDATE_OVERLAP),
+        "top_k": PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_TOP_K,
+        "max_top_share": PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MAX_TOP_SHARE,
+        "min_nonzero_records": (
+            PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS
+        ),
+        "reviewed_exclusions": {},
+    }
+
+
+def resolve_puf_capital_gains_tail_execution_inputs() -> tuple[
+    PufAggregateDisaggregationSpec,
+    tuple[PufE19200AgiBand, ...],
+]:
+    """Resolve once the exact spec and SOI bands consumed by one tail run."""
+
+    spec = load_default_puf_aggregate_disaggregation_spec()
+    spec.validate()
+    return spec, tuple(US_PUF_E19200_AGI_BANDS)
+
+
+def puf_capital_gains_tail_execution_inputs_identity(
+    *,
+    spec: PufAggregateDisaggregationSpec | None = None,
+    agi_bands: Sequence[PufE19200AgiBand] | None = None,
+) -> dict[str, object]:
+    """Bind the data assets and controls read by the tail callback."""
+
+    if spec is None or agi_bands is None:
+        default_spec, default_agi_bands = (
+            resolve_puf_capital_gains_tail_execution_inputs()
+        )
+        resolved_spec = default_spec if spec is None else spec
+        resolved_agi_bands = (
+            default_agi_bands if agi_bands is None else tuple(agi_bands)
+        )
+    else:
+        resolved_spec = spec
+        resolved_agi_bands = tuple(agi_bands)
+    soi_asset = puf_e19200_interest_components_asset_identity()
+    runtime_agi_bands = puf_e19200_agi_bands_runtime_identity(resolved_agi_bands)
+    if runtime_agi_bands["agi_bands"] != soi_asset["agi_bands"]:
+        raise ValueError(
+            "PUF capital-gains tail runtime SOI AGI bands differ from the "
+            "content-bound packaged asset."
+        )
+    return {
+        "aggregate_disaggregation_spec": puf_capital_gains_tail_spec_identity(
+            resolved_spec
+        ),
+        "soi_e19200_agi_bands": {
+            **soi_asset,
+            "runtime_agi_bands": runtime_agi_bands,
+        },
+        "concentration_gate": (
+            puf_capital_gains_tail_concentration_controls_identity()
+        ),
+    }
 
 
 def select_puf_capital_gains_tail_donors(
     donor: pd.DataFrame,
     *,
     spec: PufAggregateDisaggregationSpec | None = None,
+    agi_bands: Sequence[PufE19200AgiBand] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, object]]:
     """Select the declared weighted-positive ST+LT tail stratum."""
 
@@ -155,8 +308,13 @@ def select_puf_capital_gains_tail_donors(
     missing = sorted(required - set(donor.columns))
     if missing:
         raise ValueError(f"PUF capital-gains tail donor missing columns: {missing}.")
-    resolved_spec = spec or load_default_puf_aggregate_disaggregation_spec()
+    resolved_spec = (
+        load_default_puf_aggregate_disaggregation_spec() if spec is None else spec
+    )
     resolved_spec.validate()
+    resolved_agi_bands = tuple(
+        US_PUF_E19200_AGI_BANDS if agi_bands is None else agi_bands
+    )
 
     numeric = donor.copy()
     for column in required:
@@ -196,18 +354,20 @@ def select_puf_capital_gains_tail_donors(
     next_reference_boundary = _weighted_quantile(
         combined[positive],
         weights[positive],
-        _NEXT_REFERENCE_QUANTILE,
+        PUF_CAPITAL_GAINS_TAIL_REFERENCE_QUANTILE,
     )
-    if boundary > _ASEC_CAPITAL_GAINS_TOPCODE:
+    if boundary > PUF_CAPITAL_GAINS_TAIL_ASEC_CAPITAL_GAINS_TOPCODE:
         raise ValueError(
             "PUF capital-gains q99.5 boundary exceeds the measured ASEC "
-            f"recipient topcode: {boundary} > {_ASEC_CAPITAL_GAINS_TOPCODE}."
+            "recipient topcode: "
+            f"{boundary} > {PUF_CAPITAL_GAINS_TAIL_ASEC_CAPITAL_GAINS_TOPCODE}."
         )
-    if next_reference_boundary <= _ASEC_CAPITAL_GAINS_TOPCODE:
+    if next_reference_boundary <= PUF_CAPITAL_GAINS_TAIL_ASEC_CAPITAL_GAINS_TOPCODE:
         raise ValueError(
             "PUF capital-gains diagnostic geometry changed: weighted-positive "
-            f"q{_NEXT_REFERENCE_QUANTILE}={next_reference_boundary} no longer "
-            f"exceeds the ASEC recipient topcode {_ASEC_CAPITAL_GAINS_TOPCODE}."
+            f"q{PUF_CAPITAL_GAINS_TAIL_REFERENCE_QUANTILE}="
+            f"{next_reference_boundary} no longer exceeds the ASEC recipient "
+            f"topcode {PUF_CAPITAL_GAINS_TAIL_ASEC_CAPITAL_GAINS_TOPCODE}."
         )
 
     # The stratum is strictly above the declared boundary. This follows the
@@ -225,11 +385,12 @@ def select_puf_capital_gains_tail_donors(
         tail[PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN].to_numpy(
             dtype=np.float64,
             copy=False,
-        )
+        ),
+        agi_bands=resolved_agi_bands,
     )
     tail[_TAIL_AGI_BAND_INDEX_COLUMN] = band_index
     tail[_TAIL_AGI_BAND_LABEL_COLUMN] = [
-        US_PUF_E19200_AGI_BANDS[index].label for index in band_index
+        resolved_agi_bands[index].label for index in band_index
     ]
     tail.sort_values("tax_unit_id", kind="mergesort", inplace=True)
     tail.reset_index(drop=True, inplace=True)
@@ -247,9 +408,9 @@ def select_puf_capital_gains_tail_donors(
         "quantile": PUF_CAPITAL_GAINS_TAIL_QUANTILE,
         "comparison": "strictly_greater_than",
         "realized_boundary": float(boundary),
-        "next_reference_quantile": _NEXT_REFERENCE_QUANTILE,
+        "next_reference_quantile": PUF_CAPITAL_GAINS_TAIL_REFERENCE_QUANTILE,
         "next_reference_boundary": float(next_reference_boundary),
-        "recipient_topcode": _ASEC_CAPITAL_GAINS_TOPCODE,
+        "recipient_topcode": PUF_CAPITAL_GAINS_TAIL_ASEC_CAPITAL_GAINS_TOPCODE,
         "eligible_positive_record_count": int(positive.sum()),
         "eligible_positive_weight": float(weights[positive].sum()),
         "eligible_positive_mass": eligible_positive_mass,
@@ -294,6 +455,10 @@ def puf_capital_gains_tail_concentration_gate(
     return tail_concentration_gate(
         values,
         {column: resolved_weights for column in values},
+        top_k=PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_TOP_K,
+        max_top_share=PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MAX_TOP_SHARE,
+        min_nonzero_records=(PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS),
+        reviewed_exclusions={},
     )
 
 
@@ -393,14 +558,16 @@ def assert_puf_capital_gains_tail_survives_selection(
 #: weight splitting and changed summation order move shares by ULPs; a
 #: strict > would fail 0.84 -> 0.8400000000000001. Anything below this is
 #: numerical noise, not a worsening.
-_WORSENING_SHARE_TOLERANCE = 1e-9
+PUF_CAPITAL_GAINS_TAIL_WORSENING_SHARE_TOLERANCE = 1e-9
+# Retained for the low-level comparator regression and private callers.
+_WORSENING_SHARE_TOLERANCE = PUF_CAPITAL_GAINS_TAIL_WORSENING_SHARE_TOLERANCE
 
 
 def _raw_top_share_receipts(
     values_by_column: Mapping[str, np.ndarray],
     weights: np.ndarray,
     *,
-    top_k: int = 100,
+    top_k: int | None = None,
 ) -> dict[str, dict[str, object]]:
     """Measure every column's weighted top-share raw — no thin-column skip.
 
@@ -411,6 +578,9 @@ def _raw_top_share_receipts(
     as a worsening from zero. The comparator must see the raw geometry.
     """
 
+    resolved_top_k = (
+        PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_TOP_K if top_k is None else top_k
+    )
     weight_vector = np.asarray(weights, dtype=np.float64)
     receipts: dict[str, dict[str, object]] = {}
     for column, values in values_by_column.items():
@@ -427,7 +597,7 @@ def _raw_top_share_receipts(
         carriers = int(masked_mass.size)
         total = float(masked_mass.sum())
         if total > 0.0:
-            top = np.sort(masked_mass)[::-1][:top_k]
+            top = np.sort(masked_mass)[::-1][:resolved_top_k]
             share = float(top.sum() / total)
         else:
             share = 0.0
@@ -467,7 +637,9 @@ def _stage_attributable_concentration_failures(
         pre_share = float(pre.get("top_share", 0.0))
         post_share = float(post_receipts[column]["top_share"])
         over = column in over_threshold
-        worsened = post_share > pre_share + _WORSENING_SHARE_TOLERANCE
+        worsened = (
+            post_share > pre_share + PUF_CAPITAL_GAINS_TAIL_WORSENING_SHARE_TOLERANCE
+        )
         receipts[column] = {
             "pre_stage_top_share": pre_share,
             "post_stage_top_share": post_share,
@@ -493,6 +665,7 @@ def transfer_puf_capital_gains_tail(
     *,
     seed: int,
     spec: PufAggregateDisaggregationSpec | None = None,
+    agi_bands: Sequence[PufE19200AgiBand] | None = None,
 ) -> tuple[Frame, dict[str, object]]:
     """Split PUF households and transfer exact joint donor-tail vectors."""
 
@@ -510,25 +683,31 @@ def transfer_puf_capital_gains_tail(
     if not isinstance(seed, (int, np.integer)) or int(seed) < 0:
         raise ValueError("PUF capital-gains tail seed must be a nonnegative integer.")
 
-    resolved_spec = spec or load_default_puf_aggregate_disaggregation_spec()
-    tail, selection = select_puf_capital_gains_tail_donors(
+    resolved_spec = (
+        load_default_puf_aggregate_disaggregation_spec() if spec is None else spec
+    )
+    resolved_agi_bands = tuple(
+        US_PUF_E19200_AGI_BANDS if agi_bands is None else agi_bands
+    )
+    selected_tail, selection = select_puf_capital_gains_tail_donors(
         donor,
         spec=resolved_spec,
+        agi_bands=resolved_agi_bands,
     )
     donor_weight_total = float(pd.to_numeric(donor["weight"], errors="raise").sum())
     if not np.isfinite(donor_weight_total) or donor_weight_total <= 0.0:
         raise ValueError("PUF donor total weight must be positive and finite.")
     frame_household_weight_total = frame.weights_for("household").total
     design_weight_normalization = frame_household_weight_total / donor_weight_total
-    assigned_weights = (
-        tail["weight"].to_numpy(dtype=np.float64) * design_weight_normalization
+    selected_assigned_weights = (
+        selected_tail["weight"].to_numpy(dtype=np.float64) * design_weight_normalization
     )
-    if not (assigned_weights > 0.0).all():
+    if not (selected_assigned_weights > 0.0).all():
         raise ValueError("Every selected PUF tail donor must receive positive mass.")
 
     concentration = puf_capital_gains_tail_concentration_gate(
-        tail,
-        weights=assigned_weights,
+        selected_tail,
+        weights=selected_assigned_weights,
     )
     if not concentration.passed:
         raise ValueError(
@@ -538,13 +717,40 @@ def transfer_puf_capital_gains_tail(
 
     candidates = _recipient_candidates(
         frame,
-        maximum_transfer_weight=float(assigned_weights.max()),
+        maximum_transfer_weight=float(selected_assigned_weights.max()),
         seed=int(seed),
+        agi_bands=resolved_agi_bands,
     )
+    recipient_support = _recipient_support_receipt(
+        selected_tail,
+        candidates,
+        agi_bands=resolved_agi_bands,
+    )
+    attached_codes = {
+        int(stratum["filing_status_code"])
+        for stratum in recipient_support["strata"]
+        if stratum["status"] == "attached"
+    }
+    attached_mask = (
+        pd.to_numeric(selected_tail["filing_status_code"], errors="raise")
+        .astype("int64")
+        .isin(attached_codes)
+        .to_numpy()
+    )
+    if not attached_mask.any():
+        insufficient = recipient_support["insufficient_support_strata"]
+        raise ValueError(
+            "PUF capital-gains tail no_attachable_strata: every selected "
+            "filing-status stratum has insufficient support; "
+            f"insufficient_support={insufficient}."
+        )
+    tail = selected_tail.loc[attached_mask].reset_index(drop=True)
+    assigned_weights = selected_assigned_weights[attached_mask]
     assignments = _assign_tail_donors(
         tail,
         assigned_weights=assigned_weights,
         candidates=candidates,
+        agi_bands=resolved_agi_bands,
     )
     # Fidelity is asserted by construction (microcosm#570 review): every
     # joint-vector column in every assignment must equal the SELECTED
@@ -621,6 +827,10 @@ def transfer_puf_capital_gains_tail(
         tail[_TAIL_COMBINED_COLUMN].to_numpy(dtype=np.float64),
         tail["weight"].to_numpy(dtype=np.float64),
     )
+    selected_donor_tail_distribution = _distribution_receipt(
+        selected_tail[_TAIL_COMBINED_COLUMN].to_numpy(dtype=np.float64),
+        selected_tail["weight"].to_numpy(dtype=np.float64),
+    )
     signed_reconciliation: dict[str, dict[str, float]] = {}
     for column in (
         "short_term_capital_gains",
@@ -678,7 +888,12 @@ def transfer_puf_capital_gains_tail(
             "frame_household_weight_total": frame_household_weight_total,
             "design_weight_normalization": float(design_weight_normalization),
             "assigned_tail_weight": float(assigned_weights.sum()),
+            "selected_tail_weight": float(selected_assigned_weights.sum()),
+            "skipped_tail_weight": float(
+                selected_assigned_weights.sum() - assigned_weights.sum()
+            ),
         },
+        "recipient_support": recipient_support,
         "joint_vector_columns": list(_JOINT_VECTOR_COLUMNS),
         "joint_vector_policy": {
             "amount_scale": 1.0,
@@ -691,6 +906,7 @@ def transfer_puf_capital_gains_tail(
         "carrier_reconciliation": carrier_reconciliation,
         "tail_distribution_receipts": {
             "donor": donor_tail_distribution,
+            "selected_donor": selected_donor_tail_distribution,
             "frame_transferred": frame_tail_distribution,
             "frame_before_stage": before_distribution,
             "frame_after_stage": after_distribution,
@@ -737,16 +953,289 @@ def write_puf_capital_gains_tail_manifest(
     return hashlib.sha256(output.read_bytes()).hexdigest()
 
 
+def _validate_recipient_support_receipt(
+    receipt: object,
+    *,
+    records: Sequence[Mapping[str, object]] | None,
+    selected_donor_count: int | None,
+) -> None:
+    if not isinstance(receipt, Mapping):
+        raise ValueError(
+            "PUF capital-gains tail manifest recipient support must be an object."
+        )
+    support = dict(receipt)
+    claimed = support.pop("sha256", None)
+    actual = _canonical_sha256(support)
+    if claimed != actual:
+        raise ValueError(
+            "PUF capital-gains tail recipient-support SHA mismatch: "
+            f"claimed {claimed!r}, computed {actual!r}."
+        )
+    expected_fields = {
+        "contract",
+        "candidate_count",
+        "selected_donor_count",
+        "attached_donor_count",
+        "skipped_donor_count",
+        "attached_stratum_count",
+        "insufficient_support_stratum_count",
+        "not_applicable_stratum_count",
+        "insufficient_support_strata",
+        "strata",
+    }
+    if set(support) != expected_fields:
+        raise ValueError(
+            "PUF capital-gains tail recipient-support receipt schema mismatch."
+        )
+    if support["contract"] != puf_capital_gains_tail_support_contract_identity():
+        raise ValueError(
+            "PUF capital-gains tail recipient-support contract identity changed."
+        )
+
+    def nonnegative_integer(field: str) -> int:
+        value = support.get(field)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+            raise ValueError(
+                "PUF capital-gains tail recipient-support "
+                f"{field} must be a nonnegative integer."
+            )
+        return value
+
+    strata = support.get("strata")
+    if not isinstance(strata, list) or len(strata) != len(_FILING_STATUS_BY_CODE):
+        raise ValueError(
+            "PUF capital-gains tail recipient-support strata must enumerate "
+            "all five filing statuses exactly once."
+        )
+    expected_stratum_fields = {
+        "filing_status_code",
+        "filing_status",
+        "status",
+        "observed_count",
+        "required_minimum",
+        "attached_donor_count",
+        "skipped_donor_count",
+    }
+    required_total = 0
+    observed_total = 0
+    attached_total = 0
+    skipped_total = 0
+    attached_strata = 0
+    insufficient: list[str] = []
+    not_applicable = 0
+    attached_by_code: dict[int, int] = {}
+    for (expected_code, expected_name), raw_stratum in zip(
+        _FILING_STATUS_BY_CODE.items(),
+        strata,
+        strict=True,
+    ):
+        if not isinstance(raw_stratum, Mapping) or set(raw_stratum) != (
+            expected_stratum_fields
+        ):
+            raise ValueError(
+                "PUF capital-gains tail recipient-support stratum schema mismatch."
+            )
+        stratum = dict(raw_stratum)
+        if (
+            stratum["filing_status_code"] != expected_code
+            or stratum["filing_status"] != expected_name
+        ):
+            raise ValueError(
+                "PUF capital-gains tail recipient-support filing-status order "
+                "or identity changed."
+            )
+        counts: dict[str, int] = {}
+        for field in (
+            "observed_count",
+            "required_minimum",
+            "attached_donor_count",
+            "skipped_donor_count",
+        ):
+            value = stratum[field]
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(
+                    "PUF capital-gains tail recipient-support stratum counts "
+                    "must be nonnegative integers."
+                )
+            counts[field] = value
+        observed = counts["observed_count"]
+        required = counts["required_minimum"]
+        attached = counts["attached_donor_count"]
+        skipped = counts["skipped_donor_count"]
+        status = stratum["status"]
+        if required == 0:
+            valid = status == "not_applicable" and attached == skipped == 0
+            not_applicable += 1
+        elif observed < required:
+            valid = (
+                status == "insufficient_support"
+                and attached == 0
+                and skipped == required
+            )
+            insufficient.append(expected_name)
+        else:
+            valid = status == "attached" and attached == required and skipped == 0
+            attached_strata += 1
+        if not valid:
+            raise ValueError(
+                "PUF capital-gains tail recipient-support status/count "
+                f"arithmetic is inconsistent for {expected_name}."
+            )
+        required_total += required
+        observed_total += observed
+        attached_total += attached
+        skipped_total += skipped
+        attached_by_code[expected_code] = attached
+
+    if nonnegative_integer("candidate_count") != observed_total:
+        raise ValueError(
+            "PUF capital-gains tail recipient-support candidate count does not "
+            "equal its strata."
+        )
+    receipt_selected = nonnegative_integer("selected_donor_count")
+    if receipt_selected != required_total or (
+        selected_donor_count is not None and receipt_selected != selected_donor_count
+    ):
+        raise ValueError(
+            "PUF capital-gains tail recipient-support selected donor count does "
+            "not equal its declared requirement."
+        )
+    expected_summary = {
+        "attached_donor_count": attached_total,
+        "skipped_donor_count": skipped_total,
+        "attached_stratum_count": attached_strata,
+        "insufficient_support_stratum_count": len(insufficient),
+        "not_applicable_stratum_count": not_applicable,
+    }
+    for field, expected in expected_summary.items():
+        if nonnegative_integer(field) != expected:
+            raise ValueError(
+                "PUF capital-gains tail recipient-support summary arithmetic "
+                f"is inconsistent for {field}."
+            )
+    if support.get("insufficient_support_strata") != insufficient:
+        raise ValueError(
+            "PUF capital-gains tail insufficient-support stratum names changed."
+        )
+    if records is not None:
+        record_counts: Counter[int] = Counter()
+        for record in records:
+            if not isinstance(record, Mapping):
+                raise ValueError(
+                    "PUF capital-gains tail manifest records must contain objects."
+                )
+            try:
+                code = int(record["donor_filing_status_code"])
+                name = str(record["donor_filing_status"])
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError(
+                    "PUF capital-gains tail record filing status is malformed."
+                ) from error
+            if _FILING_STATUS_BY_CODE.get(code) != name:
+                raise ValueError(
+                    "PUF capital-gains tail record filing-status identity changed."
+                )
+            record_counts[code] += 1
+        if dict(record_counts) != {
+            code: count for code, count in attached_by_code.items() if count
+        }:
+            raise ValueError(
+                "PUF capital-gains tail attached records do not equal the "
+                "recipient-support status counts."
+            )
+
+
+def puf_capital_gains_tail_terminal_support_receipt(
+    manifest: Mapping[str, object],
+) -> dict[str, object]:
+    """Project one validated tail-support receipt into sealed terminal gates."""
+
+    validate_puf_capital_gains_tail_manifest(manifest)
+    payload: dict[str, object] = {
+        "artifact_kind": "populace_puf_capital_gains_tail_terminal_support",
+        "tail_manifest_schema_version": PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION,
+        "tail_manifest_sha256": manifest["manifest_sha256"],
+        "recipient_support": json.loads(
+            json.dumps(manifest["recipient_support"], allow_nan=False)
+        ),
+    }
+    payload["sha256"] = _canonical_sha256(payload)
+    return payload
+
+
+def validate_puf_capital_gains_tail_terminal_support_receipt(
+    receipt: Mapping[str, object],
+) -> str:
+    """Fail closed on a mutated terminal projection of tail support."""
+
+    if not isinstance(receipt, Mapping):
+        raise ValueError("PUF capital-gains tail terminal support must be an object.")
+    payload = dict(receipt)
+    claimed = payload.pop("sha256", None)
+    if set(payload) != {
+        "artifact_kind",
+        "tail_manifest_schema_version",
+        "tail_manifest_sha256",
+        "recipient_support",
+    }:
+        raise ValueError("PUF capital-gains tail terminal support schema mismatch.")
+    if (
+        payload["artifact_kind"] != "populace_puf_capital_gains_tail_terminal_support"
+        or payload["tail_manifest_schema_version"]
+        != PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION
+    ):
+        raise ValueError("PUF capital-gains tail terminal support identity changed.")
+    tail_sha = payload["tail_manifest_sha256"]
+    if (
+        not isinstance(tail_sha, str)
+        or len(tail_sha) != 64
+        or any(character not in "0123456789abcdef" for character in tail_sha)
+    ):
+        raise ValueError(
+            "PUF capital-gains tail terminal support manifest SHA is malformed."
+        )
+    _validate_recipient_support_receipt(
+        payload["recipient_support"],
+        records=None,
+        selected_donor_count=None,
+    )
+    actual = _canonical_sha256(payload)
+    if claimed != actual:
+        raise ValueError(
+            "PUF capital-gains tail terminal-support SHA mismatch: "
+            f"claimed {claimed!r}, computed {actual!r}."
+        )
+    return actual
+
+
 def validate_puf_capital_gains_tail_manifest(
     manifest: Mapping[str, object],
 ) -> str:
     """Validate all manifest hashes and return the canonical payload SHA-256."""
 
+    if not isinstance(manifest, Mapping):
+        raise ValueError("PUF capital-gains tail manifest must be an object.")
     payload = dict(manifest)
     claimed = payload.pop("manifest_sha256", None)
+    if (
+        payload.get("artifact_kind") != "populace_puf_capital_gains_tail_transfer"
+        or payload.get("schema_version")
+        != PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION
+        or payload.get("stage") != PUF_CAPITAL_GAINS_TAIL_STAGE_NAME
+    ):
+        raise ValueError(
+            "PUF capital-gains tail manifest artifact/schema/stage identity changed."
+        )
     records = payload.get("records")
     if not isinstance(records, list):
         raise ValueError("PUF capital-gains tail manifest records must be a list.")
+    record_count = payload.get("record_count")
+    if (
+        isinstance(record_count, bool)
+        or not isinstance(record_count, int)
+        or record_count != len(records)
+    ):
+        raise ValueError("PUF capital-gains tail manifest record count changed.")
     donor_records_sha256 = _canonical_sha256(_donor_record_projection(records))
     if payload.get("donor_records_sha256") != donor_records_sha256:
         raise ValueError(
@@ -761,6 +1250,23 @@ def validate_puf_capital_gains_tail_manifest(
             f"claimed {payload.get('assignment_sha256')!r}, "
             f"computed {assignment_sha256!r}."
         )
+    boundary = payload.get("boundary")
+    if not isinstance(boundary, Mapping):
+        raise ValueError("PUF capital-gains tail manifest boundary is malformed.")
+    selected_donor_count = boundary.get("tail_record_count")
+    if (
+        isinstance(selected_donor_count, bool)
+        or not isinstance(selected_donor_count, int)
+        or selected_donor_count <= 0
+    ):
+        raise ValueError(
+            "PUF capital-gains tail manifest selected donor count is malformed."
+        )
+    _validate_recipient_support_receipt(
+        payload.get("recipient_support"),
+        records=records,
+        selected_donor_count=selected_donor_count,
+    )
     actual = _canonical_sha256(payload)
     if claimed != actual:
         raise ValueError(
@@ -775,7 +1281,11 @@ def _recipient_candidates(
     *,
     maximum_transfer_weight: float,
     seed: int,
+    agi_bands: Sequence[PufE19200AgiBand] | None = None,
 ) -> pd.DataFrame:
+    resolved_agi_bands = tuple(
+        US_PUF_E19200_AGI_BANDS if agi_bands is None else agi_bands
+    )
     person = frame.table("person")
     household = frame.table("household")
     tax_unit = frame.table("tax_unit")
@@ -880,10 +1390,11 @@ def _recipient_candidates(
         )
     puf_tax_units["recipient_agi_proxy"] = proxy_values.to_numpy(dtype=np.float64)
     puf_tax_units["recipient_agi_band_index"] = _agi_band_indices(
-        puf_tax_units["recipient_agi_proxy"].to_numpy(dtype=np.float64)
+        puf_tax_units["recipient_agi_proxy"].to_numpy(dtype=np.float64),
+        agi_bands=resolved_agi_bands,
     )
     puf_tax_units["recipient_agi_band"] = [
-        US_PUF_E19200_AGI_BANDS[index].label
+        resolved_agi_bands[index].label
         for index in puf_tax_units["recipient_agi_band_index"]
     ]
     puf_tax_units["recipient_household_source_id"] = puf_tax_units[
@@ -907,12 +1418,103 @@ def _recipient_candidates(
     return puf_tax_units.reset_index(drop=True)
 
 
+def _recipient_support_receipt(
+    tail: pd.DataFrame,
+    candidates: pd.DataFrame,
+    *,
+    agi_bands: Sequence[PufE19200AgiBand] | None = None,
+) -> dict[str, object]:
+    """Count the declared support universe before any status is attached."""
+
+    donor_codes = pd.to_numeric(tail["filing_status_code"], errors="raise").astype(
+        "int64"
+    )
+    candidate_codes = pd.to_numeric(
+        candidates["recipient_filing_status_code"],
+        errors="raise",
+    ).astype("int64")
+    unknown_donor_codes = sorted(set(donor_codes) - set(_FILING_STATUS_BY_CODE))
+    unknown_candidate_codes = sorted(set(candidate_codes) - set(_FILING_STATUS_BY_CODE))
+    if unknown_donor_codes or unknown_candidate_codes:
+        raise ValueError(
+            "PUF capital-gains tail support audit found unknown filing-status "
+            f"codes: donors={unknown_donor_codes}, "
+            f"candidates={unknown_candidate_codes}."
+        )
+    if candidates["recipient_household_id"].duplicated().any():
+        raise ValueError(
+            "PUF capital-gains tail support candidates must be unique households."
+        )
+
+    required_counts = donor_codes.value_counts().to_dict()
+    observed_counts = candidate_codes.value_counts().to_dict()
+    strata: list[dict[str, object]] = []
+    for code, name in _FILING_STATUS_BY_CODE.items():
+        required = int(required_counts.get(code, 0))
+        observed = int(observed_counts.get(code, 0))
+        if required == 0:
+            status = "not_applicable"
+            attached = 0
+            skipped = 0
+        elif observed < required:
+            status = "insufficient_support"
+            attached = 0
+            skipped = required
+        else:
+            status = "attached"
+            attached = required
+            skipped = 0
+        strata.append(
+            {
+                "filing_status_code": code,
+                "filing_status": name,
+                "status": status,
+                "observed_count": observed,
+                "required_minimum": required,
+                "attached_donor_count": attached,
+                "skipped_donor_count": skipped,
+            }
+        )
+
+    insufficient = [
+        str(stratum["filing_status"])
+        for stratum in strata
+        if stratum["status"] == "insufficient_support"
+    ]
+    payload: dict[str, object] = {
+        "contract": puf_capital_gains_tail_support_contract_identity(agi_bands),
+        "candidate_count": int(len(candidates)),
+        "selected_donor_count": int(len(tail)),
+        "attached_donor_count": int(
+            sum(int(stratum["attached_donor_count"]) for stratum in strata)
+        ),
+        "skipped_donor_count": int(
+            sum(int(stratum["skipped_donor_count"]) for stratum in strata)
+        ),
+        "attached_stratum_count": int(
+            sum(stratum["status"] == "attached" for stratum in strata)
+        ),
+        "insufficient_support_stratum_count": len(insufficient),
+        "not_applicable_stratum_count": int(
+            sum(stratum["status"] == "not_applicable" for stratum in strata)
+        ),
+        "insufficient_support_strata": insufficient,
+        "strata": strata,
+    }
+    payload["sha256"] = _canonical_sha256(payload)
+    return payload
+
+
 def _assign_tail_donors(
     tail: pd.DataFrame,
     *,
     assigned_weights: np.ndarray,
     candidates: pd.DataFrame,
+    agi_bands: Sequence[PufE19200AgiBand] | None = None,
 ) -> pd.DataFrame:
+    resolved_agi_bands = tuple(
+        US_PUF_E19200_AGI_BANDS if agi_bands is None else agi_bands
+    )
     if len(tail) != len(assigned_weights):
         raise ValueError("Assigned tail weights must align with donor rows.")
     queues: dict[tuple[int, int], list[int]] = {}
@@ -945,7 +1547,7 @@ def _assign_tail_donors(
         donor_band = int(donor_row[_TAIL_AGI_BAND_INDEX_COLUMN])
         candidate_index: int | None = None
         for band in sorted(
-            range(len(US_PUF_E19200_AGI_BANDS)),
+            range(len(resolved_agi_bands)),
             key=lambda value: (abs(value - donor_band), value),
         ):
             queue = queues.get((filing_status_code, band))
@@ -1368,6 +1970,10 @@ def _frame_capital_gains_concentration_gate(frame: Frame) -> GateResult:
     return tail_concentration_gate(
         values,
         {column: weights for column in values},
+        top_k=PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_TOP_K,
+        max_top_share=PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MAX_TOP_SHARE,
+        min_nonzero_records=(PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MIN_NONZERO_RECORDS),
+        reviewed_exclusions={},
     )
 
 
@@ -1750,11 +2356,19 @@ def _assignment_record_projection(
     return [{key: record[key] for key in keys} for record in records]
 
 
-def _agi_band_indices(values: Sequence[float]) -> np.ndarray:
+def _agi_band_indices(
+    values: Sequence[float],
+    *,
+    agi_bands: Sequence[PufE19200AgiBand] = US_PUF_E19200_AGI_BANDS,
+) -> np.ndarray:
     numeric = np.asarray(values, dtype=np.float64)
     if numeric.ndim != 1 or not np.isfinite(numeric).all():
         raise ValueError("PUF tail AGI values must be one-dimensional and finite.")
-    return np.searchsorted(_AGI_UPPER_BOUNDS, numeric, side="right")
+    upper_bounds = np.asarray(
+        [band.upper_bound for band in agi_bands if band.upper_bound is not None],
+        dtype=np.float64,
+    )
+    return np.searchsorted(upper_bounds, numeric, side="right")
 
 
 def _weighted_quantile(

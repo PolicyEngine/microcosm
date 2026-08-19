@@ -6,7 +6,7 @@ the pinned eFRS incumbent, and the current staging candidate, plus top-k
 weighted mass share and carrier count for every declared QRF output. This
 tool produces those numbers so they can be posted on #578 and the gate
 boundaries set at the measured edge with no discretionary headroom — the
-same discipline that pinned ``UK_MAX_TO_MEDIAN_WEIGHT_RATIO``.
+same discipline that pinned the schema-4 weight-ratio threshold.
 
 It is a diagnostic recorder only: it never gates, and release builds do not
 run it. Each ``--h5`` must be a UK national single-year artifact (person,
@@ -48,11 +48,11 @@ from microcosm.build.uk_runtime.hmrc_source_contract import (
     uk_hmrc_weighted_qrf_output_columns,
 )
 from microcosm.build.uk_runtime.national_build import load_uk_national_frame
+from microcosm.build.uk_runtime.was_wealth import UK_WAS_WEALTH_HOUSEHOLD_OUTPUT_COLUMNS
 from microcosm.build.uk_runtime.weighted_integrity import (
-    uk_dataset_input_mass_totals,
+    uk_input_mass_totals,
     uk_qrf_tail_concentration_columns,
 )
-from microcosm.frame import engine_tables
 
 DEFAULT_TOP_K_GRID = (10, 100, 500, 1000)
 # CD171-ResearchDataHandling §5.2.1: cells based on one or two cases are never
@@ -61,6 +61,7 @@ DEFAULT_TOP_K_GRID = (10, 100, 500, 1000)
 # 30; raise this with --sdc-minimum-count when a study's Special Conditions
 # (EUL clause 3) require it.
 DEFAULT_SDC_MINIMUM_COUNT = 10
+UK_WAS_HOUSEHOLD_WEIGHTED_INTEGRITY_COLUMNS = UK_WAS_WEALTH_HOUSEHOLD_OUTPUT_COLUMNS
 
 
 def _parse_args() -> argparse.Namespace:
@@ -188,13 +189,10 @@ def _measure(
     minimum_count: int,
 ) -> dict[str, object]:
     frame, _provenance = load_uk_national_frame(path)
-    # The gate helpers are deliberately duck-typed (#611 owns their Frame
-    # typing); the materialized mapping satisfies them today.
-    tables = engine_tables(frame)
-    totals = uk_dataset_input_mass_totals(tables)
+    totals = uk_input_mass_totals(frame)
     declared = uk_hmrc_weighted_qrf_output_columns()
     values, weights, surface = uk_qrf_tail_concentration_columns(
-        tables,
+        frame,
         output_columns=declared,
     )
     qrf_tail = {
@@ -206,19 +204,31 @@ def _measure(
         )
         for column in sorted(values)
     }
+    household_values, household_weights = household_tail_concentration_columns(frame)
+    household_tail = {
+        column: _tail_measurements(
+            household_values[column],
+            household_weights[column],
+            top_k_grid,
+            minimum_count=minimum_count,
+        )
+        for column in sorted(household_values)
+    }
     return {
         "path": str(path.resolve()),
         "filename": path.name,
         "sha256": _sha256(path),
         "size_bytes": path.stat().st_size,
         "entity_rows": {
-            "person": len(tables["person"]),
-            "benunit": len(tables["benunit"]),
-            "household": len(tables["household"]),
+            "person": frame.n("person"),
+            "benunit": frame.n("benunit"),
+            "household": frame.n("household"),
         },
         "input_mass_totals": dict(sorted(totals.items())),
         "qrf_surface": surface,
         "qrf_tail": qrf_tail,
+        "household_qrf_surface": "was_wealth",
+        "household_qrf_tail": household_tail,
         "input_mass_reference_template": {
             "schema_version": 1,
             "identity": {
@@ -230,6 +240,25 @@ def _measure(
             "totals": dict(sorted(totals.items())),
         },
     }
+
+
+def household_tail_concentration_columns(
+    frame,
+    output_columns=UK_WAS_HOUSEHOLD_WEIGHTED_INTEGRITY_COLUMNS,
+) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    household = frame.table("household")
+    weights = frame.weights_for("household").values
+    values: dict[str, np.ndarray] = {}
+    aligned_weights: dict[str, np.ndarray] = {}
+    for column in output_columns:
+        if column not in household.columns:
+            continue
+        values[column] = np.asarray(
+            household[column],
+            dtype=np.float64,
+        )
+        aligned_weights[column] = np.asarray(weights, dtype=np.float64)
+    return values, aligned_weights
 
 
 def main() -> int:

@@ -20,6 +20,7 @@ tilt are documented follow-ups in the resource file.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -37,6 +38,7 @@ from microcosm.build.source_runtime import (
 
 __all__ = [
     "CapitalGainDistributionShares",
+    "capital_gain_distribution_shares_asset_identity",
     "load_capital_gain_distribution_shares",
     "split_us_component_by_share_from_manifest",
 ]
@@ -119,9 +121,31 @@ def load_capital_gain_distribution_shares() -> CapitalGainDistributionShares:
     """Load and validate the packaged SOCA-derived share resource."""
 
     path = files("microcosm.build.us") / f"{_SHARES_RESOURCE_NAME}.json"
-    return CapitalGainDistributionShares.from_dict(
-        json.loads(path.read_text(encoding="utf-8"))
-    )
+    return _capital_gain_distribution_shares_from_bytes(path.read_bytes())
+
+
+def _capital_gain_distribution_shares_from_bytes(
+    payload: bytes,
+) -> CapitalGainDistributionShares:
+    """Resolve validated share semantics from the exact bytes being bound."""
+
+    return CapitalGainDistributionShares.from_dict(json.loads(payload.decode("utf-8")))
+
+
+def capital_gain_distribution_shares_asset_identity() -> dict[str, object]:
+    """Bind the exact packaged bytes and resolved Schedule-D share semantics."""
+
+    path = files("microcosm.build.us") / f"{_SHARES_RESOURCE_NAME}.json"
+    payload = path.read_bytes()
+    resolved = _capital_gain_distribution_shares_from_bytes(payload)
+    return {
+        "asset": f"microcosm.build.us/{_SHARES_RESOURCE_NAME}.json",
+        "asset_sha256": hashlib.sha256(payload).hexdigest(),
+        "schedule_d_cgd_share_of_lt_net_gains": (
+            resolved.schedule_d_cgd_share_of_lt_net_gains
+        ),
+        "national_anchor_ty2015": dict(resolved.anchor),
+    }
 
 
 def split_us_component_by_share_from_manifest(

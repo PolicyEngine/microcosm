@@ -1,0 +1,1 @@
+Add the f025 (25%) probe rung to the stacked ladder grammar: sample-fraction validator, release-ID pattern, Logbook rung vocabulary, and the live-store rung constraint migration. f025 is the largest rung that fits 128 GB local hardware, for memory-curve probes and pre-full battery reads.

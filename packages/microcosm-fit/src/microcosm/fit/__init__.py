@@ -67,6 +67,12 @@ def _assert_frame_compatible(version: str, required: tuple[int, int]) -> None:
 
 _assert_frame_compatible(_frame_version, _REQUIRED_FRAME_SERIES)
 
+from microcosm.fit.cache import (  # noqa: E402 - after the compatibility gate
+    QRFCacheKey,
+    cache_path,
+    load_fitted_qrf_cache,
+    save_fitted_qrf_cache,
+)
 from microcosm.fit.model import (  # noqa: E402 - after the compatibility gate
     DESIGN_WEIGHTS,
     EXPLICIT_WEIGHTS,
@@ -141,6 +147,10 @@ __all__ = [
     "QRFChainState",
     "QRFChainStepResult",
     "Regime",
+    "QRFCacheKey",
+    "cache_path",
+    "load_fitted_qrf_cache",
+    "save_fitted_qrf_cache",
     "DEFAULT_N_ESTIMATORS",
     "DEFAULT_ZERO_ATOL",
     "fit",
