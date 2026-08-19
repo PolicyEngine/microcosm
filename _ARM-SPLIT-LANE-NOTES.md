@@ -159,3 +159,21 @@ that owns each arm.
   allocator magazines at process start.
 - Next: rerun under the same hard monitor, requiring both a complete verdict
   and kernel `ru_maxrss` below 20 GiB before accepting evidence.
+- Excluded conservative-guard run: allocator pressure relief reduced the same
+  baseline-to-candidate handoff peak to 21,202,223,104 bytes (19.746 GiB),
+  below the true 20-GiB limit, but the deliberately lower 19.5-GiB guard still
+  terminated before candidate family 1. No verdict from that run is evidence.
+- Root load profile: with allocator controls but before the loader correction,
+  loading the eligibility checkpoint alone peaked at 20,950,433,792 bytes
+  (19.512 GiB). `load_frame_checkpoint` built local tables and then invoked the
+  public `Frame` constructor, which defensively copied every table even though
+  the loader exclusively owned them.
+- Done: commit `3ca43c9a` adds a private loader-owned Frame construction path;
+  ordinary callers retain the public defensive-copy contract and all Frame
+  invariants still run. The identical load-only profile now peaks at
+  7,531,757,568 bytes (7.014 GiB). Focused public-copy, loader-owned identity,
+  Frame revalidation, byte-identical checkpoint round-trip, and bound-metadata
+  tests all pass, as do Ruff and formatting checks.
+- Next: run the complete eligibility gate with the 19.5-GiB stop guard; accept
+  it only with complete 32-family/118-target/74-money evidence and kernel
+  `ru_maxrss` below 20 GiB.
