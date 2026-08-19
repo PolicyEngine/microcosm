@@ -71,6 +71,14 @@ def main(argv: list[str]) -> None:
                                 module,
                                 seeds.source_inventory_sha256((module,))[:16],
                             )
+                    import base64
+                    from importlib.util import find_spec
+
+                    spec = find_spec("microcosm.calibrate.solve")
+                    raw = spec.loader.get_data(spec.origin)
+                    print("SOLVE origin", spec.origin)
+                    print("SOLVE bytes", len(raw))
+                    print("SOLVE b64", base64.b64encode(raw).decode("ascii"))
     finally:
         loader.sha256_json = real
 
