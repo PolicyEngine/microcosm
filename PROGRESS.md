@@ -1,48 +1,30 @@
-# Progress
+# Progress: microcosm #722
 
 ## State
 
-Microcosm #516 whole-row donor outlier screen is complete on
-`mortgage-donor-outlier-screen` (rebased onto `origin/main` after the #515
-interim carve merged as #525). The `puf_tax_detail` donor now drops tax units
-whose grouped raw mortgage interest reaches $10M before the #515 carve
-(pinned-artifact effect: 3,066 rows, weight 3,684 of ~161M, removing $2.947T
-of phantom mortgage-interest mass), with the checkpoint schema bumped to v3
-so post-carve pre-screen checkpoints rebuild.
+Implementation is in progress on `passive-pass-through-722`, based on
+`origin/main` at `9c20c1d2`. The verified #530 QBI branch chain was inspected
+and is not used as a base because its tip still has the retired `populace.*`
+namespace and `packages/populace-*` layout. Only the required QBI v3 concepts
+will be ported into the current `microcosm.*` tree.
 
 ## Done
 
-- Confirmed a clean starting worktree at `aef1c56`.
-- Read the repository guidance and established the #515 donor carve as the
-  screen's required downstream boundary.
-- Started source-level audits of every donor-frame consumer, checkpoint
-  validation, row-count pins, and existing donor-fact summaries.
-- Attempted the requested GitNexus impact workflow; the managed filesystem
-  denied its global registry write. Its local index also exposed a broad
-  `build/` ignore mismatch, so the completed impact audit uses direct source
-  call sites and tests.
-- Added `US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING = 10_000_000.0` with the
-  structural rationale and pinned-artifact receipts.
-- Added a whole-row screen on grouped raw person `home_mortgage_interest`
-  after tax-unit assembly, before the #515 carve, with retained-index reset.
-- Confirmed no downstream consumer pairs donor rows to the original HDF arrays
-  or carries a stale donor-length vector; values and weights always originate
-  from the same screened frame.
-- Bumped the primary QRF checkpoint schema from v2 to v3 and made the stale
-  checkpoint regression track the live constant while retaining literal-v1
-  corruptions.
-- Added regression coverage for the exact grouped boundary, whole-row removal,
-  retained/carved $5M row, raw-$10.5M pre-carve ordering, and constant.
-- Requested suites pass: PUF support/QRF 53; plan/gates 195; fiscal targets
-  139; microcosm-data 138 with 1 skip. The directly affected tail-bound suite
-  adds 12 passes. Ruff format/check and `git diff --check` are clean.
-- Wrote `SOL_516_REPORT.md` with the exact seam, consumer-by-consumer file:line
-  audit, expected 208,611-row real-artifact effect, verification results, count
-  sweep, and deliberately untouched surfaces.
+- Read `CLAUDE.md` and established the PR-CI/certification and journal
+  contracts.
+- Confirmed the primary checkout has unrelated untracked paths and left it
+  untouched.
+- Created the requested isolated worktree at
+  `.claude/worktrees/passive-722` from current `origin/main`.
+- Attempted the GitNexus exploration workflow; no GitNexus MCP resources or
+  tools are configured, so source and Git-history inspection are the fallback.
 
 ## Next
 
-- PR #527 review cycle, then merge. After both #525 and #527: rebuild the
-  base/release; the mortgage critical-fit ratchet (0.20 -> 0.15) waits on a
-  run that holds per `us_critical_targets.py`.
-- Root record-level ETL carve stays open on microcosm#515.
+- Map the minimal QBI v3 resource, assumptions-build, assignment, RNG, and
+  validation surfaces onto the renamed tree.
+- Derive the SCF conditional cells from the pre-verified local inputs and add
+  the provisional evidence resource.
+- Implement and test simulation version 4 while preserving v1-v3 byte output.
+- Run restricted replay if the declared PUF artifact is present, then run the
+  full workspace tests, lint, contract sweeps, and write the final report.
