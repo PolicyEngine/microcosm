@@ -13,7 +13,7 @@ import hashlib
 import json
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
@@ -54,6 +54,20 @@ from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights, wquantile
 from microcosm.frame.schema import EntitySchema
 
 QRF: Any | None = None
+
+
+class _ChoiceGenerator(Protocol):
+    """Narrow stream surface shared by NumPy and broker generator leases."""
+
+    def choice(
+        self,
+        a: object,
+        size: object = None,
+        replace: bool = True,
+        p: object = None,
+        axis: int = 0,
+        shuffle: bool = True,
+    ) -> object: ...
 
 __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
@@ -543,6 +557,7 @@ def clone_us_frame_for_puf_support(
     channels: Sequence[str] = _DEFAULT_SUPPORT_CHANNELS,
     clone_attachment_fraction: float | None = None,
     clone_attachment_seed: int | None = None,
+    attachment_rng: _ChoiceGenerator | None = None,
 ) -> Frame:
     """Clone a US frame into support channels for PUF detail imputation.
 
@@ -693,6 +708,7 @@ def clone_us_frame_for_puf_support(
             result,
             fraction=clone_attachment_fraction,
             seed=clone_attachment_seed,
+            rng=attachment_rng,
         )
         validate_assembly_provenance(
             result,
@@ -712,6 +728,7 @@ def _attach_clone_arm_to_seeded_sample(
     *,
     fraction: float,
     seed: int,
+    rng: _ChoiceGenerator | None = None,
 ) -> Frame:
     """Keep the PUF clone pair on a seeded household sample only.
 
@@ -737,8 +754,10 @@ def _attach_clone_arm_to_seeded_sample(
             f"(floor(fraction * eligible) with eligible={eligible}); the PUF "
             "pass requires at least one attached household."
         )
-    rng = np.random.default_rng(seed)
-    selected = np.sort(rng.choice(native_source_ids, size=requested, replace=False))
+    selected_rng = np.random.default_rng(seed) if rng is None else rng
+    selected = np.sort(
+        selected_rng.choice(native_source_ids, size=requested, replace=False)
+    )
     selected_set = frozenset(int(value) for value in selected)
 
     person = cloned.table("person")

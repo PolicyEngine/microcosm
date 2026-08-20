@@ -2101,3 +2101,30 @@ head; it still writes `us-f1-certification.json` and
    honestly bridge those owner boundaries.
 3. Keep the bundle production activation uncommitted until a non-vacuous
    fixture consumes real broker tokens and remains byte-equal to constants.
+
+## F1 continuation r5 broker-stream migration (2026-08-20)
+
+### State
+
+- The authority-preserving route keeps constants mode on its existing seeded
+  calls and gives bundle mode narrow generator leases issued by the compiled
+  ledger. Physical algorithms must accept those leases without learning
+  broker internals or changing normative receipts.
+
+### Done
+
+- Added optional narrow generator seams at the two non-QRF primary-stage draw
+  boundaries: partial clone household selection and capital-gains-tail random
+  ranking. The legacy `None` paths still construct the same NumPy generators;
+  an injected PCG64 stream produces identical entity tables, weights,
+  metadata, and tail manifest.
+- The combined fixture-scale equality test passes. Targeted Ruff and
+  `git diff --check` pass; no sample build ran.
+
+### Next
+
+1. Bind these seams to the clone and tail pipeline-owner grants in the
+   compiler's seed stream map, while retaining the primary producer-node
+   owner for QRF.
+2. Complete typed QRF, source, and late-transfer broker seams, then activate
+   the physical executor only when every planned invocation is consumed.

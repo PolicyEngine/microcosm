@@ -243,6 +243,51 @@ def _partially_attached_recipient_frame() -> Frame:
     )
 
 
+def test_injected_clone_and_tail_streams_are_byte_exact_to_seeded_paths() -> None:
+    native = _assembled_native_recipient_frame()
+    seeded_clone = clone_us_frame_for_puf_support(
+        native,
+        clone_attachment_fraction=0.5,
+        clone_attachment_seed=1,
+    )
+    injected_clone = clone_us_frame_for_puf_support(
+        native,
+        clone_attachment_fraction=0.5,
+        clone_attachment_seed=1,
+        attachment_rng=np.random.default_rng(1),
+    )
+    for entity in seeded_clone.entities:
+        pd.testing.assert_frame_equal(
+            seeded_clone.table(entity), injected_clone.table(entity)
+        )
+    np.testing.assert_array_equal(
+        seeded_clone.weights_for("household").values,
+        injected_clone.weights_for("household").values,
+    )
+    assert seeded_clone.metadata == injected_clone.metadata
+
+    seeded_tail, seeded_manifest = transfer_puf_capital_gains_tail(
+        seeded_clone,
+        _donor(),
+        seed=567,
+    )
+    injected_tail, injected_manifest = transfer_puf_capital_gains_tail(
+        seeded_clone,
+        _donor(),
+        seed=567,
+        random_rank_rng=np.random.default_rng(567),
+    )
+    for entity in seeded_tail.entities:
+        pd.testing.assert_frame_equal(
+            seeded_tail.table(entity), injected_tail.table(entity)
+        )
+    np.testing.assert_array_equal(
+        seeded_tail.weights_for("household").values,
+        injected_tail.weights_for("household").values,
+    )
+    assert seeded_manifest == injected_manifest
+
+
 def _replace_entity_table(frame: Frame, entity: str, table: pd.DataFrame) -> Frame:
     tables = {name: frame.table(name).copy() for name in frame.entities}
     tables[entity] = table

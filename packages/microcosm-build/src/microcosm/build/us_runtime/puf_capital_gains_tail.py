@@ -8,7 +8,7 @@ import os
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
@@ -36,6 +36,17 @@ from microcosm.build.us_runtime.support_provenance import (
     support_source_id_column,
 )
 from microcosm.frame import US_SCHEMA, Frame, Weights
+
+
+class _RandomGenerator(Protocol):
+    """Narrow stream surface shared by NumPy and broker generator leases."""
+
+    def random(
+        self,
+        size: object = None,
+        dtype: object = np.float64,
+        out: object = None,
+    ) -> object: ...
 
 __all__ = [
     "PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN",
@@ -666,6 +677,7 @@ def transfer_puf_capital_gains_tail(
     seed: int,
     spec: PufAggregateDisaggregationSpec | None = None,
     agi_bands: Sequence[PufE19200AgiBand] | None = None,
+    random_rank_rng: _RandomGenerator | None = None,
 ) -> tuple[Frame, dict[str, object]]:
     """Split PUF households and transfer exact joint donor-tail vectors."""
 
@@ -720,6 +732,7 @@ def transfer_puf_capital_gains_tail(
         maximum_transfer_weight=float(selected_assigned_weights.max()),
         seed=int(seed),
         agi_bands=resolved_agi_bands,
+        rng=random_rank_rng,
     )
     recipient_support = _recipient_support_receipt(
         selected_tail,
@@ -1282,6 +1295,7 @@ def _recipient_candidates(
     maximum_transfer_weight: float,
     seed: int,
     agi_bands: Sequence[PufE19200AgiBand] | None = None,
+    rng: _RandomGenerator | None = None,
 ) -> pd.DataFrame:
     resolved_agi_bands = tuple(
         US_PUF_E19200_AGI_BANDS if agi_bands is None else agi_bands
@@ -1413,8 +1427,8 @@ def _recipient_candidates(
         kind="mergesort",
         inplace=True,
     )
-    rng = np.random.default_rng(seed)
-    puf_tax_units["seeded_order"] = rng.random(len(puf_tax_units))
+    selected_rng = np.random.default_rng(seed) if rng is None else rng
+    puf_tax_units["seeded_order"] = selected_rng.random(len(puf_tax_units))
     return puf_tax_units.reset_index(drop=True)
 
 
