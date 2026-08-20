@@ -2,14 +2,22 @@
 
 ## State
 
-The 2026-08-20 16:xx owner continuation is reopened against commit
-`9998d35d` for an independent, current-tree diagnosis of the supplied host 1%
-ACS QRF record-binding traceback. The reported failing boundary is
-`person/puf_tax_itemization/taxable_interest_income`, outside the assigned
-package 3 calibration rows. Source/history tracing, regression adequacy, and
-the required verification surface are in progress; no new correction or host
-success is claimed yet. The owner-provided `_BUILD-FAILURE-1PCT.txt` and
-`.codex-memory-guard.py` remain untracked and untouched.
+The 2026-08-20 20:22Z owner continuation has completed an independent
+raise-site and history diagnosis against the current tree. Commit `33bf52fe`
+computed QRF regimes and emitted evidence for every ACS target, and terminal
+validation checked every target before consulting the nine-target calibration
+registry. The wide `puf_tax_itemization` transfer therefore supplied the real
+bounded record family `puf_tax_itemization__batch_1` while the validator
+expected the unsplit family, causing the supplied failure on unassigned
+`taxable_interest_income`. The current executable correction already present
+from `176c60fc` makes regime work and receipt evidence explicit opt-ins derived
+from the immutable assigned specs, checks assignment before QRF binding, and
+rejects forged evidence on unassigned targets while retaining their mandatory
+four-count transfer invariant. No executable file differs from the prior full
+build-suite checkpoint `a5be536f`; focused current-tree verification and an
+independent regression adequacy audit are next. No host success is claimed.
+The owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain
+untracked and untouched.
 
 The 2026-08-20 owner continuation independently revalidated the supplied host
 1% traceback against the current executable tree. At `33bf52fe`, every ACS
@@ -96,6 +104,24 @@ but DNS is unavailable. Verification therefore uses the already-synced
 - Reopened and committed this root journal before changing implementation or
   tests, reread `CLAUDE.md`, preserved the two untracked owner artifacts, and
   recorded the exact supplied binding failure as the active continuation.
+- Reproduced the historical failure chain at `33bf52fe`: universal regime
+  provenance reached every receipt; line 4512 validated the unassigned target
+  before the spec lookup; line 4310 rejected the bounded `__batch_1` record as
+  unequal to the unsplit canonical family. Accepting a batch alias would not
+  have fixed the over-broad behavior or target-order contract.
+- Audited the current correction: generic transfer defaults regime selection
+  to empty; canonical early and late owners derive exact selections from the
+  two early and seven late immutable specs; producers emit QRF evidence only
+  for that selection; validators reject evidence before continuing past every
+  unassigned target and preserve strict four-count accounting.
+- Confirmed `git diff --quiet a5be536f..HEAD` over build source/tests, tools,
+  specs, `pyproject.toml`, and `uv.lock`: no committed executable drift exists
+  after the prior complete build-suite checkpoint.
+- Followed the GitNexus debugging workflow. The repository had no index; local
+  analysis generated its graph but could not register or query it because the
+  sandbox forbids writing `~/.gitnexus/registry.json`. The generated 112 MiB
+  repo-local cache was removed with `gitnexus clean`; direct source and history
+  tracing supplied the call chain instead.
 - Reopened the committed progress journal before changing implementation or
   tests, reread `CLAUDE.md`, and recorded the supplied failure as the active
   continuation target.
@@ -330,9 +356,10 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Trace the current and failing historical validator/producer call paths from
-   the invariant raise site and prove the canonical target-selection boundary.
-2. Audit or add a focused regression for the exact unassigned wide-family
-   binding failure, then run the prescribed affected and broader suites.
-3. Commit each coherent diagnosis, correction, regression, and verification
-   step; refresh `FINAL_REPORT.md` with only revision-bound conclusions.
+1. Complete the independent regression/source-scope audits and run the exact
+   synthetic plus real banked wide-family regressions under the memory guard.
+2. Run the directly affected test files, lint, format, and committed-range
+   checks; broaden verification if the current tree or audits expose a gap.
+3. Refresh and commit `FINAL_REPORT.md` with only revision-bound conclusions;
+   do not claim the mutable external host retry without a terminal marker and
+   expected artifacts.
