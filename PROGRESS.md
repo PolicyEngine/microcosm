@@ -18,8 +18,14 @@ build-suite checkpoint `a5be536f`. The regression audit found that strict
 selected-family binding lacked a plausible in-range `__batch_1` forgery, so
 that case is now included alongside the existing forged and out-of-range
 families. All 20 focused cases pass under the 12 GiB/20 ms guard with a 0.586
-GiB peak. Directly affected suite and lint verification are next. No host
-success is claimed.
+GiB peak. All 529 tests in the five directly affected transfer, serialization,
+stacked, pool-tool, and H5 files also pass in one guarded process with a 1.531
+GiB peak. Repository lint, formatting of all 15 Python files changed since the
+bad commit's parent, committed-range whitespace, and runtime drift checks pass.
+The runtime tree remains identical to `a5be536f`, where all 225 build-package
+test files passed. Local correction and verification are complete; final-report
+refresh and a last read-only host-status check remain. No host success is
+claimed.
 The owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain
 untracked and untouched.
 
@@ -141,6 +147,16 @@ but DNS is unavailable. Verification therefore uses the already-synced
   logical-core fallback. The initial guard invocation did not start because
   the untracked script lacks an executable bit; invoking it through the exact
   environment's Python succeeded without modifying the owner artifact.
+- Ran all 529 tests collected from the five directly affected files in one
+  process under the 12 GiB/20 ms guard. Every test passed; maximum observed
+  per-process RSS was 1.531 GiB. Warning summaries were disabled for the run;
+  the same files previously emitted known fixture-construction fragmentation
+  warnings.
+- Ran repository-wide `ruff check .`, `ruff format --check` on all 15 Python
+  files changed since `33bf52fe^`, and `git diff --check 33bf52fe^..HEAD`; all
+  pass. Confirmed no build runtime, tool, spec, project, or lockfile differs
+  from all-suite checkpoint `a5be536f`; only the added regression changes that
+  checkpoint's test tree.
 - Reopened the committed progress journal before changing implementation or
   tests, reread `CLAUDE.md`, and recorded the supplied failure as the active
   continuation target.
@@ -375,8 +391,6 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run the directly affected test files, lint, format, and committed-range
-   checks; broaden verification if the current tree or audits expose a gap.
-2. Refresh and commit `FINAL_REPORT.md` with only revision-bound conclusions;
+1. Refresh and commit `FINAL_REPORT.md` with only revision-bound conclusions;
    do not claim the mutable external host retry without a terminal marker and
    expected artifacts.
