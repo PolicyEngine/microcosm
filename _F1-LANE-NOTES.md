@@ -2040,9 +2040,13 @@ head; it still writes `us-f1-certification.json` and
   validation. A declared absence receipt can now cover an absent column or
   scoped null cells; it still cannot cover infinity, a boolean numeric input,
   or nonnumeric content.
+- Aligned `finite_numeric` validation with the late readiness contract by
+  checking value coercibility rather than requiring a numeric storage dtype.
+  Numeric strings such as the physical `TYPEHUGQ` surface are accepted;
+  coercion failures and nonfinite values remain invalid.
 - Focused validation passes for the null-with-receipt case, all three invalid
-  refusal cases, and the broader required-input alternative selection cases.
-  Ruff and `git diff --check` pass. No build ran.
+  refusal cases, numeric-string acceptance, and the broader required-input
+  alternative selection cases. Ruff and `git diff --check` pass. No build ran.
 
 ### Next
 

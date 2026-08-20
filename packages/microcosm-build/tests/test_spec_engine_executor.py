@@ -3531,6 +3531,43 @@ def test_absence_receipt_refuses_each_present_non_null_invalid_numeric_input(
         _run(node, invalid, _none_patch)
 
 
+def test_finite_numeric_input_accepts_numeric_values_in_a_string_dtype(
+    projection: ImmutableFrameProjection,
+) -> None:
+    effective_input = _input(
+        "person",
+        "@effective:value",
+        alternatives=[
+            [
+                {
+                    "entity": "person",
+                    "column": "value",
+                    "value_kind": "finite_numeric",
+                }
+            ]
+        ],
+    )
+    node = _node(
+        StructuralDelta.NONE,
+        [_scope("group_value", entity="group")],
+        inputs=(effective_input, _input("group", "group_value")),
+    )
+    parts = projection._parts()
+    parts["tables"]["person"]["value"] = pd.Series(
+        ["10", "20", "30"],
+        dtype="string",
+    )
+    numeric_strings = ImmutableFrameProjection(**parts)  # type: ignore[arg-type]
+
+    def update_group(view, _context):
+        group = view.table("group")
+        group.loc[group.group_key.eq(10), "group_value"] = 101.0
+        return KernelPatch(StructuralDelta.NONE, tables={"group": group})
+
+    validated = _run(node, numeric_strings, update_group)
+    assert not validated.diff.empty
+
+
 @pytest.mark.parametrize(
     ("required_scope", "accepted"),
     [("a_rows", True), ("b_rows", False)],

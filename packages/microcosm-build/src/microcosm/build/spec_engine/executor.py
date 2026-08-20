@@ -2769,12 +2769,14 @@ def _physical_input_state(
         present = selected.loc[~missing]
         if present.empty and missing.any():
             return _InputCellState.MISSING
-        if pd.api.types.is_bool_dtype(
-            selected.dtype
-        ) or not pd.api.types.is_numeric_dtype(selected.dtype):
+        if pd.api.types.is_bool_dtype(selected.dtype):
             return _InputCellState.INVALID
         try:
-            if not np.isfinite(present.to_numpy(dtype=np.float64)).all():
+            numeric = pd.to_numeric(present, errors="coerce").to_numpy(
+                dtype=np.float64,
+                na_value=np.nan,
+            )
+            if not np.isfinite(numeric).all():
                 return _InputCellState.INVALID
         except (TypeError, ValueError):
             return _InputCellState.INVALID
