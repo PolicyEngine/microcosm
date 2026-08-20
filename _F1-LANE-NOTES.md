@@ -1626,3 +1626,111 @@ deliverable 5.
    node executes exactly once in sealed order.
 2. Route stochastic work through node ledger sessions and refuse undeclared
    file/process/sink access; then run the full dual-mode fixture graph.
+
+## F1 continuation r5 executor audit and certification-runner step (2026-08-20)
+
+### State — honest stop on deliverable A
+
+- Bundle selection now compiles one
+  `USPoolKernelAuthorities.from_runtime_plan(...)` capability, threads its
+  authorities through the bundle-only physical-stage calls, and keeps explicit
+  constants branches as the behavior oracle. That is authority plumbing; it
+  is not the charter's required per-node execution proof. Production still has
+  no caller of `execute_node`, so no full physical stage graph is dispatched as
+  sealed `CompiledNode` transactions.
+- A legacy callback wrapper cannot honestly close the gap. `execute_node`
+  requires a broker-bound
+  `(ImmutableFrameProjection, ExecutionContext) -> KernelPatch` transaction.
+  Primary QRF and transfer kernels also require checkpoint writes and rereads,
+  subprocess execution, and target-bank sinks, but the executor has no sealed
+  sink/checkpoint/process broker for those effects. Calling the legacy
+  `Frame -> Frame` functions inside a registered kernel would bypass the
+  executor's effect and patch boundaries.
+- The current compiled execution projection is also insufficient for a
+  byte-faithful adapter: the physical family/marital/SPM/tax callbacks need
+  source identifiers absent from their node projections; late transfer needs
+  dynamic RNG sequencing; and the required clone-attachment and capital-gain
+  random-rank draws do not have usable grants on the physical nodes that own
+  them. Legacy QRF state embeds the derived integer seed in
+  `QRFChainState.model_config.seed` and serialized H5 state, while the ledger
+  broker deliberately exposes an opaque handle. Exposing or independently
+  recomputing the seed would violate the broker contract and can change bytes.
+- A sketched adapter fixture was deliberately removed: with physical work
+  stubbed, it could only prove that a vacuous callback loop produced equal
+  empty/stub artifacts. It could not prove the real clone/tail/cap/checkpoint/
+  target-bank graph or exact broker consumption. No such false gate is
+  committed.
+- Therefore the required dual-mode full-stage fixture, exact once-per-node
+  journal, broker-consumption receipt, node-reuse map, and D4 two-tier
+  byte-equality verdict do not exist. Deliverable A is **NOT COMPLETE**, not
+  PASS. This is the charter-required honest stop rather than an assertion that
+  authority arguments alone constitute executor dispatch.
+
+### Done — deliverable B's fail-closed runner surface
+
+- Added `tools/f1_certification_run.py` with three host-facing subcommands:
+  `run` (alias `build`), `compare`, and documentation-only `resume-gate`.
+  `run` exclusively claims an absent output root, launches exactly one pool
+  child in `constants` or `bundle` mode with `--resume-policy forbid`, removes
+  ambient logbook/ledger variables, and writes a typed
+  `us-f1-build-receipt.json` only after a zero child exit.
+- The pool's opt-in `--f1-evidence-out` seam is allowed only for stacked
+  constants/bundle cold builds. It rejects any pre-existing publication,
+  checkpoint, or evidence state before load; freezes the compiler plan before
+  source reads; binds bundle execution authority to that snapshot; requires a
+  tracked-clean, unchanged HEAD; and revalidates the identical plan before
+  artifact collection. The receipt parser validates the complete plan-lock
+  schema rather than trusting an execution-ABI fragment.
+- Normative vector collection now supports streaming SHA-256/size collection:
+  ordinary file and directory-member bodies stream in 1-MiB chunks and H5
+  logical encodings write into a digest sink instead of retaining the complete
+  encoded vector. The receipt still records the plan row plus normative
+  selected-byte digest/size; provenance and operational surfaces remain under
+  the sealed `plan_lock.execution_abi.receipt_comparison_vector`.
+- The production locator registry binds all 29 unique artifact locators (30
+  artifact rows) plus six checkpoint manifest/optional-receipt roles. The
+  independent target-bank contract covers 22 banks and 208 exact members.
+  Selector receipts, their coverage contracts, calibration receipts, and the
+  full plan are sealed and validated before comparison.
+- `compare` requires four distinct typed receipts in constants-A,
+  constants-B, bundle-A, bundle-B roles, one current plan lock, and one request.
+  It reports within-mode normative/receipt/node-key determinism, paired
+  cross-mode D4 equality, cold zero-resume audits, and vector coverage, then
+  writes `us-f1-certification.json` and `us-f1-certification.md`. Exit status is
+  0 for PASS, 1 for a well-formed FAIL, and 2 for malformed input/error.
+- `resume-gate` compiles the sealed resume predicate into a Markdown host
+  procedure and explicitly starts no build, kill, or resume. The four cold
+  receipts separately require zero resumed durable/QRF/target-bank counts.
+- Coverage is intentionally incomplete rather than fabricated: production has
+  no runtime node-reuse inventory, the compiler has no independent exact final
+  H5 entity/column/weight inventory, and calibration weights are absent from
+  the normative artifact vector. Production receipts seal those three facts as
+  false. The current comparator is therefore expected to write a structurally
+  valid **FAIL**, even if every observed artifact digest matches; it is not a
+  certification-capable PASS path until deliverable A and the two inventory
+  defects close.
+
+### Validation and next
+
+- The combined runner/schema, streaming collector, D4 comparator, and exact
+  bank-coverage run passes 78/78 tests. A separate pool-tool authority,
+  bundle, evidence-freeze, parser, and resume-policy selection passes 19/19
+  tests. Ruff format/check and `git diff --check` pass on every touched source
+  and test file.
+- The real `resume-gate` subcommand compiled the current US plan and wrote its
+  documentation-only predicate with exit 0 under `/private/tmp`; it launched
+  no pool child. The final review's two sealing findings (post-build plan
+  recompilation and unvalidated/self-asserted receipt inputs) were fixed and
+  regression-tested before this commit.
+- A final independent read-only audit found no commit-blocking correctness
+  issue. It identified two low-risk spy-test gaps (direct CLI coverage-contract
+  compilation and freeze-before-input-verification call order), but no concrete
+  false-PASS path; both remain explicit follow-up hardening rather than claimed
+  certification evidence.
+- All checks are unit or fixture scale. The repository-wide build shard was
+  not rerun because its authenticated prior peak was 28.82 GiB, above this
+  lane's 20-GiB process limit; no repository-wide green claim is made. No pool
+  build, sample rung, four-build comparison, or kill/resume exercise ran.
+- Next is deliverable C only: append the exact sequential host commands and
+  observed RSS envelope, update the final output report, and stop. The host
+  owns every build and the owner adjudicates any emitted verdict.

@@ -2086,19 +2086,119 @@ def test_constants_and_bundle_provenance_share_behavior_and_code_identity(
         "run_request",
     ):
         assert constants[field_name] == bundle[field_name]
-    assert constants["authority_versions"]["stacked_authority"] == (
-        bundle["authority_versions"]["stacked_authority"]
+    assert (
+        constants["authority_versions"]["stacked_authority"]
+        == (bundle["authority_versions"]["stacked_authority"])
     )
-    assert constants["authority_versions"]["checkpoint_materializer"] == (
-        bundle["authority_versions"]["checkpoint_materializer"]
+    assert (
+        constants["authority_versions"]["checkpoint_materializer"]
+        == (bundle["authority_versions"]["checkpoint_materializer"])
     )
-    assert constants["execution_receipt"]["pipeline"] == (
-        bundle["execution_receipt"]["pipeline"]
+    assert (
+        constants["execution_receipt"]["pipeline"]
+        == (bundle["execution_receipt"]["pipeline"])
     )
     assert constants["execution_receipt"]["code_pin"] == code_pin
     assert bundle["execution_receipt"]["code_pin"] == code_pin
     assert constants["execution_receipt"]["authority_mode"] == "constants"
     assert bundle["execution_receipt"]["authority_mode"] == "bundle"
+
+
+def test_f1_registry_binds_exact_plan_and_checkpoint_locator_inventory(
+    pool_tool: ModuleType,
+    bundle_run_config,
+    tmp_path: Path,
+) -> None:
+    plan = bundle_run_config.runtime_plan
+    outputs = pool_tool._with_checkpoint_identity(
+        pool_tool._stacked_output_paths(
+            tmp_path / "pool.h5",
+            checkpoint_root=tmp_path / "checkpoints" / "stacked" / ("b" * 64),
+        ),
+        base_identity_sha256="b" * 64,
+    )
+    checkpoint_store = SimpleNamespace(
+        checkpoint_path=lambda stage: (
+            outputs.checkpoint_root / f"{stage}.checkpoint.h5"
+        ),
+        checkpoint_manifest_path=lambda stage: (
+            outputs.checkpoint_root / f"{stage}.checkpoint.manifest.json"
+        ),
+        checkpoint_receipts_path=lambda stage: (
+            outputs.checkpoint_root / f"{stage}.checkpoint.receipts.json"
+        ),
+    )
+
+    registry, coverage_contract, bank_roots = pool_tool._f1_artifact_locator_registry(
+        plan_lock={"seed_stream_map": plan.seed_stream_map.to_wire()},
+        runtime_plan=plan,
+        kernel_authorities=bundle_run_config.kernel_authorities,
+        outputs=outputs,
+        checkpoint_store=checkpoint_store,
+    )
+    bindings = registry.snapshot()
+    artifact_locators = {
+        str(row.get("locator_ref")) for row in plan.execution.artifact_vector
+    }
+    checkpoint_auxiliary = {
+        f"checkpoint:{checkpoint.id}:{role}"
+        for checkpoint in plan.execution.checkpoints
+        for role in ("manifest", "receipts")
+    }
+
+    assert len(artifact_locators) == 29
+    assert len(bindings) == 35
+    assert set(bindings) == artifact_locators | checkpoint_auxiliary
+    assert set(bank_roots) == {
+        bank.locator_ref for bank in coverage_contract.target_banks
+    }
+    assert all(
+        bindings[locator].path == path.resolve() for locator, path in bank_roots.items()
+    )
+
+
+def test_f1_evidence_plan_rejects_post_execution_plan_drift(
+    pool_tool: ModuleType,
+    bundle_run_config,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan_lock = {"execution_abi": {"sha256": "a" * 64}}
+    frozen = pool_tool._F1EvidencePlan(
+        plan_lock=plan_lock,
+        canonical_plan_lock=pool_tool._canonical_json_bytes(plan_lock),
+        runtime_plan=bundle_run_config.runtime_plan,
+        kernel_authorities=bundle_run_config.kernel_authorities,
+    )
+    changed = replace(frozen, canonical_plan_lock=b"changed-plan")
+    snapshot_checks: list[str] = []
+    monkeypatch.setattr(
+        pool_tool,
+        "_assert_f1_tracked_code_snapshot",
+        lambda code_pin: snapshot_checks.append(code_pin),
+    )
+    monkeypatch.setattr(pool_tool, "_compile_f1_evidence_plan", lambda: changed)
+
+    with pytest.raises(ValueError, match="plan changed during the build"):
+        pool_tool._assert_f1_evidence_plan_current(
+            frozen,
+            code_pin="b" * 40,
+        )
+    assert snapshot_checks == ["b" * 40, "b" * 40]
+
+
+def test_f1_evidence_refuses_tracked_dirty_checkout(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(pool_tool, "_git_code_pin", lambda: "a" * 40)
+    monkeypatch.setattr(
+        pool_tool.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=1),
+    )
+
+    with pytest.raises(ValueError, match="tracked-clean checkout"):
+        pool_tool._assert_f1_tracked_code_snapshot("a" * 40)
 
 
 def test_bundle_config_compiles_one_runtime_authority_without_legacy_adapter(
@@ -2789,9 +2889,7 @@ def test_bundle_source_snapshots_drive_cold_parsers_without_path_reopen(
         "load_asec_raw_stage_checkpoint",
         lambda _path, *, source_stream: (
             frame,
-            {
-                "source": source_bytes("asec_raw_stage", source_stream).decode()
-            },
+            {"source": source_bytes("asec_raw_stage", source_stream).decode()},
         ),
     )
 
@@ -2801,9 +2899,9 @@ def test_bundle_source_snapshots_drive_cold_parsers_without_path_reopen(
         household_stream,
         person_stream,
     ):
-        assert source_bytes("acs_household", household_stream) == expected[
-            "acs_household"
-        ]
+        assert (
+            source_bytes("acs_household", household_stream) == expected["acs_household"]
+        )
         assert source_bytes("acs_person", person_stream) == expected["acs_person"]
         return frame, {"source": "brokered-acs"}
 
@@ -2815,9 +2913,9 @@ def test_bundle_source_snapshots_drive_cold_parsers_without_path_reopen(
     )
 
     def load_rent(_path, *, source_stream):
-        assert source_bytes("acs_rent_donor", source_stream) == expected[
-            "acs_rent_donor"
-        ]
+        assert (
+            source_bytes("acs_rent_donor", source_stream) == expected["acs_rent_donor"]
+        )
         return pd.DataFrame({"rent": [1.0]})
 
     monkeypatch.setattr(pool_tool, "load_acs_2022_rent_donor", load_rent)
@@ -2829,12 +2927,14 @@ def test_bundle_source_snapshots_drive_cold_parsers_without_path_reopen(
         processed_puf_stream,
         source_year_puf_stream,
     ):
-        assert source_bytes("processed_puf", processed_puf_stream) == expected[
-            "processed_puf"
-        ]
-        assert source_bytes("puf_source_year", source_year_puf_stream) == expected[
-            "puf_source_year"
-        ]
+        assert (
+            source_bytes("processed_puf", processed_puf_stream)
+            == expected["processed_puf"]
+        )
+        assert (
+            source_bytes("puf_source_year", source_year_puf_stream)
+            == expected["puf_source_year"]
+        )
         return object()
 
     monkeypatch.setattr(pool_tool, "parse_puf_tax_unit_donor_sources", parse_puf)
@@ -2852,16 +2952,12 @@ def test_bundle_source_snapshots_drive_cold_parsers_without_path_reopen(
         source_session=sessions[0],
     )
 
-    assert loaded.asec_raw_stage_checkpoint == {
-        "source": "brokered-asec_raw_stage"
-    }
+    assert loaded.asec_raw_stage_checkpoint == {"source": "brokered-asec_raw_stage"}
     assert loaded.puf_donor_build == {"source": "brokered-puf"}
     assert set(leases) == set(source_fields)
     assert len(receipts) == 1
     assert receipts[0]["status"] == "complete"
-    assert [event["resource"] for event in receipts[0]["events"]] == list(
-        source_fields
-    )
+    assert [event["resource"] for event in receipts[0]["events"]] == list(source_fields)
     for source_id, lease in leases.items():
         assert lease.closed
         with pytest.raises(ValueError, match="closed"):
@@ -5098,6 +5194,7 @@ def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
         "clone_attachment_fraction",
         "clone_attachment_seed",
         "checkpoint_root",
+        "f1_evidence_out",
         "legacy_two_spine",
         "out",
         "resume_policy",
@@ -5112,6 +5209,7 @@ def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
         - {
             "checkpoint_root",
             "config_authority",
+            "f1_evidence_out",
             "logbook_prev_row_digest",
             "clone_attachment_fraction",
             "clone_attachment_seed",
@@ -5122,9 +5220,11 @@ def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
         }
     )
     assert not actions["checkpoint_root"].required
+    assert not actions["f1_evidence_out"].required
     assert actions["out"].option_strings == ["--out"]
     assert actions["checkpoint_root"].option_strings == ["--checkpoint-root"]
     assert actions["checkpoint_root"].type is Path
+    assert actions["f1_evidence_out"].type is Path
     assert actions["sample_fraction"].default == 1.0
     assert actions["sample_seed"].default == 578
     assert actions["clone_attachment_fraction"].default == 1.0

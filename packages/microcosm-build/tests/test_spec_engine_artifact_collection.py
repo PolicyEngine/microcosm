@@ -15,8 +15,10 @@ from microcosm.build.spec_engine import compile_spec, load_bundle
 from microcosm.build.spec_engine.artifact_collection import (
     ArtifactCollectionError,
     ArtifactLocatorRegistry,
+    collect_artifact_digests,
     collect_artifact_surfaces,
 )
+from microcosm.build.spec_engine.artifact_comparison import ArtifactDigest
 from microcosm.build.spec_engine.artifact_selector_contract import (
     ARTIFACT_LOCATOR_GRAMMAR,
     ARTIFACT_SELECTOR_CONTRACT_SHA256,
@@ -98,7 +100,9 @@ def _generation_value(field: str, mode: str) -> object:
     return f"{mode}:{field}"
 
 
-def _run_provenance_wire(mode: str, execution_abi: dict[str, object]) -> dict[str, object]:
+def _run_provenance_wire(
+    mode: str, execution_abi: dict[str, object]
+) -> dict[str, object]:
     bundle = mode == "bundle"
     return {
         "identity_generation": 1 if bundle else 0,
@@ -519,13 +523,19 @@ def test_live_thirty_artifact_vector_collects_all_selectors_and_raw_sidecars(
     seed_stream_map: dict[str, object],
     tmp_path: Path,
 ) -> None:
+    constants_registry = _live_registry(
+        execution_abi,
+        seed_stream_map,
+        tmp_path / "constants",
+    )
     constants = collect_artifact_surfaces(
         execution_abi,
-        registry=_live_registry(
-            execution_abi,
-            seed_stream_map,
-            tmp_path / "constants",
-        ),
+        registry=constants_registry,
+        authority_mode="constants",
+    )
+    constant_digests = collect_artifact_digests(
+        execution_abi,
+        registry=constants_registry,
         authority_mode="constants",
     )
     bundle = collect_artifact_surfaces(
@@ -543,6 +553,11 @@ def test_live_thirty_artifact_vector_collects_all_selectors_and_raw_sidecars(
     assert isinstance(expected_artifacts, list)
     assert len(expected_artifacts) == 30
     assert set(constants.artifacts) == {str(row["id"]) for row in expected_artifacts}
+    assert constant_digests.artifacts == {
+        artifact_id: ArtifactDigest.from_bytes(surface)
+        for artifact_id, surface in constants.artifacts.items()
+    }
+    assert constant_digests.receipts == constants.receipts
     assert constants.artifacts == bundle.artifacts
     assert set(constants.receipts) == {
         "publication_manifest",
@@ -668,9 +683,7 @@ def test_h5_and_diagnostics_embedded_identities_cross_authenticate_manifest(
         "runtime_output:agreement_diagnostics",
     )
     diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
-    diagnostics["release_id"] = (
-        "microcosm-us-other-f001-s578-20260820T111213Z-deadbeef"
-    )
+    diagnostics["release_id"] = "microcosm-us-other-f001-s578-20260820T111213Z-deadbeef"
     _write_json(diagnostics_path, diagnostics)
     manifest_path = _bound_path(diagnostics_registry, "runtime_output:manifest")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))

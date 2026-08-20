@@ -84,6 +84,10 @@ from microcosm.build.spec_engine import (
     compile_to_legacy_payload,
     load_bundle,
 )
+from microcosm.build.spec_engine.artifact_collection import (
+    ArtifactLocatorRegistry,
+    collect_artifact_digests,
+)
 from microcosm.build.spec_engine.battery_semantics import (
     project_battery_legacy_contract,
 )
@@ -92,6 +96,11 @@ from microcosm.build.spec_engine.brokers import (
     BrokerSession,
     FileReadLease,
 )
+from microcosm.build.spec_engine.f1_certification import (
+    complete_coverage_evidence,
+    emit_f1_production_evidence,
+)
+from microcosm.build.spec_engine.plan_lock import plan_lock_payload
 from microcosm.build.us_runtime.acs_income_universe import (
     acs_pums_earnings_universe_contract_identity,
 )
@@ -155,6 +164,11 @@ from microcosm.build.us_runtime.multispine_pool import (
 )
 from microcosm.build.us_runtime.operator_boundary import (
     assert_operator_free_source_frame,
+)
+from microcosm.build.us_runtime.pool_artifact_coverage import (
+    PoolArtifactCoverageContract,
+    compile_pool_artifact_coverage,
+    validate_pool_artifact_coverage,
 )
 from microcosm.build.us_runtime.pool_kernel_authority import (
     USPoolKernelAuthorities,
@@ -652,6 +666,14 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--f1-evidence-out",
+        type=Path,
+        help=(
+            "Optional typed F1 production-evidence sidecar. Requires a stacked "
+            "constants or bundle build with --resume-policy forbid."
+        ),
+    )
+    parser.add_argument(
         "--sample-fraction",
         type=_standard_sample_fraction,
         default=1.0,
@@ -751,22 +773,61 @@ def _refuse_preexisting_resume_state(
         return
     if policy != "forbid":  # pragma: no cover - argparse owns the public enum
         raise ValueError(f"Unsupported resume policy: {policy!r}")
-    candidates = (
-        outputs.pool_h5,
-        outputs.manifest,
-        outputs.agreement_diagnostics,
-        outputs.checkpoint_root,
+    candidates = tuple(
+        path
+        for path in (
+            outputs.pool_h5,
+            outputs.manifest,
+            outputs.agreement_diagnostics,
+            outputs.checkpoint_root,
+            getattr(args, "f1_evidence_out", None),
+        )
+        if path is not None
     )
-    existing = sorted(
-        str(path)
-        for path in candidates
-        if os.path.lexists(Path(path))
-    )
+    existing = sorted(str(path) for path in candidates if os.path.lexists(Path(path)))
     if existing:
         raise ValueError(
             "--resume-policy forbid refuses pre-existing publication or "
             f"checkpoint state: {existing}"
         )
+
+
+def _validate_f1_evidence_request(
+    args: argparse.Namespace,
+    outputs: PoolBuildOutputs,
+) -> Path | None:
+    """Validate the opt-in certification sidecar before any build state load."""
+
+    raw_path = getattr(args, "f1_evidence_out", None)
+    if raw_path is None:
+        return None
+    if getattr(args, "legacy_two_spine", False):
+        raise ValueError("--f1-evidence-out is unavailable for --legacy-two-spine")
+    mode = getattr(args, "config_authority", "constants")
+    if mode not in {"constants", "bundle"}:
+        raise ValueError(
+            "--f1-evidence-out requires --config-authority constants or bundle"
+        )
+    if getattr(args, "resume_policy", "allow") != "forbid":
+        raise ValueError(
+            "--f1-evidence-out requires --resume-policy forbid for a cold build"
+        )
+
+    path = Path(raw_path).resolve()
+    publication_paths = {
+        outputs.pool_h5.resolve(),
+        outputs.manifest.resolve(),
+        outputs.agreement_diagnostics.resolve(),
+    }
+    source_paths = {source.resolve() for source in _configured_source_paths(args)}
+    checkpoint_root = outputs.checkpoint_root.resolve()
+    if path in publication_paths or path in source_paths:
+        raise ValueError(
+            "--f1-evidence-out collides with a publication or source artifact"
+        )
+    if path == checkpoint_root or path.is_relative_to(checkpoint_root):
+        raise ValueError("--f1-evidence-out must be outside the checkpoint namespace")
+    return path
 
 
 def _with_checkpoint_identity(
@@ -893,9 +954,7 @@ def _verify_inputs(
     bundle_plan: USPoolRuntimePlan | None = None,
     run_provenance_identity: Mapping[str, object] | None = None,
     broker_receipt_sink: Callable[[Mapping[str, object]], None] | None = None,
-    source_snapshot_session_sink: Callable[
-        [_BundleSourceSnapshotSession], None
-    ]
+    source_snapshot_session_sink: Callable[[_BundleSourceSnapshotSession], None]
     | None = None,
 ) -> tuple[dict[str, _VerifiedInput], AcsSourceManifest]:
     source_paths = _configured_source_paths(args)
@@ -1637,10 +1696,16 @@ def _stacked_checkpoint_base_identity(
     clone_attachment_fraction: float,
     clone_attachment_seed: int,
     policyengine_us_version: str | None = None,
+    run_config: Mapping[str, object] | None = None,
     runtime_plan: USPoolRuntimePlan | None = None,
 ) -> dict[str, object]:
     """Bind #599/#608 caches to the live stack and both scale controls."""
 
+    if run_config is not None:
+        _stacked_kernel_authorities_from_config(
+            run_config,
+            runtime_plan=runtime_plan,
+        )
     if runtime_plan is not None:
         if policyengine_us_version is not None:
             expected_version = _stacked_checkpoint_static_value(
@@ -1890,6 +1955,7 @@ def _discover_stacked_checkpoint_identity(
                 sample_seed=sample_seed,
                 clone_attachment_fraction=clone_attachment_fraction,
                 clone_attachment_seed=clone_attachment_seed,
+                run_config=(run_config if runtime_plan is not None else None),
                 runtime_plan=runtime_plan,
             )
             if base_identity != expected:
@@ -3692,9 +3758,7 @@ def _emit_stacked_checkpoint(
                 frame,
                 stage_receipts,
                 boundary=f"stacked {stage} checkpoint emission",
-                transition_authority_sha256=(
-                    late_producer_transition_authority_sha256
-                ),
+                transition_authority_sha256=(late_producer_transition_authority_sha256),
                 require_live_output=stage == "transferred",
             )
         else:
@@ -3702,9 +3766,7 @@ def _emit_stacked_checkpoint(
                 frame,
                 stage_receipts,
                 boundary=f"stacked {stage} checkpoint emission",
-                transition_authority_sha256=(
-                    late_producer_transition_authority_sha256
-                ),
+                transition_authority_sha256=(late_producer_transition_authority_sha256),
                 require_live_output=stage == "transferred",
                 kernel_authorities=kernel_authorities,
             )
@@ -3763,9 +3825,7 @@ def build_stacked_pool(
         release_id_matches = _STACKED_RELEASE_ID_PATTERN.fullmatch(release_id)
     else:
         if not isinstance(kernel_authorities, USPoolKernelAuthorities):
-            raise TypeError(
-                "Bundle execution requires USPoolKernelAuthorities."
-            )
+            raise TypeError("Bundle execution requires USPoolKernelAuthorities.")
         if (
             kernel_authorities.authority_sha256 != runtime_plan.authority_sha256
             or kernel_authorities.spec_sha256 != runtime_plan.spec_sha256
@@ -3904,9 +3964,7 @@ def build_stacked_pool(
             prepared = prepare_multispine_source_inputs_for_clone(
                 current,
                 acs_rent_donor=acs_rent_donor,
-                remaining_stage_authority=(
-                    kernel_authorities.physical.remaining_stage
-                ),
+                remaining_stage_authority=(kernel_authorities.physical.remaining_stage),
                 simulation_settings=kernel_authorities.physical.simulation,
             )
         validate_stacked_spine_frame(
@@ -3948,9 +4006,7 @@ def build_stacked_pool(
             gap_filled = gap_fill_stacked_spine(
                 prepared.frame,
                 seed=kernel_authorities.physical.model.model_seed,
-                n_estimators=(
-                    kernel_authorities.physical.model.transfer_n_estimators
-                ),
+                n_estimators=(kernel_authorities.physical.model.transfer_n_estimators),
                 max_targets_per_fit=(
                     kernel_authorities.physical.model.max_targets_per_fit
                 ),
@@ -4048,9 +4104,7 @@ def build_stacked_pool(
         if kernel_authorities is None:
             primary_resource_receipts = stacked_late_primary_resource_receipts(
                 puf_donor,
-                primary_qrf_checkpoint_identity_sha256=(
-                    current_base_identity_sha256
-                ),
+                primary_qrf_checkpoint_identity_sha256=(current_base_identity_sha256),
                 clone_attachment_fraction=clone_attachment_fraction,
                 clone_attachment_seed=clone_attachment_seed,
                 seed=POOL_RANDOM_SEED,
@@ -4061,15 +4115,11 @@ def build_stacked_pool(
         else:
             primary_resource_receipts = stacked_late_primary_resource_receipts(
                 puf_donor,
-                primary_qrf_checkpoint_identity_sha256=(
-                    current_base_identity_sha256
-                ),
+                primary_qrf_checkpoint_identity_sha256=(current_base_identity_sha256),
                 clone_attachment_fraction=clone_attachment_fraction,
                 clone_attachment_seed=clone_attachment_seed,
                 seed=kernel_authorities.physical.model.model_seed,
-                n_estimators=(
-                    kernel_authorities.physical.model.primary_n_estimators
-                ),
+                n_estimators=(kernel_authorities.physical.model.primary_n_estimators),
                 fit_records_enabled=True,
                 tail_bound_diagnostics_enabled=True,
                 qrf_authority=kernel_authorities.primary_qrf,
@@ -4093,9 +4143,7 @@ def build_stacked_pool(
                 primary_puf_producer=primary_puf_producer,
                 primary_resource_receipts=primary_resource_receipts,
                 seed=kernel_authorities.physical.model.model_seed,
-                n_estimators=(
-                    kernel_authorities.physical.model.transfer_n_estimators
-                ),
+                n_estimators=(kernel_authorities.physical.model.transfer_n_estimators),
                 max_targets_per_fit=(
                     kernel_authorities.physical.model.max_targets_per_fit
                 ),
@@ -4212,9 +4260,7 @@ def build_stacked_pool(
                         _json_ready(CANONICAL_STACKED_GAP_FILL_SURFACE)
                         if kernel_authorities is None
                         else _json_ready(
-                            _stacked_gap_fill_authority_surface(
-                                kernel_authorities
-                            )
+                            _stacked_gap_fill_authority_surface(kernel_authorities)
                         )
                     ),
                     "post_puf_transfer": _json_ready(
@@ -4287,9 +4333,7 @@ def build_stacked_pool(
         else:
             derived = derive_multispine_pool_inputs(
                 derivation_input,
-                remaining_stage_authority=(
-                    kernel_authorities.physical.remaining_stage
-                ),
+                remaining_stage_authority=(kernel_authorities.physical.remaining_stage),
             )
         qbi_transition_authority_sha256 = derived.qbi_transition_authority_sha256
         current = canonicalize_frame_string_dtypes(
@@ -4313,9 +4357,7 @@ def build_stacked_pool(
         else:
             seeded = seed_multispine_pool_inputs(
                 current,
-                remaining_stage_authority=(
-                    kernel_authorities.physical.remaining_stage
-                ),
+                remaining_stage_authority=(kernel_authorities.physical.remaining_stage),
                 take_up_authority=kernel_authorities.physical.take_up,
                 simulation_settings=kernel_authorities.physical.simulation,
             )
@@ -5345,9 +5387,7 @@ class _ResolvedStackedRunConfig(Mapping[str, object]):
         if self.runtime_plan.identity_generation != 1:
             raise ValueError("Bundle runtime plan requires identity_generation 1.")
         if not isinstance(self.kernel_authorities, USPoolKernelAuthorities):
-            raise TypeError(
-                "Bundle configuration requires USPoolKernelAuthorities."
-            )
+            raise TypeError("Bundle configuration requires USPoolKernelAuthorities.")
         if (
             self.runtime_plan.authority_sha256
             != self.runtime_authorities.authority_sha256
@@ -5727,6 +5767,282 @@ def _stacked_attempt_outputs(args: argparse.Namespace) -> PoolBuildOutputs:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class _F1EvidencePlan:
+    """Pre-execution plan snapshot that owns certification collection."""
+
+    plan_lock: Mapping[str, object]
+    canonical_plan_lock: bytes
+    runtime_plan: USPoolRuntimePlan
+    kernel_authorities: USPoolKernelAuthorities
+
+
+def _compile_f1_evidence_plan() -> _F1EvidencePlan:
+    """Compile one sealed selector plan without driving constants mode."""
+
+    compiled = compile_spec(load_bundle("us"))
+    runtime_authorities = compile_runtime_authorities(compiled)
+    runtime_plan = USPoolRuntimePlan.from_spec_authority(
+        compile_us_spec_authority(runtime_authorities)
+    )
+    kernel_authorities = USPoolKernelAuthorities.from_runtime_plan(runtime_plan)
+    lock = plan_lock_payload(compiled)
+    execution_abi = lock.get("execution_abi")
+    if (
+        not isinstance(execution_abi, Mapping)
+        or execution_abi.get("sha256") != runtime_plan.execution.abi_sha256
+    ):
+        raise ValueError("F1 evidence plan lock differs from its runtime plan.")
+    return _F1EvidencePlan(
+        plan_lock=lock,
+        canonical_plan_lock=_canonical_json_bytes(lock),
+        runtime_plan=runtime_plan,
+        kernel_authorities=kernel_authorities,
+    )
+
+
+def _assert_f1_tracked_code_snapshot(code_pin: str) -> None:
+    """Refuse certification evidence from a moving or tracked-dirty checkout."""
+
+    if _git_code_pin() != code_pin:
+        raise ValueError("F1 evidence code HEAD changed during the build.")
+    repository = Path(__file__).resolve().parents[1]
+    try:
+        status = subprocess.run(
+            ["git", "diff", "--quiet", "HEAD", "--"],
+            cwd=repository,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except OSError as error:
+        raise RuntimeError("Could not verify the F1 tracked code snapshot.") from error
+    if status.returncode == 1:
+        raise ValueError("F1 evidence requires a tracked-clean checkout.")
+    if status.returncode != 0:
+        raise RuntimeError("Could not verify the F1 tracked code snapshot.")
+
+
+def _freeze_f1_evidence_plan(
+    *,
+    code_pin: str,
+    run_config: Mapping[str, object],
+) -> _F1EvidencePlan:
+    """Freeze the plan before source reads and bind bundle execution to it."""
+
+    _assert_f1_tracked_code_snapshot(code_pin)
+    evidence_plan = _compile_f1_evidence_plan()
+    _assert_f1_tracked_code_snapshot(code_pin)
+    if isinstance(run_config, _ResolvedStackedRunConfig):
+        runtime_plan = run_config.runtime_plan
+        kernel_authorities = run_config.kernel_authorities
+        if (
+            runtime_plan.authority_sha256 != evidence_plan.runtime_plan.authority_sha256
+            or runtime_plan.spec_sha256 != evidence_plan.runtime_plan.spec_sha256
+            or runtime_plan.execution.abi_sha256
+            != evidence_plan.runtime_plan.execution.abi_sha256
+            or kernel_authorities.authority_sha256
+            != evidence_plan.kernel_authorities.authority_sha256
+        ):
+            raise ValueError(
+                "Bundle execution authorities differ from the frozen F1 evidence plan."
+            )
+    return evidence_plan
+
+
+def _assert_f1_evidence_plan_current(
+    evidence_plan: _F1EvidencePlan,
+    *,
+    code_pin: str,
+) -> None:
+    """Refuse a plan/code change between authority selection and collection."""
+
+    if not isinstance(evidence_plan, _F1EvidencePlan):
+        raise TypeError("typed F1 evidence plan required")
+    if _canonical_json_bytes(evidence_plan.plan_lock) != (
+        evidence_plan.canonical_plan_lock
+    ):
+        raise ValueError("Frozen F1 evidence plan was mutated during the build.")
+    _assert_f1_tracked_code_snapshot(code_pin)
+    observed = _compile_f1_evidence_plan()
+    _assert_f1_tracked_code_snapshot(code_pin)
+    if observed.canonical_plan_lock != evidence_plan.canonical_plan_lock:
+        raise ValueError("F1 evidence plan changed during the build.")
+
+
+def _f1_artifact_locator_registry(
+    *,
+    plan_lock: Mapping[str, object],
+    runtime_plan: USPoolRuntimePlan,
+    kernel_authorities: USPoolKernelAuthorities,
+    outputs: PoolBuildOutputs,
+    checkpoint_store: _PoolStageCheckpointStore,
+) -> tuple[
+    ArtifactLocatorRegistry,
+    PoolArtifactCoverageContract,
+    Mapping[str, Path],
+]:
+    """Bind every collector locator to its construction-time physical output."""
+
+    allowed_roots = tuple(
+        sorted(
+            {
+                outputs.pool_h5.parent.resolve(),
+                outputs.checkpoint_root.resolve(),
+            },
+            key=lambda path: path.as_posix(),
+        )
+    )
+    registry = ArtifactLocatorRegistry(allowed_roots=allowed_roots)
+    registry.bind_file("runtime_output:pool_h5", outputs.pool_h5)
+    registry.bind_file("runtime_output:manifest", outputs.manifest)
+    registry.bind_file(
+        "runtime_output:agreement_diagnostics",
+        outputs.agreement_diagnostics,
+    )
+    seed_stream_map = plan_lock.get("seed_stream_map")
+    if not isinstance(seed_stream_map, Mapping):
+        raise ValueError("F1 plan lock has no seed-stream map.")
+    registry.bind_json("plan_lock:/seed_stream_map", seed_stream_map)
+
+    for checkpoint in runtime_plan.execution.checkpoints:
+        checkpoint_id = checkpoint.id
+        registry.bind_file(
+            f"checkpoint:{checkpoint_id}:payload",
+            checkpoint_store.checkpoint_path(checkpoint_id),
+        )
+        registry.bind_file(
+            f"checkpoint:{checkpoint_id}:manifest",
+            checkpoint_store.checkpoint_manifest_path(checkpoint_id),
+        )
+        registry.bind_optional_file(
+            f"checkpoint:{checkpoint_id}:receipts",
+            checkpoint_store.checkpoint_receipts_path(checkpoint_id),
+        )
+
+    coverage_contract = compile_pool_artifact_coverage(
+        runtime_plan,
+        kernel_authorities,
+    )
+    roots_by_authority: dict[str, Path] = {
+        **{
+            f"gap_fill_direction:{direction.name}": (
+                outputs.acs_transfer_checkpoint_dir / direction.name
+            )
+            for direction in kernel_authorities.physical.gap_fill.directions
+        },
+        f"producer_node:{kernel_authorities.physical.primary_qrf.node.id}": (
+            outputs.primary_qrf_checkpoint_dir
+        ),
+        **{
+            f"producer_node:{group.name}": (
+                outputs.acs_transfer_checkpoint_dir
+                / "late_producer_dag"
+                / group.entity
+                / group.family
+            )
+            for group in kernel_authorities.physical.late_producers.transfer_groups
+        },
+    }
+    expected_authorities = {
+        bank.authority_ref for bank in coverage_contract.target_banks
+    }
+    if set(roots_by_authority) != expected_authorities:
+        raise ValueError(
+            "F1 target-bank bindings differ from the sealed coverage authority: "
+            f"missing={sorted(expected_authorities - set(roots_by_authority))}, "
+            f"extra={sorted(set(roots_by_authority) - expected_authorities)}"
+        )
+    bank_roots = {
+        bank.locator_ref: roots_by_authority[bank.authority_ref]
+        for bank in coverage_contract.target_banks
+    }
+    for bank in coverage_contract.target_banks:
+        registry.bind_directory(bank.locator_ref, bank_roots[bank.locator_ref])
+    return registry, coverage_contract, bank_roots
+
+
+def _emit_f1_evidence(
+    path: Path,
+    *,
+    args: argparse.Namespace,
+    code_pin: str,
+    run_config: Mapping[str, object],
+    evidence_plan: _F1EvidencePlan,
+    outputs: PoolBuildOutputs,
+    checkpoint_store: _PoolStageCheckpointStore,
+) -> None:
+    """Collect the sealed vector and emit honest post-publication evidence."""
+
+    _assert_f1_evidence_plan_current(evidence_plan, code_pin=code_pin)
+    plan_lock = evidence_plan.plan_lock
+    runtime_plan = evidence_plan.runtime_plan
+    kernel_authorities = evidence_plan.kernel_authorities
+    registry, coverage_contract, bank_roots = _f1_artifact_locator_registry(
+        plan_lock=plan_lock,
+        runtime_plan=runtime_plan,
+        kernel_authorities=kernel_authorities,
+        outputs=outputs,
+        checkpoint_store=checkpoint_store,
+    )
+    mode_value = run_config.get("config_authority")
+    if mode_value not in {"constants", "bundle"}:
+        raise ValueError("F1 evidence requires constants or bundle run config.")
+    mode = str(mode_value)
+    collected = collect_artifact_digests(
+        plan_lock["execution_abi"],
+        registry=registry,
+        authority_mode=mode,
+    )
+    selector_coverage = validate_pool_artifact_coverage(
+        coverage_contract,
+        bank_roots=bank_roots,
+    )
+    artifact_locator_refs = tuple(
+        sorted(
+            {
+                str(row.get("locator_ref"))
+                for row in runtime_plan.execution.artifact_vector
+            }
+        )
+    )
+    coverage = complete_coverage_evidence(
+        plan_lock,
+        bound_locator_refs=artifact_locator_refs,
+        node_reuse_ids=(),
+        node_reuse_inventory_complete=False,
+        selector_inventory_complete=(
+            selector_coverage.container_member_coverage_complete
+        ),
+        calibration_scope_complete=False,
+        selector_coverage_receipt=selector_coverage.to_wire(),
+        calibration_scope_receipt={
+            "domain": "microcosm.us-f1-calibration-scope-coverage.v1",
+            "schema_version": 1,
+            "calibration_scope_complete": False,
+            "reason": "normative_artifact_vector_omits_calibration_weights",
+        },
+    )
+    provenance = (
+        run_config.run_provenance_identity
+        if isinstance(run_config, _ResolvedStackedRunConfig)
+        else _constants_run_provenance_identity(args, code_pin=code_pin)
+    )
+    _assert_f1_tracked_code_snapshot(code_pin)
+    if _canonical_json_bytes(plan_lock) != evidence_plan.canonical_plan_lock:
+        raise ValueError("Frozen F1 evidence plan changed during collection.")
+    emit_f1_production_evidence(
+        path,
+        mode=mode,
+        plan_lock=plan_lock,
+        artifacts=collected.artifacts,
+        receipt_surfaces=collected.receipts,
+        run_provenance_identity=provenance,
+        node_reuse_keys={},
+        coverage=coverage,
+    )
+
+
 def _stacked_attempt_receipt_dir(
     outputs: PoolBuildOutputs,
     *,
@@ -5844,6 +6160,8 @@ def _main_stacked(args: argparse.Namespace) -> int:
     source_broker_receipts: list[Mapping[str, object]] = []
     source_snapshot_sessions: list[_BundleSourceSnapshotSession] = []
     source_snapshot_session: _BundleSourceSnapshotSession | None = None
+    f1_evidence_path: Path | None = None
+    f1_evidence_plan: _F1EvidencePlan | None = None
     rung = _stacked_rung(args.sample_fraction)
     logbook_seed: int | None = None
     run_config = _requested_stacked_run_config(args)
@@ -5884,6 +6202,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
             args.out,
             checkpoint_root=args.checkpoint_root,
         )
+        f1_evidence_path = _validate_f1_evidence_request(args, outputs)
         _refuse_preexisting_resume_state(args, outputs)
         # Select and fully resolve configuration authority before consulting
         # authority-owned publication, checkpoint, and physical constructors.
@@ -5898,6 +6217,11 @@ def _main_stacked(args: argparse.Namespace) -> int:
             raise
         if isinstance(run_config, _ResolvedStackedRunConfig):
             runtime_plan = run_config.runtime_plan
+        if f1_evidence_path is not None:
+            f1_evidence_plan = _freeze_f1_evidence_plan(
+                code_pin=code_pin,
+                run_config=run_config,
+            )
         provenance_value = run_config.get("run_provenance_identity")
         if isinstance(provenance_value, Mapping):
             run_provenance_identity = provenance_value
@@ -6007,9 +6331,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
                 _append_phase(state, "checkpoint_loaded")
                 if resume.stage == "assembled":
                     if source_snapshot_session is None:
-                        acs_rent_donor = load_acs_2022_rent_donor(
-                            args.acs_rent_h5
-                        )
+                        acs_rent_donor = load_acs_2022_rent_donor(args.acs_rent_h5)
                         puf_donor, _puf_donor_build = _load_puf_donor(args)
                     else:
                         acs_rent_donor, puf_donor = _load_bundle_resume_donors(
@@ -6072,6 +6394,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
                 sample_seed=args.sample_seed,
                 clone_attachment_fraction=args.clone_attachment_fraction,
                 clone_attachment_seed=args.clone_attachment_seed,
+                run_config=(run_config if runtime_plan is not None else None),
                 runtime_plan=runtime_plan,
             )
             _promote_stacked_attempt_identity(
@@ -6187,6 +6510,18 @@ def _main_stacked(args: argparse.Namespace) -> int:
                 source_broker_receipts[0] if source_broker_receipts else None
             ),
         )
+        if f1_evidence_path is not None:
+            if f1_evidence_plan is None:  # pragma: no cover - same guarded flow
+                raise RuntimeError("F1 evidence plan was not frozen before execution.")
+            _emit_f1_evidence(
+                f1_evidence_path,
+                args=args,
+                code_pin=code_pin,
+                run_config=run_config,
+                evidence_plan=f1_evidence_plan,
+                outputs=outputs,
+                checkpoint_store=checkpoint_store,
+            )
         _append_phase(state, "publication_completed")
         state.artifact_location = _local_artifact_reference(outputs.pool_h5)
     except Exception as error:
@@ -6266,6 +6601,8 @@ def main(argv: list[str] | None = None) -> int:
 
     args = _parser().parse_args(argv)
     if args.legacy_two_spine:
+        if getattr(args, "f1_evidence_out", None) is not None:
+            raise ValueError("--f1-evidence-out is unavailable for --legacy-two-spine")
         config_authority = getattr(args, "config_authority", "constants")
         if config_authority != "constants":
             raise ValueError(

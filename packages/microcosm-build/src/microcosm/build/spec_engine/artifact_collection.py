@@ -26,11 +26,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
+from typing import Protocol
 
 import numpy as np
 import pandas as pd
 
-from .artifact_comparison import checkpoint_receipt_surface
+from .artifact_comparison import ArtifactDigest, checkpoint_receipt_surface
 from .artifact_selector_contract import (
     ARTIFACT_LOCATOR_GRAMMAR,
     ARTIFACT_SELECTOR_CONTRACT_SHA256,
@@ -272,6 +273,39 @@ class CollectedArtifactSurfaces:
 
 
 @dataclass(frozen=True, slots=True)
+class CollectedArtifactDigests:
+    """Normative artifact identities and complete structural receipt surfaces."""
+
+    artifacts: Mapping[str, ArtifactDigest]
+    receipts: Mapping[str, object]
+
+
+class _EncodingSink(Protocol):
+    def extend(self, payload: bytes, /) -> None:
+        """Consume the next exact segment of a selected artifact surface."""
+
+
+class _DigestSink:
+    """Incrementally retain only the identity of an encoded artifact surface."""
+
+    __slots__ = ("_byte_size", "_sha256")
+
+    def __init__(self) -> None:
+        self._sha256 = hashlib.sha256()
+        self._byte_size = 0
+
+    def extend(self, payload: bytes, /) -> None:
+        self._sha256.update(payload)
+        self._byte_size += len(payload)
+
+    def finish(self) -> ArtifactDigest:
+        return ArtifactDigest(
+            sha256=self._sha256.hexdigest(),
+            byte_size=self._byte_size,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class _ArtifactRow:
     artifact_id: str
     locator_ref: str
@@ -336,6 +370,66 @@ def collect_artifact_surfaces(
     JSON documents remain in ``receipts`` for structural comparison.
     """
 
+    artifacts, receipts = _collect_artifacts(
+        execution_abi,
+        registry=registry,
+        authority_mode=authority_mode,
+        digest_only=False,
+    )
+    if not all(isinstance(value, bytes) for value in artifacts.values()):
+        raise AssertionError("byte collector produced a digest")
+    return CollectedArtifactSurfaces(
+        artifacts=MappingProxyType(
+            {
+                artifact_id: value
+                for artifact_id, value in artifacts.items()
+                if isinstance(value, bytes)
+            }
+        ),
+        receipts=MappingProxyType(receipts),
+    )
+
+
+def collect_artifact_digests(
+    execution_abi: Mapping[str, object],
+    *,
+    registry: ArtifactLocatorRegistry,
+    authority_mode: str,
+) -> CollectedArtifactDigests:
+    """Stream every sealed artifact into a typed SHA-256/size identity.
+
+    File contents, framed directory-file contents, and logical H5 encodings
+    are fed incrementally to the digest sink.  Receipt validation and returned
+    receipt surfaces are identical to :func:`collect_artifact_surfaces`.
+    """
+
+    artifacts, receipts = _collect_artifacts(
+        execution_abi,
+        registry=registry,
+        authority_mode=authority_mode,
+        digest_only=True,
+    )
+    if not all(isinstance(value, ArtifactDigest) for value in artifacts.values()):
+        raise AssertionError("digest collector produced artifact bytes")
+    return CollectedArtifactDigests(
+        artifacts=MappingProxyType(
+            {
+                artifact_id: value
+                for artifact_id, value in artifacts.items()
+                if isinstance(value, ArtifactDigest)
+            }
+        ),
+        receipts=MappingProxyType(receipts),
+    )
+
+
+def _collect_artifacts(
+    execution_abi: Mapping[str, object],
+    *,
+    registry: ArtifactLocatorRegistry,
+    authority_mode: str,
+    digest_only: bool,
+) -> tuple[dict[str, bytes | ArtifactDigest], dict[str, object]]:
     if not isinstance(registry, ArtifactLocatorRegistry):
         raise TypeError("registry must be ArtifactLocatorRegistry")
     if authority_mode not in {"constants", "bundle"}:
@@ -355,7 +449,7 @@ def collect_artifact_surfaces(
         _validate_binding(binding, allowed_roots=registry.allowed_roots)
 
     documents: dict[str, dict[str, object]] = {}
-    artifacts: dict[str, bytes] = {}
+    artifacts: dict[str, bytes | ArtifactDigest] = {}
     receipt_role_sources: dict[str, str] = {}
     deferred_json_rows: list[_ArtifactRow] = []
     for row in plan.artifacts:
@@ -373,11 +467,13 @@ def collect_artifact_surfaces(
             )
             deferred_json_rows.append(row)
         else:
-            artifacts[row.artifact_id] = _apply_selector(
+            selected = _apply_selector(
                 row.selector_ref,
                 binding,
+                digest_only=digest_only,
             )
-            _authenticate_plan_value(row, artifacts[row.artifact_id], abi=abi)
+            artifacts[row.artifact_id] = selected
+            _authenticate_plan_value(row, _artifact_digest(selected), abi=abi)
 
     _cross_authenticate_artifact_bindings(
         plan.artifact_bindings,
@@ -395,13 +491,17 @@ def collect_artifact_surfaces(
 
     for row in deferred_json_rows:
         role = _JSON_SELECTOR_RECEIPT_ROLES[row.selector_ref]
-        artifacts[row.artifact_id] = _normalized_document_bytes(
+        selected_bytes = _normalized_document_bytes(
             documents[role],
             role=role,
             rules=plan.rules,
             authority_mode=authority_mode,
         )
-        _authenticate_plan_value(row, artifacts[row.artifact_id], abi=abi)
+        selected: bytes | ArtifactDigest = (
+            ArtifactDigest.from_bytes(selected_bytes) if digest_only else selected_bytes
+        )
+        artifacts[row.artifact_id] = selected
+        _authenticate_plan_value(row, _artifact_digest(selected), abi=abi)
 
     receipts: dict[str, object] = dict(documents)
     for checkpoint in plan.checkpoints:
@@ -440,7 +540,7 @@ def collect_artifact_surfaces(
         _cross_authenticate_checkpoint(
             checkpoint,
             payload_binding=payload_binding,
-            payload=payload,
+            payload=_artifact_digest(payload),
             manifest=manifest,
             receipt_surface=surface,
         )
@@ -457,10 +557,7 @@ def collect_artifact_surfaces(
             f"missing={sorted(expected_receipt_roles - set(receipts))}, "
             f"extra={sorted(set(receipts) - expected_receipt_roles)}"
         )
-    return CollectedArtifactSurfaces(
-        artifacts=MappingProxyType(artifacts),
-        receipts=MappingProxyType(receipts),
-    )
+    return artifacts, receipts
 
 
 def _compile_collection_plan(abi: dict[str, object]) -> _CollectionPlan:
@@ -509,9 +606,7 @@ def _compile_collection_plan(abi: dict[str, object]) -> _CollectionPlan:
     )
     if len(declared_selectors) != len(set(declared_selectors)):
         raise ArtifactCollectionError("content selector inventory contains duplicates")
-    source_broker_grant = _compile_source_broker_grant(
-        abi.get("source_broker_grant")
-    )
+    source_broker_grant = _compile_source_broker_grant(abi.get("source_broker_grant"))
 
     artifact_rows: list[_ArtifactRow] = []
     artifact_ids: set[str] = set()
@@ -591,7 +686,9 @@ def _compile_collection_plan(abi: dict[str, object]) -> _CollectionPlan:
             raise ArtifactCollectionError(f"{location}: binding row keys changed")
         binding_id = _nonempty_string(row.get("id"), location=f"{location}/id")
         if binding_id in binding_ids:
-            raise ArtifactCollectionError(f"duplicate artifact binding id {binding_id!r}")
+            raise ArtifactCollectionError(
+                f"duplicate artifact binding id {binding_id!r}"
+            )
         binding_ids.add(binding_id)
         receipt_role = _nonempty_string(
             row.get("receipt_role"), location=f"{location}/receipt_role"
@@ -605,7 +702,9 @@ def _compile_collection_plan(abi: dict[str, object]) -> _CollectionPlan:
         )
         envelope_key = (receipt_role, envelope_tokens)
         if envelope_key in binding_envelopes:
-            raise ArtifactCollectionError(f"duplicate artifact binding envelope at {location}")
+            raise ArtifactCollectionError(
+                f"duplicate artifact binding envelope at {location}"
+            )
         binding_envelopes.add(envelope_key)
         locator_ref = _nonempty_string(
             row.get("locator_ref"), location=f"{location}/locator_ref"
@@ -620,7 +719,9 @@ def _compile_collection_plan(abi: dict[str, object]) -> _CollectionPlan:
             )
         binding_locators.add(locator_ref)
         if row.get("raw_identity") != "resolved_path_sha256_size_bytes_v1":
-            raise ArtifactCollectionError(f"{location}/raw_identity: unsupported protocol")
+            raise ArtifactCollectionError(
+                f"{location}/raw_identity: unsupported protocol"
+            )
         protocol = _nonempty_string(
             row.get("embedded_identity_protocol"),
             location=f"{location}/embedded_identity_protocol",
@@ -830,9 +931,7 @@ def _compile_source_broker_grant(value: object) -> _SourceBrokerGrant:
         ):
             raise ArtifactCollectionError(f"{row_location}/byte_size: invalid")
         sources.append((source_id, digest, byte_size))
-        source_rows.append(
-            {"id": source_id, "sha256": digest, "byte_size": byte_size}
-        )
+        source_rows.append({"id": source_id, "sha256": digest, "byte_size": byte_size})
     if sources != sorted(sources, key=lambda row: row[0]) or len(
         {row[0] for row in sources}
     ) != len(sources):
@@ -845,38 +944,53 @@ def _compile_source_broker_grant(value: object) -> _SourceBrokerGrant:
     return _SourceBrokerGrant(sources=tuple(sources))
 
 
-def _apply_selector(selector: str, binding: LocatorBinding) -> bytes:
+def _apply_selector(
+    selector: str,
+    binding: LocatorBinding,
+    *,
+    digest_only: bool,
+) -> bytes | ArtifactDigest:
+    output: bytearray | _DigestSink = _DigestSink() if digest_only else bytearray()
     if selector == "selector:canonical_json_bytes_v1":
         if binding.kind is not LocatorSourceKind.JSON_VALUE:
             raise ArtifactCollectionError(
                 f"{binding.locator_ref}: JSON-value binding required"
             )
         assert binding.canonical_json is not None
-        return binding.canonical_json
-    if selector == "selector:file_bytes_v1":
+        output.extend(binding.canonical_json)
+    elif selector == "selector:file_bytes_v1":
         _require_kind(binding, LocatorSourceKind.FILE)
         assert binding.path is not None
-        return _read_regular_file(binding.path)
-    if selector == "selector:directory_tree_bytes_v1":
+        _encode_regular_file(output, binding.path)
+    elif selector == "selector:directory_tree_bytes_v1":
         _require_kind(binding, LocatorSourceKind.DIRECTORY)
         assert binding.path is not None
-        return _directory_tree_bytes(binding.path)
-    if selector in {
+        _encode_directory_tree(output, binding.path)
+    elif selector in {
         "selector:h5_all_entity_tables_and_columns_v1",
         "selector:h5_all_weight_vectors_v1",
     }:
         _require_kind(binding, LocatorSourceKind.FILE)
         assert binding.path is not None
-        return _h5_logical_bytes(
+        _encode_h5_logical_surface(
+            output,
             binding.path,
             weights=selector == "selector:h5_all_weight_vectors_v1",
         )
-    raise ArtifactCollectionError(f"selector {selector!r} requires a JSON document")
+    else:
+        raise ArtifactCollectionError(f"selector {selector!r} requires a JSON document")
+    return output.finish() if isinstance(output, _DigestSink) else bytes(output)
+
+
+def _artifact_digest(value: bytes | ArtifactDigest) -> ArtifactDigest:
+    return (
+        value if isinstance(value, ArtifactDigest) else ArtifactDigest.from_bytes(value)
+    )
 
 
 def _authenticate_plan_value(
     row: _ArtifactRow,
-    payload: bytes,
+    payload: ArtifactDigest,
     *,
     abi: Mapping[str, object],
 ) -> None:
@@ -899,7 +1013,7 @@ def _authenticate_plan_value(
         raise ArtifactCollectionError(
             "execution_abi/pipeline/seed_stream_map_sha256 is invalid"
         )
-    if hashlib.sha256(payload).hexdigest() != expected:
+    if payload.sha256 != expected:
         raise ArtifactCollectionError(
             f"{row.locator_ref}: bound plan component digest differs from execution ABI"
         )
@@ -1161,8 +1275,7 @@ def _validate_source_broker_receipt(
             "publication_manifest/source_broker_receipt: source event inventory differs"
         )
     granted_by_id = {
-        source_id: (digest, byte_size)
-        for source_id, digest, byte_size in grant.sources
+        source_id: (digest, byte_size) for source_id, digest, byte_size in grant.sources
     }
     seen_sources: set[str] = set()
     for index, raw_event in enumerate(events):
@@ -1215,7 +1328,9 @@ def _validate_source_broker_receipt(
             raise ArtifactCollectionError(
                 "publication_manifest/source_broker_receipt: source identity differs from grant"
             )
-    if seen_sources != set(granted_by_id):  # pragma: no cover - count + membership imply
+    if seen_sources != set(
+        granted_by_id
+    ):  # pragma: no cover - count + membership imply
         raise AssertionError("validated source event inventory is incomplete")
     seal = receipt.get("receipt_sha256")
     if not _is_sha256(seal):
@@ -1233,7 +1348,7 @@ def _cross_authenticate_checkpoint(
     checkpoint: _CheckpointRow,
     *,
     payload_binding: LocatorBinding,
-    payload: bytes,
+    payload: ArtifactDigest,
     manifest: Mapping[str, object],
     receipt_surface: Mapping[str, object],
 ) -> None:
@@ -1249,8 +1364,8 @@ def _cross_authenticate_checkpoint(
     )
     expected = {
         "filename": payload_binding.path.name,
-        "sha256": hashlib.sha256(payload).hexdigest(),
-        "size_bytes": len(payload),
+        "sha256": payload.sha256,
+        "size_bytes": payload.byte_size,
     }
     if binding != expected:
         raise ArtifactCollectionError(
@@ -1391,16 +1506,35 @@ def _strict_json_object(raw: bytes) -> dict[str, object]:
 
 
 def _read_regular_file(path: Path) -> bytes:
+    output = bytearray()
+    _encode_regular_file(output, path)
+    return bytes(output)
+
+
+def _encode_regular_file(
+    output: _EncodingSink,
+    path: Path,
+    *,
+    framed: bool = False,
+) -> None:
     descriptor = _open_regular_file(path)
+    size = 0
     try:
         before = os.fstat(descriptor)
-        with os.fdopen(descriptor, mode="rb", closefd=False) as stream:
-            payload = stream.read()
+        if framed:
+            output.extend(struct.pack(">Q", before.st_size))
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            output.extend(chunk)
+            size += len(chunk)
         after = os.fstat(descriptor)
     finally:
         os.close(descriptor)
     _require_unchanged_file(path, before=before, after=after)
-    return payload
+    if size != after.st_size:
+        raise ArtifactCollectionError(f"file size changed while collecting: {path}")
 
 
 def _regular_file_sha256(path: Path) -> bytes:
@@ -1464,7 +1598,7 @@ def _require_unchanged_file(
         raise ArtifactCollectionError(f"file changed while collecting: {path}")
 
 
-def _directory_tree_bytes(root: Path) -> bytes:
+def _encode_directory_tree(output: _EncodingSink, root: Path) -> None:
     entries: list[tuple[bytes, bool, Path]] = []
 
     def visit(directory: Path, prefix: str) -> None:
@@ -1498,23 +1632,27 @@ def _directory_tree_bytes(root: Path) -> bytes:
 
     visit(root, "")
     entries.sort(key=lambda row: row[0])
-    output = bytearray(b"microcosm.selector.directory-tree-bytes.v1\0")
+    output.extend(b"microcosm.selector.directory-tree-bytes.v1\0")
     for relative, is_directory, path in entries:
         output.extend(b"D" if is_directory else b"F")
         _append_frame(output, relative)
         if not is_directory:
-            _append_frame(output, _read_regular_file(path))
-    return bytes(output)
+            _encode_regular_file(output, path, framed=True)
 
 
-def _h5_logical_bytes(path: Path, *, weights: bool) -> bytes:
+def _encode_h5_logical_surface(
+    output: _EncodingSink,
+    path: Path,
+    *,
+    weights: bool,
+) -> None:
     initial_sha256 = _regular_file_sha256(path)
     domain = (
         b"microcosm.selector.h5-all-weight-vectors.v1\0"
         if weights
         else b"microcosm.selector.h5-all-entity-tables-and-columns.v1\0"
     )
-    output = bytearray(domain)
+    output.extend(domain)
     selected = 0
     try:
         with pd.HDFStore(path, mode="r") as store:
@@ -1548,10 +1686,9 @@ def _h5_logical_bytes(path: Path, *, weights: bool) -> bytes:
         raise ArtifactCollectionError(f"H5 contains no {surface} surface: {path}")
     if _regular_file_sha256(path) != initial_sha256:
         raise ArtifactCollectionError(f"H5 changed while collecting: {path}")
-    return bytes(output)
 
 
-def _encode_h5_header(output: bytearray, store: pd.HDFStore) -> None:
+def _encode_h5_header(output: _EncodingSink, store: pd.HDFStore) -> None:
     period, metadata = _h5_header_values(store)
     for field in H5_OPERATIONAL_METADATA_FIELDS:
         metadata.pop(field, None)
@@ -1619,7 +1756,7 @@ def _read_h5_artifact_metadata(path: Path) -> dict[str, object]:
 
 
 def _encode_table(
-    output: bytearray,
+    output: _EncodingSink,
     key: str,
     table: pd.DataFrame,
     *,
@@ -1644,7 +1781,7 @@ def _encode_table(
             _encode_scalar(output, value)
 
 
-def _encode_index(output: bytearray, index: pd.Index) -> None:
+def _encode_index(output: _EncodingSink, index: pd.Index) -> None:
     output.extend(b"I")
     if isinstance(index, pd.MultiIndex):
         descriptor: object = {
@@ -1666,19 +1803,19 @@ def _encode_index(output: bytearray, index: pd.Index) -> None:
 
 def _dtype_descriptor(dtype: object) -> object:
     if isinstance(dtype, pd.CategoricalDtype):
-        categories = bytearray()
+        categories = _DigestSink()
         for value in dtype.categories.tolist():
             _encode_scalar(categories, value)
         return {
             "kind": "category",
             "ordered": dtype.ordered,
-            "categories_sha256": hashlib.sha256(categories).hexdigest(),
+            "categories_sha256": categories.finish().sha256,
             "categories_count": len(dtype.categories),
         }
     return {"kind": type(dtype).__name__, "name": str(dtype)}
 
 
-def _encode_scalar(output: bytearray, value: object) -> None:
+def _encode_scalar(output: _EncodingSink, value: object) -> None:
     if value is None or value is pd.NA or value is pd.NaT:
         output.extend(b"N")
         return
@@ -1721,7 +1858,7 @@ def _encode_scalar(output: bytearray, value: object) -> None:
         )
 
 
-def _append_frame(output: bytearray, payload: bytes) -> None:
+def _append_frame(output: _EncodingSink, payload: bytes) -> None:
     output.extend(struct.pack(">Q", len(payload)))
     output.extend(payload)
 
@@ -1928,8 +2065,10 @@ def _is_sha256(value: object) -> bool:
 __all__ = [
     "ArtifactCollectionError",
     "ArtifactLocatorRegistry",
+    "CollectedArtifactDigests",
     "CollectedArtifactSurfaces",
     "LocatorBinding",
     "LocatorSourceKind",
+    "collect_artifact_digests",
     "collect_artifact_surfaces",
 ]

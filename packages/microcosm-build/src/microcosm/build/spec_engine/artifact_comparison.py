@@ -5,9 +5,9 @@ authority.  Normative artifacts are compared as raw bytes.  Receipt values
 are structurally exact except at paths named by one, and only one, sealed
 comparison rule.
 
-This module deliberately accepts already materialized artifact bytes.  File
-and directory discovery belongs to the execution ABI's locator and selector
-implementation, not to the comparison kernel.
+This module accepts already materialized artifact bytes or typed digests of
+those selected bytes.  File and directory discovery belongs to the execution
+ABI's locator and selector implementation, not to the comparison kernel.
 """
 
 from __future__ import annotations
@@ -55,8 +55,7 @@ _PROVENANCE_GENERATION_SUFFIXES = frozenset(
     }
 )
 _GENERATION_POINTERS = _TOP_GENERATION_POINTERS | frozenset(
-    (*_PROVENANCE_ROOT_TOKENS, *suffix)
-    for suffix in _PROVENANCE_GENERATION_SUFFIXES
+    (*_PROVENANCE_ROOT_TOKENS, *suffix) for suffix in _PROVENANCE_GENERATION_SUFFIXES
 )
 _EXECUTION_ABI_KEYS = frozenset(
     {
@@ -159,6 +158,48 @@ _MISSING = object()
 
 class ArtifactComparisonError(ValueError):
     """The plan or supplied comparison surfaces fail closed."""
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactDigest:
+    """One selected artifact surface represented without retaining its bytes."""
+
+    sha256: str
+    byte_size: int
+
+    def __post_init__(self) -> None:
+        _validate_sha256(self.sha256, location="artifact_digest/sha256")
+        if (
+            isinstance(self.byte_size, bool)
+            or not isinstance(self.byte_size, int)
+            or self.byte_size < 0
+        ):
+            raise ArtifactComparisonError(
+                "artifact_digest/byte_size: non-negative integer required"
+            )
+
+    @classmethod
+    def from_bytes(cls, value: bytes) -> ArtifactDigest:
+        """Digest one already-selected normative byte surface."""
+
+        if not isinstance(value, bytes):
+            raise ArtifactComparisonError("artifact digest input must be raw bytes")
+        return cls(sha256=hashlib.sha256(value).hexdigest(), byte_size=len(value))
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, object]) -> ArtifactDigest:
+        """Strictly reconstruct a digest from its JSON wire representation."""
+
+        row = _json_object(value, location="artifact_digest")
+        _require_exact_keys(
+            row,
+            frozenset({"sha256", "byte_size"}),
+            location="artifact_digest",
+        )
+        return cls(sha256=row["sha256"], byte_size=row["byte_size"])  # type: ignore[arg-type]
+
+    def to_wire(self) -> dict[str, object]:
+        return {"sha256": self.sha256, "byte_size": self.byte_size}
 
 
 @dataclass(frozen=True, slots=True)
@@ -299,16 +340,12 @@ class ArtifactComparisonReceipt:
             "artifact_rows": [row.to_wire() for row in self.artifact_rows],
             "stage_rows": [row.to_wire() for row in self.stage_rows],
             "receipt_rows": [row.to_wire() for row in self.receipt_rows],
-            "node_reuse_key_rows": [
-                row.to_wire() for row in self.node_reuse_key_rows
-            ],
+            "node_reuse_key_rows": [row.to_wire() for row in self.node_reuse_key_rows],
             "constants_normative_sha256": self.constants_normative_sha256,
             "bundle_normative_sha256": self.bundle_normative_sha256,
             "constants_receipts_sha256": self.constants_receipts_sha256,
             "bundle_receipts_sha256": self.bundle_receipts_sha256,
-            "constants_node_reuse_keys_sha256": (
-                self.constants_node_reuse_keys_sha256
-            ),
+            "constants_node_reuse_keys_sha256": (self.constants_node_reuse_keys_sha256),
             "bundle_node_reuse_keys_sha256": self.bundle_node_reuse_keys_sha256,
             "normative_equal": self.normative_equal,
             "receipts_equal_under_plan": self.receipts_equal_under_plan,
@@ -438,15 +475,51 @@ def compare_artifact_sets(
     constants_node_reuse_keys: Mapping[str, str],
     bundle_node_reuse_keys: Mapping[str, str],
 ) -> ArtifactComparisonReceipt:
+    """Compare materialized artifact bytes through the digest-level kernel."""
+
+    return compare_artifact_digest_sets(
+        execution_abi,
+        constants_artifacts=_artifact_digests_from_bytes(
+            constants_artifacts,
+            mode="constants",
+        ),
+        bundle_artifacts=_artifact_digests_from_bytes(
+            bundle_artifacts,
+            mode="bundle",
+        ),
+        constants_receipts=constants_receipts,
+        bundle_receipts=bundle_receipts,
+        constants_run_provenance_identity=constants_run_provenance_identity,
+        bundle_run_provenance_identity=bundle_run_provenance_identity,
+        constants_node_reuse_keys=constants_node_reuse_keys,
+        bundle_node_reuse_keys=bundle_node_reuse_keys,
+    )
+
+
+def compare_artifact_digest_sets(
+    execution_abi: Mapping[str, object],
+    *,
+    constants_artifacts: Mapping[str, ArtifactDigest],
+    bundle_artifacts: Mapping[str, ArtifactDigest],
+    constants_receipts: Mapping[str, object],
+    bundle_receipts: Mapping[str, object],
+    constants_run_provenance_identity: RunProvenanceIdentity,
+    bundle_run_provenance_identity: RunProvenanceIdentity,
+    constants_node_reuse_keys: Mapping[str, str],
+    bundle_node_reuse_keys: Mapping[str, str],
+) -> ArtifactComparisonReceipt:
     """Compare two cold-build output sets under one sealed execution ABI.
 
-    Artifact mappings must contain exactly the ids in
-    ``normative_artifact_vector``.  Receipt mappings carry JSON-shaped values
-    keyed by artifact role.  The generation-zero and generation-one provenance
-    identities are typed inputs and are bound in full at every provenance
-    receipt root.  Expected leaf transitions are derived only from those typed
-    values.  Node reuse maps are bound to the compiler's producer inventory and
-    compared exactly; neither surface has a caller-authored escape hatch.
+    Artifact mappings contain digests computed from the collector's selected
+    bytes and must contain exactly the ids in ``normative_artifact_vector``.
+    This public entry point lets certification receipts compare a large vector
+    without re-materializing or fabricating artifact bytes.  Receipt mappings
+    carry JSON-shaped values keyed by artifact role.  The generation-zero and
+    generation-one provenance identities are typed inputs and are bound in full
+    at every provenance receipt root.  Expected leaf transitions are derived
+    only from those typed values.  Node reuse maps are bound to the compiler's
+    producer inventory and compared exactly; neither surface has a
+    caller-authored escape hatch.
 
     Invalid or incomplete inventories, ambiguous rules, and uncovered receipt
     differences raise :class:`ArtifactComparisonError`.  Covered comparison
@@ -489,19 +562,19 @@ def compare_artifact_sets(
     constants_node_reuse_keys_sha256 = _node_reuse_keys_digest(constants_node_keys)
     bundle_node_reuse_keys_sha256 = _node_reuse_keys_digest(bundle_node_keys)
     node_reuse_keys_equal = all(row.equal for row in node_reuse_key_rows)
-    constants_bytes = _validate_artifacts(
+    constants_digests = _validate_artifact_digests(
         constants_artifacts,
         expected=artifact_contracts,
         mode="constants",
     )
-    bundle_bytes = _validate_artifacts(
+    bundle_digests = _validate_artifact_digests(
         bundle_artifacts,
         expected=artifact_contracts,
         mode="bundle",
     )
 
     artifact_rows = tuple(
-        _artifact_row(contract, constants_bytes, bundle_bytes)
+        _artifact_digest_row(contract, constants_digests, bundle_digests)
         for contract in artifact_contracts
     )
     stage_rows = _stage_rows(artifact_rows)
@@ -606,6 +679,131 @@ def compare_artifact_sets(
         differences=difference_rows,
         receipt_sha256=sha256_json(body),
     )
+
+
+def receipt_determinism_projection(
+    execution_abi: Mapping[str, object],
+    *,
+    authority_mode: str,
+    receipts: Mapping[str, object],
+    run_provenance_identity: RunProvenanceIdentity,
+) -> dict[str, object]:
+    """Return a plan-validated same-mode receipt comparison projection.
+
+    Undeclared fields remain byte-exact canonical JSON.  Operational leaves
+    are replaced only when a sealed rule names them, publication identifiers
+    are normalized through the selector contract, and generation-specific
+    leaves are retained after validation against the typed run provenance.
+    Two cold builds in the same authority mode are deterministic exactly when
+    these projections are equal alongside their normative artifact and node
+    reuse-key vectors.
+    """
+
+    (
+        abi,
+        _artifact_contracts,
+        rules,
+        required_receipt_roles,
+        checkpoint_receipt_contracts,
+        _producer_order,
+    ) = _validate_execution_abi(execution_abi)
+    identity_wire = _validate_single_run_provenance_identity(
+        run_provenance_identity,
+        authority_mode=authority_mode,
+        execution_abi_sha256=str(abi["sha256"]),
+    )
+    surface = _json_object(receipts, location=f"{authority_mode}_receipts")
+    expected_roles = set(required_receipt_roles) | {row.artifact_role for row in rules}
+    if set(surface) != expected_roles:
+        raise ArtifactComparisonError(
+            f"{authority_mode} receipt role inventory mismatch: "
+            f"missing={sorted(expected_roles - set(surface))}, "
+            f"extra={sorted(set(surface) - expected_roles)}"
+        )
+    _validate_checkpoint_receipt_surfaces(
+        surface,
+        contracts=checkpoint_receipt_contracts,
+        mode=authority_mode,
+    )
+
+    concrete_rules: dict[tuple[str, tuple[str, ...]], _ReceiptRule] = {}
+    for rule in rules:
+        paths = _expand_pattern(surface[rule.artifact_role], rule.tokens)
+        if not paths:
+            raise ArtifactComparisonError(
+                "receipt rule matched no field: "
+                f"{rule.artifact_role}:{rule.pointer_pattern}"
+            )
+        for path in paths:
+            key = (rule.artifact_role, path)
+            if key in concrete_rules:  # pragma: no cover - ABI validator closes this
+                raise ArtifactComparisonError(
+                    "receipt field matched more than one sealed rule: "
+                    f"{rule.artifact_role}:{_encode_pointer(path)}"
+                )
+            concrete_rules[key] = rule
+
+    generation_roles = {
+        role
+        for (role, path), rule in concrete_rules.items()
+        if rule.rule == "expected_to_differ_by_generation"
+        and path[: len(_PROVENANCE_ROOT_TOKENS)] == _PROVENANCE_ROOT_TOKENS
+    }
+    for role in sorted(generation_roles):
+        observed = _value_at(surface[role], _PROVENANCE_ROOT_TOKENS)
+        if _json_bytes(
+            observed,
+            location=f"{authority_mode}_receipts/{role}/run_provenance_identity",
+        ) != _json_bytes(
+            identity_wire,
+            location=f"{authority_mode}_run_provenance_identity",
+        ):
+            raise ArtifactComparisonError(
+                f"{authority_mode} receipt provenance differs from typed identity "
+                f"at {role}"
+            )
+
+    projection = _json_object(surface, location="receipt_determinism_projection")
+    for (role, path), rule in sorted(
+        concrete_rules.items(),
+        key=lambda item: (item[0][0], _encode_pointer(item[0][1])),
+    ):
+        observed = _value_at(surface[role], path)
+        if rule.rule == "operational_excluded":
+            replacement: object = {
+                "comparison_rule": "operational_excluded",
+            }
+        elif rule.rule == "equal_after_normalizing_prefix":
+            normalized = _normalize_prefix(observed, authority_mode=authority_mode)
+            if normalized is None:
+                raise ArtifactComparisonError(
+                    f"{authority_mode}_receipts/{role}{_encode_pointer(path)}: "
+                    "invalid publication identifier for prefix normalization"
+                )
+            replacement = normalized
+        else:
+            expected = _generation_value_for_mode(
+                path,
+                authority_mode=authority_mode,
+                identity_wire=identity_wire,
+            )
+            if _json_bytes(
+                observed,
+                location=f"{authority_mode}_receipts/{role}{_encode_pointer(path)}",
+            ) != _json_bytes(
+                expected,
+                location=(
+                    f"{authority_mode}_generation_expectation/"
+                    f"{role}{_encode_pointer(path)}"
+                ),
+            ):
+                raise ArtifactComparisonError(
+                    f"{authority_mode}_receipts/{role}{_encode_pointer(path)}: "
+                    "generation value differs from typed provenance"
+                )
+            replacement = observed
+        _replace_value_at(projection[role], path, replacement)
+    return projection
 
 
 def _validate_execution_abi(
@@ -758,7 +956,9 @@ def _validate_execution_abi(
         _require_exact_keys(row, _ARTIFACT_BINDING_KEYS, location=location)
         binding_id = _nonempty_string(row["id"], location=f"{location}/id")
         if binding_id in binding_ids:
-            raise ArtifactComparisonError(f"duplicate artifact binding id {binding_id!r}")
+            raise ArtifactComparisonError(
+                f"duplicate artifact binding id {binding_id!r}"
+            )
         binding_ids.add(binding_id)
         role = _nonempty_string(
             row["receipt_role"], location=f"{location}/receipt_role"
@@ -919,7 +1119,10 @@ def _validate_execution_abi(
         rule = _nonempty_string(row["rule"], location=f"{location}/rule")
         if rule not in _ALLOWED_RECEIPT_RULES:
             raise ArtifactComparisonError(f"{location}: unknown receipt rule {rule!r}")
-        if rule == "expected_to_differ_by_generation" and tokens not in _GENERATION_POINTERS:
+        if (
+            rule == "expected_to_differ_by_generation"
+            and tokens not in _GENERATION_POINTERS
+        ):
             raise ArtifactComparisonError(
                 f"{location}: unknown generation-difference field semantics "
                 f"{_encode_pointer(tokens)!r}"
@@ -957,8 +1160,7 @@ def _validate_source_broker_grant_abi(value: object) -> None:
     _require_exact_keys(grant, _SOURCE_BROKER_GRANT_KEYS, location=location)
     if (
         grant["domain"] != _SOURCE_BROKER_GRANT_DOMAIN
-        or grant["owner"]
-        != {"kind": "source_stage", "id": "declared_source_preflight"}
+        or grant["owner"] != {"kind": "source_stage", "id": "declared_source_preflight"}
         or grant["effects"] != ["declared_source_read"]
     ):
         raise ArtifactComparisonError(f"{location}: source grant contract changed")
@@ -995,20 +1197,39 @@ def _validate_source_broker_grant_abi(value: object) -> None:
         raise ArtifactComparisonError(f"{location}/source_set_sha256: mismatch")
 
 
-def _validate_artifacts(
+def _artifact_digests_from_bytes(
     values: Mapping[str, bytes],
     *,
-    expected: Sequence[_ArtifactContract],
     mode: str,
-) -> dict[str, bytes]:
+) -> dict[str, ArtifactDigest]:
     if not isinstance(values, Mapping):
         raise ArtifactComparisonError(f"{mode}_artifacts: object required")
-    observed: dict[str, bytes] = {}
+    observed: dict[str, ArtifactDigest] = {}
     for key, value in values.items():
         if not isinstance(key, str):
             raise ArtifactComparisonError(f"{mode}_artifacts: string keys required")
         if not isinstance(value, bytes):
             raise ArtifactComparisonError(f"{mode}_artifacts/{key}: raw bytes required")
+        observed[key] = ArtifactDigest.from_bytes(value)
+    return observed
+
+
+def _validate_artifact_digests(
+    values: Mapping[str, ArtifactDigest],
+    *,
+    expected: Sequence[_ArtifactContract],
+    mode: str,
+) -> dict[str, ArtifactDigest]:
+    if not isinstance(values, Mapping):
+        raise ArtifactComparisonError(f"{mode}_artifacts: object required")
+    observed: dict[str, ArtifactDigest] = {}
+    for key, value in values.items():
+        if not isinstance(key, str):
+            raise ArtifactComparisonError(f"{mode}_artifacts: string keys required")
+        if not isinstance(value, ArtifactDigest):
+            raise ArtifactComparisonError(
+                f"{mode}_artifacts/{key}: typed ArtifactDigest required"
+            )
         observed[key] = value
     expected_ids = {row.artifact_id for row in expected}
     observed_ids = set(observed)
@@ -1021,20 +1242,20 @@ def _validate_artifacts(
     return observed
 
 
-def _artifact_row(
+def _artifact_digest_row(
     contract: _ArtifactContract,
-    constants_artifacts: Mapping[str, bytes],
-    bundle_artifacts: Mapping[str, bytes],
+    constants_artifacts: Mapping[str, ArtifactDigest],
+    bundle_artifacts: Mapping[str, ArtifactDigest],
 ) -> ArtifactComparisonRow:
     constants_value = constants_artifacts[contract.artifact_id]
     bundle_value = bundle_artifacts[contract.artifact_id]
     return ArtifactComparisonRow(
         artifact_id=contract.artifact_id,
         stage_ref=contract.stage_ref,
-        constants_sha256=hashlib.sha256(constants_value).hexdigest(),
-        bundle_sha256=hashlib.sha256(bundle_value).hexdigest(),
-        constants_byte_size=len(constants_value),
-        bundle_byte_size=len(bundle_value),
+        constants_sha256=constants_value.sha256,
+        bundle_sha256=bundle_value.sha256,
+        constants_byte_size=constants_value.byte_size,
+        bundle_byte_size=bundle_value.byte_size,
         equal=constants_value == bundle_value,
     )
 
@@ -1376,7 +1597,10 @@ def _validate_run_provenance_pair(
     constants_wire = constants_identity.to_wire()
     bundle_wire = bundle_identity.to_wire()
     binding = bundle_wire["spec_binding"]
-    if not isinstance(binding, dict) or binding.get("attestation") != "bundle-authoritative":
+    if (
+        not isinstance(binding, dict)
+        or binding.get("attestation") != "bundle-authoritative"
+    ):
         raise ArtifactComparisonError(
             "bundle_run_provenance_identity spec_binding attestation must be "
             "bundle-authoritative"
@@ -1429,6 +1653,103 @@ def _validate_run_provenance_pair(
         )
 
 
+def _validate_single_run_provenance_identity(
+    identity: RunProvenanceIdentity,
+    *,
+    authority_mode: str,
+    execution_abi_sha256: str,
+) -> dict[str, object]:
+    if authority_mode not in {"constants", "bundle"}:
+        raise ArtifactComparisonError("authority_mode must be 'constants' or 'bundle'")
+    if not isinstance(identity, RunProvenanceIdentity):
+        raise ArtifactComparisonError(
+            f"{authority_mode}_run_provenance_identity must be a typed "
+            "RunProvenanceIdentity"
+        )
+    expected_generation = 0 if authority_mode == "constants" else 1
+    if identity.identity_generation != expected_generation:
+        raise ArtifactComparisonError(
+            f"{authority_mode}_run_provenance_identity must have "
+            f"identity_generation {expected_generation}"
+        )
+    wire = identity.to_wire()
+    authority_versions = wire["authority_versions"]
+    expected_authority_fields = {
+        "stacked_authority",
+        "checkpoint_materializer",
+        "runtime_authority",
+        "execution_abi",
+    }
+    if not isinstance(authority_versions, dict) or set(authority_versions) != (
+        expected_authority_fields
+    ):
+        raise ArtifactComparisonError(
+            f"{authority_mode}_run_provenance_identity authority_versions keys changed"
+        )
+    execution_receipt = wire["execution_receipt"]
+    if not isinstance(execution_receipt, dict) or set(execution_receipt) != {
+        "authority_mode",
+        "pipeline",
+        "code_pin",
+    }:
+        raise ArtifactComparisonError(
+            f"{authority_mode}_run_provenance_identity execution_receipt keys changed"
+        )
+    if execution_receipt["authority_mode"] != authority_mode:
+        raise ArtifactComparisonError(
+            f"{authority_mode}_run_provenance_identity execution authority_mode differs"
+        )
+    if authority_mode == "constants":
+        if (
+            authority_versions["runtime_authority"] is not None
+            or authority_versions["execution_abi"] is not None
+        ):
+            raise ArtifactComparisonError(
+                "constants_run_provenance_identity bundle authority versions "
+                "must be null"
+            )
+    else:
+        binding = wire["spec_binding"]
+        if (
+            not isinstance(binding, dict)
+            or binding.get("attestation") != "bundle-authoritative"
+        ):
+            raise ArtifactComparisonError(
+                "bundle_run_provenance_identity spec_binding attestation must be "
+                "bundle-authoritative"
+            )
+        _validate_sha256(
+            authority_versions["runtime_authority"],
+            location=(
+                "bundle_run_provenance_identity/authority_versions/runtime_authority"
+            ),
+        )
+        if authority_versions["execution_abi"] != execution_abi_sha256:
+            raise ArtifactComparisonError(
+                "bundle_run_provenance_identity authority_versions/execution_abi "
+                "differs from the compared execution ABI"
+            )
+    return wire
+
+
+def _generation_value_for_mode(
+    path: tuple[str, ...],
+    *,
+    authority_mode: str,
+    identity_wire: Mapping[str, object],
+) -> object:
+    scalars: dict[tuple[str, ...], tuple[object, object]] = {
+        ("run_config", "config_authority"): ("constants", "bundle"),
+        ("run_config", "spec_binding_status"): ("absent", "resolved"),
+        ("run_config", "identity_generation"): (0, 1),
+    }
+    if path in scalars:
+        return scalars[path][0 if authority_mode == "constants" else 1]
+    if path[: len(_PROVENANCE_ROOT_TOKENS)] != _PROVENANCE_ROOT_TOKENS:
+        raise AssertionError("unknown generation semantics passed plan validation")
+    return _value_at(identity_wire, path[len(_PROVENANCE_ROOT_TOKENS) :])
+
+
 def _derive_generation_expectations(
     *,
     generation_keys: set[tuple[str, str]],
@@ -1436,7 +1757,9 @@ def _derive_generation_expectations(
     bundle_run_provenance_identity: RunProvenanceIdentity,
 ) -> dict[tuple[str, str], GenerationExpectation]:
     scalar_pairs = {
-        ("run_config", "config_authority"): GenerationExpectation("constants", "bundle"),
+        ("run_config", "config_authority"): GenerationExpectation(
+            "constants", "bundle"
+        ),
         ("run_config", "spec_binding_status"): GenerationExpectation(
             "absent", "resolved"
         ),
@@ -1624,6 +1947,26 @@ def _value_at(value: object, path: tuple[str, ...]) -> object:
         if current is _MISSING:
             raise AssertionError("validated concrete receipt path disappeared")
     return current
+
+
+def _replace_value_at(
+    value: object, path: tuple[str, ...], replacement: object
+) -> None:
+    if not path:  # pragma: no cover - receipt rules cannot name the root
+        raise AssertionError("cannot replace the receipt root")
+    parent = _value_at(value, path[:-1]) if len(path) > 1 else value
+    token = path[-1]
+    if isinstance(parent, dict):
+        if token not in parent:  # pragma: no cover - expanded paths are concrete
+            raise AssertionError("validated concrete receipt path disappeared")
+        parent[token] = replacement
+        return
+    if isinstance(parent, list) and token.isascii() and token.isdigit():
+        index = int(token)
+        if index < len(parent):
+            parent[index] = replacement
+            return
+    raise AssertionError("validated concrete receipt path is not replaceable")
 
 
 def _child(value: object, token: str) -> object:
