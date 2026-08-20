@@ -1505,3 +1505,55 @@ JSON and Markdown remain absent by design. No threshold, timeout, seed, band,
 selector, or memory limit changed; the pending logbook chain was not touched;
 nothing was pushed. The charter-required disposition remains an honest stop at
 deliverable 5.
+
+## F1 continuation r5 kickoff (2026-08-20)
+
+### State
+
+- The owner accepts the r4 honest stop and authorizes exactly two
+  implementation deliverables before a host handoff: bundle-only physical
+  executor/broker wiring and a host-invokable four-receipt certification
+  runner. The host, not this lane, will execute every sample build.
+- `_F1-CHARTER.md` and this journal were reread before code work. Their
+  explicit `NEVER touch PROGRESS.md` / `no PROGRESS.md` rule controls the
+  contradictory generic standing-order sentence, so this file remains the
+  committed state/done/next journal and `PROGRESS.md` remains untouched.
+- Current HEAD is `58269355` on `spec-engine-f1`. The only pre-existing
+  worktree entries are the four untracked owner charter copies
+  `_F1-CHARTER-R2.md` through `_F1-CHARTER-R5.md`; they remain untouched and
+  uncommitted. Nothing has been pushed or stashed.
+- The r4 production finding is the starting seam: bundle selection compiles a
+  `USPoolRuntimePlan` and snapshot-brokers source reads, but
+  `build_stacked_pool` still dispatches constants-era physical calls and no
+  production caller invokes `execute_node`,
+  `USPoolKernelAuthorities.from_runtime_plan`,
+  `collect_artifact_surfaces`, or `compare_artifact_sets`.
+- The lane will run only focused/unit and fixture-scale tests. It will not run
+  a sample build, including 1%, because authenticated primary-QRF profiles
+  peak at 78.91--96.95 GiB RSS and exceed the unchanged 20-GiB process
+  ceiling.
+
+### Done
+
+- Read the complete r4 journal, approved charter including the D4 two-tier
+  ruling, repository instructions, and the r5 continuation order.
+- Confirmed the tracked worktree is clean and reviewed the current authority
+  selection, source snapshot, physical stage, artifact collector/comparator,
+  and kernel-authority entry points before editing production code.
+- Began three read-only audits in parallel: physical dispatch seams,
+  certification receipt/CLI reuse, and artifact-vector/fixture closure.
+  GitNexus graph resources are not exposed in this environment, so the
+  required exploration workflow falls back to direct source, tests, and Git
+  history.
+
+### Next
+
+1. Wire bundle-only physical execution through compiler-materialized kernel
+   authorities, per-node `execute_node` dispatch, source snapshots, and ledger
+   RNG sessions while preserving the constants branch as the oracle.
+2. Add and pass a cold fixture-scale constants-versus-bundle full-stage graph
+   gate using the sealed D4 two-tier comparison.
+3. Build and unit-test the one-build receipt runner, four-receipt comparator,
+   and document-only kill/resume predicate command.
+4. Append the exact ordered host commands and expected RSS envelope, update
+   the final output report, and stop without running certification.
