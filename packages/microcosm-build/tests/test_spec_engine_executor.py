@@ -3428,7 +3428,7 @@ def test_projection_requires_one_complete_or_of_and_input_alternative(
     assert calls == 0
 
 
-def test_absence_receipt_only_tolerates_an_actually_absent_input(
+def test_absence_receipt_tolerates_missing_but_not_present_invalid_input(
     projection: ImmutableFrameProjection,
 ) -> None:
     receipt_id = "optional_input:fixture:value"
@@ -3468,6 +3468,16 @@ def test_absence_receipt_only_tolerates_an_actually_absent_input(
         _run(node, invalid, kernel)
     assert calls == 0
 
+    missing_parts = projection._parts()
+    missing_parts["tables"]["person"]["value"] = [10.0, 20.0, np.nan]
+    missing_parts["virtual_receipts"] = {
+        ("frame", receipt_id): {"absent": True}
+    }
+    missing = ImmutableFrameProjection(**missing_parts)  # type: ignore[arg-type]
+    validated = _run(node, missing, kernel)
+    assert not validated.diff.empty
+    assert calls == 1
+
     absent_parts = projection._parts()
     absent_parts["tables"]["person"] = absent_parts["tables"]["person"].drop(
         columns="value"
@@ -3476,7 +3486,49 @@ def test_absence_receipt_only_tolerates_an_actually_absent_input(
     absent = ImmutableFrameProjection(**absent_parts)  # type: ignore[arg-type]
     validated = _run(node, absent, kernel)
     assert not validated.diff.empty
-    assert calls == 1
+    assert calls == 2
+
+
+@pytest.mark.parametrize(
+    "invalid_values",
+    (
+        pd.Series([10.0, 20.0, np.inf], dtype="float64"),
+        pd.Series([True, False, True], dtype="bool"),
+        pd.Series(["10", "20", "invalid"], dtype="string"),
+    ),
+    ids=("infinite", "boolean", "non_numeric"),
+)
+def test_absence_receipt_refuses_each_present_non_null_invalid_numeric_input(
+    projection: ImmutableFrameProjection,
+    invalid_values: pd.Series,
+) -> None:
+    receipt_id = "optional_input:fixture:value"
+    effective_input = _input(
+        "person",
+        "@effective:value",
+        alternatives=[
+            [
+                {
+                    "entity": "person",
+                    "column": "value",
+                    "value_kind": "finite_numeric",
+                }
+            ]
+        ],
+        tolerated_absence_receipts=[receipt_id],
+    )
+    node = _node(
+        StructuralDelta.NONE,
+        [_scope("group_value", entity="group")],
+        inputs=(effective_input, _input("group", "group_value")),
+    )
+    parts = projection._parts()
+    parts["tables"]["person"]["value"] = invalid_values
+    parts["virtual_receipts"] = {("frame", receipt_id): {"absent": True}}
+    invalid = ImmutableFrameProjection(**parts)  # type: ignore[arg-type]
+
+    with pytest.raises(CapabilityError, match="input|finite"):
+        _run(node, invalid, _none_patch)
 
 
 @pytest.mark.parametrize(

@@ -100,6 +100,12 @@ class RetrySafety(StrEnum):
     NONRETRYABLE = "nonretryable"
 
 
+class _InputCellState(StrEnum):
+    SATISFIED = "satisfied"
+    MISSING = "missing"
+    INVALID = "invalid"
+
+
 _CAPABILITY_FIELDS = frozenset(
     {
         "determinism",
@@ -2732,7 +2738,7 @@ def _required_input_rows(
         ) from error
 
 
-def _physical_input_satisfies(
+def _physical_input_state(
     projection: ImmutableFrameProjection,
     *,
     entity: str,
@@ -2740,10 +2746,10 @@ def _physical_input_satisfies(
     value_kind: str,
     required_scope: str,
     registry: ClosedScopeRegistry,
-) -> bool:
+) -> _InputCellState:
     table = projection._tables.get(entity)
     if table is None or column not in table.columns:
-        return False
+        return _InputCellState.MISSING
     required_rows = _required_input_rows(
         projection,
         entity,
@@ -2753,58 +2759,75 @@ def _physical_input_satisfies(
     key = projection._entity_keys[entity]
     selected = table.loc[table[key].isin(required_rows), column]
     if value_kind == "column_present":
-        return True
+        return _InputCellState.SATISFIED
     if value_kind == "non_null":
-        return not selected.isna().any()
+        if selected.isna().any():
+            return _InputCellState.MISSING
+        return _InputCellState.SATISFIED
     if value_kind == "finite_numeric":
+        missing = selected.isna()
+        present = selected.loc[~missing]
+        if present.empty and missing.any():
+            return _InputCellState.MISSING
         if pd.api.types.is_bool_dtype(
             selected.dtype
         ) or not pd.api.types.is_numeric_dtype(selected.dtype):
-            return False
-        if selected.isna().any():
-            return False
+            return _InputCellState.INVALID
         try:
-            return bool(np.isfinite(selected.to_numpy(dtype=np.float64)).all())
+            if not np.isfinite(present.to_numpy(dtype=np.float64)).all():
+                return _InputCellState.INVALID
         except (TypeError, ValueError):
-            return False
+            return _InputCellState.INVALID
+        if missing.any():
+            return _InputCellState.MISSING
+        return _InputCellState.SATISFIED
     raise CapabilityError(f"unknown producer input value_kind {value_kind!r}")
 
 
-def _virtual_input_satisfies(value: object, value_kind: str) -> bool:
+def _virtual_input_state(value: object, value_kind: str) -> _InputCellState:
     if value_kind == "column_present":
-        return True
+        return _InputCellState.SATISFIED
     if value_kind == "non_null":
         if value is None:
-            return False
+            return _InputCellState.MISSING
         if pd.api.types.is_scalar(value):
             try:
-                return not bool(pd.isna(value))
+                if bool(pd.isna(value)):
+                    return _InputCellState.MISSING
             except (TypeError, ValueError):
-                return False
-        return True
+                return _InputCellState.INVALID
+        return _InputCellState.SATISFIED
     if value_kind == "finite_numeric":
         if isinstance(value, bool):
-            return False
+            return _InputCellState.INVALID
         try:
             array = np.asarray(value)
-            return bool(
-                np.issubdtype(array.dtype, np.number)
-                and not np.issubdtype(array.dtype, np.bool_)
-                and np.isfinite(array).all()
-            )
+            missing = pd.isna(array)
+            if bool(np.asarray(missing).all()):
+                return _InputCellState.MISSING
+            if not np.issubdtype(array.dtype, np.number) or np.issubdtype(
+                array.dtype, np.bool_
+            ):
+                return _InputCellState.INVALID
+            present = array[~missing]
+            if not np.isfinite(present).all():
+                return _InputCellState.INVALID
+            if bool(np.asarray(missing).any()):
+                return _InputCellState.MISSING
+            return _InputCellState.SATISFIED
         except (TypeError, ValueError):
-            return False
+            return _InputCellState.INVALID
     raise CapabilityError(f"unknown producer input value_kind {value_kind!r}")
 
 
-def _input_cell_satisfies(
+def _input_cell_state(
     projection: ImmutableFrameProjection,
     value: object,
     *,
     required_scope: str,
     registry: ClosedScopeRegistry,
     location: str,
-) -> bool:
+) -> _InputCellState:
     row = _mapping(value, location=location)
     entity = _string(row.get("entity"), location=f"{location}/entity")
     column = _string(row.get("column"), location=f"{location}/column")
@@ -2813,10 +2836,10 @@ def _input_cell_satisfies(
         raise CapabilityError(f"unknown producer input value_kind {value_kind!r}")
     if column.startswith("@"):
         key = (entity, column)
-        return key in projection._virtual_receipts and _virtual_input_satisfies(
-            projection._virtual_receipts[key], value_kind
-        )
-    return _physical_input_satisfies(
+        if key not in projection._virtual_receipts:
+            return _InputCellState.MISSING
+        return _virtual_input_state(projection._virtual_receipts[key], value_kind)
+    return _physical_input_state(
         projection,
         entity=entity,
         column=column,
@@ -2824,21 +2847,6 @@ def _input_cell_satisfies(
         required_scope=required_scope,
         registry=registry,
     )
-
-
-def _input_cell_present(
-    projection: ImmutableFrameProjection,
-    value: object,
-    *,
-    location: str,
-) -> bool:
-    row = _mapping(value, location=location)
-    entity = _string(row.get("entity"), location=f"{location}/entity")
-    column = _string(row.get("column"), location=f"{location}/column")
-    if column.startswith("@"):
-        return (entity, column) in projection._virtual_receipts
-    table = projection._tables.get(entity)
-    return table is not None and column in table.columns
 
 
 def _absence_receipt_present(
@@ -2886,35 +2894,34 @@ def _validate_required_inputs(
                     cell_location = (
                         f"{location}/alternatives/{group_index}/{cell_index}"
                     )
-                    cell_satisfied = _input_cell_satisfies(
+                    cell_state = _input_cell_state(
                         projection,
                         cell,
                         required_scope=required_scope,
                         registry=registry,
                         location=cell_location,
                     )
-                    if not cell_satisfied:
+                    if cell_state is not _InputCellState.SATISFIED:
                         group_satisfied = False
-                        if _input_cell_present(
-                            projection,
-                            cell,
-                            location=cell_location,
-                        ):
+                        if cell_state is _InputCellState.INVALID:
                             present_but_invalid = True
                 if group_satisfied:
                     satisfied = True
                     break
         else:
-            satisfied = _input_cell_satisfies(
-                projection,
-                {
-                    "entity": entity,
-                    "column": column,
-                    "value_kind": "column_present",
-                },
-                required_scope=required_scope,
-                registry=registry,
-                location=location,
+            satisfied = (
+                _input_cell_state(
+                    projection,
+                    {
+                        "entity": entity,
+                        "column": column,
+                        "value_kind": "column_present",
+                    },
+                    required_scope=required_scope,
+                    registry=registry,
+                    location=location,
+                )
+                is _InputCellState.SATISFIED
             )
         receipts = row.get("tolerated_absence_receipts", [])
         if not isinstance(receipts, list) or any(

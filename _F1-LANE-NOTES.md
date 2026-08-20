@@ -2020,3 +2020,34 @@ head; it still writes `us-f1-certification.json` and
 2. Reconcile runner coverage with the completed node journal/reuse surface,
    run only fixture/unit verification, update the host commands and final
    output report, and stop before any host build.
+
+## F1 continuation r5 executor input-state repair (2026-08-20)
+
+### State
+
+- The first real full-graph bundle dispatch reached `execute_node` and failed
+  before its first callback. The late readiness contract treats scoped nulls
+  in optional availability-pattern inputs as missing and emits the declared
+  absence receipt, while the generic executor previously collapsed those
+  nulls together with present non-null invalid values.
+- Changing the fixture would hide the same production incompatibility. The
+  executor input state therefore needs the same missing-versus-invalid
+  distinction as the compiled late contract.
+
+### Done
+
+- Added a closed satisfied/missing/invalid input-cell state to executor
+  validation. A declared absence receipt can now cover an absent column or
+  scoped null cells; it still cannot cover infinity, a boolean numeric input,
+  or nonnumeric content.
+- Focused validation passes for the null-with-receipt case, all three invalid
+  refusal cases, and the broader required-input alternative selection cases.
+  Ruff and `git diff --check` pass. No build ran.
+
+### Next
+
+1. Rerun the full 38-node dual-mode fixture and repair only further genuine
+   projection/patch incompatibilities.
+2. Resolve the separate audit finding that the compatibility scope currently
+   records compiled RNG grants without consuming broker tokens; do not call
+   that ledger-routed execution until the broker owns the draws.
