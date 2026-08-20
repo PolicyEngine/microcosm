@@ -499,6 +499,7 @@ def _run_bank_fixture(
         seed=37,
         n_estimators=1,
         target_bank=target_bank,
+        regime_evidence_targets=tuple(("person", target) for target in _BANK_TARGETS),
     )
 
 
@@ -919,6 +920,7 @@ def test_pattern_provenance_records_ordered_exact_donor_target_regimes(
         "fixture_zero_inflated_positive",
         "fixture_three_sign",
     )
+    selected_targets = (targets[0], targets[2])
     donor = _with_columns(
         _donor_frame(),
         "person",
@@ -943,17 +945,23 @@ def test_pattern_provenance_records_ordered_exact_donor_target_regimes(
         donor,
         target_families={"person": {"fixture_regimes": targets}},
         n_estimators=1,
+        regime_evidence_targets=tuple(
+            ("person", target) for target in selected_targets
+        ),
     )
 
     expected = (
         (targets[0], Regime.POSITIVE_ONLY),
-        (targets[1], Regime.ZERO_INFLATED_POSITIVE),
         (targets[2], Regime.THREE_SIGN),
     )
     assert len(result.imputed_inputs[0].patterns) == 1
-    assert all(
-        item.patterns[0].target_regimes == expected for item in result.imputed_inputs
-    )
+    assert {
+        item.column: item.patterns[0].target_regimes for item in result.imputed_inputs
+    } == {
+        targets[0]: expected,
+        targets[1]: (),
+        targets[2]: expected,
+    }
 
 
 def test_target_bank_cold_output_matches_unbanked_monolith(
@@ -1106,6 +1114,11 @@ def test_target_bank_resumes_joint_immigration_codec_as_one_model_target(
         assert all(
             person[target].dtype == CANONICAL_STRING_DTYPE
             for target in ("ssn_card_type", "immigration_status_str")
+        )
+        assert all(
+            not pattern.target_regimes
+            for record in result.imputed_inputs
+            for pattern in record.patterns
         )
 
     targets = warm_bank.receipt()["targets"]

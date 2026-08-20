@@ -3770,7 +3770,13 @@ def _json_ready(value: object) -> object:
     if isinstance(value, Mapping):
         if any(not isinstance(key, str) for key in value):
             raise ValueError("Build receipt mappings must use string JSON keys.")
-        return {key: _json_ready(item) for key, item in value.items()}
+        return {
+            key: _json_ready(item)
+            for key, item in value.items()
+            # The opt-in stacked audit field did not exist on legacy transfer
+            # provenance. Preserve the default build-receipt JSON schema.
+            if key != "target_regimes" or item
+        }
     if is_dataclass(value) and not isinstance(value, type):
         return _json_ready(asdict(value))
     if isinstance(value, (list, tuple)):

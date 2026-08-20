@@ -27,13 +27,15 @@ builds in this lane are off-chain at `--sample-fraction 0.01` and
   on the selected sign; that is the two-part mechanism calibrated here
   (`packages/microcosm-fit/src/microcosm/fit/qrf.py:950-1003,1333-1429`).
 - Ordinary ACS transfers partition recipients by optional-predictor
-  availability, construct exact complete-donor model frames, derive the
-  per-target regime from that encoded frame, and verify the fitted model's
-  reported regime without changing the existing pattern seed
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:1273-1322,1410-1495`).
-- The banked path derives the same regimes before starting the targetwise chain
-  and verifies each returned target regime before accepting its raw draw
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:1595-1662,1703-1750`).
+  availability and construct exact complete-donor model frames. Regime
+  detection and fitted-model verification run only for an explicit
+  owner-selected target subset; the existing pattern seed and draw surface do
+  not change
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:919-1115,1297-1579`).
+- The banked path applies the same explicit selection before the targetwise
+  chain and verifies only selected returned target regimes before accepting
+  their raw draws
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:1621-1848`).
 - Adult-care qualification is a fail-closed section-21 predicate, and the
   reconciliation clears nonqualifying mutable carriers, permits at most one
   qualifying mutable carrier per tax unit, and preserves pre-existing positive
@@ -80,11 +82,14 @@ comparator change.
   output hashes, full weights, carrier masses, reference/recipient quantiles,
   QED, and coupled adult/weeks constraints
   (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:3756-3818,3821-4025`).
-- QRF pattern receipts persist ordered predictors, seeds, weights, row counts,
-  and regimes, then validate canonical predictor/pattern/target order and count
-  accounting. Receipt-only validation deliberately does not claim donor replay
-  or out-of-sample verification
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:4128-4168,4202-4425`).
+- Only the nine declared calibration targets receive QRF pattern receipts.
+  Those receipts persist ordered predictors, seeds, weights, row counts, and
+  selected regimes, then validate canonical predictor/pattern/target order and
+  count accounting. Unassigned transfers retain their legacy evidence-free
+  receipts and generic serializers omit the empty opt-in field. Receipt-only
+  validation deliberately does not claim donor replay or out-of-sample
+  verification
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:4128-4445,4529-4795`).
 - The two pinned 3.73 GB SIPP readers retain chunked selection and downstream
   explicit coercion while using streaming type inference. Guarded full-donor
   reruns observed much lower RSS and unchanged locked donor facts
@@ -127,10 +132,12 @@ comparator change.
   `6b213e740b114d008c0191fa492832a957a0a948` matches
   `../microcosm-707/uv.lock`; that environment imports NumPy 2.4.6, pandas
   3.0.3, and pytest 8.4.2 while `PYTHONPATH` points at this worktree.
-- The final PR test surface is green: all 225 `microcosm-build` test files;
+- The pre-continuation PR test surface was green: all 225 `microcosm-build` test files;
   `microcosm-fit` 93 passed; `microcosm-calibrate` 201 passed;
   `microcosm-frame` 294 passed/36 skipped; and `microcosm-data` 275 passed/one
-  skipped. Heavy files ran in fresh pytest processes.
+  skipped. Heavy files ran in fresh pytest processes. Post-fix focused QRF,
+  stacked binding, serializer, banked, and late-executor tests are green; the
+  complete post-fix rerun remains pending.
 - `ruff check .`, touched-file `ruff format --check`, and `git diff --check`
   pass. Full-tree format checking reports 49 pre-existing files outside this
   lane's formatting scope.

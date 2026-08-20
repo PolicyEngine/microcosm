@@ -4125,6 +4125,34 @@ _ACS_QRF_PATTERN_EVIDENCE_SCHEMA_VERSION = 1
 _ACS_QRF_WEIGHT_KINDS = frozenset(kind.value for kind in WeightKind)
 
 
+def _acs_transfer_record_family_matches(
+    value: object,
+    *,
+    expected_entity: str,
+    expected_family: str,
+    expected_target: str,
+    expected_family_targets: Sequence[str],
+) -> bool:
+    """Accept only exact or deterministically possible bounded family names."""
+
+    if value == expected_family:
+        return True
+    if not isinstance(value, str):
+        return False
+    family_targets = tuple(expected_family_targets)
+    for max_targets_per_fit in range(1, len(family_targets)):
+        bounded = acs_transfer_runtime._split_large_target_families(
+            ((expected_entity, expected_family, family_targets),),
+            max_targets_per_fit=max_targets_per_fit,
+        )
+        if any(
+            entity == expected_entity and family == value and expected_target in targets
+            for entity, family, targets in bounded
+        ):
+            return True
+    return False
+
+
 def _acs_imputed_pattern_evidence(record: AcsImputedInput) -> dict[str, object]:
     """Return deterministic JSON-ready evidence for one ACS transfer record."""
 
@@ -4206,6 +4234,7 @@ def _validate_acs_imputed_pattern_evidence(
     expected_family: str,
     expected_target: str,
     expected_family_targets: Sequence[str],
+    expected_regime_targets: Sequence[str] | None = None,
     boundary: str,
 ) -> None:
     """Validate independently checkable ACS QRF pattern receipt structure.
@@ -4294,7 +4323,13 @@ def _validate_acs_imputed_pattern_evidence(
     record_weight_kind = record.get("weight_kind")
     if (
         record.get("entity") != expected_entity
-        or record.get("family") != expected_family
+        or not _acs_transfer_record_family_matches(
+            record.get("family"),
+            expected_entity=expected_entity,
+            expected_family=expected_family,
+            expected_target=expected_target,
+            expected_family_targets=expected_family_targets,
+        )
         or record.get("column") != expected_target
         or not isinstance(record_predictors, list)
         or any(not isinstance(item, str) for item in record_predictors)
@@ -4315,7 +4350,14 @@ def _validate_acs_imputed_pattern_evidence(
     ) != receipt_counts.get("unmodeled_rows"):
         raise ValueError(f"{boundary}: ACS QRF transfer row accounting is invalid.")
 
-    expected_targets = acs_transfer_runtime._model_target_names(expected_family_targets)
+    expected_targets = acs_transfer_runtime._selected_model_target_names(
+        expected_family_targets,
+        (
+            expected_family_targets
+            if expected_regime_targets is None
+            else expected_regime_targets
+        ),
+    )
     required_predictors, optional_authority = _acs_pattern_predictor_authority(
         entity=expected_entity,
         family_targets=expected_family_targets,
@@ -4509,23 +4551,35 @@ def validate_stacked_gap_fill_receipt(
                 raise ValueError(
                     f"{boundary}: stacked gap-fill target {key!r} has no receipt."
                 )
-            _validate_acs_imputed_pattern_evidence(
-                target_receipt,
-                expected_entity=direction_target_context[key][0],
-                expected_family=direction_target_context[key][1],
-                expected_target=direction_target_context[key][2],
-                expected_family_targets=direction_target_context[key][3],
-                boundary=f"{boundary} target {key}",
-            )
             owner_receipt = target_receipt.get("post_transfer_calibration")
             spec = expected_calibrations.get(key)
             if spec is None:
+                if "qrf_pattern_evidence" in target_receipt:
+                    raise ValueError(
+                        f"{boundary}: undeclared ACS QRF pattern evidence is "
+                        f"attached to {key!r}."
+                    )
                 if owner_receipt is not None:
                     raise ValueError(
                         f"{boundary}: undeclared gap-fill calibration evidence "
                         f"is attached to {key!r}."
                     )
                 continue
+            entity, family, target, family_targets = direction_target_context[key]
+            expected_regime_targets = tuple(
+                family_target
+                for family_target in family_targets
+                if f"{entity}/{family}/{family_target}" in early_specs
+            )
+            _validate_acs_imputed_pattern_evidence(
+                target_receipt,
+                expected_entity=entity,
+                expected_family=family,
+                expected_target=target,
+                expected_family_targets=family_targets,
+                expected_regime_targets=expected_regime_targets,
+                boundary=f"{boundary} target {key}",
+            )
             if not isinstance(owner_receipt, Mapping) or any(
                 owner_receipt.get(field) != expected
                 for field, expected in {
@@ -4625,6 +4679,9 @@ def validate_stacked_post_puf_transfer_receipt(
         )
         if spec.stage == "late_transfer"
     }
+    late_specs_by_target = {
+        (spec.entity, spec.target): spec for spec in late_calibration_specs.values()
+    }
     schedule = receipt.get("producer_schedule")
     expected_schedule = _json_ready(us_late_producer_schedule_receipt())
     if not isinstance(schedule, Mapping) or _json_ready(schedule) != expected_schedule:
@@ -4685,16 +4742,21 @@ def validate_stacked_post_puf_transfer_receipt(
                 "forbidden."
             )
         expected_calibrations = {
-            f"{group.entity}/{group.family}/{target}": late_calibration_specs[
-                f"{group.entity}/{group.family}/{target}"
-            ]
+            f"{group.entity}/{group.family}/{target}": spec
             for target in group.targets
-            if f"{group.entity}/{group.family}/{target}" in late_calibration_specs
+            if (spec := late_specs_by_target.get((group.entity, target))) is not None
+            and _stacked_calibration_family_matches(
+                spec,
+                entity=group.entity,
+                family=group.family,
+                target=target,
+                stage="late_transfer",
+            )
         }
         expected_calibration_summary = {
             "policy_sha256": expected_policy_sha256,
             "target_count": len(expected_calibrations),
-            "targets": sorted(expected_calibrations),
+            "targets": sorted(spec.key for spec in expected_calibrations.values()),
         }
         if group_receipt.get("post_transfer_calibration") != (
             expected_calibration_summary
@@ -4703,30 +4765,43 @@ def validate_stacked_post_puf_transfer_receipt(
                 f"{boundary}: stacked post-PUF transfer group {name!r} has "
                 "stripped or misbound calibration summary evidence."
             )
-        validated_calibration_keys.update(expected_calibrations)
+        validated_calibration_keys.update(
+            spec.key for spec in expected_calibrations.values()
+        )
         for target_key, target_receipt in group_targets.items():
             if not isinstance(target_receipt, Mapping):
                 raise ValueError(
                     f"{boundary}: stacked post-PUF target {target_key!r} has "
                     "no receipt."
                 )
-            _validate_acs_imputed_pattern_evidence(
-                target_receipt,
-                expected_entity=group.entity,
-                expected_family=group.family,
-                expected_target=target_key.rsplit("/", 1)[1],
-                expected_family_targets=group.targets,
-                boundary=f"{boundary} target {target_key}",
-            )
             owner_receipt = target_receipt.get("post_transfer_calibration")
             spec = expected_calibrations.get(target_key)
             if spec is None:
+                if "qrf_pattern_evidence" in target_receipt:
+                    raise ValueError(
+                        f"{boundary}: undeclared ACS QRF pattern evidence is "
+                        f"attached to {target_key!r}."
+                    )
                 if owner_receipt is not None:
                     raise ValueError(
                         f"{boundary}: undeclared post-transfer calibration "
                         f"evidence is attached to {target_key!r}."
                     )
                 continue
+            expected_regime_targets = tuple(
+                target
+                for target in group.targets
+                if f"{group.entity}/{group.family}/{target}" in expected_calibrations
+            )
+            _validate_acs_imputed_pattern_evidence(
+                target_receipt,
+                expected_entity=group.entity,
+                expected_family=group.family,
+                expected_target=target_key.rsplit("/", 1)[1],
+                expected_family_targets=group.targets,
+                expected_regime_targets=expected_regime_targets,
+                boundary=f"{boundary} target {target_key}",
+            )
             if not isinstance(owner_receipt, Mapping):
                 raise ValueError(
                     f"{boundary}: post-transfer calibration evidence is "
@@ -8796,6 +8871,68 @@ def _post_transfer_calibration_context_binding(
     }
 
 
+def _stacked_calibration_family_matches(
+    spec: PostTransferCalibrationSpec,
+    *,
+    entity: str,
+    family: str,
+    target: str,
+    stage: str,
+) -> bool:
+    """Bind specs only to exact or authority-derived bounded families."""
+
+    if entity != spec.entity or target != spec.target:
+        return False
+    if family == spec.family:
+        return True
+    if stage != "late_transfer":
+        return False
+    canonical_family = {
+        (canonical_entity, canonical_target): canonical_family
+        for canonical_entity, families in (
+            CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
+        )
+        for canonical_family, targets in families.items()
+        for canonical_target in targets
+    }.get((entity, target))
+    bounded_families = {
+        group.family
+        for group in CANONICAL_US_LATE_TRANSFER_GROUPS
+        if group.entity == entity and target in group.targets
+    }
+    return canonical_family == spec.family and family in bounded_families
+
+
+def _stacked_post_transfer_calibration_specs(
+    target_families: TargetFamilies,
+    *,
+    stage: str,
+) -> tuple[PostTransferCalibrationSpec, ...]:
+    """Return the exact declared calibration specs present on one surface."""
+
+    if stage not in {"early_gap_fill", "late_transfer"}:
+        raise ValueError(f"Unknown stacked post-transfer calibration stage {stage!r}.")
+    surface_targets = _surface_target_triples(target_families)
+    return tuple(
+        spec
+        for spec in sorted(
+            post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values(),
+            key=lambda item: item.key,
+        )
+        if spec.stage == stage
+        and any(
+            _stacked_calibration_family_matches(
+                spec,
+                entity=entity,
+                family=family,
+                target=target,
+                stage=stage,
+            )
+            for entity, family, target in surface_targets
+        )
+    )
+
+
 def _apply_stacked_post_transfer_calibrations(
     before: Frame,
     after: Frame,
@@ -8805,19 +8942,12 @@ def _apply_stacked_post_transfer_calibrations(
 ) -> tuple[Frame, dict[str, dict[str, object]]]:
     """Apply declared calibrations with owner-resolved origin and clone masks."""
 
-    if stage not in {"early_gap_fill", "late_transfer"}:
-        raise ValueError(f"Unknown stacked post-transfer calibration stage {stage!r}.")
-    surface_targets = _surface_target_triples(target_families)
     current = after
     receipts: dict[str, dict[str, object]] = {}
-    for spec in sorted(
-        post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values(),
-        key=lambda item: item.key,
+    for spec in _stacked_post_transfer_calibration_specs(
+        target_families,
+        stage=stage,
     ):
-        if spec.stage != stage or (spec.entity, spec.family, spec.target) not in (
-            surface_targets
-        ):
-            continue
         before_table = before.table(spec.entity)
         table = current.table(spec.entity)
         if not table.index.equals(before_table.index):
@@ -8961,12 +9091,25 @@ def _attach_post_transfer_calibration_receipts(
     calibrations: Mapping[str, Mapping[str, object]],
 ) -> dict[str, dict[str, object]]:
     for key, calibration in calibrations.items():
-        if key not in target_receipts:
+        receipt_key = key
+        if receipt_key not in target_receipts:
+            entity, _family, target = key.split("/", 2)
+            candidates = [
+                candidate
+                for candidate in target_receipts
+                if candidate.split("/", 2)[0] == entity
+                and candidate.split("/", 2)[2] == target
+            ]
+            if len(candidates) == 1:
+                receipt_key = candidates[0]
+        if receipt_key not in target_receipts:
             raise ValueError(
                 f"Post-transfer calibration receipt target {key!r} is absent "
                 "from the transfer outcome receipt."
             )
-        target_receipts[key]["post_transfer_calibration"] = _json_ready(calibration)
+        target_receipts[receipt_key]["post_transfer_calibration"] = _json_ready(
+            calibration
+        )
     return target_receipts
 
 
@@ -9092,6 +9235,10 @@ def _gap_fill_stacked_spine_evaluate(
     receipts: dict[str, object] = {}
     transfer_results: dict[str, AcsTransferResult] = {}
     for direction in directions:
+        direction_calibration_specs = _stacked_post_transfer_calibration_specs(
+            direction.target_families,
+            stage="early_gap_fill",
+        )
         pre_counts = _verify_gap_fill_activation_authority(
             current,
             direction=direction,
@@ -9115,6 +9262,9 @@ def _gap_fill_stacked_spine_evaluate(
             n_estimators=n_estimators,
             max_targets_per_fit=max_targets_per_fit,
             target_bank=(target_banks or {}).get(direction.name),
+            regime_evidence_targets=tuple(
+                (spec.entity, spec.target) for spec in direction_calibration_specs
+            ),
         )
         calibration_receipts: dict[str, dict[str, object]] = {}
         if production:
@@ -9541,6 +9691,13 @@ def _verify_gap_fill_outcome(
     }
     target_receipts: dict[str, dict[str, object]] = {}
     absence_rules = _direction_absence_rule_index(direction)
+    qrf_evidence_targets = {
+        (spec.entity, spec.target)
+        for spec in _stacked_post_transfer_calibration_specs(
+            direction.target_families,
+            stage="early_gap_fill",
+        )
+    }
     for entity, families in direction.target_families.items():
         table = frame.table(entity)
         channel = table[support_channel_column(entity)].astype(str)
@@ -9556,6 +9713,7 @@ def _verify_gap_fill_outcome(
         }[entity]
         for family, targets in families.items():
             for target in targets:
+                target_key = f"{entity}/{family}/{target}"
                 label = f"{direction.name}/{entity}/{family}/{target}"
                 before = donor_snapshot[entity].get(target)
                 after = donor_after.get(target)
@@ -9609,7 +9767,7 @@ def _verify_gap_fill_outcome(
                     "unmodeled_rows": unmodeled,
                     "residual_null_rows": residual_nulls,
                 }
-                if record is not None:
+                if (entity, target) in qrf_evidence_targets and record is not None:
                     target_receipt["qrf_pattern_evidence"] = (
                         _acs_imputed_pattern_evidence(record)
                     )
@@ -9640,7 +9798,7 @@ def _verify_gap_fill_outcome(
                         f"residual_null_rows={residual_nulls}. Every downstream "
                         "consumer requires this early target complete."
                     )
-                target_receipts[f"{entity}/{family}/{target}"] = target_receipt
+                target_receipts[target_key] = target_receipt
     if failures:
         raise ValueError(
             "Stacked gap-fill outcome verification failed:\n  " + "\n  ".join(failures)
@@ -9896,6 +10054,13 @@ def _transfer_stacked_post_puf_inputs_evaluate(
         target_bank=target_bank,
         derive_schedule_d=derive_schedule_d,
         execution_contract=execution_contract,
+        regime_evidence_targets=tuple(
+            (spec.entity, spec.target)
+            for spec in _stacked_post_transfer_calibration_specs(
+                surface,
+                stage="late_transfer",
+            )
+        ),
     )
     calibration_receipts: dict[str, dict[str, object]] = {}
     if production:
@@ -10132,10 +10297,18 @@ def _verify_post_puf_transfer_outcome(
     target_receipts: dict[str, dict[str, object]] = {}
     puf_producer_keys = set(_surface_target_keys(puf_producer_families))
     source_producer_keys = set(_surface_target_keys(source_producer_families))
+    qrf_evidence_targets = {
+        (spec.entity, spec.target)
+        for spec in _stacked_post_transfer_calibration_specs(
+            target_families,
+            stage="late_transfer",
+        )
+    }
     for entity, families in target_families.items():
         table = frame.table(entity)
         for family, family_targets in families.items():
             for target in family_targets:
+                target_receipt_key = f"{entity}/{family}/{target}"
                 label = f"post_puf_transfer/{entity}/{family}/{target}"
                 key = (entity, family, target, 0)
                 puf_produced = key in puf_producer_keys
@@ -10206,11 +10379,11 @@ def _verify_post_puf_transfer_outcome(
                     "unmodeled_rows": unmodeled,
                     "residual_null_rows": residual_nulls,
                 }
-                if record is not None:
+                if (entity, target) in qrf_evidence_targets and record is not None:
                     target_receipt["qrf_pattern_evidence"] = (
                         _acs_imputed_pattern_evidence(record)
                     )
-                target_receipts[f"{entity}/{family}/{target}"] = target_receipt
+                target_receipts[target_receipt_key] = target_receipt
     if failures:
         raise ValueError(
             "Stacked post-PUF transfer outcome verification failed:\n  "

@@ -4018,6 +4018,33 @@ def test_atomic_json_fsyncs_parent_directory_after_rename(
     ]
 
 
+def test_json_ready_omits_empty_opt_in_transfer_pattern_regimes(
+    pool_tool: ModuleType,
+) -> None:
+    pattern = acs_transfer_module.AcsTransferPattern(
+        name="fixture",
+        observed_optional_predictors=(),
+        predictors=("age",),
+        seed=1,
+        weight_kind="source",
+        donor_rows=2,
+        recipient_rows=1,
+    )
+
+    legacy = pool_tool._json_ready(pattern)
+    selected = pool_tool._json_ready(
+        replace(
+            pattern,
+            target_regimes=(("fixture_target", "positive_only"),),
+        )
+    )
+
+    assert isinstance(legacy, dict)
+    assert "target_regimes" not in legacy
+    assert isinstance(selected, dict)
+    assert selected["target_regimes"] == [["fixture_target", "positive_only"]]
+
+
 def test_pool_imputation_wires_post_clone_source_chain_after_primary_and_tail(
     pool_tool: ModuleType,
 ) -> None:

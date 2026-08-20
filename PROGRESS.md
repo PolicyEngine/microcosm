@@ -3,16 +3,18 @@
 ## State
 
 The host 1% verification build rejected the implementation committed at
-`33bf52fe`. The root cause is isolated: QRF regime detection, receipt
-attachment, and terminal validation were broadened to every ACS transfer
-target even though the calibration owner declares only nine targets. The
-15-target `puf_tax_itemization` family is split into bounded batches, so the
-new validator compares a `puf_tax_itemization__batch_1` record (and its eight
-regimes) with the unsplit family (and all 15 targets). The fix will make QRF
-regime evidence an explicit opt-in for the nine declared targets and restore
-unassigned receipt/runtime behavior. No after artifact is accepted. The
-uncontaminated 1% before artifact remains recorded at commit `5f5e5e91`; no
-frozen battery band, threshold, comparator, seed, or fold has changed.
+`33bf52fe`. The root cause was global QRF regime detection and evidence on
+every ACS transfer target even though the calibration owner declares only
+nine targets. The fix is implemented: regime checks are default-off and must
+be explicitly selected by `(entity, target)`; the stacked owner selects only
+the exact declared targets present on each early/late surface; unassigned
+records and receipts retain their legacy shape. Bounded-family aliases are
+accepted only when deterministic splitting could place the expected target in
+that batch. Focused QRF, binding, serializer, banked, and real late-executor
+tests are green; the full post-fix suite is next. No after artifact is
+accepted. The uncontaminated 1% before artifact remains recorded at commit
+`5f5e5e91`; no frozen battery band, threshold, comparator, seed, or fold has
+changed.
 
 The required `uv sync --all-packages --extra us` was attempted first. The
 default cache is sandbox-read-only; a retry with a writable cache reached PyPI
@@ -38,9 +40,10 @@ but DNS is unavailable. Verification therefore uses the already-synced
   positive weeks additions require positive unemployment compensation.
 - Reused the adult-care qualifying predicate for both calibration and the
   final reconciliation, which must be a verified no-op after calibration.
-- Recorded and validated exact donor-support QRF regimes for every ordinary
-  and banked ACS availability-pattern fit without changing fit seeds, folds,
-  estimator counts, or draw behavior.
+- Recorded and validated exact donor-support QRF regimes only for the
+  explicitly owner-selected ordinary and banked ACS targets, without changing
+  fit seeds, folds, estimator counts, or draw behavior. Ordinary callers
+  default to no regime work or provenance.
 - Added schema-v2 calibration receipts with explicit terminal-versus-
   generation verification boundaries. Terminal validation independently
   replays live masks, row identities, output bytes, weights, carrier metrics,
@@ -81,13 +84,23 @@ but DNS is unavailable. Verification therefore uses the already-synced
   The sandbox prevents registering it in the user-wide GitNexus registry, so
   query/context calls could not consume it; source, history, and test tracing
   independently established the caller and data flow.
+- Added a failing-first regression for the exact host target
+  `person/puf_tax_itemization/taxable_interest_income`. It proves undeclared
+  batched QRF evidence is rejected while the evidence-free legacy count
+  receipt validates unchanged.
+- Scoped QRF regime detection, fitted-result checking, banked-chain checking,
+  record provenance, stacked receipt attachment, and terminal validation to
+  the calibration specs on the current transfer surface. Unassigned target
+  records carry empty regime tuples, and both generic ACS receipt serializers
+  omit that empty opt-in field to preserve their legacy JSON schema.
+- Focused post-fix verification is green across ordinary/banked transfer,
+  selected and unassigned stacked binding, real late execution, both generic
+  serializers, forged batch aliases, and the original wide-family case.
 
 ## Next
 
-1. Add a regression test that reproduces the host binding rejection and proves
-   unassigned gap-fill targets remain byte- and receipt-identical.
-2. Narrow the implementation to the assigned source-operator, adult-care, and
-   model-required targets; run the focused and full PR suite.
-3. Rebuild off-chain at exactly 1% with sample/clone seed 578 under the
+1. Run the complete touched-file and PR-CI test/lint surface, keeping heavy
+   shards under the memory guard.
+2. Rebuild off-chain at exactly 1% with sample/clone seed 578 under the
    tightened memory guard when host data access is available, then record the
    16 after measurements and source-preservation invariants.

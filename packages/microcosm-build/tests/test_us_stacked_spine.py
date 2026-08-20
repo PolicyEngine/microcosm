@@ -2672,7 +2672,12 @@ def _canonical_gap_fill_receipt_with_pattern_evidence() -> tuple[
             break
     assert selected is not None
     direction_name, key, entity, family, target, family_targets = selected
-    model_targets = acs_transfer_module._model_target_names(family_targets)
+    evidence_targets = tuple(
+        family_target
+        for family_target in family_targets
+        if f"{entity}/{family}/{family_target}" in early_keys
+    )
+    model_targets = acs_transfer_module._model_target_names(evidence_targets)
     required_predictors, optional_predictors = (
         stacked_spine_module._acs_pattern_predictor_authority(
             entity=entity,
@@ -2698,7 +2703,7 @@ def _canonical_gap_fill_receipt_with_pattern_evidence() -> tuple[
     record = AcsImputedInput(
         column=target,
         entity=entity,
-        family=family,
+        family=f"{family}__batch_1",
         donor_spine="synthetic_gap_validator_fixture",
         donor_channel=None,
         predictors=(*required_predictors, *selected_optional),
@@ -2838,6 +2843,8 @@ def test_gap_fill_validator_rejects_qrf_regime_evidence_tampering() -> None:
         ("predictors", "outside canonical transfer authority"),
         ("pattern_name", "name is not derived"),
         ("model_target", "target order"),
+        ("record_family", "record binding is invalid"),
+        ("record_family_out_of_range", "record binding is invalid"),
         ("record_target", "record binding is invalid"),
     ),
 )
@@ -2845,7 +2852,7 @@ def test_gap_fill_validator_rejects_rehashed_qrf_pattern_structure_mutations(
     mutation: str,
     error_match: str,
 ) -> None:
-    receipt, direction_name, key, _entity, _family, _targets = (
+    receipt, direction_name, key, _entity, family, _targets = (
         _canonical_gap_fill_receipt_with_pattern_evidence()
     )
     evidence = receipt["directions"][direction_name]["targets"][key][
@@ -2870,6 +2877,10 @@ def test_gap_fill_validator_rejects_rehashed_qrf_pattern_structure_mutations(
         patterns[0]["name"] = "pattern_00_00000000"
     elif mutation == "model_target":
         patterns[0]["target_regimes"][0]["model_target"] = "fabricated_target"
+    elif mutation == "record_family":
+        evidence["record"]["family"] = f"{family}__batch_forged"
+    elif mutation == "record_family_out_of_range":
+        evidence["record"]["family"] = f"{family}__batch_99"
     else:
         assert mutation == "record_target"
         evidence["record"]["column"] = "fabricated_target"
@@ -5309,7 +5320,17 @@ def _run_real_late_executor_fixture(
                 family_targets=group.targets,
             )
         )
-        model_targets = acs_transfer_module._model_target_names(group.targets)
+        late_specs = {
+            spec.key: spec
+            for spec in post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values()
+            if spec.stage == "late_transfer"
+        }
+        evidence_targets = tuple(
+            target
+            for target in group.targets
+            if f"{group.entity}/{group.family}/{target}" in late_specs
+        )
+        model_targets = acs_transfer_module._model_target_names(evidence_targets)
         pattern = AcsTransferPattern(
             name="pattern_00_e3b0c442",
             observed_optional_predictors=(),
@@ -5320,6 +5341,7 @@ def _run_real_late_executor_fixture(
             recipient_rows=1,
             target_regimes=tuple((target, "positive_only") for target in model_targets),
         )
+        plain_pattern = replace(pattern, target_regimes=())
         synthetic_imputed_inputs = tuple(
             AcsImputedInput(
                 column=target,
@@ -5330,7 +5352,7 @@ def _run_real_late_executor_fixture(
                 predictors=pattern.predictors,
                 seed=pattern.seed,
                 weight_kind=pattern.weight_kind,
-                patterns=(pattern,),
+                patterns=(pattern if target in evidence_targets else plain_pattern,),
                 imputed_recipient_rows=1,
             )
             for target in group.targets
@@ -5342,30 +5364,27 @@ def _run_real_late_executor_fixture(
             deferred_inputs=(),
             resolved_donor_channel="asec",
         )
-        late_specs = {
-            spec.key: spec
-            for spec in post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values()
-            if spec.stage == "late_transfer"
-        }
         policy_sha256 = post_transfer_calibration_runtime.post_transfer_calibration_policy_identity()[
             "sha256"
         ]
-        target_receipts = {
-            f"{group.entity}/{group.family}/{target}": {
+        target_receipts: dict[str, dict[str, object]] = {}
+        for target, record in zip(
+            group.targets,
+            synthetic_imputed_inputs,
+            strict=True,
+        ):
+            key = f"{group.entity}/{group.family}/{target}"
+            target_receipt: dict[str, object] = {
                 "authorized_null_rows": 1,
                 "imputed_rows": 1,
                 "unmodeled_rows": 0,
                 "residual_null_rows": 0,
-                "qrf_pattern_evidence": (
-                    stacked_spine_module._acs_imputed_pattern_evidence(record)
-                ),
             }
-            for target, record in zip(
-                group.targets,
-                synthetic_imputed_inputs,
-                strict=True,
-            )
-        }
+            if key in late_specs:
+                target_receipt["qrf_pattern_evidence"] = (
+                    stacked_spine_module._acs_imputed_pattern_evidence(record)
+                )
+            target_receipts[key] = target_receipt
         calibrated_keys = sorted(set(target_receipts) & set(late_specs))
         for key in calibrated_keys:
             spec = late_specs[key]
@@ -5587,10 +5606,13 @@ def test_late_executor_signature_rejects_qrf_regime_evidence_tampering(
 ) -> None:
     result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
     forged = deepcopy(dict(result.receipt))
-    transfer_row = next(
-        row for row in forged["execution"] if row["kind"] == "late_transfer"
+    target_receipt = next(
+        target
+        for row in forged["execution"]
+        if row["kind"] == "late_transfer"
+        for target in row["producer_receipt"]["targets"].values()
+        if "qrf_pattern_evidence" in target
     )
-    target_receipt = next(iter(transfer_row["producer_receipt"]["targets"].values()))
     target_receipt["qrf_pattern_evidence"]["patterns"][0]["target_regimes"][0][
         "regime"
     ] = "negative_only"
@@ -6197,27 +6219,13 @@ def test_post_puf_transfer_preserves_complete_asec_source_producers() -> None:
     assert receipt["imputed_rows"] == int((~producer_rows).sum())
     assert receipt["unmodeled_rows"] == 0
     assert receipt["residual_null_rows"] == 0
-    qrf_evidence = receipt["qrf_pattern_evidence"]
-    assert qrf_evidence["pattern_count"] == len(qrf_evidence["patterns"])
-    assert qrf_evidence["pattern_count"] > 0
-    assert all(
-        pattern["target_regimes"]
-        == [
-            {
-                "model_target": "is_pregnant",
-                "regime": "zero_inflated_positive",
-            }
-        ]
-        for pattern in qrf_evidence["patterns"]
+    assert "qrf_pattern_evidence" not in receipt
+    record = next(
+        item
+        for item in result.transfer_result.imputed_inputs
+        if item.column == "is_pregnant"
     )
-    stacked_spine_module._validate_acs_imputed_pattern_evidence(
-        receipt,
-        expected_entity="person",
-        expected_family="model_required_boolean",
-        expected_target="is_pregnant",
-        expected_family_targets=("is_pregnant",),
-        boundary="ordinary late transfer receipt",
-    )
+    assert all(not pattern.target_regimes for pattern in record.patterns)
 
 
 def test_late_calibration_owner_mutates_only_acs_clone_zero_transfer_cells() -> None:

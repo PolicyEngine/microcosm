@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -12,7 +13,10 @@ import pytest
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.us_runtime import acs_multispine
 from microcosm.build.us_runtime.acs_pums import AcsPumsSource
-from microcosm.build.us_runtime.acs_transfer import AcsImputedInput
+from microcosm.build.us_runtime.acs_transfer import (
+    AcsImputedInput,
+    AcsTransferPattern,
+)
 from microcosm.build.us_runtime.base_pool import spine_column
 from microcosm.build.us_runtime.puma_ladder import UsPumaLadder
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
@@ -55,6 +59,31 @@ def test__given_no_source__then_base_frame_is_an_untouched_identity(
     assert result.fit_records == ()
     assert result.provenance == {"enabled": False}
     json.dumps(result.provenance, allow_nan=False)
+
+
+def test_json_ready_omits_empty_opt_in_transfer_pattern_regimes() -> None:
+    pattern = AcsTransferPattern(
+        name="fixture",
+        observed_optional_predictors=(),
+        predictors=("age",),
+        seed=1,
+        weight_kind="source",
+        donor_rows=2,
+        recipient_rows=1,
+    )
+
+    legacy = acs_multispine._json_ready(pattern)
+    selected = acs_multispine._json_ready(
+        replace(
+            pattern,
+            target_regimes=(("fixture_target", "positive_only"),),
+        )
+    )
+
+    assert isinstance(legacy, dict)
+    assert "target_regimes" not in legacy
+    assert isinstance(selected, dict)
+    assert selected["target_regimes"] == [["fixture_target", "positive_only"]]
 
 
 def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
