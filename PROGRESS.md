@@ -15,9 +15,12 @@ seven late immutable specs; and unassigned evidence is rejected before strict
 record binding. The exact synthetic failure regression, real banked 15-target
 producer regression, and fully rehashed in-range family-forgery regression are
 already committed, so no duplicate runtime or test edit is warranted. Guarded
-focused and affected-suite verification is now active. No host success is
-claimed. The owner-provided `_BUILD-FAILURE-1PCT.txt` and
-`.codex-memory-guard.py` remain untracked and untouched.
+verification is green: all 14 decisive focused cases and all 529 tests in the
+five directly affected files passed under the owner 12 GiB/20 ms guard, with
+respective 0.562 GiB and 1.444 GiB maximum observed per-process RSS. Static and
+tree-drift verification is now active. No host success is claimed. The
+owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain
+untracked and untouched.
 
 The immediately preceding completion snapshot follows and is historical rather
 than current state.
@@ -187,6 +190,14 @@ but DNS is unavailable. Verification therefore uses the already-synced
   `~/.gitnexus/registry.json`, so query/context could not target this repo. The
   generated repo-local cache was removed; direct source and commit tracing
   established the execution path without leaving residue.
+- Ran the exact synthetic host-target regression, real banked 15-target
+  producer regression, and all 12 fully rehashed QRF structure mutations under
+  the owner-provided 12 GiB/20 ms guard. All 14 cases passed, with a 0.562 GiB
+  maximum observed per-process RSS.
+- Ran all 529 tests in the five directly affected transfer, multispine
+  serialization, stacked-spine, pool-tool, and H5 I/O files in one guarded
+  process. Pytest reached 100% with exit zero and no failures; maximum observed
+  per-process RSS was 1.444 GiB.
 - Reopened the committed root journal before implementation or test changes,
   reread `CLAUDE.md` and the GitNexus debugging workflow, inspected worktree
   status and recent history, and preserved both untracked owner artifacts.
@@ -533,10 +544,8 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run the 14 focused binding cases and all 529 tests in the five directly
-   affected files under the owner-provided 12 GiB/20 ms guard.
-2. Run repository lint, scoped formatting, committed-range whitespace, and
+1. Run repository lint, scoped formatting, committed-range whitespace, and
    runtime-tree drift checks; commit the verification result.
-3. Refresh and commit `FINAL_REPORT.md` and the final journal state. Do not
+2. Refresh and commit `FINAL_REPORT.md` and the final journal state. Do not
    claim an after artifact without a revision-bound terminal host proof, and do
    not publish or mutate the pending logbook chain as a side effect.
