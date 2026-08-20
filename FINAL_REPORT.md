@@ -12,16 +12,17 @@ history, and regression audits confirmed that the complete correction and its
 failing-target coverage were already committed on the branch.
 
 No after artifact is claimed or accepted. An externally owned exact 1% retry
-rebuilt all 47 survey targets plus the one housing target—including the real
-bounded taxable-interest record—without the supplied traceback, then continued
-into late-transfer target checkpoints. At the final 22:34Z read-only check, the
-mutable `build.log` was 58,003 bytes and still growing; `guard.log` still
-reported resource waits, and the directory contained no runner exit marker,
-`pool.h5`, pool manifest, or gates artifact. The launcher and mutable checkpoint
-artifacts also contain no Microcosm revision binding. Terminal stacked receipt
-validation and frozen-battery success therefore are not claimed. The frozen
-sample/clone seed remains 578, and no battery band, threshold, comparator,
-fold, publication boundary, or pending-chain state was changed.
+previously rebuilt all 47 survey targets plus the one housing target—including
+the real bounded taxable-interest record—without the supplied traceback, then
+continued into late-transfer checkpoints. The external process subsequently
+truncated its mutable `build.log`; at the final 23:03Z read-only check it was
+zero bytes, `guard.log` continued resource-wait entries, and the output root
+contained only those two logs—no runner exit marker, `pool.h5`, pool manifest,
+or gates artifact. The launcher and mutable checkpoint artifacts also contain
+no Microcosm revision binding. Terminal stacked receipt validation and
+frozen-battery success therefore are not claimed. The frozen sample/clone seed
+remains 578, and no battery band, threshold, comparator, fold, publication
+boundary, or pending-chain state was changed.
 
 The current 2026-08-20 owner continuation independently re-traced the old raise
 site, current producer/receipt/validator selectors, failing-to-fixed history,
@@ -30,8 +31,8 @@ opt `taxable_interest_income` into QRF regime work or evidence. The final test
 tree also rejects a fully rehashed, plausible in-range `__batch_1` alias on an
 assigned target, preventing the unsafe permissive workaround briefly present
 in the first correction. All 14 decisive focused cases and all 529 tests in the
-five directly affected files pass in this continuation, peaking at 0.550 GiB
-and 1.523 GiB respectively under the owner guard. Independent source, history,
+five directly affected files pass in this continuation, peaking at 0.568 GiB
+and 1.617 GiB respectively under the owner guard. Independent source, history,
 and regression audits agree on the scoped-fix verdict.
 
 ## Root cause and correction
@@ -64,9 +65,8 @@ The correction keeps regime work explicitly opt-in:
 - Complete selected siblings are retained only when the whole bounded family
   is selected. A mixed selected/unselected family neither expands the selected
   fit nor changes the unassigned draw.
-- Canonical production accepts only the certified eight-target fit width,
-  matching the existing late-DAG boundary; narrower widths remain a
-  non-production test seam.
+- The canonical host gap-fill and late-producer DAG accept only the certified
+  eight-target fit width; narrower widths remain in non-production test seams.
 
 The generic `transfer_acs_inputs` library API deliberately permits an explicit
 caller to request regime auditing for any target on that caller's requested
@@ -113,19 +113,21 @@ confirmed that the exact host family selects no regime-evidence targets.
 
 Verification used the already-synced worktree `.venv`; imports resolved to this
 worktree's package sources. No dependency or lockfile changed during the
-continuation.
+continuation. The exact `uv run --no-sync` lint invocation was sandbox-blocked
+before execution by the user-wide uv cache; invoking the same installed Ruff
+binary directly from `.venv` passed.
 
 - All 225 `packages/microcosm-build/tests/test_*.py` files passed across fresh
   pytest processes at `a5be536f`. No runtime source, tool, spec, project, or
   lockfile changed between that commit and the final audit tree.
 - The five directly affected transfer, multispine, stacked, pool-tool, and H5
   files were rerun together on the final tree: all 529 passed. The run used the
-  owner-provided 12 GiB/20 ms guard and peaked at 1.523 GiB observed
+  owner-provided 12 GiB/20 ms guard and peaked at 1.617 GiB observed
   per-process RSS. The exact synthetic host-target test, real banked
   wide-family test, and all 12 QRF structure mutations also passed
-  independently (14 cases total), peaking at 0.550 GiB. Output contained only
-  the known pandas fixture-fragmentation warnings and joblib's logical-core
-  fallback.
+  independently (14 cases total), peaking at 0.568 GiB. Warning summaries were
+  disabled for the 529-test run; the focused run emitted only joblib's
+  logical-core fallback.
 - `ruff check .`: passed on the final audit tree.
 - `ruff format --check` on all 15 Python files changed since `33bf52fe^`:
   passed.
@@ -135,22 +137,23 @@ continuation.
   change after that all-suite checkpoint is the strict in-range-family
   regression in `test_us_stacked_spine.py`.
 
-The GitNexus debugging workflow was attempted against a freshly generated
-local graph. The sandbox denied registration in `~/.gitnexus/registry.json`,
-so query/context could not target this repository. Direct source and commit
-tracing established the exact path instead. The generated 112 MiB repo-local
-index was removed after the audit.
+The GitNexus debugging workflow was selected, but graph query/context tools
+were not exposed in this session. Direct source and commit tracing established
+the exact path instead. An earlier branch audit generated a local graph, but
+the sandbox denied its user-wide registry write; that repo-local cache was
+removed and no index residue remains.
 
 The originally cited `battery-verify/pkg3/build.log` was overwritten by a later
 retry. The owner-preserved `_BUILD-FAILURE-1PCT.txt` retains the old traceback.
 During this continuation the reused log reached survey target 47/47, housing
-target 1/1, the bounded taxable-interest record, and several late-transfer
-groups without that traceback. At the final 22:34Z read-only check the same
-mutable log was 58,003 bytes and still growing, `guard.log` continued to report
-resource waits, and the directory had no runner exit marker, `pool.h5`, pool
-manifest, or gates artifact. Neither the launcher nor current checkpoint text
-records a Microcosm Git SHA. This checkpoint passage is progress evidence only;
-it is not revision-bound or a terminal certification result.
+target 1/1, the bounded taxable-interest record, and multiple late-transfer
+groups without that traceback. The external process later truncated the log.
+At the final 23:03Z read-only check `build.log` was zero bytes, `guard.log`
+continued to report two other matching processes and resource waits, and the
+output root had no runner exit marker, `pool.h5`, pool manifest, or gates
+artifact. Neither the launcher nor current checkpoint text records a Microcosm
+Git SHA. The earlier checkpoint passage is progress evidence only; it is not
+revision-bound or a terminal certification result.
 
 The sibling package suites were green before this continuation and their code
 was not changed: `microcosm-fit` 93 passed, `microcosm-calibrate` 201 passed,
@@ -198,6 +201,10 @@ skipped.
 - `0bcbb48f` — record the current 14-case focused regression run.
 - `83151ad4` — record the current guarded 529-test affected suite.
 - `09385a60` — record current lint, format, whitespace, and drift checks.
+- `c2812bd6` — reopen this owner continuation audit.
+- `ded99425` — independently confirm the current scoped binding diagnosis.
+- `f8a47d00` — record the current guarded 529-test affected suite.
+- `8366635a` — record current lint, format, whitespace, and drift checks.
 
 ## Remaining host step
 

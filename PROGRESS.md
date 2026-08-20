@@ -2,7 +2,8 @@
 
 ## State
 
-The 2026-08-20 23:04Z owner continuation has independently confirmed the exact
+The 2026-08-20 23:05Z owner continuation is complete. It independently
+confirmed the exact
 failure path and current correction. At bad commit `33bf52fe`, receipt
 production attached QRF evidence to every imputed target and terminal
 validation checked exact record-family binding before consulting calibration
@@ -21,9 +22,14 @@ focused cases and all 529 tests in the five directly affected files pass under
 the 12 GiB guard, with respective 0.568 GiB and 1.617 GiB maximum observed
 per-process RSS. Repository lint, formatting of all 15 correction-range Python
 files, committed-range whitespace, and exact source-tree comparisons with the
-all-build-suite checkpoint also pass. Only final report refresh remains. The
-owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain
-untracked and untouched; no terminal host success is claimed.
+all-build-suite checkpoint also pass. `FINAL_REPORT.md` now contains the
+revision-bound diagnosis, correction, regression, verification, and remaining
+host boundary; no local implementation, regression, verification, or reporting
+work remains. The owner-provided `_BUILD-FAILURE-1PCT.txt` and
+`.codex-memory-guard.py` remain untracked and untouched; no terminal host
+success is claimed. The final external check found `build.log` truncated to
+zero bytes, continuing resource waits in `guard.log`, and no final output
+artifacts or runner verdict.
 
 The opening checkpoint and earlier completion snapshots below are historical.
 
@@ -231,6 +237,13 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Refreshed `FINAL_REPORT.md` with this continuation's independent diagnosis,
+  current 14-case and 529-test results, static/tree verification, tooling
+  boundary, and exact non-terminal host status.
+- Performed a final read-only check of the external host directory. The mutable
+  build log had been truncated to zero, the guard continued resource waits, and
+  no pool, manifest, gates, or runner-exit artifact existed; no after artifact
+  is accepted.
 - Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
   changed since `33bf52fe^`, and `git diff --check 33bf52fe^..HEAD`; all pass.
   The exact Git tree objects for both `microcosm-build/src` and its `us_runtime`
@@ -716,5 +729,7 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Refresh and commit `FINAL_REPORT.md` and this journal with only results
-   established on the current revision.
+1. Run or identify a revision-bound off-chain 1% retry that reaches a terminal
+   runner verdict and emits the expected final pool, manifest, and gates
+   artifacts. Do not claim an after artifact without that terminal proof, and
+   do not publish or mutate the pending logbook chain as a side effect.
