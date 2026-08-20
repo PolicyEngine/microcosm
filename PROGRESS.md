@@ -15,7 +15,9 @@ selected-record binding. Two independent read-only audits found no remaining
 canonical leak and no need for another executable edit. Unassigned generated
 values and QRF behavior remain unchanged; the shared four-count receipt
 invariant continues to apply to every canonical target. Verification is now in
-progress. The owner-provided `_BUILD-FAILURE-1PCT.txt` and
+progress: all eight focused scope and binding regressions pass under the 12 GiB
+guard with a 0.559 GiB maximum observed per-process RSS. The owner-provided
+`_BUILD-FAILURE-1PCT.txt` and
 `.codex-memory-guard.py` remain untracked and untouched.
 
 The 2026-08-20 owner continuation independently re-traced the reported host 1%
@@ -99,6 +101,13 @@ but DNS is unavailable. Verification therefore uses the already-synced
   query/context tools and a local index are unavailable, and the installed CLI
   status probe produced no output and was stopped. Direct source, history, and
   repository-wide call-site tracing established the same execution path.
+- Ran eight focused regressions covering the exact synthetic host boundary,
+  the real banked 15-target family, default wide-family behavior, selected-only
+  provenance, complete selected siblings, mixed-family output identity, and
+  both generic serializers. All passed under the owner-provided 12 GiB/20 ms
+  guard; peak observed per-process RSS was 0.559 GiB. The only warning was
+  joblib falling back from an unavailable physical-core count to the logical
+  core count.
 - Reopened the committed progress journal before implementation work for the
   current owner continuation and recorded the supplied failure as the active
   verification target.
@@ -279,8 +288,9 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run focused and package-level verification on the unchanged executable
-   tree; strengthen the regression only if verification exposes a new gap.
+1. Run the five directly affected test files and repository lint/format/diff
+   checks on the unchanged executable tree; strengthen the regression only if
+   verification exposes a new gap.
 2. Update `FINAL_REPORT.md` and the final journal state, and
    commit every coherent result. Do not claim a host artifact without a
    revision-bound terminal success marker and expected artifacts.
