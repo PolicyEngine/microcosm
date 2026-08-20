@@ -5,14 +5,17 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import UTC, date, datetime
+from importlib.resources import files
 from pathlib import Path
 
 import pytest
 
 from microcosm.build.us_runtime.reviewed_exclusions import (
     US_BY_ORIGIN_EXCLUSION_REGISTER_RESOURCE,
+    USByOriginReviewedExclusionPolicy,
     USReviewedExclusion,
     load_us_by_origin_reviewed_exclusion_policy,
+    require_authenticated_us_by_origin_reviewed_exclusion_policy,
     us_default_by_origin_reviewed_exclusion_policy,
     us_exclusion_evaluation_date,
 )
@@ -56,6 +59,16 @@ def test_committed_register_is_schema_2_empty_and_immutable() -> None:
     assert policy.policy_payload()["schema_version"] == 2
     assert policy.exclusions == {}
     assert len(policy.policy_sha256) == 64
+    raw = (
+        files("microcosm.build.us")
+        .joinpath(US_BY_ORIGIN_EXCLUSION_REGISTER_RESOURCE)
+        .read_bytes()
+    )
+    assert policy.source_provenance == {
+        "override_supplied": False,
+        "expected_sha256": None,
+        "raw_source_sha256": hashlib.sha256(raw).hexdigest(),
+    }
     assert policy is us_default_by_origin_reviewed_exclusion_policy()
     with pytest.raises(TypeError):
         policy.exclusions[_CHECK_ID] = USReviewedExclusion(**_entry())  # type: ignore[index,arg-type]
@@ -74,6 +87,51 @@ def test_authenticated_override_preserves_all_five_sealed_fields(
     assert policy.policy_source == "override"
     assert policy.policy_payload()["exclusions"] == {_CHECK_ID: _entry()}
     assert len(policy.policy_sha256) == 64
+    assert policy.source_provenance == {
+        "override_supplied": True,
+        "expected_sha256": digest,
+        "raw_source_sha256": digest,
+    }
+
+
+def test_content_equivalent_override_retains_its_authenticated_route(
+    tmp_path: Path,
+) -> None:
+    committed = us_default_by_origin_reviewed_exclusion_policy()
+    raw = json.dumps(committed.policy_payload(), indent=2).encode("utf-8")
+    path = tmp_path / "equivalent.json"
+    path.write_bytes(raw)
+    digest = hashlib.sha256(raw).hexdigest()
+
+    policy = load_us_by_origin_reviewed_exclusion_policy(
+        path,
+        expected_sha256=digest,
+    )
+
+    assert policy is not committed
+    assert policy.policy_source == "committed"
+    assert policy.policy_sha256 == committed.policy_sha256
+    assert policy.source_provenance == {
+        "override_supplied": True,
+        "expected_sha256": digest,
+        "raw_source_sha256": digest,
+    }
+
+
+def test_direct_policy_construction_has_no_authenticated_source() -> None:
+    committed = us_default_by_origin_reviewed_exclusion_policy()
+    direct = USByOriginReviewedExclusionPolicy(
+        description=committed.description,
+        exclusions={},
+        policy_source="committed",
+    )
+
+    assert direct.source_provenance is None
+    with pytest.raises(ValueError, match="lacks authenticated source provenance"):
+        require_authenticated_us_by_origin_reviewed_exclusion_policy(
+            direct,
+            boundary="test production boundary",
+        )
 
 
 @pytest.mark.parametrize(
@@ -98,6 +156,20 @@ def test_override_refuses_digest_mismatch(tmp_path: Path) -> None:
         load_us_by_origin_reviewed_exclusion_policy(
             path,
             expected_sha256="0" * 64,
+        )
+
+
+@pytest.mark.parametrize("digest", ("0" * 63, "A" * 64, "not-a-digest"))
+def test_override_refuses_noncanonical_expected_digest(
+    tmp_path: Path,
+    digest: str,
+) -> None:
+    path, _actual = _write_override(tmp_path / "reviewed.json", _payload())
+
+    with pytest.raises(ValueError, match="lowercase SHA-256"):
+        load_us_by_origin_reviewed_exclusion_policy(
+            path,
+            expected_sha256=digest,
         )
 
 

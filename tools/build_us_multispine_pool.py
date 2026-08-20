@@ -158,6 +158,7 @@ from microcosm.build.us_runtime.qbi_inputs import (
 from microcosm.build.us_runtime.reviewed_exclusions import (
     USByOriginReviewedExclusionPolicy,
     load_us_by_origin_reviewed_exclusion_policy,
+    require_authenticated_us_by_origin_reviewed_exclusion_policy,
 )
 from microcosm.build.us_runtime.stacked_spine import (
     CANONICAL_STACKED_GAP_FILL_SURFACE,
@@ -2889,6 +2890,10 @@ def build_stacked_pool(
 ) -> StackedPoolBuildResult:
     """Run the fixed stacked production pipeline across #599 boundaries."""
 
+    require_authenticated_us_by_origin_reviewed_exclusion_policy(
+        reviewed_exclusion_policy,
+        boundary="stacked pool entry",
+    )
     if not _STACKED_RELEASE_ID_PATTERN.fullmatch(release_id):
         raise ValueError(f"Invalid stacked release ID {release_id!r}.")
 
@@ -4179,6 +4184,10 @@ def _main_stacked(
 ) -> int:
     """Build the default stacked pipeline and emit one terminal Logbook row."""
 
+    require_authenticated_us_by_origin_reviewed_exclusion_policy(
+        reviewed_exclusion_policy,
+        boundary="stacked CLI entry",
+    )
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
     outputs = _stacked_attempt_outputs(args)

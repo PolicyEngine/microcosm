@@ -150,6 +150,26 @@
   `packages/microcosm-build/tests/test_us_stacked_spine.py:7401-7599`). The
   complete `test_us_stacked_spine.py` module and workspace suite pass; no
   band, threshold, comparator, seed, or fold changed.
+- 2026-08-20: source-route audit found that public construction could create a
+  typed policy without proving which bytes were authenticated. The loader now
+  hashes and parses one byte snapshot, mints an immutable path-free receipt,
+  and distinguishes committed-equivalent content from the operator's act of
+  supplying an override. Canonical battery, direct pool, and CLI entries
+  reject objects lacking that loader provenance; the explicit noncanonical
+  test seam continues to accept raw fixtures. The full provenance object is
+  part of the existing sealed schema-2 terminal report
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:219-558`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7530-7590,12120-12148,12320-12358`;
+  `tools/build_us_multispine_pool.py:155-164,2890-2905,4180-4195`).
+- 2026-08-20: a new two-direction resume regression proves the policy is not a
+  simulation checkpoint input yet is always reevaluated at the terminal gate:
+  committed-to-override and override-to-committed both resume the simulated
+  checkpoint without prepare/gap/PUF/derive/seed/simulate work, and the battery
+  receives the newly requested authenticated snapshot. It also checks the
+  identical full five-field receipt and source provenance in the final
+  manifest, diagnostics, and immutable Logbook terminal-gate receipt
+  (`packages/microcosm-build/tests/test_us_multispine_pool_tool.py:3470-3575`;
+  `tools/build_us_multispine_pool.py:3298-3317,4360-4385,4485-4510`).
 - 2026-08-19: initialized the lane journals before implementation.
 - 2026-08-19: the required uv sync is currently environment-blocked: the
   managed sandbox denies writes to the default cache, and the writable-cache

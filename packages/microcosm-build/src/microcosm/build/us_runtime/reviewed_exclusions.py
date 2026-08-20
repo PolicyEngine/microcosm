@@ -13,7 +13,7 @@ import hashlib
 import json
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from importlib.resources import files
 from pathlib import Path
@@ -25,8 +25,10 @@ __all__ = [
     "USReviewedExclusion",
     "coerce_us_reviewed_exclusions",
     "load_us_by_origin_reviewed_exclusion_policy",
+    "require_authenticated_us_by_origin_reviewed_exclusion_policy",
     "us_default_by_origin_reviewed_exclusion_policy",
     "us_exclusion_evaluation_date",
+    "validate_us_by_origin_reviewed_exclusion_source_provenance",
 ]
 
 US_BY_ORIGIN_EXCLUSION_REGISTER_RESOURCE = "by_origin_reviewed_exclusions.json"
@@ -47,6 +49,7 @@ _EXACT_CHECK_ID_PATTERN = re.compile(
     r"(?P<sign>/positive|/negative)?#"
     r"(?P<criterion>categorical|dead|incidence|quantile)$"
 )
+_SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _canonical_sha256(payload: Mapping[str, object]) -> str:
@@ -211,12 +214,56 @@ def coerce_us_reviewed_exclusions(
 
 
 @dataclass(frozen=True)
+class _USByOriginPolicySourceReceipt:
+    """Path-free proof that one loader hashed and parsed the same bytes."""
+
+    override_supplied: bool
+    expected_sha256: str | None
+    raw_source_sha256: str
+
+    def __post_init__(self) -> None:
+        if type(self.override_supplied) is not bool:
+            raise TypeError("override_supplied must be a bool.")
+        if not isinstance(self.raw_source_sha256, str) or not _SHA256_PATTERN.fullmatch(
+            self.raw_source_sha256
+        ):
+            raise ValueError("raw_source_sha256 must be a lowercase SHA-256 digest.")
+        if self.override_supplied:
+            if (
+                not isinstance(self.expected_sha256, str)
+                or not _SHA256_PATTERN.fullmatch(self.expected_sha256)
+                or self.expected_sha256 != self.raw_source_sha256
+            ):
+                raise ValueError(
+                    "An override source receipt requires matching expected and "
+                    "raw SHA-256 digests."
+                )
+        elif self.expected_sha256 is not None:
+            raise ValueError(
+                "The committed source receipt must not carry an expected SHA-256."
+            )
+
+    def policy_payload(self) -> dict[str, object]:
+        return {
+            "override_supplied": self.override_supplied,
+            "expected_sha256": self.expected_sha256,
+            "raw_source_sha256": self.raw_source_sha256,
+        }
+
+
+@dataclass(frozen=True)
 class USByOriginReviewedExclusionPolicy:
     """One fully armed, immutable register snapshot."""
 
     description: str
     exclusions: Mapping[str, USReviewedExclusion]
     policy_source: str
+    _source_receipt: _USByOriginPolicySourceReceipt | None = field(
+        init=False,
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if not isinstance(self.description, str) or not self.description.strip():
@@ -257,6 +304,14 @@ class USByOriginReviewedExclusionPolicy:
         """Canonical digest over the description and every receipt field."""
 
         return _canonical_sha256(self.policy_payload())
+
+    @property
+    def source_provenance(self) -> dict[str, object] | None:
+        """Return loader-minted path-free provenance for the parsed bytes."""
+
+        if self._source_receipt is None:
+            return None
+        return self._source_receipt.policy_payload()
 
 
 def _strict_json_payload(raw: str, *, label: str) -> Mapping[str, object]:
@@ -325,21 +380,52 @@ def _policy_from_raw(
     )
 
 
+def _decode_policy_bytes(raw_bytes: bytes, *, label: str) -> str:
+    try:
+        return raw_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"{label}: exclusion register must be UTF-8 JSON.") from exc
+
+
+def _mint_policy_source_receipt(
+    policy: USByOriginReviewedExclusionPolicy,
+    *,
+    override_supplied: bool,
+    expected_sha256: str | None,
+    raw_source_sha256: str,
+) -> USByOriginReviewedExclusionPolicy:
+    receipt = _USByOriginPolicySourceReceipt(
+        override_supplied=override_supplied,
+        expected_sha256=expected_sha256,
+        raw_source_sha256=raw_source_sha256,
+    )
+    object.__setattr__(policy, "_source_receipt", receipt)
+    return policy
+
+
 @functools.cache
 def us_default_by_origin_reviewed_exclusion_policy() -> (
     USByOriginReviewedExclusionPolicy
 ):
     """Load and cache the committed policy of record."""
 
-    raw = (
+    raw_bytes = (
         files("microcosm.build.us")
         .joinpath(US_BY_ORIGIN_EXCLUSION_REGISTER_RESOURCE)
-        .read_text("utf-8")
+        .read_bytes()
     )
-    return _policy_from_raw(
-        raw,
-        label=US_BY_ORIGIN_EXCLUSION_REGISTER_RESOURCE,
-        policy_source="committed",
+    return _mint_policy_source_receipt(
+        _policy_from_raw(
+            _decode_policy_bytes(
+                raw_bytes,
+                label=US_BY_ORIGIN_EXCLUSION_REGISTER_RESOURCE,
+            ),
+            label=US_BY_ORIGIN_EXCLUSION_REGISTER_RESOURCE,
+            policy_source="committed",
+        ),
+        override_supplied=False,
+        expected_sha256=None,
+        raw_source_sha256=hashlib.sha256(raw_bytes).hexdigest(),
     )
 
 
@@ -361,6 +447,13 @@ def load_us_by_origin_reviewed_exclusion_policy(
         )
     if source is None:
         return us_default_by_origin_reviewed_exclusion_policy()
+    if not isinstance(expected_sha256, str) or not _SHA256_PATTERN.fullmatch(
+        expected_sha256
+    ):
+        raise ValueError(
+            "US by-origin exclusion expected_sha256 must be one lowercase "
+            "SHA-256 digest."
+        )
     path = Path(source)
     raw_bytes = path.read_bytes()
     observed_sha256 = hashlib.sha256(raw_bytes).hexdigest()
@@ -370,14 +463,96 @@ def load_us_by_origin_reviewed_exclusion_policy(
             f"{expected_sha256!r}, got {observed_sha256!r}."
         )
     resolved = _policy_from_raw(
-        raw_bytes.decode("utf-8"),
+        _decode_policy_bytes(raw_bytes, label=str(path)),
         label=str(path),
         policy_source="override",
     )
     committed = us_default_by_origin_reviewed_exclusion_policy()
     if resolved.policy_payload() == committed.policy_payload():
-        return committed
-    return resolved
+        resolved = USByOriginReviewedExclusionPolicy(
+            description=resolved.description,
+            exclusions=resolved.exclusions,
+            policy_source="committed",
+        )
+    return _mint_policy_source_receipt(
+        resolved,
+        override_supplied=True,
+        expected_sha256=expected_sha256,
+        raw_source_sha256=observed_sha256,
+    )
+
+
+def validate_us_by_origin_reviewed_exclusion_source_provenance(
+    policy: USByOriginReviewedExclusionPolicy,
+    raw_provenance: object,
+    *,
+    boundary: str,
+) -> None:
+    """Validate path-free loader provenance against content and the default."""
+
+    if not isinstance(policy, USByOriginReviewedExclusionPolicy):
+        raise TypeError(
+            f"{boundary}: policy must be a USByOriginReviewedExclusionPolicy."
+        )
+    expected_fields = {
+        "override_supplied",
+        "expected_sha256",
+        "raw_source_sha256",
+    }
+    if (
+        not isinstance(raw_provenance, Mapping)
+        or set(raw_provenance) != expected_fields
+    ):
+        raise ValueError(f"{boundary}: policy source provenance schema mismatch.")
+    try:
+        receipt = _USByOriginPolicySourceReceipt(
+            override_supplied=raw_provenance.get("override_supplied"),
+            expected_sha256=raw_provenance.get("expected_sha256"),
+            raw_source_sha256=raw_provenance.get("raw_source_sha256"),
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"{boundary}: invalid policy source provenance: {exc}"
+        ) from exc
+
+    committed = us_default_by_origin_reviewed_exclusion_policy()
+    same_as_committed = policy.policy_payload() == committed.policy_payload()
+    if (policy.policy_source == "committed") != same_as_committed:
+        raise ValueError(f"{boundary}: policy source does not match its content.")
+    if not receipt.override_supplied:
+        if (
+            not same_as_committed
+            or receipt.policy_payload() != committed.source_provenance
+        ):
+            raise ValueError(
+                f"{boundary}: committed policy provenance does not match the "
+                "packaged register bytes."
+            )
+
+
+def require_authenticated_us_by_origin_reviewed_exclusion_policy(
+    policy: USByOriginReviewedExclusionPolicy,
+    *,
+    boundary: str,
+) -> USByOriginReviewedExclusionPolicy:
+    """Refuse policy objects that did not come through the byte loader."""
+
+    if not isinstance(policy, USByOriginReviewedExclusionPolicy):
+        raise TypeError(
+            f"{boundary}: reviewed exclusion policy must be a fully armed "
+            "USByOriginReviewedExclusionPolicy."
+        )
+    if policy.source_provenance is None:
+        raise ValueError(
+            f"{boundary}: reviewed exclusion policy lacks authenticated source "
+            "provenance; resolve it through the path-plus-SHA loader."
+        )
+    validate_us_by_origin_reviewed_exclusion_source_provenance(
+        policy,
+        policy.source_provenance,
+        boundary=boundary,
+    )
+    return policy
 
 
 def us_exclusion_evaluation_date(now: date | None) -> date:

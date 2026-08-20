@@ -2,14 +2,13 @@
 
 ## State
 
-Independent completion audit in progress on `battery-excl-machinery`, which
-started from `origin/main` at `164027e2`. The pre-existing lane history already
-contains the empty schema-2 register, strict authenticated loader, exact
-criterion lifecycle machinery, terminal-manifest validation, CLI wiring,
-configuration-boundary hardening, and tests. This pass is preserving that
-history while adversarially rechecking the implementation and current suite.
+Final evidence replay and handoff are in progress on
+`battery-excl-machinery`, which started from `origin/main` at `164027e2`. The
+empty schema-2 register, exact criterion lifecycle machinery, authenticated
+source provenance, terminal-manifest validation, CLI wiring, configuration
+boundary hardening, and adversarial tests are implemented and suite-green.
 The assigned scope remains machinery only: no band, threshold, seed, fold,
-comparison algorithm, or exclusion approval will change.
+comparison algorithm, or exclusion approval changed.
 
 ## Done
 
@@ -120,15 +119,31 @@ comparison algorithm, or exclusion approval will change.
   now fail closed. Adversarial tests cover each previously reproducible
   resealed-pass forgery. The complete stacked-spine test module and complete
   workspace suite pass at this commit boundary.
+- Bound each canonical policy object to path-free provenance minted only by
+  the same-byte hash-and-parse loader. The committed resource seals its raw
+  package-byte digest; an override seals matching expected/raw digests and
+  retains `override_supplied=true` even when its schema-2 content equals the
+  committed register. Directly constructed policies remain available to the
+  explicit noncanonical test seam but are refused at canonical battery, pool,
+  and CLI boundaries.
+- Added both-direction warm-resume coverage: a simulated checkpoint created
+  with the committed empty policy resumes under an authenticated override,
+  and one created under an override resumes under the committed policy. In
+  both cases simulation stages stay cached and fresh terminal gates receive
+  the current policy snapshot. The warm artifact asserts that the complete
+  five-field receipts and source provenance survive identically in the final
+  manifest, diagnostics, and immutable Logbook terminal receipt.
+- Verified this authenticated-source step with 55 loader/package tests, 71
+  focused exclusion/battery/driver tests, both warm-resume directions, the
+  complete stacked-spine module, Ruff, `git diff --check`, and the complete
+  workspace suite (`.venv/bin/python -m pytest -q`, exit 0).
 
 ## Next
 
-- Bind canonical policies to loader-authenticated source provenance, add the
-  warm-resume/terminal-route coverage identified by audit, rerun focused and
-  workspace verification, then refresh the final report for owner review and
-  push. The two measured QBI rows remain non-exclusion `FIX-CANDIDATE` work for
-  a separate per-target clone-role comparator lane; this lane's register must
-  remain empty.
+- Replay the permitted fresh terminal gate on the saved 1%/seed-578 checkpoint,
+  then refresh the final report for owner review and push. The two measured
+  QBI rows remain non-exclusion `FIX-CANDIDATE` work for a separate per-target
+  clone-role comparator lane; this lane's register must remain empty.
 
 ## Historical note
 

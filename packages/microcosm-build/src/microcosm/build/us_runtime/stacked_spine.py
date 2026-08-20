@@ -176,8 +176,10 @@ from microcosm.build.us_runtime.puf_support import (
 from microcosm.build.us_runtime.reviewed_exclusions import (
     US_BY_ORIGIN_EXCLUSION_REGISTER_RESOURCE,
     USByOriginReviewedExclusionPolicy,
+    require_authenticated_us_by_origin_reviewed_exclusion_policy,
     us_default_by_origin_reviewed_exclusion_policy,
     us_exclusion_evaluation_date,
+    validate_us_by_origin_reviewed_exclusion_source_provenance,
 )
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
 from microcosm.build.us_runtime.support_provenance import (
@@ -7537,6 +7539,7 @@ def _validate_battery_reviewed_exclusion_report(
         "description",
         "policy_source",
         "policy_sha256",
+        "source_provenance",
         "resolved_receipts",
         "in_force_exclusions",
         "applied_exclusions",
@@ -7567,10 +7570,14 @@ def _validate_battery_reviewed_exclusion_report(
         reject(f"reviewed-exclusion policy snapshot is invalid: {error}")
     if raw_report.get("policy_sha256") != policy.policy_sha256:
         reject("reviewed-exclusion policy SHA-256 mismatch")
-    committed = us_default_by_origin_reviewed_exclusion_policy()
-    same_as_committed = policy.policy_payload() == committed.policy_payload()
-    if (policy_source == "committed") != same_as_committed:
-        reject("reviewed-exclusion policy source does not match its content")
+    try:
+        validate_us_by_origin_reviewed_exclusion_source_provenance(
+            policy,
+            raw_report.get("source_provenance"),
+            boundary="reviewed-exclusion report",
+        )
+    except (TypeError, ValueError) as error:
+        reject(f"reviewed-exclusion source provenance is invalid: {error}")
 
     raw_evaluated_on = raw_report.get("exclusions_evaluated_on")
     try:
@@ -12123,6 +12130,7 @@ def _apply_battery_reviewed_exclusions(
         "description": policy.description,
         "policy_source": policy.policy_source,
         "policy_sha256": policy.policy_sha256,
+        "source_provenance": policy.source_provenance,
         "resolved_receipts": {
             check_id: record.policy_payload()
             for check_id, record in sorted(records.items())
@@ -12331,6 +12339,11 @@ def _by_origin_battery_evaluate(
         raise TypeError(
             "reviewed_exclusion_policy must be a fully armed "
             "USByOriginReviewedExclusionPolicy."
+        )
+    if production:
+        require_authenticated_us_by_origin_reviewed_exclusion_policy(
+            reviewed_exclusion_policy,
+            boundary="canonical by-origin battery",
         )
     same_as_committed = (
         reviewed_exclusion_policy.policy_payload()

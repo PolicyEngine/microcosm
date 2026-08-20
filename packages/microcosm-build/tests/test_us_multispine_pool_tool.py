@@ -3397,6 +3397,38 @@ def test_main_authenticates_reviewed_exclusion_override_before_stacked_work(
     assert policy.policy_payload() == payload
 
 
+def test_stacked_boundaries_refuse_directly_constructed_exclusion_policy(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    committed = pool_tool.load_us_by_origin_reviewed_exclusion_policy()
+    direct = pool_tool.USByOriginReviewedExclusionPolicy(
+        description=committed.description,
+        exclusions={},
+        policy_source="committed",
+    )
+
+    with pytest.raises(ValueError, match="lacks authenticated source provenance"):
+        pool_tool._main_stacked(
+            SimpleNamespace(),
+            reviewed_exclusion_policy=direct,
+        )
+    with pytest.raises(ValueError, match="lacks authenticated source provenance"):
+        pool_tool.build_stacked_pool(
+            None,
+            expected_stack_receipt={},
+            release_id="not-yet-read",
+            puf_donor=None,
+            acs_rent_donor=None,
+            primary_qrf_checkpoint_dir=tmp_path / "primary-qrf",
+            acs_transfer_checkpoint_dir=tmp_path / "acs-transfer",
+            checkpoint_identity={},
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=578,
+            reviewed_exclusion_policy=direct,
+        )
+
+
 def test_main_rejects_reviewed_exclusion_digest_before_stacked_work(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -3444,6 +3476,143 @@ def test_reviewed_exclusion_policy_is_not_part_of_simulation_checkpoint_identity
     assert pool_tool._configured_stacked_identity(override) == (
         pool_tool._configured_stacked_identity(base)
     )
+
+
+@pytest.mark.parametrize("cold_uses_override", (False, True))
+def test_simulated_checkpoint_resume_uses_the_current_exclusion_policy(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    cold_uses_override: bool,
+) -> None:
+    pytest.importorskip("tables")
+    order, _full_puf_rows = _install_stacked_entrypoint_stubs(
+        pool_tool,
+        monkeypatch,
+        tmp_path,
+        terminal="success",
+    )
+    check_id = "person/puf_tax_itemization/business_is_sstb[clone_0]#dead"
+    override_payload = {
+        "schema_version": 2,
+        "description": "Test-only warm-resume exclusion policy.",
+        "exclusions": {
+            check_id: {
+                "reason": "Prove terminal policy routing across resume.",
+                "approved_by": "test-owner",
+                "adjudication": "test://warm-resume-policy",
+                "approved_on": "2026-08-01",
+                "expires_on": "2026-09-01",
+            }
+        },
+    }
+    raw = json.dumps(override_payload, sort_keys=True).encode("utf-8")
+    override_path = tmp_path / "reviewed-exclusions.json"
+    override_path.write_bytes(raw)
+    override_sha256 = hashlib.sha256(raw).hexdigest()
+    base_args = _stacked_main_argv(tmp_path)
+    override_args = [
+        *base_args,
+        "--by-origin-reviewed-exclusions",
+        str(override_path),
+        "--by-origin-reviewed-exclusions-sha256",
+        override_sha256,
+    ]
+    observed_policies: list[object] = []
+
+    def capture_battery(
+        _frame: Frame,
+        *,
+        tail_manifest: Mapping[str, object],
+        reviewed_exclusion_policy: object,
+    ) -> GateResult:
+        order.append("battery")
+        assert tail_manifest == {"fixture": "tail"}
+        observed_policies.append(reviewed_exclusion_policy)
+        return GateResult(
+            name="fixture_battery",
+            passed=True,
+            details={
+                "reviewed_exclusions": {
+                    "resolved_receipts": {
+                        receipt_id: receipt.policy_payload()
+                        for receipt_id, receipt in (
+                            reviewed_exclusion_policy.exclusions.items()
+                        )
+                    },
+                    "source_provenance": (reviewed_exclusion_policy.source_provenance),
+                }
+            },
+        )
+
+    monkeypatch.setattr(pool_tool, "by_origin_battery", capture_battery)
+    cold_args = override_args if cold_uses_override else base_args
+    warm_args = base_args if cold_uses_override else override_args
+
+    assert pool_tool.main(cold_args) == 0
+    order.clear()
+    assert pool_tool.main(warm_args) == 0
+
+    assert order == [
+        "build_stacked_pool",
+        "completeness",
+        "battery",
+        "publish",
+    ]
+    assert len(observed_policies) == 2
+    observed_routes = [
+        (
+            policy.source_provenance["override_supplied"],
+            set(policy.exclusions),
+        )
+        for policy in observed_policies
+    ]
+    assert observed_routes == (
+        [(True, {check_id}), (False, set())]
+        if cold_uses_override
+        else [(False, set()), (True, {check_id})]
+    )
+    committed_policy = pool_tool.load_us_by_origin_reviewed_exclusion_policy()
+    for policy, uses_override in zip(
+        observed_policies,
+        (cold_uses_override, not cold_uses_override),
+        strict=True,
+    ):
+        if uses_override:
+            assert policy.policy_payload() == override_payload
+            assert policy.source_provenance == {
+                "override_supplied": True,
+                "expected_sha256": override_sha256,
+                "raw_source_sha256": override_sha256,
+            }
+        else:
+            assert policy.policy_payload() == committed_policy.policy_payload()
+            assert policy.source_provenance == committed_policy.source_provenance
+    outputs = pool_tool._stacked_output_paths(tmp_path / "stacked-pool.h5")
+    manifest = pool_tool._read_json_object(outputs.manifest)
+    diagnostics = pool_tool._read_json_object(outputs.agreement_diagnostics)
+    terminal_receipt = pool_tool._read_json_object(
+        tmp_path / "logbook-receipts" / manifest["release_id"] / "terminal-gates.json"
+    )
+    expected_reviewed = {
+        "resolved_receipts": {
+            receipt_id: receipt.policy_payload()
+            for receipt_id, receipt in observed_policies[-1].exclusions.items()
+        },
+        "source_provenance": observed_policies[-1].source_provenance,
+    }
+    for artifact in (manifest, diagnostics, terminal_receipt):
+        assert (
+            artifact["terminal_gates"]["gates"]["fixture_battery"]["details"][
+                "reviewed_exclusions"
+            ]
+            == expected_reviewed
+        )
+    if not cold_uses_override:
+        assert (
+            expected_reviewed["resolved_receipts"][check_id]
+            == (override_payload["exclusions"][check_id])
+        )
 
 
 def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(

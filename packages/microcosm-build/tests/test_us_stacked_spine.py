@@ -72,6 +72,7 @@ from microcosm.build.us_runtime.qbi_inputs import (
 from microcosm.build.us_runtime.reviewed_exclusions import (
     USByOriginReviewedExclusionPolicy,
     USReviewedExclusion,
+    load_us_by_origin_reviewed_exclusion_policy,
     us_default_by_origin_reviewed_exclusion_policy,
 )
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
@@ -8305,13 +8306,26 @@ def test_empty_reviewed_exclusion_register_leaves_assigned_dead_checks_failing(
     assert reviewed["resolved_receipts"] == {}
     assert reviewed["in_force_exclusions"] == []
     assert reviewed["applied_exclusions"] == {}
+    assert reviewed["source_provenance"]["override_supplied"] is False
+    assert reviewed["source_provenance"]["expected_sha256"] is None
+    assert len(reviewed["source_provenance"]["raw_source_sha256"]) == 64
 
 
-def test_in_force_dead_receipt_is_exact_and_sealed_in_terminal_manifest() -> None:
+def test_in_force_dead_receipt_is_exact_and_sealed_in_terminal_manifest(
+    tmp_path: Path,
+) -> None:
     column = "business_is_sstb"
     label = f"person/puf_tax_itemization/{column}[clone_0]"
     check_id = f"{label}#dead"
-    policy = _reviewed_exclusion_policy(check_id)
+    raw_policy = _reviewed_exclusion_policy(check_id)
+    raw = json.dumps(raw_policy.policy_payload(), sort_keys=True).encode("utf-8")
+    source = tmp_path / "reviewed-exclusions.json"
+    source.write_bytes(raw)
+    source_sha256 = hashlib.sha256(raw).hexdigest()
+    policy = load_us_by_origin_reviewed_exclusion_policy(
+        source,
+        expected_sha256=source_sha256,
+    )
     frame = _battery_frame(
         {column: (np.zeros(8, dtype=np.int64), np.zeros(11, dtype=np.int64))}
     )
@@ -8326,6 +8340,11 @@ def test_in_force_dead_receipt_is_exact_and_sealed_in_terminal_manifest() -> Non
     assert result.details["comparisons"][label]["status"] == "dead_comparison"
     reviewed = result.details["reviewed_exclusions"]
     assert reviewed["in_force_exclusions"] == [check_id]
+    assert reviewed["source_provenance"] == {
+        "override_supplied": True,
+        "expected_sha256": source_sha256,
+        "raw_source_sha256": source_sha256,
+    }
     assert set(reviewed["applied_exclusions"]) == {check_id}
     assert reviewed["applied_exclusions"][check_id]["receipt"] == (
         policy.exclusions[check_id].policy_payload()
@@ -8359,6 +8378,39 @@ def test_in_force_dead_receipt_is_exact_and_sealed_in_terminal_manifest() -> Non
     )
     with pytest.raises(ValueError, match="application.*is malformed"):
         GateReport((forged,)).to_manifest()
+
+    forged_details = deepcopy(dict(result.details))
+    forged_details["reviewed_exclusions"]["source_provenance"]["raw_source_sha256"] = (
+        "0" * 64
+    )
+    forged = stacked_spine_module._sealed_stacked_gate_result(
+        name=result.name,
+        passed=result.passed,
+        failures=result.failures,
+        details=forged_details,
+    )
+    with pytest.raises(ValueError, match="source provenance is invalid"):
+        GateReport((forged,)).to_manifest()
+
+
+def test_canonical_battery_refuses_directly_constructed_policy() -> None:
+    committed = us_default_by_origin_reviewed_exclusion_policy()
+    direct = USByOriginReviewedExclusionPolicy(
+        description=committed.description,
+        exclusions={},
+        policy_source="committed",
+    )
+    frame = _battery_frame(
+        {
+            "taxable_interest_income": (
+                np.full(8, 100.0),
+                np.full(11, 100.0),
+            )
+        }
+    )
+
+    with pytest.raises(ValueError, match="lacks authenticated source provenance"):
+        by_origin_battery(frame, reviewed_exclusion_policy=direct)
 
 
 def test_battery_refuses_typed_policy_source_content_mismatches() -> None:
