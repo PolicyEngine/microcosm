@@ -22,9 +22,10 @@ and all 529 tests in the five directly affected files pass under the owner
 per-process RSS. Repository lint, formatting of all 15 Python files changed
 since the bad commit's parent, committed-range whitespace, and both runtime
 tree-object comparisons with all-build-suite checkpoint `a5be536f` pass. Final
-reporting is now the active step. No host success is claimed. The owner-provided
-`_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain untracked and
-untouched.
+reporting is complete in `FINAL_REPORT.md`; no local implementation, regression,
+or verification work remains for the supplied failure. No host success is
+claimed. The owner-provided `_BUILD-FAILURE-1PCT.txt` and
+`.codex-memory-guard.py` remain untracked and untouched.
 
 Earlier continuation snapshots follow and are historical rather than current
 state.
@@ -191,6 +192,10 @@ but DNS is unavailable. Verification therefore uses the already-synced
   against `a5be536f`; all pass. The first format invocation supplied the
   newline-separated paths as one zsh scalar and checked no file; the
   null-delimited fail-fast rerun checked all 15 successfully.
+- Refreshed `FINAL_REPORT.md` with the current independent diagnosis, complete
+  three-commit runtime correction, existing regression coverage, guarded
+  14-case and 529-test results, static/tree checks, GitNexus limitation, and
+  exact remaining host-only boundary.
 - Reopened and committed this root journal before changing implementation or
   tests, reread `CLAUDE.md`, preserved the two untracked owner artifacts, and
   recorded the exact supplied binding failure as the active continuation.
@@ -479,6 +484,7 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Refresh and commit `FINAL_REPORT.md` and the final journal state. Do not
-   claim a host artifact without a revision-bound terminal success marker and
-   expected artifacts.
+1. Run or identify a revision-bound off-chain 1% retry that reaches a terminal
+   runner verdict and emits the expected pool, manifest, and gates artifacts.
+   Do not claim an after artifact without that terminal proof, and do not
+   publish or mutate the pending logbook chain as a side effect.

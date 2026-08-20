@@ -7,7 +7,9 @@ Fixed the host 1% verification failure at
 unassigned target into the package 3 calibration. The final runtime tree is
 identical to the complete `microcosm-build` suite checkpoint, and all 529 tests
 in the five directly affected files plus repository lint pass on the final
-tree.
+tree. This continuation made no duplicate executable edit: independent source,
+history, and regression audits confirmed that the complete correction and its
+failing-target coverage were already committed on the branch.
 
 No after artifact is claimed or accepted. An externally owned exact 1% retry
 previously rebuilt all 47 survey targets plus the one housing target without
@@ -19,15 +21,15 @@ validation and frozen-battery success therefore are not claimed. The frozen
 sample/clone seed remains 578, and no battery band, threshold, comparator,
 fold, publication boundary, or pending-chain state was changed.
 
-The 2026-08-20 owner continuation independently re-traced the old raise site,
-the current runtime/receipt selector, the failing-to-fixed history, and the
-exact regression surface. It found no remaining canonical path that can opt
-`taxable_interest_income` into QRF regime work or evidence. A regression audit
-did find one strictness gap, so the final test tree now rejects a fully rehashed,
-plausible in-range `__batch_1` alias on an assigned target as well as forged and
-out-of-range aliases. All 20 focused cases and all 529 tests in the five
-directly affected files pass. Independent source, history, and regression
-audits agree on the scoped-fix verdict.
+The current 2026-08-20 owner continuation independently re-traced the old raise
+site, current producer/receipt/validator selectors, failing-to-fixed history,
+and exact regression surface. It found no remaining canonical path that can
+opt `taxable_interest_income` into QRF regime work or evidence. The final test
+tree also rejects a fully rehashed, plausible in-range `__batch_1` alias on an
+assigned target, preventing the unsafe permissive workaround briefly present
+in the first correction. All 14 decisive focused cases and all 529 tests in the
+five directly affected files pass in this continuation. Independent source,
+history, and regression audits agree on the scoped-fix verdict.
 
 ## Root cause and correction
 
@@ -117,16 +119,25 @@ unavailable.
   lockfile changed between that commit and the final audit tree.
 - The five directly affected transfer, multispine, stacked, pool-tool, and H5
   files were rerun together on the final tree: all 529 passed. The run used the
-  owner-provided 12 GiB/20 ms guard and peaked at 1.531 GiB observed
-  per-process RSS. The eight narrow scope/serialization tests plus all 12 QRF
-  structure mutations also passed independently, peaking at 0.586 GiB.
+  owner-provided 12 GiB/20 ms guard and peaked at 1.594 GiB observed
+  per-process RSS. The exact synthetic host-target test, real banked
+  wide-family test, and all 12 QRF structure mutations also passed
+  independently (14 cases total), peaking at 0.568 GiB.
 - `ruff check .`: passed on the final audit tree.
 - `ruff format --check` on all 15 Python files changed since `33bf52fe^`:
   passed.
 - `git diff --check 33bf52fe^..HEAD`: passed.
-- `git diff --quiet a5be536f..HEAD` over build runtime source, tools, specs,
-  `pyproject.toml`, and `uv.lock`: passed. The only test-tree change after that
-  all-suite checkpoint is the new strict in-range-family regression.
+- Exact Git tree-object comparisons for both `us_runtime` and all
+  `microcosm-build/src` against `a5be536f`: passed. The only nonjournal tracked
+  change after that all-suite checkpoint is the strict in-range-family
+  regression in `test_us_stacked_spine.py`.
+
+The GitNexus debugging workflow was attempted against a freshly generated
+local graph. The sandbox denied registration in `~/.gitnexus/registry.json`,
+and the graph parser omitted the two very large suspect runtime modules, so its
+query/context results could not trace the raise-site symbols. Direct source and
+commit tracing established the exact path instead. The generated 112 MiB
+repo-local index was removed after the audit.
 
 The originally cited `battery-verify/pkg3/build.log` was overwritten by a later
 retry. The owner-preserved `_BUILD-FAILURE-1PCT.txt` retains the old traceback.
@@ -169,6 +180,11 @@ skipped.
 - `31f26ea1` — confirm the current scoped binding diagnosis.
 - `21a48ba5` — cover a plausible in-range ACS record-family forgery.
 - `8bcaf867` — record the guarded 529-test affected-suite verification.
+- `7c67dac7` — finalize the prior scoped-binding continuation report.
+- `fdb49ffb` — reopen the current host-binding continuation journal.
+- `a4a28c7f` — confirm the current assigned-only binding diagnosis.
+- `212ab9a5` — record the current guarded 529-test affected suite.
+- `8627b17c` — record current lint, format, whitespace, and drift checks.
 
 ## Remaining host step
 
