@@ -2,6 +2,20 @@
 
 ## State
 
+The 2026-08-20 21:57Z owner continuation has reopened the supplied host 1%
+ACS QRF record-binding failure for an independent current-tree audit. The
+repository charter and GitNexus debugging workflow have been read, the branch
+and handoff artifacts have been inventoried, and the existing correction and
+report are not yet being treated as fresh proof. No executable or test file
+has changed in this continuation. The owner-provided `_BUILD-FAILURE-1PCT.txt`
+and `.codex-memory-guard.py` remain untracked and untouched. Next is to trace
+the historical raise-site flow against the current assigned-target selectors,
+audit the regression for the exact unassigned target, and rerun proportionate
+guarded verification before refreshing `FINAL_REPORT.md`.
+
+The immediately preceding completion snapshot follows and is historical rather
+than current state.
+
 The 2026-08-20 21:18Z owner continuation has completed independent source-flow,
 history, and regression audits of the supplied host 1% ACS QRF record-binding
 failure. The traceback exactly fingerprints bad commit `33bf52fe`: global QRF
@@ -171,6 +185,10 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Reopened the committed root journal before any implementation or test work,
+  read `CLAUDE.md` and the GitNexus debugging instructions in full, inventoried
+  the existing correction/report history, and preserved both untracked owner
+  artifacts.
 - Independently reproduced the historical call order at `33bf52fe`: every
   record received QRF regimes and receipt evidence, and line 4512 validated the
   unassigned target before spec lookup, causing line 4310 to reject its real
@@ -566,7 +584,13 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run or identify a revision-bound off-chain 1% retry that reaches a terminal
-   runner verdict and emits the expected pool, manifest, and gates artifacts.
-   Do not claim an after artifact without that terminal proof, and do not
-   publish or mutate the pending logbook chain as a side effect.
+1. Reconstruct the historical failing call path from the cited invariant and
+   compare it with every current canonical producer and validator selector.
+2. Audit and rerun the regressions that distinguish unassigned wide-family
+   records from exact assigned-family binding; add a test only if coverage is
+   materially missing.
+3. Run the affected suite and static checks under the supplied memory guard,
+   then refresh and commit `PROGRESS.md` and `FINAL_REPORT.md` with only the
+   results established on this revision.
+4. Leave the revision-bound off-chain 1% retry as the remaining host step
+   unless an already-complete terminal artifact can be identified read-only.
