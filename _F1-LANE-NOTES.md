@@ -1975,13 +1975,23 @@ head; it still writes `us-f1-certification.json` and
   broker adapter contract, and fixture/certification harness. GitNexus graph
   resources are unavailable in this session, so source tracing uses `rg`,
   direct reads, tests, and history.
+- Added the lossless US `Frame` / executor-projection codec. It narrows every
+  node view to compiler-declared physical columns plus structural keys,
+  memberships, links, weights, strata, mass history, virtual receipts, and
+  compiler-derived row atoms. Legacy results are rejected if they alter an
+  unprojected surface; EXPAND lineage is classified from explicit support ids
+  or an unambiguous canonical remap inverse.
+- The codec's seven focused fixture-scale tests pass, including projection
+  narrowing, virtual inputs, patch conversion, external-surface refusal,
+  clone-copy proof, row classification, and validated merge. Targeted Ruff
+  and `git diff --check` also pass.
 
 ### Next
 
-1. Define a generic physical-node adapter that executes the real bundle node
+1. Finish the generic physical-node adapter that executes the real bundle node
    operations as validated `execute_node` transactions with ledger-owned RNG
    sessions and broker-issued source snapshots.
-2. Wire it behind `config_authority=bundle` only and prove exact once-per-node
+2. Wire that adapter behind `config_authority=bundle` only and prove exact once-per-node
    full-stage dispatch plus D4 two-tier artifact equality at fixture scale.
 3. Reconcile runner coverage with the completed node journal/reuse surface,
    run only fixture/unit verification, update the host commands and final
