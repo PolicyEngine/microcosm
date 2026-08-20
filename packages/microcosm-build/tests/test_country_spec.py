@@ -269,6 +269,40 @@ class TestCountryStagePlan:
             )
 
 
+class TestUKCountryPackage:
+    def test_spi_spine_adds_no_country_package_resources(self) -> None:
+        spec = load_country_spec("uk")
+
+        assert spec.resources == (
+            "cgt_source_stages.json",
+            "degenerate_reviewed_exclusions.json",
+            "efrs_parity_known_gaps.json",
+            "efrs_parity_reference.json",
+            "gates.json",
+            "brma_rent_counts.json",
+            "hmrc_income_release_gate_report.json",
+            "hmrc_income_replay_report.json",
+            "hmrc_income_source_stages.json",
+            "regional_land_values.json",
+            "source_stages.json",
+            "take_up_contract.json",
+            "input_mass_reviewed_exclusions.json",
+            "national_staging_build_record.json",
+            "qrf_tail_reviewed_exclusions.json",
+            "release_input_coverage_manifest.json",
+            "was_wealth_support_bounds.json",
+            "uk_local_target_census.json",
+            "uk_national_targets.json",
+            "target_references.json",
+        )
+
+    def test_uk_source_manifest_loads_eighteen_stages(self) -> None:
+        spec = load_country_spec("uk")
+
+        assert spec.sources is not None
+        assert len(spec.sources.stages) == 18
+
+
 class TestExistingPackagesGeneralize:
     """The loader is country-neutral: the US and UK packages load unchanged."""
 
@@ -278,8 +312,8 @@ class TestExistingPackagesGeneralize:
         assert spec.sources is not None
         assert spec.support_spine is not None
         # US target references live in fiscal_target_references.json (an
-        # untyped resource its runtime interprets); the typed
-        # target_references.json convention starts with Belgium.
+        # untyped resource its runtime interprets); Belgium and the UK use the
+        # typed target_references.json convention.
         assert spec.target_references == ()
 
     def test_uk_package_loads(self) -> None:
@@ -301,13 +335,17 @@ class TestExistingPackagesGeneralize:
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
+            "regional_land_values.json",
             "source_stages.json",
             "take_up_contract.json",
             "input_mass_reviewed_exclusions.json",
             "national_staging_build_record.json",
             "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
+            "was_wealth_support_bounds.json",
             "uk_local_target_census.json",
+            "uk_national_targets.json",
+            "target_references.json",
         )
 
 
@@ -520,6 +558,7 @@ class TestUKGatesManifest:
             "uk_weight_ratio",
             "uk_weights_audit",
             "uk_nonnegative_columns",
+            "uk_support",
             "uk_export_surface",
             "uk_take_up_signal",
             "uk_brma_enum_domain",

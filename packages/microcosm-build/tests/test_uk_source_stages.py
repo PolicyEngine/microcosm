@@ -32,12 +32,29 @@ E4_STAGE_NAMES = [
     "frs_household_draws",
     "frs_brma",
 ]
+E5_STAGE_NAMES = [
+    "was_wealth",
+    "regional_property_uprating",
+]
+E7_STAGE_NAMES = [
+    "frs_hmrc_spine_leaves",
+    "spi_support_channel",
+    "hmrc_spi_income_spine",
+]
 UK_SOURCE_STAGE_NAMES = [
     "frs_spine",
     *E3_STAGE_NAMES,
     *E4_STAGE_NAMES,
+    *E5_STAGE_NAMES,
+    *E7_STAGE_NAMES,
     "frs_hmrc_retained_leaves",
     "hmrc_spi_income",
+]
+UK_FRS_SPI_SPINE_DRIVER_STAGE_NAMES = [
+    "frs_spine",
+    *E3_STAGE_NAMES,
+    *E4_STAGE_NAMES,
+    *E7_STAGE_NAMES,
 ]
 FROZEN_SOURCE_STAGES_SHA256 = (
     "c0341af7166ae3a85a3c1164e7d9e880c4b4aec122f1a8fa90c73b46c596e1ea"
@@ -80,11 +97,18 @@ class TestUKSourceStagesManifest:
         assert manifest.version == 1
         assert [stage.stage for stage in manifest.stages] == UK_SOURCE_STAGE_NAMES
 
-    def test_country_spec_declares_three_uk_source_stages(self) -> None:
+    def test_country_spec_declares_uk_source_stages(self) -> None:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
         assert [stage.stage for stage in spec.sources.stages] == UK_SOURCE_STAGE_NAMES
+
+    def test_e7_block_is_contiguous_before_certified_pair(self) -> None:
+        canonical = _load_json(CANONICAL_SOURCE_STAGES)
+        names = [stage["stage"] for stage in canonical["stages"]]
+
+        assert names[-5:-2] == E7_STAGE_NAMES
+        assert names[-2:] == ["frs_hmrc_retained_leaves", "hmrc_spi_income"]
 
     def test_copy_is_lockstep_with_frozen_original_except_citation_rewrites(
         self,
@@ -134,7 +158,9 @@ class TestUKSourceStagesManifest:
 
         assert digest == FROZEN_SOURCE_STAGES_SHA256
 
-    def test_country_stage_plan_assembles_two_uk_national_stages(self) -> None:
+    def test_country_stage_plan_assembles_two_certified_uk_national_stages(
+        self,
+    ) -> None:
         spec = load_country_spec("uk")
         plan = country_stage_plan(
             spec,
@@ -149,6 +175,19 @@ class TestUKSourceStagesManifest:
             "frs_hmrc_retained_leaves",
             "hmrc_spi_income",
         ]
+
+    def test_country_stage_plan_assembles_fourteen_stage_spine_plan(self) -> None:
+        spec = load_country_spec("uk")
+        implementations = {name: _identity for name in UK_SOURCE_STAGE_NAMES}
+        plan = country_stage_plan(
+            spec,
+            implementations,
+            stage_names=tuple(UK_FRS_SPI_SPINE_DRIVER_STAGE_NAMES),
+        )
+
+        assert [stage.name for stage in plan.stages] == (
+            UK_FRS_SPI_SPINE_DRIVER_STAGE_NAMES
+        )
 
     @pytest.mark.parametrize(
         "implementations, match",
@@ -167,6 +206,11 @@ class TestUKSourceStagesManifest:
                     "frs_person_draws": _identity,
                     "frs_household_draws": _identity,
                     "frs_brma": _identity,
+                    "was_wealth": _identity,
+                    "regional_property_uprating": _identity,
+                    "frs_hmrc_spine_leaves": _identity,
+                    "spi_support_channel": _identity,
+                    "hmrc_spi_income_spine": _identity,
                     "frs_hmrc_retained_leaves": _identity,
                     "hmrc_spi_income": _identity,
                     "hmrc_spi_income_fallback": _identity,
@@ -240,6 +284,13 @@ class TestDeclaredOutputsAreWrittenColumns:
             FRS_TAKE_UP_NONNEGATIVE_OUTPUT_COLUMNS,
             FRS_TAKE_UP_OUTPUT_COLUMNS,
         )
+        from microcosm.build.uk_runtime.regional_uprating import (
+            UK_REGIONAL_PROPERTY_REWRITES,
+        )
+        from microcosm.build.uk_runtime.was_wealth import (
+            UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS,
+            UK_WAS_WEALTH_OUTPUT_COLUMNS,
+        )
 
         spec = load_country_spec("uk")
         stages = {stage.stage: stage for stage in spec.sources.stages}
@@ -270,6 +321,44 @@ class TestDeclaredOutputsAreWrittenColumns:
             stages["frs_household_draws"].outputs == FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS
         )
         assert stages["frs_brma"].outputs == FRS_BRMA_OUTPUT_COLUMNS
+        assert stages["was_wealth"].outputs == UK_WAS_WEALTH_OUTPUT_COLUMNS
+        assert (
+            stages["was_wealth"].nonnegative_outputs
+            == UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert stages["regional_property_uprating"].outputs == ()
+        assert (
+            stages["regional_property_uprating"].rewrites
+            == UK_REGIONAL_PROPERTY_REWRITES
+        )
+
+    def test_e7_outputs_and_rewrites_are_backed_by_runtime_constants(self) -> None:
+        from microcosm.build.uk_runtime.spi_spine import (
+            UK_FRS_HMRC_SPINE_LEAF_OUTPUT_COLUMNS,
+            UK_SPI_INCOME_SPINE_NONNEGATIVE_OUTPUT_COLUMNS,
+            UK_SPI_INCOME_SPINE_OUTPUT_COLUMNS,
+            UK_SPI_INCOME_SPINE_REWRITE_COLUMNS,
+            UK_SPI_SUPPORT_CHANNEL_OUTPUT_COLUMNS,
+        )
+
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+
+        assert (
+            stages["frs_hmrc_spine_leaves"].outputs
+            == UK_FRS_HMRC_SPINE_LEAF_OUTPUT_COLUMNS
+        )
+        assert (
+            stages["spi_support_channel"].outputs
+            == UK_SPI_SUPPORT_CHANNEL_OUTPUT_COLUMNS
+        )
+        income = stages["hmrc_spi_income_spine"]
+        assert income.outputs == UK_SPI_INCOME_SPINE_OUTPUT_COLUMNS
+        assert income.nonnegative_outputs == (
+            UK_SPI_INCOME_SPINE_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert income.rewrites == UK_SPI_INCOME_SPINE_REWRITE_COLUMNS
+        assert not (set(income.outputs) & set(income.rewrites))
 
 
 class TestE3ManifestLockstep:
@@ -350,6 +439,36 @@ class TestE3ManifestLockstep:
             "materialize_rules_engine_predictors",
             "sample_categorical_from_count_table",
         ]
+        assert [op.kind for op in stages["was_wealth"].operations] == [
+            "derive",
+            "materialize_rules_engine_predictors",
+            "fit_weighted_qrf_chain",
+            "fold_into",
+            "support_clip",
+            "allocate_within_group_waterfall",
+        ]
+        assert [op.kind for op in stages["regional_property_uprating"].operations] == [
+            "uprate_to_regional_reference",
+        ]
+        assert [op.kind for op in stages["frs_hmrc_spine_leaves"].operations] == [
+            "retain_adjudicated_frs_hmrc_leaves",
+            "derive",
+        ]
+        assert [op.kind for op in stages["spi_support_channel"].operations] == [
+            "stack_zero_weight_donors",
+            "gate_zero_weight_strata",
+            "allocate_zero_weight_prior_mass",
+        ]
+        assert [op.kind for op in stages["hmrc_spi_income_spine"].operations] == [
+            "verify_pinned_hmrc_source_pair",
+            "strict_read_private_table",
+            "fit_weighted_qrf_stage1",
+            "fit_weighted_qrf_stage2",
+            "redraw_columns_from_fitted_qrf",
+            "materialize_hmrc_income_bands_fail_closed",
+            "classify_hmrc_income_facts_with_reviewed_fences",
+            "gate_distributional_effective_mass",
+        ]
 
     def test_engine_predictor_and_rewrite_constants_match_manifest(self) -> None:
         from microcosm.build.uk_runtime.frs_brma import UK_BRMA_PREDICTORS
@@ -362,6 +481,10 @@ class TestE3ManifestLockstep:
         )
         from microcosm.build.uk_runtime.frs_take_up import (
             UK_TAKE_UP_ANCHOR_AGGREGATES,
+        )
+        from microcosm.build.uk_runtime.was_wealth import (
+            UK_WAS_ENGINE_PREDICTORS,
+            UK_WAS_WEALTH_PREDICTORS,
         )
 
         spec = load_country_spec("uk")
@@ -385,6 +508,14 @@ class TestE3ManifestLockstep:
         assert (
             tuple(stages["frs_brma"].operations[0].parameters["predictors"])
             == UK_BRMA_PREDICTORS
+        )
+        assert (
+            tuple(stages["was_wealth"].operations[1].parameters["predictors"])
+            == UK_WAS_ENGINE_PREDICTORS
+        )
+        assert (
+            tuple(stages["was_wealth"].operations[2].parameters["predictors"])
+            == UK_WAS_WEALTH_PREDICTORS
         )
         rate_keys = [
             op.parameters["rate_key"]
@@ -432,11 +563,34 @@ class TestE3ManifestLockstep:
                 }:
                     assert isinstance(operation.parameters.get("seed"), int)
 
+    def test_e5_qrf_operation_declares_integer_seed(self) -> None:
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+
+        qrf = stages["was_wealth"].operations[2]
+
+        assert qrf.kind == "fit_weighted_qrf_chain"
+        assert qrf.parameters["seed"] == 0
+
+    def test_e7_declared_seed_lockstep(self) -> None:
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+
+        assert (
+            stages["spi_support_channel"].operations[0].parameters["seed"] == 42
+        )
+        assert (
+            stages["hmrc_spi_income_spine"].operations[2].parameters["seed"] == 42
+        )
+        assert (
+            stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 43
+        )
+
     def test_full_uk_source_stage_plan_compiles_with_e4_stages(self) -> None:
         spec = load_country_spec("uk")
         implementations = {name: _identity for name in UK_SOURCE_STAGE_NAMES}
 
-        driver_stage_names = tuple(UK_SOURCE_STAGE_NAMES[:-1])
+        driver_stage_names = tuple(UK_FRS_SPI_SPINE_DRIVER_STAGE_NAMES)
         plan = country_stage_plan(spec, implementations, stage_names=driver_stage_names)
 
         assert [stage.name for stage in plan.stages] == list(driver_stage_names)

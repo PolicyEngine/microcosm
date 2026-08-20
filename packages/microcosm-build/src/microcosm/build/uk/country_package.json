@@ -78,6 +78,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "regional_land_values.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "source_stages.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
@@ -108,7 +113,22 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "was_wealth_support_bounds.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "uk_local_target_census.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "uk_national_targets.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "target_references.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     }

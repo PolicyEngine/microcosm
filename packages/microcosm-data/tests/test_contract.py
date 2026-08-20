@@ -92,7 +92,27 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
         "adjudication": "microcosm#630",
         "approved_on": "2026-08-17",
         "expires_on": "2027-02-17",
-    }
+    },
+    "owned_land": {
+        "reason": (
+            "Sparse heavy-tailed WAS donor column (0.7 percent weighted "
+            "nonzero share) whose weighted total is dominated by a handful "
+            "of large farm/estate records: the E5 stability receipt "
+            "(data/ukds/acceptance/e5/owned_land_stability_receipt.json) "
+            "measures a 37.7 percent national and 2.41x London swing "
+            "between adjacent seeds, the same realization-variance class "
+            "the archived incumbent data repo records at uk-data#448 (4.6x "
+            "Wales swing across releases). Register parity at this grain "
+            "is not meaningful until the whole-spine comparison; the "
+            "one-month expiry enforces the end-of-workstream revisit "
+            "registered on microcosm#145 (winsorised donor or separate "
+            "land imputation are the candidate remedies)."
+        ),
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#714",
+        "approved_on": "2026-08-19",
+        "expires_on": "2026-09-19",
+    },
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
@@ -123,19 +143,19 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "609075af473c64fe7dbcb035b9254121d6c9c000c28fc67a14417bb02657d08f"
+    "5ddd3da9a52b0dc19ba1c97315f0e4f8acdedf2b74ea29bff512cbdb57de1cab"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "610512a5bbddeba355cf57de52579eca5f36cf43788be239307cc5c025e76783"
+    "8d58fffe5e6542a7f10578076bbcc943cf587f9f22017ccc630450007b5b6166"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "cb25537c8a99aa6c44911b098df10dfb7ba143dc3210400b61f847c3d0c9b12d"
+    "b7b645deee1b15750403f98a4c7dac09d6e08440a878b8d1ff83a15e9195b809"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "a77111e4acecd3945d69f77f58209bf6a58eb72d39a47de9cb01e5b73d2592f4"
+    "df74556909990345bc9032f6f5db7f817d9c273f75522a85ab6e332dd8dc7355"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {
@@ -164,6 +184,7 @@ UK_GATE_BATTERY_ENTRIES = {
         "terminal",
         "nonnegative_columns",
     ),
+    "uk_support": ("support", "terminal", "support"),
     "uk_export_surface": ("export_surface", "terminal", "export_surface"),
     "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
     "uk_brma_enum_domain": ("enum_domain", "terminal", "enum_domain"),
@@ -748,6 +769,8 @@ def _terminal_gate_details(name: str) -> dict:
             "atol": 0.0,
             "chunk_size": 1_000_000,
         }
+    if name == "support":
+        return {"columns_checked": 13}
     if name == "export_surface":
         return {
             "candidate_columns": 1,

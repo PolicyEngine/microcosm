@@ -9,7 +9,7 @@ row-wise local geography.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -20,6 +20,10 @@ from microcosm.build.uk_runtime.hmrc_income import (
     HMRC_SPI_ASSESSABLE_INCOME_COLUMN,
 )
 from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
+from microcosm.build.uk_runtime.terminal_gates import (
+    UKZeroWeightStratumDeclaration,
+    uk_zero_weight_strata_gate,
+)
 from microcosm.frame import (
     MassChangeRecord,
     WeightKind,
@@ -439,6 +443,67 @@ def replace_uk_spi_support_tables(
     )
 
 
+def build_uk_spi_support_channel(
+    person: pd.DataFrame,
+    benunit: pd.DataFrame,
+    household: pd.DataFrame,
+    *,
+    spi_household_count: int = DEFAULT_SPI_SUPPORT_HOUSEHOLDS,
+    seed: int = 42,
+    source_year: int | None = None,
+    spi_prior_mass_share: float = DEFAULT_SPI_PRIOR_MASS_SHARE,
+    strata_columns: Sequence[str] = ("region",),
+    input_weight_kind: WeightKind = WeightKind.DESIGN,
+    mass_log: tuple[MassChangeRecord, ...] = (),
+    zero_weight_declarations: (
+        Sequence[UKZeroWeightStratumDeclaration] | Sequence[Mapping[str, Any]]
+    ) = (),
+) -> UKSPISupportResult:
+    """Stack the E7 SPI support channel and allocate prior mass by stratum."""
+
+    if not isinstance(input_weight_kind, WeightKind):
+        raise TypeError("input_weight_kind must be a WeightKind.")
+    if not isinstance(mass_log, tuple) or any(
+        not isinstance(record, MassChangeRecord) for record in mass_log
+    ):
+        raise TypeError("mass_log must be a tuple of MassChangeRecord.")
+    if not isinstance(seed, int):
+        raise ValueError("seed must be an integer.")
+    share = float(spi_prior_mass_share)
+    if not np.isfinite(share) or not 0.0 < share < 1.0:
+        raise ValueError("spi_prior_mass_share must be finite and in (0, 1).")
+    stratum_columns = tuple(str(column) for column in strata_columns)
+    if not stratum_columns or any(not column for column in stratum_columns):
+        raise ValueError("strata_columns must contain non-empty column names.")
+
+    stacked = create_uk_spi_support_tables(
+        person=person,
+        benunit=benunit,
+        household=household,
+        spi_household_count=spi_household_count,
+        seed=seed,
+        source_year=source_year,
+    )
+    declarations = _coerce_zero_weight_declarations(zero_weight_declarations)
+    if declarations:
+        gate = uk_zero_weight_strata_gate(
+            stacked.household,
+            declarations=declarations,
+        )
+        if not gate.passed:
+            raise ValueError(
+                "UK SPI support pre-clone zero-weight gate failed: "
+                f"{list(gate.failures)}."
+            )
+    return _allocate_spi_prior_mass(
+        stacked,
+        spi_prior_mass_share=share,
+        input_weight_kind=input_weight_kind,
+        mass_log=mass_log,
+        strata_columns=stratum_columns,
+    )
+
+
 def fill_support_channel_from_source(
     frame: pd.DataFrame,
     donor: pd.DataFrame,
@@ -511,6 +576,23 @@ def fill_support_channel_from_source(
     for column in values:
         out.loc[mask, column] = aligned[column].to_numpy()
     return out
+
+
+def _coerce_zero_weight_declarations(
+    declarations: Sequence[UKZeroWeightStratumDeclaration] | Sequence[Mapping[str, Any]],
+) -> tuple[UKZeroWeightStratumDeclaration, ...]:
+    materialized: list[UKZeroWeightStratumDeclaration] = []
+    for declaration in declarations:
+        if isinstance(declaration, UKZeroWeightStratumDeclaration):
+            materialized.append(declaration)
+        elif isinstance(declaration, Mapping):
+            materialized.append(UKZeroWeightStratumDeclaration(**dict(declaration)))
+        else:
+            raise TypeError(
+                "zero_weight_declarations must contain "
+                "UKZeroWeightStratumDeclaration instances or mappings."
+            )
+    return tuple(materialized)
 
 
 def support_channel_column(entity: str) -> str:
@@ -1099,6 +1181,7 @@ __all__ = [
     "SPI_REPLACEMENT_STRATA_COLUMNS",
     "UKSPISupportResult",
     "UK_SPI_SUPPORT_STAGE_NAME",
+    "build_uk_spi_support_channel",
     "create_uk_spi_support_tables",
     "fill_support_channel_from_source",
     "replace_uk_spi_support_tables",

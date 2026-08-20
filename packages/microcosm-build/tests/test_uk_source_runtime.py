@@ -114,9 +114,13 @@ def test_uk_stage_implementations_names_whole_stage_transforms() -> None:
     assert uk_stage_implementations(
         retained_leaves_transform=retained,
         hmrc_income_transform=hmrc,
+        was_wealth_transform=retained,
+        regional_property_uprating_transform=hmrc,
     ) == {
         "frs_hmrc_retained_leaves": retained,
         "hmrc_spi_income": hmrc,
+        "was_wealth": retained,
+        "regional_property_uprating": hmrc,
     }
 
 
