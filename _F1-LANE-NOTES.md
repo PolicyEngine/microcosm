@@ -912,3 +912,135 @@ also currently seals selector names and locator grammar, not a detailed
 selector framing contract; that contract must be compiler-emitted before the
 collector can claim a cryptographic selector implementation binding. No sample
 build was run in this step.
+
+### R3 provenance/cache correction and sealed selector semantics
+
+The first driver seam was rejected before commit because it would have let a
+bundle run reuse generation-zero checkpoints and would have described a
+constants-dispatched physical build as though the plan had driven it. The
+corrected boundary now issues exactly one typed `run_provenance_identity` for
+each run. Its four-field receipt view is `config_authority`,
+`spec_binding_status`, `identity_generation`, and
+`run_provenance_identity`; the broader runtime capability remains hidden.
+Generation and the provenance binding select distinct configured checkpoint
+and bank namespaces, while provenance remains absent from node-reuse keys.
+
+Checkpoint H5 payloads deliberately retain the generation-zero-compatible
+identity bytes required by D4. Bundle checkpoint JSON manifests, instead,
+carry and validate the exact generation-one run configuration, and the
+compiler now emits the four corresponding structural comparison rules for
+every durable checkpoint manifest. Normal production routing therefore cannot
+promote or resume a generation-zero checkpoint into bundle mode, while the
+normative payload can still be raw-byte equal. The plan-authored sidecar policy
+is also enforced on both write and load: assembled forbids an operational
+sidecar; transferred and simulated require a nonempty, valid sidecar.
+
+Bundle source preflight authenticates each of the six compiler-declared source
+grants through the file broker and records the sealed broker receipt as an
+operational publication-manifest surface. The entire broker receipt is
+excluded by one compiler rule; it enters neither `spec_sha256` nor a reuse key.
+This is not yet a claim that later source consumers are brokered: after
+preflight, the current loaders reopen the paths through their legacy APIs.
+That remaining ambient-read seam must be removed before the physical bundle
+flip is complete.
+
+The selector gap recorded in the preceding section is closed. A
+single-authored selector contract now fixes directory framing, file semantics,
+logical H5 table/index/column/scalar framing, receipt normalization, and the
+H5 header. Both H5 selectors include the exact `_time_period` value and
+`_populace_staging_metadata` object; only `publication_run_id` is removed as
+operational. The contract digest and locator grammar are sealed in the code
+ABI, and both the collector and comparison kernel refuse a different digest.
+Tests prove that period and normative metadata changes alter both logical H5
+surfaces, while a publication-run nonce does not.
+
+This checkpoint still does **not** claim that the bundle drives physical
+execution. Assembly, gap-fill, primary-QRF, late-producer, take-up, remaining,
+and terminal calls must consume the compiler materializers rather than their
+constants defaults before the dual-mode fixture gate is meaningful. No sample
+build was run.
+
+### Adversarial review correction: production-shaped receipts and D3
+
+The first reduced artifact fixture was not sufficient evidence for the D4
+gate. A production-shaped review found that the then-sealed rules normalized
+only the `populace`/`microcosm` prefix of a release id, leaving its independently
+generated timestamp and nonce to differ; nested publication UUIDs, physical
+container hashes, checkpoint paths and write timings were also uncovered. The
+same review found that a rule covering the whole
+`run_provenance_identity` could hide a behavior-relevant run-request mismatch,
+and that the selector implementation files were absent from the compiler code
+inventory. No dual-mode or certification PASS is claimed from the earlier
+reduced fixture.
+
+The correction makes the provenance comparison leaf-specific. Constants and
+bundle runs now construct the same behavior request, code-pin digest, artifact
+protocol inventory, pipeline, and compatibility authority versions. Only the
+source-grammar/spec-binding triad, identity generation, generation-one runtime
+and execution-ABI seals, and authority-mode receipt may differ. The comparison
+kernel binds both complete typed provenance identities rather than trusting a
+caller-authored exception for an entire object. Release-id normalization is
+being bound to an explicit parser: it validates each authority's brand,
+retains the semantic country/year/pipeline/rung/seed/realized-count middle,
+and removes only the terminal UTC timestamp and eight-hex nonce.
+
+Commit `2c6f84d3` adds the independent Logbook part of this correction. New
+attempt rows may carry the full closed D3 identity and include it in the row
+digest. Historical absent-key rows preserve their exact JSON and digest. The
+repo-owned nullable JSONB migration and live exporter distinguish historical
+SQL `NULL` from a present identity and validate the full object. The pool tool
+caller is wired in the following driver commit; resolution failures that have
+not issued a valid identity remain explicitly absent rather than receiving a
+fabricated provenance object.
+
+The review also recorded two still-open closure requirements. Logical-H5
+selectors must receive a compiler-sealed required entity/column/weight
+inventory, and target-bank directory selectors must receive exact member
+descriptors; observationally comparing the files that happen to exist in both
+modes is not enough. Actual bundle source consumers must parse broker-issued
+leases rather than reopen paths after preflight. Both are treated as blockers
+to the physical flip, not deferred evidence. No sample build was run.
+
+## SPLIT-OUT COORDINATION — F1 deliverable 7 (closure/segments/dashboard)
+
+This section is append-only coordination from the deliverable-7 split-out.
+Its commits use the `F1-d7:` prefix. The split-out owns only
+`tools/emit_lineage_dashboard.py` and the directly affected lineage, typed
+closure, take-up semantics, and US bundle tests; it does not stage or alter the
+main lane's deliverables 5/6/8 work.
+
+Final handoff (`ef036572`, `F1-d7: retarget lineage surfaces to compiler IR`):
+
+- Consumer audit is complete. The active dashboard read 92 authored producer
+  outputs and no compiled segments. Production-shaped test fixtures also read
+  the constants generator or pre-IR `ResolvedSpec` surfaces.
+- The held #697 392-column f025 artifact inventory is not being resurrected as
+  current closure: the approved RFC review records that it predates predictor
+  work and misses 56 later columns. Deliverable 7 instead reports the exact
+  compiler-declared closure while artifact-presence closure remains owned by
+  the plan-derived selector/certification surface.
+- The implementation now compiles the packaged bundle and projects 173 typed
+  column contracts, 227 compiler-expanded producer-output occurrences, 241
+  exact producer cell segments, and two mixed take-up semantic segments. The
+  held authored lineage classes are not imported or reproduced.
+- The dashboard regression is green: seven tests in 479.80 seconds. A broader
+  focused run passed every D7-targeted module; its only failures were the
+  existing BE/UK exact `spec_sha256` pins after the main lane's concurrent
+  uncommitted compiler/code-inventory changes. D7 did not re-pin those
+  main-lane identities and removed its optional edit to that module.
+- No pool build or sample rung has run, and nothing has been pushed.
+- Main-lane verification blocker: the broader
+  `test_spec_engine_*.py` gate otherwise passed, but
+  `test_spec_engine_seeds.py::test_production_callsites_are_independent_exact_classified_and_attested`
+  still pins 208 production modules while the current main-lane HEAD exposes
+  212. The failure reproduced alone (63.90 seconds). Deliverable 7 adds no
+  production modules and leaves this main-lane-owned attestation count
+  untouched.
+
+The parallel lane is now complete. Its committed files were:
+
+- `tools/emit_lineage_dashboard.py`
+- `packages/microcosm-build/tests/test_imputation_lineage_spec.py`
+- `packages/microcosm-build/tests/test_spec_engine_typed_closure.py`
+- `packages/microcosm-build/tests/test_spec_engine_take_up_semantics.py`
+- `packages/microcosm-build/tests/test_us_spec_bundle.py`

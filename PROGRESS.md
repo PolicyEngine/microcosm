@@ -1,51 +1,46 @@
-# F1 deliverable 7 progress
+# F1 continuation r4 progress
 
 ## State
 
-- Deliverable 7 discovery is complete. The implementation target is the
-  compiler-declared closure (173 typed columns), 227 compiled producer-output
-  occurrences, and 241 compiler-derived cell segments, plus the dashboard
-  projection that presents them.
-- Work is local on `spec-engine-f1`; nothing has been pushed and no build has
-  been run.
-- Main-lane deliverables 5/6/8 have concurrent uncommitted changes in this
-  shared worktree. They are outside this split-out scope and will not be staged
-  or altered except for the required append-only coordination note.
-- Resource ceiling for this split-out is under 15 GiB RSS; builds above the 1%
-  sample rung are prohibited.
+- Work is local on `spec-engine-f1`; nothing has been pushed and no sample
+  build has run in this continuation.
+- Deliverable 7 is complete at `ef036572`. The dashboard and affected tests now
+  consume compiler IR: 173 typed columns, 227 compiler-expanded producer
+  outputs, 241 exact cell segments, and two mixed take-up semantic segments.
+- The first required `git fetch origin` was attempted and failed because this
+  host could not resolve `github.com`. The final #698 commits are available on
+  the cached local `spec-engine-schema` branch and are the next merge source.
+- Deliverable 4 remains incomplete: typed authorities are materialized, but
+  production physical kernels and all 72 stochastic sites are not yet routed
+  through the generic executor and brokers. Deliverables 5 and 6 therefore
+  cannot honestly emit PASS receipts.
+- The host ceiling is 20 GiB RSS. Prior cold f001 QRF attempts peaked between
+  78.91 and 96.95 GiB, so no 1% certification build may be launched here.
 
 ## Done
 
-- Read `CLAUDE.md`, `_F1-CHARTER.md`, and `_F1-LANE-NOTES.md` in full.
-- Read and adopted the GitNexus refactoring workflow for impact discovery and
-  post-change verification.
-- Reconciled the charter's historical instruction not to touch `PROGRESS.md`
-  with the split-out standing order: this journal follows the newer explicit
-  user instruction and is isolated from the main-lane journal changes.
-- Audited the current tree and held `lineage-column-closure-697` branch across
-  tests and tools. Active consumers are the lineage dashboard, the high-level
-  lineage conformance test, production-shaped typed-closure fixtures, take-up
-  segment fixtures, and the derived closure block in the US bundle test.
-- Confirmed the dashboard currently reads normalized authored graph outputs:
-  92 rows, rather than the compiler-expanded 227 outputs, and omits all 241
-  compiled `write_scopes[*].cell_segments`.
-- Confirmed the allowed held H5 inventory is not a valid current closure
-  authority: its 392-column f025 snapshot predates later predictor work and is
-  documented as missing 56 columns. It will not be revived or represented as
-  current compiler closure.
-- Mapped replacements to `CompiledSpecIR.resource()`, `typed_inventory`,
-  `producer_graph.nodes[*].outputs`, and
-  `producer_graph.nodes[*].write_scopes`.
+- Completed the required RFC, schema, compiler, review, coverage, pool-tool,
+  and lane-journal readings.
+- Implemented and tested the generic executor and broker foundations, sealed
+  comparison surfaces, source snapshots, provenance routing, and typed bundle
+  kernel-authority materialization.
+- Completed the deliverable-7 parallel lane without touching closure,
+  segments, or dashboard code from the main lane.
+- Audited the remaining physical executor, RNG, artifact-selector,
+  calibration, receipt, and resume seams. The audit found two F0 contract
+  corrections and two exact seed-ledger corrections that require regeneration
+  and identity re-pinning after the cached #698 merge.
+- Kept the historical root journal and all commits local; no logbook chain was
+  touched.
 
 ## Next
 
-1. Retarget the dashboard to compile the packaged bundle, present compiler
-   column closure and exact cell segments, and stop reading authored graph
-   outputs.
-2. Move each production-shaped closure/segment test fixture to compiled IR;
-   retain only genuinely synthetic low-level mutation tests.
-3. Run focused and complete required suites before the coherent implementation
-   commit.
-4. Append a clearly marked deliverable-7 handoff section to
-   `_F1-LANE-NOTES.md`, write the final report to the requested output file,
-   and leave the full suite green.
+1. Merge the cached final #698 spec-engine tip, resolving conflicts by keeping
+   both main's fixes and the 72-site ledger.
+2. Correct the two adaptive-cap ledger rows plus the finalizer structural delta
+   and late-transfer effects; regenerate bundles, coverage, and every identity
+   pin.
+3. Run the allowed focused and repository test gates under 20 GiB RSS.
+4. Record the exact D4/D5/D6 blockers and owner-run requirements in the lane
+   notes, rollout status, and `FINAL_REPORT.md`; stop without fabricating
+   certification evidence.
