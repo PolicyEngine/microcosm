@@ -16,6 +16,12 @@
 - Deliverables 5 and 6 remain NOT RUN. Fresh source and plan audits confirm
   that the cold dual-mode D4 prerequisite is still absent and that the known
   1% primary-QRF path violates the per-process 20 GiB RSS bound.
+- Current-head validation is complete without a pool build. The serial full
+  suite reported 7,189 passed, 74 skipped, and one fixed-60-second subprocess
+  timeout under severe host contention. The exact failed test then passed
+  unchanged, and its complete 78-test module passed unchanged; repository-wide
+  Ruff and whitespace checks also pass. This is decomposed green evidence, not
+  a claim that the one-shot invocation exited zero.
 
 ## Done
 
@@ -41,13 +47,20 @@
   no dual-mode build fixture or certification runner exists; exact H5/bank and
   calibration inventories remain unsealed; and historic f001 primary-QRF
   peaks remain 78.91--96.95 GiB.
+- Ran the current-head serial suite to completion: 7,189 passed and 74 skipped;
+  the sole failure was
+  `test_exchange_interrupted_before_cleanup_reclaims_displaced_set`, whose
+  child import/fsync path exceeded its fixed 60-second timeout while the host
+  was contended. Source tracing found no blocking code path, the exact retry
+  passed, and all 78 tests in `test_us_trade_imdb_bulk.py` then passed in
+  331.51 seconds without any test or production edit.
+- Ran repository-wide Ruff and `git diff --check`; both pass.
 
 ## Next
 
-1. Run the committed-tree test and lint gates without starting a pool build.
-2. Record the renewed D5 honest-stop evidence in `FINAL_REPORT.md` and this
-   journal; do not fabricate the absent certification evidence files.
-3. Stop at deliverable 5. A future continuation must first complete D4 and a
+1. Stop at deliverable 5 with the renewed evidence and final report committed;
+   do not fabricate the absent certification evidence files.
+2. A future continuation must first complete D4 and a
    behavior-preserving sub-20-GiB memory redesign before any 1% launch.
 
 ---

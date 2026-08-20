@@ -1424,3 +1424,39 @@ unobservable-RSS wording. It does not change main-lane D4--D6/D8 ownership.
 - Current-HEAD repository-wide Ruff, scoped D7 formatting, held-fixture
   searches, and whitespace checks pass. Nothing was pushed; no pool build,
   sample rung, restricted-data access, or publication occurred.
+
+### Resumed-main validation and final disposition
+
+The renewed committed-tree validation was deliberately kept separate from a
+pool build. A serial `uv run pytest` invocation completed its collection and
+test execution in 8,044.09 seconds with 7,189 passed, 74 expected skips, and
+one failure. The failure was a `subprocess.TimeoutExpired` in
+`test_exchange_interrupted_before_cleanup_reclaims_displaced_set`: its child
+process exceeded the test's fixed 60-second limit while importing the bulk
+trade tool and exercising the durable directory-exchange crash path.
+
+Direct source tracing found no blocking protocol in that child: its publisher
+lock is nonblocking, paths are unique under `tmp_path`, there are no wait loops
+or grandchildren, and the patched cleanup exits immediately after one atomic
+exchange. Heavy NumPy/pandas import and filesystem `fsync` latency are the only
+unbounded phases. The host was materially contended during the run, and the
+same test has passed in later recorded full-suite receipts without a relevant
+production or timeout change. No timeout, test, or publication implementation
+was changed.
+
+The exact failed node then passed unchanged. The complete 78-test
+`test_us_trade_imdb_bulk.py` module also passed unchanged (exit 0; 331.51
+seconds), including the crash-recovery node. Repository-wide `ruff check .`
+and `git diff --check` pass. These receipts establish decomposed current-head
+green coverage for the transient failure, but they do not rewrite the one-shot
+full-suite exit as zero.
+
+This validation does not alter the readiness finding: deliverable 4 still does
+not make bundle authorities drive physical execution or invoke the sealed
+production comparator, and the known 1% implementation remains above the
+20 GiB per-process ceiling. Deliverables 5 and 6 are therefore **NOT RUN**.
+No fixture/1% stage receipt, four-build result, resume verdict, certification
+JSON, or certification Markdown exists. No pool build or sample rung ran, no
+threshold or timeout was tuned, the logbook pending chain remained untouched,
+and nothing was pushed. This is the charter-required honest stop at
+deliverable 5.
