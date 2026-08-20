@@ -2,12 +2,20 @@
 
 ## State
 
-The 2026-08-20 owner continuation has been reopened from the supplied host 1%
-traceback. The reported boundary remains
-`person/puf_tax_itemization/taxable_interest_income`; current work is
-independently revalidating the raise-site diagnosis, the exact assigned-target
-scope, and the regression coverage before deciding whether any executable
-change is still required. The owner-provided `_BUILD-FAILURE-1PCT.txt` and
+The 2026-08-20 owner continuation independently revalidated the supplied host
+1% traceback against the current executable tree. At `33bf52fe`, every ACS
+target received regime provenance and terminal validation invoked the QRF
+evidence validator before consulting the nine-target calibration registry. The
+real wide-family record was `puf_tax_itemization__batch_1`, while the validator
+expected unsplit `puf_tax_itemization`, causing the reported binding failure.
+The current tree defaults regime work off, derives the canonical opt-in solely
+from the nine immutable assigned specs, omits evidence from unassigned records
+and receipts, and rejects forged evidence on those receipts before exact
+selected-record binding. Two independent read-only audits found no remaining
+canonical leak and no need for another executable edit. Unassigned generated
+values and QRF behavior remain unchanged; the shared four-count receipt
+invariant continues to apply to every canonical target. Verification is now in
+progress. The owner-provided `_BUILD-FAILURE-1PCT.txt` and
 `.codex-memory-guard.py` remain untracked and untouched.
 
 The 2026-08-20 owner continuation independently re-traced the reported host 1%
@@ -71,6 +79,26 @@ but DNS is unavailable. Verification therefore uses the already-synced
 - Reopened the committed progress journal before changing implementation or
   tests, reread `CLAUDE.md`, and recorded the supplied failure as the active
   continuation target.
+- Re-traced the old raise site and confirmed the failure sequence: the
+  15-target family was split at width eight, the target record identified its
+  bounded `__batch_1` family, and the old global validator compared that record
+  with the unsplit canonical family before checking whether the target was
+  assigned. Merely accepting the batch alias would have exposed the subsequent
+  eight-versus-fifteen target-order mismatch.
+- Audited the current source and repository-wide selector call sites. Generic
+  ACS transfer regime evidence defaults to empty; the two canonical stacked
+  callers are the only production selectors and derive exact `(entity,
+  target)` pairs from the nine post-transfer calibration specs on their live
+  surfaces. Receipt producers and validators independently reconstruct the
+  same selected set. `taxable_interest_income` is absent from it.
+- Reconciled two independent read-only audits of the current call path and the
+  failing-to-fixed history. Both found no remaining canonical scope leak and
+  no executable drift after `a5be536f`; only the two root journals differ from
+  that all-build-suite checkpoint.
+- Followed the GitNexus debugging skill as far as this session permits. Graph
+  query/context tools and a local index are unavailable, and the installed CLI
+  status probe produced no output and was stopped. Direct source, history, and
+  repository-wide call-site tracing established the same execution path.
 - Reopened the committed progress journal before implementation work for the
   current owner continuation and recorded the supplied failure as the active
   verification target.
@@ -251,11 +279,8 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Re-trace the invariant from its raise site through receipt production and
-   compare the current executable tree with the original failing commit.
-2. Confirm that only assigned source-operator, adult-care, and model-required
-   targets opt into calibrated QRF behavior; strengthen the regression if any
-   scope or binding edge remains uncovered.
-3. Run focused and package-level verification, update `FINAL_REPORT.md`, and
+1. Run focused and package-level verification on the unchanged executable
+   tree; strengthen the regression only if verification exposes a new gap.
+2. Update `FINAL_REPORT.md` and the final journal state, and
    commit every coherent result. Do not claim a host artifact without a
    revision-bound terminal success marker and expected artifacts.
