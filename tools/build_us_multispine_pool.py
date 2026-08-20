@@ -767,9 +767,9 @@ def _verify_inputs(
 
 
 def _configured_source_paths(args: argparse.Namespace) -> set[Path]:
-    """Resolve the six immutable input locations without opening them."""
+    """Resolve every configured read-only source location without opening it."""
 
-    return {
+    paths = {
         Path(args.asec_raw_stage_h5).resolve(),
         Path(args.acs_household_zip).resolve(),
         Path(args.acs_person_zip).resolve(),
@@ -777,6 +777,14 @@ def _configured_source_paths(args: argparse.Namespace) -> set[Path]:
         Path(args.puf_h5).resolve(),
         Path(args.puf_source_year_csv).resolve(),
     }
+    reviewed_exclusions = getattr(args, "by_origin_reviewed_exclusions", None)
+    if reviewed_exclusions is not None:
+        # This policy changes only the terminal verdict, so it deliberately
+        # stays out of input pins and checkpoint identity. It is still a
+        # read-only operator input and must receive the same overwrite
+        # protection as simulation inputs.
+        paths.add(Path(reviewed_exclusions).resolve())
+    return paths
 
 
 def _validate_checkpoint_path_layout(

@@ -3663,6 +3663,56 @@ def test_checkpoint_root_allows_safe_input_colocation_on_persistent_volume(
     )
 
 
+def _configured_source_path_args(
+    tmp_path: Path,
+    *,
+    reviewed_exclusions: Path,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        asec_raw_stage_h5=tmp_path / "asec.h5",
+        acs_household_zip=tmp_path / "acs-household.zip",
+        acs_person_zip=tmp_path / "acs-person.zip",
+        acs_rent_h5=tmp_path / "acs-rent.h5",
+        puf_h5=tmp_path / "puf.h5",
+        puf_source_year_csv=tmp_path / "puf-source-year.csv",
+        by_origin_reviewed_exclusions=reviewed_exclusions,
+    )
+
+
+def test_reviewed_exclusion_override_is_protected_from_publication_overwrite(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    outputs = pool_tool._output_paths(tmp_path / "pool.h5")
+    args = _configured_source_path_args(
+        tmp_path,
+        reviewed_exclusions=outputs.manifest,
+    )
+
+    with pytest.raises(ValueError, match="outputs must not overwrite inputs"):
+        pool_tool._verify_inputs(args, outputs)
+
+
+def test_reviewed_exclusion_override_is_protected_from_checkpoint_overwrite(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    outputs = pool_tool._output_paths(
+        tmp_path / "published" / "pool.h5",
+        checkpoint_root=tmp_path / "checkpoints",
+    )
+    args = _configured_source_path_args(
+        tmp_path,
+        reviewed_exclusions=outputs.primary_qrf_checkpoint_dir / "reviewed.json",
+    )
+
+    with pytest.raises(ValueError, match="checkpoint paths must not overwrite inputs"):
+        pool_tool._validate_checkpoint_path_layout(
+            outputs,
+            source_paths=pool_tool._configured_source_paths(args),
+        )
+
+
 @pytest.mark.parametrize(
     "outputs",
     (

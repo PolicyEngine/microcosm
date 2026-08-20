@@ -8315,6 +8315,45 @@ def test_monetary_leg_exclusion_does_not_suppress_the_opposite_leg() -> None:
 
 
 @pytest.mark.parametrize(
+    ("approved_criterion", "remaining_failure"),
+    (
+        ("incidence", "conditional-quantile envelope distance"),
+        ("quantile", "positive-leg incidence ratio"),
+    ),
+)
+def test_monetary_leg_exclusion_suppresses_only_one_failed_criterion(
+    approved_criterion: str,
+    remaining_failure: str,
+) -> None:
+    column = "reviewed_dual_failure_amount"
+    label = f"person/puf_tax_itemization/{column}[clone_0]"
+    check_id = f"{label}/positive#{approved_criterion}"
+    frame = _battery_frame(
+        {
+            column: (
+                np.ones(8),
+                np.asarray([100.0] * 5 + [0.0] * 6),
+            )
+        }
+    )
+
+    result = _single_target_battery(
+        frame,
+        column=column,
+        metric="monetary_sign_separated",
+        reviewed_exclusion_policy=_reviewed_exclusion_policy(check_id),
+        exclusions_evaluated_on=date(2026, 8, 19),
+    )
+
+    assert not result.passed
+    assert len(result.failures) == 1
+    assert remaining_failure in result.failures[0]
+    assert set(result.details["reviewed_exclusions"]["applied_exclusions"]) == {
+        check_id
+    }
+
+
+@pytest.mark.parametrize(
     ("approved_on", "expires_on", "evaluated_on", "bucket", "message"),
     (
         (

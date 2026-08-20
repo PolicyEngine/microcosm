@@ -131,8 +131,21 @@ def test_loader_refuses_top_level_schema_drift(
         "",
         " business#dead",
         "business",
+        "business#dead",
+        "/#dead",
         "business#dead#incidence",
         "business#unknown",
+        "person/family/column[clone_x]#dead",
+        "person/family/column[clone_01]#dead",
+        "person/family/column[clone_0]/sideways#quantile",
+        "person/family/column[clone_0]#quantile",
+        "person/family/column[clone_0]/positive#dead",
+        "person/family/column[clone_0]/negative#categorical",
+        "person/family/joint[first,second][clone_0]#dead",
+        "person/family/joint[first,second][clone_0]#incidence",
+        "person/family/joint[first,second][clone_0]/positive#incidence",
+        "person/family/joint[first,second][clone_0]/negative#quantile",
+        "person/family/joint[first,first][clone_0]#categorical",
     ),
 )
 def test_loader_requires_exact_leg_plus_criterion_keys(
@@ -146,6 +159,33 @@ def test_loader_requires_exact_leg_plus_criterion_keys(
 
     with pytest.raises(ValueError, match="leg#criterion"):
         load_us_by_origin_reviewed_exclusion_policy(path, expected_sha256=digest)
+
+
+@pytest.mark.parametrize(
+    "check_id",
+    (
+        "person/family/column[clone_0]#dead",
+        "person/family/column[clone_1]#incidence",
+        "tax_unit/family/amount[clone_0]/positive#incidence",
+        "spm_unit/family/amount[clone_2]/negative#quantile",
+        "person/family/joint[first_column,second_column][clone_1]#categorical",
+    ),
+)
+def test_loader_accepts_every_exact_leg_shape(
+    tmp_path: Path,
+    check_id: str,
+) -> None:
+    path, digest = _write_override(
+        tmp_path / "reviewed.json",
+        _payload(exclusions={check_id: _entry()}),
+    )
+
+    policy = load_us_by_origin_reviewed_exclusion_policy(
+        path,
+        expected_sha256=digest,
+    )
+
+    assert set(policy.exclusions) == {check_id}
 
 
 @pytest.mark.parametrize(

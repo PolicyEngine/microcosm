@@ -11,6 +11,7 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -33,6 +34,19 @@ _REVIEWED_EXCLUSION_FIELDS = frozenset(
     {"reason", "approved_by", "adjudication", "approved_on", "expires_on"}
 )
 _ELIGIBLE_CRITERIA = frozenset({"categorical", "dead", "incidence", "quantile"})
+_BATTERY_NAME_TOKEN = r"[a-z][a-z0-9_]*"
+_BATTERY_TARGET_TOKEN = (
+    rf"(?:{_BATTERY_NAME_TOKEN}|"
+    rf"joint\[{_BATTERY_NAME_TOKEN}(?:,{_BATTERY_NAME_TOKEN})+\])"
+)
+_EXACT_CHECK_ID_PATTERN = re.compile(
+    rf"^(?P<entity>{_BATTERY_NAME_TOKEN})/"
+    rf"(?P<family>{_BATTERY_NAME_TOKEN})/"
+    rf"(?P<target>{_BATTERY_TARGET_TOKEN})"
+    r"\[clone_(?P<clone_index>0|[1-9][0-9]*)\]"
+    r"(?P<sign>/positive|/negative)?#"
+    r"(?P<criterion>categorical|dead|incidence|quantile)$"
+)
 
 
 def _canonical_sha256(payload: Mapping[str, object]) -> str:
@@ -55,13 +69,38 @@ def _validate_check_id(check_id: object, *, label: str) -> str:
             f"{label} reviewed exclusions need non-empty, trimmed exact "
             f"leg#criterion IDs; got {check_id!r}."
         )
-    leg, separator, criterion = check_id.rpartition("#")
-    if separator != "#" or not leg or "#" in leg or criterion not in _ELIGIBLE_CRITERIA:
+    match = _EXACT_CHECK_ID_PATTERN.fullmatch(check_id)
+    if match is None:
         raise ValueError(
             f"{label} reviewed exclusion key {check_id!r} must be one exact "
-            "leg#criterion ID with criterion in "
+            "battery leg#criterion ID: entity/family/target[clone_N], with an "
+            "optional /positive or /negative monetary leg, and criterion in "
             f"{sorted(_ELIGIBLE_CRITERIA)}."
         )
+    sign = match.group("sign")
+    criterion = match.group("criterion")
+    target = match.group("target")
+    if (sign is None and criterion == "quantile") or (
+        sign is not None and criterion not in {"incidence", "quantile"}
+    ):
+        raise ValueError(
+            f"{label} reviewed exclusion key {check_id!r} has an incompatible "
+            "leg#criterion combination: quantile criteria require /positive or "
+            "/negative, while signed legs permit only incidence or quantile."
+        )
+    if target.startswith("joint["):
+        joint_columns = target.removeprefix("joint[").removesuffix("]").split(",")
+        if sign is not None or criterion != "categorical":
+            raise ValueError(
+                f"{label} reviewed exclusion key {check_id!r} has an "
+                "incompatible leg#criterion combination: joint targets permit "
+                "only unsigned categorical criteria."
+            )
+        if len(set(joint_columns)) != len(joint_columns):
+            raise ValueError(
+                f"{label} reviewed exclusion key {check_id!r} must name unique "
+                "columns in an exact joint leg#criterion ID."
+            )
     return check_id
 
 
