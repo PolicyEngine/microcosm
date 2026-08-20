@@ -2,15 +2,27 @@
 
 ## State
 
-The 2026-08-20 22:38Z owner continuation is open. The supplied host 1%
-traceback will be re-audited from the invariant raise site against the current
-tree and committed history before relying on the completion claims below.
-The owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` are
-untracked inputs and will remain untouched. No new implementation or host
-success is claimed at this checkpoint.
+The 2026-08-20 22:47Z owner continuation has independently confirmed the exact
+failure path and current correction. At bad commit `33bf52fe`, receipt
+production attached QRF evidence to every imputed target and terminal
+validation checked exact record-family binding before consulting calibration
+assignment. The host's real 15-target `puf_tax_itemization` transfer therefore
+reported bounded family `puf_tax_itemization__batch_1` for unassigned
+`taxable_interest_income`, while validation expected the public unsplit family.
+Current runtime source is unchanged from the complete correction at
+`94b7aecb`: generic regime work defaults off; canonical owners select exactly
+the two early and seven late immutable specs; unselected records have no
+regimes or receipt evidence; and validators reject evidence on unassigned
+targets before applying strict binding to assigned targets. Independent
+regression review found the exact synthetic failure, real banked wide-family
+producer, and rehashed in-range family-forgery cases already committed and
+adequate, so no duplicate executable edit is warranted. All 14 decisive
+focused cases pass under the 12 GiB guard with 0.568 GiB maximum observed RSS.
+The larger affected suite and static checks remain in progress. The
+owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain
+untracked and untouched; no terminal host success is claimed.
 
-The completion snapshot below is historical pending this continuation's
-independent audit.
+The opening checkpoint and earlier completion snapshots below are historical.
 
 The 2026-08-20 22:35Z owner continuation has completed an independent
 raise-site, current-source, history, and regression audit of the supplied host
@@ -216,6 +228,20 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Reconstructed the failure at `33bf52fe`: global QRF regime provenance was
+  attached to every imputed record and validated before the assigned-spec
+  branch, so the real bounded `puf_tax_itemization__batch_1` record conflicted
+  with the unassigned target's public-family expectation.
+- Enumerated the immutable registry and canonical selectors at runtime: the
+  selected surface is exactly two early and seven late targets, and
+  `person/puf_tax_itemization/taxable_interest_income` is not assigned.
+- Independently audited the existing regressions. They cover the exact forged
+  unassigned receipt, a real banked 15-target producer, unselected output
+  equivalence, and strict rehashed family binding including a plausible
+  `__batch_1` alias on an assigned target.
+- Ran those 14 decisive cases under the owner-provided 12 GiB/20 ms guard; all
+  passed with 0.568 GiB maximum observed per-process RSS. The only warning was
+  joblib's logical-core fallback.
 - Reopened the owner-requested ACS QRF binding audit and recorded the exact
   starting revision, current uncertainty, and protected untracked inputs before
   changing executable code.
@@ -673,11 +699,9 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Trace the current producer, receipt builder, and terminal validator from the
-   reported raise site and compare them with the failing commit.
-2. Audit the assigned-target selectors and regressions for the exact real
-   `puf_tax_itemization/taxable_interest_income` boundary; make and commit any
-   executable correction that remains necessary.
-3. Run focused regressions, the directly affected suite, lint, formatting, and
-   whitespace checks; then refresh `FINAL_REPORT.md` with only revision-bound
-   results.
+1. Run the complete directly affected transfer, serialization, stacked, pool,
+   and H5 test files under the memory guard.
+2. Run repository lint, scoped formatting, committed-range whitespace, and
+   executable-tree drift checks.
+3. Refresh and commit `FINAL_REPORT.md` and this journal with only results
+   established on the current revision.
