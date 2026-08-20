@@ -13,9 +13,9 @@
 - Deliverable 7 remains under the completed parallel-lane custody documented
   below and in `_F1-LANE-NOTES.md`; this continuation will not modify its
   closure, segment, or dashboard retargeting surfaces.
-- Deliverables 5 and 6 remain NOT RUN. Before starting them, this continuation
-  is re-validating the merged identities, the cold dual-mode D4 prerequisite,
-  the complete sealed artifact vector, and the per-process 20 GiB RSS bound.
+- Deliverables 5 and 6 remain NOT RUN. Fresh source and plan audits confirm
+  that the cold dual-mode D4 prerequisite is still absent and that the known
+  1% primary-QRF path violates the per-process 20 GiB RSS bound.
 
 ## Done
 
@@ -25,19 +25,30 @@
 - Ran `uv sync --all-packages --extra us` successfully from the isolated cache.
 - Read the repository operating rules and the appended D7/main-lane handoff;
   launched independent read-only audits of history and D5/D6 readiness.
+- Recomputed the bundle envelope and compiler identities from source. The
+  generated US bundle and coverage `--check` gates pass unchanged at 72 sites,
+  57 owners, 131 bindings, 41,911/41,911 fields, and 40/40 inventory checks.
+- Confirmed the current pins: compiler ABI
+  `72659ec091a611e3ca63b0187d27249c817ed29b72f851e192f7f7c03bc1745a`,
+  seed protocol
+  `fd22ba3ab69bc88eb5336261104e4b3d38f721521b4e2bbb04e8ddfa773c130e`,
+  seed map
+  `f79d1646f01ad73a991433ebd0b2d6e5625ccabca682f55476a7b9ebfc6e3b30`,
+  and US spec
+  `d0e4d3c1b3f055dde1056d75837384d4464478be8e2014370aab45ac4a7e8faa`.
+- Re-audited D5/D6 readiness independently. The production path still has no
+  `execute_node`, `USPoolKernelAuthorities`, collector, or comparator call;
+  no dual-mode build fixture or certification runner exists; exact H5/bank and
+  calibration inventories remain unsealed; and historic f001 primary-QRF
+  peaks remain 78.91--96.95 GiB.
 
 ## Next
 
-1. Recompute and check the seed/compiler/spec identity vector against the
-   committed generated artifacts after the merge.
-2. Re-audit the physical bundle execution and sealed comparison path. Close
-   any D4 prerequisite that can be completed within the charter and keep the
-   suite green after each coherent commit.
-3. Run D5 fixture/1% receipts and D6 four-build/resume certification only if
-   the D4 byte-identity gate is real and each process is demonstrably bounded
-   below 20 GiB RSS; otherwise record the exact honest stop condition.
-4. Update `_F1-LANE-NOTES.md`, `FINAL_REPORT.md`, and this journal with the
-   evidence produced, preserving the parallel D7 surfaces.
+1. Run the committed-tree test and lint gates without starting a pool build.
+2. Record the renewed D5 honest-stop evidence in `FINAL_REPORT.md` and this
+   journal; do not fabricate the absent certification evidence files.
+3. Stop at deliverable 5. A future continuation must first complete D4 and a
+   behavior-preserving sub-20-GiB memory redesign before any 1% launch.
 
 ---
 

@@ -1331,3 +1331,73 @@ exists beyond them until D4 produces a complete vector.
 
 Nothing was pushed. `logbook-pending-chain.txt` was never touched. The three
 untracked `_F1-CHARTER-R*.md` files were left untouched and uncommitted.
+
+## F1 continuation r4 resumed audit — D5 remains blocked (2026-08-20)
+
+This append-only receipt records the owner-requested attempt to resume
+deliverables 5 and 6 after #698 merged. It supersedes no implementation result
+above and does not alter the parallel deliverable-7 surfaces.
+
+### Main reconciliation and identity recomputation
+
+- The required first command was attempted exactly as `git fetch origin && git
+  merge origin/main --no-edit`. Sandbox DNS again prevented the fetch, so the
+  chained merge did not execute. Cached `origin/main` remains stale at
+  `164027e2`; the GitHub merge commit itself is not present in any local ref,
+  reflog, or object scan and therefore cannot be named honestly here.
+- Final #698 head `c4e1eb7f` is already an ancestor through this lane's merge
+  `da45dfcd`. Its scoped-archive, integer-typed schema, and narrowed-guard
+  content is present. Current `seeds.py` remains the 72-site source of truth;
+  its blob `6c8b4ae1` differs from #698's superseded 53-site blob `36e6c27e`.
+- `UV_CACHE_DIR=/private/tmp/microcosm-f1-uv-cache-overlay uv sync
+  --all-packages --extra us` completed successfully (`Checked 100 packages`).
+- The identities were recomputed from the resolved source rather than copied
+  from pins. No re-pin edit was necessary: generated US bundle `--check`
+  passes at spec
+  `d0e4d3c1b3f055dde1056d75837384d4464478be8e2014370aab45ac4a7e8faa`;
+  coverage `--check` reports 41,911/41,911 fields and 40/40 inventory checks;
+  the protocol has 72 sites and digest
+  `fd22ba3ab69bc88eb5336261104e4b3d38f721521b4e2bbb04e8ddfa773c130e`;
+  the compiled map has 57 owners, 131 bindings, and digest
+  `f79d1646f01ad73a991433ebd0b2d6e5625ccabca682f55476a7b9ebfc6e3b30`;
+  and compiler ABI v5 remains
+  `72659ec091a611e3ca63b0187d27249c817ed29b72f851e192f7f7c03bc1745a`.
+  BE and UK recompute unchanged at `1c5a9449...` and `1de6c5f4...`.
+
+### Renewed deliverable-5/6 readiness finding
+
+Two independent read-only audits and direct source tracing reproduce the prior
+D4 stop. `tools/build_us_multispine_pool.py` explicitly states that physical
+stage execution remains on constants. Bundle resolution retains a typed runtime
+plan, but the production path calls none of `execute_node`,
+`USPoolKernelAuthorities`, `collect_artifact_surfaces`, or
+`compare_artifact_sets`. It continues to select the private model seeds, QRF
+parameters, gap-fill plan, late-transfer groups, and derive/seed/simulate
+functions in the constants path.
+
+The reusable compiler pieces do not close that gap. The current plan has 30
+normative rows across configured, assembled, transferred, simulated, and
+terminal stages, but its selectors do not seal exact required H5
+entity/column/weight inventories or exact bank member descriptors; calibration
+weights/banks are absent; no production node-reuse map is persisted; and the
+collector/comparator are exercised only by synthetic tests. The plan's coarse
+stage rows also omit the inventory's intermediate source, gap-fill, primary
+QRF, late-DAG, derive, seed, and simulation digests required by deliverable 5.
+
+There is no production dual-mode fixture command, per-stage wall/RSS receipt,
+four-build certification runner, `--resume-policy=forbid`, typed zero-count
+resume audit, subprocess kill/resume gate, or F1 certification evidence model.
+The existing constants-versus-constants-adapter fixture does not run bundle
+physical authorities and compares only three checkpoint payloads.
+
+Independently, a real 1% run remains prohibited: four authenticated cold f001
+primary-QRF profiles peak at 78.91--96.95 GiB RSS, versus the unchanged 20 GiB
+per-process ceiling. The production driver itself documents a 64-GiB 1% host
+envelope. No process in this resumed audit ran a pool build.
+
+Therefore deliverable 5 cannot emit an honest fixture or 1% receipt row and
+deliverable 6 cannot start. Their verdict remains **NOT RUN**, not PASS. No
+`us-f1-certification.json` or `.md` file is created. Per the charter's explicit
+honest-stop rule, this continuation stops at deliverable 5 after the committed-
+tree validation gates, with no threshold, band, seed, artifact selector, or
+memory limit changed.
