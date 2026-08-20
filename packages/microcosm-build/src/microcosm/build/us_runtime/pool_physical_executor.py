@@ -608,7 +608,7 @@ class USPoolPhysicalExecutor:
                 )
             writes = _declared_virtual_writes(node, result, result_frame)
             patch = legacy_result_to_patch(
-                before_frame,
+                narrow_frame,
                 result_frame,
                 node=node,
                 virtual_writes=writes,

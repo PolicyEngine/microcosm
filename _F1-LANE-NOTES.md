@@ -2420,3 +2420,27 @@ head; it still writes `us-f1-certification.json` and
    or the complete cold checkpoint bank, then route clone and tail generators
    through their supplemental owners.
 2. Dispatch the full compiler-ordered late graph through those capabilities.
+
+## F1 continuation r5 narrow-result patch encoding (2026-08-20)
+
+### State
+
+- The first complete-stage dispatch reached `execute_node`, but its callback
+  correctly returned a compiler-narrow frame while the patch codec compared it
+  with the caller's full frame and misclassified every projected-away column
+  as a legacy deletion.
+
+### Done
+
+- The physical bridge now encodes a callback result against the exact narrow
+  frame supplied to that callback. The separately validated projection is
+  still merged into the full pre-node frame afterward, preserving all columns
+  outside node authority.
+- Strengthened the executor harness to require that exact narrow baseline.
+  The focused physical-executor module passes (3 tests); Ruff and
+  `git diff --check` pass. No sample build ran.
+
+### Next
+
+1. Rerun the complete 38-node dual-mode fixture and close any remaining
+   projection or broker-consumption mismatch at the node where it occurs.

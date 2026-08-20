@@ -207,6 +207,7 @@ def dispatch_harness(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
         virtual_writes: Mapping[object, object],
     ) -> KernelPatch:
         assert isinstance(node, CompiledNode)
+        assert _before.table("person")["value"].tolist() == [7.0]
         evidence["virtual_writes"] = dict(virtual_writes)
         return KernelPatch("join")
 
