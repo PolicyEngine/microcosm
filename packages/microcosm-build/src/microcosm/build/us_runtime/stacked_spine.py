@@ -4123,34 +4123,42 @@ _ACS_QRF_REGIMES = frozenset(
 _ACS_QRF_PATTERN_EVIDENCE_KIND = "acs_transfer_qrf_pattern_regimes"
 _ACS_QRF_PATTERN_EVIDENCE_SCHEMA_VERSION = 1
 _ACS_QRF_WEIGHT_KINDS = frozenset(kind.value for kind in WeightKind)
+_ACS_TRANSFER_ROW_COUNT_FIELDS = (
+    "authorized_null_rows",
+    "imputed_rows",
+    "unmodeled_rows",
+    "residual_null_rows",
+)
 
 
-def _acs_transfer_record_family_matches(
-    value: object,
+def _validate_acs_transfer_row_counts(
+    target_receipt: Mapping[str, object],
     *,
-    expected_entity: str,
-    expected_family: str,
-    expected_target: str,
-    expected_family_targets: Sequence[str],
-) -> bool:
-    """Accept only exact or deterministically possible bounded family names."""
+    boundary: str,
+) -> dict[str, int]:
+    """Validate the legacy transfer counts independently of opt-in evidence."""
 
-    if value == expected_family:
-        return True
-    if not isinstance(value, str):
-        return False
-    family_targets = tuple(expected_family_targets)
-    for max_targets_per_fit in range(1, len(family_targets)):
-        bounded = acs_transfer_runtime._split_large_target_families(
-            ((expected_entity, expected_family, family_targets),),
-            max_targets_per_fit=max_targets_per_fit,
-        )
-        if any(
-            entity == expected_entity and family == value and expected_target in targets
-            for entity, family, targets in bounded
-        ):
-            return True
-    return False
+    present = {
+        field for field in _ACS_TRANSFER_ROW_COUNT_FIELDS if field in target_receipt
+    }
+    if not present:
+        return {}
+    if present != set(_ACS_TRANSFER_ROW_COUNT_FIELDS):
+        raise ValueError(f"{boundary}: ACS transfer row-count schema is invalid.")
+    counts = {field: target_receipt[field] for field in _ACS_TRANSFER_ROW_COUNT_FIELDS}
+    if any(
+        not isinstance(value, int) or isinstance(value, bool) or value < 0
+        for value in counts.values()
+    ):
+        raise ValueError(f"{boundary}: ACS transfer row-count schema is invalid.")
+    typed_counts = {field: int(value) for field, value in counts.items()}
+    if (
+        typed_counts["authorized_null_rows"]
+        != typed_counts["imputed_rows"] + typed_counts["unmodeled_rows"]
+        or typed_counts["residual_null_rows"] != typed_counts["unmodeled_rows"]
+    ):
+        raise ValueError(f"{boundary}: ACS transfer row-count accounting is invalid.")
+    return typed_counts
 
 
 def _acs_imputed_pattern_evidence(record: AcsImputedInput) -> dict[str, object]:
@@ -4247,16 +4255,10 @@ def _validate_acs_imputed_pattern_evidence(
     """
 
     evidence = target_receipt.get("qrf_pattern_evidence")
-    receipt_counts: dict[str, int] = {}
-    for field_name in (
-        "authorized_null_rows",
-        "imputed_rows",
-        "unmodeled_rows",
-        "residual_null_rows",
-    ):
-        value = target_receipt.get(field_name)
-        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
-            receipt_counts[field_name] = value
+    receipt_counts = _validate_acs_transfer_row_counts(
+        target_receipt,
+        boundary=boundary,
+    )
     claimed_record_rows = receipt_counts.get("imputed_rows", 0) + receipt_counts.get(
         "unmodeled_rows", 0
     )
@@ -4323,13 +4325,7 @@ def _validate_acs_imputed_pattern_evidence(
     record_weight_kind = record.get("weight_kind")
     if (
         record.get("entity") != expected_entity
-        or not _acs_transfer_record_family_matches(
-            record.get("family"),
-            expected_entity=expected_entity,
-            expected_family=expected_family,
-            expected_target=expected_target,
-            expected_family_targets=expected_family_targets,
-        )
+        or record.get("family") != expected_family
         or record.get("column") != expected_target
         or not isinstance(record_predictors, list)
         or any(not isinstance(item, str) for item in record_predictors)
@@ -4343,13 +4339,6 @@ def _validate_acs_imputed_pattern_evidence(
         != receipt_counts.get("unmodeled_rows")
     ):
         raise ValueError(f"{boundary}: ACS QRF pattern record binding is invalid.")
-    if receipt_counts.get(
-        "authorized_null_rows"
-    ) != claimed_record_rows or receipt_counts.get(
-        "residual_null_rows"
-    ) != receipt_counts.get("unmodeled_rows"):
-        raise ValueError(f"{boundary}: ACS QRF transfer row accounting is invalid.")
-
     expected_targets = acs_transfer_runtime._selected_model_target_names(
         expected_family_targets,
         (
@@ -4551,6 +4540,10 @@ def validate_stacked_gap_fill_receipt(
                 raise ValueError(
                     f"{boundary}: stacked gap-fill target {key!r} has no receipt."
                 )
+            _validate_acs_transfer_row_counts(
+                target_receipt,
+                boundary=f"{boundary} target {key}",
+            )
             owner_receipt = target_receipt.get("post_transfer_calibration")
             spec = expected_calibrations.get(key)
             if spec is None:
@@ -4774,6 +4767,10 @@ def validate_stacked_post_puf_transfer_receipt(
                     f"{boundary}: stacked post-PUF target {target_key!r} has "
                     "no receipt."
                 )
+            _validate_acs_transfer_row_counts(
+                target_receipt,
+                boundary=f"{boundary} target {target_key}",
+            )
             owner_receipt = target_receipt.get("post_transfer_calibration")
             spec = expected_calibrations.get(target_key)
             if spec is None:

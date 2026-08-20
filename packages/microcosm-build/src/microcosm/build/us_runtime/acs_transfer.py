@@ -1004,6 +1004,29 @@ def transfer_acs_inputs(
     assert_acs_transfer_targets_are_input_leaves(all_targets)
 
     active = _missing_target_families(requested, recipient=recipient)
+    if selected_regime_evidence:
+        requested_families = {
+            (entity, family): targets for entity, family, targets in requested
+        }
+        active = [
+            (
+                entity,
+                family,
+                tuple(
+                    target
+                    for target in requested_families[(entity, family)]
+                    if target in active_targets
+                    or (
+                        any(
+                            (entity, active_target) in selected_regime_evidence
+                            for active_target in active_targets
+                        )
+                        and (entity, target) in selected_regime_evidence
+                    )
+                ),
+            )
+            for entity, family, active_targets in active
+        ]
     if not active:
         return AcsTransferResult(
             frame=canonicalize_frame_string_dtypes(

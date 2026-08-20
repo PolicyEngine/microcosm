@@ -85,10 +85,11 @@ comparator change.
 - Only the nine declared calibration targets receive QRF pattern receipts.
   Those receipts persist ordered predictors, seeds, weights, row counts, and
   selected regimes, then validate canonical predictor/pattern/target order and
-  count accounting. Unassigned transfers retain their legacy evidence-free
-  receipts and generic serializers omit the empty opt-in field. Receipt-only
-  validation deliberately does not claim donor replay or out-of-sample
-  verification
+  exact record-family binding. All assigned and unassigned receipts validate
+  the same legacy row-count schema and accounting before their scope branch.
+  Unassigned transfers retain their evidence-free receipts and generic
+  serializers omit the empty opt-in field. Receipt-only validation deliberately
+  does not claim donor replay or out-of-sample verification
   (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:4128-4445,4529-4795`).
 - The two pinned 3.73 GB SIPP readers retain chunked selection and downstream
   explicit coercion while using streaming type inference. Guarded full-donor

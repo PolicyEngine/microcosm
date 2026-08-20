@@ -8,13 +8,13 @@ every ACS transfer target even though the calibration owner declares only
 nine targets. The fix is implemented: regime checks are default-off and must
 be explicitly selected by `(entity, target)`; the stacked owner selects only
 the exact declared targets present on each early/late surface; unassigned
-records and receipts retain their legacy shape. Bounded-family aliases are
-accepted only when deterministic splitting could place the expected target in
-that batch. Focused QRF, binding, serializer, banked, and real late-executor
-tests are green; the full post-fix suite is next. No after artifact is
-accepted. The uncontaminated 1% before artifact remains recorded at commit
-`5f5e5e91`; no frozen battery band, threshold, comparator, seed, or fold has
-changed.
+records and receipts retain their legacy shape, while selected evidence keeps
+exact record-family binding. A follow-up review found and fixed count
+validation bypassed by unassigned receipts. Focused QRF, count, binding,
+serializer, banked wide-family, and real late-executor tests are green; the
+full post-fix suite is next. No after artifact is accepted. The uncontaminated
+1% before artifact remains recorded at commit `5f5e5e91`; no frozen battery
+band, threshold, comparator, seed, or fold has changed.
 
 The required `uv sync --all-packages --extra us` was attempted first. The
 default cache is sandbox-read-only; a retry with a writable cache reached PyPI
@@ -96,6 +96,16 @@ but DNS is unavailable. Verification therefore uses the already-synced
 - Focused post-fix verification is green across ordinary/banked transfer,
   selected and unassigned stacked binding, real late execution, both generic
   serializers, forged batch aliases, and the original wide-family case.
+- Added failing-first early and late regressions after independent review found
+  that unassigned receipts skipped the four legacy transfer counts. Count
+  presence, nonnegative integer types, activation accounting, and residual
+  accounting now validate before either the assigned or unassigned branch.
+- Added a banked integration regression that runs the full 15-target
+  `puf_tax_itemization` family beside selected unemployment compensation. Its
+  real `taxable_interest_income` record is `__batch_1`, has no regimes or QRF
+  receipt, while the selected unemployment record retains both. A complete
+  selected sibling is kept in a partially active selected fit so receipt
+  target order stays exact without mutating its complete recipient cells.
 
 ## Next
 

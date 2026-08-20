@@ -964,6 +964,42 @@ def test_pattern_provenance_records_ordered_exact_donor_target_regimes(
     }
 
 
+def test_selected_regime_fit_keeps_complete_selected_sibling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    targets = ("fixture_selected_complete", "fixture_selected_missing")
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {
+            targets[0]: np.arange(1.0, 9.0),
+            targets[1]: [0.0, 0.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0],
+        },
+    )
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {targets[0]: np.full(6, 99.0)},
+    )
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={"person": {"selected_siblings": targets}},
+        n_estimators=1,
+        regime_evidence_targets=tuple(("person", target) for target in targets),
+    )
+
+    assert [record.column for record in result.imputed_inputs] == [targets[1]]
+    assert all(
+        tuple(target for target, _regime in pattern.target_regimes) == targets
+        for pattern in result.imputed_inputs[0].patterns
+    )
+    assert result.frame.table("person")[targets[0]].eq(99.0).all()
+
+
 def test_target_bank_cold_output_matches_unbanked_monolith(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

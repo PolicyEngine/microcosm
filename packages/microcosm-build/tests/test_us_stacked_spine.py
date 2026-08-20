@@ -2703,7 +2703,7 @@ def _canonical_gap_fill_receipt_with_pattern_evidence() -> tuple[
     record = AcsImputedInput(
         column=target,
         entity=entity,
-        family=f"{family}__batch_1",
+        family=family,
         donor_spine="synthetic_gap_validator_fixture",
         donor_channel=None,
         predictors=(*required_predictors, *selected_optional),
@@ -6532,6 +6532,81 @@ def test_gap_fill_banks_per_target_via_608_store(tmp_path) -> None:
         )
     survey_receipt = resumed_banks["asec_survey_to_acs"].receipt()
     assert survey_receipt["targets"]
+
+
+def test_banked_gap_fill_scopes_qrf_evidence_off_wide_unassigned_family(
+    tmp_path: Path,
+) -> None:
+    stacked = _stacked_gap_fixture()
+    canonical_direction = next(
+        direction
+        for direction in stacked_spine_module.CANONICAL_STACKED_GAP_FILL_PLAN
+        if direction.name == "asec_survey_to_acs"
+    )
+    puf_targets = canonical_direction.target_families["person"]["puf_tax_itemization"]
+    person = stacked.table("person").copy()
+    channel = person[support_channel_column("person")].astype(str)
+    donor_rows = channel.eq("asec")
+    for position, target in enumerate(puf_targets, start=1):
+        values = pd.Series(np.nan, index=person.index, dtype=np.float64)
+        values.loc[donor_rows] = np.arange(1, int(donor_rows.sum()) + 1) + position
+        person[target] = values
+    tables = {entity: stacked.table(entity) for entity in stacked.entities}
+    tables["person"] = person
+    frame = Frame(
+        tables,
+        stacked.schema,
+        {entity: stacked.weights_for(entity) for entity in stacked.weighted_entities},
+        stacked.strata,
+        mass_log=stacked.mass_log,
+        metadata=stacked.metadata,
+    )
+    direction = GapFillDirection(
+        name="asec_survey_to_acs",
+        recipient_channel="acs",
+        donor_channel="asec",
+        target_families={
+            "person": {
+                "model_required_numeric": ("unemployment_compensation",),
+                "puf_tax_itemization": puf_targets,
+            }
+        },
+    )
+    bank = AcsTransferTargetBankStore(
+        tmp_path / "survey",
+        identity={"regression": "scoped-wide-gap-fill"},
+    )
+
+    result = _gap_fill_with_test_authority(
+        frame,
+        plan=(direction,),
+        seed=578,
+        n_estimators=1,
+        target_banks={direction.name: bank},
+    )
+
+    records = {
+        record.column: record
+        for record in result.transfer_results[direction.name].imputed_inputs
+    }
+    taxable = records["taxable_interest_income"]
+    unemployment = records["unemployment_compensation"]
+    assert taxable.family == "puf_tax_itemization__batch_1"
+    assert all(not pattern.target_regimes for pattern in taxable.patterns)
+    assert all(
+        tuple(target for target, _regime in pattern.target_regimes)
+        == ("unemployment_compensation",)
+        for pattern in unemployment.patterns
+    )
+    receipts = result.receipt["directions"][direction.name]["targets"]
+    assert (
+        "qrf_pattern_evidence"
+        not in receipts["person/puf_tax_itemization/taxable_interest_income"]
+    )
+    assert (
+        "qrf_pattern_evidence"
+        in receipts["person/model_required_numeric/unemployment_compensation"]
+    )
 
 
 def test_clone_attachment_is_seeded_exact_and_pair_weighted() -> None:
