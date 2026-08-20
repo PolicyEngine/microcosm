@@ -270,6 +270,21 @@ def test_frame_checkpoint_round_trip_is_byte_identical(tmp_path: Path) -> None:
     )
 
 
+def test_frame_checkpoint_loads_from_retained_binary_stream(tmp_path: Path) -> None:
+    path = tmp_path / "source.h5"
+    replacement = tmp_path / "replacement.h5"
+    frame = _checkpoint_frame()
+    write_frame_checkpoint(path, frame, metadata={"source": "retained"})
+    replacement.write_bytes(b"not an HDF5 checkpoint")
+
+    with path.open("rb") as source_stream:
+        os.replace(replacement, path)
+        loaded = load_frame_checkpoint(path, source_stream=source_stream)
+
+    assert loaded.metadata == {"source": "retained"}
+    pd.testing.assert_frame_equal(loaded.frame.person, frame.person, check_exact=True)
+
+
 def test_frame_without_nullable_booleans_keeps_schema_2_byte_golden(
     tmp_path: Path,
 ) -> None:

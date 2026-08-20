@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
 
 import h5py
@@ -469,6 +470,24 @@ def test_acs_loader_aligns_entities_collapses_tenure_and_marks_allocations(
     assert donor["real_estate_taxes"].tolist() == [0.0, 8_000.0, 4_000.0]
     assert donor["real_estate_taxes_is_allocated"].tolist() == [False, False, True]
     assert donor["household_weight"].tolist() == [100.0, 200.0, 300.0]
+
+
+def test_acs_loader_uses_retained_h5_stream(tmp_path: Path) -> None:
+    path = tmp_path / "acs_2022.h5"
+    replacement = tmp_path / "replacement.h5"
+    _write_tiny_acs(path)
+    replacement.write_bytes(b"not an HDF5 artifact")
+
+    with path.open("rb") as source_stream:
+        os.replace(replacement, path)
+        donor = load_acs_2022_rent_donor(
+            path,
+            expected_sha256=None,
+            source_stream=source_stream,
+        )
+
+    assert donor["household_size"].tolist() == [2.0, 1.0, 1.0]
+    assert donor["rent"].tolist() == [12_000.0, 0.0, 18_000.0]
 
 
 def test_acs_loader_rejects_wrong_artifact_hash(tmp_path: Path) -> None:

@@ -26,7 +26,7 @@ import hashlib
 import warnings
 from importlib.resources import files
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 import numpy as np
 import pandas as pd
@@ -250,6 +250,7 @@ def load_acs_2022_rent_donor(
     path: str | Path,
     *,
     expected_sha256: str | None = ACS_2022_RENT_ARTIFACT_SHA256,
+    source_stream: BinaryIO | None = None,
 ) -> pd.DataFrame:
     """Load the archived processed ACS 2022 household-head rent donor.
 
@@ -263,9 +264,9 @@ def load_acs_2022_rent_donor(
     import h5py
 
     source = Path(path)
-    if not source.exists():
+    if source_stream is None and not source.exists():
         raise FileNotFoundError(f"ACS 2022 rent donor not found: {source}")
-    if expected_sha256 is not None:
+    if source_stream is None and expected_sha256 is not None:
         actual = _sha256(source)
         if actual != expected_sha256:
             raise ValueError(
@@ -293,7 +294,13 @@ def load_acs_2022_rent_donor(
         "state_fips",
         "tenure_type",
     )
-    with h5py.File(source, mode="r") as h5:
+    h5_source: Path | BinaryIO
+    if source_stream is None:
+        h5_source = source
+    else:
+        source_stream.seek(0)
+        h5_source = source_stream
+    with h5py.File(h5_source, mode="r") as h5:
         missing = [
             column
             for column in (*person_columns, *household_columns)

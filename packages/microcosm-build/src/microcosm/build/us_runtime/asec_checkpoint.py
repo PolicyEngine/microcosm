@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from pathlib import Path
+from typing import BinaryIO
 
 import numpy as np
 import pandas as pd
@@ -102,6 +103,8 @@ _RAW_SOURCE_PIN_KEYS = frozenset(
 
 def load_asec_pre_clone_checkpoint(
     path: str | Path,
+    *,
+    source_stream: BinaryIO | None = None,
 ) -> tuple[Frame, dict[str, object]]:
     """Load and validate one input-complete ASEC pre-clone checkpoint.
 
@@ -123,7 +126,7 @@ def load_asec_pre_clone_checkpoint(
     """
 
     checkpoint_path = Path(path)
-    loaded = load_frame_checkpoint(checkpoint_path)
+    loaded = load_frame_checkpoint(checkpoint_path, source_stream=source_stream)
     metadata = _validate_outer_stage_binding(
         loaded.metadata,
         path=checkpoint_path,
@@ -144,6 +147,8 @@ def load_asec_pre_clone_checkpoint(
 
 def load_asec_raw_stage_checkpoint(
     path: str | Path,
+    *,
+    source_stream: BinaryIO | None = None,
 ) -> tuple[Frame, dict[str, object]]:
     """Load one operator-untouched ASEC raw-source-mapping checkpoint.
 
@@ -153,7 +158,7 @@ def load_asec_raw_stage_checkpoint(
     """
 
     checkpoint_path = Path(path)
-    loaded = load_frame_checkpoint(checkpoint_path)
+    loaded = load_frame_checkpoint(checkpoint_path, source_stream=source_stream)
     metadata = _validate_raw_stage_binding(
         loaded.metadata,
         path=checkpoint_path,

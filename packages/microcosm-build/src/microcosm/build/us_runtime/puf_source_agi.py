@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 import numpy as np
 import pandas as pd
@@ -53,12 +53,18 @@ _AGGREGATE_BUCKET_BOUNDS = {
 
 
 def _source_frame(
-    source: str | Path | pd.DataFrame | Mapping[str, Sequence[Any]],
+    source: str | Path | BinaryIO | pd.DataFrame | Mapping[str, Sequence[Any]],
 ) -> pd.DataFrame:
     if isinstance(source, (str, Path)):
         source_path = Path(source)
         frame = pd.read_csv(
             source_path,
+            usecols=lambda name: name in PUF_SOURCE_YEAR_AGI_REQUIRED_COLUMNS,
+        )
+    elif hasattr(source, "read") and hasattr(source, "seek"):
+        source.seek(0)
+        frame = pd.read_csv(
+            source,
             usecols=lambda name: name in PUF_SOURCE_YEAR_AGI_REQUIRED_COLUMNS,
         )
     else:
@@ -75,6 +81,14 @@ def _source_frame(
         raise ValueError("TY2015 PUF RECID, MARS, S006, and E00100 must be numeric.")
     frame[list(_SCREENED_FIELDS)] = frame[list(_SCREENED_FIELDS)].fillna(0.0)
     return frame
+
+
+def load_source_year_puf_frame(
+    source: str | Path | BinaryIO,
+) -> pd.DataFrame:
+    """Parse the restricted TY2015 columns without running seeded transforms."""
+
+    return _source_frame(source)
 
 
 def _integral_ids(values: Sequence[Any], *, label: str) -> np.ndarray:
@@ -278,7 +292,7 @@ def _allocate_agi(
 
 
 def source_year_puf_adjusted_gross_income(
-    source: str | Path | pd.DataFrame | Mapping[str, Sequence[Any]],
+    source: str | Path | BinaryIO | pd.DataFrame | Mapping[str, Sequence[Any]],
     *,
     processed_tax_unit_ids: Sequence[Any],
     processed_tax_unit_weights: Sequence[Any],
@@ -428,5 +442,6 @@ __all__ = [
     "PUF_SOURCE_YEAR",
     "PUF_SOURCE_YEAR_AGI_REQUIRED_COLUMNS",
     "PUF_SYNTHETIC_RECID_START",
+    "load_source_year_puf_frame",
     "source_year_puf_adjusted_gross_income",
 ]

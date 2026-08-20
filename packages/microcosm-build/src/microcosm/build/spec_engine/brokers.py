@@ -28,6 +28,7 @@ import pickle
 import random as python_random
 import secrets
 import socket
+import stat
 import subprocess
 import sys
 import threading
@@ -196,6 +197,7 @@ _OS_AMBIENT_NAMES = (
 _ORIGINAL_BUILTINS_OPEN = builtins.open
 _ORIGINAL_IO_OPEN = io.open
 _ORIGINAL_OS_OPEN = os.open
+_ORIGINAL_OS_FSTAT = os.fstat
 _ORIGINAL_OS_URANDOM = os.urandom
 _ORIGINAL_ENVIRON = os.environ
 _ORIGINAL_ENVIRONB = getattr(os, "environb", None)
@@ -2974,10 +2976,28 @@ class RNGBroker:
 class FileReadLease:
     """Session-bound file proxy; outstanding handles are closed at session seal."""
 
-    __slots__ = ("_broker", "_closed", "__stream")
+    __slots__ = (
+        "_broker",
+        "_closed",
+        "__descriptor",
+        "__opened_stat",
+        "__source",
+        "__stream",
+    )
 
-    def __init__(self, stream: IO[bytes] | IO[str], *, broker: FileBroker) -> None:
+    def __init__(
+        self,
+        stream: IO[bytes] | IO[str],
+        *,
+        broker: FileBroker,
+        descriptor: int | None = None,
+        opened_stat: os.stat_result | None = None,
+        source: DeclaredSource | None = None,
+    ) -> None:
         object.__setattr__(self, "_FileReadLease__stream", stream)
+        object.__setattr__(self, "_FileReadLease__descriptor", descriptor)
+        object.__setattr__(self, "_FileReadLease__opened_stat", opened_stat)
+        object.__setattr__(self, "_FileReadLease__source", source)
         object.__setattr__(self, "_broker", broker)
         object.__setattr__(self, "_closed", False)
 
@@ -3019,15 +3039,45 @@ class FileReadLease:
 
     def close(self) -> None:
         stream = object.__getattribute__(self, "_FileReadLease__stream")
-        if not object.__getattribute__(self, "_closed"):
-            stream.close()
-            object.__setattr__(self, "_closed", True)
         broker = object.__getattribute__(self, "_broker")
-        broker._leases.discard(self)
+        if object.__getattribute__(self, "_closed"):
+            broker._leases.discard(self)
+            return
+        failure: BrokerAccessError | None = None
+        source = object.__getattribute__(self, "_FileReadLease__source")
+        descriptor = object.__getattribute__(self, "_FileReadLease__descriptor")
+        opened_stat = object.__getattribute__(self, "_FileReadLease__opened_stat")
+        if source is not None:
+            assert descriptor is not None
+            assert opened_stat is not None
+            try:
+                broker._verify_snapshot_at_close(
+                    source,
+                    stream=stream,
+                    descriptor=descriptor,
+                    opened_stat=opened_stat,
+                )
+            except BrokerAccessError as error:
+                failure = error
+        try:
+            stream.close()
+        finally:
+            object.__setattr__(self, "_closed", True)
+            broker._leases.discard(self)
+        if failure is not None:
+            raise failure
 
     def read(self, size: int = -1) -> bytes | str:
         object.__getattribute__(self, "_verify")()
         return object.__getattribute__(self, "_FileReadLease__stream").read(size)
+
+    def readinto(self, buffer: object) -> int | None:
+        object.__getattribute__(self, "_verify")()
+        stream = object.__getattribute__(self, "_FileReadLease__stream")
+        readinto = getattr(stream, "readinto", None)
+        if readinto is None:  # pragma: no cover - binary snapshots always support it
+            raise BrokerAccessError("file lease does not support readinto")
+        return readinto(buffer)
 
     def readline(self, size: int = -1) -> bytes | str:
         object.__getattribute__(self, "_verify")()
@@ -3046,6 +3096,18 @@ class FileReadLease:
     def tell(self) -> int:
         object.__getattribute__(self, "_verify")()
         return object.__getattribute__(self, "_FileReadLease__stream").tell()
+
+    def readable(self) -> bool:
+        object.__getattribute__(self, "_verify")()
+        return bool(
+            object.__getattribute__(self, "_FileReadLease__stream").readable()
+        )
+
+    def seekable(self) -> bool:
+        object.__getattribute__(self, "_verify")()
+        return bool(
+            object.__getattribute__(self, "_FileReadLease__stream").seekable()
+        )
 
     def __iter__(self) -> FileReadLease:
         object.__getattribute__(self, "_verify")()
@@ -3093,14 +3155,34 @@ class FileBroker:
     def behavior_identity(self) -> SourceBehaviorIdentity:
         return self._behavior_identity
 
-    def _lease(self, stream: IO[bytes] | IO[str]) -> FileReadLease:
-        lease = FileReadLease(stream, broker=self)
+    def _lease(
+        self,
+        stream: IO[bytes] | IO[str],
+        *,
+        descriptor: int | None = None,
+        opened_stat: os.stat_result | None = None,
+        source: DeclaredSource | None = None,
+    ) -> FileReadLease:
+        lease = FileReadLease(
+            stream,
+            broker=self,
+            descriptor=descriptor,
+            opened_stat=opened_stat,
+            source=source,
+        )
         self._leases.add(lease)
         return lease
 
     def close_all(self) -> None:
+        first_error: BrokerAccessError | None = None
         for lease in tuple(self._leases):
-            lease.close()
+            try:
+                lease.close()
+            except BrokerAccessError as error:
+                if first_error is None:
+                    first_error = error
+        if first_error is not None:
+            raise first_error
 
     def _source(self, source_id: str) -> DeclaredSource:
         self._session._require_active()
@@ -3187,6 +3269,171 @@ class FileBroker:
             raise BrokerAccessError(
                 f"declared source {source_id!r} is not valid {encoding}"
             ) from error
+
+    @staticmethod
+    def _snapshot_stat_identity(value: os.stat_result) -> tuple[int, ...]:
+        return (
+            int(value.st_dev),
+            int(value.st_ino),
+            int(stat.S_IFMT(value.st_mode)),
+            int(value.st_size),
+        )
+
+    @staticmethod
+    def _snapshot_digest(stream: IO[bytes] | IO[str]) -> tuple[str, int]:
+        stream.seek(0)
+        digest = hashlib.sha256()
+        size = 0
+        while chunk := stream.read(1024 * 1024):
+            if not isinstance(chunk, bytes):  # pragma: no cover - binary invariant
+                raise BrokerContractError("file snapshot stream must be binary")
+            digest.update(chunk)
+            size += len(chunk)
+        stream.seek(0)
+        return digest.hexdigest(), size
+
+    def _verify_snapshot_at_close(
+        self,
+        source: DeclaredSource,
+        *,
+        stream: IO[bytes] | IO[str],
+        descriptor: int,
+        opened_stat: os.stat_result,
+    ) -> None:
+        try:
+            before = _ORIGINAL_OS_FSTAT(descriptor)
+            actual_sha256, actual_size = self._snapshot_digest(stream)
+            after = _ORIGINAL_OS_FSTAT(descriptor)
+        except (OSError, ValueError) as error:
+            self._session._log.record(
+                broker="file",
+                operation="close_snapshot",
+                resource=source.id,
+                disposition="refused",
+                reason_code="source_snapshot_verification_failed",
+            )
+            raise BrokerAccessError(
+                f"declared source {source.id!r} could not be reverified at close"
+            ) from error
+        stable = (
+            self._snapshot_stat_identity(before)
+            == self._snapshot_stat_identity(opened_stat)
+            == self._snapshot_stat_identity(after)
+        )
+        if (
+            not stable
+            or actual_size != source.byte_size
+            or actual_sha256 != source.sha256
+        ):
+            self._session._log.record(
+                broker="file",
+                operation="close_snapshot",
+                resource=source.id,
+                disposition="refused",
+                reason_code="source_snapshot_drift",
+                details={
+                    "actual_sha256": actual_sha256,
+                    "actual_size": actual_size,
+                    "descriptor_stable": stable,
+                },
+            )
+            raise BrokerAccessError(
+                f"declared source {source.id!r} changed while its snapshot was open"
+            )
+
+    @contextmanager
+    def open_snapshot(self, source_id: str) -> Iterator[FileReadLease]:
+        """Open one authenticated, descriptor-stable binary source snapshot.
+
+        The path is resolved only for the initial ``O_NOFOLLOW`` open.  All
+        authentication and parser reads use that retained regular-file
+        descriptor, so replacing the directory entry cannot redirect a live
+        lease.  Closing re-authenticates the same descriptor and refuses
+        in-place drift.
+        """
+
+        source = self._source(source_id)
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        nofollow = getattr(os, "O_NOFOLLOW", None)
+        if nofollow is None:  # pragma: no cover - supported build platforms
+            raise BrokerContractError("file snapshots require O_NOFOLLOW support")
+        descriptor = _ORIGINAL_OS_OPEN(source.resolved_path, flags | nofollow)
+        stream: IO[bytes] | None = None
+        lease: FileReadLease | None = None
+        try:
+            opened_stat = _ORIGINAL_OS_FSTAT(descriptor)
+            if not stat.S_ISREG(opened_stat.st_mode):
+                self._session._log.record(
+                    broker="file",
+                    operation="open_snapshot",
+                    resource=source_id,
+                    disposition="refused",
+                    reason_code="source_not_regular_file",
+                )
+                raise BrokerAccessError(
+                    f"declared source {source_id!r} is not a regular file"
+                )
+            stream = io.FileIO(descriptor, mode="rb", closefd=True)
+            descriptor_owned_by_stream = descriptor
+            descriptor = -1
+            actual_sha256, actual_size = self._snapshot_digest(stream)
+            authenticated_stat = _ORIGINAL_OS_FSTAT(descriptor_owned_by_stream)
+            stable = self._snapshot_stat_identity(
+                opened_stat
+            ) == self._snapshot_stat_identity(authenticated_stat)
+            if (
+                not stable
+                or actual_size != source.byte_size
+                or actual_sha256 != source.sha256
+            ):
+                self._session._log.record(
+                    broker="file",
+                    operation="open_snapshot",
+                    resource=source_id,
+                    disposition="refused",
+                    reason_code="source_identity_mismatch",
+                    details={
+                        "actual_sha256": actual_sha256,
+                        "actual_size": actual_size,
+                        "descriptor_stable": stable,
+                    },
+                )
+                raise BrokerAccessError(
+                    f"declared source {source_id!r} differs from its verified identity"
+                )
+            self._session._log.record(
+                broker="file",
+                operation="open_snapshot",
+                resource=source_id,
+                disposition="allowed",
+                reason_code="declared_source_read",
+                details={
+                    "resolved_path": str(source.resolved_path),
+                    "content_sha256": source.sha256,
+                    "byte_size": source.byte_size,
+                },
+            )
+            lease = self._lease(
+                stream,
+                descriptor=descriptor_owned_by_stream,
+                opened_stat=authenticated_stat,
+                source=source,
+            )
+            try:
+                yield lease
+            except BaseException:
+                try:
+                    lease.close()
+                except BrokerAccessError:
+                    pass
+                raise
+            else:
+                lease.close()
+        finally:
+            if lease is None and stream is not None:
+                stream.close()
+            elif descriptor >= 0:
+                os.close(descriptor)
 
     @contextmanager
     def open_read(
@@ -3458,6 +3705,12 @@ class KernelFileBroker(_KernelBrokerView):
     ) -> Iterator[FileReadLease]:
         broker = object.__getattribute__(self, "_KernelFileBroker__broker")
         with broker.open_read(source_id, binary=binary, encoding=encoding) as stream:
+            yield stream
+
+    @contextmanager
+    def open_snapshot(self, source_id: str) -> Iterator[FileReadLease]:
+        broker = object.__getattribute__(self, "_KernelFileBroker__broker")
+        with broker.open_snapshot(source_id) as stream:
             yield stream
 
 
@@ -4001,7 +4254,14 @@ class BrokerSession:
             return self._sealed_receipt
         self._rng_leases.close_all()
         self._torch_rng_leases.close_all()
-        self.files.close_all()
+        file_close_error: BrokerAccessError | None = None
+        try:
+            self.files.close_all()
+        except BrokerAccessError as error:
+            # Snapshot close failures already record a refused event.  Finish
+            # sealing every lease and issue the aborted receipt before the
+            # caller receives the refusal.
+            file_close_error = error
         self._audit_allowed_events()
         events = self._log.events()
         tainted = any(event.disposition == "refused" for event in events)
@@ -4030,10 +4290,10 @@ class BrokerSession:
         )
         receipt.validate()
         object.__setattr__(self, "_sealed_receipt", receipt)
-        if requested_status == "complete" and tainted:
+        if requested_status == "complete" and (tainted or file_close_error is not None):
             raise BrokerAccessError(
                 "broker session recorded a refused access and cannot complete"
-            )
+            ) from file_close_error
         return receipt
 
     @property

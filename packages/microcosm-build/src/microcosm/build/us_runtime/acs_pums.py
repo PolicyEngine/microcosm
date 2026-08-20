@@ -26,7 +26,7 @@ import hashlib
 import heapq
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 from zipfile import ZipFile
 
 import numpy as np
@@ -173,6 +173,8 @@ def load_acs_pums_tables(
     source: AcsPumsSource,
     *,
     chunksize: int = DEFAULT_CHUNKSIZE,
+    household_stream: BinaryIO | None = None,
+    person_stream: BinaryIO | None = None,
 ) -> tuple[dict[str, pd.DataFrame], dict[str, Any]]:
     """Read and key-align the household and person PUMS tables.
 
@@ -188,6 +190,7 @@ def load_acs_pums_tables(
         required=_HOUSEHOLD_REQUIRED,
         optional=_HOUSEHOLD_STATE_COLUMNS,
         chunksize=chunksize,
+        source_stream=household_stream,
     )
     state_column = next(
         (column for column in _HOUSEHOLD_STATE_COLUMNS if column in household),
@@ -220,6 +223,7 @@ def load_acs_pums_tables(
         chunksize=chunksize,
         valid_serials=all_household_serials,
         retained_serials=selected_serials,
+        source_stream=person_stream,
     )
     duplicate_people = person.duplicated(["SERIALNO", "SPORDER"], keep=False)
     if duplicate_people.any():
@@ -254,10 +258,17 @@ def build_acs_pums_unit_frame(
     source: AcsPumsSource,
     *,
     chunksize: int = DEFAULT_CHUNKSIZE,
+    household_stream: BinaryIO | None = None,
+    person_stream: BinaryIO | None = None,
 ) -> tuple[Frame, dict[str, Any]]:
     """Construct the ACS 2024 1-year US entity frame."""
 
-    tables, metadata = load_acs_pums_tables(source, chunksize=chunksize)
+    tables, metadata = load_acs_pums_tables(
+        source,
+        chunksize=chunksize,
+        household_stream=household_stream,
+        person_stream=person_stream,
+    )
     household = tables["household"].copy()
     person = tables["person"].copy()
 
@@ -330,11 +341,18 @@ def _read_archive(
     chunksize: int,
     valid_serials: frozenset[str] | None = None,
     retained_serials: frozenset[str] | None = None,
+    source_stream: BinaryIO | None = None,
 ) -> tuple[pd.DataFrame, list[str]]:
-    if not path.is_file():
+    if source_stream is None and not path.is_file():
         raise FileNotFoundError(f"ACS PUMS archive not found: {path}")
     pieces: list[pd.DataFrame] = []
-    with ZipFile(path) as archive:
+    archive_source: Path | BinaryIO
+    if source_stream is None:
+        archive_source = path
+    else:
+        source_stream.seek(0)
+        archive_source = source_stream
+    with ZipFile(archive_source) as archive:
         members = sorted(
             name
             for name in archive.namelist()

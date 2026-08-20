@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -196,6 +197,34 @@ def test_load_acs_pums_tables_streams_all_csv_members_and_keeps_native_blanks(
     assert metadata["vacant_household_rows_dropped"] == 1
     assert metadata["household_csv_members"] == ["psam_husa.csv", "psam_husb.csv"]
     assert metadata["person_csv_members"] == ["psam_pusa.csv", "psam_pusb.csv"]
+
+
+def test_load_acs_pums_tables_uses_retained_archive_streams(tmp_path: Path) -> None:
+    source = _source(tmp_path)
+    household_replacement = tmp_path / "household-replacement.zip"
+    person_replacement = tmp_path / "person-replacement.zip"
+    household_replacement.write_bytes(b"not a ZIP archive")
+    person_replacement.write_bytes(b"not a ZIP archive")
+
+    with (
+        source.household_zip.open("rb") as household_stream,
+        source.person_zip.open("rb") as person_stream,
+    ):
+        os.replace(household_replacement, source.household_zip)
+        os.replace(person_replacement, source.person_zip)
+        tables, metadata = load_acs_pums_tables(
+            source,
+            chunksize=1,
+            household_stream=household_stream,
+            person_stream=person_stream,
+        )
+
+    assert len(tables["household"]) == 2
+    assert len(tables["person"]) == 4
+    assert metadata["household_csv_members"] == [
+        "psam_husa.csv",
+        "psam_husb.csv",
+    ]
 
 
 def test_build_acs_pums_unit_frame_preserves_lineage_geography_and_weights(

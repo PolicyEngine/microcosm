@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import h5py
@@ -96,6 +97,71 @@ def test_loader_threads_source_alignment_and_summary(
     assert captured["adjusted_gross_income"] is adjusted_gross_income
     assert captured["donor_build_summary"] is summary
     assert summary == {"mortgage_field_quarantine": {"screened_record_count": 2}}
+
+
+def test_brokered_puf_parse_uses_retained_streams_before_seeded_materialization(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    processed_path = tmp_path / "processed.h5"
+    source_path = tmp_path / "puf_2015.csv"
+    arrays = {
+        "tax_unit_id": np.asarray([10, 20], dtype=np.int64),
+        "household_weight": np.asarray([1.0, 2.0]),
+    }
+    _write_processed_arrays(processed_path, arrays)
+    source = pd.DataFrame(
+        {
+            column: np.asarray([1.0, 2.0])
+            for column in PUF_SOURCE_YEAR_AGI_REQUIRED_COLUMNS
+        }
+    )
+    source["RECID"] = [10, 20]
+    source.to_csv(source_path, index=False)
+    processed_replacement = tmp_path / "processed-replacement.h5"
+    source_replacement = tmp_path / "source-replacement.csv"
+    processed_replacement.write_bytes(b"not an HDF5 artifact")
+    source_replacement.write_bytes(b"not a CSV artifact")
+
+    with (
+        processed_path.open("rb") as processed_stream,
+        source_path.open("rb") as source_stream,
+    ):
+        os.replace(processed_replacement, processed_path)
+        os.replace(source_replacement, source_path)
+        parsed = puf_donor_io.parse_puf_tax_unit_donor_sources(
+            processed_path,
+            source_path,
+            processed_puf_stream=processed_stream,
+            source_year_puf_stream=source_stream,
+        )
+
+    for name, values in arrays.items():
+        np.testing.assert_array_equal(parsed.arrays[name], values)
+    assert parsed.source_year["RECID"].tolist() == [10, 20]
+
+    adjusted = np.asarray([5.0, 6.0])
+    monkeypatch.setattr(
+        puf_donor_io,
+        "source_year_puf_adjusted_gross_income",
+        lambda actual_source, **_kwargs: (
+            adjusted
+            if isinstance(actual_source, pd.DataFrame)
+            else (_ for _ in ()).throw(AssertionError("source path was reopened"))
+        ),
+    )
+    expected = pd.DataFrame({"tax_unit_id": [10, 20]})
+    monkeypatch.setattr(
+        puf_donor_io,
+        "puf_tax_unit_donor_from_arrays",
+        lambda actual_arrays, **_kwargs: (
+            expected
+            if actual_arrays is parsed.arrays
+            else (_ for _ in ()).throw(AssertionError("arrays were reparsed"))
+        ),
+    )
+
+    assert puf_donor_io.materialize_puf_tax_unit_donor(parsed) is expected
 
 
 def test_loader_refuses_missing_source_year_path(tmp_path: Path) -> None:

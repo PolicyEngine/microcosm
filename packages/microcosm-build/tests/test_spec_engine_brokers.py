@@ -8,8 +8,10 @@ import hashlib
 import os
 import time
 from collections.abc import Iterator, Mapping
+from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
+from zipfile import ZipFile
 
 import numpy as np
 import pandas as pd
@@ -765,6 +767,105 @@ def test_declared_file_open_is_streamed_from_a_verified_handle(tmp_path: Path) -
     receipt = session.seal()
     assert receipt.status == "complete"
     assert receipt.events[0].operation == "open_read"
+
+
+def test_declared_file_snapshots_support_h5py_zipfile_and_pandas(
+    tmp_path: Path,
+) -> None:
+    h5py = pytest.importorskip("h5py")
+    h5_path = tmp_path / "source.h5"
+    with h5py.File(h5_path, mode="w") as h5:
+        h5.create_dataset("values", data=np.asarray([1, 2, 3], dtype=np.int64))
+    zip_path = tmp_path / "source.zip"
+    with ZipFile(zip_path, mode="w") as archive:
+        archive.writestr("rows.csv", "key,value\na,1\nb,2\n")
+    csv_path = tmp_path / "source.csv"
+    csv_path.write_text("key,value\nx,4\ny,5\n", encoding="utf-8")
+
+    session = _non_rng_session(
+        effects=("declared_source_read",),
+        sources=(
+            _source(h5_path, "h5"),
+            _source(zip_path, "zip"),
+            _source(csv_path, "csv"),
+        ),
+    )
+    with session.activate(), ExitStack() as stack:
+        snapshots = {
+            source_id: stack.enter_context(session.files.open_snapshot(source_id))
+            for source_id in ("csv", "h5", "zip")
+        }
+        with h5py.File(snapshots["h5"], mode="r") as h5:
+            assert np.asarray(h5["values"]).tolist() == [1, 2, 3]
+        with ZipFile(snapshots["zip"]) as archive:
+            with archive.open("rows.csv") as member:
+                assert pd.read_csv(member).to_dict("records") == [
+                    {"key": "a", "value": 1},
+                    {"key": "b", "value": 2},
+                ]
+        assert pd.read_csv(snapshots["csv"]).to_dict("records") == [
+            {"key": "x", "value": 4},
+            {"key": "y", "value": 5},
+        ]
+        with pytest.raises(AttributeError):
+            snapshots["h5"].fileno()  # type: ignore[attr-defined]
+    receipt = session.seal()
+    assert [event.operation for event in receipt.events] == [
+        "open_snapshot",
+        "open_snapshot",
+        "open_snapshot",
+    ]
+
+
+def test_file_snapshot_retains_descriptor_across_path_replacement_and_reopen_refuses(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "replaceable.bin"
+    path.write_bytes(b"authenticated")
+    declared = _source(path)
+    original_open = open  # noqa: PTH123
+    session = _non_rng_session(
+        effects=("declared_source_read",), sources=(declared,)
+    )
+    replacement = tmp_path / "replacement.bin"
+    replacement.write_bytes(b"replacement!!")
+    with session.activate(), session.files.open_snapshot("fixture_source") as lease:
+        os.replace(replacement, path)
+        assert lease.read() == b"authenticated"
+        with original_open(path, "rb") as reopened:
+            assert reopened.read() == b"replacement!!"
+    session.seal()
+
+    reopened_session = _non_rng_session(
+        effects=("declared_source_read",), sources=(declared,)
+    )
+    with reopened_session.activate():
+        with pytest.raises(BrokerAccessError, match="verified identity"):
+            with reopened_session.files.open_snapshot("fixture_source"):
+                pass
+    assert reopened_session.seal(status="aborted").status == "aborted"
+
+
+def test_file_snapshot_close_refuses_in_place_drift_and_aborts_session(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "mutable.bin"
+    path.write_bytes(b"before")
+    original_open = open  # noqa: PTH123
+    session = _non_rng_session(
+        effects=("declared_source_read",), sources=(_source(path),)
+    )
+    with session.activate():
+        with pytest.raises(BrokerAccessError, match="changed while"):
+            with session.files.open_snapshot("fixture_source") as lease:
+                assert lease.read() == b"before"
+                with original_open(path, "r+b") as mutable:
+                    mutable.seek(0)
+                    mutable.write(b"after!")
+                    mutable.flush()
+    receipt = session.seal(status="aborted")
+    assert receipt.status == "aborted"
+    assert receipt.events[-1].reason_code == "source_snapshot_drift"
 
 
 def test_session_seal_closes_an_unexited_file_lease(tmp_path: Path) -> None:

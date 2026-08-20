@@ -19,7 +19,7 @@ import struct
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 import numpy as np
 import pandas as pd
@@ -172,6 +172,7 @@ def load_frame_checkpoint(
     path: str | Path,
     *,
     frame_metadata: Mapping[str, object] | None = None,
+    source_stream: BinaryIO | None = None,
 ) -> LoadedFrameCheckpoint:
     """Load a checkpoint and reconstruct its schema, data, and audit metadata.
 
@@ -183,13 +184,19 @@ def load_frame_checkpoint(
     """
 
     input_path = Path(path)
-    if not input_path.is_file():
+    if source_stream is None and not input_path.is_file():
         raise FileNotFoundError(f"Frame checkpoint not found: {input_path}.")
     if frame_metadata is not None and not isinstance(frame_metadata, Mapping):
         raise TypeError("frame_metadata must be a mapping when provided.")
 
     h5py = _h5py()
-    with h5py.File(input_path, mode="r") as h5:
+    h5_source: Path | BinaryIO
+    if source_stream is None:
+        h5_source = input_path
+    else:
+        source_stream.seek(0)
+        h5_source = source_stream
+    with h5py.File(h5_source, mode="r") as h5:
         root = _require_h5_group(h5, _ROOT, input_path)
         stored_metadata = _read_metadata(root, input_path)
         schema = _schema_from_metadata(stored_metadata)

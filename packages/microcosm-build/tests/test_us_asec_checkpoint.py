@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -244,6 +245,25 @@ def test_loads_operator_untouched_raw_stage_checkpoint(tmp_path: Path) -> None:
         for column, dtype in frame.table(entity).dtypes.items():
             if isinstance(dtype, pd.StringDtype):
                 assert dtype == CANONICAL_STRING_DTYPE, (entity, column)
+
+
+def test_raw_stage_loader_uses_retained_binary_stream(tmp_path: Path) -> None:
+    path = tmp_path / "asec_raw_stage.checkpoint.h5"
+    replacement = tmp_path / "replacement.h5"
+    source = _raw_us_frame()
+    metadata = _raw_binding(source)
+    _write_checkpoint(path, source, metadata=metadata)
+    replacement.write_bytes(b"not a checkpoint")
+
+    with path.open("rb") as source_stream:
+        os.replace(replacement, path)
+        frame, loaded_metadata = load_asec_raw_stage_checkpoint(
+            path,
+            source_stream=source_stream,
+        )
+
+    assert frame_identity(frame) == frame_identity(source)
+    assert loaded_metadata == metadata
 
 
 @pytest.mark.parametrize(
