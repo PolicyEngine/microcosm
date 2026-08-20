@@ -108,6 +108,11 @@ comparison algorithm, or exclusion approval will change.
   is green at the former commit, the focused battery plus spine-blindness
   suites are green at the latter, and the override-driver tests are green at
   the driver commit.
+- Independently re-audited checkpoint collision protection and closed a
+  destructive sidecar gap: every deterministic stage H5, manifest, and
+  operational-receipts path, plus the frame writer's deterministic temporary
+  path, now rejects collision with an authenticated reviewed-exclusion
+  override before cold build work.
 
 ## Next
 

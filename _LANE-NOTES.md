@@ -126,6 +126,15 @@
   build dependency. The existing history is being preserved while the
   loader, terminal lifecycle/manifest logic, driver wiring, packaging, and
   tests are rechecked.
+- 2026-08-20: the independent driver audit found that source-collision
+  preflight omitted deterministic stage `.receipts.json` sidecars and hidden
+  H5 temporary files even though the writers remove and may rewrite them.
+  Collision inventory now covers each stage H5, hidden temporary, manifest,
+  and receipts sidecar, so an authenticated override at any of those paths is
+  refused before build work
+  (`tools/build_us_multispine_pool.py:790-849,1435-1439,1526-1532,1613-1635`;
+  `packages/microcosm-build/src/microcosm/build/frame_checkpoint.py:91-110,150-153`;
+  `packages/microcosm-build/tests/test_us_multispine_pool_tool.py:3696-3745`).
 - 2026-08-19: initialized the lane journals before implementation.
 - 2026-08-19: the required uv sync is currently environment-blocked: the
   managed sandbox denies writes to the default cache, and the writable-cache

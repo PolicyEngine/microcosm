@@ -797,13 +797,20 @@ def _validate_checkpoint_path_layout(
     checkpoint_root = outputs.checkpoint_root.resolve()
     primary_qrf_root = (checkpoint_root / "primary-qrf").resolve()
     acs_transfer_root = (checkpoint_root / "acs-transfer").resolve()
-    stage_files = {
+    stage_checkpoint_files = {
         (checkpoint_root / filename).resolve()
         for filename in _POOL_STAGE_CHECKPOINT_FILENAMES.values()
     }
-    stage_files.update(
-        path.with_suffix(".manifest.json") for path in tuple(stage_files)
-    )
+    stage_files = {
+        candidate
+        for path in stage_checkpoint_files
+        for candidate in (
+            path,
+            path.with_name(f".{path.name}.tmp"),
+            path.with_suffix(".manifest.json"),
+            path.with_suffix(".receipts.json"),
+        )
+    }
     publication_paths = {
         outputs.pool_h5.resolve(),
         outputs.manifest.resolve(),

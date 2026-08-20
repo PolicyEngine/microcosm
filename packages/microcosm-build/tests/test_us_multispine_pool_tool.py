@@ -3713,6 +3713,37 @@ def test_reviewed_exclusion_override_is_protected_from_checkpoint_overwrite(
         )
 
 
+@pytest.mark.parametrize("stage", ("assembled", "transferred", "simulated"))
+@pytest.mark.parametrize("collision_kind", ("receipts", "temporary"))
+def test_reviewed_exclusion_override_is_protected_from_checkpoint_auxiliary_overwrite(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+    stage: str,
+    collision_kind: str,
+) -> None:
+    outputs = pool_tool._output_paths(
+        tmp_path / "published" / "pool.h5",
+        checkpoint_root=tmp_path / "checkpoints",
+    )
+    checkpoint_path = (
+        outputs.checkpoint_root / pool_tool._POOL_STAGE_CHECKPOINT_FILENAMES[stage]
+    )
+    collision_path = {
+        "receipts": checkpoint_path.with_suffix(".receipts.json"),
+        "temporary": checkpoint_path.with_name(f".{checkpoint_path.name}.tmp"),
+    }[collision_kind]
+    args = _configured_source_path_args(
+        tmp_path,
+        reviewed_exclusions=collision_path,
+    )
+
+    with pytest.raises(ValueError, match="checkpoint paths must not overwrite inputs"):
+        pool_tool._validate_checkpoint_path_layout(
+            outputs,
+            source_paths=pool_tool._configured_source_paths(args),
+        )
+
+
 @pytest.mark.parametrize(
     "outputs",
     (
