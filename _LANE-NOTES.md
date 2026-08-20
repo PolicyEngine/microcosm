@@ -135,6 +135,21 @@
   (`tools/build_us_multispine_pool.py:790-849,1435-1439,1526-1532,1613-1635`;
   `packages/microcosm-build/src/microcosm/build/frame_checkpoint.py:91-110,150-153`;
   `packages/microcosm-build/tests/test_us_multispine_pool_tool.py:3696-3745`).
+- 2026-08-20: independent terminal audit reproduced three internally resealed
+  false passes: relabeling a 0/0 dead scalar as tested, deleting/changing a
+  failing monetary QED, and replacing a categorical TVD while retaining its
+  distributions. The artifact now carries exact schemas and scope/count
+  receipts, supported monetary legs seal both five-point conditional-quantile
+  vectors, and manifest validation recomputes ratios, QED, and TVD from those
+  facts. A separate positive-weight origin-scope receipt prevents one target
+  from laundering adequate support as `insufficient_support`; only the
+  canonical rent target may carry structural-absence authority, whose ACS
+  exclusion count is reconciled explicitly. The frozen tolerance receipt is
+  also required verbatim
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7066-7519,7968-8170,12230-12267,12752-12969`;
+  `packages/microcosm-build/tests/test_us_stacked_spine.py:7401-7599`). The
+  complete `test_us_stacked_spine.py` module and workspace suite pass; no
+  band, threshold, comparator, seed, or fold changed.
 - 2026-08-19: initialized the lane journals before implementation.
 - 2026-08-19: the required uv sync is currently environment-blocked: the
   managed sandbox denies writes to the default cache, and the writable-cache

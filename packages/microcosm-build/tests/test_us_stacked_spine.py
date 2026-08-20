@@ -7398,6 +7398,200 @@ def test_fresh_battery_result_cannot_relabel_a_canonical_metric() -> None:
         GateReport((forged,)).to_manifest()
 
 
+def test_resealed_battery_cannot_relabel_a_dead_comparison_as_tested() -> None:
+    label = "person/puf_tax_itemization/business_is_sstb[clone_0]"
+    result = by_origin_battery(
+        _battery_frame(
+            {
+                "business_is_sstb": (
+                    np.zeros(8, dtype=np.int64),
+                    np.zeros(11, dtype=np.int64),
+                )
+            }
+        )
+    )
+    assert not result.passed
+    details = deepcopy(dict(result.details))
+    comparison = details["comparisons"][label]
+    comparison["status"] = "tested"
+    comparison["incidence_ratio_acs_over_asec"] = 1.0
+    forged = stacked_spine_module._sealed_stacked_gate_result(
+        name=result.name,
+        passed=True,
+        failures=(),
+        details=details,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="zero incidences must be a dead comparison.*emission is forbidden",
+    ):
+        GateReport((forged,)).to_manifest()
+
+
+@pytest.mark.parametrize("mutation", ("delete", "change"))
+def test_resealed_battery_cannot_hide_monetary_quantile_evidence(
+    mutation: str,
+) -> None:
+    label = "person/puf_tax_itemization/taxable_interest_income[clone_0]"
+    result = by_origin_battery(
+        _battery_frame(
+            {
+                "taxable_interest_income": (
+                    np.ones(8, dtype=np.float64),
+                    np.full(11, 100.0),
+                )
+            }
+        )
+    )
+    assert not result.passed
+    details = deepcopy(dict(result.details))
+    positive = details["comparisons"][label]["legs"]["positive"]
+    if mutation == "delete":
+        positive.pop("quantile_envelope_distance")
+        match = "comparison schema mismatch"
+    else:
+        positive["quantile_envelope_distance"] = 0.0
+        match = "quantile distance does not match"
+    forged = stacked_spine_module._sealed_stacked_gate_result(
+        name=result.name,
+        passed=True,
+        failures=(),
+        details=details,
+    )
+
+    with pytest.raises(ValueError, match=f"{match}.*emission is forbidden"):
+        GateReport((forged,)).to_manifest()
+
+
+def test_resealed_battery_cannot_hide_categorical_distance() -> None:
+    joint_label = (
+        "person/source_operator_immigration/"
+        "joint[ssn_card_type,immigration_status_str][clone_0]"
+    )
+    result = by_origin_battery(
+        _battery_frame(
+            {
+                "ssn_card_type": (
+                    np.asarray(["A"] * 4 + ["B"] * 4, dtype=object),
+                    np.asarray(["A"] * 4 + ["B"] * 4, dtype=object),
+                ),
+                "immigration_status_str": (
+                    np.asarray(["X"] * 4 + ["Y"] * 4, dtype=object),
+                    np.asarray(["Y"] * 4 + ["X"] * 4, dtype=object),
+                ),
+            }
+        )
+    )
+    assert not result.passed
+    details = deepcopy(dict(result.details))
+    details["comparisons"][joint_label]["total_variation_distance"] = 0.0
+    forged = stacked_spine_module._sealed_stacked_gate_result(
+        name=result.name,
+        passed=True,
+        failures=(),
+        details=details,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="categorical distance does not match.*emission is forbidden",
+    ):
+        GateReport((forged,)).to_manifest()
+
+
+def test_resealed_battery_cannot_forge_insufficient_origin_scope() -> None:
+    label = "person/puf_tax_itemization/business_is_sstb[clone_0]"
+    result = by_origin_battery(
+        _battery_frame(
+            {
+                "taxable_interest_income": (
+                    np.full(8, 100.0),
+                    np.full(11, 100.0),
+                )
+            }
+        )
+    )
+    assert result.passed, result.failures
+    details = deepcopy(dict(result.details))
+    details["comparisons"][label] = {
+        "status": "insufficient_support",
+        "metric": "boolean_incidence",
+        "scope_rows": {"asec": 0, "acs": 0},
+    }
+    details["tested_comparisons"] -= 1
+    details["untestable_comparisons"] = [label]
+    forged = stacked_spine_module._sealed_stacked_gate_result(
+        name=result.name,
+        passed=True,
+        failures=(),
+        details=details,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="scope rows.*disagree with the sealed origin scope",
+    ):
+        GateReport((forged,)).to_manifest()
+
+
+def test_resealed_battery_cannot_mutate_frozen_tolerances() -> None:
+    result = by_origin_battery(
+        _battery_frame(
+            {
+                "taxable_interest_income": (
+                    np.full(8, 100.0),
+                    np.full(11, 100.0),
+                )
+            }
+        )
+    )
+    assert result.passed, result.failures
+    details = deepcopy(dict(result.details))
+    details["tolerances"]["max_quantile_envelope_distance"] = 1.0
+    forged = stacked_spine_module._sealed_stacked_gate_result(
+        name=result.name,
+        passed=True,
+        failures=(),
+        details=details,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="canonical battery tolerance receipt mismatch",
+    ):
+        GateReport((forged,)).to_manifest()
+
+
+def test_resealed_battery_rejects_structural_authority_on_nonrent_target() -> None:
+    label = "person/puf_tax_itemization/business_is_sstb[clone_0]"
+    rent_label = "person/housing/pre_subsidy_rent[clone_0]"
+    result = by_origin_battery(
+        _battery_frame(
+            {
+                "taxable_interest_income": (
+                    np.full(8, 100.0),
+                    np.full(11, 100.0),
+                )
+            }
+        )
+    )
+    assert result.passed, result.failures
+    details = deepcopy(dict(result.details))
+    details["comparisons"][label]["recipient_absence_authority"] = deepcopy(
+        details["comparisons"][rent_label]["recipient_absence_authority"]
+    )
+    forged = stacked_spine_module._sealed_stacked_gate_result(
+        name=result.name,
+        passed=True,
+        failures=(),
+        details=details,
+    )
+
+    with pytest.raises(ValueError, match="comparison schema mismatch"):
+        GateReport((forged,)).to_manifest()
+
+
 def test_noncanonical_stacked_receipt_cannot_escape_under_a_renamed_gate() -> None:
     authority = stacked_spine_module._make_test_stacked_authority(
         declared_surface={"person": {"test_only": ("unemployment_compensation",)}},

@@ -113,14 +113,21 @@ comparison algorithm, or exclusion approval will change.
   operational-receipts path, plus the frame writer's deterministic temporary
   path, now rejects collision with an authenticated reviewed-exclusion
   override before cold build work.
+- Hardened terminal battery reconstruction without changing any frozen
+  doctrine: exact comparison/leg schemas, independent origin-scope receipts,
+  incidence/count and ratio arithmetic, sealed conditional quantiles with
+  recomputed QED, recomputed categorical TVD, and an exact tolerance receipt
+  now fail closed. Adversarial tests cover each previously reproducible
+  resealed-pass forgery. The complete stacked-spine test module and complete
+  workspace suite pass at this commit boundary.
 
 ## Next
 
-- Complete independent schema/loader, battery/manifest, and driver/packaging
-  audits; fix and commit any concrete defects; rerun focused and workspace
-  verification; then refresh the final report for owner review and push. The
-  two measured QBI rows remain non-exclusion `FIX-CANDIDATE` work for a
-  separate per-target clone-role comparator lane; this lane's register must
+- Bind canonical policies to loader-authenticated source provenance, add the
+  warm-resume/terminal-route coverage identified by audit, rerun focused and
+  workspace verification, then refresh the final report for owner review and
+  push. The two measured QBI rows remain non-exclusion `FIX-CANDIDATE` work for
+  a separate per-target clone-role comparator lane; this lane's register must
   remain empty.
 
 ## Historical note

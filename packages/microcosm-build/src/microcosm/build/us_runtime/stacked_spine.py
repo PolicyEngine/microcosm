@@ -7087,14 +7087,210 @@ def _battery_manifest_criterion_states(
             return math.inf
         return finite_number(raw, label=label)
 
+    def nonnegative_count(raw: object, *, label: str) -> int:
+        if isinstance(raw, bool) or not isinstance(raw, int) or raw < 0:
+            reject(f"{label} must be a non-negative integer")
+        return raw
+
+    def incidence_facts(
+        raw: Mapping[str, object],
+        *,
+        label: str,
+        scope: Mapping[str, int],
+    ) -> tuple[float, float, dict[str, int]]:
+        incidences: dict[str, float] = {}
+        raw_counts = raw.get("nonzero_rows")
+        if not isinstance(raw_counts, Mapping) or set(raw_counts) != {"asec", "acs"}:
+            reject(f"{label} nonzero-row receipt is malformed")
+        counts: dict[str, int] = {}
+        for origin in ("asec", "acs"):
+            incidence = finite_number(
+                raw.get(f"{origin}_incidence"),
+                label=f"{label} {origin.upper()} incidence",
+            )
+            if not 0.0 <= incidence <= 1.0:
+                reject(f"{label} {origin.upper()} incidence must be in [0, 1]")
+            count = nonnegative_count(
+                raw_counts.get(origin),
+                label=f"{label} {origin.upper()} nonzero rows",
+            )
+            if count > scope[origin]:
+                reject(f"{label} {origin.upper()} nonzero rows exceed its scope")
+            if (incidence == 0.0) != (count == 0):
+                reject(
+                    f"{label} {origin.upper()} incidence and nonzero-row count disagree"
+                )
+            incidences[origin] = incidence
+            counts[origin] = count
+        return incidences["asec"], incidences["acs"], counts
+
+    def scope_facts(raw: Mapping[str, object], *, label: str) -> dict[str, int]:
+        raw_scope = raw.get("scope_rows")
+        if not isinstance(raw_scope, Mapping) or set(raw_scope) != {"asec", "acs"}:
+            reject(f"{label} scope-row receipt is malformed")
+        return {
+            origin: nonnegative_count(
+                raw_scope.get(origin),
+                label=f"{label} {origin.upper()} scope rows",
+            )
+            for origin in ("asec", "acs")
+        }
+
+    def checked_ratio(
+        raw: object,
+        *,
+        left: float,
+        right: float,
+        label: str,
+    ) -> float:
+        observed = incidence_ratio(raw, label=label)
+        expected = math.inf if left == 0.0 else right / left
+        if observed != expected:
+            reject(f"{label} does not match the sealed origin incidences")
+        return observed
+
+    def checked_distance(
+        raw: object,
+        *,
+        label: str,
+        maximum: float,
+    ) -> float:
+        value = finite_number(raw, label=label)
+        if not 0.0 <= value <= maximum:
+            reject(f"{label} must be in [0, {maximum:g}]")
+        return value
+
+    def quantile_vector(raw: object, *, label: str) -> np.ndarray:
+        if not isinstance(raw, list) or len(raw) != len(_BATTERY_QUANTILES):
+            reject(f"{label} must contain the {_BATTERY_QUANTILES!r} quantile vector")
+        values = np.asarray(
+            [finite_number(value, label=f"{label} value") for value in raw],
+            dtype=np.float64,
+        )
+        if (values < 0.0).any() or (np.diff(values) < 0.0).any():
+            reject(f"{label} must be non-negative and nondecreasing")
+        return values
+
+    def exact_schema(
+        raw: Mapping[str, object],
+        expected: set[str],
+        *,
+        label: str,
+    ) -> None:
+        if set(raw) != expected:
+            reject(f"{label} comparison schema mismatch")
+
+    def recipient_fields(label: str, status: object) -> set[str]:
+        if label == _BATTERY_STRUCTURAL_RENT_LABEL and status != "missing_column":
+            return {"recipient_absence_authority"}
+        return set()
+
     for label, raw_comparison in comparisons.items():
         if not isinstance(raw_comparison, Mapping):
-            continue
+            reject(f"{label} comparison is not a mapping")
         metric = raw_comparison.get("metric")
         status = raw_comparison.get("status")
+        base_fields = {"status", "metric"} | recipient_fields(label, status)
+        if status == "missing_column":
+            expected = set(base_fields)
+            if "/joint[" in label:
+                expected.add("missing_columns")
+                missing_columns = raw_comparison.get("missing_columns")
+                if (
+                    not isinstance(missing_columns, list)
+                    or not missing_columns
+                    or any(not isinstance(column, str) for column in missing_columns)
+                    or missing_columns != sorted(set(missing_columns))
+                ):
+                    reject(f"{label} missing-column receipt is malformed")
+            exact_schema(raw_comparison, expected, label=label)
+            continue
+        if status == "null_in_scope":
+            exact_schema(raw_comparison, base_fields | {"null_rows"}, label=label)
+            if (
+                nonnegative_count(
+                    raw_comparison.get("null_rows"),
+                    label=f"{label} null rows",
+                )
+                == 0
+            ):
+                reject(f"{label} null-in-scope receipt has zero null rows")
+            continue
+        if status == "invalid_values":
+            has_breakdown = bool({"invalid_rows", "invalidity"} & set(raw_comparison))
+            expected = base_fields | (
+                {"invalid_rows", "invalidity"} if has_breakdown else set()
+            )
+            exact_schema(raw_comparison, expected, label=label)
+            if has_breakdown:
+                invalid_rows = nonnegative_count(
+                    raw_comparison.get("invalid_rows"),
+                    label=f"{label} invalid rows",
+                )
+                raw_invalidity = raw_comparison.get("invalidity")
+                if (
+                    invalid_rows == 0
+                    or not isinstance(raw_invalidity, Mapping)
+                    or not raw_invalidity
+                    or any(not isinstance(kind, str) for kind in raw_invalidity)
+                ):
+                    reject(f"{label} invalid-value receipt is malformed")
+                for kind, count in raw_invalidity.items():
+                    if (
+                        nonnegative_count(
+                            count,
+                            label=f"{label} {kind} rows",
+                        )
+                        == 0
+                        or count > invalid_rows
+                    ):
+                        reject(f"{label} invalid-value counts are malformed")
+            continue
+        if status == "structural_absence_mismatch":
+            if label != _BATTERY_STRUCTURAL_RENT_LABEL:
+                reject(f"{label} claims an unauthorized structural absence")
+            exact_schema(raw_comparison, base_fields, label=label)
+            continue
+        if status == "insufficient_support":
+            exact_schema(
+                raw_comparison,
+                base_fields | {"scope_rows"},
+                label=label,
+            )
+            scope = scope_facts(raw_comparison, label=label)
+            if (
+                min(scope.values())
+                >= CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE.min_effective_support
+            ):
+                reject(f"{label} claims insufficient support above the support floor")
+            continue
+        if status not in {"tested", "dead_comparison"}:
+            reject(f"{label} has unknown comparison status {status!r}")
+        scope = scope_facts(raw_comparison, label=label)
+        if (
+            min(scope.values())
+            < CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE.min_effective_support
+        ):
+            reject(f"{label} claims evaluation below the support floor")
         if metric in {"boolean_incidence", "rare_incidence"}:
             dead_id = f"{label}#dead"
-            if status == "dead_comparison":
+            expected = base_fields | {
+                "scope_rows",
+                "asec_incidence",
+                "acs_incidence",
+                "nonzero_rows",
+            }
+            if status == "tested":
+                expected.add("incidence_ratio_acs_over_asec")
+            exact_schema(raw_comparison, expected, label=label)
+            left, right, _counts = incidence_facts(
+                raw_comparison,
+                label=label,
+                scope=scope,
+            )
+            if left == 0.0 and right == 0.0:
+                if status != "dead_comparison":
+                    reject(f"{label} zero incidences must be a dead comparison")
                 evaluated.add(dead_id)
                 failing[dead_id] = (
                     f"{label}: zero weighted incidence on both origins with adequate "
@@ -7102,30 +7298,31 @@ def _battery_manifest_criterion_states(
                 )
                 continue
             if status != "tested":
-                continue
+                reject(f"{label} nonzero incidence cannot be a dead comparison")
             evaluated.add(dead_id)
             incidence_id = f"{label}#incidence"
             evaluated.add(incidence_id)
-            ratio = incidence_ratio(
+            ratio = checked_ratio(
                 raw_comparison.get("incidence_ratio_acs_over_asec"),
+                left=left,
+                right=right,
                 label=f"{label} incidence ratio",
             )
             if not lower <= ratio <= upper:
-                left = finite_number(
-                    raw_comparison.get("asec_incidence"),
-                    label=f"{label} ASEC incidence",
-                )
-                right = finite_number(
-                    raw_comparison.get("acs_incidence"),
-                    label=f"{label} ACS incidence",
-                )
                 failing[incidence_id] = (
                     f"{label}: weighted incidence ratio {ratio:.6g} is outside "
                     f"[{lower:.6g}, {upper:.6g}] "
                     f"(asec={left:.6g}, acs={right:.6g})."
                 )
             continue
-        if metric == "monetary_sign_separated" and status == "tested":
+        if metric == "monetary_sign_separated":
+            if status != "tested":
+                reject(f"{label} monetary comparison cannot be dead")
+            exact_schema(
+                raw_comparison,
+                base_fields | {"scope_rows", "legs"},
+                label=label,
+            )
             raw_legs = raw_comparison.get("legs")
             if not isinstance(raw_legs, Mapping) or set(raw_legs) != {
                 "positive",
@@ -7136,37 +7333,110 @@ def _battery_manifest_criterion_states(
                 raw_leg = raw_legs[leg_name]
                 if not isinstance(raw_leg, Mapping):
                     reject(f"{label}/{leg_name} comparison leg is malformed")
+                left, right, counts = incidence_facts(
+                    raw_leg,
+                    label=f"{label}/{leg_name}",
+                    scope=scope,
+                )
                 incidence_id = f"{label}/{leg_name}#incidence"
                 evaluated.add(incidence_id)
-                if raw_leg.get("status") == "absent_on_both_origins":
+                if left == 0.0 and right == 0.0:
+                    exact_schema(
+                        raw_leg,
+                        {
+                            "status",
+                            "asec_incidence",
+                            "acs_incidence",
+                            "nonzero_rows",
+                        },
+                        label=f"{label}/{leg_name}",
+                    )
+                    if raw_leg.get("status") != "absent_on_both_origins":
+                        reject(
+                            f"{label}/{leg_name} zero incidences must be absent "
+                            "on both origins"
+                        )
                     continue
-                ratio = incidence_ratio(
+                ratio = checked_ratio(
                     raw_leg.get("incidence_ratio_acs_over_asec"),
+                    left=left,
+                    right=right,
                     label=f"{label}/{leg_name} incidence ratio",
                 )
                 if not lower <= ratio <= upper:
-                    left = finite_number(
-                        raw_leg.get("asec_incidence"),
-                        label=f"{label}/{leg_name} ASEC incidence",
-                    )
-                    right = finite_number(
-                        raw_leg.get("acs_incidence"),
-                        label=f"{label}/{leg_name} ACS incidence",
-                    )
                     failing[incidence_id] = (
                         f"{label}/{leg_name}: weighted {leg_name}-leg incidence "
                         f"ratio {ratio:.6g} is outside "
                         f"[{lower:.6g}, {upper:.6g}] "
                         f"(asec={left:.6g}, acs={right:.6g})."
                     )
-                if "quantile_envelope_distance" not in raw_leg:
+                if (
+                    counts["asec"]
+                    < CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE.min_effective_support
+                    or counts["acs"]
+                    < CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE.min_effective_support
+                ):
+                    exact_schema(
+                        raw_leg,
+                        {
+                            "asec_incidence",
+                            "acs_incidence",
+                            "nonzero_rows",
+                            "incidence_ratio_acs_over_asec",
+                            "quantile_envelope",
+                        },
+                        label=f"{label}/{leg_name}",
+                    )
+                    if raw_leg.get("quantile_envelope") != "leg_insufficient_support":
+                        reject(f"{label}/{leg_name} thin leg lacks its support receipt")
                     continue
+                exact_schema(
+                    raw_leg,
+                    {
+                        "asec_incidence",
+                        "acs_incidence",
+                        "nonzero_rows",
+                        "incidence_ratio_acs_over_asec",
+                        "conditional_quantiles",
+                        "quantile_envelope_distance",
+                    },
+                    label=f"{label}/{leg_name}",
+                )
+                raw_quantiles = raw_leg.get("conditional_quantiles")
+                if not isinstance(raw_quantiles, Mapping) or set(raw_quantiles) != {
+                    "asec",
+                    "acs",
+                }:
+                    reject(f"{label}/{leg_name} conditional quantiles are malformed")
+                left_quantiles = quantile_vector(
+                    raw_quantiles.get("asec"),
+                    label=f"{label}/{leg_name} ASEC conditional quantiles",
+                )
+                right_quantiles = quantile_vector(
+                    raw_quantiles.get("acs"),
+                    label=f"{label}/{leg_name} ACS conditional quantiles",
+                )
                 quantile_id = f"{label}/{leg_name}#quantile"
                 evaluated.add(quantile_id)
-                distance = finite_number(
-                    raw_leg["quantile_envelope_distance"],
+                distance = checked_distance(
+                    raw_leg.get("quantile_envelope_distance"),
                     label=f"{label}/{leg_name} quantile distance",
+                    maximum=2.0,
                 )
+                expected_distance = _battery_quantile_envelope_distance(
+                    left_quantiles,
+                    right_quantiles,
+                )
+                if not math.isclose(
+                    distance,
+                    expected_distance,
+                    rel_tol=0.0,
+                    abs_tol=1e-12,
+                ):
+                    reject(
+                        f"{label}/{leg_name} quantile distance does not match "
+                        "the sealed conditional quantiles"
+                    )
                 if distance > _BATTERY_QUANTILE_ENVELOPE_TOLERANCE:
                     failing[quantile_id] = (
                         f"{label}/{leg_name}: conditional-quantile envelope "
@@ -7174,19 +7444,81 @@ def _battery_manifest_criterion_states(
                         f"{_BATTERY_QUANTILE_ENVELOPE_TOLERANCE:.6g}."
                     )
             continue
-        if metric == "categorical_tvd" and status == "tested":
+        if metric == "categorical_tvd":
+            if status != "tested":
+                reject(f"{label} categorical comparison cannot be dead")
+            exact_schema(
+                raw_comparison,
+                base_fields
+                | {
+                    "scope_rows",
+                    "total_variation_distance",
+                    "category_shares",
+                },
+                label=label,
+            )
             check_id = f"{label}#categorical"
             evaluated.add(check_id)
-            distance = finite_number(
+            raw_distributions = raw_comparison.get("category_shares")
+            if not isinstance(raw_distributions, Mapping) or set(raw_distributions) != {
+                "asec",
+                "acs",
+            }:
+                reject(f"{label} categorical shares are malformed")
+            distributions: dict[str, dict[str, float]] = {}
+            for origin in ("asec", "acs"):
+                raw_distribution = raw_distributions.get(origin)
+                if not isinstance(raw_distribution, Mapping) or not raw_distribution:
+                    reject(f"{label} {origin.upper()} category shares are malformed")
+                if any(not isinstance(category, str) for category in raw_distribution):
+                    reject(f"{label} {origin.upper()} categories must be strings")
+                distribution = {
+                    category: finite_number(
+                        share,
+                        label=f"{label} {origin.upper()} category share",
+                    )
+                    for category, share in raw_distribution.items()
+                }
+                if any(not 0.0 <= share <= 1.0 for share in distribution.values()):
+                    reject(
+                        f"{label} {origin.upper()} category shares must be in [0, 1]"
+                    )
+                if not math.isclose(
+                    sum(distribution.values()),
+                    1.0,
+                    rel_tol=0.0,
+                    abs_tol=1e-12,
+                ):
+                    reject(f"{label} {origin.upper()} category shares must sum to one")
+                distributions[origin] = distribution
+            categories = sorted(set(distributions["asec"]) | set(distributions["acs"]))
+            expected_distance = 0.5 * sum(
+                abs(
+                    distributions["asec"].get(category, 0.0)
+                    - distributions["acs"].get(category, 0.0)
+                )
+                for category in categories
+            )
+            distance = checked_distance(
                 raw_comparison.get("total_variation_distance"),
                 label=f"{label} categorical distance",
+                maximum=1.0,
             )
+            if not math.isclose(
+                distance,
+                expected_distance,
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            ):
+                reject(f"{label} categorical distance does not match the sealed shares")
             if distance > _BATTERY_CATEGORICAL_TVD_TOLERANCE:
                 failing[check_id] = (
                     f"{label}: categorical total-variation distance "
                     f"{distance:.6g} exceeds "
                     f"{_BATTERY_CATEGORICAL_TVD_TOLERANCE:.6g}."
                 )
+            continue
+        reject(f"{label} uses unsupported battery metric {metric!r}")
     return evaluated, failing
 
 
@@ -7677,6 +8009,23 @@ def _validate_stacked_gate_manifest_details(
             reject("canonical battery plan receipt mismatch")
         if details.get("support_profile") != authority["components"]["support_profile"]:
             reject("canonical battery support-profile receipt mismatch")
+        expected_tolerances = {
+            "incidence_ratio_bounds": list(_BATTERY_INCIDENCE_RATIO_BOUNDS),
+            "max_quantile_envelope_distance": (_BATTERY_QUANTILE_ENVELOPE_TOLERANCE),
+            "max_categorical_total_variation_distance": (
+                _BATTERY_CATEGORICAL_TVD_TOLERANCE
+            ),
+        }
+        if details.get("tolerances") != expected_tolerances:
+            reject("canonical battery tolerance receipt mismatch")
+        expected_registered_specs = len(
+            {(target[0], target[1], target[3]) for target in _canonical_registry}
+        )
+        if (
+            type(details.get("registered_specs")) is not int
+            or details.get("registered_specs") != expected_registered_specs
+        ):
+            reject("canonical battery registered-spec count mismatch")
         if not isinstance(comparisons, Mapping) or set(comparisons) != expected_labels:
             reject("canonical battery comparison surface mismatch")
         for target, metric in _canonical_registry.items():
@@ -7695,19 +8044,123 @@ def _validate_stacked_gate_manifest_details(
                 or comparison.get("metric") != metric
             ):
                 reject(f"{label} comparison must use canonical metric {metric!r}")
+        scope_keys = {
+            (target[0], target[3])
+            for target in (*_canonical_registry, *_canonical_joint_registry)
+        }
+        expected_scope_labels = {
+            _battery_origin_scope_label(entity, clone_index)
+            for entity, clone_index in scope_keys
+        }
+        raw_origin_scopes = details.get("origin_scope_rows")
+        if (
+            not isinstance(raw_origin_scopes, Mapping)
+            or set(raw_origin_scopes) != expected_scope_labels
+        ):
+            reject("canonical battery origin-scope receipt mismatch")
+        origin_scopes: dict[tuple[str, int], dict[str, int]] = {}
+        for entity, clone_index in scope_keys:
+            scope_label = _battery_origin_scope_label(entity, clone_index)
+            raw_scope = raw_origin_scopes[scope_label]
+            if not isinstance(raw_scope, Mapping) or set(raw_scope) != {
+                "asec",
+                "acs",
+            }:
+                reject(f"{scope_label} origin-scope receipt is malformed")
+            origin_scopes[(entity, clone_index)] = {
+                origin: nonnegative_int(
+                    raw_scope,
+                    origin,
+                    label=scope_label,
+                )
+                for origin in ("asec", "acs")
+            }
+
+        rent_label = _BATTERY_STRUCTURAL_RENT_LABEL
+        rent_comparison = comparisons[rent_label]
+        if not isinstance(rent_comparison, Mapping):
+            reject(f"{rent_label} comparison is not a mapping")
+        rent_by_role: dict[str, int] = {}
+        if passed or rent_comparison.get("status") != "missing_column":
+            _rent_rows, rent_by_role = validate_structural_absence_receipt(
+                rent_comparison.get("recipient_absence_authority"),
+                label=rent_label,
+                battery=True,
+            )
         applied_exclusions = _validate_battery_reviewed_exclusion_report(
             details.get("reviewed_exclusions"),
             comparisons,
             passed=passed,
             reject=reject,
         )
+        labelled_targets = [
+            *(
+                (target[0], target[3], _battery_target_label(target))
+                for target in _canonical_registry
+            ),
+            *(
+                (target[0], target[3], _joint_battery_target_label(target))
+                for target in _canonical_joint_registry
+            ),
+        ]
+        for entity, clone_index, label in labelled_targets:
+            comparison = comparisons[label]
+            assert isinstance(comparison, Mapping)
+            raw_scope = comparison.get("scope_rows")
+            if raw_scope is None:
+                continue
+            if not isinstance(raw_scope, Mapping) or set(raw_scope) != {
+                "asec",
+                "acs",
+            }:
+                reject(f"{label} scope-row receipt is malformed")
+            observed_scope = {
+                origin: nonnegative_int(
+                    raw_scope,
+                    origin,
+                    label=label,
+                )
+                for origin in ("asec", "acs")
+            }
+            expected_scope = dict(origin_scopes[(entity, clone_index)])
+            if label == rent_label:
+                excluded = rent_by_role.get(
+                    f"{ACS_STACKED_SUPPORT_CHANNEL}/clone_{clone_index}",
+                    0,
+                )
+                expected_scope["acs"] -= excluded
+                if expected_scope["acs"] < 0:
+                    reject(f"{rent_label} structural scope exceeds its origin scope")
+            if observed_scope != expected_scope:
+                reject(
+                    f"{label} scope rows {observed_scope!r} disagree with the "
+                    f"sealed origin scope {expected_scope!r}"
+                )
+
+        statuses = {
+            label: comparison.get("status")
+            for label, comparison in comparisons.items()
+            if isinstance(comparison, Mapping)
+        }
+        tested_labels = {
+            label
+            for label, status in statuses.items()
+            if status in {"tested", "dead_comparison"}
+        }
+        untestable_labels = sorted(
+            label
+            for label, status in statuses.items()
+            if status == "insufficient_support"
+        )
+        if type(details.get("tested_comparisons")) is not int or details.get(
+            "tested_comparisons"
+        ) != len(tested_labels):
+            reject("battery tested-comparison count is inconsistent")
+        if details.get("untestable_comparisons") != untestable_labels:
+            reject("battery untestable-comparison list is inconsistent")
+
         if passed:
             allowed_statuses = {"tested", "insufficient_support"}
-            statuses = {
-                label: comparison.get("status")
-                for label, comparison in comparisons.items()
-                if isinstance(comparison, Mapping)
-            }
             invalid_statuses = {
                 label: status
                 for label, status in statuses.items()
@@ -7722,35 +8175,6 @@ def _validate_stacked_gate_manifest_details(
                     "passing battery carries failing comparison statuses "
                     f"{invalid_statuses}"
                 )
-            tested_labels = {
-                label
-                for label, status in statuses.items()
-                if status == "tested"
-                or (
-                    status == "dead_comparison"
-                    and f"{label}#dead" in applied_exclusions
-                )
-            }
-            untestable_labels = sorted(
-                label
-                for label, status in statuses.items()
-                if status == "insufficient_support"
-            )
-            if details.get("tested_comparisons") != len(tested_labels):
-                reject("passing battery tested-comparison count is inconsistent")
-            if details.get("untestable_comparisons") != untestable_labels:
-                reject("passing battery untestable-comparison list is inconsistent")
-
-        rent_label = "person/housing/pre_subsidy_rent[clone_0]"
-        rent_comparison = comparisons[rent_label]
-        if not isinstance(rent_comparison, Mapping):
-            reject(f"{rent_label} comparison is not a mapping")
-        if passed or rent_comparison.get("status") != "missing_column":
-            validate_structural_absence_receipt(
-                rent_comparison.get("recipient_absence_authority"),
-                label=rent_label,
-                battery=True,
-            )
         return
 
     reject("unknown stacked authority gate")
@@ -11585,6 +12009,7 @@ def _stacked_completeness_gate_evaluate(
 # ---------------------------------------------------------------------------
 
 _BATTERY_GATE_NAME = "us_by_origin_battery"
+_BATTERY_STRUCTURAL_RENT_LABEL = "person/housing/pre_subsidy_rent[clone_0]"
 _BATTERY_INCIDENCE_RATIO_BOUNDS = (0.8, 1.25)
 _BATTERY_QUANTILES = (0.10, 0.25, 0.50, 0.75, 0.90)
 _BATTERY_QUANTILE_ENVELOPE_TOLERANCE = 0.25
@@ -11829,6 +12254,42 @@ def _battery_specs_from_metric_registry(
     )
 
 
+def _battery_origin_scope_label(entity: str, clone_index: int) -> str:
+    return f"{entity}[clone_{clone_index}]"
+
+
+def _battery_origin_scope_rows(
+    frame: Frame,
+    *,
+    metric_registry: Mapping[tuple[str, str, str, int], str],
+    joint_metric_registry: Mapping[tuple[str, str, tuple[str, ...], int], str],
+) -> dict[str, dict[str, int]]:
+    """Seal the positive-weight origin scope independently of comparisons."""
+
+    entity_clone_roles = {
+        (target[0], target[3]) for target in (*metric_registry, *joint_metric_registry)
+    }
+    receipt: dict[str, dict[str, int]] = {}
+    for entity, clone_index in sorted(entity_clone_roles):
+        table = frame.table(entity)
+        channel = table[support_channel_column(entity)].astype(str)
+        live_clone_index = pd.to_numeric(
+            table[support_clone_index_column(entity)],
+            errors="raise",
+        ).astype("int64")
+        weights = np.asarray(frame.resolve_weights(entity).values, dtype=np.float64)
+        scope = live_clone_index.eq(clone_index).to_numpy() & (weights > 0.0)
+        receipt[_battery_origin_scope_label(entity, clone_index)] = {
+            "asec": int(
+                (scope & channel.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy()).sum()
+            ),
+            "acs": int(
+                (scope & channel.eq(ACS_STACKED_SUPPORT_CHANNEL).to_numpy()).sum()
+            ),
+        }
+    return receipt
+
+
 def _by_origin_battery_evaluate(
     frame: Frame,
     *,
@@ -11955,6 +12416,11 @@ def _by_origin_battery_evaluate(
             },
         )
     validate_stacked_spine_frame(frame, boundary="by-origin battery")
+    origin_scope_rows = _battery_origin_scope_rows(
+        frame,
+        metric_registry=authority.metric_registry,
+        joint_metric_registry=authority.joint_metric_registry,
+    )
 
     failures: list[str] = []
     criterion_failure_indices: dict[str, int] = {}
@@ -12224,6 +12690,7 @@ def _by_origin_battery_evaluate(
             "registered_specs": len(specs),
             "tested_comparisons": tested,
             "untestable_comparisons": sorted(untestable),
+            "origin_scope_rows": origin_scope_rows,
             "comparisons": comparisons,
             "reviewed_exclusions": reviewed_exclusions,
             **(
@@ -12300,6 +12767,10 @@ def _battery_incidence_comparison(
     record: dict[str, object] = {
         "status": "tested",
         "metric": metric,
+        "scope_rows": {
+            "asec": int(left_rows.sum()),
+            "acs": int(right_rows.sum()),
+        },
         "asec_incidence": left,
         "acs_incidence": right,
         "nonzero_rows": {
@@ -12358,6 +12829,10 @@ def _battery_sign_separated_comparison(
     record: dict[str, object] = {
         "status": "tested",
         "metric": "monetary_sign_separated",
+        "scope_rows": {
+            "asec": int(left_rows.sum()),
+            "acs": int(right_rows.sum()),
+        },
         "legs": {},
     }
     comparisons[label] = record
@@ -12419,6 +12894,10 @@ def _battery_sign_separated_comparison(
             np.abs(values[right_leg]), weights[right_leg]
         )
         distance = _battery_quantile_envelope_distance(left_quantiles, right_quantiles)
+        leg_record["conditional_quantiles"] = {
+            "asec": left_quantiles.tolist(),
+            "acs": right_quantiles.tolist(),
+        }
         leg_record["quantile_envelope_distance"] = distance
         if distance > _BATTERY_QUANTILE_ENVELOPE_TOLERANCE:
             _record_battery_criterion_failure(
@@ -12468,6 +12947,10 @@ def _battery_categorical_comparison(
     comparisons[label] = {
         "status": "tested",
         "metric": "categorical_tvd",
+        "scope_rows": {
+            "asec": int(left_rows.sum()),
+            "acs": int(right_rows.sum()),
+        },
         "total_variation_distance": distance,
         "category_shares": distributions,
     }
