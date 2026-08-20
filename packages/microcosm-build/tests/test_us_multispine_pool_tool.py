@@ -25,9 +25,21 @@ import microcosm.build.us_runtime.acs_transfer as acs_transfer_module
 import microcosm.build.us_runtime.multispine_pool as multispine_pool_module
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
 from microcosm.build.gates import GateReport, GateResult
-from microcosm.build.logbook import LOGBOOK_ROW_FIELDS, load_logbook_row
+from microcosm.build.logbook import (
+    LOGBOOK_PROVENANCE_ROW_FIELDS,
+    load_logbook_row,
+)
 from microcosm.build.serialization_dtypes import CANONICAL_STRING_DTYPE
-from microcosm.build.spec_engine import LegacyPayloadMismatchError
+from microcosm.build.spec_engine import (
+    LegacyPayloadMismatchError,
+    RunProvenanceIdentity,
+    build_run_provenance_identity,
+)
+from microcosm.build.spec_engine.brokers import (
+    BrokerOwner,
+    BrokerSession,
+    DeclaredSource,
+)
 from microcosm.build.us_runtime.acs_transfer import transfer_acs_inputs
 from microcosm.build.us_runtime.acs_transfer_bank import (
     ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION,
@@ -47,6 +59,10 @@ from microcosm.build.us_runtime.qbi_inputs import (
     bind_us_qbi_reconciliation_transition_authority,
     us_qbi_reconciliation_change_receipt,
     with_us_qbi_input_reconciliation,
+)
+from microcosm.build.us_runtime.spec_materializers import (
+    DeclaredSourcePin,
+    DeclaredSourcePins,
 )
 from microcosm.build.us_runtime.stacked_spine import GapFillDirection
 from microcosm.build.us_runtime.support_provenance import (
@@ -75,6 +91,42 @@ def pool_tool() -> ModuleType:
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+@pytest.fixture(scope="module")
+def bundle_run_config(pool_tool: ModuleType):
+    """Compile the real sealed bundle plan once for authority-threading tests."""
+
+    pytest.importorskip("policyengine_us")
+    run_config = pool_tool._stacked_run_config(
+        SimpleNamespace(config_authority="bundle")
+    )
+    assert isinstance(run_config, pool_tool._ResolvedStackedRunConfig)
+    return run_config
+
+
+def _bundle_provenance_fixture(*, spec_sha256: str = "f" * 64) -> RunProvenanceIdentity:
+    return build_run_provenance_identity(
+        identity_generation=1,
+        source_grammar_receipt={
+            "schema_version": 1,
+            "canonicalizer_version": 1,
+            "migration_chain": [],
+        },
+        spec_binding={
+            "country": "us",
+            "schema_id": "country_spec",
+            "schema_version": 1,
+            "canonicalizer_version": 1,
+            "spec_sha256": spec_sha256,
+            "attestation": "bundle-authoritative",
+        },
+        authority_versions={"runtime_authority": "fixture-v1"},
+        code_inventory_digest="e" * 64,
+        artifact_protocol_inventory={"fixture": "v1"},
+        run_request={"config_authority": "bundle"},
+        execution_receipt={"authority_mode": "bundle"},
+    )
 
 
 def _source_frame(
@@ -1285,7 +1337,7 @@ def _install_stacked_entrypoint_stubs(
     monkeypatch.setattr(
         pool_tool,
         "_verify_inputs",
-        lambda _args, _outputs: (verified, source_manifest),
+        lambda _args, _outputs, **_kwargs: (verified, source_manifest),
     )
     monkeypatch.setattr(
         pool_tool,
@@ -1662,7 +1714,9 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
     rows = list((tmp_path / "logbook-spool").glob("*.json"))
     assert len(rows) == 1
     row = load_logbook_row(rows[0])
-    assert frozenset(row.to_mapping()) == LOGBOOK_ROW_FIELDS
+    assert frozenset(row.to_mapping()) == LOGBOOK_PROVENANCE_ROW_FIELDS
+    assert row.run_provenance_identity is not None
+    assert row.run_provenance_identity["identity_generation"] == 0
     assert row.disposition == disposition
     assert row.rung == "f001"
     assert row.seed == 578
@@ -1773,6 +1827,88 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         }
 
 
+def test_bundle_entrypoint_threads_runtime_plan_through_authority_constructors(
+    pool_tool: ModuleType,
+    bundle_run_config,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    plan = bundle_run_config.runtime_plan
+    _install_stacked_entrypoint_stubs(
+        pool_tool,
+        monkeypatch,
+        tmp_path,
+        terminal="success",
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "_stacked_run_config",
+        lambda _args, **_kwargs: bundle_run_config,
+    )
+
+    assert (
+        pool_tool.main([*_stacked_main_argv(tmp_path), "--config-authority", "bundle"])
+        == 0
+    )
+
+    row_path = next((tmp_path / "logbook-spool").glob("*.json"))
+    row = load_logbook_row(row_path)
+    assert row.build_id.startswith("microcosm-us-2024-stacked-f001-")
+    assert row.pipeline == plan.execution.pipeline["id"]
+    assert row.run_provenance_identity == (
+        bundle_run_config.run_provenance_identity.to_wire()
+    )
+    manifest_path = tmp_path / "stacked-pool.manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["release_id"] == row.build_id
+    assert manifest["pipeline"] == plan.execution.pipeline["id"]
+    assert manifest["operator_order"] == [
+        operation.id for operation in plan.execution.operations
+    ]
+    assert manifest["period"] == plan.execution.checkpoint_static_components["period"]
+    assert (
+        manifest["random_seed"]
+        == plan.execution.checkpoint_static_components["model_seed"]
+    )
+    assert manifest["run_config"] == dict(bundle_run_config)
+    assert set(manifest["run_config"]) == {
+        "config_authority",
+        "spec_binding_status",
+        "identity_generation",
+        "run_provenance_identity",
+    }
+    assert manifest["run_config"]["identity_generation"] == 1
+    assert (
+        manifest["run_config"]["run_provenance_identity"]
+        == bundle_run_config.run_provenance_identity.to_wire()
+    )
+    checkpoint_root = next(
+        (tmp_path / "stacked-pool.checkpoints" / "stacked").iterdir()
+    )
+    checkpoint_manifests = {
+        path.name.split(".", maxsplit=1)[0]: json.loads(
+            path.read_text(encoding="utf-8")
+        )
+        for path in checkpoint_root.glob("*.checkpoint.manifest.json")
+    }
+    assert tuple(
+        sorted(
+            checkpoint_manifests,
+            key=lambda stage: checkpoint_manifests[stage]["identity"]["stage_index"],
+        )
+    ) == tuple(checkpoint.id for checkpoint in plan.execution.checkpoints)
+    assert all(
+        receipt["identity"]["pipeline"]
+        == plan.execution.checkpoint_static_components["pipeline"]
+        for receipt in checkpoint_manifests.values()
+    )
+    assert all(
+        receipt["run_config"] == dict(bundle_run_config)
+        for receipt in checkpoint_manifests.values()
+    )
+
+
 def test_stacked_config_authority_defaults_to_constants_without_loading_bundle(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
@@ -1802,7 +1938,53 @@ def test_stacked_config_authority_defaults_to_constants_without_loading_bundle(
     )
 
     assert args.config_authority == "constants"
-    assert pool_tool._stacked_run_config(args) == {"config_authority": "constants"}
+    run_config = pool_tool._stacked_run_config(args, code_pin="fixture-code-pin")
+    assert set(run_config) == {
+        "config_authority",
+        "spec_binding_status",
+        "identity_generation",
+        "run_provenance_identity",
+    }
+    assert run_config["config_authority"] == "constants"
+    assert run_config["spec_binding_status"] == "absent"
+    assert run_config["identity_generation"] == 0
+    provenance = run_config["run_provenance_identity"]
+    assert isinstance(provenance, dict)
+    assert provenance["identity_generation"] == 0
+    assert provenance["source_grammar_receipt"] is None
+    assert provenance["spec_binding"] is None
+
+
+def test_constants_and_bundle_provenance_share_behavior_and_code_identity(
+    pool_tool: ModuleType,
+    bundle_run_config,
+) -> None:
+    code_pin = "unresolved-local-git-code-pin"
+    constants = pool_tool._constants_run_provenance_identity(
+        SimpleNamespace(),
+        code_pin=code_pin,
+    ).to_wire()
+    bundle = bundle_run_config.run_provenance_identity.to_wire()
+
+    for field_name in (
+        "code_inventory_digest",
+        "artifact_protocol_inventory",
+        "run_request",
+    ):
+        assert constants[field_name] == bundle[field_name]
+    assert constants["authority_versions"]["stacked_authority"] == (
+        bundle["authority_versions"]["stacked_authority"]
+    )
+    assert constants["authority_versions"]["checkpoint_materializer"] == (
+        bundle["authority_versions"]["checkpoint_materializer"]
+    )
+    assert constants["execution_receipt"]["pipeline"] == (
+        bundle["execution_receipt"]["pipeline"]
+    )
+    assert constants["execution_receipt"]["code_pin"] == code_pin
+    assert bundle["execution_receipt"]["code_pin"] == code_pin
+    assert constants["execution_receipt"]["authority_mode"] == "constants"
+    assert bundle["execution_receipt"]["authority_mode"] == "bundle"
 
 
 def test_bundle_config_compiles_one_runtime_authority_without_legacy_adapter(
@@ -1825,8 +2007,41 @@ def test_bundle_config_compiles_one_runtime_authority_without_legacy_adapter(
     }
     runtime_authorities = SimpleNamespace(
         identity_generation=1,
-        spec_binding=SimpleNamespace(to_wire=lambda: dict(binding)),
+        grammar_receipt=SimpleNamespace(
+            to_wire=lambda: {
+                "schema_version": 1,
+                "canonicalizer_version": 1,
+                "migration_chain": [],
+            }
+        ),
+        spec_binding=SimpleNamespace(
+            spec_sha256="a" * 64,
+            to_wire=lambda: dict(binding),
+        ),
         authority_sha256="b" * 64,
+        execution_abi={"sha256": "c" * 64},
+    )
+    us_authority = object()
+    runtime_plan = SimpleNamespace(
+        identity_generation=1,
+        authority_sha256="b" * 64,
+        spec_sha256="a" * 64,
+        execution=SimpleNamespace(
+            pipeline={"id": "us-stacked-pool"},
+            stacked_authority={"version": 1},
+            checkpoint_static_components={
+                "artifact_kind": "fixture_checkpoint_identity",
+                "schema_version": 1,
+                "materializer_version": 1,
+                "pipeline": "us-stacked-pool",
+            },
+        ),
+        publication=SimpleNamespace(
+            runtime={
+                "line": {"value": "microcosm-us-2024"},
+                "rung_fractions": ({"fraction": 0.01, "token": "f001"},),
+            }
+        ),
     )
     calls: list[tuple[str, object]] = []
 
@@ -1842,12 +2057,26 @@ def test_bundle_config_compiles_one_runtime_authority_without_legacy_adapter(
         calls.append(("compile_runtime_authorities", value))
         return runtime_authorities
 
+    def narrow_authority(value: object) -> object:
+        calls.append(("compile_us_spec_authority", value))
+        return us_authority
+
+    def compile_runtime_plan(value: object) -> object:
+        calls.append(("compile_runtime_plan", value))
+        return runtime_plan
+
     monkeypatch.setattr(pool_tool, "load_bundle", load)
     monkeypatch.setattr(pool_tool, "compile_spec", compile_ir)
     monkeypatch.setattr(
         pool_tool,
         "compile_runtime_authorities",
         issue_authorities,
+    )
+    monkeypatch.setattr(pool_tool, "compile_us_spec_authority", narrow_authority)
+    monkeypatch.setattr(
+        pool_tool.USPoolRuntimePlan,
+        "from_spec_authority",
+        staticmethod(compile_runtime_plan),
     )
     monkeypatch.setattr(
         pool_tool,
@@ -1863,23 +2092,852 @@ def test_bundle_config_compiles_one_runtime_authority_without_legacy_adapter(
         ("load_bundle", "us"),
         ("compile_spec", resolved),
         ("compile_runtime_authorities", compiled),
+        ("compile_us_spec_authority", runtime_authorities),
+        ("compile_runtime_plan", us_authority),
     ]
     assert isinstance(run_config, pool_tool._ResolvedStackedRunConfig)
     assert run_config.runtime_authorities is runtime_authorities
+    assert run_config.runtime_plan is runtime_plan
     assert dict(run_config) == {
         "config_authority": "bundle",
         "spec_binding_status": "resolved",
         "identity_generation": 1,
-        "spec_binding": {
-            **binding,
-            "attestation": "bundle-authoritative",
-        },
-        "runtime_authority_sha256": "b" * 64,
+        "run_provenance_identity": run_config.run_provenance_identity.to_wire(),
+    }
+    provenance = run_config.run_provenance_identity.to_wire()
+    assert provenance["code_inventory_digest"] == (
+        pool_tool._stacked_code_inventory_digest("unresolved-local-git-code-pin")
+    )
+    assert provenance["run_request"]["pipeline"] == "us-stacked-pool"
+    assert provenance["execution_receipt"] == {
+        "authority_mode": "bundle",
+        "pipeline": "us-stacked-pool",
+        "code_pin": "unresolved-local-git-code-pin",
     }
     assert "runtime_authorities" not in run_config
+    assert "runtime_plan" not in run_config
     assert "b" * 64 not in repr(run_config)
     with pytest.raises(AttributeError):
         run_config.runtime_authorities = object()
+
+
+def test_bundle_plan_drives_release_rungs_and_configured_identity(
+    pool_tool: ModuleType,
+    bundle_run_config,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    plan = bundle_run_config.runtime_plan
+    args = pool_tool._parser().parse_args(
+        [*_stacked_main_argv(tmp_path), "--config-authority", "bundle"]
+    )
+    expected_authority = pool_tool._json_ready(plan.execution.stacked_authority)
+
+    monkeypatch.setattr(pool_tool, "_STACKED_SAMPLE_RUNG_TOKENS", {})
+    monkeypatch.setattr(pool_tool, "_STACKED_LEGACY_RELEASE_LINE", "retiring-line")
+    monkeypatch.setattr(
+        pool_tool,
+        "_STACKED_RELEASE_ID_PATTERN",
+        pool_tool.re.compile(r"^retiring-only$"),
+    )
+    monkeypatch.setattr(pool_tool, "_STACKED_PIPELINE", "retiring-pipeline")
+    monkeypatch.setattr(pool_tool, "POOL_TIME_PERIOD", -1)
+    monkeypatch.setattr(
+        pool_tool,
+        "stacked_spine_authority_receipt",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("bundle configured identity consulted constants")
+        ),
+    )
+
+    assert pool_tool._stacked_rung(0.01, runtime_plan=plan) == "f001"
+    release_id = pool_tool._new_stacked_release_id(
+        sample_fraction=0.01,
+        sample_seed=578,
+        realized_asec_households=123,
+        realized_acs_households=456,
+        timestamp=datetime(2026, 8, 19, 12, 34, 56, tzinfo=UTC),
+        nonce="abcdef01",
+        runtime_plan=plan,
+    )
+    assert release_id == (
+        "microcosm-us-2024-stacked-f001-s578-asec123-acs456-20260819T123456Z-abcdef01"
+    )
+
+    configured = pool_tool._configured_stacked_identity(
+        args,
+        runtime_plan=plan,
+        run_config=bundle_run_config,
+    )
+    assert configured["pipeline"] == plan.execution.pipeline["id"]
+    assert configured["period"] == plan.execution.checkpoint_static_components["period"]
+    assert configured["fraction_token"] == "f001"
+    assert configured["stacked_authority"] == expected_authority
+    assert configured["identity_generation"] == 1
+    assert configured["spec_binding"]["spec_sha256"] == plan.spec_sha256
+
+
+def test_bundle_plan_drives_checkpoint_identity_discovery_and_order(
+    pool_tool: ModuleType,
+    bundle_run_config,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    plan = bundle_run_config.runtime_plan
+    verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
+    stack_receipt = {"sample_fraction": 0.01, "sample_seed": 578}
+    materialize = pool_tool.materialize_stacked_checkpoint_base_identity
+    expected = materialize(
+        plan,
+        input_pins=pool_tool._verified_input_pins_payload(verified),
+        stack_receipt=stack_receipt,
+        sample_fraction=0.01,
+        sample_seed=578,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=579,
+    )
+
+    monkeypatch.setattr(pool_tool, "POOL_CHECKPOINT_STAGE_ORDER", ("retiring",))
+    monkeypatch.setattr(
+        pool_tool,
+        "_POOL_STAGE_CHECKPOINT_FILENAMES",
+        {"retiring": "retiring.checkpoint.h5"},
+    )
+    monkeypatch.setattr(pool_tool, "POOL_TIME_PERIOD", -1)
+    monkeypatch.setattr(pool_tool, "POOL_RANDOM_SEED", -1)
+    monkeypatch.setattr(pool_tool, "_STACKED_SAMPLE_RUNG_TOKENS", {})
+    monkeypatch.setattr(
+        pool_tool,
+        "stacked_spine_authority_receipt",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("bundle checkpoint identity consulted constants")
+        ),
+    )
+
+    actual = pool_tool._stacked_checkpoint_base_identity(
+        verified,
+        stack_receipt=stack_receipt,
+        sample_fraction=0.01,
+        sample_seed=578,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=579,
+        runtime_plan=plan,
+    )
+    assert actual == expected
+    assert pool_tool._stacked_checkpoint_order(plan) == (
+        "assembled",
+        "transferred",
+        "simulated",
+    )
+    assert pool_tool._stacked_checkpoint_candidate_order(plan) == (
+        "simulated",
+        "transferred",
+        "assembled",
+    )
+
+    simulated_identity = pool_tool._pool_checkpoint_stage_identity(
+        actual,
+        "simulated",
+        runtime_plan=plan,
+    )
+    assert simulated_identity["stage_index"] == 2
+    checkpoint_root = tmp_path / "checkpoints"
+    checkpoint_root.mkdir()
+    manifest_path = checkpoint_root / "simulated.checkpoint.manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "artifact_kind": (
+                    pool_tool._POOL_STAGE_CHECKPOINT_MANIFEST_ARTIFACT_KIND
+                ),
+                "schema_version": pool_tool.POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
+                "materializer_version": (
+                    pool_tool.POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION
+                ),
+                "stage": "simulated",
+                "identity": simulated_identity,
+                "run_config": dict(bundle_run_config),
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert (
+        pool_tool._discover_stacked_checkpoint_identity(
+            checkpoint_root,
+            verified_inputs=verified,
+            sample_fraction=0.01,
+            sample_seed=578,
+            clone_attachment_fraction=1.0,
+            clone_attachment_seed=579,
+            runtime_plan=plan,
+            run_config=bundle_run_config,
+        )
+        == expected
+    )
+
+    store = pool_tool._PoolStageCheckpointStore(
+        checkpoint_root,
+        base_identity=actual,
+        runtime_plan=plan,
+        run_config=bundle_run_config,
+    )
+    assert store.checkpoint_path("assembled").name == "assembled.checkpoint.h5"
+    with pytest.raises(ValueError, match="Unknown pool checkpoint stage"):
+        store.checkpoint_path("retiring")
+
+
+def test_bundle_checkpoint_sidecar_presence_policy_is_fail_closed(
+    pool_tool: ModuleType,
+    bundle_run_config,
+    tmp_path: Path,
+) -> None:
+    plan = bundle_run_config.runtime_plan
+    verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
+    stack_receipt = {"sample_fraction": 0.01, "sample_seed": 578}
+    identity = pool_tool._stacked_checkpoint_base_identity(
+        verified,
+        stack_receipt=stack_receipt,
+        sample_fraction=0.01,
+        sample_seed=578,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=579,
+        runtime_plan=plan,
+    )
+    store = pool_tool._PoolStageCheckpointStore(
+        tmp_path / "checkpoints",
+        base_identity=identity,
+        runtime_plan=plan,
+        run_config=bundle_run_config,
+    )
+
+    with pytest.raises(ValueError, match="transferred.*requires"):
+        store._load_operational_stage_receipts(
+            "transferred",
+            canonical_stage_receipts={},
+            expected_identity_sha256="a" * 64,
+            checkpoint_sha256="b" * 64,
+            checkpoint_size=0,
+        )
+
+    forbidden = store.checkpoint_receipts_path("assembled")
+    forbidden.parent.mkdir(parents=True, exist_ok=True)
+    forbidden.write_text("{}\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="assembled.*forbids"):
+        store._load_operational_stage_receipts(
+            "assembled",
+            canonical_stage_receipts={},
+            expected_identity_sha256="a" * 64,
+            checkpoint_sha256="b" * 64,
+            checkpoint_size=0,
+        )
+
+
+def test_bundle_plan_drives_publication_payload_values(
+    pool_tool: ModuleType,
+    bundle_run_config,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    plan = bundle_run_config.runtime_plan
+    outputs = pool_tool._stacked_output_paths(tmp_path / "bundle-pool.h5")
+    outputs.pool_h5.write_bytes(b"fixture-pool")
+    outputs.agreement_diagnostics.write_bytes(b"fixture-diagnostics")
+    frame = _source_frame()
+    result = SimpleNamespace(
+        frame=frame,
+        release_id=(
+            "microcosm-us-2024-stacked-f001-s578-asec1-acs1-20260819T123456Z-abcdef01"
+        ),
+        simulation_ready=True,
+        terminal_gates=(GateResult(name="fixture", passed=True),),
+        stack_receipt={
+            "survey_samples": {
+                "asec": {"realized_household_count": 1},
+                "acs": {"realized_household_count": 1},
+            },
+            "household_mass_shares": {"asec": 0.5, "acs": 0.5},
+        },
+        late_producer_transition_authority_sha256="a" * 64,
+        qbi_transition_authority_sha256="b" * 64,
+        assembly_receipt={"fixture": "assembly"},
+        provenance_counts={"fixture": 2},
+        stage_receipts={"fixture": "stages"},
+    )
+    monkeypatch.setattr(pool_tool, "_STACKED_PIPELINE", "retiring-pipeline")
+    monkeypatch.setattr(pool_tool, "POOL_TIME_PERIOD", -1)
+    monkeypatch.setattr(pool_tool, "POOL_RANDOM_SEED", -1)
+    monkeypatch.setattr(pool_tool, "US_STACKED_POOL_OPERATOR_ORDER", ("retiring",))
+    monkeypatch.setattr(pool_tool, "_STACKED_SAMPLE_RUNG_TOKENS", {})
+    monkeypatch.setattr(
+        pool_tool,
+        "_validate_stacked_post_puf_stage_receipt",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "_validate_qbi_stage_receipt",
+        lambda *_args, **_kwargs: None,
+    )
+
+    payload = pool_tool._stacked_manifest_payload(
+        result=result,
+        outputs=outputs,
+        verified_inputs={},
+        acs_source_manifest=pool_tool.load_acs_source_manifest(),
+        input_receipts={"puf_donor": {}},
+        checkpoint_provenance={},
+        publication_run_id="fixture-publication-run",
+        sample_fraction=0.01,
+        sample_seed=578,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=579,
+        runtime_plan=plan,
+    )
+    assert payload["pipeline"] == plan.execution.pipeline["id"]
+    assert payload["operator_order"] == [
+        operation.id for operation in plan.execution.operations
+    ]
+    assert payload["period"] == plan.execution.checkpoint_static_components["period"]
+    assert (
+        payload["random_seed"]
+        == plan.execution.checkpoint_static_components["model_seed"]
+    )
+    assert payload["sampling"]["fraction_token"] == "f001"
+
+    tombstone = pool_tool._stacked_publication_tombstone(
+        outputs,
+        release_id=result.release_id,
+        publication_run_id="fixture-publication-run",
+        runtime_plan=plan,
+    )
+    assert tombstone["pipeline"] == plan.execution.pipeline["id"]
+
+
+def test_bundle_source_preflight_matches_constants_without_legacy_authorities(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source_fields = {
+        "asec_raw_stage": ("asec_raw_stage_h5", "asec_raw_stage_h5_sha256"),
+        "acs_household": ("acs_household_zip", "acs_household_zip_sha256"),
+        "acs_person": ("acs_person_zip", "acs_person_zip_sha256"),
+        "acs_rent_donor": ("acs_rent_h5", "acs_rent_h5_sha256"),
+        "processed_puf": ("puf_h5", "puf_h5_sha256"),
+        "puf_source_year": ("puf_source_year_csv", "puf_source_year_csv_sha256"),
+    }
+    argument_values: dict[str, object] = {}
+    source_rows: list[DeclaredSourcePin] = []
+    for index, (source_id, (path_field, digest_field)) in enumerate(
+        source_fields.items(), start=1
+    ):
+        path = tmp_path / "inputs" / f"{source_id}.fixture"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = f"compiler-declared-source-{index}".encode()
+        path.write_bytes(payload)
+        digest = hashlib.sha256(payload).hexdigest()
+        argument_values[path_field] = path
+        argument_values[digest_field] = digest
+        source_rows.append(
+            DeclaredSourcePin(
+                id=source_id,
+                role=source_id,
+                sha256=digest,
+                byte_size=len(payload),
+                loader="kernel:fixture_source_loader",
+                vintages=(),
+            )
+        )
+    args = SimpleNamespace(**argument_values)
+    outputs = pool_tool._stacked_output_paths(tmp_path / "pool.h5")
+    household = next(row for row in source_rows if row.id == "acs_household")
+    person = next(row for row in source_rows if row.id == "acs_person")
+    source_manifest = pool_tool.AcsSourceManifest(
+        version=1,
+        spine="acs_2024_1yr",
+        vintage=2024,
+        verified_on="2026-07-10",
+        source_directory="https://example.invalid/2024/1-Year/",
+        artifacts=(
+            pool_tool.AcsSourceArtifact(
+                role="household",
+                filename="csv_hus.zip",
+                url="https://example.invalid/2024/1-Year/csv_hus.zip",
+                sha256=household.sha256,
+                size_bytes=household.byte_size,
+            ),
+            pool_tool.AcsSourceArtifact(
+                role="person",
+                filename="csv_pus.zip",
+                url="https://example.invalid/2024/1-Year/csv_pus.zip",
+                sha256=person.sha256,
+                size_bytes=person.byte_size,
+            ),
+        ),
+    )
+
+    monkeypatch.setattr(
+        pool_tool,
+        "load_acs_source_manifest",
+        lambda: source_manifest,
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "ACS_2022_RENT_ARTIFACT_SHA256",
+        argument_values["acs_rent_h5_sha256"],
+    )
+    constants_verified, constants_manifest = pool_tool._verify_inputs(args, outputs)
+
+    pins = DeclaredSourcePins(
+        schema_version=1,
+        authority_sha256="c" * 64,
+        pins=tuple(source_rows),
+    )
+    source_authority = object()
+    runtime_plan = SimpleNamespace(
+        sources=source_authority,
+        seed_stream_map=SimpleNamespace(
+            protocol_id="legacy-v1",
+            implementation_sha256="d" * 64,
+        ),
+        execution=SimpleNamespace(
+            checkpoints=tuple(
+                SimpleNamespace(id=stage)
+                for stage in ("assembled", "transferred", "simulated")
+            )
+        ),
+    )
+    calls: list[tuple[str, object]] = []
+
+    def compiler_pins(authority: object) -> DeclaredSourcePins:
+        calls.append(("compile_declared_source_pins", authority))
+        return pins
+
+    def compiler_manifest(authority: object):
+        calls.append(("materialize_acs_source_manifest", authority))
+        return source_manifest
+
+    monkeypatch.setattr(pool_tool, "compile_declared_source_pins", compiler_pins)
+    monkeypatch.setattr(
+        pool_tool,
+        "materialize_acs_source_manifest",
+        compiler_manifest,
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "load_acs_source_manifest",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("bundle preflight called the packaged JSON loader")
+        ),
+    )
+    monkeypatch.setattr(pool_tool, "ACS_2022_RENT_ARTIFACT_SHA256", "0" * 64)
+    monkeypatch.setattr(
+        pool_tool,
+        "compile_to_legacy_payload",
+        lambda _resolved: (_ for _ in ()).throw(
+            AssertionError("bundle preflight called the aggregate legacy adapter")
+        ),
+    )
+    provenance = _bundle_provenance_fixture().to_wire()
+    bundle_verified, bundle_manifest = pool_tool._verify_inputs(
+        args,
+        outputs,
+        bundle_plan=runtime_plan,
+        run_provenance_identity=provenance,
+    )
+
+    assert calls == [
+        ("compile_declared_source_pins", source_authority),
+        ("materialize_acs_source_manifest", source_authority),
+    ]
+    assert bundle_verified == constants_verified
+    assert bundle_manifest == constants_manifest
+    assert tuple(bundle_verified) == tuple(source_fields)
+
+
+def test_bundle_source_snapshots_drive_cold_parsers_without_path_reopen(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source_fields = {
+        "asec_raw_stage": ("asec_raw_stage_h5", "asec_raw_stage_h5_sha256"),
+        "acs_household": ("acs_household_zip", "acs_household_zip_sha256"),
+        "acs_person": ("acs_person_zip", "acs_person_zip_sha256"),
+        "acs_rent_donor": ("acs_rent_h5", "acs_rent_h5_sha256"),
+        "processed_puf": ("puf_h5", "puf_h5_sha256"),
+        "puf_source_year": (
+            "puf_source_year_csv",
+            "puf_source_year_csv_sha256",
+        ),
+    }
+    values: dict[str, object] = {}
+    pins: list[DeclaredSourcePin] = []
+    replacements: dict[str, Path] = {}
+    expected: dict[str, bytes] = {}
+    for source_id, (path_field, digest_field) in source_fields.items():
+        path = tmp_path / "inputs" / source_id
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = f"brokered-{source_id}".encode()
+        path.write_bytes(payload)
+        replacement = tmp_path / "replacements" / source_id
+        replacement.parent.mkdir(parents=True, exist_ok=True)
+        replacement.write_bytes(f"ambient-{source_id}".encode())
+        digest = hashlib.sha256(payload).hexdigest()
+        values[path_field] = path
+        values[digest_field] = digest
+        replacements[source_id] = replacement
+        expected[source_id] = payload
+        pins.append(
+            DeclaredSourcePin(
+                id=source_id,
+                role=source_id,
+                sha256=digest,
+                byte_size=len(payload),
+                loader="kernel:fixture_source_loader",
+                vintages=(),
+            )
+        )
+    args = SimpleNamespace(**values)
+    source_authority = object()
+    plan = SimpleNamespace(
+        sources=source_authority,
+        seed_stream_map=SimpleNamespace(
+            protocol_id="legacy-v1",
+            implementation_sha256="d" * 64,
+        ),
+        execution=SimpleNamespace(
+            checkpoints=tuple(
+                SimpleNamespace(id=stage)
+                for stage in ("assembled", "transferred", "simulated")
+            )
+        ),
+    )
+    manifest = SimpleNamespace(vintage=2024)
+    monkeypatch.setattr(
+        pool_tool,
+        "compile_declared_source_pins",
+        lambda _authority: DeclaredSourcePins(1, "c" * 64, tuple(pins)),
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "materialize_acs_source_manifest",
+        lambda _authority: manifest,
+    )
+    sessions: list[object] = []
+    receipts: list[Mapping[str, object]] = []
+    pool_tool._verify_inputs(
+        args,
+        pool_tool._stacked_output_paths(tmp_path / "pool.h5"),
+        bundle_plan=plan,
+        run_provenance_identity=_bundle_provenance_fixture().to_wire(),
+        broker_receipt_sink=receipts.append,
+        source_snapshot_session_sink=sessions.append,
+    )
+    assert len(sessions) == 1
+
+    leases: dict[str, object] = {}
+    paths_replaced = False
+
+    def source_bytes(source_id: str, stream: object) -> bytes:
+        nonlocal paths_replaced
+        if not paths_replaced:
+            for replacement_id, replacement in replacements.items():
+                os.replace(
+                    replacement,
+                    values[source_fields[replacement_id][0]],
+                )
+            paths_replaced = True
+        leases[source_id] = stream
+        stream.seek(0)
+        return stream.read()
+
+    frame = _many_household_source_frame()
+    monkeypatch.setattr(
+        pool_tool,
+        "load_asec_raw_stage_checkpoint",
+        lambda _path, *, source_stream: (
+            frame,
+            {
+                "source": source_bytes("asec_raw_stage", source_stream).decode()
+            },
+        ),
+    )
+
+    def build_acs(
+        _source,
+        *,
+        household_stream,
+        person_stream,
+    ):
+        assert source_bytes("acs_household", household_stream) == expected[
+            "acs_household"
+        ]
+        assert source_bytes("acs_person", person_stream) == expected["acs_person"]
+        return frame, {"source": "brokered-acs"}
+
+    monkeypatch.setattr(pool_tool, "build_acs_pums_unit_frame", build_acs)
+    monkeypatch.setattr(
+        pool_tool,
+        "map_acs_native_inputs",
+        lambda value: SimpleNamespace(frame=value, native_inputs={}),
+    )
+
+    def load_rent(_path, *, source_stream):
+        assert source_bytes("acs_rent_donor", source_stream) == expected[
+            "acs_rent_donor"
+        ]
+        return pd.DataFrame({"rent": [1.0]})
+
+    monkeypatch.setattr(pool_tool, "load_acs_2022_rent_donor", load_rent)
+
+    def parse_puf(
+        _processed_path,
+        _source_year_path,
+        *,
+        processed_puf_stream,
+        source_year_puf_stream,
+    ):
+        assert source_bytes("processed_puf", processed_puf_stream) == expected[
+            "processed_puf"
+        ]
+        assert source_bytes("puf_source_year", source_year_puf_stream) == expected[
+            "puf_source_year"
+        ]
+        return object()
+
+    monkeypatch.setattr(pool_tool, "parse_puf_tax_unit_donor_sources", parse_puf)
+
+    def materialize_puf(_parsed, *, donor_build_summary=None):
+        if donor_build_summary is not None:
+            donor_build_summary["source"] = "brokered-puf"
+        return pd.DataFrame({"tax_unit_id": [1]})
+
+    monkeypatch.setattr(pool_tool, "materialize_puf_tax_unit_donor", materialize_puf)
+
+    loaded = pool_tool._load_bundle_inputs(
+        args,
+        acs_source_manifest=manifest,
+        source_session=sessions[0],
+    )
+
+    assert loaded.asec_raw_stage_checkpoint == {
+        "source": "brokered-asec_raw_stage"
+    }
+    assert loaded.puf_donor_build == {"source": "brokered-puf"}
+    assert set(leases) == set(source_fields)
+    assert len(receipts) == 1
+    assert receipts[0]["status"] == "complete"
+    assert [event["resource"] for event in receipts[0]["events"]] == list(
+        source_fields
+    )
+    for source_id, lease in leases.items():
+        assert lease.closed
+        with pytest.raises(ValueError, match="closed"):
+            lease.read()
+        path = Path(values[source_fields[source_id][0]])
+        assert path.read_bytes() != expected[source_id]
+
+
+def test_bundle_source_snapshots_drive_assembled_resume_donors(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source_ids = (
+        "asec_raw_stage",
+        "acs_household",
+        "acs_person",
+        "acs_rent_donor",
+        "processed_puf",
+        "puf_source_year",
+    )
+    paths: dict[str, Path] = {}
+    sources: list[DeclaredSource] = []
+    for source_id in source_ids:
+        path = tmp_path / source_id
+        payload = f"resume-{source_id}".encode()
+        path.write_bytes(payload)
+        paths[source_id] = path
+        sources.append(
+            DeclaredSource(
+                id=source_id,
+                path=path,
+                sha256=hashlib.sha256(payload).hexdigest(),
+                byte_size=len(payload),
+            )
+        )
+    receipts: list[Mapping[str, object]] = []
+    broker_session = BrokerSession(
+        owner=BrokerOwner("source_stage", "declared_source_preflight"),
+        determinism="deterministic",
+        effects=("declared_source_read",),
+        protocol_id="legacy-v1",
+        protocol_sha256="d" * 64,
+        sources=tuple(sources),
+        run_provenance_identity=_bundle_provenance_fixture().to_wire(),
+    )
+    source_session = pool_tool._BundleSourceSnapshotSession(
+        session=broker_session,
+        source_ids=source_ids,
+        receipt_sink=receipts.append,
+    )
+    captured: dict[str, object] = {}
+
+    def load_rent(_path, *, source_stream):
+        captured["rent_lease"] = source_stream
+        assert source_stream.read() == b"resume-acs_rent_donor"
+        return pd.DataFrame({"rent": [1.0]})
+
+    monkeypatch.setattr(pool_tool, "load_acs_2022_rent_donor", load_rent)
+
+    parsed = object()
+
+    def parse_puf(
+        _processed_path,
+        _source_year_path,
+        *,
+        processed_puf_stream,
+        source_year_puf_stream,
+    ):
+        captured["processed_lease"] = processed_puf_stream
+        captured["source_year_lease"] = source_year_puf_stream
+        assert processed_puf_stream.read() == b"resume-processed_puf"
+        assert source_year_puf_stream.read() == b"resume-puf_source_year"
+        return parsed
+
+    monkeypatch.setattr(pool_tool, "parse_puf_tax_unit_donor_sources", parse_puf)
+    expected_puf = pd.DataFrame({"tax_unit_id": [1]})
+    monkeypatch.setattr(
+        pool_tool,
+        "materialize_puf_tax_unit_donor",
+        lambda actual: (
+            expected_puf
+            if actual is parsed
+            else (_ for _ in ()).throw(AssertionError("wrong parsed PUF"))
+        ),
+    )
+    args = SimpleNamespace(
+        acs_rent_h5=paths["acs_rent_donor"],
+        puf_h5=paths["processed_puf"],
+        puf_source_year_csv=paths["puf_source_year"],
+    )
+
+    rent, puf = pool_tool._load_bundle_resume_donors(
+        args,
+        source_session=source_session,
+    )
+
+    assert rent.to_dict("list") == {"rent": [1.0]}
+    assert puf is expected_puf
+    assert broker_session.sealed
+    assert len(receipts) == 1
+    assert receipts[0]["status"] == "complete"
+    assert [event["resource"] for event in receipts[0]["events"]] == list(source_ids)
+    assert all(lease.closed for lease in captured.values())
+
+
+def test_bundle_source_parser_failure_seals_aborted_receipt(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "source.bin"
+    path.write_bytes(b"source")
+    declared = DeclaredSource(
+        id="source",
+        path=path,
+        sha256=hashlib.sha256(b"source").hexdigest(),
+        byte_size=6,
+    )
+    receipts: list[Mapping[str, object]] = []
+    broker_session = BrokerSession(
+        owner=BrokerOwner("source_stage", "declared_source_preflight"),
+        determinism="deterministic",
+        effects=("declared_source_read",),
+        protocol_id="legacy-v1",
+        protocol_sha256="d" * 64,
+        sources=(declared,),
+        run_provenance_identity=_bundle_provenance_fixture().to_wire(),
+    )
+    source_session = pool_tool._BundleSourceSnapshotSession(
+        session=broker_session,
+        source_ids=("source",),
+        receipt_sink=receipts.append,
+    )
+
+    with pytest.raises(RuntimeError, match="parser failed"):
+        with source_session.open_snapshots() as snapshots:
+            assert snapshots["source"].read() == b"source"
+            raise RuntimeError("parser failed")
+
+    assert broker_session.sealed
+    assert receipts[0]["status"] == "aborted"
+
+
+def test_bundle_source_preflight_refuses_compiler_declared_size_drift(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source_fields = (
+        ("asec_raw_stage", "asec_raw_stage_h5", "asec_raw_stage_h5_sha256"),
+        ("acs_household", "acs_household_zip", "acs_household_zip_sha256"),
+        ("acs_person", "acs_person_zip", "acs_person_zip_sha256"),
+        ("acs_rent_donor", "acs_rent_h5", "acs_rent_h5_sha256"),
+        ("processed_puf", "puf_h5", "puf_h5_sha256"),
+        ("puf_source_year", "puf_source_year_csv", "puf_source_year_csv_sha256"),
+    )
+    argument_values: dict[str, object] = {}
+    rows: list[DeclaredSourcePin] = []
+    for source_id, path_field, digest_field in source_fields:
+        path = tmp_path / "inputs" / source_id
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(source_id.encode())
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        argument_values[path_field] = path
+        argument_values[digest_field] = digest
+        rows.append(
+            DeclaredSourcePin(
+                id=source_id,
+                role=source_id,
+                sha256=digest,
+                byte_size=path.stat().st_size
+                + (1 if source_id == "processed_puf" else 0),
+                loader="kernel:fixture_source_loader",
+                vintages=(),
+            )
+        )
+    args = SimpleNamespace(**argument_values)
+    pins = DeclaredSourcePins(1, "f" * 64, tuple(rows))
+    source_authority = object()
+    runtime_plan = SimpleNamespace(
+        sources=source_authority,
+        seed_stream_map=SimpleNamespace(
+            protocol_id="legacy-v1",
+            implementation_sha256="a" * 64,
+        ),
+        execution=SimpleNamespace(
+            checkpoints=tuple(
+                SimpleNamespace(id=stage)
+                for stage in ("assembled", "transferred", "simulated")
+            )
+        ),
+    )
+    monkeypatch.setattr(pool_tool, "compile_declared_source_pins", lambda _a: pins)
+    monkeypatch.setattr(
+        pool_tool,
+        "materialize_acs_source_manifest",
+        lambda _a: object(),
+    )
+    provenance = _bundle_provenance_fixture().to_wire()
+
+    with pytest.raises(ValueError, match="processed_puf.*verified identity"):
+        pool_tool._verify_inputs(
+            args,
+            pool_tool._stacked_output_paths(tmp_path / "pool.h5"),
+            bundle_plan=runtime_plan,
+            run_provenance_identity=provenance,
+        )
 
 
 @pytest.mark.parametrize("config_authority", ["constants_adapter", "bundle"])
@@ -2021,7 +3079,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "a57b484c8993ec81e1c2c0edb9ef29dbae33c17051bdec58ed710774d73906b2",
+            "spec_sha256": "1a25c5c55609a7a565da7a1bf7f80a5c71fabdd92d20231af9c6804a3efd0c68",
         },
     }
 
@@ -2149,7 +3207,7 @@ def test_constants_adapter_failure_receipt_preserves_requested_resolution_state(
         monkeypatch.setattr(
             pool_tool,
             "_stacked_run_config",
-            lambda _args: (_ for _ in ()).throw(
+            lambda _args, **_kwargs: (_ for _ in ()).throw(
                 RuntimeError("fixture adapter resolution failure")
             ),
         )
@@ -2202,7 +3260,7 @@ def test_constants_adapter_post_resolution_failure_receipt_retains_binding(
     monkeypatch.setattr(
         pool_tool,
         "_stacked_run_config",
-        lambda _args: resolved_config,
+        lambda _args, **_kwargs: resolved_config,
     )
 
     with pytest.raises(RuntimeError, match="fixture stacked error"):
@@ -2231,7 +3289,7 @@ def test_constants_adapter_fixture_checkpoints_are_byte_identical_and_only_recei
         "country": "us",
         "schema_id": "country_spec",
         "schema_version": 1,
-        "spec_sha256": "a57b484c8993ec81e1c2c0edb9ef29dbae33c17051bdec58ed710774d73906b2",
+        "spec_sha256": "1a25c5c55609a7a565da7a1bf7f80a5c71fabdd92d20231af9c6804a3efd0c68",
     }
 
     def run_fixture(root: Path, *, config_authority: str) -> dict[str, object]:
@@ -2264,8 +3322,18 @@ def test_constants_adapter_fixture_checkpoints_are_byte_identical_and_only_recei
             patch.setattr(
                 pool_tool,
                 "_stacked_run_config",
-                lambda args: (
-                    {"config_authority": "constants"}
+                lambda args, **_kwargs: (
+                    {
+                        "config_authority": "constants",
+                        "spec_binding_status": "absent",
+                        "identity_generation": 0,
+                        "run_provenance_identity": (
+                            pool_tool._constants_run_provenance_identity(
+                                args,
+                                code_pin="fixture-code-pin",
+                            ).to_wire()
+                        ),
+                    }
                     if args.config_authority == "constants"
                     else {
                         "config_authority": "constants_adapter",
@@ -2306,7 +3374,17 @@ def test_constants_adapter_fixture_checkpoints_are_byte_identical_and_only_recei
     assert constants["checkpoint_sha256"] == adapter["checkpoint_sha256"]
     constants_receipt = dict(constants["receipt"])
     adapter_receipt = dict(adapter["receipt"])
-    assert constants_receipt.pop("run_config") == {"config_authority": "constants"}
+    constants_run_config = constants_receipt.pop("run_config")
+    assert set(constants_run_config) == {
+        "config_authority",
+        "spec_binding_status",
+        "identity_generation",
+        "run_provenance_identity",
+    }
+    assert constants_run_config["config_authority"] == "constants"
+    assert constants_run_config["spec_binding_status"] == "absent"
+    assert constants_run_config["identity_generation"] == 0
+    assert constants_run_config["run_provenance_identity"]["identity_generation"] == 0
     assert adapter_receipt.pop("run_config") == {
         "config_authority": "constants_adapter",
         "spec_binding_status": "resolved",

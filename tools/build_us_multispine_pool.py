@@ -48,12 +48,14 @@ import subprocess
 import time
 import uuid
 from collections.abc import Callable, Iterator, Mapping
+from contextlib import ExitStack, contextmanager
 from dataclasses import asdict, dataclass, field, fields, is_dataclass, replace
 from datetime import UTC, datetime
 from enum import Enum
 from importlib.metadata import PackageNotFoundError, version
 from importlib.resources import files
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -73,8 +75,10 @@ from microcosm.build.gates import (
 from microcosm.build.logbook import record_build_attempt
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
 from microcosm.build.spec_engine import (
+    RunProvenanceIdentity,
     RuntimeAuthorities,
     assert_legacy_payload_equal,
+    build_run_provenance_identity,
     compile_runtime_authorities,
     compile_spec,
     compile_to_legacy_payload,
@@ -82,6 +86,11 @@ from microcosm.build.spec_engine import (
 )
 from microcosm.build.spec_engine.battery_semantics import (
     project_battery_legacy_contract,
+)
+from microcosm.build.spec_engine.brokers import (
+    BrokerOwner,
+    BrokerSession,
+    FileReadLease,
 )
 from microcosm.build.us_runtime.acs_income_universe import (
     acs_pums_earnings_universe_contract_identity,
@@ -104,6 +113,9 @@ from microcosm.build.us_runtime.acs_transfer import (
 from microcosm.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankStore
 from microcosm.build.us_runtime.asec_checkpoint import (
     load_asec_raw_stage_checkpoint,
+)
+from microcosm.build.us_runtime.checkpoint_authority import (
+    materialize_stacked_checkpoint_base_identity,
 )
 from microcosm.build.us_runtime.h5_io import (
     US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
@@ -144,13 +156,19 @@ from microcosm.build.us_runtime.multispine_pool import (
 from microcosm.build.us_runtime.operator_boundary import (
     assert_operator_free_source_frame,
 )
+from microcosm.build.us_runtime.pool_runtime_plan import USPoolRuntimePlan
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION,
     puf_capital_gains_tail_support_contract_identity,
     transfer_puf_capital_gains_tail,
     validate_puf_capital_gains_tail_manifest,
 )
-from microcosm.build.us_runtime.puf_donor_io import load_puf_tax_unit_donor
+from microcosm.build.us_runtime.puf_donor_io import (
+    ParsedPufTaxUnitDonorSources,
+    load_puf_tax_unit_donor,
+    materialize_puf_tax_unit_donor,
+    parse_puf_tax_unit_donor_sources,
+)
 from microcosm.build.us_runtime.puf_qrf_chain import (
     PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
     PRIMARY_QRF_MANIFEST_FILENAME,
@@ -167,6 +185,13 @@ from microcosm.build.us_runtime.qbi_inputs import (
     us_qbi_post_reconciliation_person_columns,
     us_qbi_reconciliation_contract_identity,
     validate_us_qbi_reconciliation_live_output,
+)
+from microcosm.build.us_runtime.spec_authority import (
+    compile_us_spec_authority,
+)
+from microcosm.build.us_runtime.spec_materializers import (
+    compile_declared_source_pins,
+    materialize_acs_source_manifest,
 )
 from microcosm.build.us_runtime.stacked_battery_contract import (
     build_live_stacked_battery_contract,
@@ -393,6 +418,76 @@ class _VerifiedInput:
         }
 
 
+class _BundleSourceSnapshotSession:
+    """Own one compiler-granted source session through real parser reads."""
+
+    def __init__(
+        self,
+        *,
+        session: BrokerSession,
+        source_ids: tuple[str, ...],
+        receipt_sink: Callable[[Mapping[str, object]], None] | None,
+    ) -> None:
+        self._session = session
+        self._source_ids = source_ids
+        self._receipt_sink = receipt_sink
+        self._scope_open = False
+        self._parsing_finished = False
+        self._receipt_emitted = False
+
+    @property
+    def sealed(self) -> bool:
+        return self._session.sealed
+
+    def _emit_receipt(self) -> None:
+        if self._receipt_emitted:
+            return
+        if self._receipt_sink is not None:
+            self._receipt_sink(self._session.receipt.to_wire())
+        self._receipt_emitted = True
+
+    @contextmanager
+    def open_snapshots(self) -> Iterator[Mapping[str, FileReadLease]]:
+        if self.sealed:
+            raise ValueError("Bundle source snapshot session is already sealed.")
+        if self._scope_open or self._parsing_finished:
+            raise ValueError("Bundle source snapshots may be opened exactly once.")
+        self._scope_open = True
+        try:
+            _preload_bundle_source_parsers()
+            with self._session.activate(), ExitStack() as stack:
+                snapshots = {
+                    source_id: stack.enter_context(
+                        self._session.files.open_snapshot(source_id)
+                    )
+                    for source_id in self._source_ids
+                }
+                yield MappingProxyType(snapshots)
+        except BaseException:
+            self.abort()
+            raise
+        else:
+            self._parsing_finished = True
+        finally:
+            self._scope_open = False
+
+    def complete(self) -> None:
+        if not self._parsing_finished:
+            raise ValueError(
+                "Bundle source session cannot complete before parser reads finish."
+            )
+        try:
+            self._session.seal()
+        finally:
+            if self._session.sealed:
+                self._emit_receipt()
+
+    def abort(self) -> None:
+        if not self._session.sealed:
+            self._session.seal(status="aborted")
+        self._emit_receipt()
+
+
 @dataclass(frozen=True)
 class _LoadedInputs:
     asec: Frame
@@ -403,6 +498,19 @@ class _LoadedInputs:
     acs_build: Mapping[str, object]
     acs_native_inputs: Mapping[str, Mapping[str, Any]]
     puf_donor_build: Mapping[str, object]
+
+
+@dataclass(frozen=True)
+class _ParsedBundleInputs:
+    """All source bytes parsed while the source broker remains active."""
+
+    asec: Frame
+    acs: Frame
+    acs_rent_donor: pd.DataFrame
+    puf_sources: ParsedPufTaxUnitDonorSources
+    asec_raw_stage_checkpoint: Mapping[str, object]
+    acs_build: Mapping[str, object]
+    acs_native_inputs: Mapping[str, Mapping[str, Any]]
 
 
 def _sha256_argument(value: str) -> str:
@@ -739,9 +847,21 @@ def _verify_acs_file(
 def _verify_inputs(
     args: argparse.Namespace,
     outputs: PoolBuildOutputs,
+    *,
+    bundle_plan: USPoolRuntimePlan | None = None,
+    run_provenance_identity: Mapping[str, object] | None = None,
+    broker_receipt_sink: Callable[[Mapping[str, object]], None] | None = None,
+    source_snapshot_session_sink: Callable[
+        [_BundleSourceSnapshotSession], None
+    ]
+    | None = None,
 ) -> tuple[dict[str, _VerifiedInput], AcsSourceManifest]:
     source_paths = _configured_source_paths(args)
-    _validate_checkpoint_path_layout(outputs, source_paths=source_paths)
+    _validate_checkpoint_path_layout(
+        outputs,
+        source_paths=source_paths,
+        runtime_plan=bundle_plan,
+    )
 
     output_paths = {
         outputs.pool_h5.resolve(),
@@ -751,6 +871,37 @@ def _verify_inputs(
     collisions = sorted(str(path) for path in source_paths if path in output_paths)
     if collisions:
         raise ValueError(f"Pool outputs must not overwrite inputs: {collisions}.")
+
+    if bundle_plan is not None:
+        if run_provenance_identity is None:
+            raise ValueError(
+                "Bundle source preflight requires its run provenance identity."
+            )
+        if source_snapshot_session_sink is None:
+            return _verify_bundle_inputs(
+                args,
+                plan=bundle_plan,
+                run_provenance_identity=run_provenance_identity,
+                broker_receipt_sink=broker_receipt_sink,
+            )
+        verified, manifest, snapshot_session = _prepare_bundle_inputs(
+            args,
+            plan=bundle_plan,
+            run_provenance_identity=run_provenance_identity,
+            broker_receipt_sink=broker_receipt_sink,
+        )
+        source_snapshot_session_sink(snapshot_session)
+        return verified, manifest
+    if run_provenance_identity is not None:
+        raise ValueError(
+            "Source preflight provenance is valid only with bundle authority."
+        )
+    if broker_receipt_sink is not None:
+        raise ValueError("A broker receipt sink is valid only with bundle authority.")
+    if source_snapshot_session_sink is not None:
+        raise ValueError(
+            "A source snapshot session sink is valid only with bundle authority."
+        )
 
     acs_source_manifest = load_acs_source_manifest()
     if args.acs_rent_h5_sha256 != ACS_2022_RENT_ARTIFACT_SHA256:
@@ -796,6 +947,116 @@ def _verify_inputs(
     return verified, acs_source_manifest
 
 
+def _verify_bundle_inputs(
+    args: argparse.Namespace,
+    *,
+    plan: USPoolRuntimePlan,
+    run_provenance_identity: Mapping[str, object],
+    broker_receipt_sink: Callable[[Mapping[str, object]], None] | None = None,
+) -> tuple[dict[str, _VerifiedInput], AcsSourceManifest]:
+    """Eager compatibility wrapper over the production parser-session path."""
+
+    verified, manifest, snapshot_session = _prepare_bundle_inputs(
+        args,
+        plan=plan,
+        run_provenance_identity=run_provenance_identity,
+        broker_receipt_sink=broker_receipt_sink,
+    )
+    with snapshot_session.open_snapshots():
+        pass
+    snapshot_session.complete()
+    return verified, manifest
+
+
+def _prepare_bundle_inputs(
+    args: argparse.Namespace,
+    *,
+    plan: USPoolRuntimePlan,
+    run_provenance_identity: Mapping[str, object],
+    broker_receipt_sink: Callable[[Mapping[str, object]], None] | None = None,
+) -> tuple[
+    dict[str, _VerifiedInput],
+    AcsSourceManifest,
+    _BundleSourceSnapshotSession,
+]:
+    """Bind all six compiler grants without reopening any source path later."""
+
+    pins = compile_declared_source_pins(plan.sources)
+    acs_source_manifest = materialize_acs_source_manifest(plan.sources)
+    specifications = (
+        (
+            "asec_raw_stage",
+            "ASEC raw-stage checkpoint",
+            args.asec_raw_stage_h5,
+            args.asec_raw_stage_h5_sha256,
+        ),
+        (
+            "acs_household",
+            "ACS household archive",
+            args.acs_household_zip,
+            args.acs_household_zip_sha256,
+        ),
+        (
+            "acs_person",
+            "ACS person archive",
+            args.acs_person_zip,
+            args.acs_person_zip_sha256,
+        ),
+        (
+            "acs_rent_donor",
+            "ACS rent donor",
+            args.acs_rent_h5,
+            args.acs_rent_h5_sha256,
+        ),
+        (
+            "processed_puf",
+            "processed PUF H5",
+            args.puf_h5,
+            args.puf_h5_sha256,
+        ),
+        (
+            "puf_source_year",
+            "source-year PUF CSV",
+            args.puf_source_year_csv,
+            args.puf_source_year_csv_sha256,
+        ),
+    )
+    declared_sources = tuple(
+        pins.bind(
+            source_id,
+            path,
+            supplied_sha256=expected_sha256,
+        )
+        for source_id, _role, path, expected_sha256 in specifications
+    )
+    session = BrokerSession(
+        owner=BrokerOwner("source_stage", "declared_source_preflight"),
+        determinism="deterministic",
+        effects=("declared_source_read",),
+        protocol_id=plan.seed_stream_map.protocol_id,
+        protocol_sha256=plan.seed_stream_map.implementation_sha256,
+        sources=declared_sources,
+        run_provenance_identity=run_provenance_identity,
+    )
+    declared_by_id = {source.id: source for source in declared_sources}
+    verified = {
+        source_id: _VerifiedInput(
+            role=role,
+            path=Path(path),
+            expected_sha256=expected_sha256,
+            actual_sha256=declared_by_id[source_id].sha256,
+            size_bytes=declared_by_id[source_id].byte_size,
+        )
+        for source_id, role, path, expected_sha256 in specifications
+    }
+    snapshot_session = _BundleSourceSnapshotSession(
+        session=session,
+        source_ids=tuple(source_id for source_id, *_rest in specifications),
+        receipt_sink=broker_receipt_sink,
+    )
+    return verified, acs_source_manifest, snapshot_session
+
+
 def _configured_source_paths(args: argparse.Namespace) -> set[Path]:
     """Resolve the six immutable input locations without opening them."""
 
@@ -813,6 +1074,7 @@ def _validate_checkpoint_path_layout(
     outputs: PoolBuildOutputs,
     *,
     source_paths: set[Path],
+    runtime_plan: USPoolRuntimePlan | None = None,
 ) -> None:
     """Reject only paths the checkpoint store can actually overwrite."""
 
@@ -821,7 +1083,7 @@ def _validate_checkpoint_path_layout(
     acs_transfer_root = (checkpoint_root / "acs-transfer").resolve()
     stage_files = {
         (checkpoint_root / filename).resolve()
-        for filename in _POOL_STAGE_CHECKPOINT_FILENAMES.values()
+        for filename in _stacked_checkpoint_filenames(runtime_plan).values()
     }
     stage_files.update(
         path.with_suffix(".manifest.json") for path in tuple(stage_files)
@@ -887,6 +1149,121 @@ def _load_inputs(
         acs_native_inputs=mapped_acs.native_inputs,
         puf_donor_build=donor_build,
     )
+
+
+def _preload_bundle_source_parsers() -> None:
+    """Resolve lazy parser imports before the ambient-access guard is active."""
+
+    import h5py
+    from zipfile import ZipFile
+
+    _ = (h5py.File, ZipFile, pd.read_csv)
+
+
+def _parse_bundle_inputs(
+    args: argparse.Namespace,
+    *,
+    acs_source_manifest: AcsSourceManifest,
+    snapshots: Mapping[str, FileReadLease],
+) -> _ParsedBundleInputs:
+    asec, asec_raw_stage_checkpoint = load_asec_raw_stage_checkpoint(
+        args.asec_raw_stage_h5,
+        source_stream=snapshots["asec_raw_stage"],
+    )
+    acs_source = AcsPumsSource(
+        household_zip=args.acs_household_zip,
+        person_zip=args.acs_person_zip,
+        vintage=acs_source_manifest.vintage,
+    )
+    acs_frame, acs_build = build_acs_pums_unit_frame(
+        acs_source,
+        household_stream=snapshots["acs_household"],
+        person_stream=snapshots["acs_person"],
+    )
+    mapped_acs = map_acs_native_inputs(acs_frame)
+    acs_rent_donor = load_acs_2022_rent_donor(
+        args.acs_rent_h5,
+        source_stream=snapshots["acs_rent_donor"],
+    )
+    puf_sources = parse_puf_tax_unit_donor_sources(
+        args.puf_h5,
+        args.puf_source_year_csv,
+        processed_puf_stream=snapshots["processed_puf"],
+        source_year_puf_stream=snapshots["puf_source_year"],
+    )
+    return _ParsedBundleInputs(
+        asec=asec,
+        acs=mapped_acs.frame,
+        acs_rent_donor=acs_rent_donor,
+        puf_sources=puf_sources,
+        asec_raw_stage_checkpoint=asec_raw_stage_checkpoint,
+        acs_build=acs_build,
+        acs_native_inputs=mapped_acs.native_inputs,
+    )
+
+
+def _materialize_bundle_inputs(parsed: _ParsedBundleInputs) -> _LoadedInputs:
+    donor_build: dict[str, object] = {}
+    donor = materialize_puf_tax_unit_donor(
+        parsed.puf_sources,
+        donor_build_summary=donor_build,
+    )
+    return _LoadedInputs(
+        asec=parsed.asec,
+        acs=parsed.acs,
+        acs_rent_donor=parsed.acs_rent_donor,
+        puf_donor=donor,
+        asec_raw_stage_checkpoint=parsed.asec_raw_stage_checkpoint,
+        acs_build=parsed.acs_build,
+        acs_native_inputs=parsed.acs_native_inputs,
+        puf_donor_build=donor_build,
+    )
+
+
+def _load_bundle_inputs(
+    args: argparse.Namespace,
+    *,
+    acs_source_manifest: AcsSourceManifest,
+    source_session: _BundleSourceSnapshotSession,
+) -> _LoadedInputs:
+    try:
+        with source_session.open_snapshots() as snapshots:
+            parsed = _parse_bundle_inputs(
+                args,
+                acs_source_manifest=acs_source_manifest,
+                snapshots=snapshots,
+            )
+        loaded = _materialize_bundle_inputs(parsed)
+        source_session.complete()
+        return loaded
+    except BaseException:
+        source_session.abort()
+        raise
+
+
+def _load_bundle_resume_donors(
+    args: argparse.Namespace,
+    *,
+    source_session: _BundleSourceSnapshotSession,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    try:
+        with source_session.open_snapshots() as snapshots:
+            acs_rent_donor = load_acs_2022_rent_donor(
+                args.acs_rent_h5,
+                source_stream=snapshots["acs_rent_donor"],
+            )
+            puf_sources = parse_puf_tax_unit_donor_sources(
+                args.puf_h5,
+                args.puf_source_year_csv,
+                processed_puf_stream=snapshots["processed_puf"],
+                source_year_puf_stream=snapshots["puf_source_year"],
+            )
+        puf_donor = materialize_puf_tax_unit_donor(puf_sources)
+        source_session.complete()
+        return acs_rent_donor, puf_donor
+    except BaseException:
+        source_session.abort()
+        raise
 
 
 def _load_puf_donor(
@@ -1049,7 +1426,125 @@ def _legacy_pool_checkpoint_base_identity(
     return {**identity, "pool_code": pool_code}
 
 
-def _stacked_rung(sample_fraction: float) -> str:
+def _stacked_checkpoint_order(
+    runtime_plan: USPoolRuntimePlan | None,
+) -> tuple[str, ...]:
+    if runtime_plan is None:
+        return tuple(POOL_CHECKPOINT_STAGE_ORDER)
+    return tuple(checkpoint.id for checkpoint in runtime_plan.execution.checkpoints)
+
+
+def _stacked_checkpoint_candidate_order(
+    runtime_plan: USPoolRuntimePlan | None,
+) -> tuple[str, ...]:
+    if runtime_plan is None:
+        return tuple(reversed(POOL_CHECKPOINT_STAGE_ORDER))
+    candidate_order = runtime_plan.execution.resume_predicate.get("candidate_order")
+    if not isinstance(candidate_order, tuple) or not all(
+        isinstance(stage, str) and stage for stage in candidate_order
+    ):
+        raise ValueError(
+            "Bundle checkpoint resume predicate has no sealed candidate order."
+        )
+    return candidate_order
+
+
+def _stacked_checkpoint_filenames(
+    runtime_plan: USPoolRuntimePlan | None,
+) -> Mapping[str, str]:
+    if runtime_plan is None:
+        return _POOL_STAGE_CHECKPOINT_FILENAMES
+    return {
+        stage: f"{stage}.checkpoint.h5"
+        for stage in _stacked_checkpoint_order(runtime_plan)
+    }
+
+
+def _stacked_pipeline(runtime_plan: USPoolRuntimePlan | None) -> str:
+    if runtime_plan is None:
+        return _STACKED_PIPELINE
+    pipeline = runtime_plan.execution.pipeline.get("id")
+    if not isinstance(pipeline, str) or not pipeline:
+        raise ValueError("Bundle execution authority has no pipeline id.")
+    return pipeline
+
+
+def _stacked_checkpoint_static_value(
+    runtime_plan: USPoolRuntimePlan,
+    field_name: str,
+) -> object:
+    if field_name not in runtime_plan.execution.checkpoint_static_components:
+        raise ValueError(f"Bundle checkpoint authority has no {field_name!r} field.")
+    return runtime_plan.execution.checkpoint_static_components[field_name]
+
+
+def _stacked_period(runtime_plan: USPoolRuntimePlan | None) -> int:
+    if runtime_plan is None:
+        return POOL_TIME_PERIOD
+    period = _stacked_checkpoint_static_value(runtime_plan, "period")
+    if isinstance(period, bool) or not isinstance(period, int):
+        raise ValueError("Bundle checkpoint authority has an invalid period.")
+    return period
+
+
+def _stacked_model_seed(runtime_plan: USPoolRuntimePlan | None) -> int:
+    if runtime_plan is None:
+        return POOL_RANDOM_SEED
+    model_seed = _stacked_checkpoint_static_value(runtime_plan, "model_seed")
+    if isinstance(model_seed, bool) or not isinstance(model_seed, int):
+        raise ValueError("Bundle checkpoint authority has an invalid model seed.")
+    return model_seed
+
+
+def _stacked_operator_order(
+    runtime_plan: USPoolRuntimePlan | None,
+) -> list[str]:
+    if runtime_plan is None:
+        return list(US_STACKED_POOL_OPERATOR_ORDER)
+    return [operation.id for operation in runtime_plan.execution.operations]
+
+
+def _stacked_authority(
+    runtime_plan: USPoolRuntimePlan | None,
+) -> dict[str, object]:
+    if runtime_plan is None:
+        return stacked_spine_authority_receipt()
+    authority = _json_ready(runtime_plan.execution.stacked_authority)
+    if not isinstance(authority, dict):  # pragma: no cover - plan invariant
+        raise TypeError("Bundle stacked authority must normalize to an object.")
+    return authority
+
+
+def _stacked_publication_runtime(
+    runtime_plan: USPoolRuntimePlan,
+) -> Mapping[str, object]:
+    publication = runtime_plan.publication.runtime
+    if not isinstance(publication, Mapping):  # pragma: no cover - plan invariant
+        raise TypeError("Bundle publication authority must be an object.")
+    return publication
+
+
+def _stacked_rung(
+    sample_fraction: float,
+    *,
+    runtime_plan: USPoolRuntimePlan | None = None,
+) -> str:
+    if runtime_plan is not None:
+        publication = _stacked_publication_runtime(runtime_plan)
+        rows = publication.get("rung_fractions")
+        if not isinstance(rows, tuple):
+            raise ValueError("Bundle publication authority has no sealed rung rows.")
+        matches = [
+            row.get("token")
+            for row in rows
+            if isinstance(row, Mapping)
+            and row.get("fraction") == float(sample_fraction)
+        ]
+        if len(matches) != 1 or not isinstance(matches[0], str) or not matches[0]:
+            raise ValueError(
+                "Stacked sample_fraction must name exactly one bundle-declared rung."
+            )
+        return matches[0]
     try:
         return _STACKED_SAMPLE_RUNG_TOKENS[float(sample_fraction)]
     except KeyError as exc:
@@ -1099,8 +1594,29 @@ def _stacked_checkpoint_base_identity(
     clone_attachment_fraction: float,
     clone_attachment_seed: int,
     policyengine_us_version: str | None = None,
+    runtime_plan: USPoolRuntimePlan | None = None,
 ) -> dict[str, object]:
     """Bind #599/#608 caches to the live stack and both scale controls."""
+
+    if runtime_plan is not None:
+        if policyengine_us_version is not None:
+            expected_version = _stacked_checkpoint_static_value(
+                runtime_plan,
+                "policyengine_us_version",
+            )
+            if policyengine_us_version != expected_version:
+                raise ValueError(
+                    "Explicit PolicyEngine US version differs from bundle authority."
+                )
+        return materialize_stacked_checkpoint_base_identity(
+            runtime_plan,
+            input_pins=_verified_input_pins_payload(verified_inputs),
+            stack_receipt=stack_receipt,
+            sample_fraction=sample_fraction,
+            sample_seed=sample_seed,
+            clone_attachment_fraction=clone_attachment_fraction,
+            clone_attachment_seed=clone_attachment_seed,
+        )
 
     fraction_token = _stacked_rung(sample_fraction)
     if isinstance(sample_seed, bool) or sample_seed < 0:
@@ -1194,23 +1710,53 @@ def _stacked_checkpoint_base_identity(
     }
 
 
-def _configured_stacked_identity(args: argparse.Namespace) -> dict[str, object]:
+def _configured_stacked_identity(
+    args: argparse.Namespace,
+    *,
+    runtime_plan: USPoolRuntimePlan | None = None,
+    run_config: Mapping[str, object] | None = None,
+) -> dict[str, object]:
     """Identity available before input verification for terminal error rows."""
 
-    fraction_token = _stacked_rung(args.sample_fraction)
-    return {
+    fraction_token = _stacked_rung(
+        args.sample_fraction,
+        runtime_plan=runtime_plan,
+    )
+    result = {
         "artifact_kind": "populace_us_stacked_pool_configured_identity",
         "schema_version": 1,
-        "pipeline": _STACKED_PIPELINE,
-        "period": POOL_TIME_PERIOD,
+        "pipeline": _stacked_pipeline(runtime_plan),
+        "period": _stacked_period(runtime_plan),
         "expected_input_pins_digest": _configured_input_pins_digest(args),
         "sample_fraction": float(args.sample_fraction),
         "fraction_token": fraction_token,
         "sample_seed": args.sample_seed,
         "clone_attachment_fraction": float(args.clone_attachment_fraction),
         "clone_attachment_seed": args.clone_attachment_seed,
-        "stacked_authority": stacked_spine_authority_receipt(),
+        "stacked_authority": _stacked_authority(runtime_plan),
     }
+    if run_config is not None:
+        receipt = _stacked_run_config_receipt(run_config)
+        authority_mode = receipt.get("config_authority")
+        if authority_mode == "constants_adapter":
+            return result
+        if authority_mode not in {"constants", "bundle"}:
+            raise ValueError("Stacked configured identity has an unknown authority.")
+        generation = receipt.get("identity_generation")
+        provenance = receipt.get("run_provenance_identity")
+        if (
+            isinstance(generation, bool)
+            or not isinstance(generation, int)
+            or generation not in {0, 1}
+            or not isinstance(provenance, Mapping)
+            or provenance.get("identity_generation") != generation
+        ):
+            raise ValueError(
+                "Stacked configured identity requires a coherent run provenance."
+            )
+        result["identity_generation"] = generation
+        result["spec_binding"] = provenance.get("spec_binding")
+    return result
 
 
 def _stacked_checkpoint_root(
@@ -1233,6 +1779,8 @@ def _discover_stacked_checkpoint_identity(
     sample_seed: int,
     clone_attachment_fraction: float,
     clone_attachment_seed: int,
+    runtime_plan: USPoolRuntimePlan | None = None,
+    run_config: Mapping[str, object] | None = None,
 ) -> dict[str, object] | None:
     """Recover a current live-stack identity before loading survey sources.
 
@@ -1245,8 +1793,20 @@ def _discover_stacked_checkpoint_identity(
     """
 
     root = Path(checkpoint_root)
-    for stage in reversed(POOL_CHECKPOINT_STAGE_ORDER):
-        checkpoint_path = root / _POOL_STAGE_CHECKPOINT_FILENAMES[stage]
+    expected_run_config = (
+        None if run_config is None else _stacked_run_config_receipt(run_config)
+    )
+    if runtime_plan is not None and (
+        expected_run_config is None
+        or expected_run_config.get("identity_generation") != 1
+    ):
+        raise ValueError(
+            "Bundle checkpoint discovery requires generation-one run provenance."
+        )
+    checkpoint_order = _stacked_checkpoint_order(runtime_plan)
+    checkpoint_filenames = _stacked_checkpoint_filenames(runtime_plan)
+    for stage in _stacked_checkpoint_candidate_order(runtime_plan):
+        checkpoint_path = root / checkpoint_filenames[stage]
         manifest_path = checkpoint_path.with_suffix(".manifest.json")
         if not manifest_path.is_file():
             continue
@@ -1262,12 +1822,14 @@ def _discover_stacked_checkpoint_identity(
                 or manifest.get("stage") != stage
             ):
                 raise ValueError("unsupported checkpoint manifest binding")
+            if manifest.get("run_config") != expected_run_config:
+                raise ValueError("checkpoint manifest run provenance changed")
             stage_identity = manifest.get("identity")
             if not isinstance(stage_identity, Mapping):
                 raise ValueError("checkpoint manifest identity is not an object")
             if stage_identity.get("stage") != stage or stage_identity.get(
                 "stage_index"
-            ) != POOL_CHECKPOINT_STAGE_ORDER.index(stage):
+            ) != checkpoint_order.index(stage):
                 raise ValueError("checkpoint manifest stage identity changed")
             base_identity = dict(stage_identity)
             del base_identity["stage"]
@@ -1285,6 +1847,7 @@ def _discover_stacked_checkpoint_identity(
                 sample_seed=sample_seed,
                 clone_attachment_fraction=clone_attachment_fraction,
                 clone_attachment_seed=clone_attachment_seed,
+                runtime_plan=runtime_plan,
             )
             if base_identity != expected:
                 raise ValueError("checkpoint base identity is stale")
@@ -1326,18 +1889,48 @@ def _new_stacked_release_id(
     realized_acs_households: int,
     timestamp: datetime | None = None,
     nonce: str | None = None,
+    runtime_plan: USPoolRuntimePlan | None = None,
 ) -> str:
-    fraction_token = _stacked_rung(sample_fraction)
     instant = datetime.now(UTC) if timestamp is None else timestamp.astimezone(UTC)
     suffix = uuid.uuid4().hex[:8] if nonce is None else nonce
     if not re.fullmatch(r"[0-9a-f]{8}", suffix):
         raise ValueError("Stacked release nonce must be eight lowercase hex digits.")
-    release_id = (
-        f"{_STACKED_LEGACY_RELEASE_LINE}-stacked-{fraction_token}-s{sample_seed}-"
-        f"asec{realized_asec_households}-acs{realized_acs_households}-"
-        f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{suffix}"
+
+    if runtime_plan is None:
+        fraction_token = _stacked_rung(sample_fraction)
+        release_id = (
+            f"{_STACKED_LEGACY_RELEASE_LINE}-stacked-{fraction_token}-s{sample_seed}-"
+            f"asec{realized_asec_households}-acs{realized_acs_households}-"
+            f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{suffix}"
+        )
+        if not _STACKED_RELEASE_ID_PATTERN.fullmatch(release_id):  # pragma: no cover
+            raise AssertionError(
+                f"Generated invalid stacked release ID {release_id!r}."
+            )
+        return release_id
+
+    publication = _stacked_publication_runtime(runtime_plan)
+    fraction_token = _stacked_rung(
+        sample_fraction,
+        runtime_plan=runtime_plan,
     )
-    if not _STACKED_RELEASE_ID_PATTERN.fullmatch(release_id):  # pragma: no cover
+    line = publication.get("line")
+    pattern = publication.get("pattern")
+    compiled_regex = publication.get("compiled_regex")
+    if not isinstance(line, Mapping) or not isinstance(line.get("value"), str):
+        raise ValueError("Bundle publication authority has no release line.")
+    if not isinstance(pattern, str) or not isinstance(compiled_regex, str):
+        raise ValueError("Bundle publication authority has no release grammar.")
+    release_id = pattern.format(
+        line=line["value"],
+        rung=fraction_token,
+        seed=sample_seed,
+        asec_households=realized_asec_households,
+        acs_households=realized_acs_households,
+        timestamp=instant.strftime("%Y%m%dT%H%M%SZ"),
+        nonce=suffix,
+    )
+    if re.fullmatch(compiled_regex, release_id) is None:  # pragma: no cover
         raise AssertionError(f"Generated invalid stacked release ID {release_id!r}.")
     return release_id
 
@@ -1345,13 +1938,16 @@ def _new_stacked_release_id(
 def _pool_checkpoint_stage_identity(
     base_identity: Mapping[str, object],
     stage: str,
+    *,
+    runtime_plan: USPoolRuntimePlan | None = None,
 ) -> dict[str, object]:
-    if stage not in POOL_CHECKPOINT_STAGE_ORDER:
+    checkpoint_order = _stacked_checkpoint_order(runtime_plan)
+    if stage not in checkpoint_order:
         raise ValueError(f"Unknown pool checkpoint stage {stage!r}.")
     return {
         **dict(base_identity),
         "stage": stage,
-        "stage_index": POOL_CHECKPOINT_STAGE_ORDER.index(stage),
+        "stage_index": checkpoint_order.index(stage),
     }
 
 
@@ -1378,6 +1974,8 @@ class _PoolStageCheckpointStore:
         *,
         base_identity: Mapping[str, object],
         materializer_version: int | None = None,
+        runtime_plan: USPoolRuntimePlan | None = None,
+        run_config: Mapping[str, object] | None = None,
     ) -> None:
         self.root = Path(root)
         if self.root.exists() and not self.root.is_dir():
@@ -1402,13 +2000,34 @@ class _PoolStageCheckpointStore:
             )
         self._base_identity = normalized_identity
         self._materializer_version = resolved_materializer_version
+        self._runtime_plan = runtime_plan
+        self._run_config_receipt = (
+            None if run_config is None else _stacked_run_config_receipt(run_config)
+        )
+        if runtime_plan is not None:
+            if (
+                self._run_config_receipt is None
+                or self._run_config_receipt.get("identity_generation") != 1
+            ):
+                raise ValueError(
+                    "Bundle checkpoint store requires generation-one run provenance."
+                )
+        self._stage_order = _stacked_checkpoint_order(runtime_plan)
+        self._candidate_order = _stacked_checkpoint_candidate_order(runtime_plan)
+        self._checkpoint_filenames = _stacked_checkpoint_filenames(runtime_plan)
         self._input_receipts: dict[str, object] | None = None
         self._resumed_from: str | None = None
         self._attempts: dict[str, dict[str, object]] = {
-            stage: {"load_status": "not_attempted"}
-            for stage in POOL_CHECKPOINT_STAGE_ORDER
+            stage: {"load_status": "not_attempted"} for stage in self._stage_order
         }
         self._writes: dict[str, dict[str, object]] = {}
+
+    def _operational_sidecar_policy(self, stage: str) -> str | None:
+        if self._runtime_plan is None:
+            return None
+        return self._runtime_plan.execution.require_checkpoint(
+            stage
+        ).operational_receipts_sidecar.value
 
     @property
     def base_identity_sha256(self) -> str:
@@ -1436,7 +2055,7 @@ class _PoolStageCheckpointStore:
 
     def checkpoint_path(self, stage: str) -> Path:
         try:
-            filename = _POOL_STAGE_CHECKPOINT_FILENAMES[stage]
+            filename = self._checkpoint_filenames[stage]
         except KeyError as exc:
             raise ValueError(f"Unknown pool checkpoint stage {stage!r}.") from exc
         return self.root / filename
@@ -1454,14 +2073,12 @@ class _PoolStageCheckpointStore:
     def load_deepest(self) -> MultispinePoolCheckpoint | None:
         """Load the deepest valid checkpoint, ignoring stale or corrupt files."""
 
-        for stage in reversed(POOL_CHECKPOINT_STAGE_ORDER):
+        for stage in self._candidate_order:
             checkpoint = self._load(stage)
             if checkpoint is None:
                 continue
             self._resumed_from = stage
-            covered = POOL_CHECKPOINT_STAGE_ORDER[
-                : POOL_CHECKPOINT_STAGE_ORDER.index(stage) + 1
-            ]
+            covered = self._stage_order[: self._stage_order.index(stage) + 1]
             print(
                 f"Resumed pool checkpoint {stage!r} from "
                 f"{self.checkpoint_path(stage)}; cached stages: "
@@ -1478,7 +2095,7 @@ class _PoolStageCheckpointStore:
         """Atomically write one completed cut point and its content sidecar."""
 
         stage = checkpoint.stage
-        if stage not in POOL_CHECKPOINT_STAGE_ORDER:
+        if stage not in self._stage_order:
             raise ValueError(f"Unknown pool checkpoint stage {stage!r}.")
         if self._input_receipts is None:
             raise RuntimeError(
@@ -1536,6 +2153,15 @@ class _PoolStageCheckpointStore:
         canonical_stage_receipts, operational_stage_receipts = (
             _split_checkpoint_stage_receipts(checkpoint.stage_receipts)
         )
+        sidecar_policy = self._operational_sidecar_policy(stage)
+        if sidecar_policy == "forbidden" and operational_stage_receipts:
+            raise ValueError(
+                f"Pool checkpoint stage {stage!r} forbids operational receipts."
+            )
+        if sidecar_policy == "required" and not operational_stage_receipts:
+            raise ValueError(
+                f"Pool checkpoint stage {stage!r} requires operational receipts."
+            )
         receipts_path = self.checkpoint_receipts_path(stage)
         try:
             receipts_path.unlink()
@@ -1543,7 +2169,11 @@ class _PoolStageCheckpointStore:
             pass
         else:
             _fsync_parent_directory(receipts_path)
-        identity = _pool_checkpoint_stage_identity(self._base_identity, stage)
+        identity = _pool_checkpoint_stage_identity(
+            self._base_identity,
+            stage,
+            runtime_plan=self._runtime_plan,
+        )
         identity_sha256 = _pool_checkpoint_identity_sha256(identity)
         metadata = {
             "artifact_kind": _POOL_STAGE_CHECKPOINT_ARTIFACT_KIND,
@@ -1582,43 +2212,43 @@ class _PoolStageCheckpointStore:
         checkpoint_sha256 = _file_sha256(path)
         size_bytes = path.stat().st_size
         manifest_path = self.checkpoint_manifest_path(stage)
-        _atomic_write_json(
-            manifest_path,
-            {
-                "artifact_kind": _POOL_STAGE_CHECKPOINT_MANIFEST_ARTIFACT_KIND,
-                "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
-                "materializer_version": self._materializer_version,
-                "stage": stage,
-                "identity": identity,
-                "identity_sha256": identity_sha256,
-                "checkpoint": {
-                    "filename": path.name,
-                    "sha256": checkpoint_sha256,
-                    "size_bytes": size_bytes,
-                },
-                "row_counts": _frame_row_counts(stored_frame),
-                "frame_schema": _frame_schema_payload(stored_frame),
-                "frame_metadata": metadata["frame_metadata"],
-                **(
-                    {
-                        "qbi_transition_authority_sha256": metadata[
-                            "qbi_transition_authority_sha256"
-                        ]
-                    }
-                    if "qbi_transition_authority_sha256" in metadata
-                    else {}
-                ),
-                **(
-                    {
-                        "late_producer_transition_authority_sha256": metadata[
-                            "late_producer_transition_authority_sha256"
-                        ]
-                    }
-                    if "late_producer_transition_authority_sha256" in metadata
-                    else {}
-                ),
+        manifest_payload = {
+            "artifact_kind": _POOL_STAGE_CHECKPOINT_MANIFEST_ARTIFACT_KIND,
+            "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
+            "materializer_version": self._materializer_version,
+            "stage": stage,
+            "identity": identity,
+            "identity_sha256": identity_sha256,
+            "checkpoint": {
+                "filename": path.name,
+                "sha256": checkpoint_sha256,
+                "size_bytes": size_bytes,
             },
-        )
+            "row_counts": _frame_row_counts(stored_frame),
+            "frame_schema": _frame_schema_payload(stored_frame),
+            "frame_metadata": metadata["frame_metadata"],
+            **(
+                {
+                    "qbi_transition_authority_sha256": metadata[
+                        "qbi_transition_authority_sha256"
+                    ]
+                }
+                if "qbi_transition_authority_sha256" in metadata
+                else {}
+            ),
+            **(
+                {
+                    "late_producer_transition_authority_sha256": metadata[
+                        "late_producer_transition_authority_sha256"
+                    ]
+                }
+                if "late_producer_transition_authority_sha256" in metadata
+                else {}
+            ),
+        }
+        if self._run_config_receipt is not None:
+            manifest_payload["run_config"] = self._run_config_receipt
+        _atomic_write_json(manifest_path, manifest_payload)
         receipts_record: dict[str, object] = {
             "path": str(receipts_path.resolve()),
             "write_status": "not_applicable",
@@ -1669,11 +2299,15 @@ class _PoolStageCheckpointStore:
         resumed_index = (
             None
             if self._resumed_from is None
-            else POOL_CHECKPOINT_STAGE_ORDER.index(self._resumed_from)
+            else self._stage_order.index(self._resumed_from)
         )
         stages: dict[str, dict[str, object]] = {}
-        for stage_index, stage in enumerate(POOL_CHECKPOINT_STAGE_ORDER):
-            identity = _pool_checkpoint_stage_identity(self._base_identity, stage)
+        for stage_index, stage in enumerate(self._stage_order):
+            identity = _pool_checkpoint_stage_identity(
+                self._base_identity,
+                stage,
+                runtime_plan=self._runtime_plan,
+            )
             source = (
                 "checkpoint"
                 if resumed_index is not None and stage_index <= resumed_index
@@ -1720,6 +2354,7 @@ class _PoolStageCheckpointStore:
                         _pool_checkpoint_stage_identity(
                             self._base_identity,
                             artifact_stage,
+                            runtime_plan=self._runtime_plan,
                         )
                     )
                 )
@@ -1778,6 +2413,7 @@ class _PoolStageCheckpointStore:
         expected_identity = _pool_checkpoint_stage_identity(
             self._base_identity,
             stage,
+            runtime_plan=self._runtime_plan,
         )
         expected_identity_sha256 = _pool_checkpoint_identity_sha256(expected_identity)
         try:
@@ -1793,6 +2429,14 @@ class _PoolStageCheckpointStore:
                 raise ValueError(
                     f"{stage} checkpoint manifest has an unsupported binding"
                 )
+            observed_run_config = manifest.get("run_config")
+            if self._run_config_receipt is None:
+                if observed_run_config is not None:
+                    raise ValueError(
+                        f"{stage} checkpoint manifest has unexpected run provenance"
+                    )
+            elif observed_run_config != self._run_config_receipt:
+                raise ValueError(f"{stage} checkpoint manifest run provenance changed")
             observed_identity = manifest.get("identity")
             if observed_identity != expected_identity:
                 observed_digest = (
@@ -1996,13 +2640,24 @@ class _PoolStageCheckpointStore:
 
         receipts_path = self.checkpoint_receipts_path(stage)
         base_record: dict[str, object] = {"path": str(receipts_path.resolve())}
+        sidecar_policy = self._operational_sidecar_policy(stage)
         if not receipts_path.exists():
+            if sidecar_policy == "required":
+                raise ValueError(
+                    f"Pool checkpoint stage {stage!r} requires its receipts sidecar."
+                )
             return dict(canonical_stage_receipts), {
                 **base_record,
                 "load_status": "missing",
             }
+        if sidecar_policy == "forbidden":
+            raise ValueError(
+                f"Pool checkpoint stage {stage!r} forbids a receipts sidecar."
+            )
         if not receipts_path.is_file():
             error = ValueError("operational receipts sidecar must be a regular file")
+            if sidecar_policy is not None:
+                raise error
             return dict(canonical_stage_receipts), self._invalid_receipts_record(
                 stage,
                 receipts_path,
@@ -2044,6 +2699,10 @@ class _PoolStageCheckpointStore:
             operational = payload.get("operational_stage_receipts")
             if not isinstance(operational, Mapping):
                 raise ValueError("operational_stage_receipts must be an object")
+            if sidecar_policy == "required" and not operational:
+                raise ValueError(
+                    f"Pool checkpoint stage {stage!r} has an empty required sidecar."
+                )
             restored = _attach_checkpoint_operational_receipts(
                 canonical_stage_receipts,
                 operational,
@@ -2055,6 +2714,8 @@ class _PoolStageCheckpointStore:
                 "size_bytes": receipts_path.stat().st_size,
             }
         except Exception as error:
+            if sidecar_policy is not None:
+                raise
             return dict(canonical_stage_receipts), self._invalid_receipts_record(
                 stage,
                 receipts_path,
@@ -2897,10 +3558,20 @@ def build_stacked_pool(
     checkpoint: Callable[[MultispinePoolCheckpoint], None] | None = None,
     resume: MultispinePoolCheckpoint | None = None,
     phase_reached: Callable[[str], None] | None = None,
+    runtime_plan: USPoolRuntimePlan | None = None,
 ) -> StackedPoolBuildResult:
     """Run the fixed stacked production pipeline across #599 boundaries."""
 
-    if not _STACKED_RELEASE_ID_PATTERN.fullmatch(release_id):
+    if runtime_plan is None:
+        release_id_matches = _STACKED_RELEASE_ID_PATTERN.fullmatch(release_id)
+    else:
+        compiled_regex = _stacked_publication_runtime(runtime_plan).get(
+            "compiled_regex"
+        )
+        if not isinstance(compiled_regex, str):
+            raise ValueError("Bundle publication authority has no release regex.")
+        release_id_matches = re.fullmatch(compiled_regex, release_id)
+    if release_id_matches is None:
         raise ValueError(f"Invalid stacked release ID {release_id!r}.")
 
     def mark_phase(name: str) -> None:
@@ -3456,6 +4127,8 @@ def _stacked_manifest_payload(
     clone_attachment_fraction: float,
     clone_attachment_seed: int,
     run_config: Mapping[str, object] | None = None,
+    runtime_plan: USPoolRuntimePlan | None = None,
+    source_broker_receipt: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Build the stacked-only manifest without changing the legacy envelope."""
 
@@ -3482,19 +4155,23 @@ def _stacked_manifest_payload(
     return {
         "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
         "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
-        "pipeline": _STACKED_PIPELINE,
+        "pipeline": _stacked_pipeline(runtime_plan),
         "release_id": result.release_id,
         "status": status,
         "simulation_ready": result.simulation_ready,
         "publication_run_id": publication_run_id,
         "calibration_applied": False,
-        "operator_order": list(US_STACKED_POOL_OPERATOR_ORDER),
-        "period": POOL_TIME_PERIOD,
-        "random_seed": POOL_RANDOM_SEED,
+        "operator_order": _stacked_operator_order(runtime_plan),
+        "period": _stacked_period(runtime_plan),
+        "random_seed": _stacked_model_seed(runtime_plan),
         "run_config": _stacked_run_config_receipt(run_config),
+        "source_broker_receipt": _json_ready(source_broker_receipt),
         "sampling": {
             "sample_fraction": float(sample_fraction),
-            "fraction_token": _stacked_rung(sample_fraction),
+            "fraction_token": _stacked_rung(
+                sample_fraction,
+                runtime_plan=runtime_plan,
+            ),
             "sample_seed": sample_seed,
             "realized_households": {
                 channel: result.stack_receipt["survey_samples"][channel][
@@ -3578,11 +4255,12 @@ def _stacked_publication_tombstone(
     *,
     release_id: str,
     publication_run_id: str,
+    runtime_plan: USPoolRuntimePlan | None = None,
 ) -> dict[str, object]:
     return {
         "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
         "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
-        "pipeline": _STACKED_PIPELINE,
+        "pipeline": _stacked_pipeline(runtime_plan),
         "release_id": release_id,
         "status": "publication_in_progress",
         "simulation_ready": False,
@@ -3734,6 +4412,8 @@ def _write_stacked_outputs(
     clone_attachment_fraction: float,
     clone_attachment_seed: int,
     run_config: Mapping[str, object] | None = None,
+    runtime_plan: USPoolRuntimePlan | None = None,
+    source_broker_receipt: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Atomically publish the stacked input-only pool and terminal receipts."""
 
@@ -3758,6 +4438,7 @@ def _write_stacked_outputs(
             outputs,
             release_id=result.release_id,
             publication_run_id=publication_run_id,
+            runtime_plan=runtime_plan,
         ),
     )
     temporary_h5 = _publication_temporary_path(
@@ -3772,7 +4453,7 @@ def _write_stacked_outputs(
     diagnostics = {
         "artifact_kind": US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
         "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
-        "pipeline": _STACKED_PIPELINE,
+        "pipeline": _stacked_pipeline(runtime_plan),
         "semantic_kind": "stacked_terminal_gates",
         "release_id": result.release_id,
         "simulation_ready": result.simulation_ready,
@@ -3784,7 +4465,7 @@ def _write_stacked_outputs(
         write_nullable_us_h5(
             result.frame,
             temporary_h5,
-            period=POOL_TIME_PERIOD,
+            period=_stacked_period(runtime_plan),
             artifact_kind=POOL_H5_ARTIFACT_KIND,
             publication_run_id=publication_run_id,
             materializer_version=US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION,
@@ -3805,6 +4486,8 @@ def _write_stacked_outputs(
             clone_attachment_fraction=clone_attachment_fraction,
             clone_attachment_seed=clone_attachment_seed,
             run_config=run_config,
+            runtime_plan=runtime_plan,
+            source_broker_receipt=source_broker_receipt,
         )
         _atomic_write_json(outputs.manifest, manifest)
         return manifest
@@ -4048,6 +4731,124 @@ def _compiled_constants_adapter_gate(
     }
 
 
+def _stacked_run_provenance_request(
+    args: argparse.Namespace,
+    *,
+    runtime_plan: USPoolRuntimePlan | None = None,
+) -> dict[str, object]:
+    """Materialize the concrete, behavior-relevant request receipt."""
+
+    sample_fraction = float(getattr(args, "sample_fraction", 1.0))
+    sample_seed = getattr(args, "sample_seed", 578)
+    clone_fraction = float(getattr(args, "clone_attachment_fraction", 1.0))
+    clone_seed = getattr(args, "clone_attachment_seed", 578)
+    return {
+        "pipeline": _stacked_pipeline(runtime_plan),
+        "sample_fraction": sample_fraction,
+        "fraction_token": _stacked_rung(
+            sample_fraction,
+            runtime_plan=runtime_plan,
+        ),
+        "sample_seed": sample_seed,
+        "clone_attachment_fraction": clone_fraction,
+        "clone_attachment_seed": clone_seed,
+    }
+
+
+def _stacked_code_inventory_digest(code_pin: str) -> str:
+    """Bind both authority modes to the same committed builder inventory."""
+
+    return _pool_checkpoint_identity_sha256({"git_code_pin": code_pin})
+
+
+def _stacked_artifact_protocol_inventory(
+    runtime_plan: USPoolRuntimePlan | None,
+) -> dict[str, object]:
+    """Compile back one common artifact-protocol inventory for D3."""
+
+    if runtime_plan is None:
+        checkpoint_identity = stacked_checkpoint_artifact_protocol_identity()
+    else:
+        checkpoint_identity = {
+            field_name: _stacked_checkpoint_static_value(runtime_plan, field_name)
+            for field_name in (
+                "artifact_kind",
+                "schema_version",
+                "materializer_version",
+                "pipeline",
+            )
+        }
+    return {
+        "checkpoint_identity": checkpoint_identity,
+        "pool_h5_materializer": US_MULTISPINE_POOL_H5_MATERIALIZER_VERSION,
+        "pool_manifest": POOL_MANIFEST_SCHEMA_VERSION,
+        "pool_checkpoint": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
+    }
+
+
+def _stacked_authority_versions(
+    runtime_plan: USPoolRuntimePlan | None,
+    *,
+    runtime_authority_sha256: str | None = None,
+    execution_abi_sha256: str | None = None,
+) -> dict[str, object]:
+    """Return an aligned authority-version vocabulary for both generations."""
+
+    authority = _stacked_authority(runtime_plan)
+    version = authority.get("version")
+    if isinstance(version, bool) or not isinstance(version, int) or version < 1:
+        raise ValueError("Stacked authority has no positive version.")
+    checkpoint_protocol = _stacked_artifact_protocol_inventory(runtime_plan)[
+        "checkpoint_identity"
+    ]
+    if not isinstance(checkpoint_protocol, Mapping):  # pragma: no cover - literal
+        raise TypeError("Stacked checkpoint protocol must be an object.")
+    materializer_version = checkpoint_protocol.get("materializer_version")
+    if (
+        isinstance(materializer_version, bool)
+        or not isinstance(materializer_version, int)
+        or materializer_version < 1
+    ):
+        raise ValueError("Stacked checkpoint protocol has no materializer version.")
+    for field_name, value in (
+        ("runtime_authority", runtime_authority_sha256),
+        ("execution_abi", execution_abi_sha256),
+    ):
+        if value is not None and not _LOWERCASE_SHA256.fullmatch(value):
+            raise ValueError(f"Stacked {field_name} digest is malformed.")
+    return {
+        "stacked_authority": version,
+        "checkpoint_materializer": materializer_version,
+        "runtime_authority": runtime_authority_sha256,
+        "execution_abi": execution_abi_sha256,
+    }
+
+
+def _constants_run_provenance_identity(
+    args: argparse.Namespace,
+    *,
+    code_pin: str,
+) -> RunProvenanceIdentity:
+    """Issue the typed, non-promotable generation-zero run receipt."""
+
+    return build_run_provenance_identity(
+        identity_generation=0,
+        source_grammar_receipt=None,
+        spec_binding=None,
+        authority_versions=_stacked_authority_versions(None),
+        code_inventory_digest=_stacked_code_inventory_digest(code_pin),
+        artifact_protocol_inventory=_stacked_artifact_protocol_inventory(None),
+        run_request=_stacked_run_provenance_request(
+            args,
+        ),
+        execution_receipt={
+            "authority_mode": "constants",
+            "pipeline": _STACKED_PIPELINE,
+            "code_pin": code_pin,
+        },
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _ResolvedStackedRunConfig(Mapping[str, object]):
     """Receipt view plus the non-serializable bundle runtime capability.
@@ -4059,22 +4860,53 @@ class _ResolvedStackedRunConfig(Mapping[str, object]):
     """
 
     runtime_authorities: RuntimeAuthorities = field(repr=False, compare=False)
+    runtime_plan: USPoolRuntimePlan = field(repr=False, compare=False)
+    run_provenance_identity: RunProvenanceIdentity = field(
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
         if self.runtime_authorities.identity_generation != 1:
             raise ValueError(
                 "Bundle configuration requires runtime identity_generation 1."
             )
+        if self.runtime_plan.identity_generation != 1:
+            raise ValueError("Bundle runtime plan requires identity_generation 1.")
+        if (
+            self.runtime_plan.authority_sha256
+            != self.runtime_authorities.authority_sha256
+        ):
+            raise ValueError("Bundle runtime plan differs from its runtime capability.")
+        if self.runtime_plan.spec_sha256 != (
+            self.runtime_authorities.spec_binding.spec_sha256
+        ):
+            raise ValueError(
+                "Bundle runtime plan differs from its resolved spec binding."
+            )
+        if self.run_provenance_identity.identity_generation != 1:
+            raise ValueError("Bundle run provenance requires identity_generation 1.")
+        provenance_binding = self.run_provenance_identity.to_wire().get("spec_binding")
+        if (
+            not isinstance(provenance_binding, Mapping)
+            or provenance_binding.get("spec_sha256") != self.runtime_plan.spec_sha256
+            or provenance_binding.get("attestation") != "bundle-authoritative"
+        ):
+            raise ValueError(
+                "Bundle run provenance differs from the compiler spec binding."
+            )
+
+    def source_preflight_provenance(self) -> dict[str, object]:
+        """Issue the operational provenance bound to source broker access."""
+
+        return self.run_provenance_identity.to_wire()
 
     def _receipt(self) -> dict[str, object]:
-        binding = self.runtime_authorities.spec_binding.to_wire()
-        binding["attestation"] = "bundle-authoritative"
         return {
             "config_authority": "bundle",
             "spec_binding_status": "resolved",
             "identity_generation": self.runtime_authorities.identity_generation,
-            "spec_binding": binding,
-            "runtime_authority_sha256": (self.runtime_authorities.authority_sha256),
+            "run_provenance_identity": self.run_provenance_identity.to_wire(),
         }
 
     def __getitem__(self, key: str) -> object:
@@ -4089,17 +4921,59 @@ class _ResolvedStackedRunConfig(Mapping[str, object]):
 
 def _stacked_run_config(
     args: argparse.Namespace,
+    *,
+    code_pin: str = "unresolved-local-git-code-pin",
 ) -> dict[str, object] | _ResolvedStackedRunConfig:
     """Resolve one stacked configuration authority and its receipt view."""
 
     config_authority = getattr(args, "config_authority", "constants")
     if config_authority == "constants":
-        return {"config_authority": "constants"}
+        provenance = _constants_run_provenance_identity(args, code_pin=code_pin)
+        return {
+            "config_authority": "constants",
+            "spec_binding_status": "absent",
+            "identity_generation": 0,
+            "run_provenance_identity": provenance.to_wire(),
+        }
     if config_authority == "bundle":
         resolved = load_bundle("us")
         compiled = compile_spec(resolved)
+        runtime_authorities = compile_runtime_authorities(compiled)
+        runtime_plan = USPoolRuntimePlan.from_spec_authority(
+            compile_us_spec_authority(runtime_authorities)
+        )
+        binding = runtime_authorities.spec_binding.to_wire()
+        binding["attestation"] = "bundle-authoritative"
+        execution_abi_sha256 = runtime_authorities.execution_abi.get("sha256")
+        if not isinstance(execution_abi_sha256, str):  # pragma: no cover - compiler
+            raise ValueError("Bundle execution ABI has no SHA-256 identity.")
+        provenance = build_run_provenance_identity(
+            identity_generation=runtime_authorities.identity_generation,
+            source_grammar_receipt=runtime_authorities.grammar_receipt.to_wire(),
+            spec_binding=binding,
+            authority_versions=_stacked_authority_versions(
+                runtime_plan,
+                runtime_authority_sha256=runtime_authorities.authority_sha256,
+                execution_abi_sha256=execution_abi_sha256,
+            ),
+            code_inventory_digest=_stacked_code_inventory_digest(code_pin),
+            artifact_protocol_inventory=(
+                _stacked_artifact_protocol_inventory(runtime_plan)
+            ),
+            run_request=_stacked_run_provenance_request(
+                args,
+                runtime_plan=runtime_plan,
+            ),
+            execution_receipt={
+                "authority_mode": "bundle",
+                "pipeline": _stacked_pipeline(runtime_plan),
+                "code_pin": code_pin,
+            },
+        )
         return _ResolvedStackedRunConfig(
-            runtime_authorities=compile_runtime_authorities(compiled)
+            runtime_authorities=runtime_authorities,
+            runtime_plan=runtime_plan,
+            run_provenance_identity=provenance,
         )
     if config_authority != "constants_adapter":
         raise ValueError(f"Unsupported config authority: {config_authority!r}.")
@@ -4321,11 +5195,13 @@ def _record_stacked_terminal_attempt(
     seed: int | None,
     disposition: str,
     predecessor: str | None,
+    run_provenance_identity: Mapping[str, object] | None = None,
+    runtime_plan: USPoolRuntimePlan | None = None,
 ) -> Path:
     result = record_build_attempt(
         build_id=state.build_id,
         ts=started_ts,
-        pipeline=_STACKED_PIPELINE,
+        pipeline=_stacked_pipeline(runtime_plan),
         rung=rung,
         seed=seed,
         code_pin=code_pin,
@@ -4339,6 +5215,7 @@ def _record_stacked_terminal_attempt(
         disposition=disposition,
         prediction_id=None,
         prev_row_digest=predecessor,
+        run_provenance_identity=run_provenance_identity,
         spool_dir=outputs.pool_h5.parent / "logbook-spool",
     )
     return result.spool_path
@@ -4397,6 +5274,7 @@ def _write_stacked_terminal_gate_receipt(
     *,
     outputs: PoolBuildOutputs,
     run_config: Mapping[str, object] | None = None,
+    runtime_plan: USPoolRuntimePlan | None = None,
 ) -> Path:
     """Persist the attempt's immutable terminal-gate receipt before publish."""
 
@@ -4409,7 +5287,7 @@ def _write_stacked_terminal_gate_receipt(
         {
             "artifact_kind": "populace_us_stacked_terminal_gate_receipt",
             "schema_version": 1,
-            "pipeline": _STACKED_PIPELINE,
+            "pipeline": _stacked_pipeline(runtime_plan),
             "build_id": result.release_id,
             "run_config": _stacked_run_config_receipt(run_config),
             "terminal_gates": _stacked_gate_payload(result),
@@ -4449,6 +5327,7 @@ def _promote_stacked_attempt_identity(
     sample_fraction: float,
     sample_seed: int,
     timestamp: datetime,
+    runtime_plan: USPoolRuntimePlan | None = None,
 ) -> None:
     """Bind terminal receipts as soon as the live stack identity is known."""
 
@@ -4459,6 +5338,7 @@ def _promote_stacked_attempt_identity(
         realized_asec_households=asec_count,
         realized_acs_households=acs_count,
         timestamp=timestamp,
+        runtime_plan=runtime_plan,
     )
     identity_digest = _pool_checkpoint_identity_sha256(checkpoint_identity)
     state.build_id = build_id
@@ -4473,6 +5353,11 @@ def _main_stacked(args: argparse.Namespace) -> int:
     outputs = _stacked_attempt_outputs(args)
     code_pin = "unresolved-local-git-code-pin"
     predecessor = args.logbook_prev_row_digest
+    runtime_plan: USPoolRuntimePlan | None = None
+    run_provenance_identity: Mapping[str, object] | None = None
+    source_broker_receipts: list[Mapping[str, object]] = []
+    source_snapshot_sessions: list[_BundleSourceSnapshotSession] = []
+    source_snapshot_session: _BundleSourceSnapshotSession | None = None
     rung = _stacked_rung(args.sample_fraction)
     logbook_seed: int | None = None
     run_config = _requested_stacked_run_config(args)
@@ -4514,11 +5399,10 @@ def _main_stacked(args: argparse.Namespace) -> int:
             checkpoint_root=args.checkpoint_root,
         )
         # Select and fully resolve configuration authority before consulting
-        # authority-owned publication naming.  Stage authority threading is a
-        # separate seam; until then the existing semantic/checkpoint identity
-        # constructors remain deliberately untouched.
+        # authority-owned publication and checkpoint constructors. Physical
+        # stage execution remains on the constants implementation in this seam.
         try:
-            run_config = _stacked_run_config(args)
+            run_config = _stacked_run_config(args, code_pin=code_pin)
         except Exception:
             if run_config.get("spec_binding_status") == "resolution_pending":
                 run_config = {
@@ -4526,21 +5410,52 @@ def _main_stacked(args: argparse.Namespace) -> int:
                     "spec_binding_status": "resolution_failed",
                 }
             raise
+        if isinstance(run_config, _ResolvedStackedRunConfig):
+            runtime_plan = run_config.runtime_plan
+        provenance_value = run_config.get("run_provenance_identity")
+        if isinstance(provenance_value, Mapping):
+            run_provenance_identity = provenance_value
+        rung = _stacked_rung(
+            args.sample_fraction,
+            runtime_plan=runtime_plan,
+        )
         state.build_id = _new_stacked_release_id(
             sample_fraction=args.sample_fraction,
             sample_seed=args.sample_seed,
             realized_asec_households=0,
             realized_acs_households=0,
             timestamp=started_ts,
+            runtime_plan=runtime_plan,
         )
-        configured_identity = _configured_stacked_identity(args)
+        configured_identity = _configured_stacked_identity(
+            args,
+            runtime_plan=runtime_plan,
+            run_config=run_config,
+        )
         state.identity_digest = hashlib.sha256(
             _canonical_json_bytes(configured_identity)
         ).hexdigest()
         _append_phase(state, "configured")
-        verified_inputs, acs_source_manifest = _verify_inputs(args, outputs)
+        if isinstance(run_config, _ResolvedStackedRunConfig):
+            verified_inputs, acs_source_manifest = _verify_inputs(
+                args,
+                outputs,
+                bundle_plan=run_config.runtime_plan,
+                run_provenance_identity=(run_config.source_preflight_provenance()),
+                broker_receipt_sink=source_broker_receipts.append,
+                source_snapshot_session_sink=source_snapshot_sessions.append,
+            )
+            if len(source_snapshot_sessions) > 1:
+                raise ValueError(
+                    "Bundle authority issued multiple source snapshot sessions."
+                )
+            if source_snapshot_sessions:
+                source_snapshot_session = source_snapshot_sessions[0]
+        else:
+            verified_inputs, acs_source_manifest = _verify_inputs(args, outputs)
         state.input_pins_digest = _input_pins_digest(verified_inputs)
-        _append_phase(state, "inputs_verified")
+        if source_snapshot_session is None:
+            _append_phase(state, "inputs_verified")
         stacked_checkpoint_root = _stacked_checkpoint_root(
             outputs,
             configured_identity,
@@ -4554,6 +5469,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
         _validate_checkpoint_path_layout(
             outputs,
             source_paths=_configured_source_paths(args),
+            runtime_plan=runtime_plan,
         )
         checkpoint_identity = _discover_stacked_checkpoint_identity(
             outputs.checkpoint_root,
@@ -4562,6 +5478,8 @@ def _main_stacked(args: argparse.Namespace) -> int:
             sample_seed=args.sample_seed,
             clone_attachment_fraction=args.clone_attachment_fraction,
             clone_attachment_seed=args.clone_attachment_seed,
+            runtime_plan=runtime_plan,
+            run_config=run_config,
         )
         checkpoint_store: _PoolStageCheckpointStore | None = None
         resume: MultispinePoolCheckpoint | None = None
@@ -4574,6 +5492,8 @@ def _main_stacked(args: argparse.Namespace) -> int:
                 outputs.checkpoint_root,
                 base_identity=checkpoint_identity,
                 materializer_version=POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
+                runtime_plan=runtime_plan,
+                run_config=run_config,
             )
             outputs = _with_checkpoint_identity(
                 outputs,
@@ -4596,11 +5516,21 @@ def _main_stacked(args: argparse.Namespace) -> int:
                     sample_fraction=args.sample_fraction,
                     sample_seed=args.sample_seed,
                     timestamp=started_ts,
+                    runtime_plan=runtime_plan,
                 )
                 _append_phase(state, "checkpoint_loaded")
                 if resume.stage == "assembled":
-                    acs_rent_donor = load_acs_2022_rent_donor(args.acs_rent_h5)
-                    puf_donor, _puf_donor_build = _load_puf_donor(args)
+                    if source_snapshot_session is None:
+                        acs_rent_donor = load_acs_2022_rent_donor(
+                            args.acs_rent_h5
+                        )
+                        puf_donor, _puf_donor_build = _load_puf_donor(args)
+                    else:
+                        acs_rent_donor, puf_donor = _load_bundle_resume_donors(
+                            args,
+                            source_session=source_snapshot_session,
+                        )
+                        _append_phase(state, "inputs_verified")
                     _validate_resumed_puf_donor(
                         puf_donor,
                         checkpoint_store.input_receipts,
@@ -4608,7 +5538,18 @@ def _main_stacked(args: argparse.Namespace) -> int:
                     _append_phase(state, "resume_donors_loaded")
 
         if resume is None:
-            loaded = _load_inputs(args, acs_source_manifest=acs_source_manifest)
+            if source_snapshot_session is None:
+                loaded = _load_inputs(
+                    args,
+                    acs_source_manifest=acs_source_manifest,
+                )
+            else:
+                loaded = _load_bundle_inputs(
+                    args,
+                    acs_source_manifest=acs_source_manifest,
+                    source_session=source_snapshot_session,
+                )
+                _append_phase(state, "inputs_verified")
             _append_phase(state, "sources_loaded")
             assert_operator_free_source_frame(
                 loaded.asec,
@@ -4636,6 +5577,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
                 sample_seed=args.sample_seed,
                 clone_attachment_fraction=args.clone_attachment_fraction,
                 clone_attachment_seed=args.clone_attachment_seed,
+                runtime_plan=runtime_plan,
             )
             _promote_stacked_attempt_identity(
                 state,
@@ -4644,17 +5586,30 @@ def _main_stacked(args: argparse.Namespace) -> int:
                 sample_fraction=args.sample_fraction,
                 sample_seed=args.sample_seed,
                 timestamp=started_ts,
+                runtime_plan=runtime_plan,
             )
             checkpoint_store = _PoolStageCheckpointStore(
                 outputs.checkpoint_root,
                 base_identity=checkpoint_identity,
                 materializer_version=POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION,
+                runtime_plan=runtime_plan,
+                run_config=run_config,
             )
             outputs = _with_checkpoint_identity(
                 outputs,
                 base_identity_sha256=checkpoint_store.base_identity_sha256,
             )
             checkpoint_store.bind_input_receipts(_loaded_input_receipts(loaded))
+
+        if (
+            resume is not None
+            and resume.stage != "assembled"
+            and source_snapshot_session is not None
+        ):
+            with source_snapshot_session.open_snapshots():
+                pass
+            source_snapshot_session.complete()
+            _append_phase(state, "inputs_verified")
 
         if (
             checkpoint_store is None
@@ -4678,11 +5633,13 @@ def _main_stacked(args: argparse.Namespace) -> int:
             checkpoint=checkpoint_store.write,
             resume=resume,
             phase_reached=lambda phase: _append_phase(state, phase),
+            runtime_plan=runtime_plan,
         )
         terminal_receipt_path = _write_stacked_terminal_gate_receipt(
             result,
             outputs=outputs,
             run_config=run_config,
+            runtime_plan=runtime_plan,
         )
         state.gate_verdicts = {
             gate.name: {
@@ -4711,10 +5668,16 @@ def _main_stacked(args: argparse.Namespace) -> int:
             clone_attachment_fraction=args.clone_attachment_fraction,
             clone_attachment_seed=args.clone_attachment_seed,
             run_config=run_config,
+            runtime_plan=runtime_plan,
+            source_broker_receipt=(
+                source_broker_receipts[0] if source_broker_receipts else None
+            ),
         )
         _append_phase(state, "publication_completed")
         state.artifact_location = _local_artifact_reference(outputs.pool_h5)
     except Exception as error:
+        if source_snapshot_session is not None and not source_snapshot_session.sealed:
+            source_snapshot_session.abort()
         error_path = _stacked_error_receipt_path(
             outputs,
             build_id=state.build_id,
@@ -4724,7 +5687,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
             {
                 "artifact_kind": "populace_us_stacked_pool_error_receipt",
                 "schema_version": 1,
-                "pipeline": _STACKED_PIPELINE,
+                "pipeline": _stacked_pipeline(runtime_plan),
                 "build_id": state.build_id,
                 "run_config": _stacked_run_config_receipt(run_config),
                 "phases_reached": state.phases_reached,
@@ -4751,6 +5714,8 @@ def _main_stacked(args: argparse.Namespace) -> int:
             seed=logbook_seed,
             disposition="failed",
             predecessor=predecessor,
+            run_provenance_identity=run_provenance_identity,
+            runtime_plan=runtime_plan,
         )
         raise
 
@@ -4765,6 +5730,8 @@ def _main_stacked(args: argparse.Namespace) -> int:
         seed=logbook_seed,
         disposition=disposition,
         predecessor=predecessor,
+        run_provenance_identity=run_provenance_identity,
+        runtime_plan=runtime_plan,
     )
     if not result.simulation_ready:
         print(
