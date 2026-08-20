@@ -1,48 +1,42 @@
-# Progress
+# Battery package 3 progress
 
 ## State
 
-Microcosm #516 whole-row donor outlier screen is complete on
-`mortgage-donor-outlier-screen` (rebased onto `origin/main` after the #515
-interim carve merged as #525). The `puf_tax_detail` donor now drops tax units
-whose grouped raw mortgage interest reaches $10M before the #515 carve
-(pinned-artifact effect: 3,066 rows, weight 3,684 of ~161M, removing $2.947T
-of phantom mortgage-interest mass), with the checkpoint schema bumped to v3
-so post-carve pre-screen checkpoints rebuild.
+Source-operator two-part calibration (13 checks), adult-care
+post-reconciliation (2 checks), and unemployment-compensation targeted
+calibration (1 check) are in diagnosis on `battery-pkg3-two-part` at
+`164027e2`. No artifact-producing code or frozen battery configuration has
+changed yet.
+
+The required `uv sync --all-packages --extra us` was attempted first. The
+default cache is sandbox-read-only; a retry with a writable cache reached PyPI
+but DNS is unavailable. Tests therefore use the already-synced
+`microcosm-707` virtual environment, whose `uv.lock` SHA-1 exactly matches this
+worktree, with `PYTHONPATH` pinned to this worktree's five package source
+directories.
 
 ## Done
 
-- Confirmed a clean starting worktree at `aef1c56`.
-- Read the repository guidance and established the #515 donor carve as the
-  screen's required downstream boundary.
-- Started source-level audits of every donor-frame consumer, checkpoint
-  validation, row-count pins, and existing donor-fact summaries.
-- Attempted the requested GitNexus impact workflow; the managed filesystem
-  denied its global registry write. Its local index also exposed a broad
-  `build/` ignore mismatch, so the completed impact audit uses direct source
-  call sites and tests.
-- Added `US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING = 10_000_000.0` with the
-  structural rationale and pinned-artifact receipts.
-- Added a whole-row screen on grouped raw person `home_mortgage_interest`
-  after tax-unit assembly, before the #515 carve, with retained-index reset.
-- Confirmed no downstream consumer pairs donor rows to the original HDF arrays
-  or carries a stale donor-length vector; values and weights always originate
-  from the same screened frame.
-- Bumped the primary QRF checkpoint schema from v2 to v3 and made the stale
-  checkpoint regression track the live constant while retaining literal-v1
-  corruptions.
-- Added regression coverage for the exact grouped boundary, whole-row removal,
-  retained/carved $5M row, raw-$10.5M pre-carve ordering, and constant.
-- Requested suites pass: PUF support/QRF 53; plan/gates 195; fiscal targets
-  139; microcosm-data 138 with 1 skip. The directly affected tail-bound suite
-  adds 12 passes. Ruff format/check and `git diff --check` are clean.
-- Wrote `SOL_516_REPORT.md` with the exact seam, consumer-by-consumer file:line
-  audit, expected 208,611-row real-artifact effect, verification results, count
-  sweep, and deliberately untouched surfaces.
+- Read `CLAUDE.md`, the battery adjudication, all 16 assigned machine-readable
+  rows, citation registry entries C04-C08, and every cited source range.
+- Confirmed the frozen comparator separately tests weighted sign incidence and
+  conditional carrier quantiles.
+- Confirmed direct transfer draws are produced per availability-pattern QRF,
+  and adult-care reconciliation occurs after transfer.
+- Started parallel source-operator, adult-care, and unemployment-compensation
+  implementation analyses.
+- Passed the four deterministic contract tests covering sign-separated battery
+  behavior, adult-care structural reconciliation, and the declared transfer
+  surface for this journal checkpoint.
+- Preserved the mandated off-chain build contract: 1% sample, sample seed 578,
+  no previous-row digest, and no pending-chain file changes.
 
 ## Next
 
-- PR #527 review cycle, then merge. After both #525 and #527: rebuild the
-  base/release; the mortgage critical-fit ratchet (0.20 -> 0.15) waits on a
-  run that holds per `us_critical_targets.py`.
-- Root record-level ETL carve stays open on microcosm#515.
+1. Record a 1% before artifact and extract all 16 assigned check values.
+2. Add artifact-side calibrations and focused behavioral tests without changing
+   any band, threshold, seed, fold, or comparator.
+3. Commit each coherent green step and update this journal plus
+   `_LANE-NOTES.md`.
+4. Rebuild at 1%, report per-check before/after movement, run the complete test
+   and lint suites, and write `FINAL_REPORT.md`.
