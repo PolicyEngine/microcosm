@@ -127,3 +127,35 @@ def test_source_runtime_allows_injected_first_frame_handlers() -> None:
     )
 
     assert result["income"].tolist() == [10.0, 20.0]
+
+
+def test_source_runtime_threads_optional_narrow_rng_capability() -> None:
+    stage = SourceStageSpec.from_mapping(
+        {
+            "stage": "mini",
+            "survey": "Synthetic",
+            "source": "https://example.test/source",
+            "grain": "person",
+            "operations": [{"kind": "derive"}],
+            "outputs": ["income"],
+        }
+    )
+    sentinel = object()
+
+    def derive(
+        current: pd.DataFrame | None,
+        _operation,
+        context: SourceRuntimeContext,
+    ) -> pd.DataFrame:
+        assert current is None
+        assert context.rng is sentinel
+        return pd.DataFrame({"income": [1.0]})
+
+    result = run_source_stage(
+        stage,
+        tables={},
+        operation_handlers={"derive": derive},
+        rng=sentinel,  # type: ignore[arg-type]
+    )
+
+    assert result["income"].tolist() == [1.0]

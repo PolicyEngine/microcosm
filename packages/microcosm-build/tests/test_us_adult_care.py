@@ -301,6 +301,44 @@ def test_derivation_is_deterministic_per_seed() -> None:
     )
 
 
+def test_adult_care_uses_executor_owned_permutation() -> None:
+    class FixtureGenerator:
+        def __init__(self, calls: list[tuple[object, ...]]) -> None:
+            self.calls = calls
+
+        def permutation(self, size: int) -> np.ndarray:
+            self.calls.append(("permutation", size))
+            return np.arange(size - 1, -1, -1, dtype=np.int64)
+
+    class FixtureRNG:
+        def __init__(self) -> None:
+            self.calls: list[tuple[object, ...]] = []
+
+        def token(self, site_id: str, boundary_key: str = "default") -> object:
+            self.calls.append(("token", site_id, boundary_key))
+            return "adult-care-token"
+
+        def generator(self, token: object) -> FixtureGenerator:
+            self.calls.append(("generator", token))
+            return FixtureGenerator(self.calls)
+
+    rng = FixtureRNG()
+
+    result = with_us_adult_care_inputs(
+        _frame(),
+        seed=999,
+        time_period=2024,
+        rng=rng,  # type: ignore[arg-type]
+    )
+
+    assert (result.table("person")[_EXPENSE] > 0.0).sum() == 1
+    assert rng.calls == [
+        ("token", "adult_care_weighted_prefix_assignment", "default"),
+        ("generator", "adult-care-token"),
+        ("permutation", 2),
+    ]
+
+
 def test_taxpayer_alone_is_never_their_own_qualifying_individual() -> None:
     frame = _frame()
     person = frame.table("person")

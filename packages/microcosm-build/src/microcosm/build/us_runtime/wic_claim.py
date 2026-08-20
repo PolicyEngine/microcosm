@@ -40,6 +40,7 @@ from microcosm.build.source_manifest import (
     load_source_manifest,
 )
 from microcosm.build.source_runtime import (
+    SourceRNGCapability,
     SourceRuntimeConfig,
     SourceRuntimeContext,
     SourceRuntimeError,
@@ -421,7 +422,13 @@ def derive_us_wic_claim_from_manifest(
         )
     rates = _validate_operation_parameters(operation)
     categories = _wic_categories(frame)
-    draws = _stable_person_draws(frame, seed=int(context.config.seed))
+    if context.rng is None:
+        draws = _stable_person_draws(frame, seed=int(context.config.seed))
+    else:
+        draws = context.rng.blake2b_uniforms(
+            context.rng.token("wic_claim_assignment"),
+            stable_keys=_stable_person_keys(frame).tolist(),
+        )
     thresholds = np.fromiter(
         (rates[str(category)] for category in categories),
         dtype=np.float64,
@@ -458,6 +465,7 @@ def with_us_wic_claim_input(
     *,
     seed: int,
     time_period: int,
+    rng: SourceRNGCapability | None = None,
 ) -> Frame:
     """Materialize the source-backed WIC claim input on a US frame."""
 
@@ -474,6 +482,7 @@ def with_us_wic_claim_input(
             "derive_wic_claim": derive_us_wic_claim_from_manifest,
         },
         config=SourceRuntimeConfig(seed=int(seed), target_year=int(time_period)),
+        rng=rng,
     )
     if output["person_id"].duplicated().any():
         raise ValueError("US WIC claim stage produced duplicate person_id rows.")

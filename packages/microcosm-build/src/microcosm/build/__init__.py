@@ -127,6 +127,7 @@ from microcosm.build.plan import (  # noqa: E402 - after the compat gate
     StageRecord,
 )
 from microcosm.build.source_runtime import (  # noqa: E402 - after the compat gate
+    SourceRNGCapability,
     SourceRuntimeConfig,
     SourceRuntimeContext,
     SourceRuntimeError,
@@ -171,6 +172,7 @@ __all__ = [
     "Stage",
     "StagePlan",
     "StageRecord",
+    "SourceRNGCapability",
     "SourceRuntimeConfig",
     "SourceRuntimeContext",
     "SourceRuntimeError",

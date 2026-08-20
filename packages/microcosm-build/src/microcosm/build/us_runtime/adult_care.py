@@ -65,6 +65,7 @@ from microcosm.build.source_manifest import (
     load_source_manifest,
 )
 from microcosm.build.source_runtime import (
+    SourceRNGCapability,
     SourceRuntimeConfig,
     SourceRuntimeContext,
     SourceRuntimeError,
@@ -472,8 +473,14 @@ def derive_us_adult_care_from_manifest(
         eligible_ids = eligible_ids[id_order]
         eligible_weights = eligible_weights[id_order]
         seed = context.config.seed if context is not None else 0
-        rng = np.random.default_rng(int(seed))
-        order = rng.permutation(eligible_ids.size)
+        if context is None or context.rng is None:
+            private_rng = np.random.default_rng(int(seed))
+            order = private_rng.permutation(eligible_ids.size)
+        else:
+            generator = context.rng.generator(
+                context.rng.token("adult_care_weighted_prefix_assignment")
+            )
+            order = generator.permutation(eligible_ids.size)
         cumulative = np.cumsum(eligible_weights[order])
         target = usage_rate * float(eligible_weights.sum())
         take = int(np.searchsorted(cumulative, target, side="left") + 1)
@@ -523,6 +530,7 @@ def with_us_adult_care_inputs(
     seed: int,
     time_period: int,
     allow_existing_without_source: bool = False,
+    rng: SourceRNGCapability | None = None,
 ) -> Frame:
     """Materialize the CDCC adult-care flag and expense inputs.
 
@@ -588,6 +596,7 @@ def with_us_adult_care_inputs(
             "derive_adult_care_inputs": derive_us_adult_care_from_manifest,
         },
         config=SourceRuntimeConfig(seed=int(seed), target_year=int(time_period)),
+        rng=rng,
     )
     aligned = output.set_index("person_id").reindex(person["person_id"])
     for column in US_ADULT_CARE_OUTPUT_COLUMNS:

@@ -33,6 +33,7 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
+from microcosm.build.source_runtime import SourceRNGCapability
 from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
     PUF_TAX_DETAIL_SUPPORT_CHANNEL,
@@ -994,6 +995,7 @@ def impute_us_housing_assistance_to_puf_support(
     seed: int,
     n_estimators: int = US_HOUSING_ASSISTANCE_PUF_N_ESTIMATORS,
     max_train_samples: int = US_HOUSING_ASSISTANCE_PUF_MAX_TRAIN_SAMPLES,
+    rng: SourceRNGCapability | None = None,
 ) -> Frame:
     """Replace only the PUF clone's housing-assistance receipt flag by QRF.
 
@@ -1082,9 +1084,16 @@ def impute_us_housing_assistance_to_puf_support(
     if float(weights.sum()) <= 0.0:
         raise ValueError("US housing PUF QRF person weights sum to zero.")
     if len(training) > int(max_train_samples):
-        selected = training.sample(
-            n=int(max_train_samples), random_state=int(seed)
-        ).index
+        if rng is None:
+            selected = training.sample(
+                n=int(max_train_samples), random_state=int(seed)
+            ).index
+        else:
+            selected = rng.pandas_sample(
+                rng.token("housing_inputs_training_cap"),
+                training,
+                n=int(max_train_samples),
+            ).index
         training = training.loc[selected]
         weights = weights.loc[selected]
     test = predictors.loc[puf_mask].copy()
@@ -1106,11 +1115,21 @@ def impute_us_housing_assistance_to_puf_support(
         from importlib import import_module
 
         QRF = import_module("microcosm.fit").QRF
-    fitted = QRF(n_estimators=int(n_estimators), seed=int(seed)).fit(
+    qrf_generators = None
+    if rng is not None:
+        qrf_generators = rng.qrf_generators(
+            rng.token("housing_assistance_puf_qrf_model")
+        )
+    model = QRF(n_estimators=int(n_estimators), seed=int(seed))
+    fit_kwargs = (
+        {} if qrf_generators is None else {"rng_generators": qrf_generators}
+    )
+    fitted = model.fit(
         training,
         predictors=list(predictor_names),
         targets=["receives_housing_assistance"],
         weights=weights.to_numpy(dtype=np.float64),
+        **fit_kwargs,
     )
     predicted = pd.to_numeric(
         fitted.predict(test)["receives_housing_assistance"], errors="coerce"

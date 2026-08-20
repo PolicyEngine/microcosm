@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from importlib.metadata import version
@@ -26,6 +26,9 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
+from microcosm.build.source_runtime import SourceRNGCapability
+from microcosm.build.spec_engine.brokers import RNGInvocation
+from microcosm.build.spec_engine.canonical import sha256_json
 from microcosm.build.spec_engine.model import thaw_json
 from microcosm.build.us_runtime.acs_income_universe import (
     ACS_PUMS_EARNINGS_UNIVERSE_PERSON_INPUTS,
@@ -105,10 +108,13 @@ from microcosm.build.us_runtime.spine_agreement import (
 )
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
 from microcosm.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
     SPINE_ASSEMBLY_MANIFEST_KEY,
+    has_support_role_metadata,
     spine_assembly_receipt,
     spine_provenance_counts,
     support_clone_index_column,
+    support_role_series,
     support_source_id_column,
     validate_assembly_provenance,
     without_support_role_metadata,
@@ -165,6 +171,7 @@ __all__ = [
     "PoolSsiDependencyContract",
     "PoolStageOutput",
     "SourceOperatorContract",
+    "SourceOperatorRNGDescriptor",
     "complete_multispine_source_inputs",
     "derive_multispine_pool_inputs",
     "finalize_multispine_source_inputs",
@@ -183,6 +190,7 @@ __all__ = [
     "prepare_multispine_puf_predictors",
     "prepare_multispine_source_inputs_for_clone",
     "run_multispine_post_clone_source_operator",
+    "source_operator_rng_invocation_plan",
     "run_multispine_pool_path",
     "seed_multispine_pool_inputs",
 ]
@@ -489,6 +497,44 @@ class SourceOperatorContract:
     execution_scope: str = "cps_source"
 
 
+@dataclass(frozen=True)
+class SourceOperatorRNGDescriptor:
+    """Exact ledger sites a post-clone source callback may consume."""
+
+    site_ids: tuple[str, ...]
+    training_cap_site: str | None = None
+    training_cap: int | None = None
+    qrf_site: str | None = None
+    stable_draw_sites: tuple[str, ...] = ()
+    generator_site: str | None = None
+    pre_clone_overgrants: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.site_ids or len(self.site_ids) != len(set(self.site_ids)):
+            raise ValueError("Source RNG descriptor sites must be nonempty and unique.")
+        referenced = {
+            *self.stable_draw_sites,
+            *self.pre_clone_overgrants,
+            *(
+                (self.training_cap_site,)
+                if self.training_cap_site is not None
+                else ()
+            ),
+            *((self.qrf_site,) if self.qrf_site is not None else ()),
+            *((self.generator_site,) if self.generator_site is not None else ()),
+        }
+        if referenced != set(self.site_ids):
+            raise ValueError(
+                "Source RNG descriptor classifications must exactly cover its sites."
+            )
+        if (self.training_cap_site is None) != (self.training_cap is None):
+            raise ValueError(
+                "Source RNG training-cap site and positive cap must be declared together."
+            )
+        if self.training_cap is not None and self.training_cap < 1:
+            raise ValueError("Source RNG training cap must be positive.")
+
+
 _PRE_CLONE_PHASE = "pre_clone"
 _POST_CLONE_PHASE = "post_clone"
 POOL_POST_CLONE_SOURCE_PHASE = _POST_CLONE_PHASE
@@ -619,6 +665,118 @@ POOL_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
 POOL_SOURCE_OPERATOR_CONTRACTS = POOL_OPERATOR_CONTRACTS
 """Backward-compatible name for the now-total pool operator registry."""
 
+
+_POST_CLONE_SOURCE_RNG_DESCRIPTORS: Mapping[
+    str, SourceOperatorRNGDescriptor
+] = {
+    "with_us_prior_year_income_inputs": SourceOperatorRNGDescriptor(
+        (
+            "prior_year_income_puf_qrf_model",
+            "prior_year_income_training_cap",
+        ),
+        training_cap_site="prior_year_income_training_cap",
+        training_cap=5_000,
+        qrf_site="prior_year_income_puf_qrf_model",
+    ),
+    "with_us_pregnancy_inputs": SourceOperatorRNGDescriptor(
+        ("pregnancy_assignment",),
+        stable_draw_sites=("pregnancy_assignment",),
+    ),
+    "with_us_wic_claim_input": SourceOperatorRNGDescriptor(
+        ("wic_claim_assignment",),
+        stable_draw_sites=("wic_claim_assignment",),
+    ),
+    "impute_us_housing_assistance_to_puf_support": SourceOperatorRNGDescriptor(
+        (
+            "acs_rent_archived_training_cap",
+            "acs_rent_qrf_model",
+            "housing_assistance_puf_qrf_model",
+            "housing_inputs_training_cap",
+        ),
+        training_cap_site="housing_inputs_training_cap",
+        training_cap=POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES,
+        qrf_site="housing_assistance_puf_qrf_model",
+        pre_clone_overgrants=(
+            "acs_rent_archived_training_cap",
+            "acs_rent_qrf_model",
+        ),
+    ),
+    "with_us_child_support_inputs": SourceOperatorRNGDescriptor(
+        ("child_support_puf_qrf_model", "child_support_training_cap"),
+        training_cap_site="child_support_training_cap",
+        training_cap=5_000,
+        qrf_site="child_support_puf_qrf_model",
+    ),
+    "with_us_disability_benefits": SourceOperatorRNGDescriptor(
+        (
+            "disability_benefits_puf_qrf_model",
+            "disability_benefits_training_cap",
+        ),
+        training_cap_site="disability_benefits_training_cap",
+        training_cap=5_000,
+        qrf_site="disability_benefits_puf_qrf_model",
+    ),
+    "with_us_workers_compensation": SourceOperatorRNGDescriptor(
+        (
+            "workers_compensation_puf_qrf_model",
+            "workers_compensation_training_cap",
+        ),
+        training_cap_site="workers_compensation_training_cap",
+        training_cap=5_000,
+        qrf_site="workers_compensation_puf_qrf_model",
+    ),
+    "with_us_weeks_unemployed": SourceOperatorRNGDescriptor(
+        ("weeks_unemployed_puf_qrf_model", "weeks_unemployed_training_cap"),
+        training_cap_site="weeks_unemployed_training_cap",
+        training_cap=5_000,
+        qrf_site="weeks_unemployed_puf_qrf_model",
+    ),
+    "with_us_childcare_inputs": SourceOperatorRNGDescriptor(
+        ("childcare_puf_qrf_model", "childcare_training_cap"),
+        training_cap_site="childcare_training_cap",
+        training_cap=5_000,
+        qrf_site="childcare_puf_qrf_model",
+    ),
+    "with_us_adult_care_inputs": SourceOperatorRNGDescriptor(
+        ("adult_care_weighted_prefix_assignment",),
+        generator_site="adult_care_weighted_prefix_assignment",
+    ),
+    "with_us_energy_subsidy_input": SourceOperatorRNGDescriptor(
+        ("energy_subsidy_puf_qrf_model", "energy_subsidy_training_cap"),
+        training_cap_site="energy_subsidy_training_cap",
+        training_cap=5_000,
+        qrf_site="energy_subsidy_puf_qrf_model",
+    ),
+    "with_us_retirement_contribution_inputs": SourceOperatorRNGDescriptor(
+        (
+            "retirement_contributions_puf_qrf_model",
+            "retirement_contributions_training_cap",
+        ),
+        training_cap_site="retirement_contributions_training_cap",
+        training_cap=5_000,
+        qrf_site="retirement_contributions_puf_qrf_model",
+    ),
+    "with_us_retirement_distribution_inputs": SourceOperatorRNGDescriptor(
+        (
+            "retirement_distributions_puf_qrf_model",
+            "retirement_distributions_training_cap",
+        ),
+        training_cap_site="retirement_distributions_training_cap",
+        training_cap=5_000,
+        qrf_site="retirement_distributions_puf_qrf_model",
+    ),
+    "with_us_immigration_inputs": SourceOperatorRNGDescriptor(
+        (
+            "immigration_ead_workers_assignment",
+            "immigration_ead_students_assignment",
+        ),
+        stable_draw_sites=(
+            "immigration_ead_workers_assignment",
+            "immigration_ead_students_assignment",
+        ),
+    ),
+}
+
 POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER = tuple(
     name
     for name in POOL_SOURCE_OPERATOR_ORDER
@@ -632,6 +790,145 @@ POOL_POST_CLONE_SOURCE_OPERATOR_ORDER = tuple(
     if _POST_CLONE_PHASE in POOL_OPERATOR_CONTRACTS[name].phases
 )
 """Source operations safe or required after physical support expansion."""
+
+
+def _source_stable_keys(frame: Frame, operator_name: str) -> list[str]:
+    person = frame.table("person")
+    if operator_name == "with_us_pregnancy_inputs":
+        if {"source_year", "source_household_id", "source_person_id"} <= set(
+            person.columns
+        ):
+            keys = (
+                person["source_year"].astype(str)
+                + ":"
+                + person["source_household_id"].astype(str)
+                + ":"
+                + person["source_person_id"].astype(str)
+            )
+        else:
+            keys = person["person_id"].astype(str)
+    elif operator_name == "with_us_wic_claim_input":
+        source_columns = ("source_year", "source_household_id", "source_person_id")
+        if all(column in person for column in source_columns):
+            identity = person.loc[:, list(source_columns)]
+            if identity.isna().any().any():
+                raise ValueError("WIC source RNG plan found incomplete stable identity.")
+            keys = (
+                identity["source_year"].astype(str)
+                + ":"
+                + identity["source_household_id"].astype(str)
+                + ":"
+                + identity["source_person_id"].astype(str)
+            )
+        elif "person_support_source_id" in person:
+            source_id = person["person_support_source_id"]
+            if source_id.isna().any():
+                raise ValueError("WIC source RNG plan found missing support identity.")
+            keys = "support:" + source_id.astype(str)
+        else:
+            keys = "person:" + person["person_id"].astype(str)
+    elif operator_name == "with_us_immigration_inputs":
+        if {"source_year", "source_person_id"}.issubset(person.columns):
+            keys = (
+                person["source_year"].astype(str)
+                + ":"
+                + person["source_person_id"].astype(str)
+            )
+        else:
+            keys = person["person_id"].astype(str)
+    else:  # pragma: no cover - closed by the descriptor registry
+        raise ValueError(f"{operator_name!r} has no stable-key RNG descriptor.")
+    return keys.tolist()
+
+
+def source_operator_rng_invocation_plan(
+    frame: Frame,
+    operator_name: str,
+    *,
+    granted_site_ids: Sequence[str],
+) -> Mapping[str, tuple[RNGInvocation, ...]]:
+    """Build the exact per-site plan for one post-clone source dispatch.
+
+    The compiled node remains authoritative: its granted site ids must match
+    the checked source descriptor exactly.  Every grant receives an explicit
+    plan, including empty plans for conditional training caps and the two
+    pre-clone ACS-rent sites overgranted to the housing callback's shared
+    source-stage owner.
+    """
+
+    if not isinstance(frame, Frame):
+        raise TypeError("Source RNG invocation planning requires a Frame.")
+    try:
+        descriptor = _POST_CLONE_SOURCE_RNG_DESCRIPTORS[operator_name]
+    except KeyError as error:
+        if operator_name in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER:
+            if tuple(granted_site_ids):
+                raise ValueError(
+                    f"Deterministic source operator {operator_name!r} has RNG grants."
+                ) from error
+            return {}
+        raise ValueError(
+            f"Unknown post-clone source operator {operator_name!r}."
+        ) from error
+
+    granted = tuple(granted_site_ids)
+    if len(granted) != len(set(granted)) or set(granted) != set(descriptor.site_ids):
+        raise ValueError(
+            f"Source RNG grants for {operator_name!r} differ from its exact "
+            f"descriptor: expected={list(descriptor.site_ids)!r}, "
+            f"observed={list(granted)!r}."
+        )
+
+    inactive = False
+    person = frame.table("person")
+    if operator_name == "with_us_pregnancy_inputs":
+        inactive = (
+            "is_pregnant" in person
+            and person["is_pregnant"].dropna().nunique() > 1
+        )
+    elif operator_name == "with_us_immigration_inputs":
+        inactive = {
+            "ssn_card_type",
+            "immigration_status_str",
+        }.issubset(person.columns)
+
+    stable_material: Mapping[str, object] | None = None
+    if descriptor.stable_draw_sites and not inactive:
+        stable_material = {
+            "stable_keys_sha256": sha256_json(
+                [str(key) for key in _source_stable_keys(frame, operator_name)]
+            )
+        }
+
+    asec_rows = 0
+    if descriptor.training_cap_site is not None and not inactive:
+        if has_support_role_metadata(person, entity="person"):
+            asec_rows = int(
+                support_role_series(person, entity="person")
+                .eq(BASE_ASEC_SUPPORT_CHANNEL)
+                .sum()
+            )
+
+    plans: dict[str, tuple[RNGInvocation, ...]] = {}
+    for site_id in granted:
+        if inactive or site_id in descriptor.pre_clone_overgrants:
+            plans[site_id] = ()
+        elif site_id == descriptor.training_cap_site:
+            assert descriptor.training_cap is not None
+            plans[site_id] = (
+                RNGInvocation(
+                    "default",
+                    {"stage_training_cap": descriptor.training_cap},
+                ),
+            ) if asec_rows > descriptor.training_cap else ()
+        elif site_id in descriptor.stable_draw_sites:
+            assert stable_material is not None
+            plans[site_id] = (RNGInvocation("default", stable_material),)
+        elif site_id in {descriptor.qrf_site, descriptor.generator_site}:
+            plans[site_id] = (RNGInvocation("default"),)
+        else:  # pragma: no cover - descriptor construction is exhaustive
+            raise AssertionError(f"Unclassified source RNG site {site_id!r}.")
+    return plans
 
 _CPS_SOURCE_EVIDENCE_COLUMN = "PERIDNUM"
 _SOURCE_OPERATOR_FAMILIES: Mapping[str, str] = {
@@ -1923,6 +2220,8 @@ def _with_gated_us_hours_worked_inputs(
 
 def complete_multispine_source_inputs(
     frame: Frame,
+    *,
+    rng: SourceRNGCapability | None = None,
 ) -> PoolStageOutput:
     """Run the legacy post-clone source chain through the narrow public API.
 
@@ -1939,6 +2238,7 @@ def complete_multispine_source_inputs(
         completed = run_multispine_post_clone_source_operator(
             current,
             operator_name,
+            rng=rng,
         )
         current = completed.frame
         operator_receipts[operator_name] = completed.receipt
@@ -1948,7 +2248,9 @@ def complete_multispine_source_inputs(
     )
 
 
-def _post_clone_source_operators() -> Mapping[str, SourceFrameOperator]:
+def _post_clone_source_operators(
+    rng: SourceRNGCapability | None = None,
+) -> Mapping[str, SourceFrameOperator]:
     """Return the fixed-seed, fixed-period post-clone kernel mapping."""
 
     operators: Mapping[str, SourceFrameOperator] = {
@@ -1957,6 +2259,7 @@ def _post_clone_source_operators() -> Mapping[str, SourceFrameOperator]:
                 current,
                 seed=POOL_RANDOM_SEED,
                 time_period=POOL_TIME_PERIOD,
+                rng=rng,
             )
         ),
         "with_us_medicare_take_up_input": lambda current: (
@@ -1970,11 +2273,13 @@ def _post_clone_source_operators() -> Mapping[str, SourceFrameOperator]:
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            rng=rng,
         ),
         "with_us_wic_claim_input": lambda current: with_us_wic_claim_input(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            rng=rng,
         ),
         "impute_us_housing_assistance_to_puf_support": lambda current: (
             impute_us_housing_assistance_to_puf_support(
@@ -1982,6 +2287,7 @@ def _post_clone_source_operators() -> Mapping[str, SourceFrameOperator]:
                 seed=POOL_RANDOM_SEED,
                 n_estimators=POOL_HOUSING_ASSISTANCE_N_ESTIMATORS,
                 max_train_samples=POOL_HOUSING_ASSISTANCE_MAX_TRAIN_SAMPLES,
+                rng=rng,
             )
         ),
         "with_us_child_support_inputs": lambda current: with_us_child_support_inputs(
@@ -1989,48 +2295,56 @@ def _post_clone_source_operators() -> Mapping[str, SourceFrameOperator]:
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
             allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
+            rng=rng,
         ),
         "with_us_disability_benefits": lambda current: with_us_disability_benefits(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
             allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
+            rng=rng,
         ),
         "with_us_workers_compensation": lambda current: with_us_workers_compensation(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
             allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
+            rng=rng,
         ),
         "with_us_weeks_unemployed": lambda current: with_us_weeks_unemployed(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
             asec_2023_source=None,
+            rng=rng,
         ),
         "with_us_childcare_inputs": lambda current: with_us_childcare_inputs(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
             allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
+            rng=rng,
         ),
         "with_us_adult_care_inputs": lambda current: with_us_adult_care_inputs(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
             allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
+            rng=rng,
         ),
         "with_us_energy_subsidy_input": lambda current: with_us_energy_subsidy_input(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
             allow_existing_without_source=(POOL_SOURCE_ALLOW_EXISTING_WITHOUT_SOURCE),
+            rng=rng,
         ),
         "with_us_retirement_contribution_inputs": lambda current: (
             with_us_retirement_contribution_inputs(
                 current,
                 seed=POOL_RANDOM_SEED,
                 time_period=POOL_TIME_PERIOD,
+                rng=rng,
             )
         ),
         "with_us_retirement_distribution_inputs": lambda current: (
@@ -2039,12 +2353,14 @@ def _post_clone_source_operators() -> Mapping[str, SourceFrameOperator]:
                 seed=POOL_RANDOM_SEED,
                 time_period=POOL_TIME_PERIOD,
                 force_puf_imputation=True,
+                rng=rng,
             )
         ),
         "with_us_immigration_inputs": lambda current: with_us_immigration_inputs(
             current,
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
+            rng=rng,
         ),
         "with_us_education_inputs": lambda current: with_us_education_inputs(
             current,
@@ -2059,6 +2375,8 @@ def _post_clone_source_operators() -> Mapping[str, SourceFrameOperator]:
 def run_multispine_post_clone_source_operator(
     frame: Frame,
     operator_name: str,
+    *,
+    rng: SourceRNGCapability | None = None,
 ) -> PoolStageOutput:
     """Run exactly one declared post-clone source producer.
 
@@ -2068,7 +2386,7 @@ def run_multispine_post_clone_source_operator(
     ownership checks remain centralized in the guarded source runner.
     """
 
-    operators = _post_clone_source_operators()
+    operators = _post_clone_source_operators(rng)
     if operator_name not in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER:
         raise ValueError(
             f"{operator_name!r} is not a declared post-clone source operator; "

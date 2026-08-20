@@ -31,6 +31,7 @@ from microcosm.build.source_manifest import (
     load_source_manifest,
 )
 from microcosm.build.source_runtime import (
+    SourceRNGCapability,
     SourceRuntimeConfig,
     SourceRuntimeContext,
     SourceRuntimeError,
@@ -336,10 +337,17 @@ def impute_us_retirement_contributions_to_puf_support_from_manifest(
         frame.loc[asec_mask, _PERSON_WEIGHT_COLUMN], errors="coerce"
     ).fillna(0.0)
     if len(training) > max_train_samples:
-        sample = training.sample(
-            n=max_train_samples,
-            random_state=(context.config.seed if context is not None else 0),
-        ).index
+        if context is None or context.rng is None:
+            sample = training.sample(
+                n=max_train_samples,
+                random_state=(context.config.seed if context is not None else 0),
+            ).index
+        else:
+            sample = context.rng.pandas_sample(
+                context.rng.token("retirement_contributions_training_cap"),
+                training,
+                n=max_train_samples,
+            ).index
         training = training.loc[sample]
         weights = weights.loc[sample]
 
@@ -367,11 +375,21 @@ def impute_us_retirement_contributions_to_puf_support_from_manifest(
 
         QRF = import_module("microcosm.fit").QRF
     seed = context.config.seed if context is not None else 0
-    fitted = QRF(n_estimators=n_estimators, seed=seed).fit(
+    qrf_generators = None
+    if context is not None and context.rng is not None:
+        qrf_generators = context.rng.qrf_generators(
+            context.rng.token("retirement_contributions_puf_qrf_model")
+        )
+    model = QRF(n_estimators=n_estimators, seed=seed)
+    fit_kwargs = (
+        {} if qrf_generators is None else {"rng_generators": qrf_generators}
+    )
+    fitted = model.fit(
         training,
         list(predictors),
         list(US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS),
         weights=weights.to_numpy(dtype=np.float64),
+        **fit_kwargs,
     )
     predictions = fitted.predict(test).clip(lower=0.0)
     no_wages = test["employment_income"].to_numpy(dtype=np.float64) == 0
@@ -506,6 +524,7 @@ def with_us_retirement_contribution_inputs(
     *,
     seed: int,
     time_period: int,
+    rng: SourceRNGCapability | None = None,
 ) -> Frame:
     """Materialize the five retirement-contribution inputs on a US frame."""
 
@@ -534,6 +553,7 @@ def with_us_retirement_contribution_inputs(
             ),
         },
         config=SourceRuntimeConfig(seed=int(seed), target_year=int(time_period)),
+        rng=rng,
     )
     aligned = output.set_index("person_id").reindex(person["person_id"])
     for column in US_RETIREMENT_CONTRIBUTION_OUTPUT_COLUMNS:

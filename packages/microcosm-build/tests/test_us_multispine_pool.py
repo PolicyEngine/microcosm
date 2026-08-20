@@ -72,6 +72,7 @@ from microcosm.build.us_runtime.multispine_pool import (
     run_multispine_pool_path,
     run_multispine_post_clone_source_operator,
     seed_multispine_pool_inputs,
+    source_operator_rng_invocation_plan,
 )
 from microcosm.build.us_runtime.operator_boundary import (
     FORMULA_OWNED_SOURCE_COLUMNS,
@@ -2548,6 +2549,60 @@ def test_single_post_clone_source_entrypoint_rejects_unknown_operator_before_run
         run_multispine_post_clone_source_operator(
             _source_frame(),
             "with_us_housing_inputs",
+        )
+
+
+def test_source_rng_plan_binds_stable_keys_to_exact_site() -> None:
+    frame = _source_frame()
+    person = frame.table("person").copy()
+    person["source_year"] = [2024, 2024]
+    person["source_household_id"] = [10, 20]
+    person["source_person_id"] = [1, 2]
+    frame = _replace_person(frame, person)
+
+    plan = source_operator_rng_invocation_plan(
+        frame,
+        "with_us_pregnancy_inputs",
+        granted_site_ids=("pregnancy_assignment",),
+    )
+
+    assert tuple(plan) == ("pregnancy_assignment",)
+    assert len(plan["pregnancy_assignment"]) == 1
+    assert plan["pregnancy_assignment"][0].boundary_key == "default"
+    assert plan["pregnancy_assignment"][0].semantic_material_sha256
+
+
+def test_housing_source_rng_plan_empties_preclone_overgrants() -> None:
+    frame = _source_frame()
+    person = frame.table("person").copy()
+    person["person_support_channel"] = ["asec", "puf_tax_detail"]
+    frame = _replace_person(frame, person)
+    granted = (
+        "acs_rent_archived_training_cap",
+        "acs_rent_qrf_model",
+        "housing_assistance_puf_qrf_model",
+        "housing_inputs_training_cap",
+    )
+
+    plan = source_operator_rng_invocation_plan(
+        frame,
+        "impute_us_housing_assistance_to_puf_support",
+        granted_site_ids=granted,
+    )
+
+    assert tuple(plan) == granted
+    assert plan["acs_rent_archived_training_cap"] == ()
+    assert plan["acs_rent_qrf_model"] == ()
+    assert plan["housing_inputs_training_cap"] == ()
+    assert len(plan["housing_assistance_puf_qrf_model"]) == 1
+
+
+def test_source_rng_plan_refuses_grant_drift() -> None:
+    with pytest.raises(ValueError, match="differ from its exact descriptor"):
+        source_operator_rng_invocation_plan(
+            _source_frame(),
+            "with_us_pregnancy_inputs",
+            granted_site_ids=("wic_claim_assignment",),
         )
 
 

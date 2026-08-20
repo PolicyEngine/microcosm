@@ -33,6 +33,7 @@ from microcosm.build.source_manifest import (
     load_source_manifest,
 )
 from microcosm.build.source_runtime import (
+    SourceRNGCapability,
     SourceRuntimeConfig,
     SourceRuntimeContext,
     SourceRuntimeError,
@@ -447,10 +448,17 @@ def impute_us_prior_year_income_to_puf_support_from_manifest(
             "person weights with positive total mass."
         )
     if len(training) > max_train_samples:
-        sample = training.sample(
-            n=max_train_samples,
-            random_state=(context.config.seed if context is not None else 0),
-        ).index
+        if context is None or context.rng is None:
+            sample = training.sample(
+                n=max_train_samples,
+                random_state=(context.config.seed if context is not None else 0),
+            ).index
+        else:
+            sample = context.rng.pandas_sample(
+                context.rng.token("prior_year_income_training_cap"),
+                training,
+                n=max_train_samples,
+            ).index
         training = training.loc[sample]
         weights = weights.loc[sample]
         sampled_weight_values = weights.to_numpy(dtype=np.float64)
@@ -487,11 +495,21 @@ def impute_us_prior_year_income_to_puf_support_from_manifest(
 
         QRF = import_module("microcosm.fit").QRF
     seed = context.config.seed if context is not None else 0
-    fitted = QRF(n_estimators=n_estimators, seed=seed).fit(
+    qrf_generators = None
+    if context is not None and context.rng is not None:
+        qrf_generators = context.rng.qrf_generators(
+            context.rng.token("prior_year_income_puf_qrf_model")
+        )
+    model = QRF(n_estimators=n_estimators, seed=seed)
+    fit_kwargs = (
+        {} if qrf_generators is None else {"rng_generators": qrf_generators}
+    )
+    fitted = model.fit(
         training,
         list(predictors),
         list(_PUF_QRF_OUTPUT_COLUMNS),
         weights=weights.to_numpy(dtype=np.float64),
+        **fit_kwargs,
     )
     predictions = fitted.predict(test)
     if not isinstance(predictions, pd.DataFrame):
@@ -657,6 +675,7 @@ def with_us_prior_year_income_inputs(
     *,
     seed: int,
     time_period: int,
+    rng: SourceRNGCapability | None = None,
 ) -> Frame:
     """Materialize adjacent-year earnings and PUF-support replacements."""
 
@@ -690,6 +709,7 @@ def with_us_prior_year_income_inputs(
             ),
         },
         config=SourceRuntimeConfig(seed=seed, target_year=time_period),
+        rng=rng,
     ).drop(
         columns=[
             _PERSON_WEIGHT_COLUMN,

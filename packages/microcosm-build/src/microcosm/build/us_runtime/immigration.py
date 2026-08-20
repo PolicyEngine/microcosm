@@ -80,6 +80,7 @@ from microcosm.build.source_manifest import (
     load_source_manifest,
 )
 from microcosm.build.source_runtime import (
+    SourceRNGCapability,
     SourceRuntimeConfig,
     SourceRuntimeContext,
     SourceRuntimeError,
@@ -351,6 +352,7 @@ def derive_us_immigration_status_from_manifest(
         weights.to_numpy(dtype=np.float64),
         seed=int(context.config.seed),
         controls=controls,
+        rng=context.rng,
     )
     status = _derive_immigration_status(
         result,
@@ -506,6 +508,7 @@ def _assign_ssn_card_codes(
     *,
     seed: int,
     controls: UndocumentedControls,
+    rng: SourceRNGCapability | None = None,
 ) -> np.ndarray:
     citizenship = _integer_column(person, "PRCITSHP")
     unknown = ~np.isin(citizenship, [1, 2, 3, 4, 5])
@@ -580,9 +583,22 @@ def _assign_ssn_card_codes(
     # level is the calibration lane's job, not this label stage's.
     worker_candidates = (ssn_codes == 0) & noncitizens & is_worker
     worker_excess = float(weights[worker_candidates].sum()) - controls.workers
-    worker_draws = _stable_person_draws(
-        person, seed=seed, salt="immigration:ead_workers"
-    )
+    if rng is None:
+        worker_draws = _stable_person_draws(
+            person, seed=seed, salt="immigration:ead_workers"
+        )
+    else:
+        keys = (
+            person["source_year"].astype(str)
+            + ":"
+            + person["source_person_id"].astype(str)
+            if {"source_year", "source_person_id"}.issubset(person.columns)
+            else person["person_id"].astype(str)
+        )
+        worker_draws = rng.blake2b_uniforms(
+            rng.token("immigration_ead_workers_assignment"),
+            stable_keys=keys.tolist(),
+        )
     ssn_codes[
         _select_weight_to_target(
             worker_candidates, weights, worker_draws, worker_excess
@@ -591,9 +607,15 @@ def _assign_ssn_card_codes(
 
     student_candidates = (ssn_codes == 0) & noncitizens & is_student
     student_excess = float(weights[student_candidates].sum()) - controls.students
-    student_draws = _stable_person_draws(
-        person, seed=seed, salt="immigration:ead_students"
-    )
+    if rng is None:
+        student_draws = _stable_person_draws(
+            person, seed=seed, salt="immigration:ead_students"
+        )
+    else:
+        student_draws = rng.blake2b_uniforms(
+            rng.token("immigration_ead_students_assignment"),
+            stable_keys=keys.tolist(),
+        )
     ssn_codes[
         _select_weight_to_target(
             student_candidates, weights, student_draws, student_excess
@@ -648,6 +670,7 @@ def with_us_immigration_inputs(
     *,
     seed: int,
     time_period: int,
+    rng: SourceRNGCapability | None = None,
 ) -> Frame:
     """Run the ``immigration_status`` manifest stage over a US frame.
 
@@ -695,6 +718,7 @@ def with_us_immigration_inputs(
             "derive_immigration_status": derive_us_immigration_status_from_manifest,
         },
         config=SourceRuntimeConfig(seed=int(seed), target_year=int(time_period)),
+        rng=rng,
     )
     aligned = output.set_index("person_id").reindex(person["person_id"])
     for column in US_IMMIGRATION_OUTPUT_COLUMNS:

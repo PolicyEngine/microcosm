@@ -2284,3 +2284,35 @@ head; it still writes `us-f1-certification.json` and
 1. Finish physical node wiring and emit the complete 38-node reuse inventory.
 2. Preserve the runner's fail-closed verdict for any still-unsealed final-H5
    or calibration vector member in the host handoff.
+
+## F1 continuation r5 source-ledger route (2026-08-20)
+
+### State
+
+- Fourteen post-clone source producers are stochastic. Their legacy algorithms
+  span capped pandas sampling, QRF fit/draw pairs, stable BLAKE2b uniforms, and
+  one PCG64 permutation; bundle mode must receive each operation from the
+  node's compiled ledger grant without changing the constants path.
+
+### Done
+
+- Threaded an optional narrow source RNG capability through the source runtime
+  and all stochastic post-clone callbacks. Bundle callbacks use brokered
+  pandas sampling, QRF pairs, stable uniforms, or a generator permutation;
+  `None` retains the existing constants implementation.
+- Added a descriptor-driven invocation planner that requires an exact match to
+  each compiled node's site ids and emits every site explicitly. Conditional
+  caps and the housing node's two pre-clone overgrants receive empty plans when
+  they cannot draw, so complete sealing can distinguish absence from omission.
+- Seven focused runtime/source/planner tests pass. Targeted Ruff and
+  `git diff --check` pass; no sample build ran. A broader affected-module run
+  retained one pre-existing structural-AST failure around the untouched
+  pre-clone hours-worked lambda and one skip; it is not claimed as suite-green
+  evidence for this step.
+
+### Next
+
+1. Have the late DAG compute each source plan from the narrowed pre-node frame
+   and pass `kernel_session.rng` to exactly that callback.
+2. Exercise QRF-bearing source nodes inside the strict broker-only physical
+   scope, including dependency compatibility and complete token consumption.

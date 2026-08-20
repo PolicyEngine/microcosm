@@ -8,15 +8,17 @@ shared runtimes, not named inside manifests.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
+import numpy as np
 import pandas as pd
 
 from microcosm.build.source_manifest import SourceOperationSpec, SourceStageSpec
 
 __all__ = [
+    "SourceRNGCapability",
     "SourceOperationHandler",
     "SourceRuntimeConfig",
     "SourceRuntimeContext",
@@ -24,6 +26,36 @@ __all__ = [
     "UnsupportedSourceOperationError",
     "run_source_stage",
 ]
+
+
+class SourceRNGCapability(Protocol):
+    """Narrow source-kernel view of the executor-owned RNG ledger.
+
+    Tokens and leases deliberately remain opaque here.  The source runtime
+    may ask only for the exact legacy operations its handlers implement; it
+    cannot inspect broker/session authority or construct private generators.
+    """
+
+    def token(self, site_id: str, boundary_key: str = "default") -> object: ...
+
+    def generator(self, token: object) -> object: ...
+
+    def qrf_generators(self, token: object) -> object: ...
+
+    def pandas_sample(
+        self,
+        token: object,
+        frame: pd.DataFrame,
+        *,
+        n: int,
+    ) -> pd.DataFrame: ...
+
+    def blake2b_uniforms(
+        self,
+        token: object,
+        *,
+        stable_keys: Sequence[object],
+    ) -> np.ndarray: ...
 
 
 @dataclass(frozen=True)
@@ -41,6 +73,7 @@ class SourceRuntimeContext:
 
     config: SourceRuntimeConfig
     tables: Mapping[str, pd.DataFrame]
+    rng: SourceRNGCapability | None = None
 
     def read_table(self, name: str) -> pd.DataFrame:
         """Return a defensive copy of a declared source table."""
@@ -81,6 +114,7 @@ def run_source_stage(
     tables: Mapping[str, pd.DataFrame],
     operation_handlers: Mapping[str, SourceOperationHandler] | None = None,
     config: SourceRuntimeConfig | None = None,
+    rng: SourceRNGCapability | None = None,
     stop_after: str | None = None,
 ) -> pd.DataFrame:
     """Execute a source-stage manifest against explicit source tables.
@@ -91,6 +125,8 @@ def run_source_stage(
             source data by importing country packages.
         operation_handlers: Injected implementations keyed by operation kind.
         config: Build knobs such as seed and target year.
+        rng: Optional executor-owned, source-kernel RNG capability.  Omitting
+            it preserves the constants-era seeded implementation exactly.
         stop_after: Optional operation kind at which to return the intermediate
             frame. This lets release builds cache stage prefixes such as
             ``read_table -> disaggregate_aggregate_records`` before later
@@ -101,6 +137,7 @@ def run_source_stage(
     context = SourceRuntimeContext(
         config=config or SourceRuntimeConfig(),
         tables=tables,
+        rng=rng,
     )
     current: pd.DataFrame | None = None
 

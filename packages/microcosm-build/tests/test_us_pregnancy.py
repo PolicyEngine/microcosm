@@ -146,6 +146,44 @@ class TestDerivation:
         values = result[US_PREGNANCY_OUTPUT_COLUMN].tolist()
         assert values[0] == values[1]  # clones of one source person agree
 
+    def test_executor_rng_capability_owns_stable_draws(self) -> None:
+        class FixtureRNG:
+            def __init__(self) -> None:
+                self.calls: list[object] = []
+
+            def token(self, site_id: str, boundary_key: str = "default") -> object:
+                self.calls.append(("token", site_id, boundary_key))
+                return "pregnancy-token"
+
+            def blake2b_uniforms(
+                self, token: object, *, stable_keys: list[object]
+            ) -> np.ndarray:
+                self.calls.append(("uniforms", token, stable_keys))
+                return np.zeros(len(stable_keys), dtype=np.float64)
+
+        rng = FixtureRNG()
+        context = SourceRuntimeContext(
+            config=SourceRuntimeConfig(seed=999, target_year=TIME_PERIOD),
+            tables={},
+            rng=rng,  # type: ignore[arg-type]
+        )
+        result = derive_us_pregnancy_from_manifest(
+            _person_table(
+                [
+                    {"A_SEX": _FEMALE, "A_AGE": 25, "person_id": 7},
+                    {"A_SEX": _MALE, "A_AGE": 25, "person_id": 8},
+                ]
+            ),
+            _operation(),
+            context,
+        )
+
+        assert result[US_PREGNANCY_OUTPUT_COLUMN].tolist() == [True, False]
+        assert rng.calls == [
+            ("token", "pregnancy_assignment", "default"),
+            ("uniforms", "pregnancy-token", ["7", "8"]),
+        ]
+
     def test_missing_raw_column_is_named(self) -> None:
         table = _person_table([{}]).drop(columns=["A_SEX"])
         with pytest.raises(SourceRuntimeError, match="A_SEX"):

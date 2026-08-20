@@ -46,6 +46,7 @@ from microcosm.build.source_manifest import (
     load_source_manifest,
 )
 from microcosm.build.source_runtime import (
+    SourceRNGCapability,
     SourceRuntimeConfig,
     SourceRuntimeContext,
     SourceRuntimeError,
@@ -202,7 +203,25 @@ def derive_us_pregnancy_from_manifest(
     age = pd.to_numeric(frame["A_AGE"], errors="coerce")
     low, high = _CHILDBEARING_AGE_RANGE
     eligible = ((sex == _FEMALE_SEX_CODE) & (age >= low) & (age <= high)).to_numpy()
-    draws = _stable_person_draws(frame, seed=context.config.seed)
+    if context.rng is None:
+        draws = _stable_person_draws(frame, seed=context.config.seed)
+    else:
+        if {"source_year", "source_household_id", "source_person_id"} <= set(
+            frame.columns
+        ):
+            keys = (
+                frame["source_year"].astype(str)
+                + ":"
+                + frame["source_household_id"].astype(str)
+                + ":"
+                + frame["source_person_id"].astype(str)
+            )
+        else:
+            keys = frame["person_id"].astype(str)
+        draws = context.rng.blake2b_uniforms(
+            context.rng.token("pregnancy_assignment"),
+            stable_keys=keys.tolist(),
+        )
     result = frame.copy(deep=True)
     result[US_PREGNANCY_OUTPUT_COLUMN] = eligible & (draws < rate)
     return result
@@ -218,7 +237,13 @@ def _pregnancy_carries_signal(person: pd.DataFrame) -> bool:
     return person[US_PREGNANCY_OUTPUT_COLUMN].dropna().nunique() > 1
 
 
-def with_us_pregnancy_inputs(frame: Frame, *, seed: int, time_period: int) -> Frame:
+def with_us_pregnancy_inputs(
+    frame: Frame,
+    *,
+    seed: int,
+    time_period: int,
+    rng: SourceRNGCapability | None = None,
+) -> Frame:
     """Run the ``pregnancy`` manifest stage over a US frame.
 
     A frame already carrying a non-constant ``is_pregnant`` passes through
@@ -259,6 +284,7 @@ def with_us_pregnancy_inputs(frame: Frame, *, seed: int, time_period: int) -> Fr
             "derive_pregnancy": derive_us_pregnancy_from_manifest,
         },
         config=SourceRuntimeConfig(seed=int(seed), target_year=int(time_period)),
+        rng=rng,
     )
     aligned = output.set_index("person_id").reindex(person["person_id"])
     if aligned[US_PREGNANCY_OUTPUT_COLUMN].isna().any():

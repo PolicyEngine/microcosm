@@ -360,10 +360,12 @@ def test_puf_qrf_caps_training_at_5000_and_keeps_weights_aligned(
             targets: list[str],
             *,
             weights: np.ndarray,
+            rng_generators: object | None = None,
         ) -> FakeFitted:
             calls["training_rows"] = len(training)
             calls["training_index"] = training.index.to_numpy()
             calls["weights"] = weights.copy()
+            calls["rng_generators"] = rng_generators
             return FakeFitted()
 
     monkeypatch.setattr(module, "QRF", FakeQRF)
@@ -381,6 +383,45 @@ def test_puf_qrf_caps_training_at_5000_and_keeps_weights_aligned(
         calls["weights"],
         frame.loc[calls["training_index"], "person_weight"].to_numpy(),
     )
+
+    class FixtureRNG:
+        def __init__(self) -> None:
+            self.calls: list[tuple[object, ...]] = []
+
+        def token(self, site_id: str, boundary_key: str = "default") -> object:
+            self.calls.append(("token", site_id, boundary_key))
+            return f"token:{site_id}"
+
+        def pandas_sample(
+            self, token: object, training: pd.DataFrame, *, n: int
+        ) -> pd.DataFrame:
+            self.calls.append(("sample", token, n))
+            return training.iloc[:n]
+
+        def qrf_generators(self, token: object) -> object:
+            self.calls.append(("qrf", token))
+            return "fixture-qrf-pair"
+
+    rng = FixtureRNG()
+    brokered_context = SourceRuntimeContext(
+        config=SourceRuntimeConfig(seed=19, target_year=2024),
+        tables={},
+        rng=rng,  # type: ignore[arg-type]
+    )
+    calls.clear()
+
+    impute_us_child_support_to_puf_support_from_manifest(
+        frame, operation, brokered_context
+    )
+
+    assert calls["init"] == {"n_estimators": 100, "seed": 19}
+    assert calls["rng_generators"] == "fixture-qrf-pair"
+    assert rng.calls == [
+        ("token", "child_support_training_cap", "default"),
+        ("sample", "token:child_support_training_cap", 5_000),
+        ("token", "child_support_puf_qrf_model", "default"),
+        ("qrf", "token:child_support_puf_qrf_model"),
+    ]
 
 
 def test_signal_gate_rejects_missing_default_invalid_and_dead_puf_surface(

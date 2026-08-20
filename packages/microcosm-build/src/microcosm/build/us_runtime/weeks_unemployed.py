@@ -35,6 +35,7 @@ from microcosm.build.source_manifest import (
     load_source_manifest,
 )
 from microcosm.build.source_runtime import (
+    SourceRNGCapability,
     SourceRuntimeConfig,
     SourceRuntimeContext,
     SourceRuntimeError,
@@ -901,10 +902,17 @@ def impute_us_weeks_unemployed_to_puf_support_from_manifest(
     n_estimators = int(operation.parameters["n_estimators"])
     seed = context.config.seed if context is not None else 0
     if len(training) > max_train_samples:
-        sampled_index = training.sample(
-            n=max_train_samples,
-            random_state=seed,
-        ).index
+        if context is None or context.rng is None:
+            sampled_index = training.sample(
+                n=max_train_samples,
+                random_state=seed,
+            ).index
+        else:
+            sampled_index = context.rng.pandas_sample(
+                context.rng.token("weeks_unemployed_training_cap"),
+                training,
+                n=max_train_samples,
+            ).index
         training = training.loc[sampled_index]
         weights = weights.loc[sampled_index]
 
@@ -940,11 +948,21 @@ def impute_us_weeks_unemployed_to_puf_support_from_manifest(
         from importlib import import_module
 
         QRF = import_module("microcosm.fit").QRF
-    fitted = QRF(n_estimators=n_estimators, seed=seed).fit(
+    qrf_generators = None
+    if context is not None and context.rng is not None:
+        qrf_generators = context.rng.qrf_generators(
+            context.rng.token("weeks_unemployed_puf_qrf_model")
+        )
+    model = QRF(n_estimators=n_estimators, seed=seed)
+    fit_kwargs = (
+        {} if qrf_generators is None else {"rng_generators": qrf_generators}
+    )
+    fitted = model.fit(
         training,
         predictors,
         [_OUTPUT],
         weights=weights.to_numpy(dtype=np.float64),
+        **fit_kwargs,
     )
     predictions = fitted.predict(test)
     if not isinstance(predictions, pd.DataFrame) or _OUTPUT not in predictions:
@@ -1136,6 +1154,7 @@ def with_us_weeks_unemployed(
     seed: int,
     time_period: int,
     asec_2023_source: pd.DataFrame | None = None,
+    rng: SourceRNGCapability | None = None,
 ) -> Frame:
     """Repair the 2022 source, carry ASEC weeks, and replace the PUF half."""
 
@@ -1188,6 +1207,7 @@ def with_us_weeks_unemployed(
             ),
         },
         config=SourceRuntimeConfig(seed=int(seed), target_year=int(time_period)),
+        rng=rng,
     ).drop(
         columns=[
             _PERSON_WEIGHT_COLUMN,
