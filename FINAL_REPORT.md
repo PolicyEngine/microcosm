@@ -12,11 +12,11 @@ history, and regression audits confirmed that the complete correction and its
 failing-target coverage were already committed on the branch.
 
 No after artifact is claimed or accepted. An externally owned exact 1% retry
-previously rebuilt all 47 survey targets plus the one housing target without
-the supplied traceback and then entered the late DAG. That mutable log was
-truncated to zero bytes during the final local verification, while the external
-guard continued to report a resource wait and the directory still contained no
-pool, manifest, gates artifact, or terminal marker. Terminal stacked receipt
+rebuilt all 47 survey targets plus the one housing target without the supplied
+traceback. At the final 21:53Z read-only check, the mutable `build.log` was
+51,315 bytes and ended immediately after housing target 1/1; `guard.log` still
+reported a resource wait, and the directory contained no runner exit marker,
+`pool.h5`, pool manifest, or gates artifact. Terminal stacked receipt
 validation and frozen-battery success therefore are not claimed. The frozen
 sample/clone seed remains 578, and no battery band, threshold, comparator,
 fold, publication boundary, or pending-chain state was changed.
@@ -28,8 +28,9 @@ opt `taxable_interest_income` into QRF regime work or evidence. The final test
 tree also rejects a fully rehashed, plausible in-range `__batch_1` alias on an
 assigned target, preventing the unsafe permissive workaround briefly present
 in the first correction. All 14 decisive focused cases and all 529 tests in the
-five directly affected files pass in this continuation. Independent source,
-history, and regression audits agree on the scoped-fix verdict.
+five directly affected files pass in this continuation, peaking at 0.562 GiB
+and 1.444 GiB respectively under the owner guard. Independent source, history,
+and regression audits agree on the scoped-fix verdict.
 
 ## Root cause and correction
 
@@ -119,10 +120,10 @@ unavailable.
   lockfile changed between that commit and the final audit tree.
 - The five directly affected transfer, multispine, stacked, pool-tool, and H5
   files were rerun together on the final tree: all 529 passed. The run used the
-  owner-provided 12 GiB/20 ms guard and peaked at 1.594 GiB observed
+  owner-provided 12 GiB/20 ms guard and peaked at 1.444 GiB observed
   per-process RSS. The exact synthetic host-target test, real banked
   wide-family test, and all 12 QRF structure mutations also passed
-  independently (14 cases total), peaking at 0.568 GiB.
+  independently (14 cases total), peaking at 0.562 GiB.
 - `ruff check .`: passed on the final audit tree.
 - `ruff format --check` on all 15 Python files changed since `33bf52fe^`:
   passed.
@@ -134,19 +135,18 @@ unavailable.
 
 The GitNexus debugging workflow was attempted against a freshly generated
 local graph. The sandbox denied registration in `~/.gitnexus/registry.json`,
-and the graph parser omitted the two very large suspect runtime modules, so its
-query/context results could not trace the raise-site symbols. Direct source and
-commit tracing established the exact path instead. The generated 112 MiB
-repo-local index was removed after the audit.
+so query/context could not target this repository. Direct source and commit
+tracing established the exact path instead. The generated 112 MiB repo-local
+index was removed after the audit.
 
 The originally cited `battery-verify/pkg3/build.log` was overwritten by a later
 retry. The owner-preserved `_BUILD-FAILURE-1PCT.txt` retains the old traceback.
 During this continuation the reused log reached survey target 47/47, housing
-target 1/1, and the late DAG—including the bounded taxable-interest record—
-without that traceback. At the final read-only check the same mutable log had
-been truncated to zero bytes, `guard.log` still reported a resource wait, and
-the directory had no runner exit marker, `pool.h5`, pool manifest, or gates
-artifact. The earlier checkpoint passage is progress evidence only; it is not
+target 1/1, and the bounded taxable-interest record without that traceback. At
+the final read-only check the same mutable log was 51,315 bytes and stopped
+after the housing target, `guard.log` still reported a resource wait, and the
+directory had no runner exit marker, `pool.h5`, pool manifest, or gates
+artifact. This checkpoint passage is progress evidence only; it is not
 revision-bound or a terminal certification result.
 
 The sibling package suites were green before this continuation and their code
@@ -185,6 +185,11 @@ skipped.
 - `a4a28c7f` — confirm the current assigned-only binding diagnosis.
 - `212ab9a5` — record the current guarded 529-test affected suite.
 - `8627b17c` — record current lint, format, whitespace, and drift checks.
+- `8c4c9f2b` — finalize the preceding scoped-binding report.
+- `512db733` — reopen the current ACS binding continuation audit.
+- `8af6572f` — confirm the current scoped ACS binding diagnosis.
+- `012c3b67` — record the current guarded 529-test affected suite.
+- `df31b100` — record current lint, format, whitespace, and drift checks.
 
 ## Remaining host step
 
