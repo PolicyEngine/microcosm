@@ -1,0 +1,1 @@
+The uk extra floors move to policyengine-uk>=2.91 across the build, data, and frame shards, so the next UK release records a built-with model that carries the retention-elasticity semantics and CGT response hardening the policyengine.py certification gate pairs against.

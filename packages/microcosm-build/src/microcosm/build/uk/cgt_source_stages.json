@@ -43,7 +43,7 @@
         {
           "role": "policy_parameters",
           "kind": "versioned_parameter_tree",
-          "dependency": "policyengine-uk>=2.88 via microcosm-build[uk]",
+          "dependency": "policyengine-uk>=2.91 via microcosm-build[uk]",
           "parameters": [
             "gov.hmrc.income_tax.allowances.personal_allowance.amount",
             "gov.hmrc.income_tax.allowances.personal_allowance.maximum_ANI",

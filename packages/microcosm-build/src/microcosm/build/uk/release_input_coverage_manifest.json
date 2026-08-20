@@ -471,7 +471,7 @@
    ],
    "required_mass_change_reason": "Amounts-only capital gains redraw: household weights pass through unchanged and total household mass is conserved.",
    "source_manifest": "cgt_source_stages.json",
-   "source_manifest_sha256": "16b68f1d222116278421b210d3d9de0d06edcdf25d68f5a29dbf0f52ca63384a",
+   "source_manifest_sha256": "ee3a83e738a3b584740603971851f24b28c28c525c4f6abcc7411d9bc6579480",
    "source_vintages": {
     "hmrc_surface": "2023-24",
     "mapped_build_period": "2023"
