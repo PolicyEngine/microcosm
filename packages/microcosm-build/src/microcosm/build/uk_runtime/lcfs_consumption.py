@@ -42,7 +42,6 @@ LCFS_PERSON_FILENAME = "dvper_ukanon_202324_2023.tab"
 LCFS_PERSON_SHA256 = "f32d54d83cdecf023f0ac73530be3a99372099b596e0106a56eae42a64929e50"
 LCFS_PERSON_SIZE_BYTES = 6_545_146
 
-NTS_ICE_SHARE = 0.90
 UK_LCFS_CONSUMPTION_DECLARED_SEEDS = {"lcfs_consumption": 0}
 
 LCFS_REGIONS: Mapping[int, str] = {
@@ -201,6 +200,7 @@ class UKLCFSConsumptionStageTransform:
 
     def __call__(self, frame: Frame) -> Frame:
         assert_rules_engine_country(self.engine, "uk")
+        anchors = load_lcfs_consumption_anchors()
         lcfs_household = (
             self.lcfs_household
             if self.lcfs_household is not None
@@ -228,12 +228,15 @@ class UKLCFSConsumptionStageTransform:
         was = clean_was_household_table(was_raw)
         donor = clean_lcfs_consumption_table(lcfs_person, lcfs_household)
         donor, bridge_record = bridge_has_fuel_to_lcfs(
-            donor, was, seed=_operation_seed(self.stage, "bridge_donor_column_via_qrf")
+            donor,
+            was,
+            seed=_operation_seed(self.stage, "bridge_donor_column_via_qrf"),
+            nts_ice_share=float(anchors["nts_ice_share"]["value"]),
         )
         recipient = recipient_predictors(frame, self.engine)
         recipient["has_fuel_consumption"] = assign_recipient_has_fuel(
             frame,
-            rate=NTS_ICE_SHARE,
+            rate=float(anchors["nts_ice_share"]["value"]),
             seed=_operation_seed(self.stage, "assign_binary_from_rate"),
         )
         imputation = impute_lcfs_consumption(
@@ -388,11 +391,16 @@ def bridge_has_fuel_to_lcfs(
     *,
     seed: int,
     n_estimators: int = 100,
+    nts_ice_share: float | None = None,
 ) -> tuple[pd.DataFrame, FitWeightRecord]:
     """Fit a WAS has-fuel bridge and predict a clipped rate onto LCFS."""
 
     from microcosm.fit import RegimeGatedQRF
 
+    if nts_ice_share is None:
+        nts_ice_share = float(
+            load_lcfs_consumption_anchors()["nts_ice_share"]["value"]
+        )
     donor = was.copy()
     donor["has_fuel_consumption"] = (
         (_numeric(donor["num_vehicles"]) > 0)
@@ -400,7 +408,7 @@ def bridge_has_fuel_to_lcfs(
             stable_identity_uniforms(
                 donor.index.to_numpy(), seed=seed, salt="was_has_fuel"
             )
-            < NTS_ICE_SHARE
+                < nts_ice_share
         )
     ).astype(float)
     # The LCFS frame carries its own names for three of the WAS bridge
@@ -573,7 +581,7 @@ def rake_energy_to_need(
 
     frame = household.copy()
     frame["_need_income_band"] = _income_band(frame["household_gross_income"])
-    margins = [MarginSpec("_need_income_band", _NEED_INCOME_TARGETS)]
+    margins = [MarginSpec("_need_income_band", _need_income_targets())]
     scratch = ["_need_income_band"]
     for name, values in (
         ("tenure", tenure),
@@ -602,27 +610,53 @@ def rake_energy_to_need(
     return raked.drop(columns=[c for c in scratch if c in raked])
 
 
-_NEED_INCOME_BANDS = (
-    (0, 15_000, "under_15k", 7_755, 2_412),
-    (15_000, 20_000, "15k_20k", 9_196, 2_700),
-    (20_000, 30_000, "20k_30k", 9_886, 2_915),
-    (30_000, 40_000, "30k_40k", 10_697, 3_114),
-    (40_000, 50_000, "40k_50k", 11_230, 3_276),
-    (50_000, 60_000, "50k_60k", 11_721, 3_410),
-    (60_000, 70_000, "60k_70k", 12_200, 3_548),
-    (70_000, 100_000, "70k_100k", 13_244, 3_872),
-    (100_000, 150_000, "100k_150k", 15_727, 4_598),
-    (150_000, np.inf, "over_150k", 20_359, 5_944),
-)
-_ELEC_RATE = 24.67 / 100
-_GAS_RATE = 5.74 / 100
-_NEED_INCOME_TARGETS = {
-    name: {
-        "gas_consumption": gas * _GAS_RATE,
-        "electricity_consumption": elec * _ELEC_RATE,
+def load_lcfs_consumption_anchors() -> dict:
+    from importlib.resources import files
+
+    return json.loads(
+        files("microcosm.build.uk")
+        .joinpath("lcfs_consumption_anchors.json")
+        .read_text(encoding="utf-8")
+    )
+
+
+def _load_need_energy_targets() -> dict:
+    from importlib.resources import files
+
+    return json.loads(
+        files("microcosm.build.uk")
+        .joinpath("need_energy_targets.json")
+        .read_text(encoding="utf-8")
+    )
+
+
+def _need_income_bands() -> tuple[tuple[float, float, str, float, float], ...]:
+    bands = []
+    for band in _load_need_energy_targets()["income_bands"]:
+        upper = np.inf if band["upper"] is None else float(band["upper"])
+        bands.append(
+            (
+                float(band["lower"]),
+                upper,
+                str(band["label"]),
+                float(band["gas_kwh"]),
+                float(band["electricity_kwh"]),
+            )
+        )
+    return tuple(bands)
+
+
+def _need_income_targets() -> dict:
+    rates = _load_need_energy_targets()["source"]["ofgem_q2_2026"]
+    gas_rate = float(rates["gas_gbp_per_kwh"])
+    electricity_rate = float(rates["electricity_gbp_per_kwh"])
+    return {
+        name: {
+            "gas_consumption": gas * gas_rate,
+            "electricity_consumption": electricity * electricity_rate,
+        }
+        for _, _, name, gas, electricity in _need_income_bands()
     }
-    for _, _, name, gas, elec in _NEED_INCOME_BANDS
-}
 
 
 def _need_categorical_targets(margin: str) -> tuple[dict, dict]:
@@ -632,13 +666,10 @@ def _need_categorical_targets(margin: str) -> tuple[dict, dict]:
     aggregate_admin anchors share one source of values.
     """
 
-    from importlib.resources import files
-
-    need = json.loads(
-        files("microcosm.build.uk")
-        .joinpath("need_energy_targets.json")
-        .read_text(encoding="utf-8")
-    )
+    need = _load_need_energy_targets()
+    rates = need["source"]["ofgem_q2_2026"]
+    gas_rate = float(rates["gas_gbp_per_kwh"])
+    electricity_rate = float(rates["electricity_gbp_per_kwh"])
     block = need[margin]
     if margin == "region":
         mapping = {name: name for name in block["gas_kwh"]}
@@ -646,9 +677,9 @@ def _need_categorical_targets(margin: str) -> tuple[dict, dict]:
         mapping = dict(block["map"])
     targets = {
         frs_value: {
-            "gas_consumption": block["gas_kwh"][need_key] * _GAS_RATE,
+            "gas_consumption": block["gas_kwh"][need_key] * gas_rate,
             "electricity_consumption": (
-                block["electricity_kwh"][need_key] * _ELEC_RATE
+                block["electricity_kwh"][need_key] * electricity_rate
             ),
         }
         for frs_value, need_key in mapping.items()
@@ -659,7 +690,7 @@ def _need_categorical_targets(margin: str) -> tuple[dict, dict]:
 def _income_band(values: pd.Series) -> pd.Series:
     income = _numeric(values)
     result = pd.Series(index=income.index, dtype=object)
-    for lo, hi, name, _, _ in _NEED_INCOME_BANDS:
+    for lo, hi, name, _, _ in _need_income_bands():
         result[(income >= lo) & (income < hi)] = name
     return result
 

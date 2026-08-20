@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from microcosm.build.raking import MarginSpec, iterative_proportional_fit
 
@@ -86,7 +87,7 @@ def test_weighted_and_unweighted_means_use_distinct_denominators() -> None:
     np.testing.assert_allclose(weighted["value"], [16.0, 48.0])
 
 
-def test_zero_empty_and_unmapped_cells_are_left_untouched() -> None:
+def test_zero_target_empty_and_unmapped_cells_are_left_untouched() -> None:
     frame = pd.DataFrame(
         {
             "band": ["zero", "empty", "unmapped"],
@@ -101,7 +102,7 @@ def test_zero_empty_and_unmapped_cells_are_left_untouched() -> None:
             MarginSpec(
                 "band",
                 {
-                    "zero": {"value": 10.0},
+                    "zero": {"value": 0.0},
                     "absent": {"value": 20.0},
                 },
             ),
@@ -110,6 +111,19 @@ def test_zero_empty_and_unmapped_cells_are_left_untouched() -> None:
     )
 
     assert raked["value"].tolist() == [0.0, 5.0, 7.0]
+
+
+def test_positive_target_with_zero_current_mean_fails_closed() -> None:
+    frame = pd.DataFrame({"band": ["zero"], "value": [0.0]})
+
+    with pytest.raises(ValueError, match="current mean is zero"):
+        iterative_proportional_fit(
+            frame,
+            columns=("value",),
+            margins=(MarginSpec("band", {"zero": {"value": 10.0}}),),
+            iterations=1,
+            fail_on_unattainable=True,
+        )
 
 
 def test_margin_sweep_order_is_observable_and_pinned() -> None:

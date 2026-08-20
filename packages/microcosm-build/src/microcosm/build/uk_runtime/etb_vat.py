@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
+from importlib.resources import files
 from pathlib import Path
 
 import numpy as np
@@ -23,9 +25,6 @@ from microcosm.frame.rules import assert_rules_engine_country
 ETB_FILENAME = "householdv2_1977-2024.tab"
 ETB_SHA256 = "d0e94ebc92e85ca1b9fb3a7353dcaf41db2c5110c9f07c7793dc8c0b695250d8"
 ETB_SIZE_BYTES = 216_967_663
-DEFAULT_ETB_VAT_YEAR = 2023
-VAT_STANDARD_RATE_2023 = 0.20
-VAT_REDUCED_RATE_SHARE_2023 = 0.025
 UK_ETB_VAT_PREDICTORS = (
     "is_adult",
     "is_child",
@@ -60,6 +59,7 @@ class UKETBVATStageTransform:
 
     def __call__(self, frame: Frame) -> Frame:
         assert_rules_engine_country(self.engine, "uk")
+        config = etb_vat_configuration(self.stage)
         raw = (
             self.donor
             if self.donor is not None
@@ -67,7 +67,7 @@ class UKETBVATStageTransform:
                 _require_path(self.etb_tab_path), self.stage.artifacts[0]
             )
         )
-        donor = clean_etb_vat_table(raw)
+        donor = clean_etb_vat_table(raw, **config)
         predictors = recipient_predictors(frame, self.engine)
         imputed, record = impute_etb_vat(donor, predictors, seed=_qrf_seed(self.stage))
         imputed = support_clip_to_donor(imputed, donor)
@@ -96,10 +96,17 @@ class UKETBVATStageTransform:
 def clean_etb_vat_table(
     raw: pd.DataFrame,
     *,
-    year: int = DEFAULT_ETB_VAT_YEAR,
-    standard_rate: float = VAT_STANDARD_RATE_2023,
-    reduced_rate_share: float = VAT_REDUCED_RATE_SHARE_2023,
+    year: int | None = None,
+    standard_rate: float | None = None,
+    reduced_rate_share: float | None = None,
 ) -> pd.DataFrame:
+    resource = _load_etb_vat_resource()
+    if year is None:
+        year = int(resource["vat"]["standard_rate"]["period"])
+    if standard_rate is None:
+        standard_rate = float(resource["vat"]["standard_rate"]["value"])
+    if reduced_rate_share is None:
+        reduced_rate_share = float(resource["vat"]["reduced_rate_share"]["value"])
     if not np.isfinite(standard_rate) or standard_rate <= 0:
         raise ValueError("VAT standard_rate must be positive and finite.")
     if not np.isfinite(reduced_rate_share):
@@ -129,10 +136,50 @@ def clean_etb_vat_table(
     train["is_SP_age"] = data["noretd"]
     train["household_net_income"] = data["disinc"] * 52
     train["weight"] = data["hhold_adj_weight"]
+    denominator = data["expdis"] - data["totvat"]
+    if (denominator == 0).any():
+        raise ValueError("ETB VAT donor contains zero disposable-expenditure denominators.")
     train["full_rate_vat_expenditure_rate"] = (
         data["totvat"] * (1 - reduced_rate_share) / standard_rate
-    ) / (data["expdis"] - data["totvat"])
+    ) / denominator
+    if not np.isfinite(train["full_rate_vat_expenditure_rate"]).all():
+        raise ValueError("ETB VAT donor produced a non-finite VAT expenditure rate.")
     return train.dropna()
+
+
+def _load_etb_vat_resource() -> dict:
+    return json.loads(
+        files("microcosm.build.uk")
+        .joinpath("etb_policy_anchors.json")
+        .read_text(encoding="utf-8")
+    )
+
+
+def etb_vat_configuration(
+    stage: SourceStageSpec | None = None,
+) -> dict[str, float | int]:
+    """Load VAT settings from the committed resource and validate the manifest."""
+
+    resource = _load_etb_vat_resource()["vat"]
+    config: dict[str, float | int] = {
+        "year": int(resource["standard_rate"]["period"]),
+        "standard_rate": float(resource["standard_rate"]["value"]),
+        "reduced_rate_share": float(resource["reduced_rate_share"]["value"]),
+    }
+    if stage is not None:
+        derive = next(
+            operation
+            for operation in stage.operations
+            if operation.kind == "derive"
+        )
+        for key, value in config.items():
+            declared = derive.parameters.get(key)
+            if declared is not None and float(declared) != float(value):
+                raise ValueError(
+                    f"ETB VAT manifest {key}={declared!r} disagrees with "
+                    f"the committed anchor value {value!r}."
+                )
+    return config
 
 
 def recipient_predictors(frame: Frame, engine: object) -> pd.DataFrame:

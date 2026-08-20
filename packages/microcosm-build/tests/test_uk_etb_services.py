@@ -5,14 +5,13 @@ import pandas as pd
 import pytest
 
 from microcosm.build.uk_runtime.etb_services import (
-    NHS_BUDGET_2025_26,
-    RAIL_FARE_INDEX_2023,
     UK_ETB_SERVICES_FIT_NAME,
     build_nhs_cell_table,
     clean_etb_services_table,
     donor_realized_ranges,
     household_grain_services_predictors,
     impute_etb_services,
+    load_etb_services_anchors,
     parse_nhs_age_bounds,
     support_clip_to_donor,
 )
@@ -157,7 +156,8 @@ def test_services_support_clip_ranges_and_rail_ratio() -> None:
 
     assert clipped["dfe_education_spending"].tolist() == [520.0, 1040.0]
     assert donor_realized_ranges(donor)["rail_subsidy_spending"] == (104.0, 208.0)
-    assert 111.0 / RAIL_FARE_INDEX_2023 == pytest.approx(100.0)
+    fare_index = load_etb_services_anchors()["rail_fare_index_2023"]["value"]
+    assert 111.0 / fare_index == pytest.approx(100.0)
 
 
 def _nhs_raw() -> pd.DataFrame:
@@ -213,7 +213,7 @@ def test_nhs_age_parsing_and_85_plus_fold_in_uses_full_table_denominator() -> No
     assert top["Total people"] == 5.0
     assert np.isclose(
         cells["Per-person average spending"].mul(cells["Total people"]).sum(),
-        NHS_BUDGET_2025_26,
+        load_etb_services_anchors()["nhs_budget_2025_26"]["value"],
     )
 
 

@@ -4,9 +4,9 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.uk_runtime.etb_services import (
-    NHS_BUDGET_2025_26,
     allocate_nhs_by_age_gender,
     build_nhs_cell_table,
+    load_etb_services_anchors,
     parse_nhs_age_bounds,
 )
 
@@ -66,7 +66,7 @@ def test_nhs_85_plus_fold_in_and_budget_normalization_use_full_table() -> None:
     assert top["Total people"] == 3.0
     assert np.isclose(
         cells["Per-person average spending"].mul(cells["Total people"]).sum(),
-        NHS_BUDGET_2025_26,
+        load_etb_services_anchors()["nhs_budget_2025_26"]["value"],
     )
 
     # The real frame's household table has no household_weight column (weights

@@ -345,8 +345,11 @@ def e6_identity_receipt(
     """
 
     from microcosm.build.uk_runtime.etb_services import (
-        RAIL_FARE_INDEX_2023,
         allocate_nhs_by_age_gender,
+        load_etb_services_anchors,
+    )
+    rail_fare_index = float(
+        load_etb_services_anchors()["rail_fare_index_2023"]["value"]
     )
 
     def recompute(person_t, benunit_t, household_t) -> dict[str, pd.DataFrame]:
@@ -363,7 +366,7 @@ def e6_identity_receipt(
         if "rail_subsidy_spending" in household.columns:
             household_out["rail_usage"] = (
                 household["rail_subsidy_spending"].to_numpy(dtype=float)
-                / RAIL_FARE_INDEX_2023
+                / rail_fare_index
             )
         if {"has_fuel_consumption", "petrol_spending", "diesel_spending"} <= set(
             household.columns

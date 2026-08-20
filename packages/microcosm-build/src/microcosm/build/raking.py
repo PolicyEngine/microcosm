@@ -31,12 +31,14 @@ def iterative_proportional_fit(
     margins: Sequence[MarginSpec],
     iterations: int,
     weight_column: str | None = None,
+    fail_on_unattainable: bool = False,
 ) -> pd.DataFrame:
     """Scale columns in-place-by-copy to match declared cell means.
 
-    Empty cells, zero-current-mean cells, and categories absent from the
-    declared targets are skipped. That preserves support zeros and lets a
-    country-specific caller intentionally leave unmapped enum values alone.
+    Empty cells and categories absent from the declared targets are skipped.
+    Populated zero-current-mean cells with positive targets are recorded in the
+    returned frame's ``raking_zero_current_cells`` evidence attribute. Callers
+    that require fail-closed behavior can set ``fail_on_unattainable``.
     """
 
     if iterations < 1:
@@ -58,6 +60,7 @@ def iterative_proportional_fit(
         if (weights < 0).any():
             raise ValueError("raking weights must be nonnegative")
 
+    zero_current_cells: list[dict[str, object]] = []
     for _ in range(iterations):
         for margin in margins:
             if margin.column not in result:
@@ -73,15 +76,30 @@ def iterative_proportional_fit(
                         result.loc[mask, column],
                         None if weights is None else weights.loc[mask],
                     )
-                    if current <= 0 or not np.isfinite(current):
-                        continue
                     target = float(target_by_column[column])
                     if not np.isfinite(target) or target < 0:
                         raise ValueError(
                             f"target for {margin.column!r}={category!r}, "
                             f"{column!r} must be finite and nonnegative"
                         )
+                    if current <= 0 or not np.isfinite(current):
+                        if target > 0:
+                            evidence = {
+                                "margin": margin.column,
+                                "category": category,
+                                "column": column,
+                                "target": target,
+                            }
+                            zero_current_cells.append(evidence)
+                            if fail_on_unattainable:
+                                raise ValueError(
+                                    f"cannot rake {margin.column!r}={category!r} "
+                                    f"for {column!r}: current mean is "
+                                    f"zero/non-finite but target is {target}."
+                                )
+                        continue
                     result.loc[mask, column] *= target / current
+    result.attrs["raking_zero_current_cells"] = tuple(zero_current_cells)
     return result
 
 

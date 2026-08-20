@@ -1029,7 +1029,8 @@
           "locator": "dvhh_ukanon_v2_2023.tab",
           "sha256": "6e78f0914be38e63853165486d641cbd790753cc471086210c6f672bfa18ca72",
           "size_bytes": 22812887,
-          "runtime_sha256_required": true
+          "runtime_sha256_required": true,
+          "filename": "dvhh_ukanon_v2_2023.tab"
         },
         {
           "role": "lcfs_person_tab",
@@ -1039,7 +1040,8 @@
           "locator": "dvper_ukanon_202324_2023.tab",
           "sha256": "f32d54d83cdecf023f0ac73530be3a99372099b596e0106a56eae42a64929e50",
           "size_bytes": 6545146,
-          "runtime_sha256_required": true
+          "runtime_sha256_required": true,
+          "filename": "dvper_ukanon_202324_2023.tab"
         },
         {
           "role": "was_bridge_donor",
@@ -1049,7 +1051,8 @@
           "locator": "was_round_8_hhold_eul_may_2025_230525.tab",
           "sha256": "18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374",
           "size_bytes": 39073613,
-          "runtime_sha256_required": true
+          "runtime_sha256_required": true,
+          "filename": "was_round_8_hhold_eul_may_2025_230525.tab"
         },
         {
           "role": "need_energy_targets",
@@ -1272,7 +1275,8 @@
           "locator": "householdv2_1977-2024.tab",
           "sha256": "d0e94ebc92e85ca1b9fb3a7353dcaf41db2c5110c9f07c7793dc8c0b695250d8",
           "size_bytes": 216967663,
-          "runtime_sha256_required": true
+          "runtime_sha256_required": true,
+          "filename": "householdv2_1977-2024.tab"
         },
         {
           "role": "etb_policy_anchors",
@@ -1345,7 +1349,8 @@
           "locator": "householdv2_1977-2024.tab",
           "sha256": "d0e94ebc92e85ca1b9fb3a7353dcaf41db2c5110c9f07c7793dc8c0b695250d8",
           "size_bytes": 216967663,
-          "runtime_sha256_required": true
+          "runtime_sha256_required": true,
+          "filename": "householdv2_1977-2024.tab"
         },
         {
           "role": "nhs_consumption_by_age_gender",

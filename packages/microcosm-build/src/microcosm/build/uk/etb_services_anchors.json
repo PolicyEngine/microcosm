@@ -3,6 +3,10 @@
   "country": "uk",
   "source": {
     "citation": "DfT rail fare index and NHS 2025/26 budget anchor.",
+    "urls": [
+      "https://dataportal.orr.gov.uk/statistics/finance/rail-fares/rail-fares-index-2023/",
+      "https://assets.publishing.service.gov.uk/media/6849172b860362efc8e78836/E03349913_HMT_Spending_Review_June_2025_TEXT_PRINT.pdf"
+    ],
     "chronicle_candidate": true
   },
   "rail_fare_index_2023": {

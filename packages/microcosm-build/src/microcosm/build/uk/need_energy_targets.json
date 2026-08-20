@@ -3,6 +3,10 @@
   "country": "uk",
   "source": {
     "citation": "NEED 2023 headline tables 5b/6b, 9b/10b, 11b/12b, 15b/16b; Ofgem Q2 2026 unit rates.",
+    "urls": [
+      "https://www.gov.uk/government/statistics/national-energy-efficiency-data-framework-need-consumption-data-tables-2025",
+      "https://www.ofgem.gov.uk/energy-price-cap"
+    ],
     "ofgem_q2_2026": {
       "electricity_gbp_per_kwh": 0.2467,
       "gas_gbp_per_kwh": 0.0574

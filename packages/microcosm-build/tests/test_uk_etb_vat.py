@@ -48,6 +48,14 @@ def test_etb_vat_cleaning_fails_loud_on_missing_rate() -> None:
         clean_etb_vat_table(_raw_etb(), standard_rate=np.nan)
 
 
+def test_etb_vat_cleaning_fails_loud_on_zero_denominator() -> None:
+    raw = _raw_etb()
+    raw.loc[1, "expdis"] = raw.loc[1, "totvat"]
+
+    with pytest.raises(ValueError, match="zero disposable-expenditure"):
+        clean_etb_vat_table(raw)
+
+
 def test_etb_vat_support_clip_and_ranges() -> None:
     donor = clean_etb_vat_table(_raw_etb())
     draws = pd.DataFrame({"full_rate_vat_expenditure_rate": [-99.0, 99.0]})

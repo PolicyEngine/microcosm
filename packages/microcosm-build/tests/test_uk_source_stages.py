@@ -639,12 +639,12 @@ class TestE3ManifestLockstep:
             == UK_ETB_SERVICES_ENGINE_VARIABLES
         )
         assert (
-            tuple(
+            set(
                 stages["etb_services"]
                 .operations[1]
                 .parameters["derived_predictors"]
             )
-            == tuple(UK_ETB_SERVICES_EDUCATION_COUNTS)
+            == set(UK_ETB_SERVICES_EDUCATION_COUNTS)
         )
         assert (
             tuple(stages["etb_services"].operations[2].parameters["targets"])

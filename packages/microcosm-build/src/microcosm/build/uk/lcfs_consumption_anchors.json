@@ -3,6 +3,11 @@
   "country": "uk",
   "source": {
     "citation": "NTS 2024 ICE vehicle share, DESNZ pump prices, road-fuel volume/population indices, and PolicyEngine UK CPI parameter paths.",
+    "urls": [
+      "https://www.gov.uk/government/statistics/national-travel-survey-2024/nts-2024-household-car-availability-and-trends-in-car-trips",
+      "https://www.gov.uk/government/collections/road-fuel-and-other-petroleum-product-prices",
+      "https://github.com/PolicyEngine/policyengine-uk/tree/main/policyengine_uk/parameters/gov/economic_assumptions/indices/obr"
+    ],
     "chronicle_candidate": true
   },
   "nts_ice_share": {

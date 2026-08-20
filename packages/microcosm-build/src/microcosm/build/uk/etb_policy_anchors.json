@@ -3,6 +3,10 @@
   "country": "uk",
   "source": {
     "citation": "PolicyEngine UK VAT parameters for 2023; incumbent fallback removed.",
+    "urls": [
+      "https://www.gov.uk/guidance/rates-and-allowances-for-vat",
+      "https://github.com/PolicyEngine/policyengine-uk/tree/main/policyengine_uk/parameters/gov/hmrc/vat"
+    ],
     "chronicle_candidate": true
   },
   "vat": {

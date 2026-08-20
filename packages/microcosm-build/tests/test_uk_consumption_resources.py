@@ -20,6 +20,7 @@ def test_need_energy_targets_shape_and_citations() -> None:
     assert payload["version"] == 1
     assert payload["country"] == "uk"
     assert payload["source"]["chronicle_candidate"] is True
+    assert payload["source"]["urls"]
     assert "NEED 2023" in payload["source"]["citation"]
     assert len(payload["income_bands"]) == 10
     assert payload["tenure"]["map"]["OWNED_OUTRIGHT"] == "owner"
@@ -33,6 +34,9 @@ def test_policy_anchor_resources_carry_parameter_paths() -> None:
     services = _load("etb_services_anchors.json")
 
     assert lcfs["source"]["chronicle_candidate"] is True
+    assert lcfs["source"]["urls"]
+    assert vat["source"]["urls"]
+    assert services["source"]["urls"]
     assert lcfs["cpi"]["parameter_path"]
     assert vat["vat"]["standard_rate"]["parameter_path"] == (
         "gov.hmrc.vat.standard_rate"

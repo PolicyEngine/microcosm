@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from importlib.resources import files
 from pathlib import Path
 
 import numpy as np
@@ -21,10 +22,7 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.frame import Frame
 from microcosm.frame.rules import assert_rules_engine_country
 
-ETB_SERVICES_YEAR = 2024
 ETB_SERVICES_WEEKS_IN_YEAR = 52
-RAIL_FARE_INDEX_2023 = 1.110
-NHS_BUDGET_2025_26 = 202_000_000_000.0
 UK_ETB_SERVICES_PREDICTORS = (
     "is_adult",
     "is_child",
@@ -95,6 +93,7 @@ class UKETBServicesStageTransform:
 
     def __call__(self, frame: Frame) -> Frame:
         assert_rules_engine_country(self.engine, "uk")
+        config = etb_services_configuration(self.stage)
         raw = (
             self.donor
             if self.donor is not None
@@ -102,13 +101,19 @@ class UKETBServicesStageTransform:
                 _require_path(self.etb_tab_path), self.stage.artifacts[0]
             )
         )
-        donor = clean_etb_services_table(raw)
+        donor = clean_etb_services_table(
+            raw,
+            year=config["year"],
+            weeks_in_year=config["weeks_in_year"],
+        )
         predictors = recipient_predictors(frame, self.engine)
         draws, records = impute_etb_services(
             donor, predictors, seed=_qrf_seed(self.stage)
         )
         draws = support_clip_to_donor(draws, donor)
-        draws["rail_usage"] = draws["rail_subsidy_spending"] / RAIL_FARE_INDEX_2023
+        draws["rail_usage"] = (
+            draws["rail_subsidy_spending"] / config["rail_fare_index"]
+        )
         household = frame.table("household").copy()
         for column in UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS:
             household[column] = draws[column].to_numpy()
@@ -118,6 +123,7 @@ class UKETBServicesStageTransform:
             household_weights=frame.weights_for("household").values,
             household=household,
             nhs_table=self.nhs_table,
+            nhs_budget=config["nhs_budget"],
         )
         for column in UK_NHS_OUTPUT_COLUMNS:
             person[column] = nhs[column].to_numpy()
@@ -139,12 +145,20 @@ class UKETBServicesStageTransform:
         return UK_ETB_SERVICES_OUTPUT_COLUMNS
 
 
-def clean_etb_services_table(raw: pd.DataFrame) -> pd.DataFrame:
+def clean_etb_services_table(
+    raw: pd.DataFrame,
+    *,
+    year: int | str | None = None,
+    weeks_in_year: int = ETB_SERVICES_WEEKS_IN_YEAR,
+) -> pd.DataFrame:
     data = raw.replace(r"^\s*$", np.nan, regex=True).copy()
     if "year" not in data:
         raise ValueError("ETB services donor is missing 'year'.")
     data["year"] = pd.to_numeric(data["year"], errors="coerce")
-    data = data[data["year"] == data["year"].max()].copy()
+    selected_year = data["year"].max() if year in (None, "max") else year
+    if not np.isfinite(selected_year):
+        raise ValueError("ETB services donor has no finite year to select.")
+    data = data[data["year"] == int(selected_year)].copy()
     required = [
         "adults",
         "childs",
@@ -171,7 +185,7 @@ def clean_etb_services_table(raw: pd.DataFrame) -> pd.DataFrame:
     train = pd.DataFrame()
     train["is_adult"] = data["adults"]
     train["is_child"] = data["childs"]
-    train["hbai_household_net_income"] = data["disinc"] * ETB_SERVICES_WEEKS_IN_YEAR
+    train["hbai_household_net_income"] = data["disinc"] * weeks_in_year
     train["is_SP_age"] = data["noretd"]
     train["count_primary_education"] = data["primed"]
     train["count_secondary_education"] = data["secoed"]
@@ -179,10 +193,43 @@ def clean_etb_services_table(raw: pd.DataFrame) -> pd.DataFrame:
     train["dla"] = data["disliv"]
     train["pip"] = data["pips"]
     train["weight"] = data["hhold_adj_weight"]
-    train["dfe_education_spending"] = data["educ"] * ETB_SERVICES_WEEKS_IN_YEAR
-    train["rail_subsidy_spending"] = data["rail"] * ETB_SERVICES_WEEKS_IN_YEAR
-    train["bus_subsidy_spending"] = data["bussub"] * ETB_SERVICES_WEEKS_IN_YEAR
+    train["dfe_education_spending"] = data["educ"] * weeks_in_year
+    train["rail_subsidy_spending"] = data["rail"] * weeks_in_year
+    train["bus_subsidy_spending"] = data["bussub"] * weeks_in_year
     return train
+
+
+def load_etb_services_anchors() -> dict:
+    return json.loads(
+        files("microcosm.build.uk")
+        .joinpath("etb_services_anchors.json")
+        .read_text(encoding="utf-8")
+    )
+
+
+def etb_services_configuration(stage: SourceStageSpec | None = None) -> dict:
+    """Load service anchors and derive settings from the committed manifest."""
+
+    anchors = load_etb_services_anchors()
+    config = {
+        "year": "max",
+        "weeks_in_year": ETB_SERVICES_WEEKS_IN_YEAR,
+        "rail_fare_index": float(anchors["rail_fare_index_2023"]["value"]),
+        "nhs_budget": float(anchors["nhs_budget_2025_26"]["value"]),
+    }
+    if stage is not None:
+        derive = next(
+            operation
+            for operation in stage.operations
+            if operation.kind == "derive"
+        )
+        if "year" in derive.parameters:
+            config["year"] = derive.parameters["year"]
+        if "annualization_weeks" in derive.parameters:
+            config["weeks_in_year"] = int(derive.parameters["annualization_weeks"])
+        if config["year"] != "max":
+            raise ValueError("ETB services must select the manifest's maximum year.")
+    return config
 
 
 def household_grain_services_predictors(person_level: pd.DataFrame) -> pd.DataFrame:
@@ -296,8 +343,14 @@ def parse_nhs_age_bounds(age_group: str) -> tuple[int, int]:
 
 
 def build_nhs_cell_table(
-    raw: pd.DataFrame, person: pd.DataFrame, household: pd.DataFrame
+    raw: pd.DataFrame,
+    person: pd.DataFrame,
+    household: pd.DataFrame,
+    *,
+    nhs_budget: float | None = None,
 ) -> pd.DataFrame:
+    if nhs_budget is None:
+        nhs_budget = float(load_etb_services_anchors()["nhs_budget_2025_26"]["value"])
     nhs = raw.copy()
     bounds = nhs["Age group"].map(parse_nhs_age_bounds)
     nhs["Lower age"] = [lo for lo, _ in bounds]
@@ -325,7 +378,7 @@ def build_nhs_cell_table(
         for _, row in pivot.iterrows()
     ]
     pivot["Per-person average units"] = pivot["Activity Count"] / pivot["Total people"]
-    factor = NHS_BUDGET_2025_26 / pivot["Total Cost"].sum()
+    factor = nhs_budget / pivot["Total Cost"].sum()
     pivot["Per-person average spending"] = (
         pivot["Total Cost"] / pivot["Total people"] * factor
     )
@@ -338,6 +391,7 @@ def allocate_nhs_by_age_gender(
     household_weights: np.ndarray,
     household: pd.DataFrame,
     nhs_table: pd.DataFrame | None,
+    nhs_budget: float | None = None,
 ) -> pd.DataFrame:
     if nhs_table is None:
         path = (
@@ -351,7 +405,9 @@ def allocate_nhs_by_age_gender(
     household = household.assign(
         household_weight=np.asarray(household_weights, dtype=float)
     )
-    cells = build_nhs_cell_table(nhs_table, person, household)
+    cells = build_nhs_cell_table(
+        nhs_table, person, household, nhs_budget=nhs_budget
+    )
     output = pd.DataFrame(0.0, index=person.index, columns=UK_NHS_OUTPUT_COLUMNS)
     service_to_columns = {
         "A&E": ("a_and_e_visits", "nhs_a_and_e_spending"),
