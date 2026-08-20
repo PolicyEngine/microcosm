@@ -215,11 +215,12 @@ def coerce_us_reviewed_exclusions(
 
 @dataclass(frozen=True)
 class _USByOriginPolicySourceReceipt:
-    """Path-free proof that one loader hashed and parsed the same bytes."""
+    """Path-free source bytes plus the digest one loader authenticated."""
 
     override_supplied: bool
     expected_sha256: str | None
     raw_source_sha256: str
+    raw_source_json: str
 
     def __post_init__(self) -> None:
         if type(self.override_supplied) is not bool:
@@ -228,6 +229,15 @@ class _USByOriginPolicySourceReceipt:
             self.raw_source_sha256
         ):
             raise ValueError("raw_source_sha256 must be a lowercase SHA-256 digest.")
+        if not isinstance(self.raw_source_json, str):
+            raise TypeError("raw_source_json must be a string.")
+        observed_sha256 = hashlib.sha256(
+            self.raw_source_json.encode("utf-8")
+        ).hexdigest()
+        if observed_sha256 != self.raw_source_sha256:
+            raise ValueError(
+                "raw_source_sha256 does not match the sealed raw_source_json bytes."
+            )
         if self.override_supplied:
             if (
                 not isinstance(self.expected_sha256, str)
@@ -248,6 +258,7 @@ class _USByOriginPolicySourceReceipt:
             "override_supplied": self.override_supplied,
             "expected_sha256": self.expected_sha256,
             "raw_source_sha256": self.raw_source_sha256,
+            "raw_source_json": self.raw_source_json,
         }
 
 
@@ -393,11 +404,13 @@ def _mint_policy_source_receipt(
     override_supplied: bool,
     expected_sha256: str | None,
     raw_source_sha256: str,
+    raw_source_json: str,
 ) -> USByOriginReviewedExclusionPolicy:
     receipt = _USByOriginPolicySourceReceipt(
         override_supplied=override_supplied,
         expected_sha256=expected_sha256,
         raw_source_sha256=raw_source_sha256,
+        raw_source_json=raw_source_json,
     )
     object.__setattr__(policy, "_source_receipt", receipt)
     return policy
@@ -426,6 +439,10 @@ def us_default_by_origin_reviewed_exclusion_policy() -> (
         override_supplied=False,
         expected_sha256=None,
         raw_source_sha256=hashlib.sha256(raw_bytes).hexdigest(),
+        raw_source_json=_decode_policy_bytes(
+            raw_bytes,
+            label=US_BY_ORIGIN_EXCLUSION_REGISTER_RESOURCE,
+        ),
     )
 
 
@@ -479,6 +496,7 @@ def load_us_by_origin_reviewed_exclusion_policy(
         override_supplied=True,
         expected_sha256=expected_sha256,
         raw_source_sha256=observed_sha256,
+        raw_source_json=_decode_policy_bytes(raw_bytes, label=str(path)),
     )
 
 
@@ -498,6 +516,7 @@ def validate_us_by_origin_reviewed_exclusion_source_provenance(
         "override_supplied",
         "expected_sha256",
         "raw_source_sha256",
+        "raw_source_json",
     }
     if (
         not isinstance(raw_provenance, Mapping)
@@ -509,11 +528,25 @@ def validate_us_by_origin_reviewed_exclusion_source_provenance(
             override_supplied=raw_provenance.get("override_supplied"),
             expected_sha256=raw_provenance.get("expected_sha256"),
             raw_source_sha256=raw_provenance.get("raw_source_sha256"),
+            raw_source_json=raw_provenance.get("raw_source_json"),
         )
     except (TypeError, ValueError) as exc:
         raise ValueError(
             f"{boundary}: invalid policy source provenance: {exc}"
         ) from exc
+
+    try:
+        source_policy = _policy_from_raw(
+            receipt.raw_source_json,
+            label=f"{boundary} raw source",
+            policy_source=("override" if receipt.override_supplied else "committed"),
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{boundary}: raw policy source is invalid: {exc}") from exc
+    if source_policy.policy_payload() != policy.policy_payload():
+        raise ValueError(
+            f"{boundary}: raw policy source does not match the policy snapshot."
+        )
 
     committed = us_default_by_origin_reviewed_exclusion_policy()
     same_as_committed = policy.policy_payload() == committed.policy_payload()

@@ -8309,6 +8309,7 @@ def test_empty_reviewed_exclusion_register_leaves_assigned_dead_checks_failing(
     assert reviewed["source_provenance"]["override_supplied"] is False
     assert reviewed["source_provenance"]["expected_sha256"] is None
     assert len(reviewed["source_provenance"]["raw_source_sha256"]) == 64
+    assert reviewed["source_provenance"]["raw_source_json"].endswith("\n")
 
 
 def test_in_force_dead_receipt_is_exact_and_sealed_in_terminal_manifest(
@@ -8344,6 +8345,7 @@ def test_in_force_dead_receipt_is_exact_and_sealed_in_terminal_manifest(
         "override_supplied": True,
         "expected_sha256": source_sha256,
         "raw_source_sha256": source_sha256,
+        "raw_source_json": raw.decode("utf-8"),
     }
     assert set(reviewed["applied_exclusions"]) == {check_id}
     assert reviewed["applied_exclusions"][check_id]["receipt"] == (
@@ -8383,6 +8385,19 @@ def test_in_force_dead_receipt_is_exact_and_sealed_in_terminal_manifest(
     forged_details["reviewed_exclusions"]["source_provenance"]["raw_source_sha256"] = (
         "0" * 64
     )
+    forged = stacked_spine_module._sealed_stacked_gate_result(
+        name=result.name,
+        passed=result.passed,
+        failures=result.failures,
+        details=forged_details,
+    )
+    with pytest.raises(ValueError, match="source provenance is invalid"):
+        GateReport((forged,)).to_manifest()
+
+    forged_details = deepcopy(dict(result.details))
+    forged_provenance = forged_details["reviewed_exclusions"]["source_provenance"]
+    forged_provenance["expected_sha256"] = "0" * 64
+    forged_provenance["raw_source_sha256"] = "0" * 64
     forged = stacked_spine_module._sealed_stacked_gate_result(
         name=result.name,
         passed=result.passed,

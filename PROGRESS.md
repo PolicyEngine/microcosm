@@ -2,13 +2,14 @@
 
 ## State
 
-Final evidence replay and handoff are in progress on
-`battery-excl-machinery`, which started from `origin/main` at `164027e2`. The
-empty schema-2 register, exact criterion lifecycle machinery, authenticated
-source provenance, terminal-manifest validation, CLI wiring, configuration
-boundary hardening, and adversarial tests are implemented and suite-green.
-The assigned scope remains machinery only: no band, threshold, seed, fold,
-comparison algorithm, or exclusion approval changed.
+Implementation is complete and final evidence refresh is in progress on
+`battery-excl-machinery`,
+which started from `origin/main` at `164027e2`. The empty schema-2 register,
+exact criterion lifecycle machinery, authenticated source provenance,
+terminal-manifest validation, CLI wiring, configuration-boundary hardening,
+and adversarial tests are implemented and suite-green. The assigned scope
+remained machinery only: no band, threshold, seed, fold, comparison algorithm,
+or exclusion approval changed. Nothing was pushed.
 
 ## Done
 
@@ -137,13 +138,40 @@ comparison algorithm, or exclusion approval changed.
   focused exclusion/battery/driver tests, both warm-resume directions, the
   complete stacked-spine module, Ruff, `git diff --check`, and the complete
   workspace suite (`.venv/bin/python -m pytest -q`, exit 0).
+- Replayed the current terminal battery and manifest reconstruction from the
+  SHA/size/metadata-bound saved 1%/seed-578 simulated frame. The normal resume
+  loader refused the old simulated/transferred checkpoints because their live
+  late-primary-QRF worker binding has since changed, so no cached simulation
+  was represented as resumable and no rebuild was attempted. The narrower
+  read-only evidence replay authenticated the exact saved H5 and operational
+  receipt sidecar before loading the simulation frame, then ran only the
+  current battery and manifest verifier.
+- The final replay stayed below the lane ceiling at 1,724,448,768 bytes peak
+  RSS (about 1.61 GiB). It produced no durable artifact, supplied no Logbook
+  predecessor, and did not touch `logbook-pending-chain.txt`.
+- Final 1% evidence remains honest and unchanged for both assigned checks:
+  `dead_comparison`, ASEC/ACS incidence 0/0, nonzero rows 0/0, no receipt
+  applied. The current report seals schema 2, the committed raw-source digest,
+  and empty resolved/applied/lifecycle buckets; `GateReport` accepted its
+  reconstruction. The battery remains red with 127 failures by design.
+- Closed the final source-evidence audit gap: path-free provenance now seals
+  the exact UTF-8 register text as well as its expected/raw digest pair. The
+  terminal validator hashes and strictly reparses that text and requires its
+  schema-2 content to equal the reported policy snapshot. A new adversarial
+  regression proves that mutating both digest fields together no longer
+  passes.
+- Verified the exact-byte provenance correction with the 55-test
+  loader/country-package set, focused terminal-forgery and both-direction
+  warm-resume tests, Ruff and touched-file formatting, `git diff --check`, and
+  a second complete workspace suite (`.venv/bin/python -m pytest -q`, exit 0).
 
 ## Next
 
-- Replay the permitted fresh terminal gate on the saved 1%/seed-578 checkpoint,
-  then refresh the final report for owner review and push. The two measured
-  QBI rows remain non-exclusion `FIX-CANDIDATE` work for a separate per-target
-  clone-role comparator lane; this lane's register must remain empty.
+- Repeat the terminal-only 1% replay with the exact-byte provenance schema,
+  refresh the final handoff report, then leave owner review and push external
+  to this lane. The two measured QBI rows remain non-exclusion `FIX-CANDIDATE`
+  work for a separate per-target clone-role comparator lane; this lane's
+  register must remain empty.
 
 ## Historical note
 

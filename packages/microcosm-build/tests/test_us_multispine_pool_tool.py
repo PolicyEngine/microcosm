@@ -3584,6 +3584,7 @@ def test_simulated_checkpoint_resume_uses_the_current_exclusion_policy(
                 "override_supplied": True,
                 "expected_sha256": override_sha256,
                 "raw_source_sha256": override_sha256,
+                "raw_source_json": raw.decode("utf-8"),
             }
         else:
             assert policy.policy_payload() == committed_policy.policy_payload()

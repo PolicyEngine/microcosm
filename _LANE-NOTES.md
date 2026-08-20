@@ -170,6 +170,15 @@
   manifest, diagnostics, and immutable Logbook terminal-gate receipt
   (`packages/microcosm-build/tests/test_us_multispine_pool_tool.py:3470-3575`;
   `tools/build_us_multispine_pool.py:3298-3317,4360-4385,4485-4510`).
+- 2026-08-20: final provenance audit showed that a report carrying only an
+  expected/raw digest pair could mutate both fields together without proving
+  which bytes they described. Each path-free source receipt now includes the
+  exact UTF-8 register text; receipt construction checks its raw digest, and
+  terminal validation strictly reparses it and compares its schema-2 content
+  with the policy snapshot. A resealed paired-digest forgery now fails
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:217-263,401-563`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7527-7581`;
+  `packages/microcosm-build/tests/test_us_stacked_spine.py:8315-8411`).
 - 2026-08-19: initialized the lane journals before implementation.
 - 2026-08-19: the required uv sync is currently environment-blocked: the
   managed sandbox denies writes to the default cache, and the writable-cache

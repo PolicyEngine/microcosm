@@ -68,6 +68,7 @@ def test_committed_register_is_schema_2_empty_and_immutable() -> None:
         "override_supplied": False,
         "expected_sha256": None,
         "raw_source_sha256": hashlib.sha256(raw).hexdigest(),
+        "raw_source_json": raw.decode("utf-8"),
     }
     assert policy is us_default_by_origin_reviewed_exclusion_policy()
     with pytest.raises(TypeError):
@@ -91,6 +92,7 @@ def test_authenticated_override_preserves_all_five_sealed_fields(
         "override_supplied": True,
         "expected_sha256": digest,
         "raw_source_sha256": digest,
+        "raw_source_json": path.read_text(encoding="utf-8"),
     }
 
 
@@ -115,6 +117,7 @@ def test_content_equivalent_override_retains_its_authenticated_route(
         "override_supplied": True,
         "expected_sha256": digest,
         "raw_source_sha256": digest,
+        "raw_source_json": raw.decode("utf-8"),
     }
 
 
