@@ -1,4 +1,47 @@
-# F1 continuation r4 progress
+# F1 continuation r4 resumed — 2026-08-20
+
+## State
+
+- Work remains local on `spec-engine-f1`; nothing has been pushed, no build has
+  run in this resumed continuation, and the logbook pending chain is untouched.
+- The mandated `git fetch origin && git merge origin/main --no-edit` was the
+  first command attempted. DNS is unavailable in the sandbox, so fetch failed
+  before the chained merge. Cached `origin/main` is stale at `164027e2`.
+- Final #698 commit `c4e1eb7f` is already an ancestor of this branch through
+  merge `da45dfcd`; the subsequent 72-site correction and generated identity
+  pins are present. The authorized US-extra sync completed for 100 packages.
+- Deliverable 7 remains under the completed parallel-lane custody documented
+  below and in `_F1-LANE-NOTES.md`; this continuation will not modify its
+  closure, segment, or dashboard retargeting surfaces.
+- Deliverables 5 and 6 remain NOT RUN. Before starting them, this continuation
+  is re-validating the merged identities, the cold dual-mode D4 prerequisite,
+  the complete sealed artifact vector, and the per-process 20 GiB RSS bound.
+
+## Done
+
+- Attempted the required network sync first and recorded the sandbox failure.
+- Verified locally that final #698 is already merged and preserved the existing
+  72-site seed ledger over its superseded 53-site version.
+- Ran `uv sync --all-packages --extra us` successfully from the isolated cache.
+- Read the repository operating rules and the appended D7/main-lane handoff;
+  launched independent read-only audits of history and D5/D6 readiness.
+
+## Next
+
+1. Recompute and check the seed/compiler/spec identity vector against the
+   committed generated artifacts after the merge.
+2. Re-audit the physical bundle execution and sealed comparison path. Close
+   any D4 prerequisite that can be completed within the charter and keep the
+   suite green after each coherent commit.
+3. Run D5 fixture/1% receipts and D6 four-build/resume certification only if
+   the D4 byte-identity gate is real and each process is demonstrably bounded
+   below 20 GiB RSS; otherwise record the exact honest stop condition.
+4. Update `_F1-LANE-NOTES.md`, `FINAL_REPORT.md`, and this journal with the
+   evidence produced, preserving the parallel D7 surfaces.
+
+---
+
+# Historical F1 continuation r4 stop at `e14355c6`
 
 ## State
 
