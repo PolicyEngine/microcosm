@@ -18,6 +18,8 @@ artifact is claimed: the later host retry reaches every survey and housing
 transfer checkpoint without this traceback but has no terminal marker or output
 artifacts. The untracked owner artifacts `_BUILD-FAILURE-1PCT.txt` and
 `.codex-memory-guard.py` are preserved unchanged.
+The final continuation report is committed in `FINAL_REPORT.md` at `8328fd87`;
+no local implementation or verification work remains for the supplied failure.
 
 The 2026-08-20 local continuation is complete for the host 1% binding failure
 at `person/puf_tax_itemization/taxable_interest_income`. An independent audit
@@ -94,6 +96,9 @@ but DNS is unavailable. Verification therefore uses the already-synced
   record, with no traceback. It has no terminal exit marker, pool H5, manifest,
   or gates artifact, and the log does not bind a revision SHA; it is progress
   evidence only.
+- Updated and committed `FINAL_REPORT.md` with the current diagnosis,
+  correction, regression coverage, guarded verification, and precise remaining
+  host boundary.
 - Attempted the GitNexus debugging workflow. No graph-query tools or local index
   are available in this session; the installed CLI status command produced no
   output and was stopped. Direct source and history tracing established the
@@ -235,7 +240,5 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Update `FINAL_REPORT.md` with the current continuation verdict and committed
-   verification evidence.
-2. Do not claim a host artifact unless a revision-bound retry reaches a terminal
+1. Do not claim a host artifact unless a revision-bound retry reaches a terminal
    success marker and emits the expected pool, manifest, and gates artifacts.
