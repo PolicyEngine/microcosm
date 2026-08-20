@@ -14,8 +14,12 @@ from `176c60fc` makes regime work and receipt evidence explicit opt-ins derived
 from the immutable assigned specs, checks assignment before QRF binding, and
 rejects forged evidence on unassigned targets while retaining their mandatory
 four-count transfer invariant. No executable file differs from the prior full
-build-suite checkpoint `a5be536f`; focused current-tree verification and an
-independent regression adequacy audit are next. No host success is claimed.
+build-suite checkpoint `a5be536f`. The regression audit found that strict
+selected-family binding lacked a plausible in-range `__batch_1` forgery, so
+that case is now included alongside the existing forged and out-of-range
+families. All 20 focused cases pass under the 12 GiB/20 ms guard with a 0.586
+GiB peak. Directly affected suite and lint verification are next. No host
+success is claimed.
 The owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain
 untracked and untouched.
 
@@ -122,6 +126,21 @@ but DNS is unavailable. Verification therefore uses the already-synced
   sandbox forbids writing `~/.gitnexus/registry.json`. The generated 112 MiB
   repo-local cache was removed with `gitnexus clean`; direct source and history
   tracing supplied the call chain instead.
+- Reconciled independent source and regression audits. The source audit found
+  no canonical producer, serializer, or validator path that gives the host
+  target regime work or evidence. The regression audit confirmed both the
+  exact synthetic target and real banked wide-family cases fail on the old
+  behavior, then identified one strict selected-family binding gap.
+- Added an assigned-target, fully rehashed `__batch_1` mutation to the QRF
+  structure parameterization. It protects exact record-family equality from a
+  previously considered permissive bounded-family matcher without changing
+  runtime code.
+- Ran the eight focused scope/serialization tests plus all 12 QRF structure
+  mutations: 20 passed under the owner-provided 12 GiB/20 ms guard with a
+  0.586 GiB maximum observed per-process RSS. The only warning was joblib's
+  logical-core fallback. The initial guard invocation did not start because
+  the untracked script lacks an executable bit; invoking it through the exact
+  environment's Python succeeded without modifying the owner artifact.
 - Reopened the committed progress journal before changing implementation or
   tests, reread `CLAUDE.md`, and recorded the supplied failure as the active
   continuation target.
@@ -356,10 +375,8 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Complete the independent regression/source-scope audits and run the exact
-   synthetic plus real banked wide-family regressions under the memory guard.
-2. Run the directly affected test files, lint, format, and committed-range
+1. Run the directly affected test files, lint, format, and committed-range
    checks; broaden verification if the current tree or audits expose a gap.
-3. Refresh and commit `FINAL_REPORT.md` with only revision-bound conclusions;
+2. Refresh and commit `FINAL_REPORT.md` with only revision-bound conclusions;
    do not claim the mutable external host retry without a terminal marker and
    expected artifacts.

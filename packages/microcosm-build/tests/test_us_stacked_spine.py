@@ -2899,6 +2899,7 @@ def test_gap_fill_validator_rejects_qrf_regime_evidence_tampering() -> None:
         ("pattern_name", "name is not derived"),
         ("model_target", "target order"),
         ("record_family", "record binding is invalid"),
+        ("record_family_in_range", "record binding is invalid"),
         ("record_family_out_of_range", "record binding is invalid"),
         ("record_target", "record binding is invalid"),
     ),
@@ -2934,6 +2935,8 @@ def test_gap_fill_validator_rejects_rehashed_qrf_pattern_structure_mutations(
         patterns[0]["target_regimes"][0]["model_target"] = "fabricated_target"
     elif mutation == "record_family":
         evidence["record"]["family"] = f"{family}__batch_forged"
+    elif mutation == "record_family_in_range":
+        evidence["record"]["family"] = f"{family}__batch_1"
     elif mutation == "record_family_out_of_range":
         evidence["record"]["family"] = f"{family}__batch_99"
     else:
