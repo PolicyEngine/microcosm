@@ -617,6 +617,10 @@ LEGACY_V1_SITES = (
             "target_or_fill_salt",
         ),
         consumption_order=("vehicles_owned", "vehicles_value", "fill"),
+        draw_condition=(
+            "union_observed_row_count_gt_20000; fill_only_if_remaining_n_gt_0_"
+            "and_remaining_rows_nonempty"
+        ),
         derivation=_X31_MIX64,
     ),
     _site(
@@ -663,8 +667,21 @@ LEGACY_V1_SITES = (
         "sipp_training_cap",
         value_source="stable_string",
         default=None,
-        seed_material=("named_training_sample", "target_or_fill_salt"),
-        consumption_order=("bank_account_assets", "stock_assets", "bond_assets"),
+        seed_material=(
+            "calibration_sipp_asset_training_sample",
+            "target_or_fill_salt",
+        ),
+        consumption_order=(
+            "bank_account_assets",
+            "stock_assets",
+            "bond_assets",
+            "fill",
+        ),
+        draw_condition=(
+            "max_train_samples_is_not_none_and_union_observed_row_count_gt_"
+            "max_train_samples; fill_only_if_remaining_n_gt_0_and_remaining_"
+            "rows_nonempty"
+        ),
         derivation=_X31_MIX64,
     ),
     _site(
@@ -698,8 +715,12 @@ LEGACY_V1_SITES = (
         "sipp_training_cap",
         value_source="stable_string",
         default=None,
-        seed_material=("named_training_sample", "target_or_fill_salt"),
-        consumption_order=("rent", "real_estate_tax"),
+        seed_material=("legacy_acs_rent_training_sample", "target_or_fill_salt"),
+        consumption_order=("rent", "real_estate_taxes", "fill"),
+        draw_condition=(
+            "union_observed_row_count_gt_10000; fill_only_if_remaining_n_gt_0_"
+            "and_remaining_rows_nonempty"
+        ),
         derivation=_X31_MIX64,
     ),
     _site(

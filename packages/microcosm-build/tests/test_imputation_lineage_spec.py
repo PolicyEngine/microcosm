@@ -154,7 +154,6 @@ def test_dashboard_is_an_exact_compiled_ir_projection(
 ) -> None:
     payload = emit()
     encoded = json.dumps(payload, indent=1) + "\n"
-    assert json.dumps(payload, indent=1) + "\n" == encoded
     assert json.loads(encoded) == payload
     assert payload["spec_binding"]["spec_sha256"] == payload["spec_sha256"]
     assert payload["compiler_ir_abi"] == compiled_us.compiler_ir_abi.to_wire()
@@ -170,19 +169,20 @@ def test_dashboard_is_an_exact_compiled_ir_projection(
         "write_event_segments": 241,
         "graph_final_owner_segments": 170,
         "graph_final_cell_atoms": 763,
-        "graph_authority_columns": 132,
-        "graph_authority_segments": 150,
-        "family_authority_columns": 28,
-        "family_authority_segments": 28,
+        "graph_authority_columns": 134,
+        "graph_authority_segments": 152,
+        "family_authority_columns": 48,
+        "family_authority_segments": 48,
         "take_up_authority_columns": 13,
         "take_up_ownership_segments": 14,
-        "lineage_authority_segments": 192,
+        "lineage_authority_segments": 214,
         "take_up_programs": 13,
         "typed_artifacts": 84,
         "typed_scopes": 7,
         "boolean": 45,
         "amount": 132,
         "categorical": 5,
+        "count": 1,
         "value_kinds": {"amount": 132, "category": 5, "count": 1, "flag": 45},
     }
     assert len(payload["known_gaps"]) == 1
@@ -310,20 +310,6 @@ def test_dashboard_is_an_exact_compiled_ir_projection(
         }
         for row in closure
     }
-    assert all(len(surfaces) == 1 for surfaces in surfaces_by_key.values())
-    assert Counter(next(iter(surfaces)) for surfaces in surfaces_by_key.values()) == {
-        "producer_graph": 132,
-        "imputation_family": 28,
-        "take_up": 13,
-    }
-    lineage_segments = [
-        segment for row in closure for segment in row["lineage_segments"]
-    ]
-    assert Counter(segment["authority_surface"] for segment in lineage_segments) == {
-        "producer_graph": 150,
-        "imputation_family": 28,
-        "take_up": 14,
-    }
 
     take_up = compiled_us.resource("take_up")
     take_up_registry = take_up["scope_registry"]
@@ -370,15 +356,106 @@ def test_dashboard_is_an_exact_compiled_ir_projection(
                 }
             )
     assert payload["take_up_ownership_segments"] == expected_take_up_segments
-    take_up_keys = {row["column_key"] for row in expected_take_up_segments}
-    assert all(surfaces_by_key[key] == {"take_up"} for key in take_up_keys)
-    assert surfaces_by_key["person.takes_up_medicare_if_eligible"] == {"take_up"}
-    assert surfaces_by_key["spm_unit.takes_up_housing_assistance_if_eligible"] == {
-        "take_up"
+
+    imputation = compiled_us.resource("imputation")
+    expected_family_segments = []
+    for family in imputation["families"]:
+        if family["stage"] != "gap_fill_stacked_spine":
+            continue
+        recipient_channel = family["recipient"]["channel"]
+        scope_id = f"{recipient_channel}_source"
+        for target in family["targets"]:
+            expected_family_segments.append(
+                {
+                    "authority_surface": "imputation_family",
+                    "predicate_space": registry["predicate_space"],
+                    "family_id": family["id"],
+                    "column_key": f"{target['entity']}.{target['name']}",
+                    "entity": target["entity"],
+                    "column": target["name"],
+                    "row_scopes": list(scope_atoms[scope_id]),
+                    "source_row_scope": scope_id,
+                    "producer": family["execution_contract"],
+                    "owner": family["id"],
+                    "stage": family["stage"],
+                    "origin_class": "modeled",
+                    "direction": family.get("direction"),
+                    "recipient_channel": recipient_channel,
+                    "producer_binding": dict(target["producer_binding"]),
+                }
+            )
+    expected_family_segments.sort(
+        key=lambda row: (
+            row["column_key"],
+            row["family_id"],
+            tuple(row["row_scopes"]),
+        )
+    )
+    assert payload["family_authority_segments"] == expected_family_segments
+
+    graph_atoms_by_key = {}
+    for segment in payload["graph_authority_segments"]:
+        graph_atoms_by_key.setdefault(segment["column_key"], set()).update(
+            segment["row_scopes"]
+        )
+    family_atoms_by_key = {
+        segment["column_key"]: set(segment["row_scopes"])
+        for segment in expected_family_segments
     }
+    shared_graph_family = set(graph_atoms_by_key) & set(family_atoms_by_key)
+    assert len(shared_graph_family) == 20
+    assert all(
+        graph_atoms_by_key[key].isdisjoint(family_atoms_by_key[key])
+        for key in shared_graph_family
+    )
+
+    lineage_segments = [
+        segment for row in closure for segment in row["lineage_segments"]
+    ]
+    assert Counter(segment["authority_surface"] for segment in lineage_segments) == {
+        "producer_graph": 152,
+        "imputation_family": 48,
+        "take_up": 14,
+    }
+    assert Counter(frozenset(surfaces) for surfaces in surfaces_by_key.values()) == {
+        frozenset({"producer_graph"}): 113,
+        frozenset({"imputation_family"}): 28,
+        frozenset({"take_up"}): 11,
+        frozenset({"producer_graph", "imputation_family"}): 19,
+        frozenset({"producer_graph", "take_up"}): 1,
+        frozenset({"producer_graph", "imputation_family", "take_up"}): 1,
+    }
+    assert surfaces_by_key["person.taxable_interest_income"] == {
+        "producer_graph",
+        "imputation_family",
+    }
+    assert surfaces_by_key["person.takes_up_medicare_if_eligible"] == {
+        "producer_graph",
+        "take_up",
+    }
+    assert surfaces_by_key["spm_unit.takes_up_housing_assistance_if_eligible"] == {
+        "producer_graph",
+        "imputation_family",
+        "take_up",
+    }
+
+    cells = [
+        (segment["predicate_space"], segment["column_key"], atom)
+        for segment in lineage_segments
+        for atom in segment["row_scopes"]
+    ]
+    assert len(cells) == len(set(cells))
+    assert (
+        sum(
+            payload["counts"][name]
+            for name in ("boolean", "amount", "categorical", "count")
+        )
+        == payload["counts"]["imputed_variables"]
+    )
+
     closure_by_key = {row["key"]: row for row in closure}
     assert all(
-        variable["lineage_segments"]
+        variable["column_lineage_segments"]
         == closure_by_key[variable["column_key"]]["lineage_segments"]
         for variable in payload["variables"]
     )

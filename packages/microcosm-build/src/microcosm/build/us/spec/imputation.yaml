@@ -14068,7 +14068,7 @@ producer_graph:
       numeric_reproducibility: bitwise
       effects:
       - none
-      structural_delta: none
+      structural_delta: join
       retry_safety: idempotent
     mutations:
       entity_keys:
@@ -14502,7 +14502,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:
@@ -15479,7 +15480,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:
@@ -16437,7 +16439,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:
@@ -17456,7 +17459,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:
@@ -18493,7 +18497,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:
@@ -19521,7 +19526,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:
@@ -20549,7 +20555,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:
@@ -21547,7 +21554,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:
@@ -22515,7 +22523,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:
@@ -23473,7 +23482,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:
@@ -24481,7 +24491,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:
@@ -25449,7 +25460,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:
@@ -26407,7 +26419,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:
@@ -27385,7 +27398,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:
@@ -28383,7 +28397,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:
@@ -29341,7 +29356,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:
@@ -30299,7 +30315,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:
@@ -31257,7 +31274,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:
@@ -32224,7 +32242,8 @@ producer_graph:
       determinism: seeded
       numeric_reproducibility: tolerance_bound
       effects:
-      - none
+      - declared_source_read
+      - declared_sink_write
       structural_delta: none
       retry_safety: idempotent
     mutations:

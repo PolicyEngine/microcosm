@@ -1482,14 +1482,14 @@ def _node_capabilities(
             "determinism": "deterministic",
             "numeric_reproducibility": "bitwise",
             "effects": ["none"],
-            "structural_delta": "none",
+            "structural_delta": "join",
             "retry_safety": "idempotent",
         }
     if kind == "late_transfer":
         return {
             "determinism": "seeded",
             "numeric_reproducibility": "tolerance_bound",
-            "effects": ["none"],
+            "effects": ["declared_source_read", "declared_sink_write"],
             "structural_delta": "none",
             "retry_safety": "idempotent",
         }

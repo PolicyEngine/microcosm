@@ -1776,6 +1776,26 @@ _NON_DRAW_HASH_CLASSIFICATIONS = (
         "content_identity", "microcosm.build.spec_engine.canonical", "sha256_json"
     ),
     _hash_classification(
+        "source_integrity",
+        "microcosm.build.spec_engine.artifact_collection",
+        "_authenticate_plan_value",
+    ),
+    _hash_classification(
+        "source_integrity",
+        "microcosm.build.spec_engine.artifact_collection",
+        "_cross_authenticate_checkpoint",
+    ),
+    _hash_classification(
+        "content_identity",
+        "microcosm.build.spec_engine.artifact_collection",
+        "_dtype_descriptor",
+    ),
+    _hash_classification(
+        "source_integrity",
+        "microcosm.build.spec_engine.artifact_collection",
+        "_regular_file_identity",
+    ),
+    _hash_classification(
         "content_identity",
         "microcosm.build.spec_engine.artifact_comparison",
         "_artifact_row",
@@ -2330,6 +2350,7 @@ _NON_DRAW_HASH_CLASSIFICATIONS = (
     _hash_classification("content_identity", "microcosm.data.contract", "_sha256"),
     _hash_classification("source_integrity", "microcosm.data.loader", "_sha256"),
     _hash_classification("source_integrity", "microcosm.data.release", "_sha256"),
+    _hash_classification("content_identity", "microcosm.fit.cache", "_digest_payload"),
     _hash_classification("content_identity", "microcosm.fit.qrf", "_index_identity"),
     _hash_classification(
         "content_identity",

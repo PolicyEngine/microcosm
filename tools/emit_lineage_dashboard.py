@@ -2,15 +2,17 @@
 
 The tool compiles the packaged generation-1 bundle, then projects its typed
 column contracts, compiler-expanded output closure, raw write events, and
-exclusive final-owner segments. Normalized family metadata is read only
-through the resulting compiler IR; there is deliberately no dashboard-only
-lineage spec to edit in parallel.
+cell-exact owner segments in each compiler predicate space. Normalized family
+metadata is read only through the resulting compiler IR; there is deliberately
+no dashboard-only lineage spec to edit in parallel.
 
-The column closure partitions every typed contract across the graph, early-
-family, and take-up compiler surfaces. It does not claim every incidental
-source column present in a historical H5 artifact. Artifact-presence
-certification is owned by the plan-derived selector contract and its current
-build receipts.
+The column closure covers every typed contract across the graph, early-family,
+and take-up compiler surfaces. A column can have multiple lineage surfaces when
+their exact cells are disjoint or their compiler predicate spaces are not
+comparable; the dashboard never invents cross-space supersession. It does not
+claim every incidental source column present in a historical H5 artifact.
+Artifact-presence certification is owned by the plan-derived selector contract
+and its current build receipts.
 
     uv run python tools/emit_lineage_dashboard.py --out /path/to/lineage.json
 """
@@ -609,10 +611,8 @@ def _family_authority_segments(
     *,
     families: Sequence[object],
     contracts: Sequence[Mapping[str, object]],
-    graph_keys: set[str],
-    take_up_keys: set[str],
 ) -> list[dict[str, object]]:
-    """Project normalized early-family outputs absent from the producer graph."""
+    """Project every compiler-normalized early-family target cell."""
 
     if compiled.producer_graph.scope_registry is None:
         raise ValueError("producer_graph/scope_registry: compiled registry required")
@@ -621,10 +621,12 @@ def _family_authority_segments(
         "producer_graph/scope_registry",
     )
     contract_keys = {str(row["key"]) for row in contracts}
-    required = contract_keys - graph_keys - take_up_keys
-    claims: dict[str, dict[str, object]] = {}
+    claims: list[dict[str, object]] = []
+    claimed_cells: dict[tuple[str, str, str], str] = {}
     for family_index, family_value in enumerate(families):
         family = _mapping(family_value, f"imputation/families/{family_index}")
+        if family.get("stage") != "gap_fill_stacked_spine":
+            continue
         for target_index, target_value in enumerate(
             _array(
                 family.get("targets", []), f"imputation/families/{family_index}/targets"
@@ -635,11 +637,9 @@ def _family_authority_segments(
                 f"imputation/families/{family_index}/targets/{target_index}",
             )
             key = f"{target['entity']}.{target['name']}"
-            if key not in required:
-                continue
-            if key in claims:
+            if key not in contract_keys:
                 raise ValueError(
-                    f"compiled early-family output {key!r} has peer owners"
+                    f"compiled early-family output {key!r} has no typed contract"
                 )
             recipient = _mapping(
                 family.get("recipient"),
@@ -652,32 +652,47 @@ def _family_authority_segments(
                     f"imputation/families/{family_index}: no compiler scope for "
                     f"recipient channel {recipient_channel!r}"
                 )
+            family_atoms = list(scopes[scope_id])
+            for atom in family_atoms:
+                cell = (predicate_space, key, atom)
+                previous = claimed_cells.get(cell)
+                if previous is not None:
+                    raise ValueError(
+                        f"compiled early-family cell {cell!r} has peer owners "
+                        f"{previous!r} and {family['id']!r}"
+                    )
+                claimed_cells[cell] = str(family["id"])
             binding = _mapping(
                 target.get("producer_binding"),
                 f"imputation/families/{family_index}/targets/{target_index}/producer_binding",
             )
-            claims[key] = {
-                "authority_surface": "imputation_family",
-                "predicate_space": predicate_space,
-                "family_id": family["id"],
-                "column_key": key,
-                "entity": target["entity"],
-                "column": target["name"],
-                "row_scopes": list(scopes[scope_id]),
-                "producer": family["execution_contract"],
-                "owner": family["id"],
-                "stage": family["stage"],
-                "origin_class": "modeled",
-                "direction": family.get("direction"),
-                "recipient_channel": recipient_channel,
-                "producer_binding": dict(binding),
-            }
-    if set(claims) != required:
-        raise ValueError(
-            "typed columns outside graph/take-up lack unique family authority: "
-            f"{sorted(required - set(claims))!r}"
-        )
-    return [claims[key] for key in sorted(claims)]
+            claims.append(
+                {
+                    "authority_surface": "imputation_family",
+                    "predicate_space": predicate_space,
+                    "family_id": family["id"],
+                    "column_key": key,
+                    "entity": target["entity"],
+                    "column": target["name"],
+                    "row_scopes": family_atoms,
+                    "source_row_scope": scope_id,
+                    "producer": family["execution_contract"],
+                    "owner": family["id"],
+                    "stage": family["stage"],
+                    "origin_class": "modeled",
+                    "direction": family.get("direction"),
+                    "recipient_channel": recipient_channel,
+                    "producer_binding": dict(binding),
+                }
+            )
+    return sorted(
+        claims,
+        key=lambda row: (
+            str(row["column_key"]),
+            str(row["family_id"]),
+            tuple(str(value) for value in row["row_scopes"]),
+        ),
+    )
 
 
 def _column_lineage_closure(
@@ -687,26 +702,36 @@ def _column_lineage_closure(
     family_segments: Sequence[Mapping[str, object]],
     take_up_segments: Sequence[Mapping[str, object]],
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-    """Partition every typed column over one compiler-derived authority surface."""
+    """Close every typed column over exact compiler-derived lineage cells."""
 
     contracts_by_key = {str(row["key"]): dict(row) for row in contracts}
-    take_up_keys = {str(row["column_key"]) for row in take_up_segments}
-    authoritative_graph = [
-        dict(row)
-        for row in graph_segments
-        if str(row["column_key"]) in contracts_by_key
-        and str(row["column_key"]) not in take_up_keys
-    ]
     lineage_segments = [
-        *authoritative_graph,
+        *(dict(row) for row in graph_segments),
         *(dict(row) for row in family_segments),
         *(dict(row) for row in take_up_segments),
     ]
     segments_by_key: dict[str, list[dict[str, object]]] = {}
+    owners_by_cell: dict[tuple[str, str, str], str] = {}
     for segment in lineage_segments:
         key = str(segment["column_key"])
         if key not in contracts_by_key:
             raise ValueError(f"lineage authority {key!r} has no typed contract")
+        location = f"lineage/{segment['authority_surface']}/{key}"
+        atoms = [
+            str(value)
+            for value in _array(segment.get("row_scopes", []), f"{location}/row_scopes")
+        ]
+        if not atoms or len(atoms) != len(set(atoms)):
+            raise ValueError(f"{location}: unique non-empty row scopes required")
+        for atom in atoms:
+            cell = (str(segment["predicate_space"]), key, atom)
+            previous = owners_by_cell.get(cell)
+            if previous is not None:
+                raise ValueError(
+                    f"lineage cell {cell!r} has peer final authorities "
+                    f"{previous!r} and {segment['authority_surface']!r}"
+                )
+            owners_by_cell[cell] = str(segment["authority_surface"])
         segments_by_key.setdefault(key, []).append(segment)
     if set(segments_by_key) != set(contracts_by_key):
         raise ValueError(
@@ -714,10 +739,6 @@ def _column_lineage_closure(
             f"missing={sorted(set(contracts_by_key) - set(segments_by_key))!r}, "
             f"unknown={sorted(set(segments_by_key) - set(contracts_by_key))!r}"
         )
-    for key, segments in segments_by_key.items():
-        surfaces = {str(segment["authority_surface"]) for segment in segments}
-        if len(surfaces) != 1:
-            raise ValueError(f"typed column {key!r} has peer authority surfaces")
     closure = [
         {
             **contracts_by_key[key],
@@ -725,7 +746,7 @@ def _column_lineage_closure(
         }
         for key in sorted(contracts_by_key)
     ]
-    return closure, authoritative_graph
+    return closure, [dict(row) for row in graph_segments]
 
 
 def emit(bundle_root: Path = US_BUNDLE) -> dict[str, object]:
@@ -746,18 +767,21 @@ def emit(bundle_root: Path = US_BUNDLE) -> dict[str, object]:
     variables: list[dict[str, object]] = []
     families = _array(imputation.get("families"), "families")
     all_graph_keys = {str(row["column_key"]) for row in graph_final_owner_segments}
-    graph_keys = all_graph_keys & set(contracts_by_key)
     take_up_keys = {str(row["column_key"]) for row in take_up_ownership_segments}
+    graph_authority_segments = [
+        dict(row)
+        for row in graph_final_owner_segments
+        if str(row["column_key"]) in contracts_by_key
+    ]
+    graph_keys = {str(row["column_key"]) for row in graph_authority_segments}
     family_authority_segments = _family_authority_segments(
         compiled,
         families=families,
         contracts=contracts,
-        graph_keys=graph_keys,
-        take_up_keys=take_up_keys,
     )
     closure, graph_authority_segments = _column_lineage_closure(
         contracts=contracts,
-        graph_segments=graph_final_owner_segments,
+        graph_segments=graph_authority_segments,
         family_segments=family_authority_segments,
         take_up_segments=take_up_ownership_segments,
     )
@@ -802,7 +826,7 @@ def emit(bundle_root: Path = US_BUNDLE) -> dict[str, object]:
     producers = _producer_rows(compiled)
     for variable in variables:
         column_key = str(variable["column_key"])
-        variable["lineage_segments"] = list(
+        variable["column_lineage_segments"] = list(
             closure_by_key[column_key]["lineage_segments"]
         )
 
@@ -847,7 +871,9 @@ def emit(bundle_root: Path = US_BUNDLE) -> dict[str, object]:
                 {str(row["column_key"]) for row in graph_authority_segments}
             ),
             "graph_authority_segments": len(graph_authority_segments),
-            "family_authority_columns": len(family_authority_segments),
+            "family_authority_columns": len(
+                {str(row["column_key"]) for row in family_authority_segments}
+            ),
             "family_authority_segments": len(family_authority_segments),
             "take_up_authority_columns": len(take_up_keys),
             "take_up_ownership_segments": len(take_up_ownership_segments),
@@ -862,6 +888,7 @@ def emit(bundle_root: Path = US_BUNDLE) -> dict[str, object]:
             "boolean": value_kind_counts["flag"],
             "amount": value_kind_counts["amount"],
             "categorical": value_kind_counts["category"],
+            "count": value_kind_counts["count"],
             "value_kinds": dict(sorted(value_kind_counts.items())),
         },
     }

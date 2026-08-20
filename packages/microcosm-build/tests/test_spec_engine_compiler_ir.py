@@ -388,6 +388,31 @@ def test_row_classifier_digest_recipe_is_versioned_and_registry_exact(
     } == {expected}
 
 
+def test_compiled_physical_nodes_declare_observed_structure_and_bank_effects(
+    compiled_us: CompiledSpecIR,
+) -> None:
+    nodes = {node.id: node for node in compiled_us.nodes}
+    finalizer = nodes["source_finalizer"]
+    assert finalizer.capabilities["structural_delta"] == "join"
+    assert tuple(
+        thaw_json(output)["column"]
+        for output in finalizer.outputs
+        if not thaw_json(output)["column"].startswith("@")
+    ) == (
+        "bank_account_assets",
+        "bond_assets",
+        "stock_assets",
+    )
+
+    late_transfers = tuple(
+        node for node in compiled_us.nodes if node.kernel_ref == "kernel:acs_transfer"
+    )
+    assert len(late_transfers) == 19
+    assert {
+        node.capabilities["effects"] for node in late_transfers
+    } == {("declared_source_read", "declared_sink_write")}
+
+
 def test_operational_broker_source_is_not_a_compiler_or_node_identity_input(
     compiled_us: CompiledSpecIR,
 ) -> None:

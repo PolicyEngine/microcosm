@@ -8,8 +8,8 @@
   independent continuation audit reopened its derived closure: whole-column
   precedence drops 20 cell-disjoint early-family segments whenever the same
   typed column also has a graph writer. The fix must preserve authority per
-  exact compiler predicate cell, while retaining the compiler-declared take-up
-  final-owner precedence for Housing and Medicare.
+  exact compiler predicate cell and must not invent supersession between the
+  graph and take-up compiler predicate spaces.
 - The first required `git fetch origin` was attempted and failed because this
   host could not resolve `github.com`. The final #698 commits are available on
   the cached local `spec-engine-schema` branch and are the next merge source.

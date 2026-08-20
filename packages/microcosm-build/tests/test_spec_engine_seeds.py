@@ -328,6 +328,42 @@ def test_legacy_v1_literals_match_live_constants() -> None:
     )
 
 
+def test_adaptive_training_cap_sites_seal_literal_fill_and_draw_boundaries() -> None:
+    vehicle = LEGACY_V1_PROTOCOL.site("sipp_vehicle_training_cap")
+    assert vehicle.draw_condition == (
+        "union_observed_row_count_gt_20000; fill_only_if_remaining_n_gt_0_"
+        "and_remaining_rows_nonempty"
+    )
+
+    financial = LEGACY_V1_PROTOCOL.site("sipp_financial_asset_training_cap")
+    assert financial.seed_material == (
+        "calibration_sipp_asset_training_sample",
+        "target_or_fill_salt",
+    )
+    assert financial.consumption_order == (
+        "bank_account_assets",
+        "stock_assets",
+        "bond_assets",
+        "fill",
+    )
+    assert financial.draw_condition == (
+        "max_train_samples_is_not_none_and_union_observed_row_count_gt_"
+        "max_train_samples; fill_only_if_remaining_n_gt_0_and_remaining_"
+        "rows_nonempty"
+    )
+
+    rent = LEGACY_V1_PROTOCOL.site("acs_rent_archived_training_cap")
+    assert rent.seed_material == (
+        "legacy_acs_rent_training_sample",
+        "target_or_fill_salt",
+    )
+    assert rent.consumption_order == ("rent", "real_estate_taxes", "fill")
+    assert rent.draw_condition == (
+        "union_observed_row_count_gt_10000; fill_only_if_remaining_n_gt_0_"
+        "and_remaining_rows_nonempty"
+    )
+
+
 def test_protocol_digest_covers_every_draw_site_field() -> None:
     first = LEGACY_V1_PROTOCOL.sites[0]
     changed_site = replace(first, reset_boundary="mutated_reset_boundary")
@@ -369,11 +405,11 @@ def test_production_callsites_are_independent_exact_classified_and_attested() ->
     }
     modules = discover_production_source_modules(root)
     callsites = discover_production_callsites(root)
-    assert len(modules) == 208
-    assert len(callsites) == 280
+    assert len(modules) == 213
+    assert len(callsites) == 285
     assert len(LEGACY_V1_PRODUCTION_BINDINGS) == 119
-    assert len(LEGACY_V1_PRODUCTION_EXEMPTIONS) == 161
-    assert len(LEGACY_V1_HASH_CLASSIFICATIONS) == 160
+    assert len(LEGACY_V1_PRODUCTION_EXEMPTIONS) == 166
+    assert len(LEGACY_V1_HASH_CLASSIFICATIONS) == 165
     assert {row.kind for row in LEGACY_V1_HASH_CLASSIFICATIONS} == (
         HASH_CLASSIFICATION_KINDS
     )
