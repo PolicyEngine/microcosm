@@ -2,6 +2,15 @@
 
 ## State
 
+The 2026-08-20 16:xx owner continuation is reopened against commit
+`9998d35d` for an independent, current-tree diagnosis of the supplied host 1%
+ACS QRF record-binding traceback. The reported failing boundary is
+`person/puf_tax_itemization/taxable_interest_income`, outside the assigned
+package 3 calibration rows. Source/history tracing, regression adequacy, and
+the required verification surface are in progress; no new correction or host
+success is claimed yet. The owner-provided `_BUILD-FAILURE-1PCT.txt` and
+`.codex-memory-guard.py` remain untracked and untouched.
+
 The 2026-08-20 owner continuation independently revalidated the supplied host
 1% traceback against the current executable tree. At `33bf52fe`, every ACS
 target received regime provenance and terminal validation invoked the QRF
@@ -84,6 +93,9 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Reopened and committed this root journal before changing implementation or
+  tests, reread `CLAUDE.md`, preserved the two untracked owner artifacts, and
+  recorded the exact supplied binding failure as the active continuation.
 - Reopened the committed progress journal before changing implementation or
   tests, reread `CLAUDE.md`, and recorded the supplied failure as the active
   continuation target.
@@ -318,5 +330,9 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Do not claim a host artifact unless a revision-bound retry reaches a terminal
-   success marker and emits the expected pool, manifest, and gates artifacts.
+1. Trace the current and failing historical validator/producer call paths from
+   the invariant raise site and prove the canonical target-selection boundary.
+2. Audit or add a focused regression for the exact unassigned wide-family
+   binding failure, then run the prescribed affected and broader suites.
+3. Commit each coherent diagnosis, correction, regression, and verification
+   step; refresh `FINAL_REPORT.md` with only revision-bound conclusions.
