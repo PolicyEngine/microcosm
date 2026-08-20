@@ -9843,7 +9843,7 @@
         "country"
       ],
       "measurement": {
-        "entity": "benefit_unit",
+        "entity": "benunit",
         "concept": "uk.benefit_unit.count",
         "filters": [
           {
@@ -9856,7 +9856,7 @@
       "bindings": {
         "policyengine": {
           "metric_name": "dwp/uc/households",
-          "value_variable": "universal_credit",
+          "value_variable": "benunit_count",
           "from_entity": "benunit",
           "filters": [
             {

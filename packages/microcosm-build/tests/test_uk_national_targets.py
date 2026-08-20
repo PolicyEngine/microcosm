@@ -247,6 +247,36 @@ def test_uk_national_targets_declare_chronicle_loader_guarantees():
     ] == "esa_income + esa_contrib"
 
 
+def test_uk_uc_households_target_counts_benunits():
+    resource = _load()
+    target = _target_by_id(resource, "dwp.uc.households")
+
+    assert target["measurement"] == {
+        "entity": "benunit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+            {
+                "concept": "uk.benefits.universal_credit.amount",
+                "operator": ">",
+                "value": 0,
+            }
+        ],
+    }
+    assert target["bindings"]["policyengine"]["value_variable"] == "benunit_count"
+    assert target["bindings"]["policyengine"]["from_entity"] == "benunit"
+    assert target["bindings"]["policyengine"]["filters"] == [
+        {
+            "variable": "universal_credit",
+            "operator": ">",
+            "value": 0,
+        }
+    ]
+    assert target["ledger_selector"] == {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_benefit_units",
+    }
+
+
 def test_uk_national_cgt_contract_names_match_runtime_specs():
     resource = _load()
 
