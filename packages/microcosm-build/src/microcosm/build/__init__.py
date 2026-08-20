@@ -50,12 +50,14 @@ def _assert_frame_compatible(version: str, required: tuple[int, int]) -> None:
 _assert_frame_compatible(_frame_version, _REQUIRED_FRAME_SERIES)
 
 from microcosm.build.country_spec import (  # noqa: E402 - after the compat gate
+    CountryResourceRow,
     CountrySpec,
     GateSelectionSpec,
     GatesManifest,
     GeographySpineManifest,
     GeographySpineSpec,
     ReleaseContractManifest,
+    ResolvedCountrySpec,
     country_stage_plan,
     load_country_spec,
 )
@@ -144,6 +146,7 @@ __version__ = "0.1.0"
 __all__ = [
     "BlockingMode",
     "CountrySpec",
+    "CountryResourceRow",
     "DonorSpec",
     "DEFAULT_STAGING_PREFIX",
     "EvidenceContext",
@@ -164,6 +167,7 @@ __all__ = [
     "GeographySpineManifest",
     "GeographySpineSpec",
     "ReleaseContractManifest",
+    "ResolvedCountrySpec",
     "Stage",
     "StagePlan",
     "StageRecord",

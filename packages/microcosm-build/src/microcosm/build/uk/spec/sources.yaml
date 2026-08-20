@@ -1,0 +1,2104 @@
+sources:
+- id: uk_national_candidate_2023
+  role: uk_national_candidate
+  sha256: f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833
+  byte_size: 1315880118
+  loader: kernel:load_uk_national_frame
+  vintages:
+  - vintage:uk_candidate_2023
+  vintage_authorities:
+  - id: uk_candidate_2023
+    kind: survey_period
+    value: 2023
+stage_manifest:
+  version: 1
+  country: uk
+  policy: The UK HMRC/SPI income family is source-manifest-defined. Private donor data must be supplied locally, every artifact must be SHA-256 verified at runtime, retained FRS constituents and published bands fail closed, and the current replay keeps importance-kind weights because all 208 banded facts require an unavailable full FRS total-income measure.
+stages:
+- stage: frs_spine
+  survey: Family Resources Survey 2023-24
+  source: Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9367, DOI 10.5255/UKDA-SN-9367-2; local licensed 2023_24 tabs.
+  grain: household
+  artifacts:
+  - role: frs_table
+    table: accounts
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: accounts.tab
+    sha256: c5e31932bfd06087f835d2c83c0984c85a93409bf5ef85b699cb0958abcba1ea
+    size_bytes: 1807921
+    runtime_sha256_required: true
+  - role: frs_table
+    table: adult
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: adult.tab
+    sha256: e09f9647d03585c81a528636028b2ed495f8f1fbcf64c5e7b4fe521b67367e06
+    size_bytes: 35323384
+    runtime_sha256_required: true
+  - role: frs_table
+    table: benefits
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: benefits.tab
+    sha256: ff30d054cc659bcf23b44c492d98cfd701c0bfdb63e8e9aa9769b490ba9d636b
+    size_bytes: 4460292
+    runtime_sha256_required: true
+  - role: frs_table
+    table: benunit
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: benunit.tab
+    sha256: 88946815eace8561516d5cbb442c27e319c1e90abc381fb2338f0126e3b9e05b
+    size_bytes: 21213867
+    runtime_sha256_required: true
+  - role: frs_table
+    table: child
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: child.tab
+    sha256: b5dc84fe8b002ee925e61fae23fed27b11537af9fb174f1d07d9cc1748b9702e
+    size_bytes: 2913156
+    runtime_sha256_required: true
+  - role: frs_table
+    table: chldcare
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: chldcare.tab
+    sha256: 566e0ebca1d5e2f3e424e556c91f4cb583d17dadfdfa59feb3841eda7e5976a3
+    size_bytes: 273837
+    runtime_sha256_required: true
+  - role: frs_table
+    table: extchild
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: extchild.tab
+    sha256: 8d358d7ee66ee4a7ceab87b4f24fbbf21ac86dc038dc7831e51fb271f96a57ec
+    size_bytes: 18677
+    runtime_sha256_required: true
+  - role: frs_table
+    table: househol
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: househol.tab
+    sha256: 5fd26b8b675f33b3b30c9ac789a18da17de734790f77e00ded287d1c3a187b30
+    size_bytes: 12387117
+    runtime_sha256_required: true
+  - role: frs_table
+    table: job
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: job.tab
+    sha256: 88b77ffe06865f029f713bb1d55ff12bdea8a1234de5bc293e72458fe64f3a74
+    size_bytes: 10934873
+    runtime_sha256_required: true
+  - role: frs_table
+    table: maint
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: maint.tab
+    sha256: f2dc924eb5a51b0c357791693d15b431327dc39c6421011efb313d88bf839695
+    size_bytes: 15440
+    runtime_sha256_required: true
+  - role: frs_table
+    table: mortgage
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: mortgage.tab
+    sha256: ce36b477d67837c469608a0d68f7ef269ac04758974235f1157d2f6b92cdbfdc
+    size_bytes: 631783
+    runtime_sha256_required: true
+  - role: frs_table
+    table: oddjob
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: oddjob.tab
+    sha256: b4ba3dd3151f73a01422983c60514a3e38458ddfa4fb33ae4ed0326873406305
+    size_bytes: 5165
+    runtime_sha256_required: true
+  - role: frs_table
+    table: penprov
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: penprov.tab
+    sha256: ee001461c40306ec24b38b2881e1774121114266a2ee449d606cd0a811c37731
+    size_bytes: 522313
+    runtime_sha256_required: true
+  - role: frs_table
+    table: pension
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: pension.tab
+    sha256: 150d6fad1fce81254fb7aea1526fbb00b63d4027d6e2ac4c26bb90aea3127eb7
+    size_bytes: 1225838
+    runtime_sha256_required: true
+  operations:
+  - kind: read_tables
+    format: tab
+    delimiter: "\t"
+    lowercase_columns: true
+    numeric_errors: coerce
+    runtime_sha256_required: true
+  - kind: replace_sentinels
+    sentinel_policy: 'raw numeric blanks and nonnumeric sentinels are coerced to NaN, then produced E2 columns are filled to the Frame no-NaN contract. Clamping is deliberately per-column, mirroring the incumbent base build: redamt stays unclamped, tuborr clamps at zero, and the property/royalties components clamp only in their aggregate.'
+  - kind: assemble_group_entities
+    household_id: sernum
+    benunit_id: sernum * 100 + benunit
+    person_id: sernum * 1000 + person
+    person_table: adult union child
+    household_sort: set_index('household_id').sort_index() before positional household reads
+  - kind: map_columns
+    scope: direct raw-to-column E2 mappings only
+  - kind: map_coded_amounts
+    scope: region, tenure, accommodation, council tax band, benefit-code amount mappings
+  - kind: annualize_periodic_amounts
+    weeks_in_year: 52.17857142857143
+  outputs:
+  - person_id
+  - person_benunit_id
+  - person_household_id
+  - age
+  - gender
+  - marital_status
+  - hours_worked
+  - is_household_head
+  - is_benunit_head
+  - is_parent
+  - employment_income
+  - self_employment_income
+  - private_pension_income
+  - tax_free_savings_income
+  - savings_interest_income
+  - dividend_income
+  - property_income
+  - maintenance_income
+  - miscellaneous_income
+  - private_transfer_income
+  - lump_sum_income
+  - student_loan_repayments
+  - statutory_sick_pay
+  - statutory_maternity_pay
+  - student_loans
+  - access_fund
+  - education_grants
+  - council_tax_benefit_reported
+  - maintenance_expenses
+  - childcare_expenses
+  - personal_pension_contributions
+  - employee_pension_contributions
+  - pension_contributions_via_salary_sacrifice
+  - salary_sacrifice_reported
+  - salary_sacrifice_asked
+  - child_benefit_reported
+  - income_support_reported
+  - housing_benefit_reported
+  - attendance_allowance_reported
+  - dla_sc_reported
+  - dla_m_reported
+  - iidb_reported
+  - carers_allowance_reported
+  - sda_reported
+  - afcs_reported
+  - ssmg_reported
+  - pension_credit_reported
+  - child_tax_credit_reported
+  - working_tax_credit_reported
+  - state_pension_reported
+  - winter_fuel_allowance_reported
+  - incapacity_benefit_reported
+  - universal_credit_reported
+  - pip_m_reported
+  - pip_dl_reported
+  - jsa_contrib_reported
+  - jsa_income_reported
+  - esa_contrib_reported
+  - esa_income_reported
+  - bsp_reported
+  - benunit_id
+  - is_married
+  - dependent_children
+  - household_id
+  - region
+  - tenure_type
+  - accommodation_type
+  - num_bedrooms
+  - council_tax_reported
+  - council_tax_band
+  - council_tax_rebate
+  - council_tax_single_adult_raw
+  - water_and_sewerage_charges
+  - domestic_rates
+  - rent
+  - subrent
+  - mortgage_interest_repayment
+  - mortgage_capital_repayment
+  - structural_insurance_payments
+  - housing_service_charges
+  - external_child_payments
+  nonnegative_outputs:
+  - age
+  - hours_worked
+  - employment_income
+  - self_employment_income
+  - private_pension_income
+  - tax_free_savings_income
+  - savings_interest_income
+  - dividend_income
+  - maintenance_income
+  - miscellaneous_income
+  - student_loan_repayments
+  - statutory_sick_pay
+  - statutory_maternity_pay
+  - childcare_expenses
+  - personal_pension_contributions
+  - employee_pension_contributions
+  - pension_contributions_via_salary_sacrifice
+  - rent
+  - mortgage_interest_repayment
+  - mortgage_capital_repayment
+  - structural_insurance_payments
+  - housing_service_charges
+  - external_child_payments
+  notes: Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage.
+- stage: frs_employment
+  survey: Family Resources Survey 2023-24
+  source: Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9252 local licensed tabs.
+  grain: person
+  artifacts:
+  - role: frs_table
+    table: adult
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: adult.tab
+    sha256: e09f9647d03585c81a528636028b2ed495f8f1fbcf64c5e7b4fe521b67367e06
+    size_bytes: 35323384
+    runtime_sha256_required: true
+  operations:
+  - kind: read_tables
+    format: tab
+    delimiter: "\t"
+    lowercase_columns: true
+    numeric_errors: coerce
+    runtime_sha256_required: true
+  - kind: map_coded_amounts
+    scope: empstati employment status, mjobsect sector, and raw SIC division
+  outputs:
+  - employment_status
+  - employment_sector
+  - sic_industry_division
+  nonnegative_outputs:
+  - sic_industry_division
+  notes: Ports FRS employment derivations. empstati code 11 preserves the incumbent truncated-map artifact as LONG_TERM_DISABLED, so OTHER_INACTIVE is not emitted; mjobsect and sic are direct-indexed and fail loudly if absent.
+- stage: frs_council_tax
+  survey: Family Resources Survey 2023-24
+  source: Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9252 local licensed tabs.
+  grain: household
+  artifacts:
+  - role: frs_table
+    table: househol
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: househol.tab
+    sha256: 5fd26b8b675f33b3b30c9ac789a18da17de734790f77e00ded287d1c3a187b30
+    size_bytes: 12387117
+    runtime_sha256_required: true
+  operations:
+  - kind: read_tables
+    format: tab
+    delimiter: "\t"
+    lowercase_columns: true
+    numeric_errors: coerce
+    runtime_sha256_required: true
+  - kind: impute_cell_means
+    cells:
+    - gvtregno
+    - ctband
+    - adulth == 1
+    donor_filter: raw ctannual > 0
+    missing: raw ctannual < 0 or NaN
+    value: Scottish-water-netted CTANNUAL
+  outputs:
+  - council_tax
+  nonnegative_outputs:
+  - council_tax
+  notes: Re-reads raw househol.tab because spine council_tax_reported clips missing values. Scottish Water charges are netted before cell means; no-donor cells impute zero. The dead ct_mean.replace(-1, ...) branch is intentionally dropped.
+- stage: frs_disability
+  survey: Family Resources Survey 2023-24
+  source: Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9252 local licensed tabs plus policyengine-uk DWP parameters.
+  grain: person
+  artifacts: []
+  operations:
+  - kind: derive
+    parameters: disability category thresholds from baseline.gov.dwp at Jan-1
+  - kind: derive
+    parameters: disability flags from gov.dwp at Jan-1
+  outputs:
+  - aa_category
+  - dla_sc_category
+  - dla_m_category
+  - pip_m_category
+  - pip_dl_category
+  - is_disabled_for_benefits
+  - is_enhanced_disabled_for_benefits
+  - is_severely_disabled_for_benefits
+  notes: Consumes E2 reported disability amount carriers. The five internal amount carriers are retained through E7 and stripped at E10; export allowlists stay fail-closed.
+- stage: frs_education
+  survey: Family Resources Survey 2023-24
+  source: Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9252 local licensed tabs.
+  grain: person
+  artifacts:
+  - role: frs_table
+    table: adult
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: adult.tab
+    sha256: e09f9647d03585c81a528636028b2ed495f8f1fbcf64c5e7b4fe521b67367e06
+    size_bytes: 35323384
+    runtime_sha256_required: true
+  - role: frs_table
+    table: child
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: child.tab
+    sha256: b5dc84fe8b002ee925e61fae23fed27b11537af9fb174f1d07d9cc1748b9702e
+    size_bytes: 2913156
+    runtime_sha256_required: true
+  operations:
+  - kind: read_tables
+    format: tab
+    delimiter: "\t"
+    lowercase_columns: true
+    numeric_errors: coerce
+    runtime_sha256_required: true
+  - kind: derive
+    scope: current/highest education, QYP inputs, EMA cell-mean degenerate fills, and benefits-in-own-right flag
+  - kind: impute_cell_means
+    cells:
+    - 'single cell: EMA participants (code == 1; adema/ademaamt pair, eduma/edumaamt when adema is absent; chema/chemaamt for children)'
+    donor_filter: participants with non-negative reported amounts
+    missing: participants with sentinel negative reported amounts
+    value: donor-mean fill, floored at zero, annualized with 365.25 / 7
+  outputs:
+  - current_education
+  - highest_education
+  - is_in_non_advanced_education
+  - is_in_approved_training
+  - age_started_or_accepted_current_education_or_training
+  - is_before_universal_credit_qualifying_young_person_terminal_date
+  - adult_ema
+  - child_ema
+  - receives_benefits_in_own_right
+  nonnegative_outputs:
+  - adult_ema
+  - child_ema
+  - age_started_or_accepted_current_education_or_training
+  notes: 'Ports the incumbent education cascade including its unreachable POST_SECONDARY branch order. EDUCQUAL_MAP carries the corrected highest-qualification codeframe (1 = Doctorate, descending) per the FRS 2023-24 data dictionary (UK Data Service SN 9367, DOI 10.5255/UKDA-SN-9367-2, adult table), corroborated against the raw aggregates and adopted as a signed difference (PR #703); an upstream defect report records the incumbent inversion. Code 87 is undocumented in the dictionary and falls to the default. EMA uses the shared weeks-in-year constant.'
+- stage: frs_legacy_proxies
+  survey: Family Resources Survey 2023-24
+  source: Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9252 local licensed tabs plus policyengine-uk DWP parameters.
+  grain: person
+  artifacts:
+  - role: frs_table
+    table: adult
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: adult.tab
+    sha256: e09f9647d03585c81a528636028b2ed495f8f1fbcf64c5e7b4fe521b67367e06
+    size_bytes: 35323384
+    runtime_sha256_required: true
+  operations:
+  - kind: read_tables
+    format: tab
+    delimiter: "\t"
+    lowercase_columns: true
+    numeric_errors: coerce
+    runtime_sha256_required: true
+  - kind: materialize_rules_engine_predictors
+    predictors:
+    - state_pension_age
+    consumed_only: true
+  - kind: derive
+    scope: legacy JSA and ESA claimant-state proxies
+  outputs:
+  - legacy_jobseeker_proxy
+  - esa_health_condition_proxy
+  - esa_support_group_proxy
+  notes: The proxies are labels, not entitlement determinations. JSA hours compare against 16 * (365.25 / 7) on the E2 spine hours scale; state_pension_age is consumed but not persisted.
+- stage: frs_education_grant_split
+  survey: Family Resources Survey 2023-24
+  source: Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9252 local licensed tabs plus policyengine-uk DfE grant parameters.
+  grain: person
+  artifacts: []
+  operations:
+  - kind: materialize_rules_engine_predictors
+    predictors:
+    - childcare_grant
+    - parents_learning_allowance
+    - adult_dependants_grant
+    consumed_only: true
+  - kind: derive
+    scope: proportional split of aggregate education_grants and DSA residual capacity
+  outputs:
+  - disabled_students_allowance_eligible_expenses
+  rewrites:
+  - education_grants
+  nonnegative_outputs:
+  - disabled_students_allowance_eligible_expenses
+  notes: Runs before BRMA and always runs; both are signed inert differences for 2023-24. Pre-2025 DSA capacity is an aligned zero vector rather than an engine shape-sizing read.
+- stage: frs_take_up
+  survey: Family Resources Survey 2023-24
+  source: Family Resources Survey 2023-24 reported receipt anchors plus sourced UK take-up contract rates.
+  grain: benunit
+  artifacts: []
+  operations:
+  - kind: aggregate_person_to_benunit
+    method: any_positive
+    consumed_only: true
+    aggregates:
+      child_benefit_reported_anchor: child_benefit_reported
+      pension_credit_reported_anchor: pension_credit_reported
+      universal_credit_reported_anchor: universal_credit_reported
+  - kind: assign_binary_with_anchored_residual
+    output: would_claim_child_benefit
+    draw: would_claim_child_benefit
+    rate_key: child_benefit
+    anchor: child_benefit_reported_anchor
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: child_benefit_opts_out
+    draw: child_benefit_opts_out
+    rate_key: child_benefit_opts_out_rate
+    seed: 0
+  - kind: assign_binary_with_anchored_residual
+    output: would_claim_pc
+    draw: would_claim_pc
+    rate_key: pension_credit
+    anchor: pension_credit_reported_anchor
+    seed: 0
+  - kind: assign_binary_with_anchored_residual
+    output: would_claim_uc
+    draw: would_claim_uc
+    rate_key: universal_credit
+    anchor: universal_credit_reported_anchor
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: would_claim_tfc
+    draw: would_claim_tfc
+    rate_key: tax_free_childcare
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: would_claim_extended_childcare
+    draw: would_claim_extended_childcare
+    rate_key: extended_childcare
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: would_claim_universal_childcare
+    draw: would_claim_universal_childcare
+    rate_key: universal_childcare
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: would_claim_targeted_childcare
+    draw: would_claim_targeted_childcare
+    rate_key: targeted_childcare
+    seed: 0
+  - kind: assign_clipped_normal
+    output: maximum_extended_childcare_hours_usage
+    draw: maximum_extended_childcare_hours_usage
+    distribution_key: maximum_extended_childcare_hours_usage
+    seed: 0
+  outputs:
+  - would_claim_child_benefit
+  - child_benefit_opts_out
+  - would_claim_pc
+  - would_claim_uc
+  - would_claim_tfc
+  - would_claim_extended_childcare
+  - would_claim_universal_childcare
+  - would_claim_targeted_childcare
+  - maximum_extended_childcare_hours_usage
+  nonnegative_outputs:
+  - maximum_extended_childcare_hours_usage
+  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only.
+- stage: frs_person_draws
+  survey: Family Resources Survey 2023-24
+  source: Sourced UK take-up contract rates and identity-keyed deterministic draws.
+  grain: person
+  artifacts: []
+  operations:
+  - kind: assign_binary_from_rate
+    output: would_claim_marriage_allowance
+    draw: would_claim_marriage_allowance
+    rate_key: marriage_allowance
+    seed: 0
+  - kind: assign_binary_from_banded_rates
+    output: would_claim_scp
+    draw: would_claim_scp
+    band_column: age
+    bands:
+    - upper_exclusive: 6
+      rate_key: scp_under_6
+    - rate_key: scp_6_plus
+    seed: 0
+  - kind: assign_uniform_draw
+    output: attends_private_school_random_draw
+    seed: 0
+  outputs:
+  - would_claim_marriage_allowance
+  - would_claim_scp
+  - attends_private_school_random_draw
+  nonnegative_outputs:
+  - attends_private_school_random_draw
+  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; higher_earner_tie_break is intentionally not produced.
+- stage: frs_household_draws
+  survey: Family Resources Survey 2023-24
+  source: Sourced UK stochastic contract rates and identity-keyed deterministic draws.
+  grain: household
+  artifacts: []
+  operations:
+  - kind: assign_binary_from_rate
+    output: household_owns_tv
+    draw: household_owns_tv
+    rate_key: tv_ownership_rate
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: would_evade_tv_licence_fee
+    draw: would_evade_tv_licence_fee
+    rate_key: tv_licence_evasion_rate
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: main_residential_property_purchased_is_first_home
+    draw: main_residential_property_purchased_is_first_home
+    rate_key: first_time_buyer_rate
+    seed: 0
+  - kind: assign_binary_from_rate
+    output: property_purchased
+    draw: property_purchased
+    rate_key: property_purchase_rate
+    seed: 0
+  outputs:
+  - household_owns_tv
+  - would_evade_tv_licence_fee
+  - main_residential_property_purchased_is_first_home
+  - property_purchased
+  notes: Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100. TV evasion remains an independent draw, matching the incumbent reference share.
+- stage: frs_brma
+  survey: Family Resources Survey 2023-24
+  source: Valuation Office Agency LHA list-of-rents count table and policyengine-uk LHA_category predictor.
+  grain: household
+  artifacts:
+  - role: count_resource
+    resource: brma_rent_counts.json
+    kind: public_aggregated_counts
+    format: json
+  operations:
+  - kind: materialize_rules_engine_predictors
+    predictors:
+    - LHA_category
+    consumed_only: true
+  - kind: sample_categorical_from_count_table
+    output: brma
+    count_resource: brma_rent_counts.json
+    cell_columns:
+    - region
+    - LHA_category
+    assignment_grain: benunit
+    collapse_to: household
+    collapse_method: uniform_member_pick
+    seed: 0
+  outputs:
+  - brma
+  notes: Identity-keyed seed 0 streams replace the incumbent BRMA seed 0 sequential generator. Household collapse uses salt brma:household_pick.
+- stage: was_wealth
+  survey: Wealth and Assets Survey round 8
+  source: Office for National Statistics Wealth and Assets Survey, UK Data Service SN 7215, DOI 10.5255/UKDA-SN-7215-20; local licensed 2006-22 household tab.
+  grain: household
+  base_candidate:
+    filename: populace_uk_2023.h5
+    revision: populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z
+    sha256: f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833
+    tier: frs
+  artifacts:
+  - role: was_qrf_donor
+    kind: private_microdata
+    ukds_study_number: 7215
+    doi: 10.5255/UKDA-SN-7215-20
+    filename: was_round_8_hhold_eul_may_2025_230525.tab
+    sha256: 18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374
+    size_bytes: 39073613
+    access: private_local_input
+    locator: caller-supplied local input
+    runtime_sha256_required: true
+  operations:
+  - kind: derive
+    scope: strict WAS donor cleaning with lower-case exact column matching and no fuzzy r/w fallback
+    fillna: 0
+    direct_maps:
+      owned_land: DVLUKValR8_sum
+      property_wealth: DVPropertyR8
+      gross_financial_wealth: HFINWR8_SUM
+      net_financial_wealth: HFINWNTR8_Sum
+      main_residence_value: DVhvalueR8
+      other_residential_property_value: DVHseValR8_sum
+      non_residential_property_value: DVBlDValR8_sum
+      savings: DVSaValR8_aggr
+      num_vehicles: vcarnr8
+      weight: R8xshhwgt
+    derived:
+      corporate_wealth_excl_isa: (totalpenr8_aggr - dvvaldbt_scaper8_aggr) + DVFESHARESR8_aggr + DVFShUKVR8_aggr + DVFCollVR8_aggr
+      stocks_and_shares_isa: DVIISAVR8_aggr
+      cash_isa: DVCISAVR8_aggr
+      student_loan_balance: Tot_LosR8_aggr - Tot_los_exc_SLCR8_aggr
+      is_renting: DVPriRntR8 == 1
+      region: GORR8 via incumbent REGIONS map
+  - kind: materialize_rules_engine_predictors
+    predictors:
+    - household_net_income
+    - num_adults
+    - num_children
+    - private_pension_income
+    - employment_income
+    - self_employment_income
+    - capital_income
+    - is_renting
+    consumed_only: true
+  - kind: fit_weighted_qrf_chain
+    weights: explicit
+    seed: 0
+    n_estimators: 100
+    predictors:
+    - household_net_income
+    - num_adults
+    - num_children
+    - private_pension_income
+    - employment_income
+    - self_employment_income
+    - capital_income
+    - num_bedrooms
+    - council_tax
+    - is_renting
+    - region
+    categorical_predictors:
+    - region
+    - is_renting
+    region_remap:
+      NORTHERN_IRELAND: WALES
+    integer_outputs:
+    - num_vehicles
+    chain_order:
+    - owned_land
+    - property_wealth
+    - corporate_wealth_excl_isa
+    - stocks_and_shares_isa
+    - corporate_wealth
+    - gross_financial_wealth
+    - net_financial_wealth
+    - main_residence_value
+    - other_residential_property_value
+    - non_residential_property_value
+    - savings
+    - num_vehicles
+    - student_loan_balance
+    - cash_isa
+  - kind: fold_into
+    output: corporate_wealth
+    inputs:
+    - corporate_wealth_excl_isa
+    - stocks_and_shares_isa
+    drop_inputs:
+    - corporate_wealth_excl_isa
+  - kind: support_clip
+    range: donor_realized
+  - kind: allocate_within_group_waterfall
+    source: household.student_loan_balance
+    target: person.student_loan_balance
+    tiers:
+    - student_loan_repayments > 0
+    - student_loans > 0
+    - highest_education == TERTIARY
+    - current_education == TERTIARY
+    - 18 <= age <= 55
+    - everyone
+    keyed_by: entity_id
+  outputs:
+  - owned_land
+  - property_wealth
+  - corporate_wealth
+  - gross_financial_wealth
+  - net_financial_wealth
+  - main_residence_value
+  - other_residential_property_value
+  - non_residential_property_value
+  - savings
+  - num_vehicles
+  - cash_isa
+  - stocks_and_shares_isa
+  - student_loan_balance
+  nonnegative_outputs:
+  - owned_land
+  - property_wealth
+  - corporate_wealth
+  - gross_financial_wealth
+  - main_residence_value
+  - other_residential_property_value
+  - non_residential_property_value
+  - savings
+  - num_vehicles
+  - cash_isa
+  - stocks_and_shares_isa
+  - student_loan_balance
+  notes: 'Ports incumbent WAS round-8 wealth imputation with signed E5 differences: exact lower-case column matching replaces the fuzzy r/w fallback; cash ISA uses DVCISAVR8_aggr and stocks-and-shares ISA uses DVIISAVR8_aggr; corporate_wealth folds stocks-and-shares ISA after drawing corporate_wealth_excl_isa; recipient Northern Ireland regions are mapped to Wales for prediction only; student_loan_balance is allocated by household id rather than the incumbent positional off-by-one. Engine predictors materialize at their native entity and person/benunit values are summed to household, reproducing the incumbent map_to=household semantics; region is one-hot encoded jointly across donor and recipient (the incumbent''s dummy encoding), with unmapped donor GOR codes becoming all-zero dummy rows. The WAS and FRS predictor definitions are not fully like-for-like and are ported as-is; raw WAS missing values are blanket-filled with zero; UKDS negative sentinel codes (-9/-8/-7/-6) are recoded to zero for the nonnegative-domain columns the licensed audit found carrying them (vcarnr8: 2 rows; HBedRmR8: 95.8 percent - the bedrooms question is effectively unasked in the WAS household file, predictor-quality revisit registered on microcosm#145) - a signed difference vs the incumbent, which trains on raw sentinels; DVPriRntR8''s -9 is structural not-applicable so the is_renting mapping is unchanged; genuinely negative domains are never recoded.'
+- stage: regional_property_uprating
+  survey: Public regional property reference
+  source: MHCLG dwellings and ONS UK House Price Index December 2025 regional average prices.
+  grain: household
+  base_candidate:
+    filename: populace_uk_2023.h5
+    revision: populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z
+    sha256: f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833
+    tier: frs
+  artifacts:
+  - role: regional_reference
+    resource: regional_land_values.json
+    kind: public_aggregate_reference
+    format: json
+  operations:
+  - kind: uprate_to_regional_reference
+    resource: regional_land_values.json
+    factor: avg_house_price / unweighted_mean(main_residence_value | region, >0)
+    owner_rows: main_residence_value > 0
+    skip_empty_or_nonpositive_regions: true
+  outputs: []
+  rewrites:
+  - main_residence_value
+  - property_wealth
+  notes: Deterministically rescales owner rows so regional unweighted owner means match the public house-price reference. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior.
+- stage: frs_hmrc_spine_leaves
+  survey: Family Resources Survey 2023-24
+  source: Department for Work and Pensions Family Resources Survey 2023-24 raw adult.tab and benefits.tab, caller-supplied local input
+  grain: person
+  artifacts:
+  - role: frs_table
+    table: adult
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: adult.tab
+    sha256: e09f9647d03585c81a528636028b2ed495f8f1fbcf64c5e7b4fe521b67367e06
+    size_bytes: 35323384
+    runtime_sha256_required: true
+  - role: frs_table
+    table: benefits
+    kind: licensed_microdata
+    format: tab
+    vintage: '2023_24'
+    locator: benefits.tab
+    sha256: ff30d054cc659bcf23b44c492d98cfd701c0bfdb63e8e9aa9769b490ba9d636b
+    size_bytes: 4460292
+    runtime_sha256_required: true
+  operations:
+  - kind: retain_adjudicated_frs_hmrc_leaves
+    population: uk_frs_raw_spine
+    source_vintage: 2023-24
+    mapped_build_period: 2023
+    annualization: weekly raw FRS amounts * (365.25 / 7)
+    status: adjudicated_partial_replay
+    retained_full_constituents:
+      hmrc_spi_pay:
+        spi_concept: PAY
+        scope: full
+        raw_sources:
+        - ADULT.INEARNS
+        formula: max(0, ADULT.INEARNS) * (365.25 / 7)
+      hmrc_spi_unemployment_benefit_income:
+        spi_concept: UBISJA
+        scope: full
+        raw_sources:
+        - BENEFITS.BENEFIT=14:BENAMT
+        - BENEFITS.BENEFIT=19:BENAMT
+        formula: sum(BENAMT where BENEFIT in {14, 19}) * (365.25 / 7)
+      hmrc_spi_incapacity_benefit_income:
+        spi_concept: INCPBEN
+        scope: full
+        raw_sources:
+        - BENEFITS.BENEFIT=17:BENAMT
+        formula: sum(BENAMT where BENEFIT == 17) * (365.25 / 7)
+        observed_support: structural zero in the audited 2023-24 FRS; retained so future vintages flow
+    retained_named_subsets:
+      ossben_identifiable_subset:
+        spi_concept: OSSBEN
+        raw_sources:
+        - BENEFITS.BENEFIT=13:BENAMT
+        - BENEFITS.BENEFIT=16,VAR2 in {1,3}:BENAMT
+        formula: sum(BENAMT where BENEFIT == 13 or (BENEFIT == 16 and VAR2 in {1, 3})) * (365.25 / 7)
+        scope: identifiable_subset
+      srp_regular_code5:
+        spi_concept: SRP
+        raw_sources:
+        - BENEFITS.BENEFIT=5:BENAMT
+        formula: sum(BENAMT where BENEFIT == 5) * (365.25 / 7)
+        scope: regular_code5_subset
+    source_absent_full_constituents:
+    - EPB
+    - EXPS
+    - TAXTERM
+    - MOTHINC
+    - OTHERINC
+    full_concepts_forbidden_on_frs:
+    - hmrc_spi_employment_benefits
+    - hmrc_spi_employment_expenses
+    - hmrc_spi_taxable_termination_pay
+    - hmrc_spi_miscellaneous_employment_income
+    - hmrc_spi_other_income
+    - hmrc_spi_other_social_security_income
+    - hmrc_spi_state_pension_income
+    forbid_proxy_substitution:
+    - employment_income
+    - miscellaneous_income
+    fail_on_missing_retained_constituent: true
+    fail_on_full_concept_alias: true
+  - kind: derive
+    output: employer_pension_contributions
+    formula: 3 * employee_pension_contributions
+    source: incumbent enhanced-FRS frs.py employer-pension contribution estimate
+  outputs:
+  - hmrc_spi_pay
+  - hmrc_spi_unemployment_benefit_income
+  - hmrc_spi_incapacity_benefit_income
+  - ossben_identifiable_subset
+  - srp_regular_code5
+  - employer_pension_contributions
+  nonnegative_outputs:
+  - hmrc_spi_pay
+  - hmrc_spi_unemployment_benefit_income
+  - hmrc_spi_incapacity_benefit_income
+  - ossben_identifiable_subset
+  - srp_regular_code5
+  - employer_pension_contributions
+  notes: Retains adjudicated raw-FRS HMRC leaves on the raw FRS spine, where person_id equals the raw sernum*1000+person identity, then ports the incumbent employer-pension-contributions estimate.
+- stage: spi_support_channel
+  survey: Family Resources Survey 2023-24
+  source: Synthetic SPI support channel sampled uniformly without replacement from the raw FRS spine before cloning.
+  grain: household
+  artifacts: []
+  operations:
+  - kind: stack_zero_weight_donors
+    count: 10000
+    seed: 42
+    flag_column: household_is_spi_synthetic
+    channels:
+      base: frs
+      synthetic: spi
+    draw: uniform_without_replacement
+  - kind: gate_zero_weight_strata
+    gate: uk_zero_weight_strata_gate
+    declarations:
+    - name: e7_spi_synthetic_preclone
+      selector:
+        household_is_spi_synthetic: true
+      maximum_zero_weight_rows: 10000
+      reason: E7 stacks exactly 10,000 zero-weight SPI-synthetic households on the raw pre-clone UK FRS spine.
+  - kind: allocate_zero_weight_prior_mass
+    share: 0.5
+    strata:
+    - region
+    weight_kind_out: importance
+    conservation: exact_total
+  outputs:
+  - household_is_spi_synthetic
+  - person_support_channel
+  - person_support_clone_index
+  - person_source_id
+  - benunit_support_channel
+  - benunit_support_clone_index
+  - benunit_source_id
+  - household_support_channel
+  - household_support_clone_index
+  - household_source_id
+  - source_household_id
+  - source_year
+  - source_household_key
+  nonnegative_outputs:
+  - person_support_clone_index
+  - person_source_id
+  - benunit_support_clone_index
+  - benunit_source_id
+  - household_support_clone_index
+  - household_source_id
+  - source_household_id
+  - source_year
+  notes: Stacks the pre-clone SPI support channel, gates the 10,000 zero-weight synthetic households under a stage-local declaration, and allocates 50 percent of each region stratum prior mass to the SPI channel with exact national conservation.
+- stage: hmrc_spi_income_spine
+  survey: Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Personal Incomes Tables 3.6/3.7 2023-24
+  source: https://assets.publishing.service.gov.uk/media/69f1f12d2fae53a03709682f/Collated_Tables_3_1_to_3_11_2324.ods
+  grain: person
+  artifacts:
+  - role: qrf_donor
+    kind: private_microdata
+    format: tab_delimited
+    survey: Survey of Personal Incomes Public Use Tape 2022-23
+    vintage: 2022-23
+    tax_year_start: 2022
+    ukds_study_number: SN 9422
+    doi: 10.5255/UKDA-SN-9422-1
+    filename: put2223uk.tab
+    sha256: 5ef829461060c91a2a47be59ad541d9b519fc3976d66ca80d4920f711bb96f66
+    size_bytes: 141323762
+    reviewed_source: PolicyEngine licensed UKDS mirror (private Hugging Face repository), spi_2022_23.zip
+    access: private_local_input
+    locator: caller-supplied local input
+    runtime_sha256_required: true
+  - role: published_fact_surface
+    kind: administrative_table
+    format: ods
+    survey: HMRC Personal Incomes Tables 3.6 and 3.7
+    publication: https://www.gov.uk/government/statistics/personal-incomes-statistics-for-the-tax-year-2023-to-2024
+    vintage: 2023-24
+    tax_year_start: 2023
+    locator: https://assets.publishing.service.gov.uk/media/69f1f12d2fae53a03709682f/Collated_Tables_3_1_to_3_11_2324.ods
+    sha256: ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e
+    size_bytes: 166693
+    mime_type: application/vnd.oasis.opendocument.spreadsheet
+    sheets:
+    - Table_3_6
+    - Table_3_7
+    mapped_build_period: 2023
+    period_mapping: tax_year_start
+    runtime_sha256_required: true
+  operations:
+  - kind: verify_pinned_hmrc_source_pair
+    artifact_roles:
+    - qrf_donor
+    - published_fact_surface
+    require_before_source_read: true
+    runtime_sha256_required: true
+    fail_on_mismatch: true
+  - kind: strict_read_private_table
+    artifact_role: qrf_donor
+    filename: put2223uk.tab
+    delimiter: "\t"
+    weight: FACT
+    required_columns:
+    - AGERANGE
+    - GORCODE
+    - SEX
+    - FACT
+    - PAY
+    - EPB
+    - EXPS
+    - TAXTERM
+    - INCPBEN
+    - OSSBEN
+    - UBISJA
+    - MOTHINC
+    - OTHERINC
+    - PROFITS
+    - CAPALL
+    - LOSSBF
+    - SRP
+    - INCBBS
+    - DIVIDENDS
+    - PENSION
+    - INCPROP
+    - OTHERINV
+    - GIFTAID
+    - GIFTINV
+    - TEI
+    - TII
+    - TI
+    runtime_sha256_required: true
+    fail_on_missing_file: true
+    fail_on_missing_columns: true
+    fail_on_invalid_weight: true
+    seed: 42
+  - kind: fit_weighted_qrf_stage1
+    training_artifact_role: qrf_donor
+    predictors:
+    - age
+    - gender
+    - region
+    categorical_predictors:
+    - gender
+    - region
+    source_sampling_weight: FACT
+    sample_size: 100000
+    sample_with_replacement: true
+    post_sample_fit_weight: uniform
+    fit_weight_kind: design
+    double_apply_source_weight: false
+    source_columns:
+      self_employment_income:
+      - PROFITS
+      - CAPALL
+      - LOSSBF
+      savings_interest_income:
+      - INCBBS
+      dividend_income:
+      - DIVIDENDS
+      private_pension_income:
+      - PENSION
+      property_income:
+      - INCPROP
+      other_investment_income:
+      - OTHERINV
+      gift_aid:
+      - GIFTAID
+      charitable_investment_gifts:
+      - GIFTINV
+      hmrc_spi_pay:
+      - PAY
+      hmrc_spi_employment_benefits:
+      - EPB
+      hmrc_spi_employment_expenses:
+      - EXPS
+      hmrc_spi_incapacity_benefit_income:
+      - INCPBEN
+      hmrc_spi_other_social_security_income:
+      - OSSBEN
+      hmrc_spi_taxable_termination_pay:
+      - TAXTERM
+      hmrc_spi_unemployment_benefit_income:
+      - UBISJA
+      hmrc_spi_miscellaneous_employment_income:
+      - MOTHINC
+      hmrc_spi_other_income:
+      - OTHERINC
+      hmrc_spi_state_pension_income:
+      - SRP
+    derived_policyengine_outputs:
+      employment_income:
+        source_columns:
+        - PAY
+        - EPB
+        - TAXTERM
+        formula: hmrc_spi_pay + hmrc_spi_employment_benefits + hmrc_spi_taxable_termination_pay
+        derive_after_draw: true
+    outputs:
+    - self_employment_income
+    - savings_interest_income
+    - dividend_income
+    - private_pension_income
+    - property_income
+    - other_investment_income
+    - gift_aid
+    - charitable_investment_gifts
+    - hmrc_spi_pay
+    - hmrc_spi_employment_benefits
+    - hmrc_spi_employment_expenses
+    - hmrc_spi_incapacity_benefit_income
+    - hmrc_spi_other_social_security_income
+    - hmrc_spi_taxable_termination_pay
+    - hmrc_spi_unemployment_benefit_income
+    - hmrc_spi_miscellaneous_employment_income
+    - hmrc_spi_other_income
+    - hmrc_spi_state_pension_income
+    joint_draw: true
+    savings_interest_source_semantics: INCBBS is taxable bank/building-society interest before reconstruction to the PolicyEngine gross input
+    employment_income_source_semantics: PolicyEngine input = PAY + EPB + TAXTERM, matching the pinned enhanced-FRS pipeline; it is not the Table 3.6 measure
+    hmrc_employed_income_source_semantics: Derived after each draw as max(0, PAY + EPB - EXPS) + INCPBEN + OSSBEN + TAXTERM + UBISJA + MOTHINC, using normalized leaves identically on FRS and SPI channels
+    self_employment_income_source_semantics: max(0, PROFITS - CAPALL - LOSSBF)
+    assessable_income_source_semantics: QRF draws leaves only; TEI, TII, and TI are deterministic post-draw accounting aggregates and TI equals TEI + TII exactly
+    source_ti_identity_fields:
+    - TI
+    - TEI
+    - TII
+    source_leaf_reconciliation:
+      documentation_url: https://doc.ukdataservice.ac.uk/doc/9422/mrdoc/pdf/9422_put_2223_full_documentation.pdf
+      composite_indicator: AGERANGE == -1
+      formulas:
+        TEI: max(0, PAY + EPB - EXPS) + INCPBEN + OSSBEN + TAXTERM + UBISJA + MOTHINC + OTHERINC + SRP + PENSION + max(0, PROFITS - CAPALL - LOSSBF)
+        TII: OTHERINV + DIVIDENDS + INCPROP + INCBBS
+        TI: TEI + TII
+      maximum_absolute_difference_gbp:
+        ordinary:
+          TEI: 15
+          TII: 10
+          TI: 20
+        composite:
+          TEI: 180
+          TII: 10
+          TI: 180
+      rationale: The official PUT rounds source fields, averages documented composite records, then rounds remaining income fields to GBP 5. These are the observed envelopes in the exact sha-pinned donor; post-draw synthetic identities remain exact.
+    ti_identity_absolute_tolerance_gbp: 5
+    stochastic_aggregates_forbidden:
+    - hmrc_spi_employed_income
+    - hmrc_spi_total_earned_income
+    - hmrc_spi_total_investment_income
+    - hmrc_spi_assessable_income
+    require_all_predictors: true
+    require_all_outputs: true
+    initialize_frs_channel_columns:
+      gift_aid: 0.0
+      charitable_investment_gifts: 0.0
+    n_estimators: 100
+    seed: 42
+  - kind: fit_weighted_qrf_stage2
+    training_population: uk_frs_raw_spine_base_support_channel
+    target_population: spi_synthetic_support_channel
+    predictors:
+    - age
+    - gender
+    - region
+    - employment_income
+    - self_employment_income
+    - savings_interest_income
+    - dividend_income
+    - private_pension_income
+    - property_income
+    reviewed_absent_predictors:
+      other_investment_income: 'This remains a stage-1 SPI draw and an official HMRC fact component, but it is not an FRS-only stage-2 predictor: the incumbent UK data build''s frs_only.py defines exactly six income predictors and the certified Microcosm UK base candidate has no other_investment_income column.'
+    categorical_predictors:
+    - gender
+    - region
+    weight: household_weight
+    weight_mapping: household_to_person
+    outputs:
+    - employee_pension_contributions
+    - employer_pension_contributions
+    - personal_pension_contributions
+    - pension_contributions_via_salary_sacrifice
+    - tax_free_savings_income
+    - universal_credit_reported
+    - pension_credit_reported
+    - child_benefit_reported
+    - housing_benefit_reported
+    - income_support_reported
+    - working_tax_credit_reported
+    - child_tax_credit_reported
+    - attendance_allowance_reported
+    - state_pension_reported
+    - dla_sc_reported
+    - dla_m_reported
+    - pip_m_reported
+    - pip_dl_reported
+    - sda_reported
+    - carers_allowance_reported
+    - iidb_reported
+    - afcs_reported
+    - bsp_reported
+    - winter_fuel_allowance_reported
+    - council_tax_benefit_reported
+    - jsa_contrib_reported
+    - jsa_income_reported
+    - esa_contrib_reported
+    - esa_income_reported
+    reviewed_absent_outputs:
+      incapacity_benefit_reported: Absent/all-default on the pinned enhanced-FRS export and certified Microcosm UK base; not a populated loader layer.
+      maternity_allowance_reported: Absent from the pinned enhanced-FRS export and certified Microcosm UK base; no training source can be materialized for this stage.
+    postprocess:
+      gross_savings_interest_income: stage1 INCBBS draw + stage2 tax_free_savings_income
+      refresh_disability_categories:
+      - aa_category
+      - dla_sc_category
+      - dla_m_category
+      - pip_m_category
+      - pip_dl_category
+      refresh_disability_flags:
+      - is_disabled_for_benefits
+      - is_enhanced_disabled_for_benefits
+      - is_severely_disabled_for_benefits
+    joint_draw: true
+    require_all_predictors: true
+    require_all_materializable_outputs: true
+    require_all_outputs: false
+    n_estimators: 100
+    seed: 43
+  - kind: redraw_columns_from_fitted_qrf
+    fit: stage1
+    columns:
+    - dividend_income
+    rows: base_support_channel
+  - kind: materialize_hmrc_income_bands_fail_closed
+    artifact_role: published_fact_surface
+    mapped_build_period: 2023
+    period_mapping: tax_year_start
+    column_index_base: 0
+    data_row_start_index: 5
+    stop_label: All ranges
+    count_unit_multiplier: 1000
+    amount_unit_multiplier: 1000000
+    component_columns:
+      employment_income:
+        sheet: Table_3_6
+        count_column_index: 4
+        amount_column_index: 5
+      self_employment_income:
+        sheet: Table_3_6
+        count_column_index: 1
+        amount_column_index: 2
+      state_pension:
+        sheet: Table_3_6
+        count_column_index: 7
+        amount_column_index: 8
+      private_pension_income:
+        sheet: Table_3_6
+        count_column_index: 10
+        amount_column_index: 11
+      property_income:
+        sheet: Table_3_7
+        count_column_index: 1
+        amount_column_index: 2
+      savings_interest_income:
+        sheet: Table_3_7
+        count_column_index: 4
+        amount_column_index: 5
+      dividend_income:
+        sheet: Table_3_7
+        count_column_index: 7
+        amount_column_index: 8
+      other_investment_income:
+        sheet: Table_3_7
+        count_column_index: 10
+        amount_column_index: 11
+    required_band_lower_bounds_gbp:
+    - 12570
+    - 15000
+    - 20000
+    - 30000
+    - 40000
+    - 50000
+    - 70000
+    - 100000
+    - 150000
+    - 200000
+    - 300000
+    - 500000
+    - 1000000
+    required_measures:
+    - count
+    - amount
+    fail_on_missing_sheet: true
+    fail_on_missing_component: true
+    fail_on_missing_band: true
+    fail_on_non_numeric_value: true
+  - kind: classify_hmrc_income_facts_with_reviewed_fences
+    target_operation: materialize_hmrc_income_bands_fail_closed
+    components:
+    - employment_income
+    - self_employment_income
+    - state_pension
+    - private_pension_income
+    - property_income
+    - savings_interest_income
+    - dividend_income
+    - other_investment_income
+    breakdown_dependency: hmrc_spi_assessable_income
+    frs_breakdown_status: unavailable_full_measure
+    input_weight_kind: importance
+    output_weight_kind: importance
+    calibration_permitted: false
+    required_fact_count: 208
+    outcome_counts:
+      exact_pass: 0
+      exact_fail: 0
+      directional_pass: 0
+      directional_fail: 0
+      excluded_with_fence: 208
+    classification_rationale: Every published fact uses non-overlapping total-income bands. The FRS channel cannot materialize full TEI, and omitted income can move a person between bands, so neither an exact fact nor a per-band directional bound is valid.
+    reviewed_fences:
+    - fence_id: frs_epb_source_absent
+      constituents:
+      - EPB
+      raw_sources_searched:
+      - JOB.EXPBEN01-EXPBEN13
+      - JOB.CARVAL
+      - JOB.CARAMT
+      - JOB.FUELAMT
+      - JOB.VCHAMT
+      - JOB.CHVAMT
+      finding: Missing. EXPBEN* are receipt flags, and the amount fields cover only selected benefits; they cannot produce complete taxable expenses payments and benefits.
+      mass_implication: 12.9485464% of certified-candidate FRS effective person mass has at least one receipt flag, but this is not monetary support.
+      rationale: Receipt flags and selected benefit amounts cannot be promoted to the SPI EPB monetary concept without an imputation or proxy.
+      dependent_fence_ids: []
+    - fence_id: frs_exps_source_absent
+      constituents:
+      - EXPS
+      raw_sources_searched:
+      - JOB.EXPBEN04/EXPBEN05
+      - JOB.MILEAMT/JOB.MOTAMT
+      - JOB.UMILEAMT/JOB.UMOTAMT
+      - JOB.DEDUC1-DEDUC9
+      - JOB.UDEDUC1-UDEDUC9
+      finding: Missing. These fields describe reimbursements or payroll deductions, not the complete tax-deductible employment-expense amount required by SPI.
+      mass_implication: 5.1302528% of certified-candidate FRS effective person mass has an adjacent reimbursement flag; the true EXPS mass is not estimable.
+      rationale: The nearby fields do not measure the required deductible amount, and EXPS enters the employed-income identity with a negative sign.
+      dependent_fence_ids: []
+    - fence_id: frs_taxterm_source_absent
+      constituents:
+      - TAXTERM
+      raw_sources_searched:
+      - ADULT.REDAMT
+      - ADULT and JOB taxable-termination split search
+      finding: Missing. REDAMT is gross redundancy pay and has neither the taxable amount nor non-redundancy termination pay.
+      mass_implication: 0.3746084% of certified-candidate FRS effective person mass has positive gross redundancy pay; taxable mass is unknown.
+      rationale: Gross redundancy pay cannot be relabeled as taxable termination pay.
+      dependent_fence_ids: []
+    - fence_id: frs_mothinc_source_absent
+      constituents:
+      - MOTHINC
+      raw_sources_searched:
+      - ODDJOB.OJAMT/ODDJOB.OJNOW
+      - ADULT.ALLPAY2
+      - ADULT.ROYYR2-ROYYR4
+      - JOB.OWNOTHER
+      finding: Missing. The fields are heterogeneous and belong to distinct income concepts; assigning their union to SPI miscellaneous employment income would be a proxy.
+      mass_implication: Odd-job-only effective person mass is 0.1724207%; the broader unresolved miscellaneous pool is 1.4650566%.
+      rationale: The FRS instrument cannot separate the SPI miscellaneous-employment concept source-faithfully.
+      dependent_fence_ids: []
+    - fence_id: frs_otherinc_source_absent
+      constituents:
+      - OTHERINC
+      raw_sources_searched:
+      - ADULT, ODDJOB, and JOB miscellaneous fields
+      - PENSION
+      - ACCOUNTS
+      - ASSETS
+      - BENEFITS
+      finding: Missing. No person-level raw FRS variable has SPI OTHERINC semantics, and the miscellaneous pool cannot be split between MOTHINC and OTHERINC from source evidence.
+      mass_implication: No separable mass estimate exists; the unresolved miscellaneous pool is 1.4650566% of certified-candidate FRS effective person mass.
+      rationale: A union of heterogeneous residual fields would be a new proxy, not a retained source constituent.
+      dependent_fence_ids: []
+    - fence_id: frs_ossben_identifiable_subset
+      constituents:
+      - OSSBEN
+      - ossben_identifiable_subset
+      raw_sources_searched:
+      - BENEFITS.BENAMT
+      - BENEFITS.BENEFIT
+      - BENEFITS.VAR2
+      - BENEFITS codes 13, 16, 6, and 30
+      finding: Incomplete. Carer's Allowance and contribution-based ESA form an identifiable subset, but code 6 mixes tax treatments and code 30 is an undifferentiated catch-all, so the complete taxable family cannot be emitted.
+      mass_implication: 1.8045088% of certified-candidate FRS effective person mass carries the identifiable lower-bound subset; it is not full OSSBEN support.
+      rationale: The retained column must remain explicitly named as a subset and cannot satisfy the full SPI concept.
+      dependent_fence_ids: []
+    - fence_id: frs_srp_regular_code5_subset
+      constituents:
+      - SRP
+      - srp_regular_code5
+      raw_sources_searched:
+      - BENEFITS.BENAMT where BENEFIT == 5
+      - BENEFITS codes 6 and 9
+      finding: Incomplete. Code 5 supplies regular State Pension, but the FRS source does not identify the full SPI combination of State Pension lump sums and widow's pension; code 6 mixes benefits and code 9 is tax-free War Widow's Pension.
+      mass_implication: 18.1567916% of certified-candidate FRS effective person mass carries regular code-5 State Pension; it is not complete SRP support.
+      rationale: The retained column must remain explicitly named as a subset and cannot be reported as the full published state-pension measure.
+      dependent_fence_ids: []
+    - fence_id: full_frs_tei_band_unavailable
+      constituents:
+      - EPB
+      - EXPS
+      - TAXTERM
+      - MOTHINC
+      - OTHERINC
+      - OSSBEN
+      - SRP
+      raw_sources_searched: []
+      finding: The complete FRS TEI measure cannot be materialized from retained source constituents, so exact HMRC total-income band assignment is unavailable on the FRS channel.
+      mass_implication: Every one of the 208 published facts is banded by total income and therefore depends on this unavailable like-for-like measure.
+      rationale: 'A component-level subset does not imply a per-band lower bound: omitted income can move a taxpayer into or out of any non-overlapping published band. Biased partial bands are not emitted as estimates.'
+      dependent_fence_ids:
+      - frs_epb_source_absent
+      - frs_exps_source_absent
+      - frs_taxterm_source_absent
+      - frs_mothinc_source_absent
+      - frs_otherinc_source_absent
+      - frs_ossben_identifiable_subset
+      - frs_srp_regular_code5_subset
+    fact_fence_id: full_frs_tei_band_unavailable
+    blocked_dependency: hmrc_spi_assessable_income
+    fail_on_unfenced_exclusion: true
+    fail_on_fact_count_mismatch: true
+    forbid_biased_estimate_or_delta: true
+  - kind: gate_distributional_effective_mass
+    columns:
+    - gift_aid
+    - charitable_investment_gifts
+    weight: household_weight
+    weight_mapping: household_to_person
+    support_channel_column: person_support_channel
+    required_support_channel: spi
+    mass_share_denominator: all_person_effective_mass
+    minimum_nondefault_mass_share: 1.0e-06
+    fail_below_floor: true
+  outputs:
+  - other_investment_income
+  - gift_aid
+  - charitable_investment_gifts
+  - hmrc_spi_employment_benefits
+  - hmrc_spi_employment_expenses
+  - hmrc_spi_other_social_security_income
+  - hmrc_spi_taxable_termination_pay
+  - hmrc_spi_miscellaneous_employment_income
+  - hmrc_spi_other_income
+  - hmrc_spi_state_pension_income
+  - hmrc_spi_employed_income
+  - hmrc_spi_total_earned_income
+  - hmrc_spi_total_investment_income
+  - hmrc_spi_assessable_income
+  nonnegative_outputs:
+  - other_investment_income
+  - gift_aid
+  - charitable_investment_gifts
+  - hmrc_spi_employment_benefits
+  - hmrc_spi_employment_expenses
+  - hmrc_spi_other_social_security_income
+  - hmrc_spi_taxable_termination_pay
+  - hmrc_spi_other_income
+  - hmrc_spi_state_pension_income
+  - hmrc_spi_employed_income
+  - hmrc_spi_total_earned_income
+  - hmrc_spi_total_investment_income
+  - hmrc_spi_assessable_income
+  rewrites:
+  - employment_income
+  - self_employment_income
+  - savings_interest_income
+  - dividend_income
+  - private_pension_income
+  - property_income
+  - employee_pension_contributions
+  - employer_pension_contributions
+  - personal_pension_contributions
+  - pension_contributions_via_salary_sacrifice
+  - tax_free_savings_income
+  - universal_credit_reported
+  - pension_credit_reported
+  - child_benefit_reported
+  - housing_benefit_reported
+  - income_support_reported
+  - working_tax_credit_reported
+  - child_tax_credit_reported
+  - attendance_allowance_reported
+  - state_pension_reported
+  - dla_sc_reported
+  - dla_m_reported
+  - pip_m_reported
+  - pip_dl_reported
+  - sda_reported
+  - carers_allowance_reported
+  - iidb_reported
+  - afcs_reported
+  - bsp_reported
+  - winter_fuel_allowance_reported
+  - council_tax_benefit_reported
+  - jsa_contrib_reported
+  - jsa_income_reported
+  - esa_contrib_reported
+  - esa_income_reported
+  - hmrc_spi_pay
+  - hmrc_spi_unemployment_benefit_income
+  - hmrc_spi_incapacity_benefit_income
+  notes: Runs the SPI-trained income QRFs on the raw-spine support channel, initializes FRS charity columns to zero, trains FRS-only stage 2 before redrawing base-channel dividends, and emits a sidecar-only 208-fact replay report for the spine path.
+- stage: frs_hmrc_retained_leaves
+  survey: Family Resources Survey 2023-24
+  source: Department for Work and Pensions Family Resources Survey 2023-24 raw adult.tab and benefits.tab, caller-supplied local input
+  grain: person
+  artifacts: []
+  operations:
+  - kind: verify_certified_candidate
+    artifact: base_candidate
+    runtime_sha256_required: true
+    fail_on_mismatch: true
+  - kind: retain_adjudicated_frs_hmrc_leaves
+    population: certified_microcosm_uk_candidate_base_channel
+    source_vintage: 2023-24
+    mapped_build_period: 2023
+    annualization: weekly raw FRS amounts * (365.25 / 7)
+    status: adjudicated_partial_replay
+    retained_full_constituents:
+      hmrc_spi_pay:
+        spi_concept: PAY
+        scope: full
+        raw_sources:
+        - ADULT.INEARNS
+        formula: max(0, ADULT.INEARNS) * (365.25 / 7)
+      hmrc_spi_unemployment_benefit_income:
+        spi_concept: UBISJA
+        scope: full
+        raw_sources:
+        - BENEFITS.BENEFIT=14:BENAMT
+        - BENEFITS.BENEFIT=19:BENAMT
+        formula: sum(BENAMT where BENEFIT in {14, 19}) * (365.25 / 7)
+      hmrc_spi_incapacity_benefit_income:
+        spi_concept: INCPBEN
+        scope: full
+        raw_sources:
+        - BENEFITS.BENEFIT=17:BENAMT
+        formula: sum(BENAMT where BENEFIT == 17) * (365.25 / 7)
+        observed_support: structural zero in the audited 2023-24 FRS; retained so future vintages flow
+    retained_named_subsets:
+      ossben_identifiable_subset:
+        spi_concept: OSSBEN
+        raw_sources:
+        - BENEFITS.BENEFIT=13:BENAMT
+        - BENEFITS.BENEFIT=16,VAR2 in {1,3}:BENAMT
+        formula: sum(BENAMT where BENEFIT == 13 or (BENEFIT == 16 and VAR2 in {1, 3})) * (365.25 / 7)
+        scope: identifiable_subset
+      srp_regular_code5:
+        spi_concept: SRP
+        raw_sources:
+        - BENEFITS.BENEFIT=5:BENAMT
+        formula: sum(BENAMT where BENEFIT == 5) * (365.25 / 7)
+        scope: regular_code5_subset
+    source_absent_full_constituents:
+    - EPB
+    - EXPS
+    - TAXTERM
+    - MOTHINC
+    - OTHERINC
+    full_concepts_forbidden_on_frs:
+    - hmrc_spi_employment_benefits
+    - hmrc_spi_employment_expenses
+    - hmrc_spi_taxable_termination_pay
+    - hmrc_spi_miscellaneous_employment_income
+    - hmrc_spi_other_income
+    - hmrc_spi_other_social_security_income
+    - hmrc_spi_state_pension_income
+    forbid_proxy_substitution:
+    - employment_income
+    - miscellaneous_income
+    fail_on_missing_retained_constituent: true
+    fail_on_full_concept_alias: true
+  outputs:
+  - hmrc_spi_pay
+  - hmrc_spi_unemployment_benefit_income
+  - hmrc_spi_incapacity_benefit_income
+  - ossben_identifiable_subset
+  - srp_regular_code5
+  notes: 'Retains the adjudicated source-faithful FRS HMRC leaf columns before the SPI income rebuild: full PAY, UBISJA, and INCPBEN, plus explicitly named OSSBEN and SRP subsets. The runtime verifies the certified candidate before retaining these leaves.'
+- stage: hmrc_spi_income
+  survey: Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Personal Incomes Tables 3.6/3.7 2023-24
+  source: https://assets.publishing.service.gov.uk/media/69f1f12d2fae53a03709682f/Collated_Tables_3_1_to_3_11_2324.ods
+  grain: person
+  artifacts:
+  - role: qrf_donor
+    kind: private_microdata
+    format: tab_delimited
+    survey: Survey of Personal Incomes Public Use Tape 2022-23
+    vintage: 2022-23
+    tax_year_start: 2022
+    ukds_study_number: SN 9422
+    doi: 10.5255/UKDA-SN-9422-1
+    filename: put2223uk.tab
+    sha256: 5ef829461060c91a2a47be59ad541d9b519fc3976d66ca80d4920f711bb96f66
+    size_bytes: 141323762
+    reviewed_source: PolicyEngine licensed UKDS mirror (private Hugging Face repository), spi_2022_23.zip
+    access: private_local_input
+    locator: caller-supplied local input
+    runtime_sha256_required: true
+  - role: published_fact_surface
+    kind: administrative_table
+    format: ods
+    survey: HMRC Personal Incomes Tables 3.6 and 3.7
+    publication: https://www.gov.uk/government/statistics/personal-incomes-statistics-for-the-tax-year-2023-to-2024
+    vintage: 2023-24
+    tax_year_start: 2023
+    locator: https://assets.publishing.service.gov.uk/media/69f1f12d2fae53a03709682f/Collated_Tables_3_1_to_3_11_2324.ods
+    sha256: ad063b06b2bdeef8600dbbb09d48153337a4966f8c7eea50df7a2e0304ebd73e
+    size_bytes: 166693
+    mime_type: application/vnd.oasis.opendocument.spreadsheet
+    sheets:
+    - Table_3_6
+    - Table_3_7
+    mapped_build_period: 2023
+    period_mapping: tax_year_start
+    runtime_sha256_required: true
+  operations:
+  - kind: verify_pinned_hmrc_source_pair
+    artifact_roles:
+    - qrf_donor
+    - published_fact_surface
+    require_before_source_read: true
+    runtime_sha256_required: true
+    fail_on_mismatch: true
+  - kind: replace_zero_weight_spi_support
+    existing_channel: spi
+    require_existing_weight: 0
+    replacement_strata:
+    - clone_index
+    - household_is_capital_gains_clone
+    - region
+    spi_prior_national_household_mass_share: 0.5
+    output_weight_kind: importance
+    preserve_total_household_mass: true
+    require_mass_change_record: true
+    mass_change_reason: Allocate 50% of certified UK national household prior mass to the rebuilt 2022-23 SPI support channel; total national mass is conserved.
+    fail_on_live_existing_spi_mass: true
+  - kind: strict_read_private_table
+    artifact_role: qrf_donor
+    filename: put2223uk.tab
+    delimiter: "\t"
+    weight: FACT
+    required_columns:
+    - AGERANGE
+    - GORCODE
+    - SEX
+    - FACT
+    - PAY
+    - EPB
+    - EXPS
+    - TAXTERM
+    - INCPBEN
+    - OSSBEN
+    - UBISJA
+    - MOTHINC
+    - OTHERINC
+    - PROFITS
+    - CAPALL
+    - LOSSBF
+    - SRP
+    - INCBBS
+    - DIVIDENDS
+    - PENSION
+    - INCPROP
+    - OTHERINV
+    - GIFTAID
+    - GIFTINV
+    - TEI
+    - TII
+    - TI
+    runtime_sha256_required: true
+    fail_on_missing_file: true
+    fail_on_missing_columns: true
+    fail_on_invalid_weight: true
+  - kind: fit_weighted_qrf_stage1
+    training_artifact_role: qrf_donor
+    predictors:
+    - age
+    - gender
+    - region
+    categorical_predictors:
+    - gender
+    - region
+    source_sampling_weight: FACT
+    sample_size: 100000
+    sample_with_replacement: true
+    post_sample_fit_weight: uniform
+    fit_weight_kind: design
+    double_apply_source_weight: false
+    source_columns:
+      self_employment_income:
+      - PROFITS
+      - CAPALL
+      - LOSSBF
+      savings_interest_income:
+      - INCBBS
+      dividend_income:
+      - DIVIDENDS
+      private_pension_income:
+      - PENSION
+      property_income:
+      - INCPROP
+      other_investment_income:
+      - OTHERINV
+      gift_aid:
+      - GIFTAID
+      charitable_investment_gifts:
+      - GIFTINV
+      hmrc_spi_pay:
+      - PAY
+      hmrc_spi_employment_benefits:
+      - EPB
+      hmrc_spi_employment_expenses:
+      - EXPS
+      hmrc_spi_incapacity_benefit_income:
+      - INCPBEN
+      hmrc_spi_other_social_security_income:
+      - OSSBEN
+      hmrc_spi_taxable_termination_pay:
+      - TAXTERM
+      hmrc_spi_unemployment_benefit_income:
+      - UBISJA
+      hmrc_spi_miscellaneous_employment_income:
+      - MOTHINC
+      hmrc_spi_other_income:
+      - OTHERINC
+      hmrc_spi_state_pension_income:
+      - SRP
+    derived_policyengine_outputs:
+      employment_income:
+        source_columns:
+        - PAY
+        - EPB
+        - TAXTERM
+        formula: hmrc_spi_pay + hmrc_spi_employment_benefits + hmrc_spi_taxable_termination_pay
+        derive_after_draw: true
+    outputs:
+    - self_employment_income
+    - savings_interest_income
+    - dividend_income
+    - private_pension_income
+    - property_income
+    - other_investment_income
+    - gift_aid
+    - charitable_investment_gifts
+    - hmrc_spi_pay
+    - hmrc_spi_employment_benefits
+    - hmrc_spi_employment_expenses
+    - hmrc_spi_incapacity_benefit_income
+    - hmrc_spi_other_social_security_income
+    - hmrc_spi_taxable_termination_pay
+    - hmrc_spi_unemployment_benefit_income
+    - hmrc_spi_miscellaneous_employment_income
+    - hmrc_spi_other_income
+    - hmrc_spi_state_pension_income
+    joint_draw: true
+    savings_interest_source_semantics: INCBBS is taxable bank/building-society interest before reconstruction to the PolicyEngine gross input
+    employment_income_source_semantics: PolicyEngine input = PAY + EPB + TAXTERM, matching the pinned enhanced-FRS pipeline; it is not the Table 3.6 measure
+    hmrc_employed_income_source_semantics: Derived after each draw as max(0, PAY + EPB - EXPS) + INCPBEN + OSSBEN + TAXTERM + UBISJA + MOTHINC, using normalized leaves identically on FRS and SPI channels
+    self_employment_income_source_semantics: max(0, PROFITS - CAPALL - LOSSBF)
+    assessable_income_source_semantics: QRF draws leaves only; TEI, TII, and TI are deterministic post-draw accounting aggregates and TI equals TEI + TII exactly
+    source_ti_identity_fields:
+    - TI
+    - TEI
+    - TII
+    source_leaf_reconciliation:
+      documentation_url: https://doc.ukdataservice.ac.uk/doc/9422/mrdoc/pdf/9422_put_2223_full_documentation.pdf
+      composite_indicator: AGERANGE == -1
+      formulas:
+        TEI: max(0, PAY + EPB - EXPS) + INCPBEN + OSSBEN + TAXTERM + UBISJA + MOTHINC + OTHERINC + SRP + PENSION + max(0, PROFITS - CAPALL - LOSSBF)
+        TII: OTHERINV + DIVIDENDS + INCPROP + INCBBS
+        TI: TEI + TII
+      maximum_absolute_difference_gbp:
+        ordinary:
+          TEI: 15
+          TII: 10
+          TI: 20
+        composite:
+          TEI: 180
+          TII: 10
+          TI: 180
+      rationale: The official PUT rounds source fields, averages documented composite records, then rounds remaining income fields to GBP 5. These are the observed envelopes in the exact sha-pinned donor; post-draw synthetic identities remain exact.
+    ti_identity_absolute_tolerance_gbp: 5
+    stochastic_aggregates_forbidden:
+    - hmrc_spi_employed_income
+    - hmrc_spi_total_earned_income
+    - hmrc_spi_total_investment_income
+    - hmrc_spi_assessable_income
+    require_all_predictors: true
+    require_all_outputs: true
+  - kind: fit_weighted_qrf_stage2
+    training_population: certified_microcosm_uk_candidate_base_channel
+    target_population: rebuilt_spi_support_channel
+    predictors:
+    - age
+    - gender
+    - region
+    - employment_income
+    - self_employment_income
+    - savings_interest_income
+    - dividend_income
+    - private_pension_income
+    - property_income
+    reviewed_absent_predictors:
+      other_investment_income: 'This remains a stage-1 SPI draw and an official HMRC fact component, but it is not an FRS-only stage-2 predictor: the incumbent UK data build''s frs_only.py defines exactly six income predictors and the certified Microcosm UK base candidate has no other_investment_income column.'
+    categorical_predictors:
+    - gender
+    - region
+    weight: household_weight
+    weight_mapping: household_to_person
+    outputs:
+    - employee_pension_contributions
+    - employer_pension_contributions
+    - personal_pension_contributions
+    - pension_contributions_via_salary_sacrifice
+    - tax_free_savings_income
+    - universal_credit_reported
+    - pension_credit_reported
+    - child_benefit_reported
+    - housing_benefit_reported
+    - income_support_reported
+    - working_tax_credit_reported
+    - child_tax_credit_reported
+    - attendance_allowance_reported
+    - state_pension_reported
+    - dla_sc_reported
+    - dla_m_reported
+    - pip_m_reported
+    - pip_dl_reported
+    - sda_reported
+    - carers_allowance_reported
+    - iidb_reported
+    - afcs_reported
+    - bsp_reported
+    - winter_fuel_allowance_reported
+    - council_tax_benefit_reported
+    - jsa_contrib_reported
+    - jsa_income_reported
+    - esa_contrib_reported
+    - esa_income_reported
+    reviewed_absent_outputs:
+      incapacity_benefit_reported: Absent/all-default on the pinned enhanced-FRS export and certified Microcosm UK base; not a populated loader layer.
+      maternity_allowance_reported: Absent from the pinned enhanced-FRS export and certified Microcosm UK base; no training source can be materialized for this stage.
+    postprocess:
+      gross_savings_interest_income: stage1 INCBBS draw + stage2 tax_free_savings_income
+      refresh_disability_categories:
+      - aa_category
+      - dla_sc_category
+      - dla_m_category
+      - pip_m_category
+      - pip_dl_category
+      refresh_disability_flags:
+      - is_disabled_for_benefits
+      - is_enhanced_disabled_for_benefits
+      - is_severely_disabled_for_benefits
+    joint_draw: true
+    require_all_predictors: true
+    require_all_materializable_outputs: true
+    require_all_outputs: false
+  - kind: materialize_hmrc_income_bands_fail_closed
+    artifact_role: published_fact_surface
+    mapped_build_period: 2023
+    period_mapping: tax_year_start
+    column_index_base: 0
+    data_row_start_index: 5
+    stop_label: All ranges
+    count_unit_multiplier: 1000
+    amount_unit_multiplier: 1000000
+    component_columns:
+      employment_income:
+        sheet: Table_3_6
+        count_column_index: 4
+        amount_column_index: 5
+      self_employment_income:
+        sheet: Table_3_6
+        count_column_index: 1
+        amount_column_index: 2
+      state_pension:
+        sheet: Table_3_6
+        count_column_index: 7
+        amount_column_index: 8
+      private_pension_income:
+        sheet: Table_3_6
+        count_column_index: 10
+        amount_column_index: 11
+      property_income:
+        sheet: Table_3_7
+        count_column_index: 1
+        amount_column_index: 2
+      savings_interest_income:
+        sheet: Table_3_7
+        count_column_index: 4
+        amount_column_index: 5
+      dividend_income:
+        sheet: Table_3_7
+        count_column_index: 7
+        amount_column_index: 8
+      other_investment_income:
+        sheet: Table_3_7
+        count_column_index: 10
+        amount_column_index: 11
+    required_band_lower_bounds_gbp:
+    - 12570
+    - 15000
+    - 20000
+    - 30000
+    - 40000
+    - 50000
+    - 70000
+    - 100000
+    - 150000
+    - 200000
+    - 300000
+    - 500000
+    - 1000000
+    required_measures:
+    - count
+    - amount
+    fail_on_missing_sheet: true
+    fail_on_missing_component: true
+    fail_on_missing_band: true
+    fail_on_non_numeric_value: true
+  - kind: classify_hmrc_income_facts_with_reviewed_fences
+    target_operation: materialize_hmrc_income_bands_fail_closed
+    components:
+    - employment_income
+    - self_employment_income
+    - state_pension
+    - private_pension_income
+    - property_income
+    - savings_interest_income
+    - dividend_income
+    - other_investment_income
+    breakdown_dependency: hmrc_spi_assessable_income
+    frs_breakdown_status: unavailable_full_measure
+    input_weight_kind: importance
+    output_weight_kind: importance
+    calibration_permitted: false
+    required_fact_count: 208
+    outcome_counts:
+      exact_pass: 0
+      exact_fail: 0
+      directional_pass: 0
+      directional_fail: 0
+      excluded_with_fence: 208
+    classification_rationale: Every published fact uses non-overlapping total-income bands. The FRS channel cannot materialize full TEI, and omitted income can move a person between bands, so neither an exact fact nor a per-band directional bound is valid.
+    reviewed_fences:
+    - fence_id: frs_epb_source_absent
+      constituents:
+      - EPB
+      raw_sources_searched:
+      - JOB.EXPBEN01-EXPBEN13
+      - JOB.CARVAL
+      - JOB.CARAMT
+      - JOB.FUELAMT
+      - JOB.VCHAMT
+      - JOB.CHVAMT
+      finding: Missing. EXPBEN* are receipt flags, and the amount fields cover only selected benefits; they cannot produce complete taxable expenses payments and benefits.
+      mass_implication: 12.9485464% of certified-candidate FRS effective person mass has at least one receipt flag, but this is not monetary support.
+      rationale: Receipt flags and selected benefit amounts cannot be promoted to the SPI EPB monetary concept without an imputation or proxy.
+      dependent_fence_ids: []
+    - fence_id: frs_exps_source_absent
+      constituents:
+      - EXPS
+      raw_sources_searched:
+      - JOB.EXPBEN04/EXPBEN05
+      - JOB.MILEAMT/JOB.MOTAMT
+      - JOB.UMILEAMT/JOB.UMOTAMT
+      - JOB.DEDUC1-DEDUC9
+      - JOB.UDEDUC1-UDEDUC9
+      finding: Missing. These fields describe reimbursements or payroll deductions, not the complete tax-deductible employment-expense amount required by SPI.
+      mass_implication: 5.1302528% of certified-candidate FRS effective person mass has an adjacent reimbursement flag; the true EXPS mass is not estimable.
+      rationale: The nearby fields do not measure the required deductible amount, and EXPS enters the employed-income identity with a negative sign.
+      dependent_fence_ids: []
+    - fence_id: frs_taxterm_source_absent
+      constituents:
+      - TAXTERM
+      raw_sources_searched:
+      - ADULT.REDAMT
+      - ADULT and JOB taxable-termination split search
+      finding: Missing. REDAMT is gross redundancy pay and has neither the taxable amount nor non-redundancy termination pay.
+      mass_implication: 0.3746084% of certified-candidate FRS effective person mass has positive gross redundancy pay; taxable mass is unknown.
+      rationale: Gross redundancy pay cannot be relabeled as taxable termination pay.
+      dependent_fence_ids: []
+    - fence_id: frs_mothinc_source_absent
+      constituents:
+      - MOTHINC
+      raw_sources_searched:
+      - ODDJOB.OJAMT/ODDJOB.OJNOW
+      - ADULT.ALLPAY2
+      - ADULT.ROYYR2-ROYYR4
+      - JOB.OWNOTHER
+      finding: Missing. The fields are heterogeneous and belong to distinct income concepts; assigning their union to SPI miscellaneous employment income would be a proxy.
+      mass_implication: Odd-job-only effective person mass is 0.1724207%; the broader unresolved miscellaneous pool is 1.4650566%.
+      rationale: The FRS instrument cannot separate the SPI miscellaneous-employment concept source-faithfully.
+      dependent_fence_ids: []
+    - fence_id: frs_otherinc_source_absent
+      constituents:
+      - OTHERINC
+      raw_sources_searched:
+      - ADULT, ODDJOB, and JOB miscellaneous fields
+      - PENSION
+      - ACCOUNTS
+      - ASSETS
+      - BENEFITS
+      finding: Missing. No person-level raw FRS variable has SPI OTHERINC semantics, and the miscellaneous pool cannot be split between MOTHINC and OTHERINC from source evidence.
+      mass_implication: No separable mass estimate exists; the unresolved miscellaneous pool is 1.4650566% of certified-candidate FRS effective person mass.
+      rationale: A union of heterogeneous residual fields would be a new proxy, not a retained source constituent.
+      dependent_fence_ids: []
+    - fence_id: frs_ossben_identifiable_subset
+      constituents:
+      - OSSBEN
+      - ossben_identifiable_subset
+      raw_sources_searched:
+      - BENEFITS.BENAMT
+      - BENEFITS.BENEFIT
+      - BENEFITS.VAR2
+      - BENEFITS codes 13, 16, 6, and 30
+      finding: Incomplete. Carer's Allowance and contribution-based ESA form an identifiable subset, but code 6 mixes tax treatments and code 30 is an undifferentiated catch-all, so the complete taxable family cannot be emitted.
+      mass_implication: 1.8045088% of certified-candidate FRS effective person mass carries the identifiable lower-bound subset; it is not full OSSBEN support.
+      rationale: The retained column must remain explicitly named as a subset and cannot satisfy the full SPI concept.
+      dependent_fence_ids: []
+    - fence_id: frs_srp_regular_code5_subset
+      constituents:
+      - SRP
+      - srp_regular_code5
+      raw_sources_searched:
+      - BENEFITS.BENAMT where BENEFIT == 5
+      - BENEFITS codes 6 and 9
+      finding: Incomplete. Code 5 supplies regular State Pension, but the FRS source does not identify the full SPI combination of State Pension lump sums and widow's pension; code 6 mixes benefits and code 9 is tax-free War Widow's Pension.
+      mass_implication: 18.1567916% of certified-candidate FRS effective person mass carries regular code-5 State Pension; it is not complete SRP support.
+      rationale: The retained column must remain explicitly named as a subset and cannot be reported as the full published state-pension measure.
+      dependent_fence_ids: []
+    - fence_id: full_frs_tei_band_unavailable
+      constituents:
+      - EPB
+      - EXPS
+      - TAXTERM
+      - MOTHINC
+      - OTHERINC
+      - OSSBEN
+      - SRP
+      raw_sources_searched: []
+      finding: The complete FRS TEI measure cannot be materialized from retained source constituents, so exact HMRC total-income band assignment is unavailable on the FRS channel.
+      mass_implication: Every one of the 208 published facts is banded by total income and therefore depends on this unavailable like-for-like measure.
+      rationale: 'A component-level subset does not imply a per-band lower bound: omitted income can move a taxpayer into or out of any non-overlapping published band. Biased partial bands are not emitted as estimates.'
+      dependent_fence_ids:
+      - frs_epb_source_absent
+      - frs_exps_source_absent
+      - frs_taxterm_source_absent
+      - frs_mothinc_source_absent
+      - frs_otherinc_source_absent
+      - frs_ossben_identifiable_subset
+      - frs_srp_regular_code5_subset
+    fact_fence_id: full_frs_tei_band_unavailable
+    blocked_dependency: hmrc_spi_assessable_income
+    fail_on_unfenced_exclusion: true
+    fail_on_fact_count_mismatch: true
+    forbid_biased_estimate_or_delta: true
+  - kind: gate_distributional_effective_mass
+    columns:
+    - gift_aid
+    - charitable_investment_gifts
+    weight: household_weight
+    weight_mapping: household_to_person
+    support_channel_column: person_support_channel
+    required_support_channel: spi
+    mass_share_denominator: all_person_effective_mass
+    minimum_nondefault_mass_share: 1.0e-06
+    fail_below_floor: true
+  official_table_components:
+  - employment_income
+  - self_employment_income
+  - state_pension
+  - private_pension_income
+  - property_income
+  - savings_interest_income
+  - dividend_income
+  - other_investment_income
+  donor_relief_outputs:
+  - gift_aid
+  - charitable_investment_gifts
+  outputs:
+  - employment_income
+  - self_employment_income
+  - hmrc_spi_state_pension_income
+  - private_pension_income
+  - property_income
+  - savings_interest_income
+  - dividend_income
+  - other_investment_income
+  - gift_aid
+  - charitable_investment_gifts
+  - hmrc_spi_employed_income
+  - hmrc_spi_total_earned_income
+  - hmrc_spi_total_investment_income
+  - hmrc_spi_assessable_income
+  notes: 'Current-source adjudicated replay contract: the private 2022-23 SPI donor and public 2023-24 HMRC ODS are pinned by reviewed SHA-256 and size and verified together before either is opened. The QRF draws source leaves; HMRC employed income, TEI, TII, and TI are deterministic post-draw aggregates on the SPI channel, with TI exactly equal to TEI + TII. PolicyEngine employment_income remains the narrow PAY + EPB + TAXTERM input on SPI rows. Stage 2 mirrors the incumbent UK data build''s frs_only.py exactly: its income predictors are employment, self-employment, savings interest, dividends, private pension, and property income. Other investment income remains a stage-1 SPI draw and official HMRC fact component, but is excluded from stage 2 because the certified FRS candidate does not carry it. The FRS channel retains source-faithful full PAY, UBISJA, and INCPBEN plus explicitly named ossben_identifiable_subset and srp_regular_code5; EPB, EXPS, TAXTERM, MOTHINC, OTHERINC, full OSSBEN, and full SRP remain forbidden. Because the missing legs prevent a complete FRS TEI measure, none of the 208 non-overlapping total-income-band facts is exact or directional. Every fact is an excluded-with-fence record, no calibration is performed, and weights remain importance-kind. Gift Aid restoration still requires the rebuilt positive-mass SPI channel to clear the reviewed 1ppm effective-mass floor.'

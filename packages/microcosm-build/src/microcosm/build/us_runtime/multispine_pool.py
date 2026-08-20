@@ -844,7 +844,38 @@ def pool_post_puf_source_producer_target_families() -> TargetFamilies:
     )
 
 
-def pool_input_surface() -> tuple[PoolInputSurfaceEntry, ...]:
+def _resolve_take_up_program_bindings(
+    bindings: tuple[tuple[str, str, str], ...] | None,
+) -> tuple[tuple[str, str, str], ...]:
+    """Return ``(variable, entity, treatment)`` rows for static manifests."""
+
+    if bindings is None:
+        from microcosm.build.spec_engine.engine_abi import (
+            active_take_up_manifest_program_bindings,
+        )
+
+        bindings = active_take_up_manifest_program_bindings()
+    if bindings is None:
+        return tuple(
+            (program.variable, program.entity, program.populace_treatment)
+            for program in load_take_up_contract().programs
+        )
+    for index, binding in enumerate(bindings):
+        if (
+            len(binding) != 3
+            or not all(isinstance(value, str) and value for value in binding)
+        ):
+            raise ValueError(
+                "Take-up manifest program binding must contain three non-empty "
+                f"strings at index {index}."
+            )
+    return bindings
+
+
+def pool_input_surface(
+    *,
+    take_up_program_bindings: tuple[tuple[str, str, str], ...] | None = None,
+) -> tuple[PoolInputSurfaceEntry, ...]:
     """Return the complete registry-derived pool input/imputation surface.
 
     The surface is deliberately limited to transfer targets, explicit deferred
@@ -929,11 +960,13 @@ def pool_input_surface() -> tuple[PoolInputSurfaceEntry, ...]:
             provenance="PRIMARY_QRF_TARGET_ORDER",
         )
 
-    for program in load_take_up_contract().programs:
+    for variable, entity, populace_treatment in _resolve_take_up_program_bindings(
+        take_up_program_bindings
+    ):
         register(
-            program.variable,
-            entity=program.entity,
-            family=f"take_up_{program.populace_treatment}",
+            variable,
+            entity=entity,
+            family=f"take_up_{populace_treatment}",
             provenance="load_take_up_contract",
         )
 
@@ -1075,6 +1108,8 @@ def pool_engine_input_projection_receipt(
 @lru_cache(maxsize=8)
 def pool_remaining_stage_input_manifest(
     metadata_index: PolicyEngineUSVariableMetadataIndex | None = None,
+    *,
+    take_up_program_bindings: tuple[tuple[str, str, str], ...] | None = None,
 ) -> tuple[PoolRemainingStageInput, ...]:
     """Enumerate and statically provision every remaining-stage data read.
 
@@ -1118,7 +1153,11 @@ def pool_remaining_stage_input_manifest(
                 f"{previous!r} versus {entry!r}."
             )
 
-    surface = {entry.variable: entry for entry in pool_input_surface()}
+    program_bindings = _resolve_take_up_program_bindings(take_up_program_bindings)
+    surface = {
+        entry.variable: entry
+        for entry in pool_input_surface(take_up_program_bindings=program_bindings)
+    }
 
     def surface_provision(variable: str) -> str:
         declaration = surface.get(variable)
@@ -1271,18 +1310,17 @@ def pool_remaining_stage_input_manifest(
         available_by="assembled",
     )
 
-    contract = load_take_up_contract()
     transfer_owned = {
         variable
         for families in pool_transfer_target_families().values()
         for variables in families.values()
         for variable in variables
     }
-    for program in contract.programs:
-        if program.is_seeded:
+    for variable, entity, populace_treatment in program_bindings:
+        if populace_treatment == "seed":
             provision = "administrative_seed_or_preserved_input"
             fallback = "sourced_seed_when_input_is_missing"
-        elif program.variable in transfer_owned:
+        elif variable in transfer_owned:
             provision = "transferred_or_preserved_input"
             fallback = None
         else:
@@ -1291,12 +1329,12 @@ def pool_remaining_stage_input_manifest(
         register(
             "seed",
             "seed_multispine_pool_inputs",
-            program.entity,
-            program.variable,
+            entity,
+            variable,
             execution_scope="whole_pool",
             provision=provision,
             available_by=(
-                "transferred" if program.variable in transfer_owned else "seeded"
+                "transferred" if variable in transfer_owned else "seeded"
             ),
             fallback=fallback,
         )
@@ -1376,7 +1414,7 @@ def pool_remaining_stage_input_manifest(
         else PolicyEngineUSVariableMetadataIndex()
     )
     closure = pool_ssi_dependency_closure(resolved_metadata_index)
-    take_up_variables = {program.variable for program in contract.programs}
+    take_up_variables = {variable for variable, _entity, _treatment in program_bindings}
     actual_surface_provenance = {
         "pool_transfer_target_families",
         "PRIMARY_QRF_TARGET_ORDER",
@@ -1552,10 +1590,15 @@ def pool_remaining_stage_input_manifest(
 
 def pool_remaining_stage_input_manifest_receipt(
     metadata_index: PolicyEngineUSVariableMetadataIndex | None = None,
+    *,
+    take_up_program_bindings: tuple[tuple[str, str, str], ...] | None = None,
 ) -> dict[str, object]:
     """Return a content identity for the exhaustive post-transfer manifest."""
 
-    manifest = pool_remaining_stage_input_manifest(metadata_index)
+    manifest = pool_remaining_stage_input_manifest(
+        metadata_index,
+        take_up_program_bindings=take_up_program_bindings,
+    )
     rows = [
         {
             "stage": entry.stage,

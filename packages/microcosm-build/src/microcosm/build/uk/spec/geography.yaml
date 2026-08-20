@@ -1,0 +1,38 @@
+phase: legacy
+status: >-
+  Walking-skeleton declaration of the existing UK OA ladder kernels. The
+  realized ladder artifact remains a run-time content-pinned input and is not
+  present in this checkout.
+assignment:
+  anchor: oa
+  order: before_gap_fill
+  kernels:
+    assign: kernel:assign_uk_geography_ladder
+    validate: kernel:uk_geography_ladder_gate
+  draw:
+    constituency:
+      universe: constituency_within_region
+      weight: constituency_households
+    oa:
+      universe: oa_within_constituency
+      weight: usual_resident_population
+  derive:
+  - oa_code
+  - lsoa_code
+  - msoa_code
+  - local_authority_code
+  - ward_code
+  - constituency_code
+  - region_code
+  - itl3_code
+  - itl2_code
+  - itl1_code
+  assertions:
+  - observed_region_preserved
+  - ladder_layer_vintages_present
+  ladder_source: uk_oa_ladder_runtime_pin
+  seed: stream:geography_legacy
+  default_seed: 0
+  validation:
+  - geography_support
+  - vintage_refusal

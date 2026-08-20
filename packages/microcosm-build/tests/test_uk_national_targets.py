@@ -115,7 +115,11 @@ def test_uk_national_targets_is_registered_in_the_country_package():
         .read_text()
     )
 
-    assert "uk_national_targets.json" in package["resources"]
+    paths = [
+        row["path"] if isinstance(row, dict) else row
+        for row in package["resources"]
+    ]
+    assert "uk_national_targets.json" in paths
 
 
 def test_uk_national_targets_shape_and_accounting():

@@ -12,11 +12,15 @@ accident.
 from __future__ import annotations
 
 import json
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
 
 from microcosm.build import (
+    CountryResourceRow,
+    CountrySpec,
+    ResolvedCountrySpec,
     country_stage_plan,
     load_country_spec,
 )
@@ -69,6 +73,12 @@ class TestBelgianPackage:
     def test_loads_with_every_declared_resource(self, spec) -> None:
         assert spec.country == "be"
         assert set(spec.resources) == {
+            "spec/bundle.yaml",
+            "spec/catalogs.yaml",
+            "spec/geography.yaml",
+            "spec/sources.yaml",
+            "spec/spine.yaml",
+            "spec/vintages.yaml",
             "source_stages.json",
             "geography_spine.json",
             "target_references.json",
@@ -263,7 +273,10 @@ class TestUKCountryPackage:
     def test_spi_spine_adds_no_country_package_resources(self) -> None:
         spec = load_country_spec("uk")
 
-        assert spec.resources == (
+        legacy_rows = tuple(
+            row.path for row in spec.resource_rows if row.kind == "legacy_json"
+        )
+        assert legacy_rows == (
             "cgt_source_stages.json",
             "degenerate_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
@@ -310,6 +323,12 @@ class TestExistingPackagesGeneralize:
         spec = load_country_spec("uk")
         assert spec.country == "uk"
         assert spec.resources == (
+            "spec/bundle.yaml",
+            "spec/catalogs.yaml",
+            "spec/geography.yaml",
+            "spec/sources.yaml",
+            "spec/spine.yaml",
+            "spec/vintages.yaml",
             "cgt_source_stages.json",
             "degenerate_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
@@ -331,6 +350,187 @@ class TestExistingPackagesGeneralize:
             "uk_national_targets.json",
             "target_references.json",
         )
+
+
+class TestResolvedCountrySpecSeam:
+    def test_country_spec_is_the_exact_resolved_alias(self) -> None:
+        assert CountrySpec is ResolvedCountrySpec
+
+    def test_generation_one_rows_retain_explicit_legacy_evidence(self) -> None:
+        spec = load_country_spec("be")
+        assert spec.resources == tuple(row.path for row in spec.resource_rows)
+        typed = [row for row in spec.resource_rows if row.kind != "legacy_json"]
+        legacy = [row for row in spec.resource_rows if row.kind == "legacy_json"]
+        assert {row.kind for row in typed} == {
+            "bundle",
+            "catalogs",
+            "geography",
+            "sources",
+            "spine",
+            "vintages",
+        }
+        assert all(
+            row.kind == "legacy_json" and row.schema_id == "legacy_json"
+            for row in legacy
+        )
+        assert spec.resolved_spec is not None
+
+    def test_resource_rows_are_frozen(self) -> None:
+        row = CountryResourceRow(
+            path="spec/bundle.yaml",
+            kind="bundle",
+            schema_id="bundle.schema.json",
+        )
+        with pytest.raises(FrozenInstanceError):
+            row.path = "spec/changed.yaml"
+
+    def test_typed_json_and_yaml_descriptors_load_together(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["country_package.json"]["resources"] = [
+            {
+                "path": "gates.json",
+                "kind": "legacy_json",
+                "schema_id": "legacy_json",
+            },
+            {
+                "path": "spec/bundle.yaml",
+                "kind": "bundle",
+                "schema_id": "bundle.schema.json",
+            },
+        ]
+        del files["country_package.json"]["policy"]
+        package_dir = _write_package(tmp_path, files)
+        spec_dir = package_dir / "spec"
+        spec_dir.mkdir()
+        (spec_dir / "bundle.yaml").write_text(
+            "country: xx\nidentity_generation: 1\nseed_protocol: legacy-v1\n",
+            encoding="utf-8",
+        )
+
+        spec = load_country_spec(package_dir)
+
+        assert spec.resources == ("gates.json", "spec/bundle.yaml")
+        assert spec.gates is not None
+        assert spec.resource_rows[1] == CountryResourceRow(
+            path="spec/bundle.yaml",
+            kind="bundle",
+            schema_id="bundle.schema.json",
+        )
+        assert set(spec.resource_hashes) == {
+            "country_package.json",
+            "gates.json",
+            "spec/bundle.yaml",
+        }
+        assert spec.resolved_spec is not None
+
+    def test_generation_one_manifest_does_not_require_legacy_policy(
+        self, tmp_path
+    ) -> None:
+        package_dir = tmp_path / "xx"
+        package_dir.mkdir()
+        (package_dir / "country_package.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "country": "xx",
+                    "resources": [
+                        {
+                            "path": "bundle.yaml",
+                            "kind": "bundle",
+                            "schema_id": "bundle.schema.json",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (package_dir / "bundle.yaml").write_text(
+            "country: xx\nidentity_generation: 1\nseed_protocol: legacy-v1\n",
+            encoding="utf-8",
+        )
+
+        spec = load_country_spec(package_dir)
+
+        assert spec.policy == ""
+        assert spec.sources is None
+        assert spec.gates is None
+        assert spec.resolved_spec is not None
+        assert spec.resolved_spec.country == "xx"
+
+    def test_generated_locks_are_admitted_but_excluded_from_authority_hashes(
+        self, tmp_path
+    ) -> None:
+        files = _minimal_package()
+        files.update(
+            {
+                "bundle.lock.json": {},
+                "engine_abi.lock.json": {},
+                "plan.lock.json": {},
+            }
+        )
+        spec = load_country_spec(_write_package(tmp_path, files))
+
+        assert set(spec.resource_hashes) == {"country_package.json", "gates.json"}
+        assert all("lock.json" not in resource for resource in spec.resources)
+
+    @pytest.mark.parametrize(
+        ("row", "message"),
+        [
+            (
+                {
+                    "path": "../escape.yaml",
+                    "kind": "bundle",
+                    "schema_id": "bundle.schema.json",
+                },
+                "normalized local POSIX path",
+            ),
+            (
+                {
+                    "path": "bundle.yaml",
+                    "kind": "executable",
+                    "schema_id": "bundle.schema.json",
+                },
+                "unknown kind",
+            ),
+            (
+                {
+                    "path": "bundle.yaml",
+                    "kind": "bundle",
+                    "schema_id": "bundle.schema.json",
+                    "entrypoint": "microcosm.build:run",
+                },
+                "closed-world",
+            ),
+            (
+                {
+                    "path": "engine_abi.lock.json",
+                    "kind": "legacy_json",
+                    "schema_id": "legacy_json",
+                },
+                "generated locks cannot be authored",
+            ),
+        ],
+    )
+    def test_invalid_typed_resource_rows_are_refused(
+        self, tmp_path, row, message
+    ) -> None:
+        files = _minimal_package()
+        files["country_package.json"]["resources"] = [row]
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match=message):
+            load_country_spec(package_dir)
+
+    def test_duplicate_typed_paths_are_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        row = {
+            "path": "gates.json",
+            "kind": "legacy_json",
+            "schema_id": "legacy_json",
+        }
+        files["country_package.json"]["resources"] = [row, dict(row)]
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="duplicate resource path"):
+            load_country_spec(package_dir)
 
 
 class TestUKGatesManifest:

@@ -1,0 +1,11 @@
+channels:
+- id: frs
+  source: uk_national_candidate_2023
+  observed_geography: region
+assembly:
+  mass_anchor_channel: frs
+  shared_dtype_policy: canonical_string_storage
+support_roles:
+- id: spi_income_support
+  kind: synthetic_prior_replacement
+  clone_index: 1

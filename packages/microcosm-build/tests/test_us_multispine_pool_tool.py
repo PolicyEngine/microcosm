@@ -27,6 +27,7 @@ import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
 from microcosm.build.gates import GateReport, GateResult
 from microcosm.build.logbook import LOGBOOK_ROW_FIELDS, load_logbook_row
 from microcosm.build.serialization_dtypes import CANONICAL_STRING_DTYPE
+from microcosm.build.spec_engine import LegacyPayloadMismatchError
 from microcosm.build.us_runtime.acs_transfer import transfer_acs_inputs
 from microcosm.build.us_runtime.acs_transfer_bank import (
     ACS_TRANSFER_TARGET_BANK_MATERIALIZER_VERSION,
@@ -1644,7 +1645,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
     expected_code: int | None,
     disposition: str,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     """Exercise the real tool, stack assembly, orchestrator, and publication shell."""
     order, full_puf_rows = _install_stacked_entrypoint_stubs(
         pool_tool,
@@ -1772,12 +1773,429 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
         }
 
 
+def test_stacked_config_authority_defaults_to_constants_without_loading_bundle(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    args = pool_tool._parser().parse_args(_stacked_main_argv(tmp_path))
+    monkeypatch.setattr(
+        pool_tool,
+        "load_bundle",
+        lambda _country: (_ for _ in ()).throw(
+            AssertionError("the constants mode must not load a spec bundle")
+        ),
+    )
+
+    assert args.config_authority == "constants"
+    assert pool_tool._stacked_run_config(args) == {"config_authority": "constants"}
+
+
+def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
+    args = pool_tool._parser().parse_args(
+        [
+            *_stacked_main_argv(tmp_path),
+            "--config-authority",
+            "constants_adapter",
+        ]
+    )
+    configured_identity = pool_tool._configured_stacked_identity(args)
+    stack = pool_tool.assemble_stacked_spine(
+        _many_household_source_frame(),
+        _many_household_source_frame(measured_offset=1_000.0),
+        sample_fraction=0.01,
+        sample_seed=578,
+    )
+    base_identity = pool_tool._stacked_checkpoint_base_identity(
+        _verified_inputs_fixture(pool_tool, tmp_path / "pins"),
+        stack_receipt=stack.receipt,
+        sample_fraction=0.01,
+        sample_seed=578,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=579,
+        policyengine_us_version="fixture-engine",
+    )
+    checkpoint_identity = pool_tool._pool_checkpoint_stage_identity(
+        base_identity,
+        "assembled",
+    )
+    equality_call: dict[str, object] = {}
+    real_assert_equal = pool_tool.assert_legacy_payload_equal
+
+    def capture_equality(expected: object, actual: object) -> None:
+        equality_call["expected"] = expected
+        equality_call["actual"] = actual
+        real_assert_equal(expected, actual)
+
+    monkeypatch.setattr(
+        pool_tool,
+        "assert_legacy_payload_equal",
+        capture_equality,
+    )
+
+    # This call performs the real bundle load, compilation, and field-complete
+    # equality assertion against the live generation-0 constructors.
+    run_config = pool_tool._stacked_run_config(args)
+    assert (
+        set(equality_call["expected"])
+        == set(equality_call["actual"])
+        == {
+            "battery_contract",
+            "gap_fill_plan",
+            "gap_fill_producer_schedule_receipt",
+            "late_producer_schedule_receipt",
+            "overlap_ownership",
+            "publication_release",
+            "source_manifest",
+            "spine_assembly",
+            "spine_sampling",
+            "stacked_authority_receipt",
+            "stacked_checkpoint_static_components",
+            "support_spine",
+            "take_up_contract",
+            "take_up_contract_identity",
+        }
+    )
+    expected_gate = equality_call["expected"]
+    assert isinstance(expected_gate, dict)
+    assert expected_gate["publication_release"] == {
+        "legacy_prefixes": ["populace-us-2024"],
+        "rungs": ["f001", "f004", "f010", "f025", "f100"],
+        "legacy_compiled_regexes": [pool_tool._STACKED_RELEASE_ID_PATTERN.pattern],
+    }
+    assert expected_gate["spine_sampling"] == {
+        "channels": ["asec", "acs"],
+        "fraction": {
+            "default": 1.0,
+            "rungs": [
+                {
+                    "fraction": fraction,
+                    "token": token,
+                    "percent_basis_points": basis_points,
+                }
+                for fraction, token, basis_points in (
+                    (0.01, "f001", 100),
+                    (0.04, "f004", 400),
+                    (0.10, "f010", 1_000),
+                    (0.25, "f025", 2_500),
+                    (1.00, "f100", 10_000),
+                )
+            ],
+        },
+        "seed": {"default": 578},
+        "exact_count_rule": "floor(fraction * eligible)",
+    }
+    assert expected_gate["spine_assembly"] == {
+        "mass_anchor_channel": "asec",
+        "household_mass_shares": {"asec": 0.5, "acs": 0.5},
+    }
+    assert run_config == {
+        "config_authority": "constants_adapter",
+        "spec_binding_status": "resolved",
+        "spec_binding": {
+            "attestation": "mirror-attested",
+            "canonicalizer_version": 1,
+            "country": "us",
+            "schema_id": "country_spec",
+            "schema_version": 1,
+            "spec_sha256": "6e9dce8f0fd3e3f0101103a14d6a08ac8527b90b82d48fa8bad2c4cc70dbdfde",
+        },
+    }
+
+    def contains_spec_binding(value: object) -> bool:
+        if isinstance(value, Mapping):
+            return "spec_binding" in value or any(
+                contains_spec_binding(item) for item in value.values()
+            )
+        if isinstance(value, (list, tuple)):
+            return any(contains_spec_binding(item) for item in value)
+        return False
+
+    assert not contains_spec_binding(stack.frame.metadata)
+    assert not contains_spec_binding(configured_identity)
+    assert not contains_spec_binding(base_identity)
+    assert not contains_spec_binding(checkpoint_identity)
+
+
+@pytest.mark.parametrize(
+    ("mutation_path", "mutated_value", "expected_difference"),
+    [
+        (
+            ("battery_contract", "gates", 1, "thresholds", "absolute"),
+            0.5,
+            "/battery_contract/gates/1/thresholds/absolute",
+        ),
+        (
+            ("spine_assembly", "household_mass_shares", "asec"),
+            0.49,
+            "/spine_assembly/household_mass_shares/asec",
+        ),
+        (
+            ("publication_release", "legacy_compiled_regexes", 0),
+            "^mutated-release$",
+            "/publication_release/legacy_compiled_regexes/0",
+        ),
+        (
+            ("spine_sampling", "fraction", "default"),
+            0.25,
+            "/spine_sampling/fraction/default",
+        ),
+    ],
+)
+def test_constants_adapter_refuses_live_execution_surface_drift(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    mutation_path: tuple[str | int, ...],
+    mutated_value: object,
+    expected_difference: str,
+) -> None:
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
+    args = pool_tool._parser().parse_args(
+        [
+            *_stacked_main_argv(tmp_path),
+            "--config-authority",
+            "constants_adapter",
+        ]
+    )
+    real_compile = pool_tool.compile_to_legacy_payload
+
+    def compile_with_drift(resolved: object) -> dict[str, object]:
+        payload = copy.deepcopy(real_compile(resolved))
+        target: object = payload
+        for token in mutation_path[:-1]:
+            if isinstance(token, int):
+                assert isinstance(target, list)
+                target = target[token]
+            else:
+                assert isinstance(target, dict)
+                target = target[token]
+        leaf = mutation_path[-1]
+        if isinstance(leaf, int):
+            assert isinstance(target, list)
+            target[leaf] = mutated_value
+        else:
+            assert isinstance(target, dict)
+            target[leaf] = mutated_value
+        return payload
+
+    monkeypatch.setattr(pool_tool, "compile_to_legacy_payload", compile_with_drift)
+
+    with pytest.raises(LegacyPayloadMismatchError) as failure:
+        pool_tool._stacked_run_config(args)
+    assert expected_difference in {
+        difference.path for difference in failure.value.differences
+    }
+
+
+@pytest.mark.parametrize(
+    ("failure_stage", "expected_status"),
+    [
+        ("preflight", "resolution_pending"),
+        ("resolution", "resolution_failed"),
+    ],
+)
+def test_constants_adapter_failure_receipt_preserves_requested_resolution_state(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    failure_stage: str,
+    expected_status: str,
+) -> None:
+    _install_stacked_entrypoint_stubs(
+        pool_tool,
+        monkeypatch,
+        tmp_path,
+        terminal="success",
+    )
+    if failure_stage == "preflight":
+        monkeypatch.setattr(
+            pool_tool,
+            "_git_code_pin",
+            lambda: (_ for _ in ()).throw(RuntimeError("fixture preflight failure")),
+        )
+        expected_error = "fixture preflight failure"
+    else:
+        monkeypatch.setattr(
+            pool_tool,
+            "_stacked_run_config",
+            lambda _args: (_ for _ in ()).throw(
+                RuntimeError("fixture adapter resolution failure")
+            ),
+        )
+        expected_error = "fixture adapter resolution failure"
+
+    with pytest.raises(RuntimeError, match=expected_error):
+        pool_tool.main(
+            [
+                *_stacked_main_argv(tmp_path),
+                "--config-authority",
+                "constants_adapter",
+            ]
+        )
+
+    error_path = next((tmp_path / "logbook-receipts").glob("*/error.json"))
+    error_receipt = json.loads(error_path.read_text(encoding="utf-8"))
+    assert error_receipt["run_config"] == {
+        "config_authority": "constants_adapter",
+        "spec_binding_status": expected_status,
+    }
+    assert "spec_binding" not in error_receipt["run_config"]
+    assert "spec_sha256" not in json.dumps(error_receipt["run_config"])
+
+
+def test_constants_adapter_post_resolution_failure_receipt_retains_binding(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
+    _install_stacked_entrypoint_stubs(
+        pool_tool,
+        monkeypatch,
+        tmp_path,
+        terminal="error",
+    )
+    binding = {
+        "attestation": "mirror-attested",
+        "canonicalizer_version": 1,
+        "country": "us",
+        "schema_id": "country_spec",
+        "schema_version": 1,
+        "spec_sha256": "f" * 64,
+    }
+    resolved_config = {
+        "config_authority": "constants_adapter",
+        "spec_binding_status": "resolved",
+        "spec_binding": binding,
+    }
+    monkeypatch.setattr(
+        pool_tool,
+        "_stacked_run_config",
+        lambda _args: resolved_config,
+    )
+
+    with pytest.raises(RuntimeError, match="fixture stacked error"):
+        pool_tool.main(
+            [
+                *_stacked_main_argv(tmp_path),
+                "--config-authority",
+                "constants_adapter",
+            ]
+        )
+
+    error_path = next((tmp_path / "logbook-receipts").glob("*/error.json"))
+    error_receipt = json.loads(error_path.read_text(encoding="utf-8"))
+    assert error_receipt["run_config"] == resolved_config
+
+
+def test_constants_adapter_fixture_checkpoints_are_byte_identical_and_only_receipt_changes(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
+    fixed_binding = {
+        "attestation": "mirror-attested",
+        "canonicalizer_version": 1,
+        "country": "us",
+        "schema_id": "country_spec",
+        "schema_version": 1,
+        "spec_sha256": "6e9dce8f0fd3e3f0101103a14d6a08ac8527b90b82d48fa8bad2c4cc70dbdfde",
+    }
+
+    def run_fixture(root: Path, *, config_authority: str) -> dict[str, object]:
+        root.mkdir()
+        with monkeypatch.context() as patch:
+            _install_stacked_entrypoint_stubs(
+                pool_tool,
+                patch,
+                root,
+                terminal="success",
+            )
+            patch.setattr(
+                pool_tool,
+                "_new_stacked_attempt_id",
+                lambda **_kwargs: "populace-us-2024-stacked-attempt-fixture",
+            )
+            patch.setattr(
+                pool_tool,
+                "_new_stacked_release_id",
+                lambda **_kwargs: (
+                    "populace-us-2024-stacked-f001-s578-asec1-acs1-"
+                    "20260817T000000Z-deadbeef"
+                ),
+            )
+            patch.setattr(
+                pool_tool,
+                "_new_publication_run_id",
+                lambda: "fixture-publication-run",
+            )
+            patch.setattr(
+                pool_tool,
+                "_stacked_run_config",
+                lambda args: (
+                    {"config_authority": "constants"}
+                    if args.config_authority == "constants"
+                    else {
+                        "config_authority": "constants_adapter",
+                        "spec_binding_status": "resolved",
+                        "spec_binding": fixed_binding,
+                    }
+                ),
+            )
+            argv = _stacked_main_argv(root)
+            if config_authority != "constants":
+                argv.extend(["--config-authority", config_authority])
+            assert pool_tool.main(argv) == 0
+
+        checkpoint_files = sorted(
+            (root / "stacked-pool.checkpoints").glob("stacked/*/*.checkpoint.h5")
+        )
+        assert [path.name for path in checkpoint_files] == [
+            "assembled.checkpoint.h5",
+            "simulated.checkpoint.h5",
+            "transferred.checkpoint.h5",
+        ]
+        checkpoint_sha256 = {
+            path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in checkpoint_files
+        }
+        receipt_path = next((root / "logbook-receipts").glob("*/terminal-gates.json"))
+        return {
+            "checkpoint_sha256": checkpoint_sha256,
+            "receipt": json.loads(receipt_path.read_text(encoding="utf-8")),
+        }
+
+    constants = run_fixture(tmp_path / "constants", config_authority="constants")
+    adapter = run_fixture(
+        tmp_path / "constants-adapter",
+        config_authority="constants_adapter",
+    )
+
+    assert constants["checkpoint_sha256"] == adapter["checkpoint_sha256"]
+    constants_receipt = dict(constants["receipt"])
+    adapter_receipt = dict(adapter["receipt"])
+    assert constants_receipt.pop("run_config") == {"config_authority": "constants"}
+    assert adapter_receipt.pop("run_config") == {
+        "config_authority": "constants_adapter",
+        "spec_binding_status": "resolved",
+        "spec_binding": fixed_binding,
+    }
+    assert constants_receipt == adapter_receipt
+
+
 def test_stacked_entrypoint_rejects_noncanonical_post_puf_transfer_receipt(
     pool_tool: ModuleType,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     noncanonical = _noncanonical_post_puf_authority_receipt()
     assert noncanonical["authority_form"] == "NON-CANONICAL"
     assert noncanonical["production_manifest_permitted"] is False
@@ -2057,7 +2475,7 @@ def test_publication_error_keeps_gate_receipts_and_does_not_claim_stale_h5(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("policyengine_us")
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
     _order, _full_puf_rows = _install_stacked_entrypoint_stubs(
         pool_tool,
         monkeypatch,
@@ -2094,7 +2512,7 @@ def test_logbook_gate_receipts_are_immutable_across_later_attempts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     _order, _full_puf_rows = _install_stacked_entrypoint_stubs(
         pool_tool,
         monkeypatch,
@@ -2149,7 +2567,7 @@ def test_stacked_checkpoint_identity_binds_both_scale_controls_and_manifest(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("policyengine_us")
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
     verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
     asec = _many_household_source_frame()
     acs = _many_household_source_frame(measured_offset=1_000.0)
@@ -2358,7 +2776,7 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    pytest.importorskip("policyengine_us")
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
     monkeypatch.setattr(
         pool_tool,
         "_policyengine_us_version",
@@ -2643,7 +3061,7 @@ def test_pool_envelope_v7_preserves_stacked_bank_identity_but_rejects_v6(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    pytest.importorskip("policyengine_us")
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
     verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
     stack = pool_tool.assemble_stacked_spine(
         _many_household_source_frame(),
@@ -2788,7 +3206,7 @@ def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
     capsys: pytest.CaptureFixture[str],
     legacy_version: int,
 ) -> None:
-    pytest.importorskip("policyengine_us")
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
     monkeypatch.setattr(
         pool_tool,
         "_policyengine_us_version",
@@ -2903,7 +3321,7 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     order, _full_puf_rows = _install_stacked_entrypoint_stubs(
         pool_tool,
         monkeypatch,
@@ -3012,7 +3430,7 @@ def test_stacked_resume_error_uses_realized_stack_identity(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     _order, _full_puf_rows = _install_stacked_entrypoint_stubs(
         pool_tool,
         monkeypatch,
@@ -3272,7 +3690,10 @@ def test_main_dispatches_only_to_the_selected_pipeline(
     legacy: bool,
 ) -> None:
     calls: list[str] = []
-    namespace = SimpleNamespace(legacy_two_spine=legacy)
+    namespace = SimpleNamespace(
+        legacy_two_spine=legacy,
+        config_authority="constants",
+    )
     parser = SimpleNamespace(parse_args=lambda _argv: namespace)
     monkeypatch.setattr(pool_tool, "_parser", lambda: parser)
     monkeypatch.setattr(
@@ -3288,6 +3709,36 @@ def test_main_dispatches_only_to_the_selected_pipeline(
 
     assert pool_tool.main(["fixture"]) == (17 if legacy else 23)
     assert calls == (["legacy"] if legacy else ["stacked"])
+
+
+def test_main_refuses_constants_adapter_with_legacy_two_spine(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    namespace = SimpleNamespace(
+        legacy_two_spine=True,
+        config_authority="constants_adapter",
+    )
+    parser = SimpleNamespace(parse_args=lambda _argv: namespace)
+    monkeypatch.setattr(pool_tool, "_parser", lambda: parser)
+    monkeypatch.setattr(
+        pool_tool,
+        "_main_legacy",
+        lambda _args: calls.append("legacy") or 17,
+    )
+    monkeypatch.setattr(
+        pool_tool,
+        "_main_stacked",
+        lambda _args: calls.append("stacked") or 23,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="constants_adapter.*stacked pipeline",
+    ):
+        pool_tool.main(["fixture"])
+    assert calls == []
 
 
 def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
@@ -3306,6 +3757,7 @@ def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
         ("puf_source_year_csv", "puf_source_year_csv_sha256"),
     )
     expected_destinations = {destination for pair in pairs for destination in pair} | {
+        "config_authority",
         "logbook_prev_row_digest",
         "clone_attachment_fraction",
         "clone_attachment_seed",
@@ -3322,6 +3774,7 @@ def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
         for destination in expected_destinations
         - {
             "checkpoint_root",
+            "config_authority",
             "logbook_prev_row_digest",
             "clone_attachment_fraction",
             "clone_attachment_seed",
@@ -3339,6 +3792,11 @@ def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
     assert actions["clone_attachment_fraction"].default == 1.0
     assert actions["clone_attachment_seed"].default == 578
     assert actions["legacy_two_spine"].default is False
+    assert actions["config_authority"].default == "constants"
+    assert tuple(actions["config_authority"].choices) == (
+        "constants",
+        "constants_adapter",
+    )
     assert actions["logbook_prev_row_digest"].default is None
     for path_destination, sha_destination in pairs:
         assert actions[path_destination].type is Path
@@ -4204,7 +4662,7 @@ def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
     expected_order: list[str],
 ) -> None:
     pytest.importorskip("h5py")
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     checkpoint_root = tmp_path / "checkpoints"
     cold_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
     cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
@@ -4495,7 +4953,7 @@ def test_resumed_checkpoint_provenance_is_published_in_final_manifest(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     _unused, outputs, verified_inputs, source_manifest, loaded = _output_context(
         pool_tool,
         tmp_path,
@@ -5418,7 +5876,7 @@ def test_red_outputs_preserve_receipts_and_exclude_simulation_output(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     result, outputs, verified_inputs, source_manifest, loaded = _output_context(
         pool_tool,
         tmp_path,
@@ -5475,7 +5933,7 @@ def test_ready_reader_binds_manifest_h5_and_diagnostics_to_one_run(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     result, outputs, verified_inputs, source_manifest, loaded = _output_context(
         pool_tool,
         tmp_path,
@@ -5507,7 +5965,7 @@ def test_ready_reader_rejects_manifest_h5_run_id_mismatch(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     result, outputs, verified_inputs, source_manifest, loaded = _output_context(
         pool_tool,
         tmp_path,
@@ -5584,7 +6042,7 @@ def test_diagnostics_publication_failure_keeps_pool_not_ready(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     result, outputs, verified_inputs, source_manifest, loaded = _output_context(
         pool_tool,
         tmp_path,
@@ -5638,7 +6096,7 @@ def test_final_manifest_failure_leaves_tombstone_as_readiness_authority(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     result, outputs, verified_inputs, source_manifest, loaded = _output_context(
         pool_tool,
         tmp_path,

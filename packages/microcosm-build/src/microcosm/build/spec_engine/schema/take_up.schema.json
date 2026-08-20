@@ -1,0 +1,260 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "take_up.schema.json",
+ "title": "Take-up: orthogonal ownership x typed source-operation references",
+ "x-spec-surface": "normative",
+ "type": "object",
+ "additionalProperties": false,
+ "required": ["contract_id", "version", "country", "programs", "legacy_contract_metadata"],
+ "properties": {
+  "contract_id": {"const": "us_take_up_runtime_authority"},
+  "version": {"type": "integer", "minimum": 1},
+  "country": {"$ref": "defs.schema.json#/$defs/identifier"},
+  "scope_registry": {
+   "default": {
+    "predicate_space": "take_up_support_channel",
+    "universe": ["support_channel:asec", "support_channel:puf_tax_detail"],
+    "scopes": [
+     {"id": "asec_rows", "atoms": ["support_channel:asec"]},
+     {"id": "puf_support_rows", "atoms": ["support_channel:puf_tax_detail"]}
+    ]
+   },
+   "allOf": [
+    {"$ref": "defs.schema.json#/$defs/closed_scope_registry"},
+    {
+     "properties": {
+      "predicate_space": {"const": "take_up_support_channel"},
+      "universe": {"minItems": 2, "maxItems": 2},
+      "scopes": {"minItems": 2, "maxItems": 2}
+     }
+    }
+   ]
+  },
+  "programs": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/program"}},
+  "legacy_contract_metadata": {"$ref": "#/$defs/legacy_contract_metadata"}
+ },
+ "$defs": {
+  "source_operation_ref": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["stage", "operation_index", "operation_id"],
+   "properties": {
+    "stage": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "operation_index": {"type": "integer", "minimum": 0},
+    "operation_id": {"type": "string", "minLength": 1}
+   }
+  },
+  "rate": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "agency": {"type": "string"},
+    "citation": {"type": "string"},
+    "detail": {"type": "string"},
+    "period": {"type": "string"},
+    "retired_value": {"type": "number"},
+    "source": {"type": "string"},
+    "status": {"type": "string"},
+    "us_data_value": {"oneOf": [{"type": "number"}, {"type": "string"}]},
+    "value": {"type": "number"},
+    "values_by_num_children": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["0", "1", "2", "3+"],
+     "properties": {
+      "0": {"type": "number"}, "1": {"type": "number"},
+      "2": {"type": "number"}, "3+": {"type": "number"}
+     }
+    },
+    "verified_source_value": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["citation", "scope", "value"],
+     "properties": {
+      "citation": {"type": "string"}, "scope": {"type": "string"},
+      "value": {"type": "number"}
+     }
+    }
+   }
+  },
+  "calibration_review": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["semantics"],
+   "properties": {
+    "anchor_month_note": {"type": "string"},
+    "fact_family": {"type": "string"},
+    "semantics": {"type": "string"}
+   }
+  },
+  "source_step": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["kind", "kernel", "source_operation_ref"],
+   "properties": {
+    "kind": {"enum": ["assignment", "count_calibration", "imputed_transfer", "measured_map", "probability_seed"]},
+    "kernel": {"$ref": "defs.schema.json#/$defs/kernel_ref"},
+    "source_operation_ref": {"$ref": "#/$defs/source_operation_ref"},
+    "anchor_column": {"type": "string"},
+    "rate_review": {"$ref": "#/$defs/rate"},
+    "calibration_review": {"$ref": "#/$defs/calibration_review"}
+   }
+  },
+  "generic_seed_step": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["kind", "operation_id", "kernel", "entity", "output", "rate", "assignment", "signal_gate_share_bounds"],
+   "properties": {
+    "kind": {"const": "probability_seed"},
+    "operation_id": {"type": "string", "minLength": 1},
+    "kernel": {"const": "kernel:seeded_rate"},
+    "entity": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "output": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "rate": {"$ref": "#/$defs/rate"},
+    "signal_gate_share_bounds": {
+     "type": "array", "minItems": 2, "maxItems": 2,
+     "prefixItems": [{"type": "number"}, {"type": "number"}], "items": false
+    },
+    "rate_selector": {"$ref": "#/$defs/rate_selector"},
+    "assignment": {"$ref": "#/$defs/assignment"}
+   }
+  },
+  "assignment": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["comparison", "hash", "digest_size_bytes", "byte_order", "uniform_denominator", "message_fields_in_order", "message_separator", "stable_unit_key_precedence", "seed", "time_period_argument", "existing_assembled_values"],
+   "properties": {
+    "comparison": {"type": "string"}, "hash": {"type": "string"},
+    "digest_size_bytes": {"type": "integer", "minimum": 1},
+    "byte_order": {"type": "string"}, "uniform_denominator": {"type": "number"},
+    "message_fields_in_order": {"type": "array", "items": {"type": "string"}},
+    "message_separator": {"type": "string"},
+    "stable_unit_key_precedence": {
+     "type": "array",
+     "items": {"oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]}
+    },
+    "seed": {
+     "type": "object", "additionalProperties": false,
+     "required": ["source", "argument"],
+     "properties": {"source": {"type": "string"}, "argument": {"type": "string"}}
+    },
+    "time_period_argument": {"type": "string"},
+    "existing_assembled_values": {"type": "string"}
+   }
+  },
+  "rate_selector": {
+   "type": "object", "additionalProperties": false,
+   "required": ["kind", "person_age_column", "membership_column", "child_age_comparison", "max_age_exclusive", "bins", "student_under_24_extension"],
+   "properties": {
+    "kind": {"type": "string"}, "person_age_column": {"type": "string"},
+    "membership_column": {"type": "string"}, "child_age_comparison": {"type": "string"},
+    "max_age_exclusive": {"type": "integer"},
+    "bins": {"type": "array", "items": {"type": "string"}},
+    "student_under_24_extension": {"type": "boolean"}
+   }
+  },
+  "delivery_step": {
+   "type": "object", "additionalProperties": false,
+   "required": ["kind", "operation_id", "kernel", "phase", "target_table", "target_period", "target_measure", "candidate_definition", "assignment_prior_basis_default", "assignment_prior_basis_optional", "enforced_age_bands", "relative_tolerance", "unenforced_age_bands"],
+   "properties": {
+    "kind": {"const": "delivery_gate"}, "operation_id": {"type": "string", "minLength": 1},
+    "kernel": {"$ref": "defs.schema.json#/$defs/kernel_ref"},
+    "phase": {"type": "string"}, "target_table": {"type": "string"},
+    "target_period": {"type": "string"}, "target_measure": {"type": "string"},
+    "candidate_definition": {"type": "string"},
+    "assignment_prior_basis_default": {"type": "string"},
+    "assignment_prior_basis_optional": {"type": "string"},
+    "enforced_age_bands": {"type": "array", "items": {"type": "string"}},
+    "relative_tolerance": {"type": "number"},
+    "unenforced_age_bands": {"type": "array", "items": {"type": "string"}}
+   }
+  },
+  "engine_step": {
+   "type": "object", "additionalProperties": false,
+   "required": ["kind", "operation_id", "kernel", "debt"],
+   "properties": {
+    "kind": {"const": "engine_default"},
+    "operation_id": {"type": "string", "minLength": 1},
+    "kernel": {"const": "kernel:engine_default"},
+    "debt": {
+     "type": "object", "additionalProperties": false,
+     "required": ["populace_treatment", "rate_review"],
+     "properties": {
+      "populace_treatment": {"const": "rate_unsourced"},
+      "rate_review": {"$ref": "#/$defs/rate"}
+     }
+    }
+   }
+  },
+  "step": {
+   "oneOf": [
+    {"$ref": "#/$defs/source_step"}, {"$ref": "#/$defs/generic_seed_step"},
+    {"$ref": "#/$defs/delivery_step"}, {"$ref": "#/$defs/engine_step"}
+   ]
+  },
+  "segment": {
+   "type": "object", "additionalProperties": false,
+   "required": ["row_scope", "ownership", "pipeline", "final_owner_stage"],
+   "properties": {
+    "row_scope": {"$ref": "defs.schema.json#/$defs/row_scope"},
+    "ownership": {"enum": ["measured", "transferred", "modeled", "engine"]},
+    "pipeline": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/step"}},
+    "final_owner_stage": {"$ref": "defs.schema.json#/$defs/identifier"}
+   }
+  },
+  "documentation": {
+   "type": "object", "additionalProperties": false,
+   "x-spec-surface": "documentation",
+   "properties": {
+    "consumed_via": {"type": "string"}, "engine_state_note": {"type": "string"},
+    "followup": {"type": "string"}, "notes": {"type": "string"},
+    "scope_owner": {"type": "string"}
+   }
+  },
+  "program": {
+   "type": "object", "additionalProperties": false,
+   "required": ["id", "variable", "ownership", "documentation"],
+   "oneOf": [
+    {"required": ["pipeline", "final_owner_stage"], "not": {"required": ["segments"]}},
+    {"required": ["segments"], "not": {"anyOf": [{"required": ["pipeline"]}, {"required": ["final_owner_stage"]}]}}
+   ],
+   "properties": {
+    "id": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "variable": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "ownership": {"enum": ["measured", "transferred", "modeled", "engine", "mixed"]},
+    "pipeline": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/step"}},
+    "segments": {"type": "array", "minItems": 2, "items": {"$ref": "#/$defs/segment"}},
+    "final_owner_stage": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "dependence": {
+     "type": "object", "additionalProperties": false, "required": ["group"],
+     "properties": {"group": {"$ref": "defs.schema.json#/$defs/identifier"}}
+    },
+    "documentation": {"$ref": "#/$defs/documentation"}
+   }
+  },
+  "legacy_contract_metadata": {
+   "type": "object", "additionalProperties": false,
+   "required": ["asserted_engine", "doctrine", "policy"],
+   "properties": {
+    "policy": {"type": "string", "x-spec-surface": "documentation"},
+    "asserted_engine": {
+     "type": "object", "additionalProperties": false,
+     "required": ["constraint", "inventory_built_against", "note", "package"],
+     "properties": {
+      "constraint": {"type": "string"}, "inventory_built_against": {"type": "string"},
+      "note": {"type": "string", "x-spec-surface": "documentation"},
+      "package": {"type": "string"}
+     }
+    },
+    "doctrine": {
+     "type": "object", "additionalProperties": false,
+     "required": ["engine_class", "enrollment_semantics", "populace_treatment", "provenance_rule"],
+     "properties": {
+      "engine_class": {"type": "string"}, "enrollment_semantics": {"type": "string"},
+      "populace_treatment": {"type": "string"}, "provenance_rule": {"type": "string"}
+     }
+    }
+   }
+  }
+ }
+}

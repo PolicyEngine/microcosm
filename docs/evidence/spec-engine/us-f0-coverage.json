@@ -1,0 +1,2454 @@
+{
+  "compiler_ir_abi": {
+    "sha256": "3f6996bc1d4d187d669c55b525ff3910d6f19dc8ccadff464c4561aeca127f27",
+    "version": 1
+  },
+  "country": "us",
+  "documentation_sha256": "aed5b95645a5c605671e374ed2a9d511c7fd9dc29c63760c32a205d9f2db9491",
+  "field_usage": {
+    "authored_normative_field_count": 32161,
+    "claim_count": 47,
+    "claims": [
+      {
+        "consumer": "loader.typed_resource_manifest",
+        "generation0_effect": "no_generation0_effect",
+        "id": "country_manifest",
+        "legacy_sinks": [],
+        "mode": "front_end_validation",
+        "pointer_class": "all",
+        "pointer_count": 98,
+        "pointer_sha256": "cbbda6d2d245f04325c0b5a7b986cb71d24d6e3c81a7a3af1544de7f75be2a1f",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/country_package.json",
+        "verifier": "manifest"
+      },
+      {
+        "consumer": "legacy_adapter.battery_contract",
+        "generation0_effect": "legacy_behavior",
+        "id": "battery",
+        "legacy_sinks": [
+          "/battery_contract",
+          "/stacked_authority_receipt"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 782,
+        "pointer_sha256": "2f33926b12e14d82b3280b56b66eb093947491790f3ed46bbc8bec812f36b92d",
+        "rationale": null,
+        "relative_sink_prefix": "/battery_contract",
+        "source_prefix": "/authored/spec~1battery.yaml",
+        "verifier": "legacy"
+      },
+      {
+        "consumer": "loader.country_binding",
+        "generation0_effect": "no_generation0_effect",
+        "id": "bundle_country",
+        "legacy_sinks": [],
+        "mode": "front_end_validation",
+        "pointer_class": "all",
+        "pointer_count": 1,
+        "pointer_sha256": "d40841674279a8854f8eadd926c5da31938781c11fd5c7a1c156954abcae8324",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1bundle.yaml/country",
+        "verifier": "bundle_country"
+      },
+      {
+        "consumer": "legacy_adapter.stacked_checkpoint_static_components",
+        "generation0_effect": "legacy_behavior",
+        "id": "bundle_dataset_run",
+        "legacy_sinks": [
+          "/stacked_checkpoint_static_components"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 1,
+        "pointer_sha256": "3b26ea9597d0102ed21685f0c9139a266c133dedb3b2fb24ac636cecc8796102",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1bundle.yaml/dataset_run",
+        "verifier": "bundle_dataset"
+      },
+      {
+        "consumer": "spec_binding.mirror_attestation",
+        "generation0_effect": "no_generation0_effect",
+        "id": "bundle_identity_generation",
+        "legacy_sinks": [],
+        "mode": "identity_only",
+        "pointer_class": "all",
+        "pointer_count": 1,
+        "pointer_sha256": "6563e9af227416e178f16e0dab644391497fe9f0db4496d72898bd2954e3338c",
+        "rationale": "F0 must not retro-label generation-0 identities; this authored generation enters only the mirror-attested spec identity until F1",
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1bundle.yaml/identity_generation",
+        "verifier": "identity"
+      },
+      {
+        "consumer": "compiler_ir.seed_stream_map.protocol_id",
+        "generation0_effect": "no_generation0_effect",
+        "id": "bundle_seed_protocol",
+        "legacy_sinks": [],
+        "mode": "compiler_semantic",
+        "pointer_class": "all",
+        "pointer_count": 1,
+        "pointer_sha256": "36564747627fb0058bb99e8e8c4397e41d8ecc472a20c49d4b6d7df1003a80ec",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1bundle.yaml/seed_protocol",
+        "verifier": "seed_protocol"
+      },
+      {
+        "consumer": "legacy_adapter.calibration_contract",
+        "generation0_effect": "legacy_behavior",
+        "id": "calibration",
+        "legacy_sinks": [
+          "/calibration_contract",
+          "/calibration_tail_contracts"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 313,
+        "pointer_sha256": "efdada2593834fe36650c88d1b4ea6b9a6c4ef1456a06cce2cb02111066d3101",
+        "rationale": null,
+        "relative_sink_prefix": "/calibration_contract",
+        "source_prefix": "/authored/spec~1calibration.yaml",
+        "verifier": "legacy"
+      },
+      {
+        "consumer": "typed_closure.metadata_waiver_validation",
+        "generation0_effect": "no_generation0_effect",
+        "id": "catalog_metadata_waivers",
+        "legacy_sinks": [],
+        "mode": "front_end_validation",
+        "pointer_class": "all",
+        "pointer_count": 5,
+        "pointer_sha256": "64182b6be1ea6d95bff345b30a2aa046b6fa7e8ee61a282b225dfa49c28fbfdc",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1catalogs.yaml/metadata_waivers",
+        "verifier": "catalog_waivers"
+      },
+      {
+        "consumer": "compiler_ir.typed_inventory.columns",
+        "generation0_effect": "no_generation0_effect",
+        "id": "catalog_columns",
+        "legacy_sinks": [],
+        "mode": "compiler_semantic",
+        "pointer_class": "all",
+        "pointer_count": 1646,
+        "pointer_sha256": "a1cf4881bf6de997041e61722d424bf26bb1a937fe4e16843eb9b28c2d294cb0",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1catalogs.yaml/columns",
+        "verifier": "catalog_columns"
+      },
+      {
+        "consumer": "spec_binding.geography_contract",
+        "generation0_effect": "no_generation0_effect",
+        "id": "geography",
+        "legacy_sinks": [],
+        "mode": "identity_only",
+        "pointer_class": "all",
+        "pointer_count": 26,
+        "pointer_sha256": "d07260bec0a904155b3786234b878f4010dc9a6cf05882eef8c6417dfe283156",
+        "rationale": "F0 normalizes the phase=legacy geography contract but the constants-era executor retains today's PUMA-ladder authority until F1",
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1geography.yaml",
+        "verifier": "identity"
+      },
+      {
+        "consumer": "legacy_adapter.imputation",
+        "generation0_effect": "legacy_behavior",
+        "id": "imputation_predictor_blocks",
+        "legacy_sinks": [
+          "/imputation",
+          "/stacked_authority_receipt",
+          "/stacked_checkpoint_static_components"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 62,
+        "pointer_sha256": "6cabbe863daed029f8695abe558a23f7dcc465bcb65c88a41cd131725c952bdd",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1imputation.yaml/predictor_blocks",
+        "verifier": "legacy"
+      },
+      {
+        "consumer": "legacy_adapter.imputation",
+        "generation0_effect": "legacy_behavior",
+        "id": "imputation_models",
+        "legacy_sinks": [
+          "/imputation",
+          "/stacked_authority_receipt",
+          "/stacked_checkpoint_static_components"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 4,
+        "pointer_sha256": "93d4b493904c7318725feb66dc594bba4eef7cdd73fc983397572414d45ce6a8",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1imputation.yaml/models",
+        "verifier": "legacy"
+      },
+      {
+        "consumer": "legacy_adapter.imputation",
+        "generation0_effect": "legacy_behavior",
+        "id": "imputation_transfer_execution",
+        "legacy_sinks": [
+          "/imputation",
+          "/stacked_authority_receipt",
+          "/stacked_checkpoint_static_components"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 79,
+        "pointer_sha256": "1575513251c72be60edc75f378221fa878ea76e009512f1352a111586d0a60f8",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1imputation.yaml/transfer_execution",
+        "verifier": "legacy"
+      },
+      {
+        "consumer": "legacy_adapter.imputation",
+        "generation0_effect": "legacy_behavior",
+        "id": "imputation_gap_fill_schedule",
+        "legacy_sinks": [
+          "/imputation",
+          "/stacked_authority_receipt",
+          "/stacked_checkpoint_static_components"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 5,
+        "pointer_sha256": "deb4acc6f962df9eb458e4206e1a75a3fe596a9a9cdb9c9163e75fd8d4f7b77a",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1imputation.yaml/gap_fill_schedule",
+        "verifier": "legacy"
+      },
+      {
+        "consumer": "legacy_adapter.imputation",
+        "generation0_effect": "legacy_behavior",
+        "id": "imputation_primary_checkpoint",
+        "legacy_sinks": [
+          "/imputation",
+          "/stacked_authority_receipt",
+          "/stacked_checkpoint_static_components"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 2,
+        "pointer_sha256": "e1dd7dc5123ab0f39d08ea4939d98dd09a6fdb8e7449a7ca3125fb1ddbd5b4e9",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1imputation.yaml/primary_checkpoint",
+        "verifier": "legacy"
+      },
+      {
+        "consumer": "compiler_ir.producer_graph_and_node_slices",
+        "generation0_effect": "legacy_behavior",
+        "id": "imputation_producer_graph",
+        "legacy_sinks": [
+          "/imputation",
+          "/stacked_authority_receipt",
+          "/stacked_checkpoint_static_components"
+        ],
+        "mode": "compiler_semantic",
+        "pointer_class": "all",
+        "pointer_count": 24473,
+        "pointer_sha256": "1b9f7ffb88d31d2bd365c092d04a96038b2d5a2b03f4f2a79f42e95472b213d6",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1imputation.yaml/producer_graph",
+        "verifier": "imputation_graph"
+      },
+      {
+        "consumer": "resolver.imputation_structure_and_concept_closure",
+        "generation0_effect": "no_generation0_effect",
+        "id": "imputation_chaining",
+        "legacy_sinks": [],
+        "mode": "front_end_validation",
+        "pointer_class": "all",
+        "pointer_count": 20,
+        "pointer_sha256": "e910767eb8a7df05d22ec1a901a00580a3cd5aa26b66bf881b3297e47cca66b8",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1imputation.yaml/chaining",
+        "verifier": "imputation_validation"
+      },
+      {
+        "consumer": "resolver.imputation_structure_and_concept_closure",
+        "generation0_effect": "no_generation0_effect",
+        "id": "imputation_concepts",
+        "legacy_sinks": [],
+        "mode": "front_end_validation",
+        "pointer_class": "all",
+        "pointer_count": 20,
+        "pointer_sha256": "18a2b6f4cd5c6296092e606243d7b7fb2f00fa513dfd7936aafdbb202407b43d",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1imputation.yaml/concepts",
+        "verifier": "imputation_validation"
+      },
+      {
+        "consumer": "resolver.imputation_structure_and_concept_closure",
+        "generation0_effect": "no_generation0_effect",
+        "id": "imputation_waiver_records",
+        "legacy_sinks": [],
+        "mode": "front_end_validation",
+        "pointer_class": "all",
+        "pointer_count": 70,
+        "pointer_sha256": "a8877f222a6685f29f88d3bcb1e416ab42f4abc64e9dc0dc91aab88cd5094704",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1imputation.yaml/waiver_records",
+        "verifier": "imputation_validation"
+      },
+      {
+        "consumer": "legacy_adapter.imputation",
+        "generation0_effect": "legacy_behavior",
+        "id": "imputation_family_execution",
+        "legacy_sinks": [
+          "/imputation",
+          "/stacked_authority_receipt",
+          "/stacked_checkpoint_static_components"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "family_execution",
+        "pointer_count": 1769,
+        "pointer_sha256": "cd395f41c1cc425c734dc344607de043f3506b4ec2e727a29130fc4304f351e3",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1imputation.yaml/families",
+        "verifier": "legacy"
+      },
+      {
+        "consumer": "resolver.imputation_concept_closure",
+        "generation0_effect": "no_generation0_effect",
+        "id": "imputation_family_concept_validation",
+        "legacy_sinks": [],
+        "mode": "front_end_validation",
+        "pointer_class": "family_concept_validation",
+        "pointer_count": 52,
+        "pointer_sha256": "cbdec1074f0b38d4a57d46be9b6243d0d6c04db18958b6d044d98028d4781c26",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1imputation.yaml/families",
+        "verifier": "imputation_validation"
+      },
+      {
+        "consumer": "spec_binding.publication_attempts",
+        "generation0_effect": "no_generation0_effect",
+        "id": "publication_attempts",
+        "legacy_sinks": [],
+        "mode": "identity_only",
+        "pointer_class": "all",
+        "pointer_count": 4,
+        "pointer_sha256": "44ce6aff602656a91fce128c7f81e14b80923b78e8ab9736d806c450a95285d6",
+        "rationale": "publication attempts is compiled and identity-attested in F0; the generation-0 tool has no corresponding constants payload",
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1publication.yaml/attempts",
+        "verifier": "identity"
+      },
+      {
+        "consumer": "spec_binding.publication_promotion",
+        "generation0_effect": "no_generation0_effect",
+        "id": "publication_promotion",
+        "legacy_sinks": [],
+        "mode": "identity_only",
+        "pointer_class": "all",
+        "pointer_count": 6,
+        "pointer_sha256": "4720ab158b1c4ca52dc3276035a819abb7a3b44b6e1216807efc480b9627b6be",
+        "rationale": "publication promotion is compiled and identity-attested in F0; the generation-0 tool has no corresponding constants payload",
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1publication.yaml/promotion",
+        "verifier": "identity"
+      },
+      {
+        "consumer": "spec_binding.publication_audit_chain",
+        "generation0_effect": "no_generation0_effect",
+        "id": "publication_audit_chain",
+        "legacy_sinks": [],
+        "mode": "identity_only",
+        "pointer_class": "all",
+        "pointer_count": 1,
+        "pointer_sha256": "e7c1984b50696829b96f48cf902b7397931d0444b50deb8ace644b50a07945ac",
+        "rationale": "publication audit_chain is compiled and identity-attested in F0; the generation-0 tool has no corresponding constants payload",
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1publication.yaml/audit_chain",
+        "verifier": "identity"
+      },
+      {
+        "consumer": "spec_binding.publication_release_graph",
+        "generation0_effect": "no_generation0_effect",
+        "id": "publication_release_graph",
+        "legacy_sinks": [],
+        "mode": "identity_only",
+        "pointer_class": "all",
+        "pointer_count": 3,
+        "pointer_sha256": "6a781915fd491d2c4b16d2b7d482f69cf362c904130093c59f9629f7a319269b",
+        "rationale": "publication release_graph is compiled and identity-attested in F0; the generation-0 tool has no corresponding constants payload",
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1publication.yaml/release_graph",
+        "verifier": "identity"
+      },
+      {
+        "consumer": "legacy_adapter.publication_release",
+        "generation0_effect": "legacy_behavior",
+        "id": "publication_release",
+        "legacy_sinks": [
+          "/publication_release",
+          "/spine_sampling"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 19,
+        "pointer_sha256": "7e40695a85d765e4ba213cbb640f85a5ce1e53f3db06e298dab80b0299293984",
+        "rationale": null,
+        "relative_sink_prefix": "/publication_release",
+        "source_prefix": "/authored/spec~1publication.yaml/release",
+        "verifier": "legacy"
+      },
+      {
+        "consumer": "spec_binding.selection_contract",
+        "generation0_effect": "no_generation0_effect",
+        "id": "selection",
+        "legacy_sinks": [],
+        "mode": "identity_only",
+        "pointer_class": "all",
+        "pointer_count": 87,
+        "pointer_sha256": "a1e8d271197566eb3cf23b309156c2efb563ae10fe21968a3cfe9b9d827da2db",
+        "rationale": "selection is a compiled F1 contract; constants_adapter must not change generation-0 selection behavior in F0",
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1selection.yaml",
+        "verifier": "identity"
+      },
+      {
+        "consumer": "loader.sources_schema_and_resolver.source_registry",
+        "generation0_effect": "no_generation0_effect",
+        "id": "source_pins",
+        "legacy_sinks": [],
+        "mode": "front_end_validation",
+        "pointer_class": "all",
+        "pointer_count": 72,
+        "pointer_sha256": "6daa8c007103e65f4485b5ab22c5579876e09da9ba9d182fbf1bbd854f29240e",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1sources.yaml/sources",
+        "verifier": "source_pins"
+      },
+      {
+        "consumer": "legacy_adapter.imputation.resource_semantics",
+        "generation0_effect": "legacy_behavior",
+        "id": "source_stage_asset",
+        "legacy_sinks": [
+          "/imputation"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 2,
+        "pointer_sha256": "06bdd99bdd2837c0ca71b096f10f956141b592aff6496cd632cfadec5dfe66d3",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1sources.yaml/stage_asset",
+        "verifier": "legacy"
+      },
+      {
+        "consumer": "legacy_adapter.source_manifest",
+        "generation0_effect": "legacy_behavior",
+        "id": "source_stage_manifest",
+        "legacy_sinks": [
+          "/source_manifest"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 2,
+        "pointer_sha256": "d6782c5de5bbed1bdc6bf653c4a6d4aadcad4ccc72d35e1092e130fcb04680a3",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1sources.yaml/stage_manifest",
+        "verifier": "legacy"
+      },
+      {
+        "consumer": "legacy_adapter.source_manifest",
+        "generation0_effect": "legacy_behavior",
+        "id": "source_stages",
+        "legacy_sinks": [
+          "/source_manifest",
+          "/imputation"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 1702,
+        "pointer_sha256": "be3e24b53955b9dabccfc7e779212b1e97daf0c0992be3c183e391bf695ed4ee",
+        "rationale": null,
+        "relative_sink_prefix": "/source_manifest/stages",
+        "source_prefix": "/authored/spec~1sources.yaml/stages",
+        "verifier": "legacy"
+      },
+      {
+        "consumer": "legacy_adapter.stacked_checkpoint_static_components",
+        "generation0_effect": "legacy_behavior",
+        "id": "spine_pipeline_contract",
+        "legacy_sinks": [
+          "/stacked_checkpoint_static_components"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 88,
+        "pointer_sha256": "c6e63034c73b2b3ad06df26d03fbf7d63d52aec3a7c3a176b228bacf08d18975",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1spine.yaml/pipeline_contract",
+        "verifier": "legacy"
+      },
+      {
+        "consumer": "compiler_ir.seed_stream_map.owners",
+        "generation0_effect": "no_generation0_effect",
+        "id": "spine_seed_site_bindings",
+        "legacy_sinks": [],
+        "mode": "compiler_semantic",
+        "pointer_class": "all",
+        "pointer_count": 277,
+        "pointer_sha256": "dfa7ae701f62f7b1f06954798d29cfba3fc53a0be21e1751646d1f5bafd6071f",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1spine.yaml/seed_site_bindings",
+        "verifier": "seed_bindings"
+      },
+      {
+        "consumer": "loader.spine_schema_and_resolver.channel_source_closure",
+        "generation0_effect": "no_generation0_effect",
+        "id": "spine_channels",
+        "legacy_sinks": [],
+        "mode": "front_end_validation",
+        "pointer_class": "all",
+        "pointer_count": 7,
+        "pointer_sha256": "cf0000464013118955571dac2691d4cc1b900c97c6570349b489678cdf937649",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1spine.yaml/channels",
+        "verifier": "spine_channels"
+      },
+      {
+        "consumer": "legacy_adapter.spine_sampling",
+        "generation0_effect": "legacy_behavior",
+        "id": "spine_sampling",
+        "legacy_sinks": [
+          "/spine_sampling",
+          "/stacked_checkpoint_static_components"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 17,
+        "pointer_sha256": "29c6c1b3243e178783e7ab139993ba3a9b42d62edd4e9e4e1f3b28688daf2c6d",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1spine.yaml/sampling",
+        "verifier": "legacy"
+      },
+      {
+        "consumer": "legacy_adapter.tail_and_imputation_contracts",
+        "generation0_effect": "legacy_behavior",
+        "id": "spine_support_roles",
+        "legacy_sinks": [
+          "/imputation",
+          "/calibration_tail_contracts",
+          "/stacked_authority_receipt",
+          "/stacked_checkpoint_static_components"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 29,
+        "pointer_sha256": "287f107f82a17a06c57cf50fbd81532ab616f7a1f8c0fdd2038a35065291addf",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1spine.yaml/support_roles",
+        "verifier": "legacy"
+      },
+      {
+        "consumer": "legacy_adapter.support_spine",
+        "generation0_effect": "legacy_behavior",
+        "id": "spine_support_source_pool_metadata",
+        "legacy_sinks": [
+          "/support_spine"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 2,
+        "pointer_sha256": "d0de9c71fb388104cbd2fad9889b1eb18dd0b844c7344fd8a75ffda9d3cb9814",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1spine.yaml/support_source_pool_metadata",
+        "verifier": "legacy"
+      },
+      {
+        "consumer": "legacy_adapter.support_spine",
+        "generation0_effect": "legacy_behavior",
+        "id": "spine_support_source_pool",
+        "legacy_sinks": [
+          "/support_spine"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 13,
+        "pointer_sha256": "6a33aa6dd4c2d446e5fa5fc13a8a79b6d94183f9d343de11e3a3de5e469c19da",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1spine.yaml/support_source_pool",
+        "verifier": "legacy"
+      },
+      {
+        "consumer": "legacy_adapter.spine_assembly_and_imputation",
+        "generation0_effect": "legacy_behavior",
+        "id": "spine_assembly_mass_anchor_channel",
+        "legacy_sinks": [
+          "/spine_assembly/mass_anchor_channel",
+          "/imputation"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 1,
+        "pointer_sha256": "8e7beb4622b10dfd98e93c44d5bde1054e9ffc6f5b7d6875abb1d599531dd890",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1spine.yaml/assembly/mass_anchor_channel",
+        "verifier": "spine_assembly_legacy"
+      },
+      {
+        "consumer": "legacy_adapter.spine_assembly.household_mass_shares",
+        "generation0_effect": "legacy_behavior",
+        "id": "spine_assembly_household_mass_shares",
+        "legacy_sinks": [
+          "/spine_assembly/household_mass_shares"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 2,
+        "pointer_sha256": "2ef5d8ca4955d8fa99c723192e4cd948adfc5cb6d05b0c1edef1e28d110cdb2f",
+        "rationale": null,
+        "relative_sink_prefix": "/spine_assembly/household_mass_shares",
+        "source_prefix": "/authored/spec~1spine.yaml/assembly/household_mass_shares",
+        "verifier": "spine_assembly_legacy"
+      },
+      {
+        "consumer": "loader.spine_schema.shared_dtype_policy_const",
+        "generation0_effect": "no_generation0_effect",
+        "id": "spine_assembly_shared_dtype_policy",
+        "legacy_sinks": [],
+        "mode": "front_end_validation",
+        "pointer_class": "all",
+        "pointer_count": 1,
+        "pointer_sha256": "f90636dc22d47983ffa458ec37acb9f18ac27e5da3e7788bfe5f47ac6e81b53f",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1spine.yaml/assembly/shared_dtype_policy",
+        "verifier": "spine_assembly_validation"
+      },
+      {
+        "consumer": "legacy_adapter.take_up_contract",
+        "generation0_effect": "legacy_behavior",
+        "id": "take_up",
+        "legacy_sinks": [
+          "/take_up_contract",
+          "/take_up_contract_identity",
+          "/stacked_checkpoint_static_components"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 291,
+        "pointer_sha256": "54e2e4db55209f24d85aee057221882965f180191568521017e4e7f6ac6db3bb",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1take_up.yaml",
+        "verifier": "legacy"
+      },
+      {
+        "consumer": "resolver.vintage_authorities",
+        "generation0_effect": "no_generation0_effect",
+        "id": "vintage_records",
+        "legacy_sinks": [],
+        "mode": "compiler_semantic",
+        "pointer_class": "all",
+        "pointer_count": 105,
+        "pointer_sha256": "6c3b9c137149c764eae5ca925e3b789ba3f6f589cd25fbc1da58d21a081c7b5e",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/authored/spec~1vintages.yaml",
+        "verifier": "vintages"
+      },
+      {
+        "consumer": "legacy_adapter.engine_abi_and_remaining_input_manifest",
+        "generation0_effect": "legacy_behavior",
+        "id": "generated_authorities",
+        "legacy_sinks": [
+          "/take_up_contract",
+          "/stacked_checkpoint_static_components"
+        ],
+        "mode": "legacy_behavior",
+        "pointer_class": "all",
+        "pointer_count": 8060,
+        "pointer_sha256": "eaa9eb5f5d4d4e4e4da624f50aeafe2a085a60dcaac0673d4b1946760f0fde35",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/resolved/generated_authorities",
+        "verifier": "authorities"
+      },
+      {
+        "consumer": "compiler_ir.seed_stream_map",
+        "generation0_effect": "no_generation0_effect",
+        "id": "resolved_seed_protocol",
+        "legacy_sinks": [],
+        "mode": "compiler_semantic",
+        "pointer_class": "all",
+        "pointer_count": 823,
+        "pointer_sha256": "c05ebb88538195798e9365f325381c14d92b74007f846f1fef50a08268e6d27d",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/resolved/seed_protocol",
+        "verifier": "seed_protocol"
+      },
+      {
+        "consumer": "compiler_ir.seed_stream_map.owners",
+        "generation0_effect": "no_generation0_effect",
+        "id": "resolved_seed_site_bindings",
+        "legacy_sinks": [],
+        "mode": "compiler_semantic",
+        "pointer_class": "all",
+        "pointer_count": 277,
+        "pointer_sha256": "368fc19a8f07c4abf38ebcf2fbc4414d33c403c0f1f9881c2d2e3f5d6160feb6",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/resolved/seed_site_bindings",
+        "verifier": "seed_bindings"
+      },
+      {
+        "consumer": "compiler_ir.authorities.vintages",
+        "generation0_effect": "no_generation0_effect",
+        "id": "resolved_vintage_authorities",
+        "legacy_sinks": [],
+        "mode": "compiler_semantic",
+        "pointer_class": "all",
+        "pointer_count": 59,
+        "pointer_sha256": "f9cde9945a03fa6b98685cafbda71efd947dc42f706e047f1d693e0750b85a7a",
+        "rationale": null,
+        "relative_sink_prefix": null,
+        "source_prefix": "/resolved/vintage_authorities",
+        "verifier": "vintages"
+      }
+    ],
+    "configuration_field_count": 41380,
+    "consumed_field_count": 41380,
+    "generation0_effect_counts": {
+      "legacy_behavior": 37718,
+      "no_generation0_effect": 3662
+    },
+    "mode_counts": {
+      "compiler_semantic": 27661,
+      "front_end_validation": 346,
+      "identity_only": 128,
+      "legacy_behavior": 13245
+    },
+    "multiple_primary_use_field_count": 0,
+    "pointer_inventory_sha256": "b63ffc9bf7cb2fb8ac17e314f64c7b661aba14512071c1a697e5f6ff9ebc74c5",
+    "resolved_binding_field_count": 9219,
+    "unused_field_count": 0
+  },
+  "inventory_coverage": {
+    "compiler_ir_abi": {
+      "sha256": "3f6996bc1d4d187d669c55b525ff3910d6f19dc8ccadff464c4561aeca127f27",
+      "version": 1
+    },
+    "country": "us",
+    "counts": {
+      "adapter_surfaces": 13,
+      "authority_components": 8,
+      "early_families": 13,
+      "early_targets": 48,
+      "itemization_batches": 5,
+      "itemization_targets": 37,
+      "late_groups": 19,
+      "late_targets": 70,
+      "ownership_rows": 18,
+      "primary_effective_predictor_tuples": 65,
+      "primary_families": 1,
+      "primary_targets": 65,
+      "producer_authored_outputs": 92,
+      "producer_compiled_outputs": 227,
+      "producer_inputs": 2742,
+      "producer_nodes": 38,
+      "producer_virtual_resources": 75,
+      "release_rungs": 5,
+      "resolved_references": 318,
+      "seed_owner_bindings": 112,
+      "seed_owner_rows": 54,
+      "seed_sites": 53,
+      "seed_streams": 14,
+      "source_operators": 16,
+      "source_stages": 37,
+      "stacked_checkpoint_full_components": 12,
+      "stacked_checkpoint_pool_code_components": 19,
+      "stacked_checkpoint_static_components": 9,
+      "tail_control_fields": 934,
+      "take_up_pipeline_steps": 24,
+      "take_up_programs": 13,
+      "typed_artifacts": 84,
+      "typed_columns": 173,
+      "typed_entities": 8,
+      "typed_scopes": 7
+    },
+    "covered_item_count": 40,
+    "items": {
+      "acs_group_predictors_exact": {
+        "bundle_home_match_counts": {
+          "/imputation/predictor_blocks/acs_group_optional": 1,
+          "/imputation/predictor_blocks/acs_group_required": 1
+        },
+        "bundle_homes": [
+          "/imputation/predictor_blocks/acs_group_required",
+          "/imputation/predictor_blocks/acs_group_optional"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.imputation.transfer_execution_contract_identities"
+        ],
+        "expected": {
+          "block_ids": [
+            "acs_group_required",
+            "acs_group_optional"
+          ],
+          "sha256": "a927bb7ecf3e84f54c93583ab79318654514ac546aefafba67da5285615fbd60"
+        },
+        "failures": [],
+        "observed": {
+          "block_ids": [
+            "acs_group_required",
+            "acs_group_optional"
+          ],
+          "sha256": "a927bb7ecf3e84f54c93583ab79318654514ac546aefafba67da5285615fbd60"
+        },
+        "status": "covered"
+      },
+      "acs_person_predictors_exact": {
+        "bundle_home_match_counts": {
+          "/imputation/predictor_blocks/acs_person_housing_required": 1,
+          "/imputation/predictor_blocks/acs_person_optional_income": 1,
+          "/imputation/predictor_blocks/acs_person_optional_structure": 1,
+          "/imputation/predictor_blocks/acs_person_required": 1
+        },
+        "bundle_homes": [
+          "/imputation/predictor_blocks/acs_person_required",
+          "/imputation/predictor_blocks/acs_person_optional_income",
+          "/imputation/predictor_blocks/acs_person_optional_structure",
+          "/imputation/predictor_blocks/acs_person_housing_required"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.imputation.transfer_execution_contract_identities"
+        ],
+        "expected": {
+          "block_ids": [
+            "acs_person_required",
+            "acs_person_optional_income",
+            "acs_person_optional_structure",
+            "acs_person_housing_required"
+          ],
+          "sha256": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25"
+        },
+        "failures": [],
+        "observed": {
+          "block_ids": [
+            "acs_person_required",
+            "acs_person_optional_income",
+            "acs_person_optional_structure",
+            "acs_person_housing_required"
+          ],
+          "sha256": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25"
+        },
+        "status": "covered"
+      },
+      "capital_gains_tail_contract_exact": {
+        "bundle_home_match_counts": {
+          "/calibration/tail_contracts": 1,
+          "/imputation/producer_graph/nodes": 1,
+          "/spine/support_roles": 1
+        },
+        "bundle_homes": [
+          "/spine/support_roles",
+          "/imputation/producer_graph/nodes",
+          "/calibration/tail_contracts"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.calibration_tail_contracts",
+          "legacy_adapter.stacked_authority_receipt",
+          "legacy_adapter.stacked_checkpoint_static_components"
+        ],
+        "expected": {
+          "sha256": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
+          "terminal_fields": 934
+        },
+        "failures": [],
+        "observed": {
+          "sha256": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
+          "terminal_fields": 934
+        },
+        "status": "covered"
+      },
+      "conditional_ownership_matrix_exact": {
+        "bundle_home_match_counts": {
+          "/imputation/producer_graph/ownership_contract": 1,
+          "/imputation/producer_graph/ownership_matrix": 1
+        },
+        "bundle_homes": [
+          "/imputation/producer_graph/ownership_contract",
+          "/imputation/producer_graph/ownership_matrix"
+        ],
+        "compiler_consumers": [
+          "compiler_ir.producer_graph.ownership_matrix",
+          "legacy_adapter.imputation.overlap_ownership"
+        ],
+        "expected": {
+          "rows": 18,
+          "sha256": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356"
+        },
+        "failures": [],
+        "observed": {
+          "rows": 18,
+          "sha256": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356"
+        },
+        "status": "covered"
+      },
+      "early_gap_fill_plan_exact": {
+        "bundle_home_match_counts": {
+          "/imputation/families": 1,
+          "/imputation/gap_fill_schedule": 1
+        },
+        "bundle_homes": [
+          "/imputation/families",
+          "/imputation/gap_fill_schedule"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.imputation.gap_fill_plan"
+        ],
+        "expected": {
+          "families": 13,
+          "sha256": "e26a90e2b5c16e23e7c17424d1c2e4ab18ed66b1d0e129248e87c0bab9b3fd5d",
+          "targets": 48
+        },
+        "failures": [],
+        "observed": {
+          "families": 13,
+          "families_sha256": "e26a90e2b5c16e23e7c17424d1c2e4ab18ed66b1d0e129248e87c0bab9b3fd5d",
+          "targets": 48
+        },
+        "status": "covered"
+      },
+      "early_transfer_surface_exact": {
+        "bundle_home_match_counts": {
+          "/imputation/families": 1,
+          "/imputation/producer_graph/nodes": 1
+        },
+        "bundle_homes": [
+          "/imputation/families",
+          "/imputation/producer_graph/nodes"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.imputation.gap_fill_producer_schedule_receipt",
+          "legacy_adapter.stacked_authority_receipt.post_puf_transfer_surface"
+        ],
+        "expected": "complete ordered early family and transfer authority projections",
+        "failures": [],
+        "observed": {
+          "families_sha256": "e26a90e2b5c16e23e7c17424d1c2e4ab18ed66b1d0e129248e87c0bab9b3fd5d"
+        },
+        "status": "covered"
+      },
+      "gap_fill_schedule_receipt_exact": {
+        "bundle_home_match_counts": {
+          "/imputation/families": 1,
+          "/imputation/gap_fill_schedule": 1
+        },
+        "bundle_homes": [
+          "/imputation/gap_fill_schedule",
+          "/imputation/families"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.imputation.gap_fill_producer_schedule_receipt",
+          "legacy_adapter.stacked_checkpoint_static_components"
+        ],
+        "expected": {
+          "sha256": "96aefe2853de91ae95f50bc2ccc2c1dd94802c27f21c643981152bbcb13c4e10"
+        },
+        "failures": [],
+        "observed": {
+          "sha256": "96aefe2853de91ae95f50bc2ccc2c1dd94802c27f21c643981152bbcb13c4e10"
+        },
+        "status": "covered"
+      },
+      "itemization_declared_splits_exact": {
+        "bundle_home_match_counts": {
+          "/imputation/chaining/split_after": 1,
+          "/imputation/families": 1
+        },
+        "bundle_homes": [
+          "/imputation/families",
+          "/imputation/chaining/split_after"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.imputation.late_producer_schedule_receipt"
+        ],
+        "expected": {
+          "batch_sizes": [
+            8,
+            8,
+            8,
+            8,
+            5
+          ],
+          "batches": 5,
+          "targets": 37
+        },
+        "failures": [],
+        "observed": {
+          "batch_sizes": [
+            8,
+            8,
+            8,
+            8,
+            5
+          ],
+          "ids": [
+            "late/person/puf_tax_itemization__batch_1",
+            "late/person/puf_tax_itemization__batch_2",
+            "late/person/puf_tax_itemization__batch_3",
+            "late/person/puf_tax_itemization__batch_4",
+            "late/person/puf_tax_itemization__batch_5"
+          ]
+        },
+        "status": "covered"
+      },
+      "late_schedule_receipt_exact": {
+        "bundle_home_match_counts": {
+          "/imputation/families": 1,
+          "/imputation/producer_graph": 1
+        },
+        "bundle_homes": [
+          "/imputation/producer_graph",
+          "/imputation/families"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.imputation.late_producer_schedule_receipt",
+          "legacy_adapter.stacked_checkpoint_static_components"
+        ],
+        "expected": {
+          "schedule_sha256": "b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5"
+        },
+        "failures": [],
+        "observed": {
+          "schedule_sha256": "b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5"
+        },
+        "status": "covered"
+      },
+      "late_split_ledger_exact": {
+        "bundle_home_match_counts": {
+          "/imputation/chaining/split_after": 1,
+          "/imputation/families": 1
+        },
+        "bundle_homes": [
+          "/imputation/families",
+          "/imputation/chaining/split_after"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.imputation.late_producer_schedule_receipt"
+        ],
+        "expected": {
+          "groups": 19,
+          "sha256": "a160432fc12a85df20ba7fd6687673b3c31786df7a983e2477604ab923b26d18",
+          "targets": 70
+        },
+        "failures": [],
+        "observed": {
+          "groups": 19,
+          "sha256": "a160432fc12a85df20ba7fd6687673b3c31786df7a983e2477604ab923b26d18",
+          "targets": 70
+        },
+        "status": "covered"
+      },
+      "legacy_adapter_surfaces_exact": {
+        "bundle_home_match_counts": {
+          "/bundle": 1
+        },
+        "bundle_homes": [
+          "/bundle"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.compile_to_legacy_payload"
+        ],
+        "expected": {
+          "names": [
+            "battery_contract",
+            "calibration_contract",
+            "calibration_tail_contracts",
+            "imputation",
+            "publication_release",
+            "source_manifest",
+            "spine_assembly",
+            "spine_sampling",
+            "stacked_authority_receipt",
+            "stacked_checkpoint_static_components",
+            "support_spine",
+            "take_up_contract",
+            "take_up_contract_identity"
+          ]
+        },
+        "failures": [],
+        "observed": {
+          "names": [
+            "battery_contract",
+            "calibration_contract",
+            "calibration_tail_contracts",
+            "imputation",
+            "publication_release",
+            "source_manifest",
+            "spine_assembly",
+            "spine_sampling",
+            "stacked_authority_receipt",
+            "stacked_checkpoint_static_components",
+            "support_spine",
+            "take_up_contract",
+            "take_up_contract_identity"
+          ]
+        },
+        "status": "covered"
+      },
+      "post_clone_operator_order_exact": {
+        "bundle_home_match_counts": {
+          "/imputation/producer_graph/nodes": 1,
+          "/spine/pipeline_contract/post_clone_source_operator_order": 1
+        },
+        "bundle_homes": [
+          "/spine/pipeline_contract/post_clone_source_operator_order",
+          "/imputation/producer_graph/nodes"
+        ],
+        "compiler_consumers": [
+          "compiler_ir.producer_graph",
+          "legacy_adapter.stacked_checkpoint_static_components"
+        ],
+        "expected": {
+          "operators": [
+            "with_us_prior_year_income_inputs",
+            "with_us_medicare_take_up_input",
+            "with_us_pregnancy_inputs",
+            "with_us_wic_claim_input",
+            "impute_us_housing_assistance_to_puf_support",
+            "with_us_child_support_inputs",
+            "with_us_disability_benefits",
+            "with_us_workers_compensation",
+            "with_us_weeks_unemployed",
+            "with_us_childcare_inputs",
+            "with_us_adult_care_inputs",
+            "with_us_energy_subsidy_input",
+            "with_us_retirement_contribution_inputs",
+            "with_us_retirement_distribution_inputs",
+            "with_us_immigration_inputs",
+            "with_us_education_inputs"
+          ]
+        },
+        "failures": [],
+        "observed": {
+          "operators": [
+            "with_us_prior_year_income_inputs",
+            "with_us_medicare_take_up_input",
+            "with_us_pregnancy_inputs",
+            "with_us_wic_claim_input",
+            "impute_us_housing_assistance_to_puf_support",
+            "with_us_child_support_inputs",
+            "with_us_disability_benefits",
+            "with_us_workers_compensation",
+            "with_us_weeks_unemployed",
+            "with_us_childcare_inputs",
+            "with_us_adult_care_inputs",
+            "with_us_energy_subsidy_input",
+            "with_us_retirement_contribution_inputs",
+            "with_us_retirement_distribution_inputs",
+            "with_us_immigration_inputs",
+            "with_us_education_inputs"
+          ]
+        },
+        "status": "covered"
+      },
+      "primary_predictor_tuples_exact": {
+        "bundle_home_match_counts": {
+          "/imputation/families": 1,
+          "/imputation/predictor_blocks/puf_tax_detail": 1
+        },
+        "bundle_homes": [
+          "/imputation/families",
+          "/imputation/predictor_blocks/puf_tax_detail"
+        ],
+        "compiler_consumers": [
+          "compiler_ir.node_slices",
+          "legacy_adapter.imputation.primary_qrf"
+        ],
+        "expected": {
+          "sha256": "987b501c695e31f45521c4a178528f75ab3df22c09bc407b182213b2de99ee57",
+          "tuples": 65
+        },
+        "failures": [],
+        "observed": {
+          "sha256": "987b501c695e31f45521c4a178528f75ab3df22c09bc407b182213b2de99ee57",
+          "tuples": 65
+        },
+        "status": "covered"
+      },
+      "producer_dag_order_edges_waves_exact": {
+        "bundle_home_match_counts": {
+          "/imputation/producer_graph/external_stages": 1,
+          "/imputation/producer_graph/nodes": 1
+        },
+        "bundle_homes": [
+          "/imputation/producer_graph/nodes",
+          "/imputation/producer_graph/external_stages"
+        ],
+        "compiler_consumers": [
+          "compiler_ir.stage_dag",
+          "legacy_adapter.imputation.late_producer_schedule_receipt"
+        ],
+        "expected": {
+          "edges": 71,
+          "nodes": 38,
+          "schedule_sha256": "b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5",
+          "waves": 6
+        },
+        "failures": [],
+        "observed": {
+          "edges": 71,
+          "nodes": 38,
+          "schedule_sha256": "b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5",
+          "waves": 6
+        },
+        "status": "covered"
+      },
+      "producer_inputs_exact": {
+        "bundle_home_match_counts": {
+          "/imputation/producer_graph/nodes/*/inputs": 38
+        },
+        "bundle_homes": [
+          "/imputation/producer_graph/nodes/*/inputs"
+        ],
+        "compiler_consumers": [
+          "compiler_ir.producer_graph.nodes.inputs",
+          "compiler_ir.node_slices"
+        ],
+        "expected": {
+          "relation": "source rows preserved exactly",
+          "rows": 2742
+        },
+        "failures": [],
+        "observed": {
+          "rows": 2742
+        },
+        "status": "covered"
+      },
+      "producer_outputs_exact": {
+        "bundle_home_match_counts": {
+          "/imputation/families/*/targets": 33,
+          "/imputation/producer_graph/nodes/*/outputs": 38
+        },
+        "bundle_homes": [
+          "/imputation/producer_graph/nodes/*/outputs",
+          "/imputation/families/*/targets"
+        ],
+        "compiler_consumers": [
+          "typed_closure.compile_producer_outputs",
+          "compiler_ir.producer_graph.nodes.outputs"
+        ],
+        "expected": {
+          "authored_rows": 92,
+          "compiled_rows": 227,
+          "relation": "typed closure exact"
+        },
+        "failures": [],
+        "observed": {
+          "authored_rows": 92,
+          "compiled_rows": 227
+        },
+        "status": "covered"
+      },
+      "producer_receipt_transition_contract_exact": {
+        "bundle_home_match_counts": {
+          "/imputation/producer_graph/execution_receipt_contract": 1
+        },
+        "bundle_homes": [
+          "/imputation/producer_graph/execution_receipt_contract"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.imputation.late_producer_schedule_receipt"
+        ],
+        "expected": "complete execution-row and transition-authority object",
+        "failures": [],
+        "observed": {
+          "sha256": "503428f6e9d98f19ed3a6ada5bc9883ae44c1b5dc27f09e60b7ac98895a99bc0"
+        },
+        "status": "covered"
+      },
+      "producer_registry_exact": {
+        "bundle_home_match_counts": {
+          "/imputation/producer_graph/nodes": 1
+        },
+        "bundle_homes": [
+          "/imputation/producer_graph/nodes"
+        ],
+        "compiler_consumers": [
+          "compiler_ir.producer_graph.nodes",
+          "compiler_ir.node_slices"
+        ],
+        "expected": {
+          "nodes": 38,
+          "sha256": "a83363de26cad0144b5a98b36b4bca49542e37a7b9fee3d7e541f692deeff864"
+        },
+        "failures": [],
+        "observed": {
+          "nodes": 38,
+          "sha256": "a83363de26cad0144b5a98b36b4bca49542e37a7b9fee3d7e541f692deeff864"
+        },
+        "status": "covered"
+      },
+      "producer_resource_semantics_exact": {
+        "bundle_home_match_counts": {
+          "/imputation/producer_graph/nodes/*/virtual_resources": 38,
+          "/imputation/producer_graph/resource_semantics": 1
+        },
+        "bundle_homes": [
+          "/imputation/producer_graph/resource_semantics",
+          "/imputation/producer_graph/nodes/*/virtual_resources"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.imputation.late_producer_resource_semantics"
+        ],
+        "expected": {
+          "producer_count": 38,
+          "sha256": "9206aa072ce360ef87dc7d832351fcae2e0d1da71abcacc5af0d43ef88582dee"
+        },
+        "failures": [],
+        "observed": {
+          "producer_count": 38,
+          "sha256": "9206aa072ce360ef87dc7d832351fcae2e0d1da71abcacc5af0d43ef88582dee"
+        },
+        "status": "covered"
+      },
+      "producer_virtual_resources_exact": {
+        "bundle_home_match_counts": {
+          "/imputation/producer_graph/nodes/*/virtual_resources": 38
+        },
+        "bundle_homes": [
+          "/imputation/producer_graph/nodes/*/virtual_resources"
+        ],
+        "compiler_consumers": [
+          "compiler_ir.node_slices",
+          "legacy_adapter.imputation.late_producer_resource_semantics"
+        ],
+        "expected": {
+          "relation": "source node slices preserve full bindings",
+          "rows": 75
+        },
+        "failures": [],
+        "observed": {
+          "rows": 75
+        },
+        "status": "covered"
+      },
+      "qrf_model_parameters_explicit": {
+        "bundle_home_match_counts": {
+          "/imputation/models/regime_gated_qrf/params": 1
+        },
+        "bundle_homes": [
+          "/imputation/models/regime_gated_qrf/params"
+        ],
+        "compiler_consumers": [
+          "compiler_ir.node_slices",
+          "legacy_adapter.stacked_checkpoint_static_components"
+        ],
+        "expected": {
+          "max_samples_leaf": null,
+          "n_estimators": 100,
+          "zero_atol": 1e-06
+        },
+        "failures": [],
+        "observed": {
+          "params": {
+            "max_samples_leaf": null,
+            "n_estimators": 100,
+            "zero_atol": 1e-06
+          }
+        },
+        "status": "covered"
+      },
+      "release_line_and_regex_exact": {
+        "bundle_home_match_counts": {
+          "/publication/release": 1
+        },
+        "bundle_homes": [
+          "/publication/release"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.publication_release"
+        ],
+        "expected": {
+          "compiled_regex": "^microcosm-us-2024-stacked-f(?:001|004|010|025|100)-s[0-9]+-asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$",
+          "legacy_prefix": "populace-us-2024",
+          "legacy_regex": "^populace-us-2024-stacked-f(?:001|004|010|025|100)-s[0-9]+-asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$",
+          "line": "microcosm-us-2024"
+        },
+        "failures": [],
+        "observed": {
+          "compiled_regex": "^microcosm-us-2024-stacked-f(?:001|004|010|025|100)-s[0-9]+-asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$",
+          "legacy_prefixes": [
+            "populace-us-2024"
+          ],
+          "legacy_regexes": [
+            "^populace-us-2024-stacked-f(?:001|004|010|025|100)-s[0-9]+-asec[0-9]+-acs[0-9]+-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$"
+          ],
+          "line": "microcosm-us-2024"
+        },
+        "status": "covered"
+      },
+      "release_rungs_exact": {
+        "bundle_home_match_counts": {
+          "/publication/release/rung_fractions": 1
+        },
+        "bundle_homes": [
+          "/publication/release/rung_fractions"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.publication_release",
+          "legacy_adapter.spine_sampling"
+        ],
+        "expected": {
+          "rungs": [
+            [
+              0.01,
+              100,
+              "f001"
+            ],
+            [
+              0.04,
+              400,
+              "f004"
+            ],
+            [
+              0.1,
+              1000,
+              "f010"
+            ],
+            [
+              0.25,
+              2500,
+              "f025"
+            ],
+            [
+              1.0,
+              10000,
+              "f100"
+            ]
+          ]
+        },
+        "failures": [],
+        "observed": {
+          "rungs": [
+            [
+              0.01,
+              100,
+              "f001"
+            ],
+            [
+              0.04,
+              400,
+              "f004"
+            ],
+            [
+              0.1,
+              1000,
+              "f010"
+            ],
+            [
+              0.25,
+              2500,
+              "f025"
+            ],
+            [
+              1.0,
+              10000,
+              "f100"
+            ]
+          ]
+        },
+        "status": "covered"
+      },
+      "seed_inventory_groups_exhaustive": {
+        "bundle_home_match_counts": {
+          "/bundle/seed_protocol": 1,
+          "/spine/seed_site_bindings": 1
+        },
+        "bundle_homes": [
+          "/bundle/seed_protocol",
+          "/spine/seed_site_bindings"
+        ],
+        "compiler_consumers": [
+          "compiler_ir.seed_stream_map"
+        ],
+        "expected": {
+          "groups": 12,
+          "partition": "disjoint and exhaustive",
+          "sites": 53
+        },
+        "failures": [],
+        "observed": {
+          "groups": {
+            "acs_transfer_derivations": [
+              "acs_transfer_family_seed",
+              "acs_transfer_pattern_seed"
+            ],
+            "blake2b_stable_draws": [
+              "source_aca_assignment",
+              "source_count_calibration",
+              "source_joint_count_calibration",
+              "snap_take_up_assignment",
+              "pregnancy_assignment",
+              "wic_claim_assignment",
+              "snap_discretionary_exemption_assignment",
+              "immigration_ead_workers_assignment",
+              "immigration_ead_students_assignment",
+              "ssi_take_up_assignment",
+              "medicaid_take_up_assignment",
+              "snap_state_take_up_assignment",
+              "tanf_take_up_assignment",
+              "eitc_take_up_assignment"
+            ],
+            "build_seeded_5000_caps": [
+              "prior_year_income_training_cap",
+              "childcare_training_cap",
+              "retirement_contributions_training_cap",
+              "disability_benefits_training_cap",
+              "housing_inputs_training_cap",
+              "workers_compensation_training_cap",
+              "retirement_distributions_training_cap",
+              "child_support_training_cap",
+              "energy_subsidy_training_cap",
+              "other_health_insurance_training_cap",
+              "weeks_unemployed_training_cap"
+            ],
+            "legacy_geography_draws": [
+              "legacy_geography_ladder",
+              "legacy_puma_ladder",
+              "legacy_congressional_district_assignment"
+            ],
+            "other_direct_stochastic_sites": [
+              "adult_care_weighted_prefix_assignment",
+              "capital_gains_tail_random_rank",
+              "torch_calibration_reseed",
+              "exact_k_pcg64_selection"
+            ],
+            "puf_archived_42_vs_live_build_seed": [
+              "puf_archived_aggregate_disaggregation",
+              "puf_live_aggregate_disaggregation"
+            ],
+            "qrf_shared_rng_contracts": [
+              "sipp_vehicle_qrf_model",
+              "sipp_financial_asset_qrf_models",
+              "primary_qrf_fit_draw",
+              "acs_qrf_fit_draw"
+            ],
+            "run_request_578": [
+              "survey_sample_asec",
+              "survey_sample_acs",
+              "puf_clone_attachment"
+            ],
+            "scf_composite_and_models": [
+              "scf_household_source_selector",
+              "scf_financial_asset_qrf_model",
+              "scf_net_worth_qrf_model",
+              "scf_auto_loan_qrf_model"
+            ],
+            "ssi_fixed_contracts": [
+              "ssi_weighted_replacement_training",
+              "ssi_archived_qrf_model"
+            ],
+            "stable_x31_training_caps": [
+              "sipp_vehicle_training_cap",
+              "sipp_financial_asset_training_cap",
+              "acs_rent_archived_training_cap"
+            ],
+            "tips_fixed_cap": [
+              "sipp_tip_training_cap"
+            ]
+          },
+          "sites": 53
+        },
+        "status": "covered"
+      },
+      "seed_owner_rows_exact": {
+        "bundle_home_match_counts": {
+          "/bundle/seed_protocol": 1,
+          "/spine/seed_site_bindings": 1
+        },
+        "bundle_homes": [
+          "/spine/seed_site_bindings",
+          "/bundle/seed_protocol"
+        ],
+        "compiler_consumers": [
+          "compiler_ir.seed_stream_map.owners"
+        ],
+        "expected": {
+          "owner_rows": 54,
+          "relation": "site-order-preserving owner aggregation"
+        },
+        "failures": [],
+        "observed": {
+          "owner_rows": 54
+        },
+        "status": "covered"
+      },
+      "seed_protocol_and_owner_map_digests_exact": {
+        "bundle_home_match_counts": {
+          "/bundle/seed_protocol": 1,
+          "/spine/seed_site_bindings": 1
+        },
+        "bundle_homes": [
+          "/bundle/seed_protocol",
+          "/spine/seed_site_bindings"
+        ],
+        "compiler_consumers": [
+          "compiler_ir.seed_stream_map",
+          "compiler_ir.node_slices"
+        ],
+        "expected": {
+          "map_sha256": "96140220b6b248c1b3a3567dc0c97df6c08176e6745d8dd55786053f26c43a32",
+          "protocol_sha256": "6dade07562ec29c56d96ab8e299a4416c679f1c44b18b228e0ef10f21bd6f6ec"
+        },
+        "failures": [],
+        "observed": {
+          "map_sha256": "96140220b6b248c1b3a3567dc0c97df6c08176e6745d8dd55786053f26c43a32",
+          "protocol_sha256": "6dade07562ec29c56d96ab8e299a4416c679f1c44b18b228e0ef10f21bd6f6ec"
+        },
+        "status": "covered"
+      },
+      "seed_protocol_header_streams_exact": {
+        "bundle_home_match_counts": {
+          "/bundle/seed_protocol": 1
+        },
+        "bundle_homes": [
+          "/bundle/seed_protocol"
+        ],
+        "compiler_consumers": [
+          "compiler_ir.seed_stream_map"
+        ],
+        "expected": {
+          "implementation_sha256": "6dade07562ec29c56d96ab8e299a4416c679f1c44b18b228e0ef10f21bd6f6ec",
+          "protocol": "legacy-v1",
+          "streams": [
+            "build_model",
+            "calibration",
+            "exact_k_selection",
+            "geography_legacy",
+            "puf_archived_disaggregation",
+            "puf_clone_attachment",
+            "puf_live_disaggregation",
+            "qrf_fit_draw",
+            "sampling_acs",
+            "sampling_asec",
+            "sipp_training_cap",
+            "ssi_model",
+            "ssi_weighted_replacement",
+            "stable_entity_draw"
+          ]
+        },
+        "failures": [],
+        "observed": {
+          "implementation_sha256": "6dade07562ec29c56d96ab8e299a4416c679f1c44b18b228e0ef10f21bd6f6ec",
+          "protocol": "legacy-v1",
+          "streams": [
+            "build_model",
+            "calibration",
+            "exact_k_selection",
+            "geography_legacy",
+            "puf_archived_disaggregation",
+            "puf_clone_attachment",
+            "puf_live_disaggregation",
+            "qrf_fit_draw",
+            "sampling_acs",
+            "sampling_asec",
+            "sipp_training_cap",
+            "ssi_model",
+            "ssi_weighted_replacement",
+            "stable_entity_draw"
+          ]
+        },
+        "status": "covered"
+      },
+      "seed_site_definitions_exact": {
+        "bundle_home_match_counts": {
+          "/bundle/seed_protocol": 1
+        },
+        "bundle_homes": [
+          "/bundle/seed_protocol"
+        ],
+        "compiler_consumers": [
+          "compiler_ir.seed_stream_map.sites",
+          "compiler_ir.node_slices"
+        ],
+        "expected": {
+          "relation": "all site fields preserved exactly",
+          "sites": 53
+        },
+        "failures": [],
+        "observed": {
+          "sha256": "99710bf212c3801cfd0434d56d2d1d2e4902a2a958978cdbd91cd9acce81d2fb",
+          "sites": 53
+        },
+        "status": "covered"
+      },
+      "seed_site_owner_bindings_exact": {
+        "bundle_home_match_counts": {
+          "/spine/seed_site_bindings": 1
+        },
+        "bundle_homes": [
+          "/spine/seed_site_bindings"
+        ],
+        "compiler_consumers": [
+          "compiler_ir.seed_stream_map.sites.owners"
+        ],
+        "expected": {
+          "bindings": 112,
+          "coverage": "all 53 sites"
+        },
+        "failures": [],
+        "observed": {
+          "bindings": 112
+        },
+        "status": "covered"
+      },
+      "source_stage_manifest_exact": {
+        "bundle_home_match_counts": {
+          "/sources/stage_manifest": 1,
+          "/sources/stages": 1
+        },
+        "bundle_homes": [
+          "/sources/stage_manifest",
+          "/sources/stages"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.source_manifest",
+          "legacy_adapter.imputation.late_producer_resource_semantics"
+        ],
+        "expected": {
+          "sha256": "16f64b9cf3aea326737accca64c742a1edaa30a3a499432efd7567942f38a6c7",
+          "stages": 37
+        },
+        "failures": [],
+        "observed": {
+          "sha256": "16f64b9cf3aea326737accca64c742a1edaa30a3a499432efd7567942f38a6c7",
+          "stages": 37
+        },
+        "status": "covered"
+      },
+      "stacked_authority_components_exact": {
+        "bundle_home_match_counts": {
+          "/battery": 1,
+          "/imputation": 1,
+          "/spine": 1
+        },
+        "bundle_homes": [
+          "/battery",
+          "/imputation",
+          "/spine"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.stacked_authority_receipt"
+        ],
+        "expected": {
+          "component_names": [
+            "gap_fill_plan",
+            "post_puf_transfer_surface",
+            "declared_surface",
+            "metric_registry",
+            "joint_metric_registry",
+            "support_profile",
+            "puf_capital_gains_tail_support_contract",
+            "late_producer_schedule"
+          ]
+        },
+        "failures": [],
+        "observed": {
+          "component_names": [
+            "gap_fill_plan",
+            "post_puf_transfer_surface",
+            "declared_surface",
+            "metric_registry",
+            "joint_metric_registry",
+            "support_profile",
+            "puf_capital_gains_tail_support_contract",
+            "late_producer_schedule"
+          ]
+        },
+        "status": "covered"
+      },
+      "stacked_authority_identity_exact": {
+        "bundle_home_match_counts": {
+          "/battery/authority_binding": 1
+        },
+        "bundle_homes": [
+          "/battery/authority_binding"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.stacked_authority_receipt",
+          "legacy_adapter.stacked_checkpoint_static_components"
+        ],
+        "expected": {
+          "sha256": "f0b676f6508dbf6bb2b787c42e6b85331bacc57c6649ac7ad15fdaa5884a1b2d"
+        },
+        "failures": [],
+        "observed": {
+          "sha256": "f0b676f6508dbf6bb2b787c42e6b85331bacc57c6649ac7ad15fdaa5884a1b2d"
+        },
+        "status": "covered"
+      },
+      "stacked_checkpoint_base_identity_exact": {
+        "bundle_home_match_counts": {
+          "/bundle/dataset_run": 1,
+          "/imputation": 1,
+          "/publication/release/rung_fractions": 1,
+          "/spine/pipeline_contract": 1,
+          "/spine/support_roles": 1
+        },
+        "bundle_homes": [
+          "/bundle/dataset_run",
+          "/spine/pipeline_contract",
+          "/spine/support_roles",
+          "/imputation",
+          "/publication/release/rung_fractions"
+        ],
+        "compiler_consumers": [
+          "stacked_authority_semantics.project_stacked_checkpoint_base_identity"
+        ],
+        "expected": {
+          "field_names": [
+            "artifact_kind",
+            "clone_attachment",
+            "inputs",
+            "materializer_version",
+            "model_seed",
+            "period",
+            "pipeline",
+            "policyengine_us_version",
+            "pool_code",
+            "sampling",
+            "schema_version",
+            "stacked_authority"
+          ],
+          "fraction_token": "f025",
+          "input_roles": [
+            "alpha",
+            "zeta"
+          ],
+          "sha256": "2972db18e0f69ac4df4079916355a1bcd9ec5c12f3e19d5650fc47b5a8a0e3e8"
+        },
+        "failures": [],
+        "observed": {
+          "field_names": [
+            "artifact_kind",
+            "clone_attachment",
+            "inputs",
+            "materializer_version",
+            "model_seed",
+            "period",
+            "pipeline",
+            "policyengine_us_version",
+            "pool_code",
+            "sampling",
+            "schema_version",
+            "stacked_authority"
+          ],
+          "fraction_token": "f025",
+          "input_roles": [
+            "alpha",
+            "zeta"
+          ],
+          "sha256": "2972db18e0f69ac4df4079916355a1bcd9ec5c12f3e19d5650fc47b5a8a0e3e8"
+        },
+        "status": "covered"
+      },
+      "stacked_checkpoint_pool_code_exact": {
+        "bundle_home_match_counts": {
+          "/imputation": 1,
+          "/spine/pipeline_contract": 1,
+          "/take_up": 1
+        },
+        "bundle_homes": [
+          "/spine/pipeline_contract",
+          "/imputation",
+          "/take_up"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.stacked_checkpoint_static_components.pool_code"
+        ],
+        "expected": {
+          "field_names": [
+            "acs_pums_earnings_universe_contract",
+            "acs_transfer_max_targets_per_fit",
+            "acs_transfer_n_estimators",
+            "derive_operator_order",
+            "gap_fill_producer_schedule",
+            "late_producer_resource_semantics",
+            "late_producer_schedule",
+            "operator_order",
+            "post_clone_source_operator_order",
+            "pre_clone_source_operator_order",
+            "primary_qrf_checkpoint_schema_version",
+            "primary_qrf_n_estimators",
+            "primary_qrf_target_order",
+            "puf_capital_gains_tail_manifest_schema_version",
+            "puf_capital_gains_tail_support_contract",
+            "remaining_stage_input_manifest",
+            "simulation_household_batch_size",
+            "take_up_contract",
+            "us_qbi_reconciliation_contract"
+          ]
+        },
+        "failures": [],
+        "observed": {
+          "field_names": [
+            "acs_pums_earnings_universe_contract",
+            "acs_transfer_max_targets_per_fit",
+            "acs_transfer_n_estimators",
+            "derive_operator_order",
+            "gap_fill_producer_schedule",
+            "late_producer_resource_semantics",
+            "late_producer_schedule",
+            "operator_order",
+            "post_clone_source_operator_order",
+            "pre_clone_source_operator_order",
+            "primary_qrf_checkpoint_schema_version",
+            "primary_qrf_n_estimators",
+            "primary_qrf_target_order",
+            "puf_capital_gains_tail_manifest_schema_version",
+            "puf_capital_gains_tail_support_contract",
+            "remaining_stage_input_manifest",
+            "simulation_household_batch_size",
+            "take_up_contract",
+            "us_qbi_reconciliation_contract"
+          ],
+          "sha256": "8df3775167f89e79b44cc3606b52b54d488edaee8fc34dd757163dd8b6510fa7"
+        },
+        "status": "covered"
+      },
+      "stacked_checkpoint_top_level_exact": {
+        "bundle_home_match_counts": {
+          "/bundle/dataset_run": 1,
+          "/imputation": 1,
+          "/spine/pipeline_contract": 1
+        },
+        "bundle_homes": [
+          "/bundle/dataset_run",
+          "/spine/pipeline_contract",
+          "/imputation"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.stacked_checkpoint_static_components"
+        ],
+        "expected": {
+          "field_names": [
+            "artifact_kind",
+            "materializer_version",
+            "model_seed",
+            "period",
+            "pipeline",
+            "policyengine_us_version",
+            "pool_code",
+            "schema_version",
+            "stacked_authority"
+          ]
+        },
+        "failures": [],
+        "observed": {
+          "field_names": [
+            "artifact_kind",
+            "materializer_version",
+            "model_seed",
+            "period",
+            "pipeline",
+            "policyengine_us_version",
+            "pool_code",
+            "schema_version",
+            "stacked_authority"
+          ]
+        },
+        "status": "covered"
+      },
+      "take_up_identity_exact": {
+        "bundle_home_match_counts": {
+          "/take_up": 1
+        },
+        "bundle_homes": [
+          "/take_up"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.take_up_contract_identity",
+          "legacy_adapter.stacked_checkpoint_static_components"
+        ],
+        "expected": {
+          "resource_sha256": "495dc6ed195eae372a6ba098c6fb894323638a4a7dce1b4fe7efaaf6beb69446"
+        },
+        "failures": [],
+        "observed": {
+          "resource_sha256": "495dc6ed195eae372a6ba098c6fb894323638a4a7dce1b4fe7efaaf6beb69446"
+        },
+        "status": "covered"
+      },
+      "take_up_legacy_contract_exact": {
+        "bundle_home_match_counts": {
+          "/take_up/legacy_contract_metadata": 1,
+          "/take_up/programs": 1,
+          "/take_up/scope_registry": 1
+        },
+        "bundle_homes": [
+          "/take_up/programs",
+          "/take_up/legacy_contract_metadata",
+          "/take_up/scope_registry"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.take_up_contract"
+        ],
+        "expected": {
+          "sha256": "495dc6ed195eae372a6ba098c6fb894323638a4a7dce1b4fe7efaaf6beb69446"
+        },
+        "failures": [],
+        "observed": {
+          "sha256": "495dc6ed195eae372a6ba098c6fb894323638a4a7dce1b4fe7efaaf6beb69446"
+        },
+        "status": "covered"
+      },
+      "take_up_pipeline_steps_exact": {
+        "bundle_home_match_counts": {
+          "/take_up/programs/*/pipeline": 12,
+          "/take_up/programs/*/segments": 1
+        },
+        "bundle_homes": [
+          "/take_up/programs/*/pipeline",
+          "/take_up/programs/*/segments"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.take_up_contract"
+        ],
+        "expected": {
+          "by_program": {
+            "aca": [
+              "measured_map",
+              "assignment",
+              "count_calibration",
+              "count_calibration",
+              "assignment",
+              "assignment",
+              "count_calibration"
+            ],
+            "basic_health_program": [
+              "engine_default"
+            ],
+            "chip": [
+              "engine_default"
+            ],
+            "dc_ptc": [
+              "engine_default"
+            ],
+            "early_head_start": [
+              "engine_default"
+            ],
+            "eitc": [
+              "probability_seed"
+            ],
+            "head_start": [
+              "imputed_transfer"
+            ],
+            "housing_assistance": [
+              "measured_map",
+              "imputed_transfer"
+            ],
+            "medicaid": [
+              "assignment",
+              "count_calibration"
+            ],
+            "medicare": [
+              "measured_map"
+            ],
+            "snap": [
+              "probability_seed",
+              "assignment",
+              "count_calibration"
+            ],
+            "ssi": [
+              "probability_seed",
+              "delivery_gate"
+            ],
+            "tanf": [
+              "probability_seed"
+            ]
+          },
+          "steps": 24
+        },
+        "failures": [],
+        "observed": {
+          "by_program": {
+            "aca": [
+              "measured_map",
+              "assignment",
+              "count_calibration",
+              "count_calibration",
+              "assignment",
+              "assignment",
+              "count_calibration"
+            ],
+            "basic_health_program": [
+              "engine_default"
+            ],
+            "chip": [
+              "engine_default"
+            ],
+            "dc_ptc": [
+              "engine_default"
+            ],
+            "early_head_start": [
+              "engine_default"
+            ],
+            "eitc": [
+              "probability_seed"
+            ],
+            "head_start": [
+              "imputed_transfer"
+            ],
+            "housing_assistance": [
+              "measured_map",
+              "imputed_transfer"
+            ],
+            "medicaid": [
+              "assignment",
+              "count_calibration"
+            ],
+            "medicare": [
+              "measured_map"
+            ],
+            "snap": [
+              "probability_seed",
+              "assignment",
+              "count_calibration"
+            ],
+            "ssi": [
+              "probability_seed",
+              "delivery_gate"
+            ],
+            "tanf": [
+              "probability_seed"
+            ]
+          },
+          "steps": 24
+        },
+        "status": "covered"
+      },
+      "take_up_program_mechanisms_exact": {
+        "bundle_home_match_counts": {
+          "/take_up/programs": 1
+        },
+        "bundle_homes": [
+          "/take_up/programs"
+        ],
+        "compiler_consumers": [
+          "take_up_semantics.validate_take_up_semantics",
+          "legacy_adapter.take_up_contract"
+        ],
+        "expected": {
+          "programs": {
+            "aca": [
+              "modeled",
+              [
+                "measured_map",
+                "assignment",
+                "count_calibration",
+                "count_calibration",
+                "assignment",
+                "assignment",
+                "count_calibration"
+              ],
+              "out_of_scope"
+            ],
+            "basic_health_program": [
+              "engine",
+              [
+                "engine_default"
+              ],
+              "rate_unsourced"
+            ],
+            "chip": [
+              "engine",
+              [
+                "engine_default"
+              ],
+              "rate_unsourced"
+            ],
+            "dc_ptc": [
+              "engine",
+              [
+                "engine_default"
+              ],
+              "rate_unsourced"
+            ],
+            "early_head_start": [
+              "engine",
+              [
+                "engine_default"
+              ],
+              "rate_unsourced"
+            ],
+            "eitc": [
+              "modeled",
+              [
+                "probability_seed"
+              ],
+              "seed"
+            ],
+            "head_start": [
+              "transferred",
+              [
+                "imputed_transfer"
+              ],
+              "out_of_scope"
+            ],
+            "housing_assistance": [
+              "mixed",
+              [
+                "measured_map",
+                "imputed_transfer"
+              ],
+              "out_of_scope"
+            ],
+            "medicaid": [
+              "modeled",
+              [
+                "assignment",
+                "count_calibration"
+              ],
+              "count_calibrated"
+            ],
+            "medicare": [
+              "measured",
+              [
+                "measured_map"
+              ],
+              "out_of_scope"
+            ],
+            "snap": [
+              "modeled",
+              [
+                "probability_seed",
+                "assignment",
+                "count_calibration"
+              ],
+              "out_of_scope"
+            ],
+            "ssi": [
+              "modeled",
+              [
+                "probability_seed",
+                "delivery_gate"
+              ],
+              "count_calibrated"
+            ],
+            "tanf": [
+              "modeled",
+              [
+                "probability_seed"
+              ],
+              "seed"
+            ]
+          }
+        },
+        "failures": [],
+        "observed": {
+          "programs": {
+            "aca": [
+              "modeled",
+              [
+                "measured_map",
+                "assignment",
+                "count_calibration",
+                "count_calibration",
+                "assignment",
+                "assignment",
+                "count_calibration"
+              ],
+              "out_of_scope"
+            ],
+            "basic_health_program": [
+              "engine",
+              [
+                "engine_default"
+              ],
+              "rate_unsourced"
+            ],
+            "chip": [
+              "engine",
+              [
+                "engine_default"
+              ],
+              "rate_unsourced"
+            ],
+            "dc_ptc": [
+              "engine",
+              [
+                "engine_default"
+              ],
+              "rate_unsourced"
+            ],
+            "early_head_start": [
+              "engine",
+              [
+                "engine_default"
+              ],
+              "rate_unsourced"
+            ],
+            "eitc": [
+              "modeled",
+              [
+                "probability_seed"
+              ],
+              "seed"
+            ],
+            "head_start": [
+              "transferred",
+              [
+                "imputed_transfer"
+              ],
+              "out_of_scope"
+            ],
+            "housing_assistance": [
+              "mixed",
+              [
+                "measured_map",
+                "imputed_transfer"
+              ],
+              "out_of_scope"
+            ],
+            "medicaid": [
+              "modeled",
+              [
+                "assignment",
+                "count_calibration"
+              ],
+              "count_calibrated"
+            ],
+            "medicare": [
+              "measured",
+              [
+                "measured_map"
+              ],
+              "out_of_scope"
+            ],
+            "snap": [
+              "modeled",
+              [
+                "probability_seed",
+                "assignment",
+                "count_calibration"
+              ],
+              "out_of_scope"
+            ],
+            "ssi": [
+              "modeled",
+              [
+                "probability_seed",
+                "delivery_gate"
+              ],
+              "count_calibrated"
+            ],
+            "tanf": [
+              "modeled",
+              [
+                "probability_seed"
+              ],
+              "seed"
+            ]
+          }
+        },
+        "status": "covered"
+      },
+      "take_up_program_order_exact": {
+        "bundle_home_match_counts": {
+          "/take_up/programs": 1
+        },
+        "bundle_homes": [
+          "/take_up/programs"
+        ],
+        "compiler_consumers": [
+          "legacy_adapter.take_up_contract.programs"
+        ],
+        "expected": {
+          "program_ids": [
+            "snap",
+            "tanf",
+            "eitc",
+            "medicaid",
+            "chip",
+            "basic_health_program",
+            "medicare",
+            "ssi",
+            "dc_ptc",
+            "head_start",
+            "early_head_start",
+            "housing_assistance",
+            "aca"
+          ]
+        },
+        "failures": [],
+        "observed": {
+          "program_ids": [
+            "snap",
+            "tanf",
+            "eitc",
+            "medicaid",
+            "chip",
+            "basic_health_program",
+            "medicare",
+            "ssi",
+            "dc_ptc",
+            "head_start",
+            "early_head_start",
+            "housing_assistance",
+            "aca"
+          ]
+        },
+        "status": "covered"
+      }
+    },
+    "missing_item_count": 0,
+    "missing_items": [],
+    "report_schema_version": 1,
+    "required_item_count": 40,
+    "spec_binding": {
+      "attestation": "mirror-attested",
+      "canonicalizer_version": 1,
+      "country": "us",
+      "schema_id": "country_spec",
+      "schema_version": 1,
+      "spec_sha256": "6e9dce8f0fd3e3f0101103a14d6a08ac8527b90b82d48fa8bad2c4cc70dbdfde"
+    }
+  },
+  "report_schema_version": 3,
+  "spec_binding": {
+    "attestation": "mirror-attested",
+    "canonicalizer_version": 1,
+    "country": "us",
+    "schema_id": "country_spec",
+    "schema_version": 1,
+    "spec_sha256": "6e9dce8f0fd3e3f0101103a14d6a08ac8527b90b82d48fa8bad2c4cc70dbdfde"
+  },
+  "status": "pass"
+}
