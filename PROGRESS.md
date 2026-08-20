@@ -2,14 +2,22 @@
 
 ## State
 
-The 2026-08-20 21:18Z owner continuation is reopened for an independent audit
-of the supplied host 1% ACS QRF record-binding failure. Earlier journal entries
-report an assigned-only runtime correction and regression coverage already on
-this branch, but those claims are historical until the current tree, raise-site
-flow, committed tests, and required suite are rechecked. No implementation or
-test change has yet been made in this continuation. The owner-provided
-`_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain untracked and
-untouched.
+The 2026-08-20 21:18Z owner continuation has completed independent source-flow,
+history, and regression audits of the supplied host 1% ACS QRF record-binding
+failure. The traceback exactly fingerprints bad commit `33bf52fe`: global QRF
+evidence reached the real `puf_tax_itemization__batch_1` record for unassigned
+`taxable_interest_income`, and terminal validation compared it with the
+unsplit family before consulting the nine-target registry. The complete
+current correction is the series `176c60fc`, `887df056`, and `94b7aecb`.
+Generic transfer now defaults to no regime work; canonical early/late owners,
+receipt builders, and validators independently select only the two early and
+seven late immutable specs; and unassigned evidence is rejected before strict
+record binding. The exact synthetic failure regression, real banked 15-target
+producer regression, and fully rehashed in-range family-forgery regression are
+already committed, so no duplicate runtime or test edit is warranted. Guarded
+focused and affected-suite verification is now active. No host success is
+claimed. The owner-provided `_BUILD-FAILURE-1PCT.txt` and
+`.codex-memory-guard.py` remain untracked and untouched.
 
 The immediately preceding completion snapshot follows and is historical rather
 than current state.
@@ -153,6 +161,32 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Independently reproduced the historical call order at `33bf52fe`: every
+  record received QRF regimes and receipt evidence, and line 4512 validated the
+  unassigned target before spec lookup, causing line 4310 to reject its real
+  bounded family. A permissive batch alias would still have left an
+  eight-versus-fifteen regime-order mismatch.
+- Audited the current producer, receipt, and validator paths. The only
+  production opt-ins derive from the immutable nine-target registry; generic
+  transfer defaults empty; `taxable_interest_income` receives no regimes or
+  QRF evidence; and both early and late validators reject forged unassigned
+  evidence before exact assigned-record binding while preserving four-count
+  accounting for every target.
+- Confirmed that the complete audited runtime correction spans `176c60fc`,
+  `887df056`, and `94b7aecb`. Both `microcosm-build/src` and its `us_runtime`
+  subtree have the exact Git tree objects recorded at all-build-suite
+  checkpoint `a5be536f`; only journals and the later three-line strict-family
+  regression differ after that checkpoint.
+- Audited existing regression coverage. The exact synthetic host receipt, a
+  real banked 15-target producer, and a fully rehashed plausible `__batch_1`
+  forgery on an assigned target jointly cover the failure and unsafe
+  workaround. Independent read-only runs passed the three scope-flow tests and
+  all 14 decisive binding cases; none is skipped or xfailed.
+- Followed the GitNexus debugging workflow. Local analysis generated a 112 MiB
+  graph, but the sandbox denied registration through
+  `~/.gitnexus/registry.json`, so query/context could not target this repo. The
+  generated repo-local cache was removed; direct source and commit tracing
+  established the execution path without leaving residue.
 - Reopened the committed root journal before implementation or test changes,
   reread `CLAUDE.md` and the GitNexus debugging workflow, inspected worktree
   status and recent history, and preserved both untracked owner artifacts.
@@ -499,7 +533,10 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run or identify a revision-bound off-chain 1% retry that reaches a terminal
-   runner verdict and emits the expected pool, manifest, and gates artifacts.
-   Do not claim an after artifact without that terminal proof, and do not
-   publish or mutate the pending logbook chain as a side effect.
+1. Run the 14 focused binding cases and all 529 tests in the five directly
+   affected files under the owner-provided 12 GiB/20 ms guard.
+2. Run repository lint, scoped formatting, committed-range whitespace, and
+   runtime-tree drift checks; commit the verification result.
+3. Refresh and commit `FINAL_REPORT.md` and the final journal state. Do not
+   claim an after artifact without a revision-bound terminal host proof, and do
+   not publish or mutate the pending logbook chain as a side effect.
