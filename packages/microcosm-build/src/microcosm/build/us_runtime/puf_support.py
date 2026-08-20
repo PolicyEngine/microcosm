@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
+from microcosm.build.spec_engine.brokers import QRFGeneratorLease
 from microcosm.build.us_runtime.acs_income_universe import (
     ACS_PUMS_EARNINGS_MINIMUM_AGE,
     ACS_PUMS_EARNINGS_SOURCE_COLUMNS,
@@ -1604,6 +1605,7 @@ def impute_us_puf_tax_detail_support(
     predictor_universe_receipts: list[dict[str, object]] | None = None,
     require_complete_recipient_predictors: bool = False,
     absent_cells: str = PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
+    rng_generators: QRFGeneratorLease | None = None,
 ) -> Frame:
     """Impute PUF-observed inputs onto the PUF support channel.
 
@@ -1641,6 +1643,8 @@ def impute_us_puf_tax_detail_support(
             value, instead of the legacy silent zero-fill.
         absent_cells: Finalization policy for cells outside the PUF clone arm
             (see :func:`finalize_us_puf_tax_detail_predictions`).
+        rng_generators: Optional broker-owned fit/draw generator pair. Omitting
+            it preserves the historical seed-owned QRF call exactly.
     """
 
     if frame.schema != US_SCHEMA:
@@ -1699,12 +1703,22 @@ def impute_us_puf_tax_detail_support(
     for column in donor.columns:
         donor[column] = pd.to_numeric(donor[column], errors="coerce").fillna(0.0)
     donor_frame = _tax_unit_model_frame(donor)
-    fitted = QRF(n_estimators=n_estimators, seed=seed).fit(
-        donor_frame,
-        list(predictors),
-        list(outputs),
-        weights="design",
-    )
+    model = QRF(n_estimators=n_estimators, seed=seed)
+    if rng_generators is None:
+        fitted = model.fit(
+            donor_frame,
+            list(predictors),
+            list(outputs),
+            weights="design",
+        )
+    else:
+        fitted = model.fit(
+            donor_frame,
+            list(predictors),
+            list(outputs),
+            weights="design",
+            rng_generators=rng_generators,
+        )
     if fit_records is not None:
         # Record the kind the fit *resolved* to (not the "design" spec above):
         # the build-level weights audit reads this back to prove the production

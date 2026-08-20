@@ -2397,3 +2397,26 @@ head; it still writes `us-f1-certification.json` and
    compiler order.
 2. Bind the primary producer's direct QRF owner plus clone and tail
    supplemental owners, with `clone_attachment_seed` in the broker run inputs.
+
+## F1 continuation r5 monolithic primary-QRF seam (2026-08-20)
+
+### State
+
+- The checkpointed primary chain already accepts a broker fit/draw lease, but
+  the fixture-scale monolithic primary path still constructed its QRF solely
+  from the legacy integer seed.
+
+### Done
+
+- Added one optional typed fit/draw generator pair to the PUF support imputer.
+  Bundle callers can now drive the same QRF through a ledger lease; callers
+  that omit it retain the historical constructor, fit, and predict path.
+- The complete PUF-support module passes (58 tests). `py_compile` passes; no
+  sample build ran.
+
+### Next
+
+1. Hold the primary producer's lease across either the complete monolithic fit
+   or the complete cold checkpoint bank, then route clone and tail generators
+   through their supplemental owners.
+2. Dispatch the full compiler-ordered late graph through those capabilities.
