@@ -2,15 +2,14 @@
 
 ## State
 
-The artifact-side correction for all 16 assigned checks is implemented and the
-PR test surface is green in memory-isolated shards. The carrier correction is
-terminal full-sample reference-margin calibration, however, not the named
-cross-fitted/held-out remedy; that adjudication-level gap is explicitly
-unresolved because this branch lacks the required fold/comparator authority.
-No frozen battery band, threshold, comparator, seed, or fold changed. The
-uncontaminated 1% before artifact remains recorded at commit `5f5e5e91`; the
-green implementation is committed at `33bf52fe`. The calibrated 1% after build
-and per-check measurement are the next step.
+The host 1% verification build rejected the implementation committed at
+`33bf52fe`. Terminal stacked gap-fill validation reports an invalid ACS QRF
+pattern record binding for
+`person/puf_tax_itemization/taxable_interest_income`, which is outside the
+assigned calibration rows. The continuation is therefore in diagnosis; the
+suite-only green result is not sufficient and no after artifact is accepted.
+The uncontaminated 1% before artifact remains recorded at commit `5f5e5e91`.
+No frozen battery band, threshold, comparator, seed, or fold has changed.
 
 The required `uv sync --all-packages --extra us` was attempted first. The
 default cache is sandbox-read-only; a retry with a writable cache reached PyPI
@@ -61,10 +60,20 @@ but DNS is unavailable. Verification therefore uses the already-synced
   parser spike at 15.424 GiB before terminating it; the reader fix and all
   successful reruns remained far below the cap. This exception is retained in
   the journal rather than concealed.
+- Recorded the owner-provided host failure at the exact
+  `_validate_acs_imputed_pattern_evidence` raise site. The failing target is
+  outside this lane's assigned rows, so shared gap-fill behavior must be
+  restored before another artifact build.
 
 ## Next
 
-1. Rebuild off-chain at exactly 1% with sample/clone seed 578 under the
-   tightened memory guard.
-2. Extract all 16 after measurements and source-preservation invariants, then
-   write and commit `_LANE-NOTES.md`, `PROGRESS.md`, and `FINAL_REPORT.md`.
+1. Trace construction and terminal replay of the ACS QRF pattern record
+   binding and identify how post-transfer calibration affects an unassigned
+   target.
+2. Add a regression test that reproduces the host binding rejection and proves
+   unassigned gap-fill targets remain byte- and receipt-identical.
+3. Narrow the implementation to the assigned source-operator, adult-care, and
+   model-required targets; run the focused and full PR suite.
+4. Rebuild off-chain at exactly 1% with sample/clone seed 578 under the
+   tightened memory guard when host data access is available, then record the
+   16 after measurements and source-preservation invariants.
