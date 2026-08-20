@@ -14,7 +14,6 @@ from microcosm.build.spec_engine import (
     load_bundle,
 )
 from microcosm.build.spec_engine.artifact_comparison import (
-    GenerationExpectation,
     checkpoint_receipt_surface,
     compare_artifact_sets,
 )
@@ -227,24 +226,68 @@ def test_live_execution_abi_accepts_only_the_closed_dual_mode_receipt_shape(
         identity_generation=0,
         source_grammar_receipt=None,
         spec_binding=None,
-        authority_versions={},
-        code_inventory_digest="0" * 64,
-        artifact_protocol_inventory={},
-        run_request={},
-        execution_receipt={},
+        authority_versions={
+            "stacked_authority": "1" * 64,
+            "checkpoint_materializer": "2" * 64,
+            "runtime_authority": None,
+            "execution_abi": None,
+        },
+        code_inventory_digest="3" * 64,
+        artifact_protocol_inventory={"pipeline": execution["pipeline"]["id"]},
+        run_request={"pipeline": execution["pipeline"]["id"], "sample_seed": 578},
+        execution_receipt={
+            "authority_mode": "constants",
+            "pipeline": execution["pipeline"]["id"],
+            "code_pin": "fixture-code-pin",
+        },
     )
-    bundle_provenance = authorities.run_provenance_identity(
-        run_request={},
-        execution_receipt={},
+    binding = authorities.spec_binding.to_wire()
+    binding["attestation"] = "bundle-authoritative"
+    bundle_provenance = build_run_provenance_identity(
+        identity_generation=1,
+        source_grammar_receipt=authorities.grammar_receipt.to_wire(),
+        spec_binding=binding,
+        authority_versions={
+            "stacked_authority": "1" * 64,
+            "checkpoint_materializer": "2" * 64,
+            "runtime_authority": authorities.authority_sha256,
+            "execution_abi": execution["sha256"],
+        },
+        code_inventory_digest="3" * 64,
+        artifact_protocol_inventory={"pipeline": execution["pipeline"]["id"]},
+        run_request={"pipeline": execution["pipeline"]["id"], "sample_seed": 578},
+        execution_receipt={
+            "authority_mode": "bundle",
+            "pipeline": execution["pipeline"]["id"],
+            "code_pin": "fixture-code-pin",
+        },
     )
+    constants_run_config = {
+        "config_authority": "constants",
+        "spec_binding_status": "absent",
+        "identity_generation": 0,
+        "run_provenance_identity": constants_provenance.to_wire(),
+    }
+    bundle_run_config = {
+        "config_authority": "bundle",
+        "spec_binding_status": "resolved",
+        "identity_generation": 1,
+        "run_provenance_identity": bundle_provenance.to_wire(),
+    }
     constants_receipts: dict[str, object] = {}
     bundle_receipts: dict[str, object] = {}
     for checkpoint in execution["durable_checkpoints"]:
         manifest_role = f"checkpoint:{checkpoint['id']}:manifest"
         receipts_role = f"checkpoint:{checkpoint['id']}:receipts"
         manifest = {"stage": checkpoint["id"], "identity_sha256": "a" * 64}
-        constants_receipts[manifest_role] = manifest
-        bundle_receipts[manifest_role] = manifest
+        constants_receipts[manifest_role] = {
+            **manifest,
+            "run_config": constants_run_config,
+        }
+        bundle_receipts[manifest_role] = {
+            **manifest,
+            "run_config": bundle_run_config,
+        }
         if checkpoint["operational_receipts_sidecar"] == "forbidden":
             constants_sidecar = None
             bundle_sidecar = None
@@ -262,63 +305,63 @@ def test_live_execution_abi_accepts_only_the_closed_dual_mode_receipt_shape(
         )
         bundle_receipts[receipts_role] = checkpoint_receipt_surface(bundle_sidecar)
     constants_receipts["publication_manifest"] = {
-        "run_config": {
-            "config_authority": "constants",
-            "spec_binding_status": "absent",
-            "identity_generation": 0,
-            "run_provenance_identity": constants_provenance.to_wire(),
-        },
-        "release_id": "populace-us-2024-fixture",
-        "publication_run_id": "constants-run",
+        "run_config": constants_run_config,
+        "source_broker_receipt": None,
+        "release_id": "populace-us-2024-fixture-20260819T010203Z-a1b2c3d4",
+        "publication_run_id": "a" * 32,
         "provenance_pins": [{"path": "/constants/input"}],
-        "pool_h5": {"path": "/constants/pool.h5"},
-        "agreement_diagnostics": {"path": "/constants/gates.json"},
+        "pool_h5": {
+            "path": "/constants/pool.h5",
+            "sha256": "4" * 64,
+            "size_bytes": 100,
+            "publication_run_id": "a" * 32,
+        },
+        "agreement_diagnostics": {
+            "path": "/constants/gates.json",
+            "sha256": "5" * 64,
+            "size_bytes": 200,
+            "publication_run_id": "a" * 32,
+        },
         "primary_qrf_checkpoint_dir": "/constants/primary",
         "acs_transfer_checkpoint_dir": "/constants/transfer",
+        "stage_checkpoints": {"root": "/constants/checkpoints"},
+        "stage_receipts": {"root": "/constants/receipts"},
     }
     bundle_receipts["publication_manifest"] = {
-        "run_config": {
-            "config_authority": "bundle",
-            "spec_binding_status": "resolved",
-            "identity_generation": 1,
-            "run_provenance_identity": bundle_provenance.to_wire(),
-        },
-        "release_id": "microcosm-us-2024-fixture",
-        "publication_run_id": "bundle-run",
+        "run_config": bundle_run_config,
+        "source_broker_receipt": {"validated_by": "collector"},
+        "release_id": "microcosm-us-2024-fixture-20260820T111213Z-deadbeef",
+        "publication_run_id": "b" * 32,
         "provenance_pins": [{"path": "/bundle/input"}],
-        "pool_h5": {"path": "/bundle/pool.h5"},
-        "agreement_diagnostics": {"path": "/bundle/gates.json"},
+        "pool_h5": {
+            "path": "/bundle/pool.h5",
+            "sha256": "6" * 64,
+            "size_bytes": 300,
+            "publication_run_id": "b" * 32,
+        },
+        "agreement_diagnostics": {
+            "path": "/bundle/gates.json",
+            "sha256": "7" * 64,
+            "size_bytes": 400,
+            "publication_run_id": "b" * 32,
+        },
         "primary_qrf_checkpoint_dir": "/bundle/primary",
         "acs_transfer_checkpoint_dir": "/bundle/transfer",
+        "stage_checkpoints": {"root": "/bundle/checkpoints"},
+        "stage_receipts": {"root": "/bundle/receipts"},
     }
     constants_receipts["terminal_gates"] = {
-        "release_id": "populace-us-2024-fixture",
-        "publication_run_id": "constants-run",
+        "release_id": "populace-us-2024-fixture-20260819T010203Z-a1b2c3d4",
+        "publication_run_id": "a" * 32,
     }
     bundle_receipts["terminal_gates"] = {
-        "release_id": "microcosm-us-2024-fixture",
-        "publication_run_id": "bundle-run",
+        "release_id": "microcosm-us-2024-fixture-20260820T111213Z-deadbeef",
+        "publication_run_id": "b" * 32,
     }
-    expectations = {
-        (
-            "publication_manifest",
-            "/run_config/config_authority",
-        ): GenerationExpectation("constants", "bundle"),
-        (
-            "publication_manifest",
-            "/run_config/spec_binding_status",
-        ): GenerationExpectation("absent", "resolved"),
-        (
-            "publication_manifest",
-            "/run_config/identity_generation",
-        ): GenerationExpectation(0, 1),
-        (
-            "publication_manifest",
-            "/run_config/run_provenance_identity",
-        ): GenerationExpectation(
-            constants_provenance.to_wire(),
-            bundle_provenance.to_wire(),
-        ),
+
+    node_keys = {
+        node_id: f"{index + 1:064x}"
+        for index, node_id in enumerate(execution["pipeline"]["producer_order"])
     }
 
     receipt = compare_artifact_sets(
@@ -327,8 +370,10 @@ def test_live_execution_abi_accepts_only_the_closed_dual_mode_receipt_shape(
         bundle_artifacts=artifacts,
         constants_receipts=constants_receipts,
         bundle_receipts=bundle_receipts,
-        generation_expectations=expectations,
+        constants_run_provenance_identity=constants_provenance,
         bundle_run_provenance_identity=bundle_provenance,
+        constants_node_reuse_keys=node_keys,
+        bundle_node_reuse_keys=node_keys,
     )
 
     assert receipt.passed is True

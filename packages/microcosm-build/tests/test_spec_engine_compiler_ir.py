@@ -247,7 +247,7 @@ def test_us_nodes_have_exact_effective_seed_grants(
 def test_compiled_nodes_lift_immutable_executor_contracts_and_bind_them(
     compiled_us: CompiledSpecIR,
 ) -> None:
-    assert COMPILER_IR_ABI_VERSION == 4
+    assert COMPILER_IR_ABI_VERSION == 5
     assert EXECUTOR_CONTRACT_ABI == "compiled-node-brokered-contracts-v2"
     producer_by_id = {node.id: node for node in compiled_us.producer_graph.nodes}
     assert tuple(node.execution_rank for node in compiled_us.nodes) == tuple(
@@ -391,9 +391,75 @@ def test_row_classifier_digest_recipe_is_versioned_and_registry_exact(
 def test_operational_broker_source_is_not_a_compiler_or_node_identity_input(
     compiled_us: CompiledSpecIR,
 ) -> None:
+    modules = {
+        module for module, _digest in compiled_us.compiler_ir_abi.source_inventory
+    }
+    assert "microcosm.build.spec_engine.brokers" not in modules
+    assert {
+        "microcosm.build.spec_engine.artifact_selector_contract",
+        "microcosm.build.spec_engine.artifact_collection",
+        "microcosm.build.spec_engine.artifact_comparison",
+    } <= modules
+
+
+def test_execution_abi_seals_artifact_and_source_comparison_authorities(
+    compiled_us: CompiledSpecIR,
+) -> None:
+    execution = thaw_json(compiled_us.execution_abi)
+    assert execution["code_abi"]["compiler_ir_abi_sha256"] == (
+        compiled_us.compiler_ir_abi.sha256
+    )
+    assert {
+        (row["envelope_pointer"], row["locator_ref"])
+        for row in execution["artifact_bindings"]
+    } == {
+        ("/pool_h5", "runtime_output:pool_h5"),
+        ("/agreement_diagnostics", "runtime_output:agreement_diagnostics"),
+    }
+
+    provenance_suffixes = {
+        "/identity_generation",
+        "/source_grammar_receipt",
+        "/spec_binding",
+        "/authority_versions/runtime_authority",
+        "/authority_versions/execution_abi",
+        "/execution_receipt/authority_mode",
+    }
+    generation_rules = [
+        row
+        for row in execution["receipt_comparison_vector"]
+        if row["rule"] == "expected_to_differ_by_generation"
+        and "/run_provenance_identity/" in row["json_pointer_pattern"]
+    ]
+    assert generation_rules
+    assert {
+        row["json_pointer_pattern"].split("/run_provenance_identity", 1)[1]
+        for row in generation_rules
+    } == provenance_suffixes
     assert all(
-        module != "microcosm.build.spec_engine.brokers"
-        for module, _digest in compiled_us.compiler_ir_abi.source_inventory
+        row["json_pointer_pattern"] != "/run_config/run_provenance_identity"
+        for row in execution["receipt_comparison_vector"]
+    )
+
+    sources = thaw_json(compiled_us.normalized_resources)["sources"]["sources"]
+    expected_sources = sorted(
+        (
+            {
+                "id": row["id"],
+                "sha256": row["sha256"],
+                "byte_size": row["byte_size"],
+            }
+            for row in sources
+            if "byte_size" in row
+        ),
+        key=lambda row: row["id"],
+    )
+    assert execution["source_broker_grant"]["sources"] == expected_sources
+    assert execution["source_broker_grant"]["source_set_sha256"] == sha256_json(
+        {
+            "domain": "microcosm.spec-engine.source-broker-grant.v1",
+            "sources": expected_sources,
+        }
     )
 
 

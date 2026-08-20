@@ -1,16 +1,23 @@
 from __future__ import annotations
 
 import copy
+from collections.abc import Mapping, Sequence
 
 import pytest
 
 from microcosm.build.spec_engine.artifact_comparison import (
     ArtifactComparisonError,
-    GenerationExpectation,
     checkpoint_receipt_surface,
-    compare_artifact_sets,
+)
+from microcosm.build.spec_engine.artifact_comparison import (
+    compare_artifact_sets as _compare_artifact_sets,
+)
+from microcosm.build.spec_engine.artifact_selector_contract import (
+    ARTIFACT_LOCATOR_GRAMMAR,
+    ARTIFACT_SELECTOR_CONTRACT_SHA256,
 )
 from microcosm.build.spec_engine.canonical import sha256_json
+from microcosm.build.spec_engine.compiler_ir import current_compiler_ir_abi
 from microcosm.build.spec_engine.executor import (
     RunProvenanceIdentity,
     build_run_provenance_identity,
@@ -68,7 +75,9 @@ def _execution_abi(
     code_unsigned = {
         "domain": "fixture-artifact-comparison-v1",
         "content_selectors": selectors,
-        "locator_grammar": "fixture-closed-v1",
+        "locator_grammar": ARTIFACT_LOCATOR_GRAMMAR,
+        "artifact_selector_contract_sha256": ARTIFACT_SELECTOR_CONTRACT_SHA256,
+        "compiler_ir_abi_sha256": current_compiler_ir_abi().sha256,
         "receipt_difference_match": "exactly_one_sealed_rule",
     }
     code_abi = {
@@ -78,7 +87,13 @@ def _execution_abi(
     unsigned = {
         "schema_version": 1,
         "present": True,
-        "pipeline": {"id": "fixture"},
+        "pipeline": {
+            "id": "fixture",
+            "artifact_protocol": {"fixture": "bytes-v1"},
+            "operator_order": ["fixture-operation"],
+            "producer_order": ["node:first", "node:second"],
+            "seed_stream_map_sha256": "5" * 64,
+        },
         "operations": [],
         "logical_stages": [
             {
@@ -116,8 +131,28 @@ def _execution_abi(
         ),
         "code_abi": code_abi,
         "normative_artifact_vector": selected_artifacts,
+        "artifact_bindings": [],
+        "source_broker_grant": _source_broker_grant(),
         "receipt_comparison_vector": rules or [],
         "resume_predicate": None,
+    }
+    return {**unsigned, "sha256": sha256_json(unsigned)}
+
+
+def _source_broker_grant() -> dict[str, object]:
+    sources: list[dict[str, object]] = []
+    source_set_sha256 = sha256_json(
+        {
+            "domain": "microcosm.spec-engine.source-broker-grant.v1",
+            "sources": sources,
+        }
+    )
+    unsigned = {
+        "domain": "microcosm.spec-engine.source-broker-grant.v1",
+        "owner": {"kind": "source_stage", "id": "declared_source_preflight"},
+        "effects": ["declared_source_read"],
+        "sources": sources,
+        "source_set_sha256": source_set_sha256,
     }
     return {**unsigned, "sha256": sha256_json(unsigned)}
 
@@ -139,9 +174,7 @@ def _checkpoint_sidecar(
             "size_bytes": 123,
         },
         "operational_stage_receipts": (
-            {"impute": {"status": "written"}}
-            if operational is None
-            else operational
+            {"impute": {"status": "written"}} if operational is None else operational
         ),
     }
 
@@ -173,23 +206,105 @@ def _bundle_run_provenance(
             "attestation": attestation,
         },
         authority_versions={
+            "stacked_authority": "1" * 64,
+            "checkpoint_materializer": "2" * 64,
             "runtime_authority": "c" * 64,
             "execution_abi": execution_abi_sha256,
         },
         code_inventory_digest="d" * 64,
         artifact_protocol_inventory={"fixture": "bytes-v1"},
-        run_request={"config_authority": "bundle", "rung": "fixture"},
-        execution_receipt={"backend": "cpu"},
+        run_request={
+            "pipeline": "fixture",
+            "sample_fraction": 0.01,
+            "fraction_token": "f001",
+            "sample_seed": 578,
+            "clone_attachment_fraction": 1.0,
+            "clone_attachment_seed": 578,
+        },
+        execution_receipt={
+            "authority_mode": "bundle",
+            "pipeline": "fixture",
+            "code_pin": "fixture-code-pin",
+        },
     )
 
 
-def _generation_zero_provenance() -> dict[str, object]:
-    return {"identity_generation": 0}
+def _constants_run_provenance(
+    bundle: RunProvenanceIdentity,
+) -> RunProvenanceIdentity:
+    wire = bundle.to_wire()
+    versions = wire["authority_versions"]
+    receipt = wire["execution_receipt"]
+    assert isinstance(versions, dict) and isinstance(receipt, dict)
+    return build_run_provenance_identity(
+        identity_generation=0,
+        source_grammar_receipt=None,
+        spec_binding=None,
+        authority_versions={
+            "stacked_authority": versions["stacked_authority"],
+            "checkpoint_materializer": versions["checkpoint_materializer"],
+            "runtime_authority": None,
+            "execution_abi": None,
+        },
+        code_inventory_digest=wire["code_inventory_digest"],
+        artifact_protocol_inventory=wire["artifact_protocol_inventory"],
+        run_request=wire["run_request"],
+        execution_receipt={
+            "authority_mode": "constants",
+            "pipeline": receipt["pipeline"],
+            "code_pin": receipt["code_pin"],
+        },
+    )
+
+
+def _identity_pair(
+    abi: Mapping[str, object],
+) -> tuple[RunProvenanceIdentity, RunProvenanceIdentity]:
+    bundle = _bundle_run_provenance(execution_abi_sha256=str(abi["sha256"]))
+    return _constants_run_provenance(bundle), bundle
+
+
+def compare_artifact_sets(
+    execution_abi: Mapping[str, object],
+    **kwargs: object,
+):
+    bundle = kwargs.pop("bundle_run_provenance_identity", None)
+    constants = kwargs.pop("constants_run_provenance_identity", None)
+    if bundle is None:
+        constants_default, bundle = _identity_pair(execution_abi)
+        if constants is None:
+            constants = constants_default
+    elif constants is None:
+        assert isinstance(bundle, RunProvenanceIdentity)
+        constants = _constants_run_provenance(bundle)
+    # Historic caller-authored expectations have no production API surface.
+    kwargs.pop("generation_expectations", None)
+    pipeline = execution_abi["pipeline"]
+    assert isinstance(pipeline, Mapping)
+    node_ids = pipeline["producer_order"]
+    assert isinstance(node_ids, Sequence)
+    default_node_keys = {
+        str(node_id): f"{index + 1:x}" * 64
+        for index, node_id in enumerate(node_ids)
+    }
+    return _compare_artifact_sets(
+        execution_abi,
+        constants_run_provenance_identity=constants,  # type: ignore[arg-type]
+        bundle_run_provenance_identity=bundle,  # type: ignore[arg-type]
+        constants_node_reuse_keys=kwargs.pop(
+            "constants_node_reuse_keys", default_node_keys
+        ),  # type: ignore[arg-type]
+        bundle_node_reuse_keys=kwargs.pop(
+            "bundle_node_reuse_keys", default_node_keys
+        ),  # type: ignore[arg-type]
+        **kwargs,  # type: ignore[arg-type]
+    )
 
 
 def _receipts(
     bundle_provenance: RunProvenanceIdentity,
 ) -> tuple[dict[str, object], dict[str, object]]:
+    constants_provenance = _constants_run_provenance(bundle_provenance)
     stable = {
         "node_reuse_key": "a" * 64,
         "rows": [{"id": "one", "verdict": "pass"}],
@@ -197,12 +312,12 @@ def _receipts(
     return (
         {
             "manifest": {
-                "release_id": "populace-zone-2024-fixture",
+                "release_id": "populace-zone-2024-fixture-20260819T010203Z-a1b2c3d4",
                 "run_config": {
                     "config_authority": "constants",
                     "spec_binding_status": "absent",
                     "identity_generation": 0,
-                    "run_provenance_identity": _generation_zero_provenance(),
+                    "run_provenance_identity": constants_provenance.to_wire(),
                 },
                 "pins": [{"id": "source", "path": "/old/root/input"}],
                 **stable,
@@ -210,7 +325,7 @@ def _receipts(
         },
         {
             "manifest": {
-                "release_id": "microcosm-zone-2024-fixture",
+                "release_id": "microcosm-zone-2024-fixture-20260820T111213Z-deadbeef",
                 "run_config": {
                     "config_authority": "bundle",
                     "spec_binding_status": "resolved",
@@ -240,34 +355,31 @@ def _comparison_rules() -> list[dict[str, str]]:
             "expected_to_differ_by_generation",
         ),
         _rule(
-            "/run_config/run_provenance_identity",
+            "/run_config/run_provenance_identity/identity_generation",
+            "expected_to_differ_by_generation",
+        ),
+        _rule(
+            "/run_config/run_provenance_identity/source_grammar_receipt",
+            "expected_to_differ_by_generation",
+        ),
+        _rule(
+            "/run_config/run_provenance_identity/spec_binding",
+            "expected_to_differ_by_generation",
+        ),
+        _rule(
+            "/run_config/run_provenance_identity/authority_versions/runtime_authority",
+            "expected_to_differ_by_generation",
+        ),
+        _rule(
+            "/run_config/run_provenance_identity/authority_versions/execution_abi",
+            "expected_to_differ_by_generation",
+        ),
+        _rule(
+            "/run_config/run_provenance_identity/execution_receipt/authority_mode",
             "expected_to_differ_by_generation",
         ),
         _rule("/pins/*/path", "operational_excluded"),
     ]
-
-
-def _expectations(
-    bundle_provenance: RunProvenanceIdentity,
-) -> dict[tuple[str, str], GenerationExpectation]:
-    return {
-        ("manifest", "/run_config/config_authority"): GenerationExpectation(
-            constants_value="constants", bundle_value="bundle"
-        ),
-        ("manifest", "/run_config/spec_binding_status"): GenerationExpectation(
-            constants_value="absent", bundle_value="resolved"
-        ),
-        ("manifest", "/run_config/identity_generation"): GenerationExpectation(
-            constants_value=0, bundle_value=1
-        ),
-        (
-            "manifest",
-            "/run_config/run_provenance_identity",
-        ): GenerationExpectation(
-            constants_value=_generation_zero_provenance(),
-            bundle_value=bundle_provenance.to_wire(),
-        ),
-    }
 
 
 def test_plan_driven_comparison_emits_stable_empty_diff_receipt() -> None:
@@ -280,7 +392,6 @@ def test_plan_driven_comparison_emits_stable_empty_diff_receipt() -> None:
         "bundle_artifacts": {"bank": b"same-bank", "frame": b"same-frame"},
         "constants_receipts": constants_receipts,
         "bundle_receipts": bundle_receipts,
-        "generation_expectations": _expectations(bundle_provenance),
         "bundle_run_provenance_identity": bundle_provenance,
     }
 
@@ -295,14 +406,17 @@ def test_plan_driven_comparison_emits_stable_empty_diff_receipt() -> None:
     assert first.constants_normative_sha256 == first.bundle_normative_sha256
     assert [row.stage_ref for row in first.stage_rows] == ["prepared", "modeled"]
     assert all(row.equal for row in first.stage_rows)
-    assert [row.rule for row in first.receipt_rows] == [
+    assert [row.rule for row in first.receipt_rows[:2]] == [
         "operational_excluded",
         "equal_after_normalizing_prefix",
-            "expected_to_differ_by_generation",
-            "expected_to_differ_by_generation",
-            "expected_to_differ_by_generation",
-            "expected_to_differ_by_generation",
-        ]
+    ]
+    assert all(
+        row.rule == "expected_to_differ_by_generation"
+        for row in first.receipt_rows[2:]
+    )
+    assert len(first.receipt_rows[2:]) == 9
+    assert first.node_reuse_keys_equal is True
+    assert len(first.node_reuse_key_rows) == 2
     operational = first.receipt_rows[0]
     assert operational.constants_value_sha256 is None
     assert operational.bundle_value_sha256 is None
@@ -321,7 +435,6 @@ def test_normative_byte_difference_is_never_normalized() -> None:
         bundle_artifacts={"frame": b"bundle", "bank": b"same-bank"},
         constants_receipts=constants_receipts,
         bundle_receipts=bundle_receipts,
-        generation_expectations=_expectations(bundle_provenance),
         bundle_run_provenance_identity=bundle_provenance,
     )
 
@@ -382,9 +495,7 @@ def test_unmatched_receipt_difference_fails_closed() -> None:
         ),
     ):
         compare_artifact_sets(
-            _execution_abi(
-                receipt_roles=["checkpoint:fixture:manifest", receipt_role]
-            ),
+            _execution_abi(receipt_roles=["checkpoint:fixture:manifest", receipt_role]),
             constants_artifacts={"frame": b"same", "bank": b"same"},
             bundle_artifacts={"frame": b"same", "bank": b"same"},
             constants_receipts=constants,
@@ -519,17 +630,13 @@ def test_checkpoint_receipt_wrapper_excludes_only_operational_surface() -> None:
     constants = {
         "checkpoint:fixture:manifest": stable_manifest,
         receipt_role: checkpoint_receipt_surface(
-            _checkpoint_sidecar(
-                operational={"impute": {"path": "/constants/root"}}
-            )
+            _checkpoint_sidecar(operational={"impute": {"path": "/constants/root"}})
         ),
     }
     bundle = {
         "checkpoint:fixture:manifest": stable_manifest,
         receipt_role: checkpoint_receipt_surface(
-            _checkpoint_sidecar(
-                operational={"impute": {"path": "/bundle/root"}}
-            )
+            _checkpoint_sidecar(operational={"impute": {"path": "/bundle/root"}})
         ),
     }
 
@@ -594,9 +701,7 @@ def test_checkpoint_receipt_surface_is_a_closed_trusted_split() -> None:
 
 def test_complete_equal_receipt_surfaces_enter_comparison_identity() -> None:
     receipt_role = "checkpoint:fixture:receipts"
-    abi = _execution_abi(
-        receipt_roles=["checkpoint:fixture:manifest", receipt_role]
-    )
+    abi = _execution_abi(receipt_roles=["checkpoint:fixture:manifest", receipt_role])
     artifacts = {"frame": b"same", "bank": b"same"}
     receipt_surface = checkpoint_receipt_surface(_checkpoint_sidecar())
 
@@ -663,187 +768,123 @@ def test_duplicate_overlapping_and_broad_receipt_rules_are_rejected(
         )
 
 
-def test_generation_rule_requires_and_checks_both_expected_values() -> None:
-    abi = _execution_abi(
-        rules=[
-            _rule(
-                "/run_config/config_authority",
-                "expected_to_differ_by_generation",
-            )
-        ]
-    )
-    constants_receipts = {"manifest": {"run_config": {"config_authority": "constants"}}}
-    bundle_receipts = {"manifest": {"run_config": {"config_authority": "bundle"}}}
-    artifacts = {"frame": b"same", "bank": b"same"}
-
-    with pytest.raises(
-        ArtifactComparisonError, match="generation expectation inventory mismatch"
-    ):
-        compare_artifact_sets(
-            abi,
-            constants_artifacts=artifacts,
-            bundle_artifacts=artifacts,
-            constants_receipts=constants_receipts,
-            bundle_receipts=bundle_receipts,
-        )
-
-    wrong = {
-        ("manifest", "/run_config/config_authority"): GenerationExpectation(
-            constants_value="constants",
-            bundle_value="constants_adapter",
-        )
-    }
-    with pytest.raises(
-        ArtifactComparisonError,
-        match="differs from the sealed generic transition",
-    ):
-        compare_artifact_sets(
-            abi,
-            constants_artifacts=artifacts,
-            bundle_artifacts=artifacts,
-            constants_receipts=constants_receipts,
-            bundle_receipts=bundle_receipts,
-            generation_expectations=wrong,
-        )
-
-
-def test_run_provenance_expectation_is_bound_to_explicit_typed_identity() -> None:
-    pointer = "/run_config/run_provenance_identity"
-    abi = _execution_abi(rules=[_rule(pointer, "expected_to_differ_by_generation")])
-    execution_abi_sha256 = str(abi["sha256"])
-    trusted = _bundle_run_provenance(
-        execution_abi_sha256=execution_abi_sha256,
-        spec_sha256="a" * 64,
-    )
-    arbitrary = _bundle_run_provenance(
-        execution_abi_sha256=execution_abi_sha256,
-        spec_sha256="b" * 64,
-    )
-    artifacts = {"frame": b"same", "bank": b"same"}
-    constants_receipts = {
-        "manifest": {
-            "run_config": {"run_provenance_identity": _generation_zero_provenance()}
-        }
-    }
-    bundle_receipts = {
-        "manifest": {"run_config": {"run_provenance_identity": arbitrary.to_wire()}}
-    }
-    arbitrary_expectation = {
-        ("manifest", pointer): GenerationExpectation(
-            constants_value=_generation_zero_provenance(),
-            bundle_value=arbitrary.to_wire(),
-        )
-    }
-
-    with pytest.raises(
-        ArtifactComparisonError,
-        match="differs from the explicit typed identity",
-    ):
-        compare_artifact_sets(
-            abi,
-            constants_artifacts=artifacts,
-            bundle_artifacts=artifacts,
-            constants_receipts=constants_receipts,
-            bundle_receipts=bundle_receipts,
-            generation_expectations=arbitrary_expectation,
-            bundle_run_provenance_identity=trusted,
-        )
-
-
-def test_bundle_receipt_must_equal_typed_run_provenance_identity() -> None:
-    pointer = "/run_config/run_provenance_identity"
-    abi = _execution_abi(rules=[_rule(pointer, "expected_to_differ_by_generation")])
-    execution_abi_sha256 = str(abi["sha256"])
-    trusted = _bundle_run_provenance(
-        execution_abi_sha256=execution_abi_sha256,
-        spec_sha256="a" * 64,
-    )
-    arbitrary = _bundle_run_provenance(
-        execution_abi_sha256=execution_abi_sha256,
-        spec_sha256="b" * 64,
-    )
-    artifacts = {"frame": b"same", "bank": b"same"}
-
-    receipt = compare_artifact_sets(
+def test_generation_expectations_are_derived_from_typed_identities() -> None:
+    abi = _execution_abi(rules=_comparison_rules())
+    constants_identity, bundle_identity = _identity_pair(abi)
+    constants_receipts, bundle_receipts = _receipts(bundle_identity)
+    receipt = _compare_artifact_sets(
         abi,
-        constants_artifacts=artifacts,
-        bundle_artifacts=artifacts,
-        constants_receipts={
-            "manifest": {
-                "run_config": {"run_provenance_identity": _generation_zero_provenance()}
-            }
-        },
-        bundle_receipts={
-            "manifest": {"run_config": {"run_provenance_identity": arbitrary.to_wire()}}
-        },
-        generation_expectations={
-            ("manifest", pointer): GenerationExpectation(
-                constants_value=_generation_zero_provenance(),
-                bundle_value=trusted.to_wire(),
-            )
-        },
-        bundle_run_provenance_identity=trusted,
+        constants_artifacts={"frame": b"same", "bank": b"same"},
+        bundle_artifacts={"frame": b"same", "bank": b"same"},
+        constants_receipts=constants_receipts,
+        bundle_receipts=bundle_receipts,
+        constants_run_provenance_identity=constants_identity,
+        bundle_run_provenance_identity=bundle_identity,
+        constants_node_reuse_keys={"node:first": "1" * 64, "node:second": "2" * 64},
+        bundle_node_reuse_keys={"node:first": "1" * 64, "node:second": "2" * 64},
     )
+    assert receipt.passed is True
 
-    assert receipt.passed is False
-    assert receipt.receipts_equal_under_plan is False
-    assert receipt.differences[0].kind == "receipt_rule_violation"
+    with pytest.raises(TypeError, match="generation_expectations"):
+        _compare_artifact_sets(  # type: ignore[call-arg]
+            abi,
+            constants_artifacts={"frame": b"same", "bank": b"same"},
+            bundle_artifacts={"frame": b"same", "bank": b"same"},
+            constants_receipts=constants_receipts,
+            bundle_receipts=bundle_receipts,
+            constants_run_provenance_identity=constants_identity,
+            bundle_run_provenance_identity=bundle_identity,
+            constants_node_reuse_keys={"node:first": "1" * 64, "node:second": "2" * 64},
+            bundle_node_reuse_keys={"node:first": "1" * 64, "node:second": "2" * 64},
+            generation_expectations={},
+        )
+
+
+def test_behavior_relevant_provenance_leaf_remains_raw_equal() -> None:
+    abi = _execution_abi(rules=_comparison_rules())
+    constants_identity, bundle_identity = _identity_pair(abi)
+    changed_bundle = build_run_provenance_identity(
+        identity_generation=1,
+        source_grammar_receipt=bundle_identity.to_wire()["source_grammar_receipt"],
+        spec_binding=bundle_identity.to_wire()["spec_binding"],
+        authority_versions=bundle_identity.to_wire()["authority_versions"],
+        code_inventory_digest=bundle_identity.code_inventory_digest,
+        artifact_protocol_inventory=bundle_identity.to_wire()[
+            "artifact_protocol_inventory"
+        ],
+        run_request={**bundle_identity.to_wire()["run_request"], "sample_seed": 999},
+        execution_receipt=bundle_identity.to_wire()["execution_receipt"],
+    )
+    constants_receipts, bundle_receipts = _receipts(changed_bundle)
+    constants_receipts["manifest"]["run_config"][  # type: ignore[index]
+        "run_provenance_identity"
+    ] = constants_identity.to_wire()
+
+    with pytest.raises(ArtifactComparisonError, match="unmatched receipt differences"):
+        compare_artifact_sets(
+            abi,
+            constants_artifacts={"frame": b"same", "bank": b"same"},
+            bundle_artifacts={"frame": b"same", "bank": b"same"},
+            constants_receipts=constants_receipts,
+            bundle_receipts=bundle_receipts,
+            constants_run_provenance_identity=constants_identity,
+            bundle_run_provenance_identity=changed_bundle,
+        )
+
+
+def test_receipt_provenance_root_must_equal_typed_identity() -> None:
+    abi = _execution_abi(rules=_comparison_rules())
+    constants_identity, bundle_identity = _identity_pair(abi)
+    constants_receipts, bundle_receipts = _receipts(bundle_identity)
+    bundle_receipts["manifest"]["run_config"]["run_provenance_identity"][  # type: ignore[index]
+        "code_inventory_digest"
+    ] = "f" * 64
+
+    with pytest.raises(
+        ArtifactComparisonError,
+        match="bundle receipt provenance differs from typed identity",
+    ):
+        compare_artifact_sets(
+            abi,
+            constants_artifacts={"frame": b"same", "bank": b"same"},
+            bundle_artifacts={"frame": b"same", "bank": b"same"},
+            constants_receipts=constants_receipts,
+            bundle_receipts=bundle_receipts,
+            constants_run_provenance_identity=constants_identity,
+            bundle_run_provenance_identity=bundle_identity,
+        )
 
 
 @pytest.mark.parametrize(
     ("provenance_kwargs", "message"),
     [
-        (
-            {"attestation": "mirror-attested"},
-            "attestation must be bundle-authoritative",
-        ),
-        (
-            {"execution_abi_sha256": "f" * 64},
-            "differs from the compared execution ABI",
-        ),
+        ({"attestation": "mirror-attested"}, "attestation must be bundle-authoritative"),
+        ({"execution_abi_sha256": "f" * 64}, "differs from the compared execution ABI"),
     ],
 )
-def test_typed_bundle_provenance_must_bind_bundle_and_execution_abi(
+def test_typed_bundle_provenance_binds_generation_and_execution_abi(
     provenance_kwargs: dict[str, str],
     message: str,
 ) -> None:
-    pointer = "/run_config/run_provenance_identity"
-    abi = _execution_abi(rules=[_rule(pointer, "expected_to_differ_by_generation")])
-    arguments = {"execution_abi_sha256": str(abi["sha256"]), **provenance_kwargs}
-    provenance = _bundle_run_provenance(**arguments)
-    artifacts = {"frame": b"same", "bank": b"same"}
-
+    abi = _execution_abi()
+    provenance = _bundle_run_provenance(
+        **{"execution_abi_sha256": str(abi["sha256"]), **provenance_kwargs}
+    )
     with pytest.raises(ArtifactComparisonError, match=message):
         compare_artifact_sets(
             abi,
-            constants_artifacts=artifacts,
-            bundle_artifacts=artifacts,
-            constants_receipts={
-                "manifest": {
-                    "run_config": {
-                        "run_provenance_identity": _generation_zero_provenance()
-                    }
-                }
-            },
-            bundle_receipts={
-                "manifest": {
-                    "run_config": {"run_provenance_identity": provenance.to_wire()}
-                }
-            },
-            generation_expectations={
-                ("manifest", pointer): GenerationExpectation(
-                    constants_value=_generation_zero_provenance(),
-                    bundle_value=provenance.to_wire(),
-                )
-            },
+            constants_artifacts={"frame": b"same", "bank": b"same"},
+            bundle_artifacts={"frame": b"same", "bank": b"same"},
+            constants_receipts={},
+            bundle_receipts={},
             bundle_run_provenance_identity=provenance,
         )
 
 
-def test_generation_rules_require_closed_generic_field_semantics() -> None:
+def test_generation_rules_require_closed_leaf_semantics() -> None:
     with pytest.raises(
         ArtifactComparisonError,
-        match="unknown generation-difference field semantics 'identity'",
+        match="unknown generation-difference field semantics",
     ):
         compare_artifact_sets(
             _execution_abi(
@@ -853,69 +894,70 @@ def test_generation_rules_require_closed_generic_field_semantics() -> None:
             bundle_artifacts={"frame": b"same", "bank": b"same"},
             constants_receipts={"manifest": {"run": {"identity": 0}}},
             bundle_receipts={"manifest": {"run": {"identity": 1}}},
-            generation_expectations={
-                ("manifest", "/run/identity"): GenerationExpectation(0, 1)
-            },
         )
 
 
-def test_run_provenance_identity_argument_is_required_and_cannot_be_unused() -> None:
-    pointer = "/run_config/run_provenance_identity"
-    provenance_abi = _execution_abi(
-        rules=[_rule(pointer, "expected_to_differ_by_generation")]
+def test_node_reuse_key_maps_are_exact_and_receipted() -> None:
+    abi = _execution_abi()
+    result = compare_artifact_sets(
+        abi,
+        constants_artifacts={"frame": b"same", "bank": b"same"},
+        bundle_artifacts={"frame": b"same", "bank": b"same"},
+        constants_receipts={},
+        bundle_receipts={},
+        constants_node_reuse_keys={"node:first": "1" * 64, "node:second": "2" * 64},
+        bundle_node_reuse_keys={"node:first": "1" * 64, "node:second": "3" * 64},
     )
-    provenance = _bundle_run_provenance(
-        execution_abi_sha256=str(provenance_abi["sha256"])
-    )
-    artifacts = {"frame": b"same", "bank": b"same"}
-    expectation = {
-        ("manifest", pointer): GenerationExpectation(
-            constants_value=_generation_zero_provenance(),
-            bundle_value=provenance.to_wire(),
-        )
-    }
-    receipts = (
-        {
-            "manifest": {
-                "run_config": {"run_provenance_identity": _generation_zero_provenance()}
-            }
-        },
-        {"manifest": {"run_config": {"run_provenance_identity": provenance.to_wire()}}},
-    )
+    assert result.passed is False
+    assert result.node_reuse_keys_equal is False
+    assert result.differences[0].kind == "node_reuse_key"
+    assert result.receipt_sha256 == sha256_json(result.body_wire())
 
-    with pytest.raises(
-        ArtifactComparisonError,
-        match="must be an explicit typed RunProvenanceIdentity",
-    ):
+    with pytest.raises(ArtifactComparisonError, match="node reuse key inventory"):
         compare_artifact_sets(
-            provenance_abi,
-            constants_artifacts=artifacts,
-            bundle_artifacts=artifacts,
-            constants_receipts=receipts[0],
-            bundle_receipts=receipts[1],
-            generation_expectations=expectation,
-        )
-
-    with pytest.raises(ArtifactComparisonError, match="unused by the execution ABI"):
-        compare_artifact_sets(
-            _execution_abi(),
-            constants_artifacts=artifacts,
-            bundle_artifacts=artifacts,
+            abi,
+            constants_artifacts={"frame": b"same", "bank": b"same"},
+            bundle_artifacts={"frame": b"same", "bank": b"same"},
             constants_receipts={},
             bundle_receipts={},
-            bundle_run_provenance_identity=provenance,
+            constants_node_reuse_keys={"node:first": "1" * 64},
         )
 
 
-def test_publication_prefix_rule_compares_the_complete_suffix() -> None:
+def test_release_rule_strips_only_brand_and_terminal_timestamp_nonce() -> None:
     abi = _execution_abi(rules=[_rule("/release_id", "equal_after_normalizing_prefix")])
     artifacts = {"frame": b"same", "bank": b"same"}
+    equal = compare_artifact_sets(
+        abi,
+        constants_artifacts=artifacts,
+        bundle_artifacts=artifacts,
+        constants_receipts={
+            "manifest": {
+                "release_id": "populace-zone-2024-f001-s578-20260819T010203Z-a1b2c3d4"
+            }
+        },
+        bundle_receipts={
+            "manifest": {
+                "release_id": "microcosm-zone-2024-f001-s578-20260820T111213Z-deadbeef"
+            }
+        },
+    )
+    assert equal.passed is True
+
     receipt = compare_artifact_sets(
         abi,
         constants_artifacts=artifacts,
         bundle_artifacts=artifacts,
-        constants_receipts={"manifest": {"release_id": "populace-zone-2024-a"}},
-        bundle_receipts={"manifest": {"release_id": "microcosm-zone-2024-b"}},
+        constants_receipts={
+            "manifest": {
+                "release_id": "populace-zone-2024-a-20260819T010203Z-a1b2c3d4"
+            }
+        },
+        bundle_receipts={
+            "manifest": {
+                "release_id": "microcosm-zone-2024-b-20260820T111213Z-deadbeef"
+            }
+        },
     )
 
     assert receipt.passed is False
@@ -939,9 +981,20 @@ def test_publication_prefix_rule_refuses_unapproved_prefixes(
         constants_artifacts=artifacts,
         bundle_artifacts=artifacts,
         constants_receipts={
-            "manifest": {"release_id": f"{constants_prefix}-zone-2024-a"}
+            "manifest": {
+                "release_id": (
+                    f"{constants_prefix}-zone-2024-a-"
+                    "20260819T010203Z-a1b2c3d4"
+                )
+            }
         },
-        bundle_receipts={"manifest": {"release_id": f"{bundle_prefix}-zone-2024-a"}},
+        bundle_receipts={
+            "manifest": {
+                "release_id": (
+                    f"{bundle_prefix}-zone-2024-a-20260820T111213Z-deadbeef"
+                )
+            }
+        },
     )
 
     assert receipt.passed is False
@@ -979,6 +1032,24 @@ def test_execution_abi_seal_is_verified_before_comparison() -> None:
             bundle_receipts={},
         )
 
+    stale = copy.deepcopy(_execution_abi())
+    stale["code_abi"]["compiler_ir_abi_sha256"] = "f" * 64
+    code_unsigned = {
+        key: value
+        for key, value in stale["code_abi"].items()
+        if key != "implementation_sha256"
+    }
+    stale["code_abi"]["implementation_sha256"] = sha256_json(code_unsigned)
+    _reseal(stale)
+    with pytest.raises(ArtifactComparisonError, match="implementation attestation"):
+        compare_artifact_sets(
+            stale,
+            constants_artifacts={"frame": b"same", "bank": b"same"},
+            bundle_artifacts={"frame": b"same", "bank": b"same"},
+            constants_receipts={},
+            bundle_receipts={},
+        )
+
 
 def test_resealed_undeclared_selector_and_receipt_role_drift_fail_closed() -> None:
     abi = copy.deepcopy(_execution_abi())
@@ -1000,9 +1071,7 @@ def test_resealed_undeclared_selector_and_receipt_role_drift_fail_closed() -> No
         receipt_role = "checkpoint:fixture:receipts"
         receipt_surface = checkpoint_receipt_surface(_checkpoint_sidecar())
         compare_artifact_sets(
-            _execution_abi(
-                receipt_roles=["checkpoint:fixture:manifest", receipt_role]
-            ),
+            _execution_abi(receipt_roles=["checkpoint:fixture:manifest", receipt_role]),
             constants_artifacts={"frame": b"same", "bank": b"same"},
             bundle_artifacts={"frame": b"same", "bank": b"same"},
             constants_receipts={

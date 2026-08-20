@@ -574,6 +574,8 @@
     "durable_checkpoints",
     "code_abi",
     "normative_artifact_vector",
+    "artifact_bindings",
+    "source_broker_grant",
     "receipt_comparison_vector",
     "resume_predicate",
     "sha256"
@@ -706,6 +708,8 @@
         "domain",
         "content_selectors",
         "locator_grammar",
+        "artifact_selector_contract_sha256",
+        "compiler_ir_abi_sha256",
         "receipt_difference_match",
         "implementation_sha256"
        ],
@@ -716,6 +720,12 @@
          "items": {"type": "string", "minLength": 1}
         },
         "locator_grammar": {"type": "string", "minLength": 1},
+        "artifact_selector_contract_sha256": {
+         "$ref": "defs.schema.json#/$defs/sha256"
+        },
+        "compiler_ir_abi_sha256": {
+         "$ref": "defs.schema.json#/$defs/sha256"
+        },
         "receipt_difference_match": {
          "const": "exactly_one_sealed_rule"
         },
@@ -756,6 +766,112 @@
        "required": {"const": true}
       }
      }
+    },
+    "artifact_bindings": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "id",
+       "receipt_role",
+       "envelope_pointer",
+       "locator_ref",
+       "raw_identity",
+       "manifest_publication_run_id_pointer",
+       "manifest_release_id_pointer",
+       "embedded_identity_protocol",
+       "embedded_publication_run_id_pointer",
+       "embedded_release_id_pointer"
+      ],
+      "properties": {
+       "id": {"type": "string", "minLength": 1},
+       "receipt_role": {"type": "string", "minLength": 1},
+       "envelope_pointer": {
+        "type": "string",
+        "pattern": "^/(?:[^/]+/)*[^/]+$"
+       },
+       "locator_ref": {"type": "string", "minLength": 1},
+       "raw_identity": {"const": "resolved_path_sha256_size_bytes_v1"},
+       "manifest_publication_run_id_pointer": {
+        "type": "string",
+        "pattern": "^/(?:[^/]+/)*[^/]+$"
+       },
+       "manifest_release_id_pointer": {
+        "type": "string",
+        "pattern": "^/(?:[^/]+/)*[^/]+$"
+       },
+       "embedded_identity_protocol": {
+        "enum": [
+         "h5_artifact_metadata_v1",
+         "json_root_publication_identity_v1"
+        ]
+       },
+       "embedded_publication_run_id_pointer": {
+        "type": "string",
+        "pattern": "^/(?:[^/]+/)*[^/]+$"
+       },
+       "embedded_release_id_pointer": {
+        "oneOf": [
+         {"type": "null"},
+         {
+          "type": "string",
+          "pattern": "^/(?:[^/]+/)*[^/]+$"
+         }
+        ]
+       }
+      }
+     }
+    },
+    "source_broker_grant": {
+     "oneOf": [
+      {"type": "null"},
+      {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "domain",
+        "owner",
+        "effects",
+        "sources",
+        "source_set_sha256",
+        "sha256"
+       ],
+       "properties": {
+        "domain": {"const": "microcosm.spec-engine.source-broker-grant.v1"},
+        "owner": {
+         "type": "object",
+         "additionalProperties": false,
+         "required": ["kind", "id"],
+         "properties": {
+          "kind": {"const": "source_stage"},
+          "id": {"const": "declared_source_preflight"}
+         }
+        },
+        "effects": {
+         "type": "array",
+         "prefixItems": [{"const": "declared_source_read"}],
+         "minItems": 1,
+         "maxItems": 1
+        },
+        "sources": {
+         "type": "array",
+         "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "sha256", "byte_size"],
+          "properties": {
+           "id": {"type": "string", "minLength": 1},
+           "sha256": {"$ref": "defs.schema.json#/$defs/sha256"},
+           "byte_size": {"type": "integer", "minimum": 1}
+          }
+         }
+        },
+        "source_set_sha256": {"$ref": "defs.schema.json#/$defs/sha256"},
+        "sha256": {"$ref": "defs.schema.json#/$defs/sha256"}
+       }
+      }
+     ]
     },
     "receipt_comparison_vector": {
      "type": "array",
@@ -836,6 +952,8 @@
        "durable_checkpoints": {"maxItems": 0},
        "code_abi": {"type": "null"},
        "normative_artifact_vector": {"maxItems": 0},
+       "artifact_bindings": {"maxItems": 0},
+       "source_broker_grant": {"type": "null"},
        "receipt_comparison_vector": {"maxItems": 0},
        "resume_predicate": {"type": "null"}
       }

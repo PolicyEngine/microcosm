@@ -15,6 +15,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from .artifact_selector_contract import (
+    ARTIFACT_LOCATOR_GRAMMAR,
+    ARTIFACT_SELECTOR_CONTRACT_SHA256,
+)
 from .canonical import sha256_json
 from .model import (
     FrozenMap,
@@ -31,15 +35,16 @@ from .model import (
 from .resolver import F0_KERNEL_REGISTRY
 from .typed_closure import TypedClosureError, compile_producer_outputs
 
-COMPILER_IR_ABI_VERSION = 4
+COMPILER_IR_ABI_VERSION = 5
 EXECUTOR_CONTRACT_ABI = "compiled-node-brokered-contracts-v2"
 BROKER_SEMANTICS_ABI = "legacy-v1-ledger-broker-semantics-v2"
-EXECUTION_ABI = "stacked-artifact-comparison-vector-v1"
+EXECUTION_ABI = "stacked-artifact-comparison-vector-v2"
 ROW_CLASSIFIER_IMPLEMENTATION_DOMAIN = (
     "microcosm.spec-engine.row-classifier-implementation.v1"
 )
 _NODE_SLICE_DOMAIN = "microcosm.spec-engine.node-slice.v1"
 _NODE_KEY_DOMAIN = "microcosm.spec-engine.static-node-key.v1"
+_SOURCE_BROKER_GRANT_DOMAIN = "microcosm.spec-engine.source-broker-grant.v1"
 _NO_WRITE_ACTIONS = frozenset(
     {
         "consume_only_byte_exact_noop",
@@ -65,31 +70,63 @@ EXECUTION_RESUME_INTEGRITY_VALIDATORS = (
 )
 CHECKPOINT_RECEIPT_OPERATIONAL_POINTER = "/operational"
 
-_RECEIPT_COMPARISON_VECTOR = (
+_RUN_CONFIG_SCALAR_GENERATION_COMPARISON_FIELDS = (
+    ("/run_config/config_authority", "identity_generation"),
+    ("/run_config/spec_binding_status", "identity_generation"),
+    ("/run_config/identity_generation", "identity_generation"),
+)
+_RUN_PROVENANCE_GENERATION_COMPARISON_FIELDS = (
+    ("/identity_generation", "identity_generation"),
+    ("/source_grammar_receipt", "provenance_generation"),
+    ("/spec_binding", "provenance_generation"),
+    ("/authority_versions/runtime_authority", "provenance_generation"),
+    ("/authority_versions/execution_abi", "provenance_generation"),
+    ("/execution_receipt/authority_mode", "provenance_generation"),
+)
+_RUN_CONFIG_GENERATION_COMPARISON_FIELDS = (
+    _RUN_CONFIG_SCALAR_GENERATION_COMPARISON_FIELDS
+    + tuple(
+        (f"/run_config/run_provenance_identity{suffix}", category)
+        for suffix, category in _RUN_PROVENANCE_GENERATION_COMPARISON_FIELDS
+    )
+)
+
+_ARTIFACT_BINDINGS = (
+    {
+        "id": "publication_manifest:pool_h5",
+        "receipt_role": "publication_manifest",
+        "envelope_pointer": "/pool_h5",
+        "locator_ref": "runtime_output:pool_h5",
+        "raw_identity": "resolved_path_sha256_size_bytes_v1",
+        "manifest_publication_run_id_pointer": "/publication_run_id",
+        "manifest_release_id_pointer": "/release_id",
+        "embedded_identity_protocol": "h5_artifact_metadata_v1",
+        "embedded_publication_run_id_pointer": "/publication_run_id",
+        "embedded_release_id_pointer": None,
+    },
+    {
+        "id": "publication_manifest:agreement_diagnostics",
+        "receipt_role": "publication_manifest",
+        "envelope_pointer": "/agreement_diagnostics",
+        "locator_ref": "runtime_output:agreement_diagnostics",
+        "raw_identity": "resolved_path_sha256_size_bytes_v1",
+        "manifest_publication_run_id_pointer": "/publication_run_id",
+        "manifest_release_id_pointer": "/release_id",
+        "embedded_identity_protocol": "json_root_publication_identity_v1",
+        "embedded_publication_run_id_pointer": "/publication_run_id",
+        "embedded_release_id_pointer": "/release_id",
+    },
+)
+
+_RECEIPT_COMPARISON_VECTOR = tuple(
     (
         "publication_manifest",
-        "/run_config/config_authority",
+        pointer,
         "expected_to_differ_by_generation",
-        "identity_generation",
-    ),
-    (
-        "publication_manifest",
-        "/run_config/spec_binding_status",
-        "expected_to_differ_by_generation",
-        "identity_generation",
-    ),
-    (
-        "publication_manifest",
-        "/run_config/identity_generation",
-        "expected_to_differ_by_generation",
-        "identity_generation",
-    ),
-    (
-        "publication_manifest",
-        "/run_config/run_provenance_identity",
-        "expected_to_differ_by_generation",
-        "identity_generation",
-    ),
+        category,
+    )
+    for pointer, category in _RUN_CONFIG_GENERATION_COMPARISON_FIELDS
+) + (
     (
         "publication_manifest",
         "/release_id",
@@ -115,12 +152,15 @@ _RECEIPT_COMPARISON_VECTOR = (
         "operational_excluded",
         "host_path",
     ),
-    ("publication_manifest", "/pool_h5/path", "operational_excluded", "host_path"),
-    (
-        "publication_manifest",
-        "/agreement_diagnostics/path",
-        "operational_excluded",
-        "host_path",
+    *tuple(
+        ("publication_manifest", f"/{envelope}/{field}", "operational_excluded", category)
+        for envelope in ("pool_h5", "agreement_diagnostics")
+        for field, category in (
+            ("path", "host_path"),
+            ("sha256", "physical_digest"),
+            ("size_bytes", "physical_size"),
+            ("publication_run_id", "uuid_nonce"),
+        )
     ),
     (
         "publication_manifest",
@@ -133,6 +173,24 @@ _RECEIPT_COMPARISON_VECTOR = (
         "/acs_transfer_checkpoint_dir",
         "operational_excluded",
         "host_path",
+    ),
+    (
+        "publication_manifest",
+        "/source_broker_receipt",
+        "operational_excluded",
+        "broker_access_receipt",
+    ),
+    (
+        "publication_manifest",
+        "/stage_checkpoints",
+        "operational_excluded",
+        "duplicated_checkpoint_surface",
+    ),
+    (
+        "publication_manifest",
+        "/stage_receipts",
+        "operational_excluded",
+        "duplicated_stage_receipt_surface",
     ),
 )
 
@@ -191,6 +249,18 @@ def _compiler_ir_abi() -> CompilerIRABI:
         (
             "microcosm.build.spec_engine.executor",
             Path(__file__).resolve().with_name("executor.py"),
+        ),
+        (
+            "microcosm.build.spec_engine.artifact_selector_contract",
+            Path(__file__).resolve().with_name("artifact_selector_contract.py"),
+        ),
+        (
+            "microcosm.build.spec_engine.artifact_collection",
+            Path(__file__).resolve().with_name("artifact_collection.py"),
+        ),
+        (
+            "microcosm.build.spec_engine.artifact_comparison",
+            Path(__file__).resolve().with_name("artifact_comparison.py"),
         ),
         (
             "microcosm.build.spec_engine.scope_algebra",
@@ -2041,6 +2111,7 @@ def _compile_nodes(
 def _compile_execution_abi(
     resources: Mapping[str, object],
     *,
+    compiler_ir_abi: CompilerIRABI,
     stage_dag: StageDag,
     producer_graph: ProducerGraphIR,
     seed_stream_map: SeedStreamMap,
@@ -2066,6 +2137,8 @@ def _compile_execution_abi(
             "durable_checkpoints": [],
             "code_abi": None,
             "normative_artifact_vector": [],
+            "artifact_bindings": [],
+            "source_broker_grant": None,
             "receipt_comparison_vector": [],
             "resume_predicate": None,
         }
@@ -2077,6 +2150,62 @@ def _compile_execution_abi(
         pipeline_value,
         location="resources/spine/pipeline_contract",
     )
+    sources_resource = _mapping(
+        resources.get(ResourceKind.SOURCES.value),
+        location="resources/sources",
+    )
+    source_grants: list[dict[str, object]] = []
+    for index, source_value in enumerate(
+        _array(sources_resource.get("sources"), location="resources/sources/sources")
+    ):
+        source = _mapping(
+            source_value,
+            location=f"resources/sources/sources/{index}",
+        )
+        byte_size = source.get("byte_size")
+        if byte_size is None:
+            continue
+        if isinstance(byte_size, bool) or not isinstance(byte_size, int) or byte_size < 1:
+            raise CompilerIRError(
+                f"resources/sources/sources/{index}/byte_size: positive integer required"
+            )
+        source_sha256 = _string(
+            source.get("sha256"),
+            location=f"resources/sources/sources/{index}/sha256",
+        )
+        if len(source_sha256) != 64 or any(
+            character not in "0123456789abcdef" for character in source_sha256
+        ):
+            raise CompilerIRError(
+                f"resources/sources/sources/{index}/sha256: lowercase sha256 required"
+            )
+        source_grants.append(
+            {
+                "id": _string(
+                    source.get("id"),
+                    location=f"resources/sources/sources/{index}/id",
+                ),
+                "sha256": source_sha256,
+                "byte_size": byte_size,
+            }
+        )
+    source_grants.sort(key=lambda row: str(row["id"]))
+    if len({str(row["id"]) for row in source_grants}) != len(source_grants):
+        raise CompilerIRError("resources/sources: duplicate source broker grant id")
+    source_set_sha256 = sha256_json(
+        {"domain": _SOURCE_BROKER_GRANT_DOMAIN, "sources": source_grants}
+    )
+    source_broker_grant_unsigned: dict[str, object] = {
+        "domain": _SOURCE_BROKER_GRANT_DOMAIN,
+        "owner": {"kind": "source_stage", "id": "declared_source_preflight"},
+        "effects": ["declared_source_read"],
+        "sources": source_grants,
+        "source_set_sha256": source_set_sha256,
+    }
+    source_broker_grant = {
+        **source_broker_grant_unsigned,
+        "sha256": sha256_json(source_broker_grant_unsigned),
+    }
     artifact_protocol = _mapping(
         pipeline.get("artifact_protocol"),
         location="resources/spine/pipeline_contract/artifact_protocol",
@@ -2394,6 +2523,16 @@ def _compile_execution_abi(
     ]
     comparison_vector.extend(
         {
+            "artifact_role": f"checkpoint:{checkpoint['id']}:manifest",
+            "json_pointer_pattern": pointer,
+            "rule": "expected_to_differ_by_generation",
+            "category": category,
+        }
+        for checkpoint in durable_checkpoints
+        for pointer, category in _RUN_CONFIG_GENERATION_COMPARISON_FIELDS
+    )
+    comparison_vector.extend(
+        {
             "artifact_role": f"checkpoint:{checkpoint['id']}:receipts",
             "json_pointer_pattern": CHECKPOINT_RECEIPT_OPERATIONAL_POINTER,
             "rule": "operational_excluded",
@@ -2407,7 +2546,9 @@ def _compile_execution_abi(
     code_abi_unsigned = {
         "domain": EXECUTION_ABI,
         "content_selectors": selector_refs,
-        "locator_grammar": "closed-runtime-output-plan-and-checkpoint-receipt-v2",
+        "locator_grammar": ARTIFACT_LOCATOR_GRAMMAR,
+        "artifact_selector_contract_sha256": ARTIFACT_SELECTOR_CONTRACT_SHA256,
+        "compiler_ir_abi_sha256": compiler_ir_abi.sha256,
         "receipt_difference_match": "exactly_one_sealed_rule",
     }
     code_abi = {
@@ -2436,6 +2577,8 @@ def _compile_execution_abi(
         "durable_checkpoints": durable_checkpoints,
         "code_abi": code_abi,
         "normative_artifact_vector": artifact_vector,
+        "artifact_bindings": [dict(row) for row in _ARTIFACT_BINDINGS],
+        "source_broker_grant": source_broker_grant,
         "receipt_comparison_vector": comparison_vector,
         "resume_predicate": {
             "candidate_order": [
@@ -2506,6 +2649,7 @@ def compile_spec(spec: ResolvedSpec) -> CompiledSpecIR:
     )
     execution_abi = _compile_execution_abi(
         behavior_resources,
+        compiler_ir_abi=compiler_ir_abi,
         stage_dag=stage_dag,
         producer_graph=producer_graph,
         seed_stream_map=seed_stream_map,

@@ -17,7 +17,12 @@ from microcosm.build.spec_engine.artifact_collection import (
     ArtifactLocatorRegistry,
     collect_artifact_surfaces,
 )
+from microcosm.build.spec_engine.artifact_selector_contract import (
+    ARTIFACT_LOCATOR_GRAMMAR,
+    ARTIFACT_SELECTOR_CONTRACT_SHA256,
+)
 from microcosm.build.spec_engine.canonical import sha256_json
+from microcosm.build.spec_engine.compiler_ir import current_compiler_ir_abi
 from microcosm.build.spec_engine.model import thaw_json
 
 
@@ -44,7 +49,15 @@ def _write_json(path: Path, value: object) -> None:
     )
 
 
-def _write_pool_h5(path: Path, *, income: int = 10, weight: float = 1.5) -> None:
+def _write_pool_h5(
+    path: Path,
+    *,
+    income: int = 10,
+    weight: float = 1.5,
+    period: int = 2024,
+    artifact_kind: str = "fixture",
+    publication_run_id: str = "operational",
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with pd.HDFStore(path, mode="w") as store:
         store.put(
@@ -58,10 +71,19 @@ def _write_pool_h5(path: Path, *, income: int = 10, weight: float = 1.5) -> None
             ),
             format="fixed",
         )
-        store.put("_time_period", pd.Series([2024]), format="table")
+        store.put("_time_period", pd.Series([period]), format="table")
         store.put(
-            "_artifact_metadata",
-            pd.Series([json.dumps({"publication_run_id": "operational"})]),
+            "_populace_staging_metadata",
+            pd.Series(
+                [
+                    json.dumps(
+                        {
+                            "artifact_kind": artifact_kind,
+                            "publication_run_id": publication_run_id,
+                        }
+                    )
+                ]
+            ),
             format="table",
         )
 
@@ -73,9 +95,98 @@ def _generation_value(field: str, mode: str) -> object:
         return "absent" if mode == "constants" else "resolved"
     if field == "identity_generation":
         return 0 if mode == "constants" else 1
-    if field == "run_provenance_identity":
-        return {"identity_generation": 0 if mode == "constants" else 1}
     return f"{mode}:{field}"
+
+
+def _run_provenance_wire(mode: str, execution_abi: dict[str, object]) -> dict[str, object]:
+    bundle = mode == "bundle"
+    return {
+        "identity_generation": 1 if bundle else 0,
+        "source_grammar_receipt": (
+            {
+                "schema_version": 3,
+                "canonicalizer_version": 1,
+                "migration_chain": [],
+            }
+            if bundle
+            else None
+        ),
+        "spec_binding": (
+            {
+                "country": "fixture",
+                "schema_id": "country-spec",
+                "schema_version": 3,
+                "canonicalizer_version": 1,
+                "spec_sha256": "a" * 64,
+                "attestation": "bundle-authoritative",
+            }
+            if bundle
+            else None
+        ),
+        "authority_versions": {
+            "stacked_authority": "1" * 64,
+            "checkpoint_materializer": "2" * 64,
+            "runtime_authority": "3" * 64 if bundle else None,
+            "execution_abi": execution_abi["sha256"] if bundle else None,
+        },
+        "code_inventory_digest": "4" * 64,
+        "artifact_protocol_inventory": {"fixture": "v1"},
+        "run_request": {"pipeline": "fixture", "sample_seed": 578},
+        "execution_receipt": {
+            "authority_mode": mode,
+            "pipeline": "fixture",
+            "code_pin": "fixture-code-pin",
+        },
+    }
+
+
+def _run_config(mode: str, execution_abi: dict[str, object]) -> dict[str, object]:
+    return {
+        "config_authority": mode,
+        "spec_binding_status": "absent" if mode == "constants" else "resolved",
+        "identity_generation": 0 if mode == "constants" else 1,
+        "run_provenance_identity": _run_provenance_wire(mode, execution_abi),
+    }
+
+
+def _source_broker_receipt(
+    execution_abi: dict[str, object],
+    *,
+    provenance: dict[str, object],
+) -> dict[str, object]:
+    grant = execution_abi["source_broker_grant"]
+    assert isinstance(grant, dict)
+    sources = grant["sources"]
+    assert isinstance(sources, list)
+    events = [
+        {
+            "sequence": index,
+            "broker": "file",
+            "operation": "open_snapshot",
+            "resource": source["id"],
+            "disposition": "allowed",
+            "reason_code": "declared_source_read",
+            "details": {
+                "resolved_path": f"/fixture/sources/{source['id']}",
+                "content_sha256": source["sha256"],
+                "byte_size": source["byte_size"],
+            },
+        }
+        for index, source in enumerate(sources)
+    ]
+    body = {
+        "domain": "microcosm.spec-engine.broker-access-receipt.v1",
+        "schema_version": 1,
+        "surface": "operational",
+        "owner": {"kind": "source_stage", "id": "declared_source_preflight"},
+        "node_key": None,
+        "attempt": 0,
+        "attempt_scope": None,
+        "status": "complete",
+        "run_provenance_identity": provenance,
+        "events": events,
+    }
+    return {**body, "receipt_sha256": sha256_json(body)}
 
 
 def _set_pointer(document: dict[str, object], pointer: str, value: object) -> None:
@@ -100,37 +211,62 @@ def _has_pointer(document: dict[str, object], pointer: str) -> bool:
     return True
 
 
-def _publication_document(mode: str, root: Path) -> dict[str, object]:
+def _publication_document(
+    mode: str,
+    root: Path,
+    *,
+    execution_abi: dict[str, object],
+    publication_run_id: str,
+) -> dict[str, object]:
     prefix = "populace" if mode == "constants" else "microcosm"
+    pool_path = root / "pool.h5"
+    diagnostics_path = root / "pool.gates.json"
+    run_config = _run_config(mode, execution_abi)
     return {
-        "release_id": f"{prefix}-us-fixture",
-        "publication_run_id": f"{mode}-nonce",
-        "run_config": {
-            "config_authority": mode,
-            "spec_binding_status": "absent" if mode == "constants" else "resolved",
-            "identity_generation": 0 if mode == "constants" else 1,
-            "run_provenance_identity": {
-                "identity_generation": 0 if mode == "constants" else 1
-            },
-        },
+        "release_id": (
+            f"{prefix}-us-fixture-f001-s578-"
+            f"{'20260819T010203Z-a1b2c3d4' if mode == 'constants' else '20260820T111213Z-deadbeef'}"
+        ),
+        "publication_run_id": publication_run_id,
+        "run_config": run_config,
+        "source_broker_receipt": (
+            None
+            if mode == "constants"
+            else _source_broker_receipt(
+                execution_abi,
+                provenance=run_config["run_provenance_identity"],  # type: ignore[arg-type]
+            )
+        ),
         "provenance_pins": {"source": {"path": str(root / "input")}},
-        "pool_h5": {"path": str(root / "pool.h5"), "sha256": "a" * 64},
+        "pool_h5": {
+            "path": str(pool_path.resolve()),
+            "sha256": hashlib.sha256(pool_path.read_bytes()).hexdigest(),
+            "size_bytes": pool_path.stat().st_size,
+            "publication_run_id": publication_run_id,
+        },
         "agreement_diagnostics": {
-            "path": str(root / "pool.gates.json"),
-            "sha256": "b" * 64,
+            "path": str(diagnostics_path.resolve()),
+            "sha256": hashlib.sha256(diagnostics_path.read_bytes()).hexdigest(),
+            "size_bytes": diagnostics_path.stat().st_size,
+            "publication_run_id": publication_run_id,
         },
         "primary_qrf_checkpoint_dir": str(root / "primary"),
         "acs_transfer_checkpoint_dir": str(root / "transfer"),
         "period": 2024,
         "status": "simulation_ready",
+        "stage_checkpoints": {"fixture": {"path": str(root / "checkpoint")}},
+        "stage_receipts": {"fixture": {"path": str(root / "receipt")}},
     }
 
 
-def _diagnostics_document(mode: str) -> dict[str, object]:
+def _diagnostics_document(mode: str, *, publication_run_id: str) -> dict[str, object]:
     prefix = "populace" if mode == "constants" else "microcosm"
     return {
-        "release_id": f"{prefix}-us-fixture",
-        "publication_run_id": f"{mode}-nonce",
+        "release_id": (
+            f"{prefix}-us-fixture-f001-s578-"
+            f"{'20260819T010203Z-a1b2c3d4' if mode == 'constants' else '20260820T111213Z-deadbeef'}"
+        ),
+        "publication_run_id": publication_run_id,
         "simulation_ready": True,
         "terminal_gates": {"gates": {"fixture": {"passed": True}}},
     }
@@ -149,6 +285,7 @@ def _live_registry(
     mismatched_sidecar: str | None = None,
 ) -> ArtifactLocatorRegistry:
     root.mkdir(parents=True, exist_ok=True)
+    publication_run_id = "a" * 32 if mode == "constants" else "b" * 32
     registry = ArtifactLocatorRegistry(allowed_roots=[root])
     artifacts = execution_abi["normative_artifact_vector"]
     assert isinstance(artifacts, list)
@@ -178,14 +315,15 @@ def _live_registry(
     paths: dict[str, Path] = {}
     for index, (locator, selectors) in enumerate(selectors_by_locator.items()):
         assert isinstance(locator, str)
-        if locator == skip_locator:
-            continue
+        bind_locator = locator != skip_locator
         if selectors == {"selector:canonical_json_bytes_v1"}:
-            registry.bind_json(locator, seed_stream_map)
+            if bind_locator:
+                registry.bind_json(locator, seed_stream_map)
         elif "selector:h5_all_entity_tables_and_columns_v1" in selectors:
             path = root / "pool.h5"
-            _write_pool_h5(path)
-            registry.bind_file(locator, path)
+            _write_pool_h5(path, publication_run_id=publication_run_id)
+            if bind_locator:
+                registry.bind_file(locator, path)
             paths[locator] = path
         elif selectors == {"selector:publication_normative_vector_v1"}:
             path = root / "pool.manifest.json"
@@ -193,31 +331,46 @@ def _live_registry(
                 path,
                 complete_document(
                     "publication_manifest",
-                    _publication_document(mode, root),
+                    _publication_document(
+                        mode,
+                        root,
+                        execution_abi=execution_abi,
+                        publication_run_id=publication_run_id,
+                    ),
                 ),
             )
-            registry.bind_file(locator, path)
+            if bind_locator:
+                registry.bind_file(locator, path)
             paths[locator] = path
         elif selectors == {"selector:terminal_gate_normative_rows_v1"}:
             path = root / "pool.gates.json"
             _write_json(
                 path,
-                complete_document("terminal_gates", _diagnostics_document(mode)),
+                complete_document(
+                    "terminal_gates",
+                    _diagnostics_document(
+                        mode,
+                        publication_run_id=publication_run_id,
+                    ),
+                ),
             )
-            registry.bind_file(locator, path)
+            if bind_locator:
+                registry.bind_file(locator, path)
             paths[locator] = path
         elif selectors == {"selector:directory_tree_bytes_v1"}:
             path = root / "banks" / f"bank-{index:03d}"
             (path / "targets").mkdir(parents=True)
             (path / "targets" / "000__fixture.h5").write_bytes(b"bank-target")
-            registry.bind_directory(locator, path)
+            if bind_locator:
+                registry.bind_directory(locator, path)
             paths[locator] = path
         else:
             assert selectors == {"selector:file_bytes_v1"}
             path = root / "checkpoints" / f"checkpoint-{index:03d}.h5"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(f"checkpoint:{locator}".encode())
-            registry.bind_file(locator, path)
+            if bind_locator:
+                registry.bind_file(locator, path)
             paths[locator] = path
 
     checkpoints = execution_abi["durable_checkpoints"]
@@ -244,6 +397,7 @@ def _live_registry(
             "stage": checkpoint_id,
             "identity_sha256": "c" * 64,
             "checkpoint": payload_binding,
+            "run_config": _run_config(mode, execution_abi),
         }
         for rule in rules_by_role.get(manifest_role, []):
             pointer = str(rule["json_pointer_pattern"])
@@ -298,12 +452,28 @@ def _sealed_abi(
     code_unsigned = {
         "domain": "fixture",
         "content_selectors": selectors,
-        "locator_grammar": "closed-runtime-output-plan-and-checkpoint-receipt-v2",
+        "locator_grammar": ARTIFACT_LOCATOR_GRAMMAR,
+        "artifact_selector_contract_sha256": ARTIFACT_SELECTOR_CONTRACT_SHA256,
+        "compiler_ir_abi_sha256": current_compiler_ir_abi().sha256,
         "receipt_difference_match": "exactly_one_sealed_rule",
     }
     code_abi = {
         **code_unsigned,
         "implementation_sha256": sha256_json(code_unsigned),
+    }
+    source_rows: list[dict[str, object]] = []
+    source_set_sha256 = sha256_json(
+        {
+            "domain": "microcosm.spec-engine.source-broker-grant.v1",
+            "sources": source_rows,
+        }
+    )
+    grant_unsigned = {
+        "domain": "microcosm.spec-engine.source-broker-grant.v1",
+        "owner": {"kind": "source_stage", "id": "declared_source_preflight"},
+        "effects": ["declared_source_read"],
+        "sources": source_rows,
+        "source_set_sha256": source_set_sha256,
     }
     unsigned: dict[str, object] = {
         "schema_version": 1,
@@ -314,6 +484,11 @@ def _sealed_abi(
         "durable_checkpoints": [],
         "code_abi": code_abi,
         "normative_artifact_vector": artifacts,
+        "artifact_bindings": [],
+        "source_broker_grant": {
+            **grant_unsigned,
+            "sha256": sha256_json(grant_unsigned),
+        },
         "receipt_comparison_vector": [] if rules is None else rules,
         "resume_predicate": None,
     }
@@ -413,6 +588,129 @@ def test_checkpoint_sidecars_are_read_raw_and_enforce_sealed_presence_and_bindin
             execution_abi,
             registry=registry,
             authority_mode="constants",
+        )
+
+
+def _bound_path(registry: ArtifactLocatorRegistry, locator_ref: str) -> Path:
+    path = registry.snapshot()[locator_ref].path
+    assert path is not None
+    return path
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("sha256", "f" * 64, "published digest differs"),
+        ("size_bytes", 1, "published size differs"),
+        ("publication_run_id", "c" * 32, "envelope publication_run_id differs"),
+    ],
+)
+def test_publication_envelope_is_authenticated_before_exclusion(
+    execution_abi: dict[str, object],
+    seed_stream_map: dict[str, object],
+    tmp_path: Path,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    registry = _live_registry(
+        execution_abi,
+        seed_stream_map,
+        tmp_path,
+        mode="bundle",
+    )
+    manifest_path = _bound_path(registry, "runtime_output:manifest")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["pool_h5"][field] = value
+    _write_json(manifest_path, manifest)
+
+    with pytest.raises(ArtifactCollectionError, match=message):
+        collect_artifact_surfaces(
+            execution_abi,
+            registry=registry,
+            authority_mode="bundle",
+        )
+
+
+def test_h5_and_diagnostics_embedded_identities_cross_authenticate_manifest(
+    execution_abi: dict[str, object],
+    seed_stream_map: dict[str, object],
+    tmp_path: Path,
+) -> None:
+    h5_registry = _live_registry(
+        execution_abi,
+        seed_stream_map,
+        tmp_path / "h5",
+        mode="bundle",
+    )
+    h5_path = _bound_path(h5_registry, "runtime_output:pool_h5")
+    _write_pool_h5(h5_path, publication_run_id="c" * 32)
+    manifest_path = _bound_path(h5_registry, "runtime_output:manifest")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["pool_h5"]["sha256"] = hashlib.sha256(h5_path.read_bytes()).hexdigest()
+    manifest["pool_h5"]["size_bytes"] = h5_path.stat().st_size
+    _write_json(manifest_path, manifest)
+    with pytest.raises(ArtifactCollectionError, match="embedded publication_run_id"):
+        collect_artifact_surfaces(
+            execution_abi,
+            registry=h5_registry,
+            authority_mode="bundle",
+        )
+
+    diagnostics_registry = _live_registry(
+        execution_abi,
+        seed_stream_map,
+        tmp_path / "diagnostics",
+        mode="bundle",
+    )
+    diagnostics_path = _bound_path(
+        diagnostics_registry,
+        "runtime_output:agreement_diagnostics",
+    )
+    diagnostics = json.loads(diagnostics_path.read_text(encoding="utf-8"))
+    diagnostics["release_id"] = (
+        "microcosm-us-other-f001-s578-20260820T111213Z-deadbeef"
+    )
+    _write_json(diagnostics_path, diagnostics)
+    manifest_path = _bound_path(diagnostics_registry, "runtime_output:manifest")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["agreement_diagnostics"]["sha256"] = hashlib.sha256(
+        diagnostics_path.read_bytes()
+    ).hexdigest()
+    manifest["agreement_diagnostics"]["size_bytes"] = diagnostics_path.stat().st_size
+    _write_json(manifest_path, manifest)
+    with pytest.raises(ArtifactCollectionError, match="diagnostics release_id"):
+        collect_artifact_surfaces(
+            execution_abi,
+            registry=diagnostics_registry,
+            authority_mode="bundle",
+        )
+
+
+def test_bundle_source_broker_receipt_must_match_compiler_grant_exactly(
+    execution_abi: dict[str, object],
+    seed_stream_map: dict[str, object],
+    tmp_path: Path,
+) -> None:
+    registry = _live_registry(
+        execution_abi,
+        seed_stream_map,
+        tmp_path,
+        mode="bundle",
+    )
+    manifest_path = _bound_path(registry, "runtime_output:manifest")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    receipt = manifest["source_broker_receipt"]
+    receipt["events"][0]["details"]["content_sha256"] = "f" * 64
+    body = {key: value for key, value in receipt.items() if key != "receipt_sha256"}
+    receipt["receipt_sha256"] = sha256_json(body)
+    _write_json(manifest_path, manifest)
+
+    with pytest.raises(ArtifactCollectionError, match="source identity differs"):
+        collect_artifact_surfaces(
+            execution_abi,
+            registry=registry,
+            authority_mode="bundle",
         )
 
 
@@ -554,8 +852,23 @@ def test_h5_entity_and_weight_selectors_are_disjoint_logical_surfaces(
         ]
     )
 
-    def collect(path: Path, *, income: int, weight: float):
-        _write_pool_h5(path, income=income, weight=weight)
+    def collect(
+        path: Path,
+        *,
+        income: int,
+        weight: float,
+        period: int = 2024,
+        artifact_kind: str = "fixture",
+        publication_run_id: str = "operational",
+    ):
+        _write_pool_h5(
+            path,
+            income=income,
+            weight=weight,
+            period=period,
+            artifact_kind=artifact_kind,
+            publication_run_id=publication_run_id,
+        )
         registry = ArtifactLocatorRegistry(allowed_roots=[tmp_path])
         registry.bind_file(locator, path)
         return collect_artifact_surfaces(
@@ -567,11 +880,34 @@ def test_h5_entity_and_weight_selectors_are_disjoint_logical_surfaces(
     baseline = collect(tmp_path / "baseline.h5", income=10, weight=1.5)
     weight_changed = collect(tmp_path / "weight.h5", income=10, weight=9.5)
     entity_changed = collect(tmp_path / "entity.h5", income=99, weight=1.5)
+    operational_changed = collect(
+        tmp_path / "operational.h5",
+        income=10,
+        weight=1.5,
+        publication_run_id="another-nonce",
+    )
+    period_changed = collect(
+        tmp_path / "period.h5",
+        income=10,
+        weight=1.5,
+        period=2025,
+    )
+    metadata_changed = collect(
+        tmp_path / "metadata.h5",
+        income=10,
+        weight=1.5,
+        artifact_kind="different",
+    )
 
     assert baseline["entities"] == weight_changed["entities"]
     assert baseline["weights"] != weight_changed["weights"]
     assert baseline["entities"] != entity_changed["entities"]
     assert baseline["weights"] == entity_changed["weights"]
+    assert baseline == operational_changed
+    assert baseline["entities"] != period_changed["entities"]
+    assert baseline["weights"] != period_changed["weights"]
+    assert baseline["entities"] != metadata_changed["entities"]
+    assert baseline["weights"] != metadata_changed["weights"]
 
 
 def test_execution_abi_and_code_abi_seals_are_verified_before_io(
@@ -597,6 +933,40 @@ def test_execution_abi_and_code_abi_seals_are_verified_before_io(
     unsigned = {key: value for key, value in tampered.items() if key != "sha256"}
     tampered["sha256"] = sha256_json(unsigned)
     with pytest.raises(ArtifactCollectionError, match="unsupported.*locator grammar"):
+        collect_artifact_surfaces(
+            tampered,
+            registry=registry,
+            authority_mode="constants",
+        )
+
+    tampered = copy.deepcopy(abi)
+    tampered["code_abi"]["artifact_selector_contract_sha256"] = "f" * 64
+    code_unsigned = {
+        key: value
+        for key, value in tampered["code_abi"].items()
+        if key != "implementation_sha256"
+    }
+    tampered["code_abi"]["implementation_sha256"] = sha256_json(code_unsigned)
+    unsigned = {key: value for key, value in tampered.items() if key != "sha256"}
+    tampered["sha256"] = sha256_json(unsigned)
+    with pytest.raises(ArtifactCollectionError, match="selector contract"):
+        collect_artifact_surfaces(
+            tampered,
+            registry=registry,
+            authority_mode="constants",
+        )
+
+    tampered = copy.deepcopy(abi)
+    tampered["code_abi"]["compiler_ir_abi_sha256"] = "f" * 64
+    code_unsigned = {
+        key: value
+        for key, value in tampered["code_abi"].items()
+        if key != "implementation_sha256"
+    }
+    tampered["code_abi"]["implementation_sha256"] = sha256_json(code_unsigned)
+    unsigned = {key: value for key, value in tampered.items() if key != "sha256"}
+    tampered["sha256"] = sha256_json(unsigned)
+    with pytest.raises(ArtifactCollectionError, match="implementation attestation"):
         collect_artifact_surfaces(
             tampered,
             registry=registry,

@@ -16,7 +16,13 @@ import hashlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+from .artifact_selector_contract import (
+    ARTIFACT_LOCATOR_GRAMMAR,
+    ARTIFACT_SELECTOR_CONTRACT_SHA256,
+    normalize_release_id,
+)
 from .canonical import canonical_json_bytes, sha256_json
+from .compiler_ir import current_compiler_ir_abi
 from .executor import RunProvenanceIdentity
 
 _COMPARISON_DOMAIN = "microcosm.spec-engine.artifact-comparison.v1"
@@ -30,13 +36,27 @@ _ALLOWED_RECEIPT_RULES = frozenset(
         "operational_excluded",
     }
 )
-_GENERATION_RULE_FIELDS = frozenset(
+_TOP_GENERATION_POINTERS = frozenset(
     {
-        "config_authority",
-        "identity_generation",
-        "run_provenance_identity",
-        "spec_binding_status",
+        ("run_config", "config_authority"),
+        ("run_config", "spec_binding_status"),
+        ("run_config", "identity_generation"),
     }
+)
+_PROVENANCE_ROOT_TOKENS = ("run_config", "run_provenance_identity")
+_PROVENANCE_GENERATION_SUFFIXES = frozenset(
+    {
+        ("identity_generation",),
+        ("source_grammar_receipt",),
+        ("spec_binding",),
+        ("authority_versions", "runtime_authority"),
+        ("authority_versions", "execution_abi"),
+        ("execution_receipt", "authority_mode"),
+    }
+)
+_GENERATION_POINTERS = _TOP_GENERATION_POINTERS | frozenset(
+    (*_PROVENANCE_ROOT_TOKENS, *suffix)
+    for suffix in _PROVENANCE_GENERATION_SUFFIXES
 )
 _EXECUTION_ABI_KEYS = frozenset(
     {
@@ -48,6 +68,8 @@ _EXECUTION_ABI_KEYS = frozenset(
         "durable_checkpoints",
         "code_abi",
         "normative_artifact_vector",
+        "artifact_bindings",
+        "source_broker_grant",
         "receipt_comparison_vector",
         "resume_predicate",
         "sha256",
@@ -75,6 +97,8 @@ _CODE_ABI_KEYS = frozenset(
         "domain",
         "content_selectors",
         "locator_grammar",
+        "artifact_selector_contract_sha256",
+        "compiler_ir_abi_sha256",
         "receipt_difference_match",
         "implementation_sha256",
     }
@@ -89,9 +113,7 @@ _DURABLE_CHECKPOINT_KEYS = frozenset(
         "operational_receipts_sidecar",
     }
 )
-_CHECKPOINT_RECEIPT_SURFACE_KEYS = frozenset(
-    {"present", "canonical", "operational"}
-)
+_CHECKPOINT_RECEIPT_SURFACE_KEYS = frozenset({"present", "canonical", "operational"})
 _CHECKPOINT_RECEIPT_SIDECAR_KEYS = frozenset(
     {
         "artifact_kind",
@@ -104,6 +126,34 @@ _CHECKPOINT_RECEIPT_SIDECAR_KEYS = frozenset(
     }
 )
 _CHECKPOINT_BINDING_KEYS = frozenset({"filename", "sha256", "size_bytes"})
+_PIPELINE_KEYS = frozenset(
+    {
+        "id",
+        "artifact_protocol",
+        "operator_order",
+        "producer_order",
+        "seed_stream_map_sha256",
+    }
+)
+_ARTIFACT_BINDING_KEYS = frozenset(
+    {
+        "id",
+        "receipt_role",
+        "envelope_pointer",
+        "locator_ref",
+        "raw_identity",
+        "manifest_publication_run_id_pointer",
+        "manifest_release_id_pointer",
+        "embedded_identity_protocol",
+        "embedded_publication_run_id_pointer",
+        "embedded_release_id_pointer",
+    }
+)
+_NODE_REUSE_KEYS_DOMAIN = "microcosm.spec-engine.node-reuse-key-map.v1"
+_SOURCE_BROKER_GRANT_KEYS = frozenset(
+    {"domain", "owner", "effects", "sources", "source_set_sha256", "sha256"}
+)
+_SOURCE_BROKER_GRANT_DOMAIN = "microcosm.spec-engine.source-broker-grant.v1"
 _MISSING = object()
 
 
@@ -113,14 +163,7 @@ class ArtifactComparisonError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class GenerationExpectation:
-    """Expected generation-specific values on both authority sides.
-
-    The comparator binds the current closed generation semantics independently
-    of these caller-supplied values.  In particular, bundle provenance must
-    equal an explicit typed generation-one identity.  Requiring both values
-    prevents an ``expected_to_differ_by_generation`` rule from becoming an
-    ignore rule while retaining an exact constants-era oracle value.
-    """
+    """Internally derived generation-specific values on both authority sides."""
 
     constants_value: object
     bundle_value: object
@@ -193,6 +236,22 @@ class ReceiptComparisonRow:
 
 
 @dataclass(frozen=True, slots=True)
+class NodeReuseKeyComparisonRow:
+    node_id: str
+    constants_node_reuse_key: str
+    bundle_node_reuse_key: str
+    equal: bool
+
+    def to_wire(self) -> dict[str, object]:
+        return {
+            "node_id": self.node_id,
+            "constants_node_reuse_key": self.constants_node_reuse_key,
+            "bundle_node_reuse_key": self.bundle_node_reuse_key,
+            "equal": self.equal,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class ComparisonDifference:
     kind: str
     subject: str
@@ -218,12 +277,16 @@ class ArtifactComparisonReceipt:
     artifact_rows: tuple[ArtifactComparisonRow, ...]
     stage_rows: tuple[StageComparisonRow, ...]
     receipt_rows: tuple[ReceiptComparisonRow, ...]
+    node_reuse_key_rows: tuple[NodeReuseKeyComparisonRow, ...]
     constants_normative_sha256: str
     bundle_normative_sha256: str
     constants_receipts_sha256: str
     bundle_receipts_sha256: str
+    constants_node_reuse_keys_sha256: str
+    bundle_node_reuse_keys_sha256: str
     normative_equal: bool
     receipts_equal_under_plan: bool
+    node_reuse_keys_equal: bool
     passed: bool
     differences: tuple[ComparisonDifference, ...]
     receipt_sha256: str
@@ -236,12 +299,20 @@ class ArtifactComparisonReceipt:
             "artifact_rows": [row.to_wire() for row in self.artifact_rows],
             "stage_rows": [row.to_wire() for row in self.stage_rows],
             "receipt_rows": [row.to_wire() for row in self.receipt_rows],
+            "node_reuse_key_rows": [
+                row.to_wire() for row in self.node_reuse_key_rows
+            ],
             "constants_normative_sha256": self.constants_normative_sha256,
             "bundle_normative_sha256": self.bundle_normative_sha256,
             "constants_receipts_sha256": self.constants_receipts_sha256,
             "bundle_receipts_sha256": self.bundle_receipts_sha256,
+            "constants_node_reuse_keys_sha256": (
+                self.constants_node_reuse_keys_sha256
+            ),
+            "bundle_node_reuse_keys_sha256": self.bundle_node_reuse_keys_sha256,
             "normative_equal": self.normative_equal,
             "receipts_equal_under_plan": self.receipts_equal_under_plan,
+            "node_reuse_keys_equal": self.node_reuse_keys_equal,
             "passed": self.passed,
             "differences": [row.to_wire() for row in self.differences],
         }
@@ -362,20 +433,20 @@ def compare_artifact_sets(
     bundle_artifacts: Mapping[str, bytes],
     constants_receipts: Mapping[str, object],
     bundle_receipts: Mapping[str, object],
-    generation_expectations: Mapping[tuple[str, str], GenerationExpectation]
-    | None = None,
-    bundle_run_provenance_identity: RunProvenanceIdentity | None = None,
+    constants_run_provenance_identity: RunProvenanceIdentity,
+    bundle_run_provenance_identity: RunProvenanceIdentity,
+    constants_node_reuse_keys: Mapping[str, str],
+    bundle_node_reuse_keys: Mapping[str, str],
 ) -> ArtifactComparisonReceipt:
     """Compare two cold-build output sets under one sealed execution ABI.
 
     Artifact mappings must contain exactly the ids in
     ``normative_artifact_vector``.  Receipt mappings carry JSON-shaped values
-    keyed by artifact role.  Generation expectations are keyed by
-    ``(artifact_role, concrete_json_pointer)`` and are mandatory for every
-    concrete ``expected_to_differ_by_generation`` rule match.  A sealed
-    ``run_provenance_identity`` difference additionally requires the explicit
-    typed generation-one bundle identity; caller-authored expectation data is
-    never its authority.
+    keyed by artifact role.  The generation-zero and generation-one provenance
+    identities are typed inputs and are bound in full at every provenance
+    receipt root.  Expected leaf transitions are derived only from those typed
+    values.  Node reuse maps are bound to the compiler's producer inventory and
+    compared exactly; neither surface has a caller-authored escape hatch.
 
     Invalid or incomplete inventories, ambiguous rules, and uncovered receipt
     differences raise :class:`ArtifactComparisonError`.  Covered comparison
@@ -389,7 +460,35 @@ def compare_artifact_sets(
         rules,
         required_receipt_roles,
         checkpoint_receipt_contracts,
+        producer_order,
     ) = _validate_execution_abi(execution_abi)
+    _validate_run_provenance_pair(
+        constants_run_provenance_identity,
+        bundle_run_provenance_identity,
+        execution_abi_sha256=str(abi["sha256"]),
+    )
+    constants_node_keys = _validate_node_reuse_keys(
+        constants_node_reuse_keys,
+        expected_node_ids=producer_order,
+        mode="constants",
+    )
+    bundle_node_keys = _validate_node_reuse_keys(
+        bundle_node_reuse_keys,
+        expected_node_ids=producer_order,
+        mode="bundle",
+    )
+    node_reuse_key_rows = tuple(
+        NodeReuseKeyComparisonRow(
+            node_id=node_id,
+            constants_node_reuse_key=constants_node_keys[node_id],
+            bundle_node_reuse_key=bundle_node_keys[node_id],
+            equal=constants_node_keys[node_id] == bundle_node_keys[node_id],
+        )
+        for node_id in producer_order
+    )
+    constants_node_reuse_keys_sha256 = _node_reuse_keys_digest(constants_node_keys)
+    bundle_node_reuse_keys_sha256 = _node_reuse_keys_digest(bundle_node_keys)
+    node_reuse_keys_equal = all(row.equal for row in node_reuse_key_rows)
     constants_bytes = _validate_artifacts(
         constants_artifacts,
         expected=artifact_contracts,
@@ -422,13 +521,10 @@ def compare_artifact_sets(
         rules,
         constants_receipts=constants_receipts,
         bundle_receipts=bundle_receipts,
-        generation_expectations=(
-            {} if generation_expectations is None else generation_expectations
-        ),
+        constants_run_provenance_identity=constants_run_provenance_identity,
         bundle_run_provenance_identity=bundle_run_provenance_identity,
         required_receipt_roles=required_receipt_roles,
         checkpoint_receipt_contracts=checkpoint_receipt_contracts,
-        execution_abi_sha256=str(abi["sha256"]),
     )
     receipts_equal_under_plan = all(row.rule_satisfied for row in receipt_rows)
 
@@ -457,8 +553,20 @@ def compare_artifact_sets(
                     rule=row.rule,
                 )
             )
+    for row in node_reuse_key_rows:
+        if not row.equal:
+            differences.append(
+                ComparisonDifference(
+                    kind="node_reuse_key",
+                    subject=row.node_id,
+                    stage_ref=None,
+                    constants_sha256=row.constants_node_reuse_key,
+                    bundle_sha256=row.bundle_node_reuse_key,
+                    rule="raw_exact",
+                )
+            )
     difference_rows = tuple(differences)
-    passed = normative_equal and receipts_equal_under_plan
+    passed = normative_equal and receipts_equal_under_plan and node_reuse_keys_equal
     body = {
         "domain": _COMPARISON_DOMAIN,
         "schema_version": 1,
@@ -466,12 +574,16 @@ def compare_artifact_sets(
         "artifact_rows": [row.to_wire() for row in artifact_rows],
         "stage_rows": [row.to_wire() for row in stage_rows],
         "receipt_rows": [row.to_wire() for row in receipt_rows],
+        "node_reuse_key_rows": [row.to_wire() for row in node_reuse_key_rows],
         "constants_normative_sha256": constants_normative_sha256,
         "bundle_normative_sha256": bundle_normative_sha256,
         "constants_receipts_sha256": constants_receipts_sha256,
         "bundle_receipts_sha256": bundle_receipts_sha256,
+        "constants_node_reuse_keys_sha256": constants_node_reuse_keys_sha256,
+        "bundle_node_reuse_keys_sha256": bundle_node_reuse_keys_sha256,
         "normative_equal": normative_equal,
         "receipts_equal_under_plan": receipts_equal_under_plan,
+        "node_reuse_keys_equal": node_reuse_keys_equal,
         "passed": passed,
         "differences": [row.to_wire() for row in difference_rows],
     }
@@ -480,12 +592,16 @@ def compare_artifact_sets(
         artifact_rows=artifact_rows,
         stage_rows=stage_rows,
         receipt_rows=receipt_rows,
+        node_reuse_key_rows=node_reuse_key_rows,
         constants_normative_sha256=constants_normative_sha256,
         bundle_normative_sha256=bundle_normative_sha256,
         constants_receipts_sha256=constants_receipts_sha256,
         bundle_receipts_sha256=bundle_receipts_sha256,
+        constants_node_reuse_keys_sha256=constants_node_reuse_keys_sha256,
+        bundle_node_reuse_keys_sha256=bundle_node_reuse_keys_sha256,
         normative_equal=normative_equal,
         receipts_equal_under_plan=receipts_equal_under_plan,
+        node_reuse_keys_equal=node_reuse_keys_equal,
         passed=passed,
         differences=difference_rows,
         receipt_sha256=sha256_json(body),
@@ -500,6 +616,7 @@ def _validate_execution_abi(
     tuple[_ReceiptRule, ...],
     frozenset[str],
     tuple[_CheckpointReceiptContract, ...],
+    tuple[str, ...],
 ]:
     abi = _json_object(execution_abi, location="execution_abi")
     _require_exact_keys(abi, _EXECUTION_ABI_KEYS, location="execution_abi")
@@ -518,6 +635,21 @@ def _validate_execution_abi(
         raise ArtifactComparisonError(
             "execution_abi/code_abi does not require exactly one sealed rule"
         )
+    if code_abi["locator_grammar"] != ARTIFACT_LOCATOR_GRAMMAR:
+        raise ArtifactComparisonError(
+            "execution_abi/code_abi locator grammar is unsupported"
+        )
+    if (
+        code_abi["artifact_selector_contract_sha256"]
+        != ARTIFACT_SELECTOR_CONTRACT_SHA256
+    ):
+        raise ArtifactComparisonError(
+            "execution_abi/code_abi artifact selector contract is unsupported"
+        )
+    if code_abi["compiler_ir_abi_sha256"] != current_compiler_ir_abi().sha256:
+        raise ArtifactComparisonError(
+            "execution_abi/code_abi compiler implementation attestation is stale"
+        )
     _validate_sha256(
         code_abi["implementation_sha256"],
         location="execution_abi/code_abi/implementation_sha256",
@@ -535,6 +667,35 @@ def _validate_execution_abi(
         raise ArtifactComparisonError(
             "execution_abi/code_abi/content_selectors contains duplicates"
         )
+
+    pipeline = _json_object(abi["pipeline"], location="execution_abi/pipeline")
+    _require_exact_keys(pipeline, _PIPELINE_KEYS, location="execution_abi/pipeline")
+    _nonempty_string(pipeline["id"], location="execution_abi/pipeline/id")
+    _json_object(
+        pipeline["artifact_protocol"],
+        location="execution_abi/pipeline/artifact_protocol",
+    )
+    operator_order = _string_array(
+        pipeline["operator_order"],
+        location="execution_abi/pipeline/operator_order",
+    )
+    producer_order = _string_array(
+        pipeline["producer_order"],
+        location="execution_abi/pipeline/producer_order",
+    )
+    if len(operator_order) != len(set(operator_order)):
+        raise ArtifactComparisonError(
+            "execution_abi/pipeline/operator_order contains duplicates"
+        )
+    if len(producer_order) != len(set(producer_order)):
+        raise ArtifactComparisonError(
+            "execution_abi/pipeline/producer_order contains duplicates"
+        )
+    _validate_sha256(
+        pipeline["seed_stream_map_sha256"],
+        location="execution_abi/pipeline/seed_stream_map_sha256",
+    )
+    _validate_source_broker_grant_abi(abi["source_broker_grant"])
 
     artifact_values = _json_array(
         abi["normative_artifact_vector"],
@@ -577,6 +738,103 @@ def _validate_execution_abi(
         artifact_contracts.append(
             _ArtifactContract(artifact_id=artifact_id, stage_ref=stage_ref)
         )
+
+    artifact_locator_selectors: dict[str, set[str]] = {}
+    for value in artifact_values:
+        assert isinstance(value, dict)
+        artifact_locator_selectors.setdefault(str(value["locator_ref"]), set()).add(
+            str(value["content_selector_ref"])
+        )
+    binding_ids: set[str] = set()
+    binding_locators: set[str] = set()
+    binding_scopes: set[tuple[str, tuple[str, ...]]] = set()
+    binding_values = _json_array(
+        abi["artifact_bindings"],
+        location="execution_abi/artifact_bindings",
+    )
+    for index, value in enumerate(binding_values):
+        location = f"execution_abi/artifact_bindings/{index}"
+        row = _json_object(value, location=location)
+        _require_exact_keys(row, _ARTIFACT_BINDING_KEYS, location=location)
+        binding_id = _nonempty_string(row["id"], location=f"{location}/id")
+        if binding_id in binding_ids:
+            raise ArtifactComparisonError(f"duplicate artifact binding id {binding_id!r}")
+        binding_ids.add(binding_id)
+        role = _nonempty_string(
+            row["receipt_role"], location=f"{location}/receipt_role"
+        )
+        envelope = _parse_concrete_pointer(
+            _nonempty_string(
+                row["envelope_pointer"], location=f"{location}/envelope_pointer"
+            )
+        )
+        if (role, envelope) in binding_scopes:
+            raise ArtifactComparisonError(f"{location}: duplicate binding envelope")
+        binding_scopes.add((role, envelope))
+        locator = _nonempty_string(
+            row["locator_ref"], location=f"{location}/locator_ref"
+        )
+        if locator not in artifact_locator_selectors:
+            raise ArtifactComparisonError(
+                f"{location}/locator_ref: absent from normative artifact vector"
+            )
+        if locator in binding_locators:
+            raise ArtifactComparisonError(f"{location}: duplicate bound locator")
+        binding_locators.add(locator)
+        if row["raw_identity"] != "resolved_path_sha256_size_bytes_v1":
+            raise ArtifactComparisonError(f"{location}: unsupported raw identity")
+        protocol = row["embedded_identity_protocol"]
+        if protocol not in {
+            "h5_artifact_metadata_v1",
+            "json_root_publication_identity_v1",
+        }:
+            raise ArtifactComparisonError(
+                f"{location}: unsupported embedded identity protocol"
+            )
+        for field in (
+            "manifest_publication_run_id_pointer",
+            "manifest_release_id_pointer",
+            "embedded_publication_run_id_pointer",
+        ):
+            _parse_concrete_pointer(
+                _nonempty_string(row[field], location=f"{location}/{field}")
+            )
+        embedded_release = row["embedded_release_id_pointer"]
+        if protocol == "h5_artifact_metadata_v1":
+            if embedded_release is not None:
+                raise ArtifactComparisonError(
+                    f"{location}/embedded_release_id_pointer: null required"
+                )
+        else:
+            _parse_concrete_pointer(
+                _nonempty_string(
+                    embedded_release,
+                    location=f"{location}/embedded_release_id_pointer",
+                )
+            )
+    all_selectors = {
+        selector
+        for selectors in artifact_locator_selectors.values()
+        for selector in selectors
+    }
+    expected_binding_locators = (
+        {
+            locator
+            for locator, selectors in artifact_locator_selectors.items()
+            if selectors
+            in (
+                {
+                    "selector:h5_all_entity_tables_and_columns_v1",
+                    "selector:h5_all_weight_vectors_v1",
+                },
+                {"selector:terminal_gate_normative_rows_v1"},
+            )
+        }
+        if "selector:publication_normative_vector_v1" in all_selectors
+        else set()
+    )
+    if binding_locators != expected_binding_locators:
+        raise ArtifactComparisonError("artifact binding inventory mismatch")
 
     checkpoint_values = _json_array(
         abi["durable_checkpoints"],
@@ -661,13 +919,10 @@ def _validate_execution_abi(
         rule = _nonempty_string(row["rule"], location=f"{location}/rule")
         if rule not in _ALLOWED_RECEIPT_RULES:
             raise ArtifactComparisonError(f"{location}: unknown receipt rule {rule!r}")
-        if (
-            rule == "expected_to_differ_by_generation"
-            and tokens[-1] not in _GENERATION_RULE_FIELDS
-        ):
+        if rule == "expected_to_differ_by_generation" and tokens not in _GENERATION_POINTERS:
             raise ArtifactComparisonError(
                 f"{location}: unknown generation-difference field semantics "
-                f"{tokens[-1]!r}"
+                f"{_encode_pointer(tokens)!r}"
             )
         category = _nonempty_string(row["category"], location=f"{location}/category")
         candidate = _ReceiptRule(
@@ -692,7 +947,52 @@ def _validate_execution_abi(
         tuple(rules),
         frozenset(required_receipt_roles),
         tuple(checkpoint_receipt_contracts),
+        producer_order,
     )
+
+
+def _validate_source_broker_grant_abi(value: object) -> None:
+    location = "execution_abi/source_broker_grant"
+    grant = _json_object(value, location=location)
+    _require_exact_keys(grant, _SOURCE_BROKER_GRANT_KEYS, location=location)
+    if (
+        grant["domain"] != _SOURCE_BROKER_GRANT_DOMAIN
+        or grant["owner"]
+        != {"kind": "source_stage", "id": "declared_source_preflight"}
+        or grant["effects"] != ["declared_source_read"]
+    ):
+        raise ArtifactComparisonError(f"{location}: source grant contract changed")
+    _validate_sha256(grant["sha256"], location=f"{location}/sha256")
+    unsigned = {key: child for key, child in grant.items() if key != "sha256"}
+    if sha256_json(unsigned) != grant["sha256"]:
+        raise ArtifactComparisonError(f"{location}: source grant seal mismatch")
+    rows = _json_array(grant["sources"], location=f"{location}/sources")
+    normalized: list[dict[str, object]] = []
+    ids: list[str] = []
+    for index, value in enumerate(rows):
+        row_location = f"{location}/sources/{index}"
+        row = _json_object(value, location=row_location)
+        _require_exact_keys(
+            row,
+            frozenset({"id", "sha256", "byte_size"}),
+            location=row_location,
+        )
+        source_id = _nonempty_string(row["id"], location=f"{row_location}/id")
+        _validate_sha256(row["sha256"], location=f"{row_location}/sha256")
+        size = row["byte_size"]
+        if isinstance(size, bool) or not isinstance(size, int) or size < 1:
+            raise ArtifactComparisonError(
+                f"{row_location}/byte_size: positive integer required"
+            )
+        ids.append(source_id)
+        normalized.append({"id": source_id, "sha256": row["sha256"], "byte_size": size})
+    if ids != sorted(ids) or len(ids) != len(set(ids)):
+        raise ArtifactComparisonError(f"{location}/sources: sorted unique ids required")
+    expected_set_sha256 = sha256_json(
+        {"domain": _SOURCE_BROKER_GRANT_DOMAIN, "sources": normalized}
+    )
+    if grant["source_set_sha256"] != expected_set_sha256:
+        raise ArtifactComparisonError(f"{location}/source_set_sha256: mismatch")
 
 
 def _validate_artifacts(
@@ -820,11 +1120,10 @@ def _compare_receipts(
     *,
     constants_receipts: Mapping[str, object],
     bundle_receipts: Mapping[str, object],
-    generation_expectations: Mapping[tuple[str, str], GenerationExpectation],
-    bundle_run_provenance_identity: RunProvenanceIdentity | None,
+    constants_run_provenance_identity: RunProvenanceIdentity,
+    bundle_run_provenance_identity: RunProvenanceIdentity,
     required_receipt_roles: frozenset[str],
     checkpoint_receipt_contracts: Sequence[_CheckpointReceiptContract],
-    execution_abi_sha256: str,
 ) -> tuple[ReceiptComparisonRow, ...]:
     constants = _json_object(constants_receipts, location="constants_receipts")
     bundle = _json_object(bundle_receipts, location="bundle_receipts")
@@ -853,8 +1152,6 @@ def _compare_receipts(
         contracts=checkpoint_receipt_contracts,
         mode="bundle",
     )
-    expectations = _validate_generation_expectations(generation_expectations)
-
     concrete_rules: dict[tuple[str, tuple[str, ...]], _ReceiptRule] = {}
     for rule in rules:
         constants_paths = set(
@@ -885,18 +1182,17 @@ def _compare_receipts(
         for (role, path), rule in concrete_rules.items()
         if rule.rule == "expected_to_differ_by_generation"
     }
-    if set(expectations) != generation_keys:
-        missing = sorted(generation_keys - set(expectations))
-        extra = sorted(set(expectations) - generation_keys)
-        raise ArtifactComparisonError(
-            "generation expectation inventory mismatch: "
-            f"missing={missing}, extra={extra}"
-        )
-    _bind_generation_expectations(
-        expectations,
+    expectations = _derive_generation_expectations(
         generation_keys=generation_keys,
+        constants_run_provenance_identity=constants_run_provenance_identity,
         bundle_run_provenance_identity=bundle_run_provenance_identity,
-        execution_abi_sha256=execution_abi_sha256,
+    )
+    _bind_receipt_provenance_roots(
+        constants,
+        bundle,
+        generation_keys=generation_keys,
+        constants_run_provenance_identity=constants_run_provenance_identity,
+        bundle_run_provenance_identity=bundle_run_provenance_identity,
     )
 
     unmatched: list[tuple[str, str]] = []
@@ -1011,11 +1307,11 @@ def _receipt_rule_row(
     elif rule.rule == "equal_after_normalizing_prefix":
         constants_normalized = _normalize_prefix(
             constants_value,
-            expected_prefix="populace",
+            authority_mode="constants",
         )
         bundle_normalized = _normalize_prefix(
             bundle_value,
-            expected_prefix="microcosm",
+            authority_mode="bundle",
         )
         rule_satisfied = (
             constants_normalized is not None
@@ -1055,185 +1351,193 @@ def _receipt_rule_row(
     )
 
 
-def _validate_generation_expectations(
-    values: Mapping[tuple[str, str], GenerationExpectation],
-) -> dict[tuple[str, str], GenerationExpectation]:
-    if not isinstance(values, Mapping):
-        raise ArtifactComparisonError("generation_expectations: object required")
-    validated: dict[tuple[str, str], GenerationExpectation] = {}
-    for key, value in values.items():
-        if (
-            not isinstance(key, tuple)
-            or len(key) != 2
-            or not all(isinstance(part, str) and part for part in key)
-        ):
-            raise ArtifactComparisonError(
-                "generation expectation keys must be (artifact_role, json_pointer)"
-            )
-        role, pointer = key
-        tokens = _parse_concrete_pointer(pointer)
-        canonical_pointer = _encode_pointer(tokens)
-        if pointer != canonical_pointer:
-            raise ArtifactComparisonError(
-                f"generation expectation pointer is not canonical: {pointer!r}"
-            )
-        if not isinstance(value, GenerationExpectation):
-            raise ArtifactComparisonError(
-                f"generation expectation {role}:{pointer} has invalid value"
-            )
-        _json_bytes(
-            value.constants_value,
-            location=f"generation_expectations/{role}{pointer}/constants",
-        )
-        _json_bytes(
-            value.bundle_value,
-            location=f"generation_expectations/{role}{pointer}/bundle",
-        )
-        validated[(role, pointer)] = value
-    return validated
-
-
-def _bind_generation_expectations(
-    expectations: Mapping[tuple[str, str], GenerationExpectation],
+def _validate_run_provenance_pair(
+    constants_identity: RunProvenanceIdentity,
+    bundle_identity: RunProvenanceIdentity,
     *,
-    generation_keys: set[tuple[str, str]],
-    bundle_run_provenance_identity: RunProvenanceIdentity | None,
     execution_abi_sha256: str,
 ) -> None:
-    """Bind caller expectations to the closed generation semantics.
-
-    The execution ABI chooses fields, but it cannot turn a caller-authored pair
-    into authority.  Scalar transitions are fixed by the generic runtime
-    contract.  The generation-one provenance value is issued through the
-    typed executor identity and compared in full.
-    """
-
-    provenance_keys = {
-        key
-        for key in generation_keys
-        if _parse_concrete_pointer(key[1])[-1] == "run_provenance_identity"
-    }
-    if provenance_keys:
-        if not isinstance(bundle_run_provenance_identity, RunProvenanceIdentity):
-            raise ArtifactComparisonError(
-                "bundle_run_provenance_identity must be an explicit typed "
-                "RunProvenanceIdentity when required by the execution ABI"
-            )
-        if bundle_run_provenance_identity.identity_generation != 1:
-            raise ArtifactComparisonError(
-                "bundle_run_provenance_identity must have identity_generation 1"
-            )
-        provenance_wire = bundle_run_provenance_identity.to_wire()
-        binding = provenance_wire["spec_binding"]
-        if (
-            not isinstance(binding, dict)
-            or binding.get("attestation") != "bundle-authoritative"
-        ):
-            raise ArtifactComparisonError(
-                "bundle_run_provenance_identity spec_binding attestation must be "
-                "bundle-authoritative"
-            )
-        authority_versions = provenance_wire["authority_versions"]
-        if (
-            not isinstance(authority_versions, dict)
-            or authority_versions.get("execution_abi") != execution_abi_sha256
-        ):
-            raise ArtifactComparisonError(
-                "bundle_run_provenance_identity authority_versions/execution_abi "
-                "differs from the compared execution ABI"
-            )
-    elif bundle_run_provenance_identity is not None:
+    if not isinstance(constants_identity, RunProvenanceIdentity):
         raise ArtifactComparisonError(
-            "bundle_run_provenance_identity is unused by the execution ABI"
+            "constants_run_provenance_identity must be a typed RunProvenanceIdentity"
         )
-
-    scalar_pairs = {
-        "config_authority": GenerationExpectation(
-            constants_value="constants",
-            bundle_value="bundle",
-        ),
-        "spec_binding_status": GenerationExpectation(
-            constants_value="absent",
-            bundle_value="resolved",
-        ),
-        "identity_generation": GenerationExpectation(
-            constants_value=0,
-            bundle_value=1,
-        ),
+    if not isinstance(bundle_identity, RunProvenanceIdentity):
+        raise ArtifactComparisonError(
+            "bundle_run_provenance_identity must be a typed RunProvenanceIdentity"
+        )
+    if constants_identity.identity_generation != 0:
+        raise ArtifactComparisonError(
+            "constants_run_provenance_identity must have identity_generation 0"
+        )
+    if bundle_identity.identity_generation != 1:
+        raise ArtifactComparisonError(
+            "bundle_run_provenance_identity must have identity_generation 1"
+        )
+    constants_wire = constants_identity.to_wire()
+    bundle_wire = bundle_identity.to_wire()
+    binding = bundle_wire["spec_binding"]
+    if not isinstance(binding, dict) or binding.get("attestation") != "bundle-authoritative":
+        raise ArtifactComparisonError(
+            "bundle_run_provenance_identity spec_binding attestation must be "
+            "bundle-authoritative"
+        )
+    expected_authority_fields = {
+        "stacked_authority",
+        "checkpoint_materializer",
+        "runtime_authority",
+        "execution_abi",
     }
+    for mode, wire in (("constants", constants_wire), ("bundle", bundle_wire)):
+        authority_versions = wire["authority_versions"]
+        if not isinstance(authority_versions, dict) or set(authority_versions) != (
+            expected_authority_fields
+        ):
+            raise ArtifactComparisonError(
+                f"{mode}_run_provenance_identity authority_versions keys changed"
+            )
+        execution_receipt = wire["execution_receipt"]
+        if not isinstance(execution_receipt, dict) or set(execution_receipt) != {
+            "authority_mode",
+            "pipeline",
+            "code_pin",
+        }:
+            raise ArtifactComparisonError(
+                f"{mode}_run_provenance_identity execution_receipt keys changed"
+            )
+        if execution_receipt["authority_mode"] != mode:
+            raise ArtifactComparisonError(
+                f"{mode}_run_provenance_identity execution authority_mode differs"
+            )
+    constants_versions = constants_wire["authority_versions"]
+    bundle_versions = bundle_wire["authority_versions"]
+    assert isinstance(constants_versions, dict) and isinstance(bundle_versions, dict)
+    if (
+        constants_versions["runtime_authority"] is not None
+        or constants_versions["execution_abi"] is not None
+    ):
+        raise ArtifactComparisonError(
+            "constants_run_provenance_identity bundle authority versions must be null"
+        )
+    _validate_sha256(
+        bundle_versions["runtime_authority"],
+        location="bundle_run_provenance_identity/authority_versions/runtime_authority",
+    )
+    if bundle_versions["execution_abi"] != execution_abi_sha256:
+        raise ArtifactComparisonError(
+            "bundle_run_provenance_identity authority_versions/execution_abi "
+            "differs from the compared execution ABI"
+        )
+
+
+def _derive_generation_expectations(
+    *,
+    generation_keys: set[tuple[str, str]],
+    constants_run_provenance_identity: RunProvenanceIdentity,
+    bundle_run_provenance_identity: RunProvenanceIdentity,
+) -> dict[tuple[str, str], GenerationExpectation]:
+    scalar_pairs = {
+        ("run_config", "config_authority"): GenerationExpectation("constants", "bundle"),
+        ("run_config", "spec_binding_status"): GenerationExpectation(
+            "absent", "resolved"
+        ),
+        ("run_config", "identity_generation"): GenerationExpectation(0, 1),
+    }
+    constants_wire = constants_run_provenance_identity.to_wire()
+    bundle_wire = bundle_run_provenance_identity.to_wire()
+    result: dict[tuple[str, str], GenerationExpectation] = {}
     for role, pointer in sorted(generation_keys):
-        field_name = _parse_concrete_pointer(pointer)[-1]
-        expectation = expectations[(role, pointer)]
-        required_pair = scalar_pairs.get(field_name)
-        if required_pair is not None:
-            if not _expectation_equal(expectation, required_pair):
-                raise ArtifactComparisonError(
-                    "generation expectation differs from the sealed generic "
-                    f"transition at {role}:{pointer}"
-                )
+        tokens = _parse_concrete_pointer(pointer)
+        if tokens in scalar_pairs:
+            result[(role, pointer)] = scalar_pairs[tokens]
             continue
-        if field_name != "run_provenance_identity":  # pragma: no cover - ABI gate
+        if tokens[: len(_PROVENANCE_ROOT_TOKENS)] != _PROVENANCE_ROOT_TOKENS:
             raise AssertionError("unknown generation semantics passed plan validation")
-        assert bundle_run_provenance_identity is not None
-        constants_wire = _wire_json(
-            expectation.constants_value,
-            location=f"generation_expectations/{role}{pointer}/constants",
+        suffix = tokens[len(_PROVENANCE_ROOT_TOKENS) :]
+        result[(role, pointer)] = GenerationExpectation(
+            constants_value=_value_at(constants_wire, suffix),
+            bundle_value=_value_at(bundle_wire, suffix),
         )
-        constants_generation = (
-            constants_wire.get("identity_generation")
-            if isinstance(constants_wire, dict)
-            else None
-        )
-        if (
-            not isinstance(constants_wire, dict)
-            or isinstance(constants_generation, bool)
-            or not isinstance(constants_generation, int)
-            or constants_generation != 0
-        ):
-            raise ArtifactComparisonError(
-                "constants run_provenance_identity expectation must have "
-                f"identity_generation 0 at {role}:{pointer}"
-            )
-        required_bundle = bundle_run_provenance_identity.to_wire()
+    return result
+
+
+def _bind_receipt_provenance_roots(
+    constants_receipts: Mapping[str, object],
+    bundle_receipts: Mapping[str, object],
+    *,
+    generation_keys: set[tuple[str, str]],
+    constants_run_provenance_identity: RunProvenanceIdentity,
+    bundle_run_provenance_identity: RunProvenanceIdentity,
+) -> None:
+    roles = {
+        role
+        for role, pointer in generation_keys
+        if _parse_concrete_pointer(pointer)[: len(_PROVENANCE_ROOT_TOKENS)]
+        == _PROVENANCE_ROOT_TOKENS
+    }
+    constants_wire = constants_run_provenance_identity.to_wire()
+    bundle_wire = bundle_run_provenance_identity.to_wire()
+    for role in sorted(roles):
+        constants_value = _value_at(constants_receipts[role], _PROVENANCE_ROOT_TOKENS)
+        bundle_value = _value_at(bundle_receipts[role], _PROVENANCE_ROOT_TOKENS)
         if _json_bytes(
-            expectation.bundle_value,
-            location=f"generation_expectations/{role}{pointer}/bundle",
+            constants_value,
+            location=f"constants_receipts/{role}/run_provenance_identity",
         ) != _json_bytes(
-            required_bundle,
-            location="bundle_run_provenance_identity",
+            constants_wire,
+            location="constants_run_provenance_identity",
         ):
             raise ArtifactComparisonError(
-                "bundle run_provenance_identity expectation differs from the "
-                f"explicit typed identity at {role}:{pointer}"
+                f"constants receipt provenance differs from typed identity at {role}"
+            )
+        if _json_bytes(
+            bundle_value,
+            location=f"bundle_receipts/{role}/run_provenance_identity",
+        ) != _json_bytes(bundle_wire, location="bundle_run_provenance_identity"):
+            raise ArtifactComparisonError(
+                f"bundle receipt provenance differs from typed identity at {role}"
             )
 
 
-def _expectation_equal(
-    observed: GenerationExpectation,
-    required: GenerationExpectation,
-) -> bool:
-    return _json_bytes(
-        observed.constants_value,
-        location="generation_expectation/constants",
-    ) == _json_bytes(
-        required.constants_value,
-        location="required_generation_expectation/constants",
-    ) and _json_bytes(
-        observed.bundle_value,
-        location="generation_expectation/bundle",
-    ) == _json_bytes(
-        required.bundle_value,
-        location="required_generation_expectation/bundle",
+def _validate_node_reuse_keys(
+    values: Mapping[str, str],
+    *,
+    expected_node_ids: Sequence[str],
+    mode: str,
+) -> dict[str, str]:
+    if not isinstance(values, Mapping):
+        raise ArtifactComparisonError(f"{mode}_node_reuse_keys: object required")
+    observed: dict[str, str] = {}
+    for node_id, value in values.items():
+        if not isinstance(node_id, str) or not node_id:
+            raise ArtifactComparisonError(
+                f"{mode}_node_reuse_keys: non-empty string node ids required"
+            )
+        _validate_sha256(value, location=f"{mode}_node_reuse_keys/{node_id}")
+        observed[node_id] = value
+    expected = set(expected_node_ids)
+    if set(observed) != expected:
+        raise ArtifactComparisonError(
+            f"{mode} node reuse key inventory mismatch: "
+            f"missing={sorted(expected - set(observed))}, "
+            f"extra={sorted(set(observed) - expected)}"
+        )
+    return {node_id: observed[node_id] for node_id in expected_node_ids}
+
+
+def _node_reuse_keys_digest(values: Mapping[str, str]) -> str:
+    return sha256_json(
+        {
+            "domain": _NODE_REUSE_KEYS_DOMAIN,
+            "node_reuse_keys": dict(values),
+        }
     )
 
 
-def _normalize_prefix(value: object, *, expected_prefix: str) -> str | None:
-    if not isinstance(value, str):
+def _normalize_prefix(value: object, *, authority_mode: str) -> str | None:
+    try:
+        return normalize_release_id(value, authority_mode=authority_mode)
+    except ValueError:
         return None
-    prefix, separator, suffix = value.partition("-")
-    if not separator or prefix != expected_prefix or not suffix:
-        return None
-    return suffix
 
 
 def _unmatched_differences(

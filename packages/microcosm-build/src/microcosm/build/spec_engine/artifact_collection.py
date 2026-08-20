@@ -31,10 +31,18 @@ import numpy as np
 import pandas as pd
 
 from .artifact_comparison import checkpoint_receipt_surface
+from .artifact_selector_contract import (
+    ARTIFACT_LOCATOR_GRAMMAR,
+    ARTIFACT_SELECTOR_CONTRACT_SHA256,
+    H5_ARTIFACT_METADATA_KEY,
+    H5_OPERATIONAL_METADATA_FIELDS,
+    H5_TIME_PERIOD_KEY,
+    normalize_release_id,
+)
 from .canonical import canonical_json_bytes, sha256_json
+from .compiler_ir import current_compiler_ir_abi
 from .model import FrozenMap, thaw_json
 
-_LOCATOR_GRAMMAR = "closed-runtime-output-plan-and-checkpoint-receipt-v2"
 _SUPPORTED_SELECTORS = frozenset(
     {
         "selector:canonical_json_bytes_v1",
@@ -60,6 +68,8 @@ _EXECUTION_ABI_KEYS = frozenset(
         "durable_checkpoints",
         "code_abi",
         "normative_artifact_vector",
+        "artifact_bindings",
+        "source_broker_grant",
         "receipt_comparison_vector",
         "resume_predicate",
         "sha256",
@@ -70,6 +80,8 @@ _CODE_ABI_KEYS = frozenset(
         "domain",
         "content_selectors",
         "locator_grammar",
+        "artifact_selector_contract_sha256",
+        "compiler_ir_abi_sha256",
         "receipt_difference_match",
         "implementation_sha256",
     }
@@ -99,6 +111,54 @@ _CHECKPOINT_KEYS = frozenset(
     }
 )
 _RULE_KEYS = frozenset({"artifact_role", "json_pointer_pattern", "rule", "category"})
+_ARTIFACT_BINDING_KEYS = frozenset(
+    {
+        "id",
+        "receipt_role",
+        "envelope_pointer",
+        "locator_ref",
+        "raw_identity",
+        "manifest_publication_run_id_pointer",
+        "manifest_release_id_pointer",
+        "embedded_identity_protocol",
+        "embedded_publication_run_id_pointer",
+        "embedded_release_id_pointer",
+    }
+)
+_ARTIFACT_BINDING_PROTOCOLS = frozenset(
+    {"h5_artifact_metadata_v1", "json_root_publication_identity_v1"}
+)
+_BROKER_RECEIPT_KEYS = frozenset(
+    {
+        "domain",
+        "schema_version",
+        "surface",
+        "owner",
+        "node_key",
+        "attempt",
+        "attempt_scope",
+        "status",
+        "run_provenance_identity",
+        "events",
+        "receipt_sha256",
+    }
+)
+_BROKER_EVENT_KEYS = frozenset(
+    {
+        "sequence",
+        "broker",
+        "operation",
+        "resource",
+        "disposition",
+        "reason_code",
+        "details",
+    }
+)
+_SOURCE_BROKER_GRANT_KEYS = frozenset(
+    {"domain", "owner", "effects", "sources", "source_set_sha256", "sha256"}
+)
+_SOURCE_BROKER_SOURCE_KEYS = frozenset({"id", "sha256", "byte_size"})
+_SOURCE_BROKER_GRANT_DOMAIN = "microcosm.spec-engine.source-broker-grant.v1"
 _RECEIPT_RULES = frozenset(
     {
         "equal_after_normalizing_prefix",
@@ -236,10 +296,30 @@ class _ReceiptRule:
 
 
 @dataclass(frozen=True, slots=True)
+class _ArtifactBindingRow:
+    binding_id: str
+    receipt_role: str
+    envelope_tokens: tuple[str, ...]
+    locator_ref: str
+    manifest_publication_run_id_tokens: tuple[str, ...]
+    manifest_release_id_tokens: tuple[str, ...]
+    embedded_identity_protocol: str
+    embedded_publication_run_id_tokens: tuple[str, ...]
+    embedded_release_id_tokens: tuple[str, ...] | None
+
+
+@dataclass(frozen=True, slots=True)
+class _SourceBrokerGrant:
+    sources: tuple[tuple[str, str, int], ...]
+
+
+@dataclass(frozen=True, slots=True)
 class _CollectionPlan:
     artifacts: tuple[_ArtifactRow, ...]
     checkpoints: tuple[_CheckpointRow, ...]
     rules: tuple[_ReceiptRule, ...]
+    artifact_bindings: tuple[_ArtifactBindingRow, ...]
+    source_broker_grant: _SourceBrokerGrant
     required_locators: frozenset[str]
 
 
@@ -277,6 +357,7 @@ def collect_artifact_surfaces(
     documents: dict[str, dict[str, object]] = {}
     artifacts: dict[str, bytes] = {}
     receipt_role_sources: dict[str, str] = {}
+    deferred_json_rows: list[_ArtifactRow] = []
     for row in plan.artifacts:
         binding = bindings[row.locator_ref]
         if row.selector_ref in _JSON_SELECTOR_RECEIPT_ROLES:
@@ -286,21 +367,40 @@ def collect_artifact_surfaces(
                 raise ArtifactCollectionError(
                     f"receipt role {role!r} resolves through multiple locators"
                 )
-            document = documents.setdefault(
+            documents.setdefault(
                 role,
                 _read_json_binding(binding, location=row.locator_ref),
             )
-            artifacts[row.artifact_id] = _normalized_document_bytes(
-                document,
-                role=role,
-                rules=plan.rules,
-                authority_mode=authority_mode,
-            )
+            deferred_json_rows.append(row)
         else:
             artifacts[row.artifact_id] = _apply_selector(
                 row.selector_ref,
                 binding,
             )
+            _authenticate_plan_value(row, artifacts[row.artifact_id], abi=abi)
+
+    _cross_authenticate_artifact_bindings(
+        plan.artifact_bindings,
+        documents=documents,
+        locator_bindings=bindings,
+        authority_mode=authority_mode,
+    )
+    publication = documents.get("publication_manifest")
+    if publication is not None:
+        _validate_source_broker_receipt(
+            publication,
+            authority_mode=authority_mode,
+            grant=plan.source_broker_grant,
+        )
+
+    for row in deferred_json_rows:
+        role = _JSON_SELECTOR_RECEIPT_ROLES[row.selector_ref]
+        artifacts[row.artifact_id] = _normalized_document_bytes(
+            documents[role],
+            role=role,
+            rules=plan.rules,
+            authority_mode=authority_mode,
+        )
         _authenticate_plan_value(row, artifacts[row.artifact_id], abi=abi)
 
     receipts: dict[str, object] = dict(documents)
@@ -378,8 +478,19 @@ def _compile_collection_plan(abi: dict[str, object]) -> _CollectionPlan:
     code_abi = _mapping(abi.get("code_abi"), location="execution_abi/code_abi")
     if set(code_abi) != _CODE_ABI_KEYS:
         raise ArtifactCollectionError("execution_abi/code_abi keys changed")
-    if code_abi.get("locator_grammar") != _LOCATOR_GRAMMAR:
+    if code_abi.get("locator_grammar") != ARTIFACT_LOCATOR_GRAMMAR:
         raise ArtifactCollectionError("unsupported execution ABI locator grammar")
+    if (
+        code_abi.get("artifact_selector_contract_sha256")
+        != ARTIFACT_SELECTOR_CONTRACT_SHA256
+    ):
+        raise ArtifactCollectionError(
+            "unsupported execution ABI artifact selector contract"
+        )
+    if code_abi.get("compiler_ir_abi_sha256") != current_compiler_ir_abi().sha256:
+        raise ArtifactCollectionError(
+            "execution_abi/code_abi compiler implementation attestation is stale"
+        )
     if code_abi.get("receipt_difference_match") != "exactly_one_sealed_rule":
         raise ArtifactCollectionError(
             "execution_abi/code_abi must require exactly one sealed receipt rule"
@@ -398,6 +509,9 @@ def _compile_collection_plan(abi: dict[str, object]) -> _CollectionPlan:
     )
     if len(declared_selectors) != len(set(declared_selectors)):
         raise ArtifactCollectionError("content selector inventory contains duplicates")
+    source_broker_grant = _compile_source_broker_grant(
+        abi.get("source_broker_grant")
+    )
 
     artifact_rows: list[_ArtifactRow] = []
     artifact_ids: set[str] = set()
@@ -460,6 +574,129 @@ def _compile_collection_plan(abi: dict[str, object]) -> _CollectionPlan:
             raise ArtifactCollectionError(
                 f"locator {locator!r} is reused by incompatible selectors"
             )
+
+    artifact_bindings: list[_ArtifactBindingRow] = []
+    binding_ids: set[str] = set()
+    binding_envelopes: set[tuple[str, tuple[str, ...]]] = set()
+    binding_locators: set[str] = set()
+    for index, raw in enumerate(
+        _sequence(
+            abi.get("artifact_bindings"),
+            location="execution_abi/artifact_bindings",
+        )
+    ):
+        location = f"execution_abi/artifact_bindings/{index}"
+        row = _mapping(raw, location=location)
+        if set(row) != _ARTIFACT_BINDING_KEYS:
+            raise ArtifactCollectionError(f"{location}: binding row keys changed")
+        binding_id = _nonempty_string(row.get("id"), location=f"{location}/id")
+        if binding_id in binding_ids:
+            raise ArtifactCollectionError(f"duplicate artifact binding id {binding_id!r}")
+        binding_ids.add(binding_id)
+        receipt_role = _nonempty_string(
+            row.get("receipt_role"), location=f"{location}/receipt_role"
+        )
+        if receipt_role not in _JSON_SELECTOR_RECEIPT_ROLES.values():
+            raise ArtifactCollectionError(
+                f"{location}/receipt_role: no JSON selector resolves this role"
+            )
+        envelope_tokens = _binding_pointer(
+            row.get("envelope_pointer"), location=f"{location}/envelope_pointer"
+        )
+        envelope_key = (receipt_role, envelope_tokens)
+        if envelope_key in binding_envelopes:
+            raise ArtifactCollectionError(f"duplicate artifact binding envelope at {location}")
+        binding_envelopes.add(envelope_key)
+        locator_ref = _nonempty_string(
+            row.get("locator_ref"), location=f"{location}/locator_ref"
+        )
+        if locator_ref not in locator_selectors:
+            raise ArtifactCollectionError(
+                f"{location}/locator_ref: locator is absent from artifact vector"
+            )
+        if locator_ref in binding_locators:
+            raise ArtifactCollectionError(
+                f"{location}/locator_ref: locator has multiple artifact bindings"
+            )
+        binding_locators.add(locator_ref)
+        if row.get("raw_identity") != "resolved_path_sha256_size_bytes_v1":
+            raise ArtifactCollectionError(f"{location}/raw_identity: unsupported protocol")
+        protocol = _nonempty_string(
+            row.get("embedded_identity_protocol"),
+            location=f"{location}/embedded_identity_protocol",
+        )
+        if protocol not in _ARTIFACT_BINDING_PROTOCOLS:
+            raise ArtifactCollectionError(
+                f"{location}/embedded_identity_protocol: unsupported protocol"
+            )
+        selectors = locator_selectors[locator_ref]
+        embedded_release_value = row.get("embedded_release_id_pointer")
+        if protocol == "h5_artifact_metadata_v1":
+            if selectors != {
+                "selector:h5_all_entity_tables_and_columns_v1",
+                "selector:h5_all_weight_vectors_v1",
+            }:
+                raise ArtifactCollectionError(
+                    f"{location}: H5 identity protocol requires both H5 selectors"
+                )
+            if embedded_release_value is not None:
+                raise ArtifactCollectionError(
+                    f"{location}/embedded_release_id_pointer: null required for H5"
+                )
+            embedded_release_tokens = None
+        else:
+            if selectors != {"selector:terminal_gate_normative_rows_v1"}:
+                raise ArtifactCollectionError(
+                    f"{location}: JSON identity protocol requires terminal selector"
+                )
+            embedded_release_tokens = _binding_pointer(
+                embedded_release_value,
+                location=f"{location}/embedded_release_id_pointer",
+            )
+        artifact_bindings.append(
+            _ArtifactBindingRow(
+                binding_id=binding_id,
+                receipt_role=receipt_role,
+                envelope_tokens=envelope_tokens,
+                locator_ref=locator_ref,
+                manifest_publication_run_id_tokens=_binding_pointer(
+                    row.get("manifest_publication_run_id_pointer"),
+                    location=f"{location}/manifest_publication_run_id_pointer",
+                ),
+                manifest_release_id_tokens=_binding_pointer(
+                    row.get("manifest_release_id_pointer"),
+                    location=f"{location}/manifest_release_id_pointer",
+                ),
+                embedded_identity_protocol=protocol,
+                embedded_publication_run_id_tokens=_binding_pointer(
+                    row.get("embedded_publication_run_id_pointer"),
+                    location=f"{location}/embedded_publication_run_id_pointer",
+                ),
+                embedded_release_id_tokens=embedded_release_tokens,
+            )
+        )
+    expected_binding_locators = (
+        {
+            locator
+            for locator, selectors in locator_selectors.items()
+            if selectors
+            in (
+                {
+                    "selector:h5_all_entity_tables_and_columns_v1",
+                    "selector:h5_all_weight_vectors_v1",
+                },
+                {"selector:terminal_gate_normative_rows_v1"},
+            )
+        }
+        if "selector:publication_normative_vector_v1" in used_selectors
+        else set()
+    )
+    if binding_locators != expected_binding_locators:
+        raise ArtifactCollectionError(
+            "artifact binding inventory mismatch: "
+            f"missing={sorted(expected_binding_locators - binding_locators)}, "
+            f"extra={sorted(binding_locators - expected_binding_locators)}"
+        )
 
     checkpoints: list[_CheckpointRow] = []
     required_locators = set(locator_selectors)
@@ -549,8 +786,63 @@ def _compile_collection_plan(abi: dict[str, object]) -> _CollectionPlan:
         artifacts=tuple(artifact_rows),
         checkpoints=tuple(checkpoints),
         rules=tuple(rules),
+        artifact_bindings=tuple(artifact_bindings),
+        source_broker_grant=source_broker_grant,
         required_locators=frozenset(required_locators),
     )
+
+
+def _compile_source_broker_grant(value: object) -> _SourceBrokerGrant:
+    location = "execution_abi/source_broker_grant"
+    grant = _mapping(value, location=location)
+    if set(grant) != _SOURCE_BROKER_GRANT_KEYS:
+        raise ArtifactCollectionError(f"{location}: grant keys changed")
+    if grant.get("domain") != _SOURCE_BROKER_GRANT_DOMAIN:
+        raise ArtifactCollectionError(f"{location}/domain: unsupported")
+    if grant.get("owner") != {
+        "kind": "source_stage",
+        "id": "declared_source_preflight",
+    } or grant.get("effects") != ["declared_source_read"]:
+        raise ArtifactCollectionError(f"{location}: owner or effects changed")
+    seal = grant.get("sha256")
+    if not _is_sha256(seal):
+        raise ArtifactCollectionError(f"{location}/sha256: lowercase sha256 required")
+    unsigned = {key: child for key, child in grant.items() if key != "sha256"}
+    if sha256_json(unsigned) != seal:
+        raise ArtifactCollectionError(f"{location}: grant seal mismatch")
+    raw_sources = _sequence(grant.get("sources"), location=f"{location}/sources")
+    sources: list[tuple[str, str, int]] = []
+    source_rows: list[dict[str, object]] = []
+    for index, raw in enumerate(raw_sources):
+        row_location = f"{location}/sources/{index}"
+        row = _mapping(raw, location=row_location)
+        if set(row) != _SOURCE_BROKER_SOURCE_KEYS:
+            raise ArtifactCollectionError(f"{row_location}: source keys changed")
+        source_id = _nonempty_string(row.get("id"), location=f"{row_location}/id")
+        digest = row.get("sha256")
+        if not _is_sha256(digest):
+            raise ArtifactCollectionError(f"{row_location}/sha256: invalid")
+        byte_size = row.get("byte_size")
+        if (
+            isinstance(byte_size, bool)
+            or not isinstance(byte_size, int)
+            or byte_size < 1
+        ):
+            raise ArtifactCollectionError(f"{row_location}/byte_size: invalid")
+        sources.append((source_id, digest, byte_size))
+        source_rows.append(
+            {"id": source_id, "sha256": digest, "byte_size": byte_size}
+        )
+    if sources != sorted(sources, key=lambda row: row[0]) or len(
+        {row[0] for row in sources}
+    ) != len(sources):
+        raise ArtifactCollectionError(f"{location}/sources: sorted unique ids required")
+    expected_set_sha256 = sha256_json(
+        {"domain": _SOURCE_BROKER_GRANT_DOMAIN, "sources": source_rows}
+    )
+    if grant.get("source_set_sha256") != expected_set_sha256:
+        raise ArtifactCollectionError(f"{location}/source_set_sha256: mismatch")
+    return _SourceBrokerGrant(sources=tuple(sources))
 
 
 def _apply_selector(selector: str, binding: LocatorBinding) -> bytes:
@@ -651,18 +943,290 @@ def _normalized_document_bytes(
         elif rule == "expected_to_differ_by_generation":
             parent[token] = {"comparison_rule": rule}
         else:
-            expected = "populace" if authority_mode == "constants" else "microcosm"
-            if not isinstance(observed, str):
-                raise ArtifactCollectionError(
-                    f"{role}:{_encode_pointer(path)}: prefixed string required"
+            try:
+                semantic_middle = normalize_release_id(
+                    observed,
+                    authority_mode=authority_mode,
                 )
-            prefix, separator, suffix = observed.partition("-")
-            if not separator or prefix != expected or not suffix:
+            except ValueError as error:
                 raise ArtifactCollectionError(
-                    f"{role}:{_encode_pointer(path)}: expected {expected!r} prefix"
-                )
-            parent[token] = suffix
+                    f"{role}:{_encode_pointer(path)}: invalid release id: {error}"
+                ) from error
+            parent[token] = semantic_middle
     return canonical_json_bytes(value)
+
+
+def _cross_authenticate_artifact_bindings(
+    rows: Sequence[_ArtifactBindingRow],
+    *,
+    documents: Mapping[str, Mapping[str, object]],
+    locator_bindings: Mapping[str, LocatorBinding],
+    authority_mode: str,
+) -> None:
+    """Authenticate physical publication envelopes before excluding them."""
+
+    for row in rows:
+        location = f"artifact_binding/{row.binding_id}"
+        manifest = documents.get(row.receipt_role)
+        if manifest is None:
+            raise ArtifactCollectionError(
+                f"{location}: receipt role {row.receipt_role!r} was not collected"
+            )
+        envelope = _mapping(
+            _required_pointer(
+                manifest,
+                row.envelope_tokens,
+                location=f"{location}/envelope",
+            ),
+            location=f"{location}/envelope",
+        )
+        binding = locator_bindings[row.locator_ref]
+        _require_kind(binding, LocatorSourceKind.FILE)
+        assert binding.path is not None
+        raw_path = envelope.get("path")
+        if not isinstance(raw_path, str) or not Path(raw_path).is_absolute():
+            raise ArtifactCollectionError(f"{location}/path: absolute path required")
+        try:
+            resolved_path = Path(raw_path).resolve(strict=True)
+        except OSError as error:
+            raise ArtifactCollectionError(
+                f"{location}/path: published path cannot be resolved"
+            ) from error
+        if resolved_path != binding.path or raw_path != str(resolved_path):
+            raise ArtifactCollectionError(
+                f"{location}/path: published resolved path differs from locator"
+            )
+        raw_sha256, raw_size = _regular_file_identity(binding.path)
+        if envelope.get("sha256") != raw_sha256:
+            raise ArtifactCollectionError(
+                f"{location}/sha256: published digest differs from raw file"
+            )
+        size_value = envelope.get("size_bytes")
+        if (
+            isinstance(size_value, bool)
+            or not isinstance(size_value, int)
+            or size_value != raw_size
+        ):
+            raise ArtifactCollectionError(
+                f"{location}/size_bytes: published size differs from raw file"
+            )
+
+        manifest_publication_run_id = _publication_run_id(
+            _required_pointer(
+                manifest,
+                row.manifest_publication_run_id_tokens,
+                location=f"{location}/manifest_publication_run_id",
+            ),
+            location=f"{location}/manifest_publication_run_id",
+        )
+        envelope_publication_run_id = _publication_run_id(
+            envelope.get("publication_run_id"),
+            location=f"{location}/envelope/publication_run_id",
+        )
+        if envelope_publication_run_id != manifest_publication_run_id:
+            raise ArtifactCollectionError(
+                f"{location}: envelope publication_run_id differs from manifest"
+            )
+        manifest_release_id = _required_pointer(
+            manifest,
+            row.manifest_release_id_tokens,
+            location=f"{location}/manifest_release_id",
+        )
+        try:
+            manifest_release_semantic = normalize_release_id(
+                manifest_release_id,
+                authority_mode=authority_mode,
+            )
+        except ValueError as error:
+            raise ArtifactCollectionError(
+                f"{location}/manifest_release_id: {error}"
+            ) from error
+
+        if row.embedded_identity_protocol == "h5_artifact_metadata_v1":
+            embedded = _read_h5_artifact_metadata(binding.path)
+        else:
+            embedded = _read_json_binding(binding, location=row.locator_ref)
+            terminal_document = documents.get("terminal_gates")
+            if terminal_document is None or embedded != terminal_document:
+                raise ArtifactCollectionError(
+                    f"{location}: embedded diagnostics differ from selected receipt"
+                )
+        embedded_publication_run_id = _publication_run_id(
+            _required_pointer(
+                embedded,
+                row.embedded_publication_run_id_tokens,
+                location=f"{location}/embedded_publication_run_id",
+            ),
+            location=f"{location}/embedded_publication_run_id",
+        )
+        if embedded_publication_run_id != manifest_publication_run_id:
+            raise ArtifactCollectionError(
+                f"{location}: embedded publication_run_id differs from manifest"
+            )
+        if row.embedded_release_id_tokens is not None:
+            embedded_release_id = _required_pointer(
+                embedded,
+                row.embedded_release_id_tokens,
+                location=f"{location}/embedded_release_id",
+            )
+            if embedded_release_id != manifest_release_id:
+                raise ArtifactCollectionError(
+                    f"{location}: diagnostics release_id differs from manifest"
+                )
+            try:
+                embedded_semantic = normalize_release_id(
+                    embedded_release_id,
+                    authority_mode=authority_mode,
+                )
+            except ValueError as error:  # pragma: no cover - exact equality above
+                raise ArtifactCollectionError(
+                    f"{location}/embedded_release_id: {error}"
+                ) from error
+            if embedded_semantic != manifest_release_semantic:  # pragma: no cover
+                raise AssertionError("equal release ids normalized differently")
+
+
+def _validate_source_broker_receipt(
+    publication: Mapping[str, object],
+    *,
+    authority_mode: str,
+    grant: _SourceBrokerGrant,
+) -> None:
+    """Validate the generation-specific source receipt before its exclusion."""
+
+    value = publication.get("source_broker_receipt", _MISSING)
+    if value is _MISSING:
+        raise ArtifactCollectionError(
+            "publication_manifest/source_broker_receipt: field is required"
+        )
+    if authority_mode == "constants":
+        if value is not None:
+            raise ArtifactCollectionError(
+                "publication_manifest/source_broker_receipt: constants mode requires null"
+            )
+        return
+    receipt = _mapping(
+        value,
+        location="publication_manifest/source_broker_receipt",
+    )
+    if set(receipt) != _BROKER_RECEIPT_KEYS:
+        raise ArtifactCollectionError(
+            "publication_manifest/source_broker_receipt: receipt keys changed"
+        )
+    if (
+        receipt.get("domain") != "microcosm.spec-engine.broker-access-receipt.v1"
+        or receipt.get("schema_version") != 1
+        or receipt.get("surface") != "operational"
+        or receipt.get("status") != "complete"
+    ):
+        raise ArtifactCollectionError(
+            "publication_manifest/source_broker_receipt: successful broker receipt required"
+        )
+    if receipt.get("owner") != {
+        "kind": "source_stage",
+        "id": "declared_source_preflight",
+    }:
+        raise ArtifactCollectionError(
+            "publication_manifest/source_broker_receipt: source owner differs"
+        )
+    if receipt.get("node_key") is not None:
+        raise ArtifactCollectionError(
+            "publication_manifest/source_broker_receipt: source node_key must be null"
+        )
+    attempt = receipt.get("attempt")
+    if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 0:
+        raise ArtifactCollectionError(
+            "publication_manifest/source_broker_receipt: invalid attempt"
+        )
+    attempt_scope = receipt.get("attempt_scope")
+    if attempt_scope is not None and (
+        not isinstance(attempt_scope, str) or not attempt_scope
+    ):
+        raise ArtifactCollectionError(
+            "publication_manifest/source_broker_receipt: invalid attempt_scope"
+        )
+    run_config = _mapping(
+        publication.get("run_config"),
+        location="publication_manifest/run_config",
+    )
+    if receipt.get("run_provenance_identity") != run_config.get(
+        "run_provenance_identity"
+    ):
+        raise ArtifactCollectionError(
+            "publication_manifest/source_broker_receipt: provenance differs from manifest"
+        )
+    events = receipt.get("events")
+    if not isinstance(events, list) or len(events) != len(grant.sources):
+        raise ArtifactCollectionError(
+            "publication_manifest/source_broker_receipt: source event inventory differs"
+        )
+    granted_by_id = {
+        source_id: (digest, byte_size)
+        for source_id, digest, byte_size in grant.sources
+    }
+    seen_sources: set[str] = set()
+    for index, raw_event in enumerate(events):
+        event = _mapping(
+            raw_event,
+            location=f"publication_manifest/source_broker_receipt/events/{index}",
+        )
+        if set(event) != _BROKER_EVENT_KEYS:
+            raise ArtifactCollectionError(
+                "publication_manifest/source_broker_receipt: event keys changed"
+            )
+        if (
+            event.get("sequence") != index
+            or event.get("broker") != "file"
+            or event.get("operation") != "open_snapshot"
+            or event.get("disposition") != "allowed"
+            or event.get("reason_code") != "declared_source_read"
+        ):
+            raise ArtifactCollectionError(
+                "publication_manifest/source_broker_receipt: invalid source event"
+            )
+        source_id = _nonempty_string(
+            event.get("resource"),
+            location=(
+                f"publication_manifest/source_broker_receipt/events/{index}/resource"
+            ),
+        )
+        details = _mapping(
+            event.get("details"),
+            location=(
+                f"publication_manifest/source_broker_receipt/events/{index}/details"
+            ),
+        )
+        if source_id in seen_sources or source_id not in granted_by_id:
+            raise ArtifactCollectionError(
+                "publication_manifest/source_broker_receipt: undeclared or repeated source"
+            )
+        seen_sources.add(source_id)
+        expected_digest, expected_size = granted_by_id[source_id]
+        if set(details) != {"resolved_path", "content_sha256", "byte_size"}:
+            raise ArtifactCollectionError(
+                "publication_manifest/source_broker_receipt: source event details changed"
+            )
+        if (
+            not isinstance(details["resolved_path"], str)
+            or not details["resolved_path"]
+            or details["content_sha256"] != expected_digest
+            or details["byte_size"] != expected_size
+        ):
+            raise ArtifactCollectionError(
+                "publication_manifest/source_broker_receipt: source identity differs from grant"
+            )
+    if seen_sources != set(granted_by_id):  # pragma: no cover - count + membership imply
+        raise AssertionError("validated source event inventory is incomplete")
+    seal = receipt.get("receipt_sha256")
+    if not _is_sha256(seal):
+        raise ArtifactCollectionError(
+            "publication_manifest/source_broker_receipt: invalid receipt sha256"
+        )
+    body = {key: child for key, child in receipt.items() if key != "receipt_sha256"}
+    if sha256_json(body) != seal:
+        raise ArtifactCollectionError(
+            "publication_manifest/source_broker_receipt: receipt seal mismatch"
+        )
 
 
 def _cross_authenticate_checkpoint(
@@ -840,8 +1404,14 @@ def _read_regular_file(path: Path) -> bytes:
 
 
 def _regular_file_sha256(path: Path) -> bytes:
+    digest, _size = _regular_file_identity(path)
+    return bytes.fromhex(digest)
+
+
+def _regular_file_identity(path: Path) -> tuple[str, int]:
     descriptor = _open_regular_file(path)
     digest = hashlib.sha256()
+    size = 0
     try:
         before = os.fstat(descriptor)
         while True:
@@ -849,11 +1419,14 @@ def _regular_file_sha256(path: Path) -> bytes:
             if not chunk:
                 break
             digest.update(chunk)
+            size += len(chunk)
         after = os.fstat(descriptor)
     finally:
         os.close(descriptor)
     _require_unchanged_file(path, before=before, after=after)
-    return digest.digest()
+    if size != after.st_size:
+        raise ArtifactCollectionError(f"file size changed while collecting: {path}")
+    return digest.hexdigest(), size
 
 
 def _open_regular_file(path: Path) -> int:
@@ -945,7 +1518,10 @@ def _h5_logical_bytes(path: Path, *, weights: bool) -> bytes:
     selected = 0
     try:
         with pd.HDFStore(path, mode="r") as store:
+            _encode_h5_header(output, store)
             for key in sorted(store.keys()):
+                if key in {H5_TIME_PERIOD_KEY, H5_ARTIFACT_METADATA_KEY}:
+                    continue
                 value = store[key]
                 if not isinstance(value, pd.DataFrame):
                     continue
@@ -973,6 +1549,73 @@ def _h5_logical_bytes(path: Path, *, weights: bool) -> bytes:
     if _regular_file_sha256(path) != initial_sha256:
         raise ArtifactCollectionError(f"H5 changed while collecting: {path}")
     return bytes(output)
+
+
+def _encode_h5_header(output: bytearray, store: pd.HDFStore) -> None:
+    period, metadata = _h5_header_values(store)
+    for field in H5_OPERATIONAL_METADATA_FIELDS:
+        metadata.pop(field, None)
+
+    output.extend(b"H")
+    _append_frame(
+        output,
+        canonical_json_bytes(
+            {
+                "artifact_metadata": metadata,
+                "time_period": period,
+            }
+        ),
+    )
+
+
+def _h5_header_values(store: pd.HDFStore) -> tuple[int, dict[str, object]]:
+    try:
+        period_rows = store[H5_TIME_PERIOD_KEY]
+        metadata_rows = store[H5_ARTIFACT_METADATA_KEY]
+    except KeyError as error:
+        raise ArtifactCollectionError(
+            "H5 is missing the required period or artifact metadata header"
+        ) from error
+    if not isinstance(period_rows, pd.Series) or len(period_rows) != 1:
+        raise ArtifactCollectionError(
+            "H5 time period header must be a Series with exactly one row"
+        )
+    period = period_rows.iloc[0]
+    if isinstance(period, np.integer):
+        period = int(period)
+    if not isinstance(period, int) or isinstance(period, bool):
+        raise ArtifactCollectionError("H5 time period header must be an integer")
+
+    if not isinstance(metadata_rows, pd.Series) or len(metadata_rows) != 1:
+        raise ArtifactCollectionError(
+            "H5 artifact metadata header must be a Series with exactly one row"
+        )
+    metadata_text = metadata_rows.iloc[0]
+    if not isinstance(metadata_text, str):
+        raise ArtifactCollectionError("H5 artifact metadata row must be JSON text")
+    try:
+        metadata = _strict_json_object(metadata_text.encode("utf-8"))
+    except (TypeError, ValueError, UnicodeDecodeError) as error:
+        raise ArtifactCollectionError(
+            "H5 artifact metadata row must be a strict JSON object"
+        ) from error
+    return period, metadata
+
+
+def _read_h5_artifact_metadata(path: Path) -> dict[str, object]:
+    initial_sha256 = _regular_file_sha256(path)
+    try:
+        with pd.HDFStore(path, mode="r") as store:
+            _period, metadata = _h5_header_values(store)
+    except (OSError, KeyError, TypeError, ValueError) as error:
+        if isinstance(error, ArtifactCollectionError):
+            raise
+        raise ArtifactCollectionError(
+            f"unable to read H5 artifact metadata: {path}"
+        ) from error
+    if _regular_file_sha256(path) != initial_sha256:
+        raise ArtifactCollectionError(f"H5 changed while collecting: {path}")
+    return metadata
 
 
 def _encode_table(
@@ -1117,6 +1760,42 @@ def _parse_pointer(pointer: str, *, location: str) -> tuple[str, ...]:
     if tokens.count("*") > 1:
         raise ArtifactCollectionError(f"{location}: multiple wildcards forbidden")
     return tuple(tokens)
+
+
+def _binding_pointer(value: object, *, location: str) -> tuple[str, ...]:
+    pointer = _nonempty_string(value, location=location)
+    tokens = _parse_pointer(pointer, location=location)
+    if "*" in tokens:
+        raise ArtifactCollectionError(f"{location}: concrete pointer required")
+    if _encode_pointer(tokens) != pointer:
+        raise ArtifactCollectionError(f"{location}: canonical pointer required")
+    return tokens
+
+
+def _required_pointer(
+    value: object,
+    tokens: Sequence[str],
+    *,
+    location: str,
+) -> object:
+    current = value
+    for token in tokens:
+        current = _pointer_child(current, token)
+        if current is _MISSING:
+            raise ArtifactCollectionError(f"{location}: required field is absent")
+    return current
+
+
+def _publication_run_id(value: object, *, location: str) -> str:
+    if (
+        not isinstance(value, str)
+        or len(value) != 32
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise ArtifactCollectionError(
+            f"{location}: 32-character lowercase UUID hex required"
+        )
+    return value
 
 
 def _expand_pointer(
