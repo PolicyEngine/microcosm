@@ -2444,3 +2444,28 @@ head; it still writes `us-f1-certification.json` and
 
 1. Rerun the complete 38-node dual-mode fixture and close any remaining
    projection or broker-consumption mismatch at the node where it occurs.
+
+## F1 continuation r5 full-frame restoration (2026-08-20)
+
+### State
+
+- Narrow patch validation succeeded, but the merge boundary still expected a
+  legacy full-frame callback result and therefore repeated the same false
+  deletion finding while restoring the validated projection.
+
+### Done
+
+- The merge codec now restores every unprojected table and link column from
+  the checked pre-node frame. Existing rows copy by stable id; authorized
+  EXPAND rows copy external values from the trusted classifier's unique native
+  source id, while executor-owned keys, memberships, and physical columns come
+  only from the validated narrow result.
+- Full legacy results retain their original validation path, so external
+  tampering is not hidden by restoration. Added exact JOIN and EXPAND narrow
+  restoration tests. The complete projection-codec module passes (8 tests),
+  Ruff and `git diff --check` pass, and no sample build ran.
+
+### Next
+
+1. Continue the complete 38-node rerun past restoration and validate exact RNG
+   plan consumption and artifact equality.

@@ -331,6 +331,35 @@ def test_patch_and_merge_restore_only_proven_external_surfaces(
     assert dict(merged.metadata) == dict(result.metadata)
 
 
+def test_merge_restores_full_frame_from_narrow_validated_result(
+    join_node: CompiledNode,
+) -> None:
+    before = _wide_frame()
+    expected = _wide_frame(prediction=True, node_receipt=True)
+    projection = frame_to_projection(expected, node=join_node)
+    narrow = projection_to_frame(projection, schema=expected.schema)
+
+    merged = merge_projection_into_frame(
+        projection,
+        before_frame=before,
+        legacy_result_frame=narrow,
+        node=join_node,
+        validated_metadata=expected.metadata,
+    )
+
+    for entity in expected.entities:
+        pd.testing.assert_frame_equal(
+            merged.table(entity),
+            expected.table(entity),
+            check_exact=True,
+        )
+    pd.testing.assert_frame_equal(
+        merged.link("person_household_edge"),
+        expected.link("person_household_edge"),
+        check_exact=True,
+    )
+
+
 def test_patch_refuses_unprojected_data_or_unreceipted_metadata_changes(
     join_node: CompiledNode,
 ) -> None:
@@ -483,6 +512,22 @@ def test_expand_patch_proves_external_columns_are_exact_source_copies(
     corrupted = _expand_frame(expanded=True, corrupt_private=True)
     with pytest.raises(FrameProjectionCodecError, match="did not copy"):
         legacy_result_to_patch(before, corrupted, node=node)
+
+    projection = frame_to_projection(result, node=node)
+    narrow = projection_to_frame(projection, schema=result.schema)
+    merged = merge_projection_into_frame(
+        projection,
+        before_frame=before,
+        legacy_result_frame=narrow,
+        node=node,
+        validated_metadata=result.metadata,
+    )
+    for entity in result.entities:
+        pd.testing.assert_frame_equal(
+            merged.table(entity),
+            result.table(entity),
+            check_exact=True,
+        )
 
 
 def test_virtual_inputs_reject_receipts_outside_compiled_contract(

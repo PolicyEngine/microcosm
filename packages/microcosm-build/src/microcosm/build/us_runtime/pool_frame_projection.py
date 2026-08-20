@@ -904,6 +904,144 @@ def _assert_projection_matches_result(
             )
 
 
+def _restore_narrow_result_external_surfaces(
+    before: Frame,
+    narrow: Frame,
+    node: CompiledNode,
+    *,
+    metadata: Mapping[str, Any],
+) -> Frame:
+    """Copy unprojected columns onto a validated narrow callback result."""
+
+    registry = _node_scope_registry(node)
+    physical = _physical_contract_columns(node)
+    entity_keys, memberships, _membership_targets = _schema_contract(before.schema)
+    source_ids_by_entity: dict[str, dict[Hashable, Hashable]] = {}
+    tables: dict[str, pd.DataFrame] = {}
+    for entity in before.entities:
+        before_table = before.table(entity)
+        narrow_table = narrow.table(entity)
+        key = entity_keys[entity]
+        before_ids = frozenset(before_table[key].tolist())
+        narrow_ids = frozenset(narrow_table[key].tolist())
+        removed_ids = before_ids - narrow_ids
+        if removed_ids:
+            raise FrameProjectionCodecError(
+                f"narrow result removed stable ids from {entity!r}: "
+                f"{sorted(map(repr, removed_ids))!r}"
+            )
+        added_ids = narrow_ids - before_ids
+        classifications = (
+            classify_added_support_rows(
+                entity,
+                narrow_table,
+                key,
+                added_ids,
+                registry,
+            )
+            if added_ids
+            else {}
+        )
+        source_ids = {
+            row_id: (
+                classifications[row_id].source_row_id
+                if row_id in classifications
+                else row_id
+            )
+            for row_id in narrow_table[key].tolist()
+        }
+        source_ids_by_entity[entity] = source_ids
+        before_indexed = before_table.set_index(key, drop=False)
+        executor_columns = {
+            key,
+            *memberships.get(entity, ()),
+            *physical.get(entity, ()),
+        }
+        ordered_columns = [
+            *before_table.columns.tolist(),
+            *[
+                column
+                for column in narrow_table.columns
+                if column not in before_table.columns
+            ],
+        ]
+        restored = pd.DataFrame(index=narrow_table.index)
+        ordered_source_ids = [
+            source_ids[row_id] for row_id in narrow_table[key].tolist()
+        ]
+        for column in ordered_columns:
+            if column in executor_columns:
+                if column not in narrow_table:
+                    raise FrameProjectionCodecError(
+                        f"narrow result omitted executor column {entity}.{column}"
+                    )
+                restored[column] = narrow_table[column].copy()
+                continue
+            if column not in before_table:
+                raise FrameProjectionCodecError(
+                    f"narrow result added external column {entity}.{column}"
+                )
+            copied = before_indexed.loc[ordered_source_ids, column].reset_index(
+                drop=True
+            )
+            copied.index = narrow_table.index
+            restored[column] = copied
+        restored.attrs = copy.deepcopy(narrow_table.attrs)
+        tables[entity] = restored
+
+    link_specs = {link.name: link for link in before.schema.links}
+    for name in before.links:
+        before_link = before.link(name)
+        narrow_link = narrow.link(name)
+        link = link_specs[name]
+        target_entities = (link.left_entity, link.right_entity)
+        targets = tuple(entity_keys[entity] for entity in target_entities)
+        restored_link = narrow_link.loc[:, list(targets)].copy()
+        before_indexed = before_link.set_index(list(targets), drop=False)
+        for column in before_link.columns:
+            if column in targets:
+                continue
+            values: list[object] = []
+            for row in narrow_link.loc[:, list(targets)].itertuples(
+                index=False,
+                name=None,
+            ):
+                source_key = tuple(
+                    source_ids_by_entity[entity][row[index]]
+                    for index, entity in enumerate(target_entities)
+                )
+                value = before_indexed.loc[source_key, column]
+                if isinstance(value, pd.Series):
+                    raise FrameProjectionCodecError(
+                        f"link {name!r} source key {source_key!r} is ambiguous"
+                    )
+                values.append(value)
+            restored_link[column] = pd.Series(
+                values,
+                index=narrow_link.index,
+                dtype=before_link[column].dtype,
+            )
+        restored_link = restored_link.loc[:, before_link.columns]
+        restored_link.attrs = copy.deepcopy(narrow_link.attrs)
+        tables[name] = restored_link
+
+    weights = {
+        entity: Weights(
+            narrow.weights_for(entity).values,
+            WeightKind(narrow.weights_for(entity).kind.value),
+        )
+        for entity in narrow.weighted_entities
+    }
+    return Frame(
+        tables,
+        narrow.schema,
+        weights,
+        narrow.strata,
+        mass_log=narrow.mass_log,
+        metadata=metadata,
+    )
+
+
 def merge_projection_into_frame(
     projection: ImmutableFrameProjection,
     *,
@@ -932,31 +1070,47 @@ def merge_projection_into_frame(
         raise FrameProjectionCodecError(
             "validated metadata differs from the legacy result metadata"
         )
-    _validate_external_surfaces(before_frame, legacy_result_frame, node)
-    _assert_projection_matches_result(projection, legacy_result_frame, node)
+    full_surface = all(
+        set(before_frame.table(entity)) <= set(legacy_result_frame.table(entity))
+        for entity in before_frame.entities
+    ) and all(
+        set(before_frame.link(name)) <= set(legacy_result_frame.link(name))
+        for name in before_frame.links
+    )
+    if full_surface:
+        merged_result = legacy_result_frame
+    else:
+        merged_result = _restore_narrow_result_external_surfaces(
+            before_frame,
+            legacy_result_frame,
+            node,
+            metadata=validated_metadata,
+        )
+    _validate_external_surfaces(before_frame, merged_result, node)
+    _assert_projection_matches_result(projection, merged_result, node)
 
     tables = {
-        entity: legacy_result_frame.table(entity).copy(deep=True)
-        for entity in legacy_result_frame.entities
+        entity: merged_result.table(entity).copy(deep=True)
+        for entity in merged_result.entities
     }
     tables.update(
         {
-            name: legacy_result_frame.link(name).copy(deep=True)
-            for name in legacy_result_frame.links
+            name: merged_result.link(name).copy(deep=True)
+            for name in merged_result.links
         }
     )
     weights = {
         entity: Weights(
-            legacy_result_frame.weights_for(entity).values,
-            WeightKind(legacy_result_frame.weights_for(entity).kind.value),
+            merged_result.weights_for(entity).values,
+            WeightKind(merged_result.weights_for(entity).kind.value),
         )
-        for entity in legacy_result_frame.weighted_entities
+        for entity in merged_result.weighted_entities
     }
     return Frame(
         tables,
-        legacy_result_frame.schema,
+        merged_result.schema,
         weights,
-        legacy_result_frame.strata,
-        mass_log=legacy_result_frame.mass_log,
+        merged_result.strata,
+        mass_log=merged_result.mass_log,
         metadata=validated_metadata,
     )
