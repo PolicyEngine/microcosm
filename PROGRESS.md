@@ -2,24 +2,20 @@
 
 ## State
 
-The host 1% verification build rejected the implementation committed at
-`33bf52fe`. The root cause was global QRF regime detection and evidence on
-every ACS transfer target even though the calibration owner declares only
-nine targets. The fix is implemented: regime checks are default-off and must
-be explicitly selected by `(entity, target)`; the stacked owner selects only
-the exact declared targets present on each early/late surface; unassigned
-records and receipts retain their legacy shape, while selected evidence keeps
-exact record-family binding. A follow-up review found and fixed count
-validation bypassed by unassigned receipts. Focused QRF, count, binding,
-serializer, banked wide-family, and real late-executor tests are green; the
-full post-fix rerun found one stale H5 test fixture that still emitted a
-partial legacy count block. Its target receipts now use the same valid
-four-zero count schema as the other canonical fixtures; focused verification
-and the remaining shards are next. Canonical production now enforces the
-certified eight-target fit width so selected receipt families remain exactly
-bound. No after artifact is accepted. The uncontaminated 1% before artifact
-remains recorded at commit `5f5e5e91`; no frozen battery band, threshold,
-comparator, seed, or fold has changed.
+The local continuation for the host 1% failure is complete. The root cause was
+global QRF regime detection and evidence on every ACS transfer target even
+though the calibration owner declares only nine targets. Regime checks are
+now default-off and must be explicitly selected by `(entity, target)`; the
+stacked owner selects only the exact declared targets present on each
+early/late surface. Unassigned records and receipts retain their legacy shape,
+while selected evidence keeps exact record-family binding. All 225
+`microcosm-build` test files are green on the final tree across fresh pytest
+processes, and repository lint, touched-file formatting, and committed-range
+diff checks pass. Canonical production enforces the certified eight-target fit
+width so selected receipt families remain exactly bound. No after artifact is
+accepted: the host-only 1% rebuild remains pending. The uncontaminated 1%
+before artifact remains recorded at commit `5f5e5e91`; no frozen battery band,
+threshold, comparator, seed, or fold has changed.
 
 The required `uv sync --all-packages --extra us` was attempted first. The
 default cache is sandbox-read-only; a retry with a writable cache reached PyPI
@@ -58,10 +54,12 @@ but DNS is unavailable. Verification therefore uses the already-synced
   leaves downstream explicit numeric coercion and locked output facts intact
   while reducing the 3.73 GB donor-test peaks from above the safety ceiling to
   0.49 GiB and 0.53 GiB.
-- Verified all 225 `microcosm-build` test files green, split into fresh pytest
-  processes where needed. Also verified `microcosm-fit` (93 passed),
-  `microcosm-calibrate` (201 passed), `microcosm-frame` (294 passed, 36
-  skipped), and `microcosm-data` (275 passed, one skipped).
+- Verified all 225 `microcosm-build` test files green before the host
+  continuation and again on the final scoped-fix tree, split into fresh pytest
+  processes where needed. Also verified the unchanged sibling packages before
+  the continuation: `microcosm-fit` (93 passed), `microcosm-calibrate` (201
+  passed), `microcosm-frame` (294 passed, 36 skipped), and `microcosm-data`
+  (275 passed, one skipped).
 - Ran repository-wide `ruff check .`, touched-file `ruff format --check`, and
   `git diff --check` successfully. Repository-wide `ruff format --check .`
   still identifies 49 pre-existing, mostly unrelated files; none was
@@ -121,11 +119,16 @@ but DNS is unavailable. Verification therefore uses the already-synced
   correctly rejected its synthetic late-transfer targets because the fixture
   supplied only `residual_null_rows`. Updated that fixture to the internally
   consistent four-zero target-count block; production code was not relaxed.
+- Completed the post-fix rerun after that fixture correction. Every directly
+  affected transfer/stacked/pool test file and every remaining build-package
+  test file is green. A repository-wide scan found no other canonical target
+  receipt fixture with a partial four-count block.
 
 ## Next
 
-1. Run the complete touched-file and PR-CI test/lint surface, keeping heavy
-   shards under the memory guard.
-2. Rebuild off-chain at exactly 1% with sample/clone seed 578 under the
+1. Rebuild off-chain at exactly 1% with sample/clone seed 578 under the
    tightened memory guard when host data access is available, then record the
    16 after measurements and source-preservation invariants.
+2. Accept an after artifact only if the host stacked receipt validation and
+   frozen battery checks pass; keep the run off-chain and leave the pending
+   logbook chain untouched.

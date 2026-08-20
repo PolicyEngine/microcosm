@@ -1,111 +1,106 @@
-# Final report: microcosm #462 register alignment
+# Final report: package 3 ACS QRF receipt scoping
 
 ## Outcome
 
-Completed the split-PR remediation on `loss-contract-alignment`, based on
-`origin/main` at `7b6e10b`. The change is now register alignment only: one
-shared critical-target register, one shared congressional-district classifier,
-two consumers, builder contract-row gating, and behavioral containment of the
-publish contract.
+Fixed the host 1% verification failure at
+`person/puf_tax_itemization/taxable_interest_income` without opting that
+unassigned target into the package 3 calibration. The final local tree passes
+the complete `microcosm-build` suite and lint surface.
 
-The critical-row loss multiplier was removed entirely per
-[microcosm#492](https://github.com/PolicyEngine/microcosm/issues/492). There is no
-constant, CLI option, validation, loss overlay, telemetry, diagnostics/scorer
-provenance, or historical replay pin left. `_fiscal_target_loss_weights` is
-source-identical to `origin/main`, and its output therefore preserves main's
-bit-level behavior for the same registry and family multipliers.
+No after artifact is claimed or accepted. The exact 1% host rebuild remains
+the only outstanding step because the pinned host data is unavailable in this
+sandbox. The frozen sample/clone seed remains 578, and no battery band,
+threshold, comparator, fold, publication boundary, or pending-chain state was
+changed.
 
-## Sol round-1 findings
+## Root cause and correction
 
-1. **Table 1.4 selector parity:** removed the builder-only
-   `accepted_name_prefixes=("irs_soi.",)` constraint. The adapter now has
-   exactly the shared requirement's substring and suffix selectors. The
-   outside-prefix reproduction is builder-rejected.
-2. **Congressional-district parity:** added exported, stdlib-only
-   `is_congressional_district_target(name, metadata)` and made the publisher
-   and builder classifiers thin wrappers. It ORs layout dimension, source-id
-   token, geography level, geography scope, truthy CD GEOID, and name token.
-   The builder's exact/semantic, Table 1.4, and zero-support paths now see the
-   same registry metadata.
-3. **Recorded relative-error shape:** a matched row with missing/`None`
-   `relative_error` now fails with the publish-contract message instead of
-   silently passing after recomputation. Existing non-numeric and stale-value
-   checks remain.
-4. **Behavioral anti-drift:** the load-bearing test now runs adversarial rows
-   through both consumers for exact-name, family+role, Table pattern,
-   missing/non-finite values, and a disallowed incumbent escape at the 0.25
-   hard stop. A production Ledger compile supplies six separate CD evidence
-   rows; builder and publisher exclude identical six-name sets and counts.
-   Field comparisons remain as fast checks, and any added conjunctive prefix
-   is proven to trip the guard.
+Commit `33bf52fe` enabled QRF regime detection, verification, and receipt
+provenance for every ordinary and banked ACS transfer target. That widened the
+behavioral and receipt surface beyond the nine owner-declared calibration
+targets. The 15-target `puf_tax_itemization` family is split at the certified
+eight-target fit width; its real transfer record therefore used a bounded
+`__batch_1` family while terminal validation tried to bind it to the canonical
+unsplit family. The resulting mismatch raised the reported “ACS QRF pattern
+record binding is invalid” error on an unassigned target.
 
-The [#490](https://github.com/PolicyEngine/microcosm/issues/490) medical 0.25
-adjudication tolerance and its adjacent comment in `us_critical_targets.py`
-remain byte-for-byte unchanged, as required.
+The correction keeps regime work explicitly opt-in:
 
-## Reproduction receipts
+- `transfer_acs_inputs` defaults `regime_evidence_targets` to empty and scopes
+  regime detection, fitted-result verification, bank-chain verification, and
+  pattern provenance to exact `(entity, target)` selections.
+- The stacked early and late owners derive those selections from the nine
+  immutable calibration specifications on the current transfer surface: two
+  early and seven late. The 15-target `puf_tax_itemization` family selects
+  none.
+- Unassigned records carry no regimes, unassigned receipts carry no QRF
+  evidence, and generic serializers omit the empty opt-in field so their
+  legacy JSON shape is unchanged.
+- Validators reject QRF evidence on undeclared targets and require exact
+  selected record-family binding. All canonical target receipts—selected or
+  not—must also carry the complete, internally consistent four-field legacy
+  transfer count block.
+- Complete selected siblings are retained only when the whole bounded family
+  is selected. A mixed selected/unselected family neither expands the selected
+  fit nor changes the unassigned draw.
+- Canonical production accepts only the certified eight-target fit width,
+  matching the existing late-DAG boundary; narrower widths remain a
+  non-production test seam.
 
-The Table 1.4 prefix reproduction now returns:
+## Regression coverage
 
-```text
-SOI Table 1.4 national dollar fit failed: other.table_1_4.all.bad_amount@2024: relative_error=1 exceeds 0.25 for SOI Pub 1304 Table 1.4 national dollar rows (soi_table_1_4_national_dollar_rows); target=100.0, final_estimate=200.0.
-```
+The regression surface includes:
 
-The missing-relative-error reproduction now returns:
+- the exact host target in a real wide, banked `puf_tax_itemization` family,
+  proving its `__batch_1` record has no regimes or QRF receipt while selected
+  unemployment compensation retains both;
+- selected-family binding, forged batch aliases, regime tampering, and missing
+  or inconsistent early/late transfer counts;
+- mixed selected/unselected output equivalence and selected-sibling behavior;
+- default ordinary and banked transfer behavior plus both generic serializers;
+- rejection of non-default canonical fit widths; and
+- canonical pool/H5 receipt fixtures using the strict four-count schema.
 
-```text
-SOI Table 1.4 national dollar fit failed: irs_soi.ty2023.table_1_4.all.adversarial_amount@2024: missing recorded relative_error; the publish contract requires a numeric value.
-```
-
-The CD reproduction has the owner-mandated exclusion result:
-
-```text
-builder_excluded=True
-publisher_excluded=True
-builder_failures=[]
-```
-
-Calling that row "rejected" would contradict the required OR-union exclusion
-semantics. The two malformed critical rows are rejected; the CD row is
-symmetrically excluded by both consumers.
+The full-suite run found one stale synthetic H5 fixture that supplied only
+`residual_null_rows`. The fixture—not production validation—was corrected to
+four consistent zero counts, its complete test file reran green, and an
+independent fixture scan found no other canonical partial-count fixtures. A
+separate final scope audit found no residual behavior or receipt leak; it also
+confirmed that the exact host family selects no regime-evidence targets.
 
 ## Verification
 
-The requested suite ran with `UV_NO_SYNC=1` to use the already-synced workspace
-environment in the network-restricted sandbox:
+Verification used the already-synced exact-lock environment with
+`UV_NO_SYNC=1` and a writable temporary uv cache because sandbox DNS and the
+default uv cache are unavailable.
 
-```text
-uv run --package microcosm-build --extra us --group dev python -m pytest packages/microcosm-data/tests packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py packages/microcosm-build/tests/test_us_state_files_scorer.py -q
-264 passed, 3 skipped (267 collected)
-```
+- All 225 `packages/microcosm-build/tests/test_*.py` files pass on the final
+  tree across fresh pytest processes, including the five directly affected
+  transfer/stacked/pool files and the repaired H5 file.
+- `uv run ruff check .`: passed.
+- `ruff format --check` on all nine continuation-touched Python files: passed.
+- `git diff --check 33bf52fe..HEAD`: passed.
 
-Additional receipts:
+The sibling package suites were green before this continuation and their code
+was not changed: `microcosm-fit` 93 passed, `microcosm-calibrate` 201 passed,
+`microcosm-frame` 294 passed/36 skipped, and `microcosm-data` 275 passed/one
+skipped.
 
-- Complete `test_gates.py`: passed.
-- Required multiplier grep: zero Python hits.
-- Ruff check: clean on all ten touched Python files.
-- Ruff format check: clean on the eight non-exempt touched Python files; the
-  two historical experiment files were not reformatted, as instructed.
-- `git diff --check`: clean.
-- The medical adjudication block compares byte-for-byte equal to pre-fix
-  commit `068854d`.
-- Pytest emitted non-failing macOS temporary-directory cleanup warnings; no
-  test failed.
+## Continuation commits
 
-## Remediation commits
+- `e967bc5d` — record the package 3 host verification failure.
+- `3a58c60f` — diagnose the ACS QRF evidence scope leak.
+- `22b2c6bc` — add the failing-first scoped binding regression.
+- `176c60fc` — scope ACS QRF evidence to calibration targets.
+- `0b4339d1` — add failing-first unassigned count regressions.
+- `887df056` — harden scoped transfer receipt validation.
+- `94b7aecb` — close selected-family, count-stripping, and fit-width audit gaps.
+- `5a91d9e6` — align the late pool fixture with strict counts.
+- `943e33cf` — align the canonical stacked H5 fixture with strict counts.
 
-- `5077f95` — start microcosm#462 Sol remediation progress.
-- `c48ba37` — remove the microcosm#462 loss multiplier per microcosm#492.
-- `afa910a` — fix Sol finding 1 selector parity.
-- `89f74f4` — fix Sol finding 2 CD classifier parity.
-- `77040fb` — fix Sol finding 3 relative-error shape.
-- `bad7145` — fix Sol finding 4 behavioral containment.
-- `3c96514` — apply the finding-2 classifier's required Ruff formatting.
+## Remaining host step
 
-Nothing was pushed at the time of this report; the branch was subsequently
-pushed and merged as #491 (2026-07-22).
-
-The sandbox rejected writing
-`/Users/maxghenis/PolicyEngine/_reviews/sol-491-fix-out.md` with `Operation not
-permitted`; the full completion report is therefore committed here and will be
-printed to stdout as the requested fallback.
+Rebuild off-chain at exactly 1% with sample and clone seed 578 under the host
+memory guard. Accept and record the 16 after measurements only if the stacked
+receipt invariant, source-preservation proofs, and frozen battery checks all
+pass. Do not publish or mutate the pending logbook chain during that run.

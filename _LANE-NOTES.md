@@ -137,12 +137,16 @@ comparator change.
   `6b213e740b114d008c0191fa492832a957a0a948` matches
   `../microcosm-707/uv.lock`; that environment imports NumPy 2.4.6, pandas
   3.0.3, and pytest 8.4.2 while `PYTHONPATH` points at this worktree.
-- The pre-continuation PR test surface was green: all 225 `microcosm-build` test files;
-  `microcosm-fit` 93 passed; `microcosm-calibrate` 201 passed;
+- The pre-continuation PR test surface was green: all 225 `microcosm-build`
+  test files; `microcosm-fit` 93 passed; `microcosm-calibrate` 201 passed;
   `microcosm-frame` 294 passed/36 skipped; and `microcosm-data` 275 passed/one
-  skipped. Heavy files ran in fresh pytest processes. Post-fix focused QRF,
-  stacked binding, serializer, banked, and late-executor tests are green; the
-  complete post-fix rerun remains pending.
+  skipped. Heavy files ran in fresh pytest processes. The final continuation
+  tree also passes all 225 `microcosm-build` test files across fresh processes,
+  including full ordinary/banked transfer, stacked binding, serializer, pool,
+  H5 loader, and real late-executor files. The full rerun exposed one synthetic
+  H5 target receipt with only `residual_null_rows`; its fixture was updated to
+  the valid four-zero count block, its full file reran green, and a fixture
+  scan found no other canonical partial blocks.
 - `ruff check .`, touched-file `ruff format --check`, and `git diff --check`
   pass. Full-tree format checking reports 49 pre-existing files outside this
   lane's formatting scope.
