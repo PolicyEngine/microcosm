@@ -2,15 +2,24 @@
 
 ## State
 
-The current 2026-08-20 owner continuation is open. The supplied host 1%
-traceback at
-`person/puf_tax_itemization/taxable_interest_income` is the active failure,
-even though earlier branch commits report a scoped correction and green local
-tests. Those claims will be independently checked from the invariant raise
-site against the current tree and failing revision before any further runtime
-change. No executable change or host-success claim has been made in this
-continuation. The owner-provided `_BUILD-FAILURE-1PCT.txt` and
-`.codex-memory-guard.py` remain untracked and untouched.
+The current 2026-08-20 owner continuation has completed its independent
+raise-site, source-flow, history, and regression diagnosis. The supplied line
+numbers fingerprint bad commit `33bf52fe`: its globally enabled QRF evidence
+reached the real `puf_tax_itemization__batch_1` record for unassigned
+`taxable_interest_income`, then terminal validation compared that record with
+the unsplit family before consulting the nine-target registry. The complete
+current correction is the runtime series `176c60fc`, `887df056`, and
+`94b7aecb`, not the first commit alone. Canonical producers now derive an exact
+two-early/seven-late selection from the immutable specs, generic transfer
+defaults to no regime work, receipts omit evidence for unassigned targets, and
+validators reject forged evidence before calling strict record binding only on
+assigned targets. The exact synthetic host regression, real 15-target banked
+producer regression, and selected-family in-range alias regression are already
+committed and jointly cover the failure and the unsafe permissive workaround;
+no duplicate runtime or test edit is warranted. Focused and affected-suite
+verification is now the active step. No host success is claimed. The
+owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain
+untracked and untouched.
 
 Earlier continuation snapshots follow and are historical rather than current
 state.
@@ -130,6 +139,37 @@ but DNS is unavailable. Verification therefore uses the already-synced
   status and recent history, preserved both untracked owner artifacts, and
   recorded the newly supplied host traceback as the active continuation before
   implementation or test changes.
+- Reproduced the historical control flow directly at `33bf52fe`: the traceback
+  line numbers are exact, the 15-target family is bounded at width eight, and
+  unconditional evidence validation compares the real `__batch_1` record with
+  the unsplit family before looking up assignment. Accepting the alias alone
+  would next expose an eight-versus-fifteen regime-target-order mismatch.
+- Audited the current producer and validator path. The two canonical stacked
+  callers select only the two early and seven late immutable calibration specs;
+  transfer regime work and provenance, receipt attachment, and terminal
+  validation independently use that selection. `taxable_interest_income`
+  retains its legacy QRF draw and bounded record but has empty regimes and no
+  QRF receipt evidence.
+- Confirmed the correction spans `176c60fc`, `887df056`, and `94b7aecb`.
+  Current `us_runtime` and the entire `microcosm-build/src` tree have the same
+  Git tree objects as all-build-suite checkpoint `a5be536f`; the only later
+  nonjournal tracked change is the test-only in-range family forgery at
+  `21a48ba5`.
+- Audited the regression surface independently. The exact synthetic unassigned
+  target and real banked wide-family tests fail under the old behavior, while
+  the fully rehashed assigned `__batch_1` alias fails under the intermediate
+  permissive matcher. All three pass on the current tree, and no material unit
+  gap remains for the reported boundary.
+- Followed the GitNexus debugging workflow. A fresh 112 MiB local graph was
+  generated, but sandbox denial of the global registry write prevented normal
+  registration and the graph parser omitted the two large suspect runtime
+  modules. Query and context attempts therefore could not trace the raise-site
+  symbols; direct source/history tracing supplied the exact path. The generated
+  repo-local index was removed, leaving no tracked or untracked residue.
+- Checked the cited host directory read-only. Its mutable `build.log` is now
+  zero bytes, `guard.log` still records resource waits, and no pool, manifest,
+  gates artifact, or terminal marker exists, so it cannot establish an after
+  verdict for the current revision.
 - Reopened and committed this root journal before changing implementation or
   tests, reread `CLAUDE.md`, preserved the two untracked owner artifacts, and
   recorded the exact supplied binding failure as the active continuation.
@@ -418,13 +458,11 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Trace the invariant raise, callers, receipt producer, assigned-target
-   selectors, and failing-to-current history; establish whether the existing
-   correction fully excludes the host target or whether another scoped runtime
-   change is required.
-2. Add or strengthen a regression that captures exact record-family binding at
-   the unassigned batched target, then run focused and proportionate affected
-   suites plus lint.
-3. Commit each coherent diagnosis, test, implementation, verification, journal,
-   and final-report step. Do not claim a host artifact without a revision-bound
+1. Independently rerun the focused producer/validator/binding regressions and
+   the complete directly affected transfer, serialization, stacked, pool-tool,
+   and H5 test files under the owner memory guard.
+2. Run repository lint, scoped formatting, committed-range whitespace, and
+   runtime-tree drift checks.
+3. Commit verification, then refresh and commit `FINAL_REPORT.md` and the final
+   journal state. Do not claim a host artifact without a revision-bound
    terminal success marker and expected artifacts.
