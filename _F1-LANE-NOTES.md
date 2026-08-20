@@ -1138,3 +1138,196 @@ ownership.
 - The scoped final output is `FINAL_REPORT_F1_D7.md`. No push, build, sample
   rung, restricted-data access, or publication occurred. Validation was
   serialized; sandbox restrictions prevented an exact RSS observation.
+
+## F1 continuation r4 final main-lane receipt — honest stop before D5 (2026-08-20)
+
+This section is the final main-lane receipt for continuation r4. It supersedes
+the D7 addendum's decomposed-suite and Ruff wording, but it does not alter any
+D7 implementation or exact-cell result above.
+
+### Sync, merge, and concurrent-lane custody
+
+- The required first command was attempted exactly as
+  `git fetch origin && git merge origin/main --no-edit`. Fetch failed because
+  the sandbox could not resolve `github.com`, so the chained merge did not
+  execute. No network fallback was available.
+- Cached `origin/main` at `164027e2` was then merged in `35fb3ed0`. Conflict
+  resolution retained both main's integer-typed schemas, narrowed
+  `exc_type` guards, scoped archive/resource work, and this lane's F1
+  provenance/checkpoint seams.
+- Cached final #698 at `c4e1eb7f` was merged in `da45dfcd`. Conflict
+  resolution explicitly retained the 72-site ledger over #698's interim
+  53-site ledger, then regenerated rather than hand-editing derived pins.
+- `UV_CACHE_DIR=/private/tmp/microcosm-f1-uv-cache-overlay uv sync
+  --all-packages --extra us` completed successfully after the merges
+  (`Checked 100 packages`).
+- Deliverable 7 remained in its parallel lane. Its final documentation commits
+  are `5228cf5c` and `c0a75253`; the exact-cell source/test correction was swept
+  into shared-index commit `5875be22` while both lanes were active. History was
+  not rewritten, and the D7 sections above document that custody boundary.
+
+### Final F0 correction and identity re-pins
+
+Commit `5875be22` corrected confirmed F0 contract defects before any
+certification attempt:
+
+- `source_finalizer` now declares `structural_delta: join` for its three
+  appended deferred columns;
+- all 19 late-transfer nodes declare source-read and sink-write effects;
+- the SIPP financial-asset and archived-rent cap sites carry their exact seed
+  materials and fill boundaries;
+- the vehicle, financial-asset, and rent target-balanced cap sites carry their
+  exact conditional draw/fill predicates; and
+- five deterministic SHA-256 callsites are classified in the exhaustive
+  callsite inventory rather than being mistaken for stochastic draws.
+
+The final field-usage projection is 41,911/41,911 configuration fields:
+32,260 authored plus 9,651 resolved, including 19 effect leaves and two fill
+leaves. The pointer-inventory digest is
+`de879c7bca5f2fa914b43de5130e6a138dd14d0a7059d02952f747c6e578406c`.
+The physical census covers 213 production modules and 285 classified
+callsites: 119 ledger bindings and 166 exemptions, of which 165 are
+deterministic-hash classifications. The compiled protocol contains 72 logical
+sites, 57 owners, and 131 owner/site bindings.
+
+The pre-merge 72-site pins moved as follows:
+
+| Surface | Before r4 merge | Final current pin |
+|---|---|---|
+| compiler ABI v5 | `72659ec091a611e3ca63b0187d27249c817ed29b72f851e192f7f7c03bc1745a` | unchanged |
+| seed protocol | `f7d51987846236198d9e07dd562b8851f62c48f64e71ebcb0513c122c07c1d7b` | `fd22ba3ab69bc88eb5336261104e4b3d38f721521b4e2bbb04e8ddfa773c130e` |
+| compiled seed map | `746a8abde5b6ead279680a76fe15c4522ec52382301d73cd00f39bf7cf079044` | `f79d1646f01ad73a991433ebd0b2d6e5625ccabca682f55476a7b9ebfc6e3b30` |
+| normalized graph nodes | `754cccfa2e9fdcb0137669e76f0f7b839a263ff047550e5e560231ae80d7f95a` | `f0d1341b2077da85698ce9993497a366bcbb3fdda0b3721509fafcce7f82b64a` |
+| BE `spec_sha256` | `775902c9eedeeb376bdfa3ed5bfda983b6b5a0517b520fa5789867c4e7812172` | `1c5a9449438e1bd30e17105d954f3c5375d20564456be1d005dcab6a798d4aaf` |
+| UK `spec_sha256` | `cff22ddb86ddbf814479a0a996f6474182a2b36e2474ad519c3881859a0abec7` | `1de6c5f462370cafd5acf0a861dc29603b0e2cb18d6a5c54318114fa08df5ad5` |
+| US `spec_sha256` | `1a25c5c55609a7a565da7a1bf7f80a5c71fabdd92d20231af9c6804a3efd0c68` | `d0e4d3c1b3f055dde1056d75837384d4464478be8e2014370aab45ac4a7e8faa` |
+| minimal-loader golden | `227ed01608e9a1103651d35711ac0bf39e17da681c75170635068d3514f81201` | `aee96b0afefbbc4776f5dcb0c3e268e2be4351e535314fa6d49025c416e1ab16` |
+
+The cached #698 53-site interim pins were deliberately not adopted. For
+auditability, that superseded set was seed protocol
+`6dade07562ec29c56d96ab8e299a4416c679f1c44b18b228e0ef10f21bd6f6ec`,
+seed map `96140220b6b248c1b3a3567dc0c97df6c08176e6745d8dd55786053f26c43a32`,
+graph nodes `a83363de26cad0144b5a98b36b4bca49542e37a7b9fee3d7e541f692deeff864`,
+BE `262091db8c7b01b2a3b596aa2468d95855a63703ba9f8ebba2940cf5834c2c83`,
+UK `beed723a64944a2dc45c85a6853a51666885aba0aeca0e1ada6680a6352fb44c`,
+US `6e9dce8f0fd3e3f0101103a14d6a08ac8527b90b82d48fa8bad2c4cc70dbdfde`,
+and loader `9afebedeebc4194243e8307703ebc0feac975a69a186d28e266f1c4ef356bbe3`.
+They are recorded only to prevent an owner re-pin from accidentally restoring
+the smaller ledger.
+
+### Validation receipts
+
+- Generated US bundle `--check`: pass at US spec
+  `d0e4d3c1b3f055dde1056d75837384d4464478be8e2014370aab45ac4a7e8faa`.
+- Inventory coverage generation and `--check`: 41,911/41,911 fields and 40/40
+  inventory checks; evidence refreshed at
+  `docs/evidence/spec-engine/us-f0-coverage.json`.
+- F0 correction-focused suite: 101 passed.
+- Merge/D7 integration suite: 229 passed, zero failures/skips.
+- Final D7 exact-cell suite: 70 passed; the D7 receipt above carries its
+  independent hash-seed and projection evidence.
+- The first full-suite run reached 100% and exposed only three fail-closed
+  test-audit pins: six reviewed runtime-authority modules were unclassified and
+  the reachable runtime graph was still pinned at 65 rather than 70. Commit
+  `12df8c45` corrected that reviewed inventory; all 495 tests in the complete
+  spine-blindness module then passed.
+- The clean committed-tree full-suite rerun collected 7,262 tests, reached
+  100%, and exited 0 with expected skips only.
+- Repository-wide `ruff check .` passes. Commit `030c0613` contains the sole
+  mechanical import-order correction; the complete pool-tool test module also
+  exits 0 after it. `git diff --check` is clean.
+
+The test suite is green. This does **not** convert the missing production
+dual-mode build into a D4/D5/D6 certification claim.
+
+### Deliverable 4 closure audit — incomplete
+
+Deliverable 4 remains incomplete, so this lane stops before deliverables 5 and
+6. The current pool driver truthfully states that "Physical stage execution
+remains on the constants implementation in this seam." Concrete blockers are:
+
+1. There is no production call to `spec_engine.executor.execute_node`; only
+   executor tests invoke it. `USPoolKernelAuthorities` is materialized but is
+   not carried into the physical build configuration.
+2. The honest physical integration seam is per compiled node inside
+   `stacked_spine.run_stacked_late_producer_dag`: 38 nodes resolve to 20
+   kernel references with mixed `none`, `join`, and `expand` deltas. A single
+   stage-level compatibility kernel would bypass the approved executor
+   contract.
+3. Production stochastic code still constructs private RNGs from integer
+   seeds. The 119 classified physical bindings are not yet routed through
+   broker stream tokens, even though the 72-site protocol and broker tests are
+   complete.
+4. Bundle source access is authenticated at preflight, but legacy physical
+   consumers are not all operating on broker-issued snapshots/leases. There is
+   also no complete declared sink/process/target-bank broker for the physical
+   QRF and transfer paths.
+5. No closed callable registry, narrow immutable Frame projection, validated
+   patch-to-full-Frame merger, row-classifier integration, virtual-receipt
+   codec, per-node checkpoint journal, or production node-reuse map is wired.
+6. The artifact collector/comparator is not invoked by the production pool
+   tool. Its H5 and directory selectors still lack compiler-sealed exact
+   required table/column/weight/member inventories, so equal omissions could
+   pass an observational comparison.
+7. Calibration is absent from the pool execution graph and its normative
+   weight/bank ownership is unresolved. The existing reduced fixture is not a
+   production-shaped proof of the owner ruling's full artifact vector.
+
+Accordingly, the cold constants-versus-bundle D4 fixture gate has not passed.
+Bundle mode constructs typed plan/provenance/checkpoint surfaces, but it does
+not yet drive every physical stage or collect the sealed two-tier result.
+
+### Deliverables 5 and 6 — not run, not certified
+
+No stage flip receipt row was emitted at fixture or 1% scale. Therefore there
+are no honest constants/bundle stage digests, equality verdicts, wall-clock
+rows, or peak-RSS rows to report for deliverable 5.
+
+The four cold 1% builds and kill/resume leg required by deliverable 6 were not
+started. Within-mode determinism, cross-mode normative raw-byte equality, the
+sealed receipt comparison, and the concrete resume predicate are all
+**NOT RUN**, not PASS. The files
+`docs/evidence/spec-engine/us-f1-certification.json` and
+`docs/evidence/spec-engine/us-f1-certification.md` were intentionally not
+created because no certification occurred.
+
+The existing implementation is independently ineligible for the requested
+rung under the unchanged lane rule: the four recorded cold f001 primary-QRF
+peaks are 78.91, 84.15, 96.28, and 96.95 GiB RSS, versus the per-process
+20 GiB ceiling. Additional host RAM alone does not authorize those processes.
+No sample build ran in this continuation, no build above 1% ran, and no
+threshold, band, gate, seed, or comparator was tuned.
+
+### Owner handoff
+
+There is no valid 25% owner-run command to issue at this state. Running the
+current `--config-authority bundle` path would still dispatch physical stages
+through constants and would not invoke the production artifact comparator; a
+command would therefore misstate what is being certified. The same objection
+applies at 1%.
+
+Before an exact command can be published, a future authorized continuation
+must:
+
+1. route every inventoried physical stage, including all 38 producer nodes,
+   through the compiled executor/broker authorities while preserving constants
+   mode as the oracle;
+2. seal exact H5, checkpoint, bank, target, publication, and calibration member
+   inventories and invoke the two-tier comparator in production;
+3. pass the cold dual-mode D4 fixture gate and freeze the resulting complete
+   expected-identity vector;
+4. resolve the six source path/SHA pairs on the owner host and allocate
+   separate fresh output/checkpoint namespaces for constants, bundle, and the
+   kill/resume leg;
+5. make the 1% path keep every process below 20 GiB RSS before D5/D6, or obtain
+   explicit owner authority to change that constraint; only then consider
+   authorizing f025; and
+6. for off-chain work, omit `--logbook-prev-row-digest` **and** unset
+   `POPULACE_LOGBOOK_PREV_ROW_DIGEST`, because the environment is a fallback.
+
+The current core pins to preserve while closing those seams are the final
+identity values in the table above. No owner certification comparison target
+exists beyond them until D4 produces a complete vector.
+
+Nothing was pushed. `logbook-pending-chain.txt` was never touched. The three
+untracked `_F1-CHARTER-R*.md` files were left untouched and uncommitted.

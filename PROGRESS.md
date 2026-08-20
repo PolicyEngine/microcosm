@@ -7,9 +7,10 @@
 - Cached `origin/main` and the final #698 branch are merged. The 72-site seed
   ledger supersedes the merged 53-site ledger, and the corrected compiler,
   seed, bundle, loader, and graph identities are pinned.
-- Deliverable 7 is complete at `5228cf5c`. Its exact-cell code correction was
-  swept into concurrent shared-index commit `5875be22`; history was preserved
-  and the boundary is documented in the D7 handoff.
+- Deliverable 7 is complete at `5228cf5c`, with its latest verification receipt
+  at `c0a75253`. Its exact-cell code correction was swept into concurrent
+  shared-index commit `5875be22`; history was preserved and the boundary is
+  documented in the D7 handoff.
 - Deliverable 4 is not complete: bundle mode selects typed plan/provenance
   authorities but physical stages still execute through constants, and the
   production artifact collector/comparator is not wired. Deliverables 5 and 6
@@ -18,8 +19,9 @@
   pins for the new authority modules. After the reviewed classification and
   runtime-graph correction, the clean committed-tree rerun collected 7,262
   tests, reached 100%, and exited 0. Repository-wide Ruff is also clean.
-- A 1% run is prohibited on this host: four recorded cold primary-QRF peaks
-  are 78.91--96.95 GiB RSS, above the lane's 20 GiB ceiling.
+- A 1% run is prohibited under the unchanged lane rule: four recorded cold
+  primary-QRF peaks are 78.91--96.95 GiB RSS, above the per-process 20 GiB
+  ceiling. Additional host RAM alone does not authorize those processes.
 
 ## Done
 
@@ -43,24 +45,29 @@
   test module both exit 0.
 - Confirmed read-only that no valid owner 1%/25% command exists at this state:
   the physical executor and sealed two-tier production comparison remain
-  preconditions, and measured 1% memory requires a suitably provisioned host.
+  preconditions, and the 1% path must first be made to stay below 20 GiB RSS
+  per process unless the owner explicitly changes that constraint.
+- Recorded the exact old/interim/final identity vectors, clean validation
+  receipts, D4 blockers, D5/D6 NOT RUN status, and owner preconditions in the
+  lane journal, rollout status, and final report. No certification evidence
+  files were fabricated.
 
 ## Next
 
-1. Commit the mechanical import-order closure.
-2. Append the exact identity/test receipts and honest D4--D6 stop to the lane
-   journal, rollout status, and `FINAL_REPORT.md`; do not create certification
-   evidence for builds that did not run.
-3. A future authorized continuation must wire the 38 compiled producer nodes
+1. Stop this continuation at the honest D4 boundary with the tracked tree
+   green and the final handoff committed.
+2. A future authorized continuation must wire the 38 compiled producer nodes
    through the executor/brokers, seal exact artifact member inventories, add
-   calibration ownership, and pass the cold D4 fixture gate before issuing
-   any 1% or 25% command.
+   calibration ownership, and pass the cold D4 fixture gate.
+3. Only after D4 passes and every 1% process is bounded below 20 GiB RSS (or
+   the owner explicitly changes that constraint) may D5/D6 run and an exact
+   25% command and expected comparison vector be issued.
 
-## F1 D7 split-out progress — 2026-08-20 current-head audit
+## F1 D7 split-out progress — 2026-08-20 audit at `c0a75253`
 
-This section is the split-out's `state`/`done`/`next` journal and supersedes
-only earlier D7 status text. It does not update the main lane's D4--D6/D8
-state.
+This historical section records the split-out state at `c0a75253`. It
+supersedes only earlier D7 status text and does not update the later main-lane
+D4--D6/D8 state above.
 
 ### State
 

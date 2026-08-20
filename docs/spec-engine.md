@@ -584,6 +584,14 @@ flipping stage by stage; geography = exact legacy behavior. Derived
 closure/segments/dashboard retarget to compiler outputs here (not the
 held authored-class tests).
 
+**F1 status (2026-08-20): PARTIAL; stopped at incomplete D4.** The generic
+executor/brokers, bundle authority projections, sealed comparison contracts,
+and compiler-derived closure/segments/dashboard exist, but the production pool
+driver still dispatches physical stages through constants and does not invoke
+the sealed artifact collector/comparator. Exact artifact-member and calibration
+ownership also remain open. The cold D4 dual-mode gate, D5 stage receipts, and
+D6 four-build/resume certification have therefore not run and are not claimed.
+
 **F2 — delete, machine-decidably.** After ≥1 certified full release on
 bundle mode, deletion requires generated inventories + zero-reference
 tombstone gates: no `is`-guards, constant imports, or alternate
