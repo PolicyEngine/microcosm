@@ -2,6 +2,18 @@
 
 ## State
 
+The 2026-08-20 21:18Z owner continuation is reopened for an independent audit
+of the supplied host 1% ACS QRF record-binding failure. Earlier journal entries
+report an assigned-only runtime correction and regression coverage already on
+this branch, but those claims are historical until the current tree, raise-site
+flow, committed tests, and required suite are rechecked. No implementation or
+test change has yet been made in this continuation. The owner-provided
+`_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain untracked and
+untouched.
+
+The immediately preceding completion snapshot follows and is historical rather
+than current state.
+
 The current 2026-08-20 owner continuation has completed its independent
 raise-site, source-flow, history, and regression diagnosis. The supplied line
 numbers fingerprint bad commit `33bf52fe`: its globally enabled QRF evidence
@@ -141,6 +153,9 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Reopened the committed root journal before implementation or test changes,
+  reread `CLAUDE.md` and the GitNexus debugging workflow, inspected worktree
+  status and recent history, and preserved both untracked owner artifacts.
 - Loaded `CLAUDE.md` and the GitNexus debugging instructions, inspected branch
   status and recent history, preserved both untracked owner artifacts, and
   recorded the newly supplied host traceback as the active continuation before
