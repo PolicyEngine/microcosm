@@ -2,14 +2,23 @@
 
 ## State
 
-The 2026-08-20 23:44Z owner continuation is open. It will independently
-retrace the supplied host 1% `taxable_interest_income` record-binding failure
-from the invariant raise site, audit the current assigned-target scoping and
-regression coverage, rerun proportionate verification, and refresh
-`FINAL_REPORT.md` with revision-bound evidence. The owner-provided
-`_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` are untracked inputs and
-will remain untouched. No terminal host success is assumed from earlier
-mutable logs.
+The 2026-08-20 23:54Z owner continuation has completed its independent
+raise-site, producer, validator, history, and regression diagnosis. The
+reported failure fingerprints `33bf52fe`: every imputed target carried QRF
+regime evidence and validation performed exact record binding before checking
+the nine-target calibration registry. The real 15-target transfer therefore
+presented `puf_tax_itemization__batch_1` for unassigned
+`taxable_interest_income` while validation expected the unsplit family. The
+current correction is already complete in `176c60fc`, `887df056`, and
+`94b7aecb`: generic evidence work defaults off; early and late owners select
+the exact two and seven immutable specs; unassigned records and receipts carry
+no QRF evidence; and validators reject forged unassigned evidence before
+retaining exact binding for assigned targets. The exact synthetic failure,
+real banked wide-family producer, and all 12 rehashed structure mutations pass
+(14 cases, 0.569 GiB peak under the 12 GiB guard). No duplicate runtime or
+test edit is warranted. Affected-suite and static verification are next. The
+owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain
+untracked and untouched, and no terminal host result is claimed.
 
 The immediately preceding completion snapshot follows and is historical.
 
@@ -275,6 +284,24 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Opened and committed this continuation journal before diagnostic work.
+- Followed the GitNexus debugging workflow. The CLI generated a local graph,
+  but registration/query was blocked by the sandboxed user-wide registry; its
+  112 MiB repo-local cache was removed with `gitnexus clean`. Direct raise-site,
+  caller, producer, validator, and history tracing established the full path.
+- Independently confirmed the current canonical selector contains exactly two
+  early and seven late immutable specs and no `puf_tax_itemization` target.
+  Generic transfer defaults evidence work off, both receipt producers derive
+  the same selected set, and both validators branch on assignment before QRF
+  binding while retaining mandatory four-count validation for every target.
+- Audited the existing regressions. Commit `22b2c6bc` already contains the
+  exact synthetic bounded-family failure, the real banked 15-target producer
+  proves the evidence never reaches `taxable_interest_income`, and
+  `21a48ba5` proves a fully rehashed plausible `__batch_1` alias remains
+  invalid for an assigned target. No duplicate regression is needed.
+- Re-ran the exact failure, real producer, and all strict rehashed structure
+  mutations under the 12 GiB/20 ms guard: 14 passed with a 0.569 GiB maximum
+  observed per-process RSS.
 - Refreshed `FINAL_REPORT.md` with this continuation's independent diagnosis,
   current 14-case and 529-test results, static/tree verification, and the final
   23:42Z read-only host snapshot. The current external log ended after survey
@@ -799,7 +826,10 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run or identify a revision-bound off-chain 1% retry that reaches a terminal
+1. Run the five directly affected test files, repository lint, scoped format,
+   committed-range whitespace, and executable-tree drift checks; then refresh
+   and commit `FINAL_REPORT.md` and this journal.
+2. Run or identify a revision-bound off-chain 1% retry that reaches a terminal
    runner verdict and emits the expected final pool, manifest, and gates
    artifacts. Do not claim an after artifact without that terminal proof, and
    do not publish or mutate the pending logbook chain as a side effect.
