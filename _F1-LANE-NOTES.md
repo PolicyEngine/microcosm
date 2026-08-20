@@ -1044,3 +1044,28 @@ The parallel lane is now complete. Its committed files were:
 - `packages/microcosm-build/tests/test_spec_engine_typed_closure.py`
 - `packages/microcosm-build/tests/test_spec_engine_take_up_semantics.py`
 - `packages/microcosm-build/tests/test_us_spec_bundle.py`
+
+### D7 final verification addendum (2026-08-19)
+
+This append-only addendum supersedes two stale count phrases in the handoff
+above; it does not alter the main lane's deliverables 5/6/8 state.
+
+- The exact compiler-derived take-up authority surface is **14 ownership
+  leaves across 13 typed columns**, not "two mixed take-up semantic segments."
+  Housing has two explicit leaves and the other 12 programs each totalize to
+  one whole-universe leaf.
+- The complete exclusive typed authority projection contains 192 variants:
+  150 graph-final segments across 132 columns, 28 family-only segments, and 14
+  take-up leaves. The graph final-owner proof independently covers 763 exact
+  cells with 170 segments before Medicare and Housing defer to take-up.
+- After the cached compiler-schema merge, all four D7 modules passed again on
+  merged HEAD `da45dfcd` in 426.33 seconds. Ruff check, Ruff format check, JSON
+  round-trip coverage, and diff whitespace checks are clean for the D7 files.
+- The broader pre-merge `test_spec_engine_*.py` run passed every other case but
+  exposed the main-lane seed-attestation pin (208 expected production modules,
+  212 observed). After the merge, the isolated owner test still fails at 208
+  expected versus 213 observed (56.46 seconds). D7 adds no production modules
+  and does not change that owner-maintained pin.
+- The scoped final output is `FINAL_REPORT_F1_D7.md`. No build or sample rung
+  was run, nothing was pushed, and the split-out stayed under its 15 GiB RSS
+  ceiling.

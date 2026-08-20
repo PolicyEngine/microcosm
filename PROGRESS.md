@@ -5,8 +5,11 @@
 - Work is local on `spec-engine-f1`; nothing has been pushed and no sample
   build has run in this continuation.
 - Deliverable 7 is complete at `ef036572`. The dashboard and affected tests now
-  consume compiler IR: 173 typed columns, 227 compiler-expanded producer
-  outputs, 241 exact cell segments, and two mixed take-up semantic segments.
+  consume compiler IR: 173 typed columns partitioned across 132 graph, 28
+  family, and 13 take-up authority columns; 227 compiler-expanded producer
+  outputs; 241 lossless write-event segments; 170 final graph segments over
+  763 exact cells; and 192 exclusive authority variants (150 graph, 28 family,
+  and 14 take-up).
 - The first required `git fetch origin` was attempted and failed because this
   host could not resolve `github.com`. The final #698 commits are available on
   the cached local `spec-engine-schema` branch and are the next merge source.
@@ -26,6 +29,9 @@
   kernel-authority materialization.
 - Completed the deliverable-7 parallel lane without touching closure,
   segments, or dashboard code from the main lane.
+- Reverified all four deliverable-7 modules on merged compiler-schema HEAD
+  `da45dfcd` in 426.33 seconds and recorded the exact result in
+  `FINAL_REPORT_F1_D7.md`.
 - Audited the remaining physical executor, RNG, artifact-selector,
   calibration, receipt, and resume seams. The audit found two F0 contract
   corrections and two exact seed-ledger corrections that require regeneration
