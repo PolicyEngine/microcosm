@@ -1557,3 +1557,35 @@ deliverable 5.
    and document-only kill/resume predicate command.
 4. Append the exact ordered host commands and expected RSS envelope, update
    the final output report, and stop without running certification.
+
+## F1 continuation r5 artifact-member coverage step (2026-08-20)
+
+### State
+
+- The sealed artifact vector contains 22 directory-tree selectors whose
+  observed members can be checked against exact physical target-bank
+  authority, plus two final-pool H5 selectors that currently enumerate only
+  observed entity/column/weight members.
+- Treating those observational selectors as proof of vector closure would be
+  circular. Coverage therefore fails closed until the compiler issues an
+  independent exact final-H5 inventory.
+
+### Done
+
+- Added a typed plan/authority-bound artifact coverage contract for all 22
+  early, primary-QRF, and late-transfer target banks. It derives 208 exact
+  file/directory descriptors with the production filename algorithms and
+  validates missing, extra, symlink, special-file, and locator-binding cases.
+- Added a typed coverage receipt that can report complete bank-member
+  coverage while refusing to promote the overall container vector to PASS
+  when final-H5 closure is unsupported.
+- Focused coverage verification passes: 6 tests; Ruff format/check passes.
+  No build or sample rung ran.
+
+### Next
+
+1. Add a compiler-issued exact final-H5 entity/column/weight inventory, or
+   retain the typed unsupported verdict in certification; never infer closure
+   from the members returned by the selector itself.
+2. Bind this coverage receipt into the production evidence sidecar and the
+   four-receipt comparator.
