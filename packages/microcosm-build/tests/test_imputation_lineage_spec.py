@@ -26,6 +26,7 @@ from tools.us_bundle_generation.imputation import build_imputation
 pytest.importorskip(
     "policyengine_us",
     reason="live-engine oracle: the wheels gate's venv installs no engine",
+    exc_type=ModuleNotFoundError,
 )
 
 

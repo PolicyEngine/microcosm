@@ -63,6 +63,7 @@ def test_country_bundle_loads_once_and_compiles_through_the_shared_core(
         pytest.importorskip(
             "policyengine_us",
             reason="US compile proof reads the live engine ABI",
+            exc_type=ModuleNotFoundError,
         )
     direct = load_bundle(country)
     country_spec = load_country_spec(country)

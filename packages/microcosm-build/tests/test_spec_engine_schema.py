@@ -65,7 +65,7 @@ def test_schema_registry_loads_only_the_approved_closed_world() -> None:
 
 def test_every_object_schema_is_closed_or_has_typed_map_values() -> None:
     """Refuse catch-all records that could make a normative field untyped."""
-    pytest.importorskip("policyengine_us")
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
 
     catalog = load_schema_registry()
     violations: list[str] = []

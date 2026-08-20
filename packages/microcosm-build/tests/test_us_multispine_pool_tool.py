@@ -1645,7 +1645,7 @@ def test_stacked_tool_entrypoint_fixture_e2e_emits_one_logbook_row_at_every_term
     expected_code: int | None,
     disposition: str,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     """Exercise the real tool, stack assembly, orchestrator, and publication shell."""
     order, full_puf_rows = _install_stacked_entrypoint_stubs(
         pool_tool,
@@ -1796,7 +1796,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("policyengine_us")
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
     args = pool_tool._parser().parse_args(
         [
             *_stacked_main_argv(tmp_path),
@@ -1955,7 +1955,7 @@ def test_constants_adapter_refuses_live_execution_surface_drift(
     mutated_value: object,
     expected_difference: str,
 ) -> None:
-    pytest.importorskip("policyengine_us")
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
     args = pool_tool._parser().parse_args(
         [
             *_stacked_main_argv(tmp_path),
@@ -2054,7 +2054,7 @@ def test_constants_adapter_post_resolution_failure_receipt_retains_binding(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     _install_stacked_entrypoint_stubs(
         pool_tool,
         monkeypatch,
@@ -2099,7 +2099,7 @@ def test_constants_adapter_fixture_checkpoints_are_byte_identical_and_only_recei
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     fixed_binding = {
         "attestation": "mirror-attested",
         "canonicalizer_version": 1,
@@ -2195,7 +2195,7 @@ def test_stacked_entrypoint_rejects_noncanonical_post_puf_transfer_receipt(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     noncanonical = _noncanonical_post_puf_authority_receipt()
     assert noncanonical["authority_form"] == "NON-CANONICAL"
     assert noncanonical["production_manifest_permitted"] is False
@@ -2475,7 +2475,7 @@ def test_publication_error_keeps_gate_receipts_and_does_not_claim_stale_h5(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("policyengine_us")
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
     _order, _full_puf_rows = _install_stacked_entrypoint_stubs(
         pool_tool,
         monkeypatch,
@@ -2512,7 +2512,7 @@ def test_logbook_gate_receipts_are_immutable_across_later_attempts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     _order, _full_puf_rows = _install_stacked_entrypoint_stubs(
         pool_tool,
         monkeypatch,
@@ -2567,7 +2567,7 @@ def test_stacked_checkpoint_identity_binds_both_scale_controls_and_manifest(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("policyengine_us")
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
     verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
     asec = _many_household_source_frame()
     acs = _many_household_source_frame(measured_offset=1_000.0)
@@ -2776,7 +2776,7 @@ def test_stacked_checkpoint_identity_binds_v11_semantic_contracts(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    pytest.importorskip("policyengine_us")
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
     monkeypatch.setattr(
         pool_tool,
         "_policyengine_us_version",
@@ -3061,7 +3061,7 @@ def test_pool_envelope_v7_preserves_stacked_bank_identity_but_rejects_v6(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    pytest.importorskip("policyengine_us")
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
     verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
     stack = pool_tool.assemble_stacked_spine(
         _many_household_source_frame(),
@@ -3206,7 +3206,7 @@ def test_legacy_stacked_materializer_checkpoint_is_not_discovered(
     capsys: pytest.CaptureFixture[str],
     legacy_version: int,
 ) -> None:
-    pytest.importorskip("policyengine_us")
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
     monkeypatch.setattr(
         pool_tool,
         "_policyengine_us_version",
@@ -3321,7 +3321,7 @@ def test_stacked_entrypoint_resumes_each_checkpoint_boundary(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     order, _full_puf_rows = _install_stacked_entrypoint_stubs(
         pool_tool,
         monkeypatch,
@@ -3430,7 +3430,7 @@ def test_stacked_resume_error_uses_realized_stack_identity(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     _order, _full_puf_rows = _install_stacked_entrypoint_stubs(
         pool_tool,
         monkeypatch,
@@ -4662,7 +4662,7 @@ def test_pool_checkpoint_round_trip_resumes_each_boundary_byte_identically(
     expected_order: list[str],
 ) -> None:
     pytest.importorskip("h5py")
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     checkpoint_root = tmp_path / "checkpoints"
     cold_store = _checkpoint_fixture_store(pool_tool, checkpoint_root)
     cold_store.bind_input_receipts(_checkpoint_fixture_input_receipts())
@@ -4953,7 +4953,7 @@ def test_resumed_checkpoint_provenance_is_published_in_final_manifest(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     _unused, outputs, verified_inputs, source_manifest, loaded = _output_context(
         pool_tool,
         tmp_path,
@@ -5876,7 +5876,7 @@ def test_red_outputs_preserve_receipts_and_exclude_simulation_output(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     result, outputs, verified_inputs, source_manifest, loaded = _output_context(
         pool_tool,
         tmp_path,
@@ -5933,7 +5933,7 @@ def test_ready_reader_binds_manifest_h5_and_diagnostics_to_one_run(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     result, outputs, verified_inputs, source_manifest, loaded = _output_context(
         pool_tool,
         tmp_path,
@@ -5965,7 +5965,7 @@ def test_ready_reader_rejects_manifest_h5_run_id_mismatch(
     pool_tool: ModuleType,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     result, outputs, verified_inputs, source_manifest, loaded = _output_context(
         pool_tool,
         tmp_path,
@@ -6042,7 +6042,7 @@ def test_diagnostics_publication_failure_keeps_pool_not_ready(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     result, outputs, verified_inputs, source_manifest, loaded = _output_context(
         pool_tool,
         tmp_path,
@@ -6096,7 +6096,7 @@ def test_final_manifest_failure_leaves_tombstone_as_readiness_authority(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("tables")
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     result, outputs, verified_inputs, source_manifest, loaded = _output_context(
         pool_tool,
         tmp_path,

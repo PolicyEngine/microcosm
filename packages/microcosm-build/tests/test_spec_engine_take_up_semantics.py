@@ -30,6 +30,7 @@ from microcosm.build.us_runtime.take_up_contract import (
 pytest.importorskip(
     "policyengine_us",
     reason="live-engine oracle: the wheels gate's venv installs no engine",
+    exc_type=ModuleNotFoundError,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
