@@ -2,13 +2,21 @@
 
 ## State
 
-The 2026-08-20 23:08Z owner continuation is in progress. The prior committed
-state reports a complete assigned-only QRF receipt correction, but this pass is
-independently rechecking the cited raise site, current canonical producer and
-validator selectors, failing-to-fixed history, and exact regression surface
-before relying on that verdict. No executable edit has been made. The
-owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain
-untracked and untouched, and no terminal host result is claimed.
+The 2026-08-20 23:08Z owner continuation has independently reconfirmed the
+raise-site diagnosis and found no remaining executable or regression gap. At
+bad commit `33bf52fe`, every imputed target carried QRF regimes and terminal
+validation performed exact record-family binding before consulting the
+nine-target calibration registry. Current production derives the exact two
+early and seven late selections from that immutable registry; both receipt
+builders use the same selector; and both validators require the shared
+four-count block, reject evidence on unassigned targets, then retain exact
+binding for assigned targets. The exact synthetic taxable-interest case, real
+banked 15-target producer, and all 12 rehashed structure mutations pass (14
+cases total) under the 12 GiB guard with 0.541 GiB maximum observed
+per-process RSS. No duplicate executable edit is warranted. The affected-suite
+and static verification remain in progress. The owner-provided
+`_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain untracked and
+untouched, and no terminal host result is claimed.
 
 The immediately preceding completion snapshot follows and is historical.
 
@@ -247,6 +255,19 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Re-traced bad commit `33bf52fe`, the current generic opt-in default,
+  owner-derived early/late selections, receipt emission, and terminal
+  validation. The old global binding preceded assignment; the current path
+  scopes all QRF regime behavior and evidence to the immutable nine-target
+  registry without weakening exact binding or the legacy count invariant.
+- Independently audited the regression surface and found the exact synthetic
+  host target, real banked wide-family producer, unchanged mixed-family draw,
+  and strict rehashed assigned-family binding already covered. No duplicate
+  test edit is warranted.
+- Ran the exact synthetic host-target case, the real banked wide-family case,
+  and all 12 QRF structure mutations under the owner 12 GiB/20 ms guard: 14
+  passed with 0.541 GiB maximum observed per-process RSS. The only warning was
+  joblib's logical-core fallback.
 - Reopened the committed journal for the 23:08Z continuation, preserved both
   untracked owner artifacts, selected the GitNexus debugging workflow, and
   began independent source, history, and regression audits of the supplied
@@ -743,9 +764,8 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Reconfirm the failing and corrected call paths from the invariant raise
-   site, including the exact early/late owner-derived target selections.
-2. Audit and rerun the exact synthetic host regression, real banked wide-family
-   producer regression, and strict assigned-family binding mutations.
-3. Run proportional affected-suite and static verification, then refresh
+1. Run the five-file affected suite under the owner memory guard.
+2. Run repository lint, correction-range format/whitespace checks, and exact
+   runtime tree comparisons against the all-build-suite checkpoint.
+3. Refresh
    `FINAL_REPORT.md` with revision-bound results.
