@@ -2,7 +2,15 @@
 
 ## State
 
-The local continuation for the host 1% failure is complete. The root cause was
+A 2026-08-20 owner continuation is active for the host 1% binding failure at
+`person/puf_tax_itemization/taxable_interest_income`. The branch already
+contains a candidate scoped-binding correction and its earlier local
+verification record, but those claims are being re-audited from the invariant
+raise site before another host build is requested. The supplied
+`_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain untracked owner
+artifacts and will not be committed.
+
+The earlier local continuation concluded that the root cause was
 global QRF regime detection and evidence on every ACS transfer target even
 though the calibration owner declares only nine targets. Regime checks are
 now default-off and must be explicitly selected by `(entity, target)`; the
@@ -25,6 +33,9 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Reopened the committed journal at the start of the owner continuation,
+  preserved both untracked host artifacts, and began an independent audit of
+  the existing scoped-binding correction.
 - Read `CLAUDE.md`, the adjudication and all assigned machine-readable rows,
   citation registry entries C04-C08, and every cited source range.
 - Built and measured the canonical off-chain 1% before artifact with sample
@@ -126,9 +137,14 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Rebuild off-chain at exactly 1% with sample/clone seed 578 under the
+1. Re-trace the exact record-binding data flow, inspect the supplied host log,
+   and prove the existing regression covers the reported unassigned target.
+2. Re-run the focused binding and transfer tests plus the prescribed package
+   suite; correct and commit any remaining scope leak before declaring the
+   local fix complete.
+3. Rebuild off-chain at exactly 1% with sample/clone seed 578 under the
    tightened memory guard when host data access is available, then record the
    16 after measurements and source-preservation invariants.
-2. Accept an after artifact only if the host stacked receipt validation and
+4. Accept an after artifact only if the host stacked receipt validation and
    frozen battery checks pass; keep the run off-chain and leave the pending
    logbook chain untouched.
