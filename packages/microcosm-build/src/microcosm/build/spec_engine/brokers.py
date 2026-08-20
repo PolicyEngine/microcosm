@@ -49,7 +49,7 @@ import numpy as np
 import pandas as pd
 
 from .canonical import sha256_json
-from .compiler_ir import CompiledNode, SeedSiteIR, SeedStreamMap
+from .compiler_ir import CompiledNode, SeedOwnerIR, SeedSiteIR, SeedStreamMap
 from .model import FrozenMap, freeze_json, thaw_json
 
 
@@ -117,6 +117,7 @@ _SPEC_BINDING_FIELDS = frozenset(
     }
 )
 _DEFAULT_RNG_BOUNDARY_KEY = "default"
+_PHYSICAL_OPERATION_POLICIES = frozenset({"broker-only", "legacy-v1"})
 _SAFE_GENERATOR_DRAW_METHODS = frozenset(
     {"choice", "integers", "permutation", "random"}
 )
@@ -714,21 +715,24 @@ class BrokerOwner:
 
 @dataclass(frozen=True, slots=True)
 class PhysicalOperation:
-    """One implementation-pinned legacy physical call owned by a node session.
+    """One implementation-pinned physical call owned by a node session.
 
-    The callable is deliberately zero-argument: its complete runtime input is
-    closed over before executor dispatch and attested by ``input_binding_sha256``.
-    A kernel can request the call, but cannot replace the callable, pass it RNG
-    authority, or alter its sink roots.
+    A ``broker-only`` callable receives only the kernel-visible broker context;
+    its other runtime input is closed over before executor dispatch and attested
+    by ``input_binding_sha256``.  An explicitly selected ``legacy-v1`` callable
+    remains zero-argument for byte-compatibility with the transitional physical
+    bridge.
 
-    This is a transitional ``legacy-v1`` bridge.  It keeps the ambient exception
-    inside the broker and behind the same implementation pin as the registered
-    kernel while physical implementations are migrated to typed broker methods.
+    A kernel can request the call, but cannot replace the callable, pass it raw
+    authority, or alter its sink roots.  Only the explicit legacy policy enters
+    the narrowly restored legacy primitive scope; broker-only calls remain under
+    the ambient guard and must use the supplied context.
     """
 
-    function: Callable[[], object] = field(repr=False, compare=False)
+    function: Callable[..., object] = field(repr=False, compare=False)
     implementation_sha256: str
     input_binding_sha256: str
+    policy: Literal["broker-only", "legacy-v1"]
     sink_roots: tuple[Path | str, ...] = ()
 
     def __post_init__(self) -> None:
@@ -748,9 +752,28 @@ class PhysicalOperation:
             raise BrokerContractError(
                 "physical operation signature cannot be inspected"
             ) from error
-        if signature.parameters:
+        parameters = tuple(signature.parameters.values())
+        if self.policy not in _PHYSICAL_OPERATION_POLICIES:
             raise BrokerContractError(
-                "physical operation must accept no runtime arguments"
+                f"unknown physical operation policy {self.policy!r}"
+            )
+        if self.policy == "legacy-v1":
+            if parameters:
+                raise BrokerContractError(
+                    "legacy-v1 physical operation must accept no runtime arguments"
+                )
+        elif (
+            len(parameters) != 1
+            or parameters[0].kind
+            not in {
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            }
+            or parameters[0].default is not inspect.Parameter.empty
+        ):
+            raise BrokerContractError(
+                "broker-only physical operation must accept exactly one required "
+                "kernel context"
             )
         for name, digest in (
             ("implementation", self.implementation_sha256),
@@ -1992,7 +2015,11 @@ class _GeneratorLeaseStore:
             resource=token.site_id,
             disposition="allowed",
             reason_code="brokered_rng_state",
-            details={"lease": label, "state_sha256": sha256_json(state)},
+            details={
+                "owner": token.owner.to_wire(),
+                "lease": label,
+                "state_sha256": sha256_json(state),
+            },
         )
         return state
 
@@ -2026,7 +2053,11 @@ class _GeneratorLeaseStore:
             resource=token.site_id,
             disposition="allowed",
             reason_code="brokered_rng_draw",
-            details={"lease": label, "method": method},
+            details={
+                "owner": token.owner.to_wire(),
+                "lease": label,
+                "method": method,
+            },
         )
         return result
 
@@ -2261,6 +2292,7 @@ class _TorchGeneratorLeaseStore:
             disposition="allowed",
             reason_code="brokered_torch_rng_draw",
             details={
+                "owner": token.owner.to_wire(),
                 "method": "Tensor.uniform_",
                 "shape": list(normalized_shape),
                 "dtype": str(getattr(result, "dtype", dtype)),
@@ -2381,10 +2413,12 @@ class RNGBroker:
         "_consumed",
         "_consumed_count",
         "_contracts",
+        "_declared_sites",
         "_derived_seeds",
         "_invocation_plan",
         "_issued",
         "_issuer",
+        "_owner",
         "_run_inputs",
         "_session",
         "_sites",
@@ -2401,6 +2435,7 @@ class RNGBroker:
         self,
         *,
         session: BrokerSession,
+        owner: BrokerOwner,
         protocol_id: str,
         protocol_sha256: str,
         sites: Sequence[SeedSiteIR],
@@ -2408,6 +2443,7 @@ class RNGBroker:
         invocation_plan: Mapping[str, Sequence[RNGInvocation]],
     ) -> None:
         self._session = session
+        self._owner = owner
         self._authority = _RNGBrokerAuthority(protocol_id, protocol_sha256)
         self._issuer = object()
         normalized_sites = {site.id: site for site in sites}
@@ -2437,6 +2473,7 @@ class RNGBroker:
         for key, value in run_inputs.items():
             normalized_inputs[str(key)] = self._uint64(value, location=str(key))
         self._run_inputs = MappingProxyType(normalized_inputs)
+        self._declared_sites = frozenset(invocation_plan)
         self._invocation_plan = self._normalize_invocation_plan(invocation_plan)
         self._issued: dict[str, int] = {site_id: 0 for site_id in self._sites}
         self._consumed_count: dict[str, int] = {site_id: 0 for site_id in self._sites}
@@ -2719,7 +2756,7 @@ class RNGBroker:
         return RNGBehaviorIdentity(
             protocol_id=self.protocol_id,
             protocol_sha256=self.protocol_sha256,
-            owner=self._session.owner,
+            owner=self._owner,
             sites=tuple(site_rows),
             _issuer=_RNG_BEHAVIOR_ISSUER,
             _session_issuer=self._session._behavior_issuer,
@@ -2728,6 +2765,22 @@ class RNGBroker:
     @property
     def behavior_identity(self) -> RNGBehaviorIdentity:
         return self._behavior_identity
+
+    def _unconsumed_declared_invocations(
+        self,
+    ) -> tuple[tuple[str, int, int], ...]:
+        """Return explicitly planned invocation counts that were not consumed."""
+
+        return tuple(
+            (
+                site_id,
+                self._consumed_count[site_id],
+                len(self._invocation_plan[site_id]),
+            )
+            for site_id in self._sites
+            if site_id in self._declared_sites
+            and self._consumed_count[site_id] < len(self._invocation_plan[site_id])
+        )
 
     def behavior_input_wire(self) -> dict[str, object]:
         """Compatibility wire view of the immutable behavior identity."""
@@ -2789,7 +2842,7 @@ class RNGBroker:
         token = RNGStreamToken(
             protocol_id=self.protocol_id,
             protocol_sha256=self.protocol_sha256,
-            owner=self._session.owner,
+            owner=self._owner,
             site_id=site.id,
             stream=site.stream,
             contract_sha256=contract_sha256,
@@ -2829,7 +2882,7 @@ class RNGBroker:
             token.protocol_sha256 != self.protocol_sha256
         ):
             reason = "rng_protocol_mismatch"
-        elif token.owner != self._session.owner:
+        elif token.owner != self._owner:
             reason = "rng_owner_mismatch"
         elif site is None or contract is None:
             reason = "undeclared_rng_site"
@@ -2954,6 +3007,7 @@ class RNGBroker:
             disposition="allowed",
             reason_code="legacy_v1_rng_lease",
             details={
+                "owner": token.owner.to_wire(),
                 "stream": f"stream:{token.stream}",
                 "rng_family": contract["rng_family"],
                 "rng_version": contract["rng_version"],
@@ -3269,12 +3323,68 @@ class RNGBroker:
         return DerivedSeedHandle(
             protocol_id=self.protocol_id,
             protocol_sha256=self.protocol_sha256,
-            owner=self._session.owner,
+            owner=self._owner,
             site_id=token.site_id,
             boundary_key=token.boundary_key,
             value_sha256=_sha256_bytes(str(seed).encode()),
             _issuer=self._issuer,
             _activation=token._activation,
+        )
+
+    def assert_derived_seed(
+        self,
+        handle: DerivedSeedHandle,
+        claimed_value: int,
+    ) -> None:
+        """Verify a legacy receipt seed without disclosing retained authority."""
+
+        self._session._require_active()
+        reason: str | None = None
+        if not isinstance(handle, DerivedSeedHandle) or handle._issuer is not self._issuer:
+            reason = "foreign_derived_seed_handle"
+        elif handle._activation is not self._session._active_activation:
+            reason = "expired_derived_seed_handle"
+        elif handle.protocol_id != self.protocol_id or (
+            handle.protocol_sha256 != self.protocol_sha256
+        ):
+            reason = "derived_seed_protocol_mismatch"
+        elif handle.owner != self._owner:
+            reason = "derived_seed_owner_mismatch"
+        elif handle.site_id not in self._sites:
+            reason = "undeclared_rng_site"
+        elif isinstance(claimed_value, bool) or not isinstance(
+            claimed_value, int | np.integer
+        ):
+            reason = "derived_seed_claim_shape_invalid"
+        else:
+            key = (handle.site_id, handle.boundary_key)
+            retained = self._derived_seeds.get(key)
+            if retained is None:
+                reason = "derived_seed_not_produced"
+            elif handle.value_sha256 != _sha256_bytes(str(retained).encode()):
+                reason = "derived_seed_handle_digest_mismatch"
+            elif int(claimed_value) != retained:
+                reason = "derived_seed_claim_mismatch"
+        if reason is not None:
+            self._session._log.record(
+                broker="rng",
+                operation="assert_derived_seed",
+                resource=getattr(handle, "site_id", "invalid_handle"),
+                disposition="refused",
+                reason_code=reason,
+            )
+            raise BrokerAccessError(f"derived seed assertion refused: {reason}")
+        self._session._log.record(
+            broker="rng",
+            operation="assert_derived_seed",
+            resource=handle.site_id,
+            disposition="allowed",
+            reason_code="derived_seed_claim_verified",
+            details={
+                "owner": handle.owner.to_wire(),
+                "boundary_key": handle.boundary_key,
+                "value_sha256": handle.value_sha256,
+            },
         )
 
     def blake2b_uniforms(
@@ -4008,46 +4118,95 @@ class _KernelBrokerView:
 class KernelRNGBroker(_KernelBrokerView):
     """Kernel-visible RNG operations without access to broker authority state."""
 
-    __slots__ = ("__broker",)
+    __slots__ = ("__brokers_by_site", "__primary")
 
-    def __init__(self, broker: RNGBroker) -> None:
-        _KernelBrokerView.__init__(self, broker._session)
-        object.__setattr__(self, "_KernelRNGBroker__broker", broker)
+    def __init__(self, brokers: Sequence[RNGBroker]) -> None:
+        if not brokers:
+            raise BrokerContractError("kernel RNG view requires a primary broker")
+        primary = brokers[0]
+        _KernelBrokerView.__init__(self, primary._session)
+        by_site: dict[str, RNGBroker] = {}
+        for broker in brokers:
+            if broker._session is not primary._session:
+                raise BrokerContractError(
+                    "kernel RNG brokers must share one broker session"
+                )
+            for site_id in broker.granted_sites:
+                if site_id in by_site:
+                    raise BrokerContractError(
+                        f"kernel RNG route for site {site_id!r} is ambiguous"
+                    )
+                by_site[site_id] = broker
+        object.__setattr__(
+            self,
+            "_KernelRNGBroker__brokers_by_site",
+            MappingProxyType(by_site),
+        )
+        object.__setattr__(self, "_KernelRNGBroker__primary", primary)
 
-    def _call(self, name: str, *args: object, **kwargs: object) -> object:
-        broker = object.__getattribute__(self, "_KernelRNGBroker__broker")
+    def _call(
+        self,
+        name: str,
+        site_id: str,
+        *args: object,
+        **kwargs: object,
+    ) -> object:
+        brokers = object.__getattribute__(
+            self, "_KernelRNGBroker__brokers_by_site"
+        )
+        broker = brokers.get(site_id)
+        if broker is None:
+            broker = object.__getattribute__(self, "_KernelRNGBroker__primary")
         return getattr(broker, name)(*args, **kwargs)
 
     def token(
         self, site_id: str, boundary_key: str = _DEFAULT_RNG_BOUNDARY_KEY
     ) -> RNGStreamToken:
         call = object.__getattribute__(self, "_call")
-        return call("token", site_id, boundary_key)  # type: ignore[return-value]
+        return call(  # type: ignore[return-value]
+            "token", site_id, site_id, boundary_key
+        )
 
     def generator(self, token: RNGStreamToken) -> GeneratorLease:
         call = object.__getattribute__(self, "_call")
-        return call("generator", token)  # type: ignore[return-value]
+        return call(  # type: ignore[return-value]
+            "generator", token.site_id, token
+        )
 
     def qrf_generators(self, token: RNGStreamToken) -> QRFGeneratorLease:
         call = object.__getattribute__(self, "_call")
-        return call("qrf_generators", token)  # type: ignore[return-value]
+        return call(  # type: ignore[return-value]
+            "qrf_generators", token.site_id, token
+        )
 
     def qrf_target_generators(
         self, token: RNGStreamToken
     ) -> tuple[QRFGeneratorLease, ...]:
         call = object.__getattribute__(self, "_call")
-        return call("qrf_target_generators", token)  # type: ignore[return-value]
+        return call(  # type: ignore[return-value]
+            "qrf_target_generators", token.site_id, token
+        )
 
-    def sha256_derived_seed(self, token: RNGStreamToken) -> object:
+    def sha256_derived_seed(self, token: RNGStreamToken) -> DerivedSeedHandle:
         call = object.__getattribute__(self, "_call")
-        return call("sha256_derived_seed", token)
+        return call(  # type: ignore[return-value]
+            "sha256_derived_seed", token.site_id, token
+        )
+
+    def assert_derived_seed(
+        self,
+        handle: DerivedSeedHandle,
+        claimed_value: int,
+    ) -> None:
+        call = object.__getattribute__(self, "_call")
+        call("assert_derived_seed", handle.site_id, handle, claimed_value)
 
     def blake2b_uniforms(
         self, token: RNGStreamToken, *, stable_keys: Sequence[object]
     ) -> np.ndarray:
         call = object.__getattribute__(self, "_call")
         return call(  # type: ignore[return-value]
-            "blake2b_uniforms", token, stable_keys=stable_keys
+            "blake2b_uniforms", token.site_id, token, stable_keys=stable_keys
         )
 
     def pandas_hash_uniforms(
@@ -4055,14 +4214,16 @@ class KernelRNGBroker(_KernelBrokerView):
     ) -> np.ndarray:
         call = object.__getattribute__(self, "_call")
         return call(  # type: ignore[return-value]
-            "pandas_hash_uniforms", token, frame=frame
+            "pandas_hash_uniforms", token.site_id, token, frame=frame
         )
 
     def pandas_sample(
         self, token: RNGStreamToken, frame: pd.DataFrame, *, n: int
     ) -> pd.DataFrame:
         call = object.__getattribute__(self, "_call")
-        return call("pandas_sample", token, frame, n=n)  # type: ignore[return-value]
+        return call(  # type: ignore[return-value]
+            "pandas_sample", token.site_id, token, frame, n=n
+        )
 
     def random_forest_classifier_predict(
         self,
@@ -4077,6 +4238,7 @@ class KernelRNGBroker(_KernelBrokerView):
         call = object.__getattribute__(self, "_call")
         return call(  # type: ignore[return-value]
             "random_forest_classifier_predict",
+            token.site_id,
             token,
             train_x=train_x,
             train_y=train_y,
@@ -4087,7 +4249,9 @@ class KernelRNGBroker(_KernelBrokerView):
 
     def torch_generator(self, token: RNGStreamToken) -> TorchGeneratorLease:
         call = object.__getattribute__(self, "_call")
-        return call("torch_generator", token)  # type: ignore[return-value]
+        return call(  # type: ignore[return-value]
+            "torch_generator", token.site_id, token
+        )
 
 
 class KernelFileBroker(_KernelBrokerView):
@@ -4155,12 +4319,17 @@ class KernelBrokerSession(_KernelBrokerView):
         self,
         *,
         rng: RNGBroker,
+        supplemental_rngs: Sequence[RNGBroker] = (),
         files: FileBroker,
         environment: EnvironmentBroker,
         clock: ClockBroker,
     ) -> None:
         _KernelBrokerView.__init__(self, rng._session)
-        object.__setattr__(self, "_KernelBrokerSession__rng", KernelRNGBroker(rng))
+        object.__setattr__(
+            self,
+            "_KernelBrokerSession__rng",
+            KernelRNGBroker((rng, *supplemental_rngs)),
+        )
         object.__setattr__(self, "_KernelBrokerSession__files", KernelFileBroker(files))
         object.__setattr__(
             self,
@@ -4247,6 +4416,7 @@ class BrokerSession:
         "_rng",
         "_rng_leases",
         "_sealed_receipt",
+        "_supplemental_rngs",
         "_torch_rng_leases",
     )
 
@@ -4270,6 +4440,12 @@ class BrokerSession:
         seed_sites: Sequence[SeedSiteIR] = (),
         run_inputs: Mapping[str, int] | None = None,
         rng_invocation_plan: Mapping[str, Sequence[RNGInvocation]] | None = None,
+        seed_stream_map: SeedStreamMap | None = None,
+        supplemental_seed_owners: Sequence[SeedOwnerIR] = (),
+        rng_invocation_plans_by_owner: Mapping[
+            tuple[str, str], Mapping[str, Sequence[RNGInvocation]]
+        ]
+        | None = None,
         sources: Sequence[DeclaredSource] = (),
         environment: Mapping[str, str | None] | None = None,
         clocks: Mapping[str, float] | None = None,
@@ -4334,15 +4510,140 @@ class BrokerSession:
         self._physical_operation_invoked = False
         self._rng_leases = _GeneratorLeaseStore(self)
         self._torch_rng_leases = _TorchGeneratorLeaseStore(self)
+        supplemental_grants = tuple(supplemental_seed_owners)
+        if any(not isinstance(grant, SeedOwnerIR) for grant in supplemental_grants):
+            raise BrokerContractError(
+                "supplemental seed grants must be compiled SeedOwnerIR values"
+            )
+        if supplemental_grants and seed_stream_map is None:
+            raise BrokerContractError(
+                "supplemental seed grants require their compiled SeedStreamMap"
+            )
+        if seed_stream_map is not None and (
+            seed_stream_map.protocol_id != protocol_id
+            or seed_stream_map.implementation_sha256 != protocol_sha256
+        ):
+            raise BrokerContractError(
+                "supplemental seed map differs from the session RNG protocol"
+            )
+        owner_sites: dict[tuple[str, str], tuple[SeedSiteIR, ...]] = {
+            (owner.kind, owner.id): tuple(seed_sites)
+        }
+        supplemental_owners: list[BrokerOwner] = []
+        for grant in supplemental_grants:
+            supplemental_owner = BrokerOwner(grant.kind, grant.id)
+            owner_key = (supplemental_owner.kind, supplemental_owner.id)
+            if owner_key in owner_sites:
+                raise BrokerContractError(
+                    f"supplemental seed owner {owner_key!r} repeats the primary "
+                    "or another supplemental owner"
+                )
+            assert seed_stream_map is not None
+            if seed_stream_map.owner(*owner_key) != grant:
+                raise BrokerContractError(
+                    f"supplemental seed owner {owner_key!r} is not the compiled "
+                    "SeedStreamMap grant"
+                )
+            site_ids = set(grant.sites)
+            sites = tuple(
+                site for site in seed_stream_map.sites if site.id in site_ids
+            )
+            if tuple(site.id for site in sites) != grant.sites:
+                raise BrokerContractError(
+                    f"supplemental seed owner {owner_key!r} site order differs "
+                    "from the compiled map"
+                )
+            if tuple(dict.fromkeys(site.stream for site in sites)) != grant.streams:
+                raise BrokerContractError(
+                    f"supplemental seed owner {owner_key!r} streams differ from "
+                    "the compiled map"
+                )
+            owner_sites[owner_key] = sites
+            supplemental_owners.append(supplemental_owner)
+
+        if rng_invocation_plans_by_owner is not None and (
+            rng_invocation_plan is not None
+        ):
+            raise BrokerContractError(
+                "owner-scoped RNG plans cannot be combined with the primary-plan "
+                "shorthand"
+            )
+        normalized_owner_plans: dict[
+            tuple[str, str], Mapping[str, Sequence[RNGInvocation]]
+        ] = {}
+        if rng_invocation_plans_by_owner is not None:
+            for raw_owner_key, plan in rng_invocation_plans_by_owner.items():
+                if (
+                    not isinstance(raw_owner_key, tuple)
+                    or len(raw_owner_key) != 2
+                    or any(
+                        not isinstance(component, str) or not component
+                        for component in raw_owner_key
+                    )
+                ):
+                    raise BrokerContractError(
+                        "owner-scoped RNG plan keys must be (kind, id) strings"
+                    )
+                normalized_key = (
+                    BrokerOwner(raw_owner_key[0], raw_owner_key[1]).kind,
+                    raw_owner_key[1],
+                )
+                if not isinstance(plan, Mapping):
+                    raise BrokerContractError(
+                        f"RNG plan for owner {normalized_key!r} must be a mapping"
+                    )
+                normalized_owner_plans[normalized_key] = plan
+            missing_owners = sorted(set(owner_sites) - set(normalized_owner_plans))
+            extra_owners = sorted(set(normalized_owner_plans) - set(owner_sites))
+            if missing_owners or extra_owners:
+                raise BrokerContractError(
+                    "owner-scoped RNG plans differ from the granted owners; "
+                    f"missing={missing_owners!r}, extra={extra_owners!r}"
+                )
+            for owner_key, sites in owner_sites.items():
+                planned_sites = set(normalized_owner_plans[owner_key])
+                granted_sites = {site.id for site in sites}
+                if planned_sites != granted_sites:
+                    raise BrokerContractError(
+                        f"RNG plan for owner {owner_key!r} differs from its granted "
+                        f"sites; missing={sorted(granted_sites - planned_sites)!r}, "
+                        f"extra={sorted(planned_sites - granted_sites)!r}"
+                    )
+        elif supplemental_grants:
+            raise BrokerContractError(
+                "supplemental seed grants require exact owner-scoped RNG plans"
+            )
+
+        primary_owner_key = (owner.kind, owner.id)
+        primary_plan = (
+            normalized_owner_plans[primary_owner_key]
+            if rng_invocation_plans_by_owner is not None
+            else ({} if rng_invocation_plan is None else rng_invocation_plan)
+        )
         self._rng = RNGBroker(
             session=self,
+            owner=owner,
             protocol_id=protocol_id,
             protocol_sha256=protocol_sha256,
             sites=tuple(seed_sites),
             run_inputs={} if run_inputs is None else run_inputs,
-            invocation_plan=(
-                {} if rng_invocation_plan is None else rng_invocation_plan
-            ),
+            invocation_plan=primary_plan,
+        )
+        self._supplemental_rngs = tuple(
+            RNGBroker(
+                session=self,
+                owner=supplemental_owner,
+                protocol_id=protocol_id,
+                protocol_sha256=protocol_sha256,
+                sites=owner_sites[
+                    (supplemental_owner.kind, supplemental_owner.id)
+                ],
+                run_inputs={} if run_inputs is None else run_inputs,
+                invocation_plan=normalized_owner_plans[
+                    (supplemental_owner.kind, supplemental_owner.id)
+                ],
+            )
+            for supplemental_owner in supplemental_owners
         )
         self._files = FileBroker(session=self, sources=tuple(sources))
         self._environment = EnvironmentBroker(
@@ -4351,6 +4652,7 @@ class BrokerSession:
         self._clock = ClockBroker(session=self, values={} if clocks is None else clocks)
         self._kernel_view = KernelBrokerSession(
             rng=self._rng,
+            supplemental_rngs=self._supplemental_rngs,
             files=self._files,
             environment=self._environment,
             clock=self._clock,
@@ -4420,6 +4722,12 @@ class BrokerSession:
         run_provenance_identity: Mapping[str, object],
         run_inputs: Mapping[str, int] | None = None,
         rng_invocation_plan: Mapping[str, Sequence[RNGInvocation]] | None = None,
+        seed_stream_map: SeedStreamMap | None = None,
+        supplemental_seed_owners: Sequence[SeedOwnerIR] = (),
+        rng_invocation_plans_by_owner: Mapping[
+            tuple[str, str], Mapping[str, Sequence[RNGInvocation]]
+        ]
+        | None = None,
         sources: Sequence[DeclaredSource] = (),
         environment: Mapping[str, str | None] | None = None,
         clocks: Mapping[str, float] | None = None,
@@ -4443,6 +4751,9 @@ class BrokerSession:
             seed_sites=node.seed_sites,
             run_inputs=run_inputs,
             rng_invocation_plan=rng_invocation_plan,
+            seed_stream_map=seed_stream_map,
+            supplemental_seed_owners=supplemental_seed_owners,
+            rng_invocation_plans_by_owner=rng_invocation_plans_by_owner,
             sources=sources,
             environment=environment,
             clocks=clocks,
@@ -4563,6 +4874,10 @@ class BrokerSession:
             raise BrokerContractError(
                 "physical operation compatibility does not support nondeterminism"
             )
+        if operation.policy == "legacy-v1" and self._supplemental_rngs:
+            raise BrokerContractError(
+                "supplemental RNG owners require broker-only physical policy"
+            )
         has_sink_effect = "declared_sink_write" in self.effects
         if has_sink_effect != bool(operation.sink_roots):
             raise BrokerContractError(
@@ -4623,8 +4938,11 @@ class BrokerSession:
             raise BrokerAccessError("physical operation may be invoked only once")
         object.__setattr__(self, "_physical_operation_invoked", True)
         try:
-            with _legacy_v1_physical_operation_scope(self, operation):
-                result = operation.function()
+            if operation.policy == "legacy-v1":
+                with _legacy_v1_physical_operation_scope(self, operation):
+                    result = operation.function()
+            else:
+                result = operation.function(self.kernel_view)
         except BaseException:
             self._log.record(
                 broker="ambient",
@@ -4764,7 +5082,11 @@ class BrokerSession:
     def _audit_allowed_events(self) -> None:
         """Fail closed if a broker event is incompatible with sealed authority."""
 
-        granted_sites = frozenset(self.rng.granted_sites)
+        granted_sites = frozenset(
+            site_id
+            for rng in (self.rng, *self._supplemental_rngs)
+            for site_id in rng.granted_sites
+        )
         for event in self._log.events():
             if event.disposition != "allowed":
                 continue
@@ -4820,6 +5142,23 @@ class BrokerSession:
                 disposition="refused",
                 reason_code="physical_operation_not_invoked",
             )
+        if status == "complete":
+            for rng in (self.rng, *self._supplemental_rngs):
+                for site_id, consumed, declared in (
+                    rng._unconsumed_declared_invocations()
+                ):
+                    self._log.record(
+                        broker="rng",
+                        operation="invocation_plan_consumption",
+                        resource=site_id,
+                        disposition="refused",
+                        reason_code="rng_declared_invocations_unconsumed",
+                        details={
+                            "owner": rng._owner.to_wire(),
+                            "consumed_invocations": consumed,
+                            "declared_invocations": declared,
+                        },
+                    )
         self._rng_leases.close_all()
         self._torch_rng_leases.close_all()
         file_close_error: BrokerAccessError | None = None

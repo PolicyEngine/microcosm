@@ -2220,3 +2220,36 @@ head; it still writes `us-f1-certification.json` and
    broker-owned operation context.
 2. Treat any resulting missing read as a compiled input-contract defect; do
    not reopen the full frame inside bundle execution.
+
+## F1 continuation r5 composite broker authority (2026-08-20)
+
+### State
+
+- A physical producer can be owned by one compiled node while legitimately
+  consuming disjoint RNG grants owned by named pipeline operations. The
+  broker must preserve each grant's compiled owner and must not reconstruct
+  private RNG inside the physical callback.
+
+### Done
+
+- Added an explicit physical-operation policy. `broker-only` operations receive
+  the narrowed kernel broker session without entering the legacy ambient-RNG
+  restoration scope; the existing bridge is available only as explicit
+  `legacy-v1`.
+- Added exact, owner-scoped supplemental seed grants resolved from the compiled
+  `SeedStreamMap`. The kernel view routes each unambiguous site to its original
+  owner, and tokens plus receipt events retain that owner.
+- Complete sealing now refuses every explicitly planned invocation that was
+  not consumed. Added a verification-only API for legacy derived-seed receipts
+  so physical code can attest an expected seed without receiving raw retained
+  authority.
+- The full broker test module passes (64 tests), along with targeted Ruff and
+  `git diff --check`; no sample build ran.
+
+### Next
+
+1. Make the pool physical executor use the `broker-only` policy, reconstruct
+   its callback frame only from the compiler projection, and provide exact
+   plans for the primary node plus its clone and tail supplemental owners.
+2. Route source and transfer sites through the same typed kernel view, then
+   prove complete-seal consumption across a real fixture-scale stage graph.

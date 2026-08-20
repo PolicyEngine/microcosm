@@ -27,6 +27,7 @@ from microcosm.build.spec_engine.brokers import (
     DeclaredSource,
     DerivedSeedHandle,
     GeneratorLease,
+    KernelBrokerSession,
     PhysicalOperation,
     RNGBehaviorIdentity,
     RNGInvocation,
@@ -1335,6 +1336,7 @@ def test_pinned_physical_operation_runs_once_with_bound_input(
             function=physical_operation,
             implementation_sha256=node.kernel_implementation_sha256,
             input_binding_sha256=input_binding_sha256,
+            policy="legacy-v1",
         ),
     )
     with pytest.raises(BrokerAccessError, match="active bound session"):
@@ -1375,6 +1377,7 @@ def test_physical_operation_requires_compiled_implementation_and_input_pins(
                 function=physical_operation,
                 implementation_sha256="f" * 64,
                 input_binding_sha256=input_binding_sha256,
+                policy="legacy-v1",
             ),
         )
 
@@ -1385,6 +1388,7 @@ def test_physical_operation_requires_compiled_implementation_and_input_pins(
             function=physical_operation,
             implementation_sha256=node.kernel_implementation_sha256,
             input_binding_sha256=input_binding_sha256,
+            policy="legacy-v1",
         ),
     )
     with session.activate():
@@ -1413,6 +1417,7 @@ def test_physical_operation_seed_and_sink_scope_is_grant_bound(
             function=physical_operation,
             implementation_sha256=node.kernel_implementation_sha256,
             input_binding_sha256=input_binding_sha256,
+            policy="legacy-v1",
             sink_roots=(tmp_path,),
         ),
     )
@@ -1461,6 +1466,7 @@ def test_physical_operation_source_effect_does_not_restore_ambient_reads(
             function=physical_operation,
             implementation_sha256=node.kernel_implementation_sha256,
             input_binding_sha256=input_binding_sha256,
+            policy="legacy-v1",
         ),
     )
     with session.activate():
@@ -1491,6 +1497,7 @@ def test_physical_operation_rejects_unsupported_authority_and_rng_return(
         function=no_result,
         implementation_sha256=pure_node.kernel_implementation_sha256,
         input_binding_sha256="d" * 64,
+        policy="legacy-v1",
     )
     capabilities = thaw_json(pure_node.capabilities)
     assert isinstance(capabilities, dict)
@@ -1520,6 +1527,7 @@ def test_physical_operation_rejects_unsupported_authority_and_rng_return(
             function=return_generator,
             implementation_sha256=seeded_node.kernel_implementation_sha256,
             input_binding_sha256="c" * 64,
+            policy="legacy-v1",
         ),
     )
     with seeded_session.activate():
@@ -1543,6 +1551,7 @@ def test_physical_operation_rejects_unsupported_authority_and_rng_return(
             function=seek_entropy,
             implementation_sha256=seeded_node.kernel_implementation_sha256,
             input_binding_sha256="b" * 64,
+            policy="legacy-v1",
         ),
     )
     with entropy_session.activate():
@@ -1555,3 +1564,249 @@ def test_physical_operation_rejects_unsupported_authority_and_rng_return(
         event.reason_code == "physical_rng_entropy_prohibited"
         for event in entropy_receipt.events
     )
+
+
+def test_broker_only_physical_operation_routes_compiled_supplemental_owner(
+    compiled_us: CompiledSpecIR, tmp_path: Path
+) -> None:
+    node = next(node for node in compiled_us.nodes if node.id == "primary_puf_qrf")
+    stream_map = compiled_us.seed_stream_map
+    supplemental = stream_map.owner(
+        "pipeline_operation", "prepare_multispine_source_inputs_for_clone"
+    )
+    assert supplemental is not None
+    input_binding_sha256 = sha256_json({"fixture": "composite-broker-input"})
+    observed_tokens: list[dict[str, object]] = []
+
+    def physical_operation(context: KernelBrokerSession) -> tuple[float, int]:
+        primary_token = context.rng.token("primary_qrf_fit_draw")
+        supplemental_token = context.rng.token("puf_clone_attachment")
+        observed_tokens.extend(
+            (primary_token.to_wire(), supplemental_token.to_wire())
+        )
+        with context.rng.qrf_generators(primary_token) as generators:
+            primary_draw = float(generators.draw.random(1)[0])
+        with context.rng.generator(supplemental_token) as generator:
+            supplemental_draw = int(generator.integers(0, 100, size=1)[0])
+        return primary_draw, supplemental_draw
+
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        run_inputs={"build_model_seed": 19, "sample_seed": 578},
+        seed_stream_map=stream_map,
+        supplemental_seed_owners=(supplemental,),
+        rng_invocation_plans_by_owner={
+            ("producer_node", node.id): {
+                "primary_qrf_fit_draw": (RNGInvocation("default"),),
+                "primary_puf_monolithic_qrf_model": (),
+            },
+            (supplemental.kind, supplemental.id): {
+                "puf_clone_attachment": (RNGInvocation("default"),),
+            },
+        },
+        physical_operation=PhysicalOperation(
+            function=physical_operation,
+            implementation_sha256=node.kernel_implementation_sha256,
+            input_binding_sha256=input_binding_sha256,
+            policy="broker-only",
+            sink_roots=(tmp_path,),
+        ),
+    )
+    assert session.rng.granted_sites == tuple(site.id for site in node.seed_sites)
+    with session.activate():
+        result = session.kernel_view.run_physical_operation(
+            input_binding_sha256=input_binding_sha256
+        )
+    receipt = session.seal()
+
+    assert len(result) == 2
+    assert observed_tokens[0]["owner"] == {
+        "kind": "producer_node",
+        "id": node.id,
+    }
+    assert observed_tokens[1]["owner"] == {
+        "kind": supplemental.kind,
+        "id": supplemental.id,
+    }
+    assert receipt.owner == BrokerOwner("producer_node", node.id)
+    token_owners = [
+        thaw_json(event.details["owner"])
+        for event in receipt.events
+        if event.operation == "token" and event.disposition == "allowed"
+    ]
+    assert token_owners == [observed_tokens[0]["owner"], observed_tokens[1]["owner"]]
+
+
+def test_supplemental_rng_token_is_isolated_from_primary_owner(
+    compiled_us: CompiledSpecIR,
+) -> None:
+    node = next(node for node in compiled_us.nodes if node.id == "primary_puf_qrf")
+    stream_map = compiled_us.seed_stream_map
+    supplemental = stream_map.owner(
+        "pipeline_operation", "prepare_multispine_source_inputs_for_clone"
+    )
+    assert supplemental is not None
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        run_inputs={"build_model_seed": 19, "sample_seed": 578},
+        seed_stream_map=stream_map,
+        supplemental_seed_owners=(supplemental,),
+        rng_invocation_plans_by_owner={
+            ("producer_node", node.id): {
+                "primary_qrf_fit_draw": (),
+                "primary_puf_monolithic_qrf_model": (),
+            },
+            (supplemental.kind, supplemental.id): {
+                "puf_clone_attachment": (RNGInvocation("default"),),
+            },
+        },
+    )
+    with session.activate():
+        token = session.kernel_view.rng.token("puf_clone_attachment")
+        with pytest.raises(BrokerAccessError, match="foreign_rng_token"):
+            session.rng.generator(token)
+        with session.kernel_view.rng.generator(token) as generator:
+            generator.random(1)
+    receipt = session.seal(status="aborted")
+    assert token.owner == BrokerOwner(supplemental.kind, supplemental.id)
+    assert any(
+        event.reason_code == "foreign_rng_token" for event in receipt.events
+    )
+
+
+def test_broker_only_physical_operation_does_not_restore_direct_rng(
+    compiled_us: CompiledSpecIR,
+) -> None:
+    node = next(
+        node
+        for node in compiled_us.nodes
+        if thaw_json(node.capabilities).get("effects") == ["none"]
+    )
+    input_binding_sha256 = sha256_json({"fixture": "broker-only-direct-rng"})
+
+    def physical_operation(_context: KernelBrokerSession) -> object:
+        return np.random.default_rng(7)
+
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        physical_operation=PhysicalOperation(
+            function=physical_operation,
+            implementation_sha256=node.kernel_implementation_sha256,
+            input_binding_sha256=input_binding_sha256,
+            policy="broker-only",
+        ),
+    )
+    with session.activate():
+        with pytest.raises(AmbientAccessError, match="ambient rng"):
+            session.kernel_view.run_physical_operation(
+                input_binding_sha256=input_binding_sha256
+            )
+    receipt = session.seal(status="aborted")
+    assert not any(
+        event.reason_code == "legacy_v1_physical_rng_grant"
+        for event in receipt.events
+    )
+    assert any(
+        event.reason_code == "ambient_access_prohibited" for event in receipt.events
+    )
+
+
+def test_complete_seal_refuses_unconsumed_supplemental_invocation(
+    compiled_us: CompiledSpecIR, tmp_path: Path
+) -> None:
+    node = next(node for node in compiled_us.nodes if node.id == "primary_puf_qrf")
+    stream_map = compiled_us.seed_stream_map
+    supplemental = stream_map.owner(
+        "pipeline_operation", "prepare_multispine_source_inputs_for_clone"
+    )
+    assert supplemental is not None
+    input_binding_sha256 = sha256_json({"fixture": "unconsumed-plan"})
+
+    def physical_operation(context: KernelBrokerSession) -> None:
+        token = context.rng.token("primary_qrf_fit_draw")
+        with context.rng.qrf_generators(token):
+            pass
+
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        run_inputs={"build_model_seed": 19, "sample_seed": 578},
+        seed_stream_map=stream_map,
+        supplemental_seed_owners=(supplemental,),
+        rng_invocation_plans_by_owner={
+            ("producer_node", node.id): {
+                "primary_qrf_fit_draw": (RNGInvocation("default"),),
+                "primary_puf_monolithic_qrf_model": (),
+            },
+            (supplemental.kind, supplemental.id): {
+                "puf_clone_attachment": (RNGInvocation("default"),),
+            },
+        },
+        physical_operation=PhysicalOperation(
+            function=physical_operation,
+            implementation_sha256=node.kernel_implementation_sha256,
+            input_binding_sha256=input_binding_sha256,
+            policy="broker-only",
+            sink_roots=(tmp_path,),
+        ),
+    )
+    with session.activate():
+        session.kernel_view.run_physical_operation(
+            input_binding_sha256=input_binding_sha256
+        )
+    with pytest.raises(BrokerAccessError, match="cannot complete"):
+        session.seal()
+    assert session.receipt.status == "aborted"
+    unconsumed = next(
+        event
+        for event in session.receipt.events
+        if event.reason_code == "rng_declared_invocations_unconsumed"
+    )
+    assert unconsumed.resource == "puf_clone_attachment"
+    assert thaw_json(unconsumed.details["owner"]) == {
+        "kind": supplemental.kind,
+        "id": supplemental.id,
+    }
+
+
+def test_kernel_can_verify_but_not_read_derived_seed(
+    compiled_us: CompiledSpecIR,
+) -> None:
+    optional_predictors = "education_level\0employment_income"
+    session = _owner_session(
+        compiled_us,
+        "pipeline_operation",
+        "gap_fill_stacked_spine",
+        run_inputs={"build_model_seed": 19},
+        rng_invocation_plan={
+            "acs_transfer_pattern_seed": (
+                RNGInvocation(
+                    "person-income-pattern",
+                    {
+                        "entity": "person",
+                        "family": "income",
+                        "nul_joined_ordered_optional_predictors": optional_predictors,
+                    },
+                ),
+            ),
+        },
+    )
+    expected = int.from_bytes(
+        hashlib.sha256(
+            f"19\0person\0income\0{optional_predictors}".encode()
+        ).digest()[:4],
+        "little",
+    )
+    with session.activate():
+        handle = session.kernel_view.rng.sha256_derived_seed(
+            session.kernel_view.rng.token(
+                "acs_transfer_pattern_seed", "person-income-pattern"
+            )
+        )
+        session.kernel_view.rng.assert_derived_seed(handle, expected)
+        assert not hasattr(handle, "value")
+    receipt = session.seal()
+    assert receipt.events[-1].reason_code == "derived_seed_claim_verified"
