@@ -61,11 +61,18 @@ seed, fold, comparator, or exclusion approval has changed.
   the fresh terminal battery. It is deliberately excluded from input pins and
   simulation checkpoint identity, while the resulting report remains in the
   sealed terminal receipt and final manifest.
+- Replayed the fresh terminal battery from the authenticated saved 1% simulated
+  checkpoint (sample seed 578) at 1,544,634,368 bytes peak RSS. The manifest
+  validator accepted the new committed empty-policy report.
+- Recorded the honest per-check result: both assigned checks remain
+  `dead_comparison` at ASEC/ACS incidence 0/0 and rows 0/0, with no exclusion
+  applied. This is unchanged by design because approving either exclusion is
+  explicitly outside this lane and the shipped register is empty.
 
 ## Next
 
-- Run the affected/full suites, lint, packaging checks, and the required 1%
-  after measurement from the saved terminal checkpoint.
+- Run the full suite, lint, and packaging checks; finalize code-cited notes and
+  the required output report.
 
 ## Historical note
 

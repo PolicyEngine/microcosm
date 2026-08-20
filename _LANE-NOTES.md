@@ -53,7 +53,7 @@
 ## 1% before receipt
 
 - Source: `/Users/maxghenis/PolicyEngine/_buildo-runtime/out/smoke-f001-r10/logbook-receipts/populace-us-2024-stacked-f001-s578-asec1688-acs15316-20260813T041921Z-23bea977/terminal-gates.json`
-- SHA-256: `96f68ddac5c833cb3c6a3eb6ea3ceb0cf04a5dcbbf92ef565814ed368a6ce5`.
+- SHA-256: `96f68ddac5c833cb3c6a3eb6ea3ceb0cf04a5dcbbf92ef56581479ed368a6ce5`.
 - `person/puf_tax_itemization/sstb_self_employment_income_would_be_qualified[clone_0]#dead`:
   failed; ASEC/ACS incidence 0/0; nonzero rows 0/0.
 - `person/puf_tax_itemization/business_is_sstb[clone_0]#dead`: failed;
@@ -61,6 +61,39 @@
 - An empty register cannot honestly change either measured value or waive
   either failure. The measurable after result must be authenticated policy and
   exact-criterion reporting while both unapproved checks remain red.
+
+## 1% after replay
+
+- Replayed only the terminal battery from the saved simulated checkpoint at
+  `/Users/maxghenis/PolicyEngine/_buildo-runtime/out/smoke-f001-r10/populace_us_2024_stacked_pool_verify.checkpoints/stacked/2e45c4d60f66b4321bc00ffa22816470bf162c59fd91956514832f97e066ed3c/simulated.checkpoint.h5`.
+  Its authenticated H5 SHA-256 is
+  `78721fa97cecf6f6befc83fd219abbce9453542da429e80432346d4e8272eb76`
+  and size is 260,260,648 bytes. Peak replay RSS was 1,544,634,368 bytes
+  (about 1.44 GiB), below the 15 GiB lane ceiling.
+- The saved checkpoint is the 1%/seed-578 build surface. No new build was run,
+  no predecessor digest was supplied, and no pending-chain file was touched.
+- Before/after by assigned exact check:
+
+  | Exact check | Before | After | Measured delta |
+  | --- | --- | --- | --- |
+  | `person/puf_tax_itemization/sstb_self_employment_income_would_be_qualified[clone_0]#dead` | `dead_comparison`; incidence 0/0; rows 0/0; failed | `dead_comparison`; incidence 0/0; rows 0/0; failed; no receipt applied | None |
+  | `person/puf_tax_itemization/business_is_sstb[clone_0]#dead` | `dead_comparison`; incidence 0/0; rows 0/0; failed | `dead_comparison`; incidence 0/0; rows 0/0; failed; no receipt applied | None |
+
+- The battery had the same 127 failures before and after. Before, its details
+  had no reviewed-exclusion report. After, the sealed manifest carried schema
+  2, committed policy digest
+  `581b42d0f8ffdfe5a29671fbc9be4efc839a440da2c52951229f85d407d5758d`,
+  empty resolved/applied/lifecycle buckets, and evaluation date 2026-08-20.
+  The runtime emits that complete report and the manifest independently checks
+  its digest, criterion classification, lifecycle, and exact applied failure
+  text
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7066-7336,11644-11718,12202-12229`).
+- Numerical improvement of the two assigned checks was not possible within
+  this machinery-only lane: changing their data artifact is out of scope, and
+  adding either receipt would be an exclusion approval reserved to the owner.
+  The measurable improvement is from no exclusion control/report to an
+  authenticated empty schema-2 policy report that proves neither failure was
+  waived.
 
 ## Work log
 
