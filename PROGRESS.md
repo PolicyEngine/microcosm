@@ -2,6 +2,14 @@
 
 ## State
 
+The 2026-08-20 owner continuation has been reopened from the supplied host 1%
+traceback. The reported boundary remains
+`person/puf_tax_itemization/taxable_interest_income`; current work is
+independently revalidating the raise-site diagnosis, the exact assigned-target
+scope, and the regression coverage before deciding whether any executable
+change is still required. The owner-provided `_BUILD-FAILURE-1PCT.txt` and
+`.codex-memory-guard.py` remain untracked and untouched.
+
 The 2026-08-20 owner continuation independently re-traced the reported host 1%
 stacked gap-fill binding failure against the branch's existing scoped-QRF
 correction. At `33bf52fe`, terminal validation called the QRF evidence validator
@@ -60,6 +68,9 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Reopened the committed progress journal before changing implementation or
+  tests, reread `CLAUDE.md`, and recorded the supplied failure as the active
+  continuation target.
 - Reopened the committed progress journal before implementation work for the
   current owner continuation and recorded the supplied failure as the active
   verification target.
@@ -240,5 +251,11 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Do not claim a host artifact unless a revision-bound retry reaches a terminal
-   success marker and emits the expected pool, manifest, and gates artifacts.
+1. Re-trace the invariant from its raise site through receipt production and
+   compare the current executable tree with the original failing commit.
+2. Confirm that only assigned source-operator, adult-care, and model-required
+   targets opt into calibrated QRF behavior; strengthen the regression if any
+   scope or binding edge remains uncovered.
+3. Run focused and package-level verification, update `FINAL_REPORT.md`, and
+   commit every coherent result. Do not claim a host artifact without a
+   revision-bound terminal success marker and expected artifacts.
