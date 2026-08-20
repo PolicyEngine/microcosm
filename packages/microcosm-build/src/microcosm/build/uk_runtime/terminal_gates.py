@@ -70,7 +70,7 @@ __all__ = [
 ]
 
 UK_CANDIDATE_DATASET_NAME = "populace_uk_2023"
-UK_REFERENCE_DATASET_NAME = "enhanced_frs_2023_24_recalibrated"
+UK_REFERENCE_DATASET_NAME = "enhanced_frs_2024_25_recalibrated"
 UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
 
 
