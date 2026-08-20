@@ -18,9 +18,12 @@ already committed, so no duplicate runtime or test edit is warranted. Guarded
 verification is green: all 14 decisive focused cases and all 529 tests in the
 five directly affected files passed under the owner 12 GiB/20 ms guard, with
 respective 0.562 GiB and 1.444 GiB maximum observed per-process RSS. Static and
-tree-drift verification is now active. No host success is claimed. The
-owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain
-untracked and untouched.
+tree-drift verification also passes: repository lint, formatting of all 15
+Python files changed since the bad commit's parent, committed-range whitespace,
+and exact source-tree comparisons with all-build-suite checkpoint `a5be536f`.
+Final reporting is now active. No host success is claimed. The owner-provided
+`_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain untracked and
+untouched.
 
 The immediately preceding completion snapshot follows and is historical rather
 than current state.
@@ -198,6 +201,11 @@ but DNS is unavailable. Verification therefore uses the already-synced
   serialization, stacked-spine, pool-tool, and H5 I/O files in one guarded
   process. Pytest reached 100% with exit zero and no failures; maximum observed
   per-process RSS was 1.444 GiB.
+- Ran repository-wide `ruff check .`, `ruff format --check` on all 15 Python
+  files changed since `33bf52fe^`, and `git diff --check 33bf52fe^..HEAD`; all
+  pass. Exact Git tree objects for `us_runtime` and all `microcosm-build/src`
+  match `a5be536f`, and no runtime, tool, project, or lockfile differs from that
+  all-build-suite checkpoint.
 - Reopened the committed root journal before implementation or test changes,
   reread `CLAUDE.md` and the GitNexus debugging workflow, inspected worktree
   status and recent history, and preserved both untracked owner artifacts.
@@ -544,8 +552,6 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run repository lint, scoped formatting, committed-range whitespace, and
-   runtime-tree drift checks; commit the verification result.
-2. Refresh and commit `FINAL_REPORT.md` and the final journal state. Do not
+1. Refresh and commit `FINAL_REPORT.md` and the final journal state. Do not
    claim an after artifact without a revision-bound terminal host proof, and do
    not publish or mutate the pending logbook chain as a side effect.
