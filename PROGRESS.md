@@ -162,3 +162,43 @@ D4--D6/D8 state above.
   exact-cell regression when the main lane changes compiler outputs.
 - The main lane owns its clean one-shot full-suite rerun, the unrelated Ruff
   import-order finding, physical executor work, and certification gates.
+
+## F1 D7 split-out verification addendum — 2026-08-20
+
+This is the latest D7 `state`/`done`/`next` receipt. It does not modify the
+resumed main-lane state above.
+
+### State
+
+- D7 remains complete. No D7 implementation or test file changed between
+  `5228cf5c` and parent HEAD `4deb8fb8`; later main-lane commits updated only
+  their driver import order and journals/docs.
+- The scoped output and coordination notes now record both the clean test
+  receipts and the resource-limit violation discovered by measured rerun.
+
+### Done
+
+- After D7 report commit `c0a75253`, all four D7 modules passed again: 70
+  passed in 350.29 seconds. Darwin `ru_maxrss` measured 4,231,233,536 bytes
+  (3.94 GiB), below the split-out's 15 GiB limit.
+- A fresh build-shard run completed with 6,325 passed and 37 expected skips in
+  6,820.57 seconds. Together with the unchanged four other serial shard
+  receipts, observed suite results are 7,190 passed and 74 expected skips.
+  Main-lane journals independently record their clean committed-tree full-
+  suite result.
+- The build-shard wrapper measured 30,950,326,272 bytes (28.82 GiB) peak RSS.
+  That exceeded the user's 15 GiB ceiling even though it was a test run, not a
+  pool/sample build. Heavy testing stopped immediately after the measurement;
+  this is recorded as an operating-order violation, not represented as
+  compliant.
+- Current-HEAD repository-wide Ruff, scoped D7 format, held-fixture searches,
+  and whitespace checks pass. Commit `030c0613` fixed the prior unrelated
+  main-lane import-order finding.
+
+### Next
+
+- No D7 code work remains. Do not repeat the monolithic build shard under a
+  15 GiB ceiling; any future verification must use measured, smaller process
+  groups that remain below the limit.
+- No push, pool build, sample rung, restricted-data access, or publication is
+  authorized or pending from D7.

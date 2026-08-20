@@ -65,34 +65,39 @@ and incomplete typed-column closure.
 
 ## Current-head verification
 
-- The four D7 modules passed together: **70 passed in 420.42 seconds**.
+- The four D7 modules passed together before the report commit (70 passed in
+  420.42 seconds) and again after commit `c0a75253`: **70 passed in 350.29
+  seconds**. The post-commit run measured 4,231,233,536 bytes (3.94 GiB) peak
+  RSS on Darwin.
 - Two independent read-only audits approved the compiler boundary and exact-
   cell logic. One rebuilt all 809 cells without importing the dashboard.
 - Separate processes with `PYTHONHASHSEED=1` and `8675309` emitted byte-
   identical JSON with SHA-256
   `03c08eb0e59b4ce2fa0d2ffe2bcf62e503005569b1171520a46068dec99ef7df`.
-- Scoped Ruff check, Ruff format check, and D7 whitespace checks passed.
-- Serial all-shard verification passed calibrate, data, fit, and frame with
-  865 passed and 37 skipped. The build shard reported 6,322 passed, 37
-  skipped, and three `test_us_spine_blindness.py` failures because pytest had
-  collected the file before concurrent main-lane commit `12df8c45` classified
-  six new runtime-authority modules and updated the 65-to-70 graph pin. At
-  current HEAD, those exact three tests pass (3 passed in 4.42 seconds), and
-  the main lane records the complete 495-test module passing. This is
-  decomposed green evidence, not a claimed clean one-shot rerun at the new
-  HEAD.
-- Repository-wide Ruff reports one unrelated main-lane import-order finding
-  at `tools/build_us_multispine_pool.py:1157`; D7's files are clean.
+- Serial calibrate, data, fit, and frame receipts contain 865 passed and 37
+  expected skips. A fresh build-shard rerun then passed **6,325 tests with 37
+  expected skips** in 6,820.57 seconds. The observed all-shard sum is 7,190
+  passed and 74 expected skips; the main lane independently records its clean
+  committed-tree full-suite result.
+- The build run began at `c0a75253`. During its two-hour execution the shared
+  branch advanced through main-lane commits `030c0613`--`4deb8fb8`; those
+  changed one import ordering plus journals/docs and no D7 file. This clean
+  rerun supersedes the earlier moving-collection three-failure receipt.
+- Current-HEAD repository-wide Ruff, scoped D7 format, held-fixture searches,
+  and whitespace checks pass. No D7 file changed after `5228cf5c`.
 
 ## Commit provenance and limits
 
 Prefixed D7 commits are `9ed8f23d`, `247decae`, `ef036572`, `aac2fe03`,
-`823a0100`, and `5228cf5c`. Shared unprefixed `a7a6c06d` updated journals;
-mixed unprefixed `5875be22` contains the exact-cell D7 correction plus
-main-lane F0 work. Those are historical prefix exceptions, recorded rather
-than rewritten.
+`823a0100`, `5228cf5c`, and `c0a75253`. Shared unprefixed `a7a6c06d` updated
+journals; mixed unprefixed `5875be22` contains the exact-cell D7 correction
+plus main-lane F0 work. Those are historical prefix exceptions, recorded
+rather than rewritten.
 
 No push, pool build, sample rung, restricted-data access, or publication was
-performed. Validation was serialized. The sandbox blocks both `ps` and
-`/usr/bin/time -l`, so this report does not fabricate an exact RSS peak; no
-resource failure or heavy build workload occurred.
+performed. Validation was serialized. A Python `getrusage` wrapper succeeded
+where sandboxed `ps` and `/usr/bin/time -l` had failed: the focused D7 run was
+3.94 GiB, but the monolithic build-shard test process peaked at
+30,950,326,272 bytes (28.82 GiB), exceeding the user's 15 GiB ceiling. This
+was an operating-order violation. Heavy testing stopped when the result became
+available; this report does not claim resource compliance.

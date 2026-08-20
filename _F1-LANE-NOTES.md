@@ -1401,3 +1401,26 @@ deliverable 6 cannot start. Their verdict remains **NOT RUN**, not PASS. No
 honest-stop rule, this continuation stops at deliverable 5 after the committed-
 tree validation gates, with no threshold, band, seed, artifact selector, or
 memory limit changed.
+
+### SPLIT-OUT COORDINATION — F1 D7 green-suite/resource addendum (2026-08-20)
+
+This append-only D7 receipt supersedes the earlier decomposed-suite and
+unobservable-RSS wording. It does not change main-lane D4--D6/D8 ownership.
+
+- Post-report D7 verification at `c0a75253` passed all four scoped modules: 70
+  passed in 350.29 seconds. Darwin `ru_maxrss` was 4,231,233,536 bytes (3.94
+  GiB), below the split-out's 15 GiB ceiling.
+- A fresh build-shard run completed with 6,325 passed and 37 expected skips in
+  6,820.57 seconds. Combined with the other four serial shard receipts, the
+  observed total is 7,190 passed and 74 expected skips. The main lane also
+  records its independent clean committed-tree full-suite result.
+- The shared branch advanced during that long run through `030c0613`,
+  `e14355c6`, `2d919ce9`, and `4deb8fb8`. Those commits changed one mechanical
+  import ordering plus journals/docs, and no D7 implementation/test file.
+- The build-shard process peaked at 30,950,326,272 bytes (28.82 GiB) RSS. That
+  exceeded the user's 15 GiB ceiling despite being test-only. Heavy testing
+  stopped as soon as the terminal resource receipt exposed the overrun. This
+  is an explicit operating-order violation, not a PASS or a pool-build claim.
+- Current-HEAD repository-wide Ruff, scoped D7 formatting, held-fixture
+  searches, and whitespace checks pass. Nothing was pushed; no pool build,
+  sample rung, restricted-data access, or publication occurred.
