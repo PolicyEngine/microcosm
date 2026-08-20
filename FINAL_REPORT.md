@@ -7,9 +7,13 @@ Fixed the host 1% verification failure at
 unassigned target into the package 3 calibration. The final local tree passes
 the complete `microcosm-build` suite and lint surface.
 
-No after artifact is claimed or accepted. The exact 1% host rebuild remains
-the only outstanding step because the pinned host data is unavailable in this
-sandbox. The frozen sample/clone seed remains 578, and no battery band,
+No after artifact is claimed or accepted. An externally owned exact 1% retry
+started during the final audit and rebuilt all 47 survey targets plus the one
+housing target without a traceback, including the exact bounded
+`taxable_interest_income` record. Its log then became quiet while its guard
+continued to report live build processes and no runner exit marker existed, so
+terminal stacked receipt validation and frozen-battery success are not
+claimed. The frozen sample/clone seed remains 578, and no battery band,
 threshold, comparator, fold, publication boundary, or pending-chain state was
 changed.
 
@@ -74,12 +78,24 @@ Verification used the already-synced exact-lock environment with
 `UV_NO_SYNC=1` and a writable temporary uv cache because sandbox DNS and the
 default uv cache are unavailable.
 
-- All 225 `packages/microcosm-build/tests/test_*.py` files pass on the final
-  tree across fresh pytest processes, including the five directly affected
-  transfer/stacked/pool files and the repaired H5 file.
-- `uv run ruff check .`: passed.
+- All 225 `packages/microcosm-build/tests/test_*.py` files passed across fresh
+  pytest processes at `a5be536f`. No executable file changed between that
+  commit and the final audit tree.
+- The five directly affected transfer, multispine, stacked, pool-tool, and H5
+  files were rerun together on the final executable tree: 528 passed, zero
+  skipped, zero failed/errors. Six narrow scope/binding regressions also passed
+  independently.
+- `uv run ruff check .`: passed on the final audit tree.
 - `ruff format --check` on all nine continuation-touched Python files: passed.
-- `git diff --check 33bf52fe..HEAD`: passed.
+- `git diff --check 33bf52fe^..HEAD`: passed.
+
+The originally cited `battery-verify/pkg3/build.log` was overwritten by the
+active retry. The preserved failing traceback is in
+`battery-lanes/pkg3-r2.out.err.log`; it confirms the original host context was
+the exact 1% sample, sample/clone seed 578, clone fraction 1, model seed 0, 100
+estimators, and eight-target maximum fit width. The retry's passage through all
+early target checkpoints is useful runtime evidence, but it is not a terminal
+certification result.
 
 The sibling package suites were green before this continuation and their code
 was not changed: `microcosm-fit` 93 passed, `microcosm-calibrate` 201 passed,
@@ -97,10 +113,13 @@ skipped.
 - `94b7aecb` — close selected-family, count-stripping, and fit-width audit gaps.
 - `5a91d9e6` — align the late pool fixture with strict counts.
 - `943e33cf` — align the canonical stacked H5 fixture with strict counts.
+- `40b76f6b` — reopen the scoped-binding verification journal.
+- `1aed5a31` — independently confirm the scoped-binding diagnosis.
+- `19ac8a49` — record the current-tree affected-suite and lint verification.
 
 ## Remaining host step
 
-Rebuild off-chain at exactly 1% with sample and clone seed 578 under the host
-memory guard. Accept and record the 16 after measurements only if the stacked
-receipt invariant, source-preservation proofs, and frozen battery checks all
-pass. Do not publish or mutate the pending logbook chain during that run.
+Let the externally owned off-chain 1% retry reach a terminal runner verdict.
+Accept and record the 16 after measurements only if the stacked receipt
+invariant, source-preservation proofs, and frozen battery checks all pass. Do
+not publish or mutate the pending logbook chain during that run.
