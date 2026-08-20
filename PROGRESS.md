@@ -16,8 +16,9 @@ canonical leak and no need for another executable edit. Unassigned generated
 values and QRF behavior remain unchanged; the shared four-count receipt
 invariant continues to apply to every canonical target. Verification is now in
 progress: all eight focused scope and binding regressions pass under the 12 GiB
-guard with a 0.559 GiB maximum observed per-process RSS. The owner-provided
-`_BUILD-FAILURE-1PCT.txt` and
+guard with a 0.559 GiB maximum observed per-process RSS, and all 528 tests in
+the five directly affected files pass in one guarded process with a 1.494 GiB
+peak. The owner-provided `_BUILD-FAILURE-1PCT.txt` and
 `.codex-memory-guard.py` remain untracked and untouched.
 
 The 2026-08-20 owner continuation independently re-traced the reported host 1%
@@ -108,6 +109,12 @@ but DNS is unavailable. Verification therefore uses the already-synced
   guard; peak observed per-process RSS was 0.559 GiB. The only warning was
   joblib falling back from an unavailable physical-core count to the logical
   core count.
+- Ran all 528 tests in the five directly affected ordinary transfer,
+  multispine serialization, stacked spine, pool-tool, and H5 files in one
+  process under the 12 GiB/20 ms guard. All passed with a 1.494 GiB maximum
+  observed per-process RSS. Output contained the same joblib logical-core
+  fallback and 2,313 known pandas fragmentation warnings from stacked-spine
+  fixture construction.
 - Reopened the committed progress journal before implementation work for the
   current owner continuation and recorded the supplied failure as the active
   verification target.
@@ -288,9 +295,8 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run the five directly affected test files and repository lint/format/diff
-   checks on the unchanged executable tree; strengthen the regression only if
-   verification exposes a new gap.
+1. Run repository lint, touched-file format, and committed-range diff checks on
+   the unchanged executable tree.
 2. Update `FINAL_REPORT.md` and the final journal state, and
    commit every coherent result. Do not claim a host artifact without a
    revision-bound terminal success marker and expected artifacts.
