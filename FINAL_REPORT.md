@@ -17,6 +17,14 @@ claimed. The frozen sample/clone seed remains 578, and no battery band,
 threshold, comparator, fold, publication boundary, or pending-chain state was
 changed.
 
+The 2026-08-20 owner continuation independently re-traced the old raise site,
+the current runtime/receipt selector, and the exact regression surface. It found
+no remaining canonical path that can opt `taxable_interest_income` into QRF
+regime work or evidence. Seven narrow regressions and all 528 tests in the five
+directly affected files pass on the current executable tree. Three independent
+read-only audits of source, tests, and host evidence reached the same scoped-fix
+verdict.
+
 ## Root cause and correction
 
 Commit `33bf52fe` enabled QRF regime detection, verification, and receipt
@@ -83,19 +91,24 @@ default uv cache are unavailable.
   commit and the final audit tree.
 - The five directly affected transfer, multispine, stacked, pool-tool, and H5
   files were rerun together on the final executable tree: 528 passed, zero
-  skipped, zero failed/errors. Six narrow scope/binding regressions also passed
-  independently.
-- `uv run ruff check .`: passed on the final audit tree.
+  skipped, zero failed/errors. The run used the owner-provided 12 GiB/20 ms
+  guard and peaked at 1.531 GiB observed per-process RSS. Seven narrow
+  scope/binding regressions also passed independently.
+- `ruff check .`: passed on the final audit tree.
 - `ruff format --check` on all nine continuation-touched Python files: passed.
 - `git diff --check 33bf52fe^..HEAD`: passed.
+- `git diff --name-only a5be536f..HEAD` lists only `FINAL_REPORT.md` and
+  `PROGRESS.md`, confirming that the current executable tree is identical to
+  the prior complete 225-file build-suite pass.
 
 The originally cited `battery-verify/pkg3/build.log` was overwritten by the
-active retry. The preserved failing traceback is in
-`battery-lanes/pkg3-r2.out.err.log`; it confirms the original host context was
-the exact 1% sample, sample/clone seed 578, clone fraction 1, model seed 0, 100
-estimators, and eight-target maximum fit width. The retry's passage through all
-early target checkpoints is useful runtime evidence, but it is not a terminal
-certification result.
+later retry. The owner-preserved `_BUILD-FAILURE-1PCT.txt` retains the old
+traceback. The reused log now reaches survey target 47/47 and housing target 1/1,
+including `puf_tax_itemization__batch_1/taxable_interest_income`, without a new
+traceback. It then ends without a runner exit marker, `pool.h5`, pool manifest,
+or gates artifact, and it does not record the revision SHA. That passage through
+the transfer checkpoints is useful progress evidence, but it is neither
+revision-bound nor a terminal certification result.
 
 The sibling package suites were green before this continuation and their code
 was not changed: `microcosm-fit` 93 passed, `microcosm-calibrate` 201 passed,
@@ -116,10 +129,14 @@ skipped.
 - `40b76f6b` — reopen the scoped-binding verification journal.
 - `1aed5a31` — independently confirm the scoped-binding diagnosis.
 - `19ac8a49` — record the current-tree affected-suite and lint verification.
+- `dbe47560` — reopen the current owner continuation.
+- `8ebfeb08` — record the current independent scoped-binding diagnosis.
+- `bc3d73ba` — record the guarded 528-test and lint verification.
 
 ## Remaining host step
 
-Let the externally owned off-chain 1% retry reach a terminal runner verdict.
+Run or identify a revision-bound off-chain 1% retry that reaches a terminal
+runner verdict and emits the expected pool, manifest, and gates artifacts.
 Accept and record the 16 after measurements only if the stacked receipt
-invariant, source-preservation proofs, and frozen battery checks all pass. Do
-not publish or mutate the pending logbook chain during that run.
+invariant, source-preservation proofs, and frozen battery checks all pass. Do not
+publish or mutate the pending logbook chain during that run.
