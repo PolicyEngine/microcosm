@@ -4,9 +4,10 @@
 
 Complete on `battery-excl-machinery`, which started from `origin/main` at
 `164027e2`. The empty schema-2 register, strict authenticated loader, exact
-criterion lifecycle machinery, terminal-manifest validation, CLI wiring, and
-tests are committed. The assigned scope remains machinery only: no band,
-threshold, seed, fold, comparison algorithm, or exclusion approval changed.
+criterion lifecycle machinery, terminal-manifest validation, CLI wiring,
+configuration-boundary hardening, and tests are committed. The assigned scope
+remains machinery only: no band, threshold, seed, fold, comparison algorithm,
+or exclusion approval changed.
 
 ## Done
 
@@ -45,6 +46,11 @@ threshold, seed, fold, comparison algorithm, or exclusion approval changed.
   path-plus-SHA override authentication with partial-arming refusal.
 - New schema/resource tests pass: 27 loader tests and 5 country-package tests;
   Ruff check is clean and both new Python files are Ruff-formatted.
+- Hardened the exact-ID parser after adversarial review: malformed shorthand,
+  noncanonical clone indices, invalid signed criteria, non-categorical joint
+  criteria, and duplicate joint members now fail closed. An independent
+  inventory check confirmed that all 417 unique criterion IDs emitted by the
+  current canonical runtime surface remain accepted.
 - Integrated exact criterion IDs into the existing comparator paths without
   changing their bands, thresholds, status records, or human failure text.
 - Added in-force application and stale/dormant/expired/premature anti-rot
@@ -60,6 +66,9 @@ threshold, seed, fold, comparison algorithm, or exclusion approval changed.
 - Added paired CLI options for an override path and raw-file SHA-256. The
   driver authenticates the complete policy before starting stacked work,
   rejects either half alone, and rejects any override on the legacy route.
+- Added the authenticated override path to publication/checkpoint overwrite
+  protection while deliberately keeping the policy out of simulation input
+  pins and checkpoint identity. Regression tests cover both collision classes.
 - Threaded the typed policy through cold and resumed stacked execution into
   the fresh terminal battery. It is deliberately excluded from input pins and
   simulation checkpoint identity, while the resulting report remains in the
@@ -79,7 +88,12 @@ threshold, seed, fold, comparison algorithm, or exclusion approval changed.
   the complete spine-blindness file passes.
 - Confirmed the complete workspace suite passes at current HEAD with
   `.venv/bin/python -m pytest -q` (exit 0).
-- Confirmed `.venv/bin/ruff check .` and `git diff --check` pass.
+- Added a same-leg dual-failure regression proving one receipt suppresses only
+  its exact incidence or quantile criterion while the other remains red.
+- Reconfirmed the exact hardened tree with the complete workspace suite
+  (`.venv/bin/python -m pytest -q`, exit 0), `.venv/bin/ruff check .`, Ruff
+  formatting checks, `git diff --check`, and a direct schema-2/empty-register
+  assertion.
 - Attempted a wheel build from `packages/microcosm-build`; the sandbox could
   not resolve/download the isolated `hatchling` build dependency. The resource
   declaration and loading remain covered by the passing country-package and

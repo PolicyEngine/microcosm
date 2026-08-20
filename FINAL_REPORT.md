@@ -19,10 +19,12 @@ message changed.
   with schema version 2 and an empty `exclusions` object.
 - An immutable US policy model and strict loader in
   `packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py`.
-  It accepts only exact `leg#criterion` keys, requires exactly `reason`,
-  `approved_by`, `adjudication`, `approved_on`, and `expires_on`, validates
-  canonical dates and `expires_on > approved_on`, rejects duplicate/non-finite
-  JSON, and seals a canonical content digest.
+  It accepts only canonical
+  `entity/family/target[clone_N][/sign]#criterion` keys, rejects incompatible
+  signed and joint criteria, requires exactly `reason`, `approved_by`,
+  `adjudication`, `approved_on`, and `expires_on`, validates canonical dates
+  and `expires_on > approved_on`, rejects duplicate/non-finite JSON, and seals
+  a canonical content digest.
 - A path-plus-raw-SHA override arming unit. Supplying only a path or only a
   digest fails before stacked build work; override flags are also refused on
   the legacy route.
@@ -42,12 +44,14 @@ message changed.
 - Typed-policy threading through cold and resumed stacked routes. The policy
   does not alter simulation inputs or checkpoint identity; its verdict and
   complete receipt are sealed only at the terminal gate.
+- Publication and checkpoint collision protection for an authenticated
+  override path, without contaminating simulation pins or checkpoint identity.
 
 Primary implementation references are
-`reviewed_exclusions.py:32-341`,
+`reviewed_exclusions.py:33-380`,
 `stacked_spine.py:7066-7322,7698-7742,11644-11718,11775-11883,12202-12486`,
 `gates.py:142-177,204-309`, and
-`tools/build_us_multispine_pool.py:532-548,2858-2874,3285-3296,3405-3506,4089-4108,4160-4165,4349-4364,4463-4485`.
+`tools/build_us_multispine_pool.py:532-546,709-838,1039-1194,2866-2882,3293-3304,3413-3514,3740-3751,4097-4117,4168-4173,4357-4403,4471-4493`.
 
 ## 1% before/after
 
@@ -99,10 +103,20 @@ build/logbook artifacts, and did not touch `logbook-pending-chain.txt`.
   exact-leg isolation; both assigned checks; receipt/application tampering;
   source mismatch; partial CLI arming; cold/resume threading; and
   checkpoint-identity noninterference.
+- Adversarial enumeration confirmed all 417 unique exact criterion IDs emitted
+  by the canonical runtime surface pass the parser, while malformed shorthand,
+  noncanonical clone indices, invalid signed/joint criteria, and duplicate
+  joint members fail closed.
+- A dual-failure monetary-leg regression confirms one receipt can suppress
+  only its exact incidence or quantile criterion; the other failed criterion
+  remains red.
+- Override collision regressions confirm neither a publication path nor a
+  checkpoint-managed path can overwrite the authenticated policy source.
 - `.venv/bin/ruff check .` — passed.
+- Ruff formatting check for all five hardened files — passed.
 - `git diff --check` — passed.
-- The committed policy digest and empty payload were reloaded directly from
-  the declared package resource.
+- The committed policy digest was reloaded from the declared resource, and a
+  direct JSON assertion confirmed schema version 2 with `exclusions == {}`.
 - The unpushed history was corrected so runtime classification travels with
   the loader commit and the 65-module graph pin travels with the battery-import
   commit. Relevant loader/country/spine, battery/spine, and driver suites pass
@@ -134,6 +148,8 @@ primary-QRF peak of 84.73 GB (78.91 GiB), which would violate the explicit
 - `e6e09e56` — wire authenticated US exclusion policy into the pool driver.
 - `48e61e81` — record honest 1% exclusion replay.
 - `736a2ecb` — record the runtime-inventory audit in the lane journals.
+- `08c4271f` — finalize the reviewed-exclusion machinery report.
+- `a4d90b50` — harden reviewed-exclusion configuration boundaries.
 
 Nothing was pushed. Owner review and the push remain external to this lane;
 the two measured QBI rows remain separate non-exclusion fix work.

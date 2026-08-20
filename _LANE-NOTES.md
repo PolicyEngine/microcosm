@@ -32,7 +32,7 @@
   snapshot plus an optional plain-date test clock; absent a supplied snapshot,
   it resolves the committed register, and it rejects any untyped policy
   (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11775-11790,11832-11883`;
-  `packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:344-354`).
+  `packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:329-380`).
 - A boolean comparison with zero weighted incidence on both origins appends a
   dead-comparison failure and records `status=dead_comparison`
   (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:12285-12324`).
@@ -66,7 +66,7 @@
   (`packages/microcosm-build/src/microcosm/build/gates.py:142-177,204-309`).
 - The pool writes that same gate payload into the immutable terminal receipt
   and final manifest aliases
-  (`tools/build_us_multispine_pool.py:3405-3406,3443-3445,3503-3506,4061-4068,4089-4108`).
+  (`tools/build_us_multispine_pool.py:3413-3414,3451-3514,3740-3751,4097-4117,4373-4403`).
 
 ## 1% before receipt
 
@@ -114,7 +114,7 @@
   The measurable improvement is from no exclusion control/report to an
   authenticated empty schema-2 policy report that proves neither failure was
   waived
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:290-341`;
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:290-380`;
   `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7193-7322,12202-12235`).
 
 ## Work log
@@ -130,7 +130,7 @@
   receipt fields, authenticates overrides as a path-plus-SHA pair, and seals a
   canonical content digest
   (`packages/microcosm-build/src/microcosm/build/us/by_origin_reviewed_exclusions.json:1-5`;
-  `packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:32-220,223-341`).
+  `packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:33-259,262-380`).
 - 2026-08-19: integrated exact criterion recording into the unchanged battery
   comparators. Eligible failures are indexed as `#dead`, `#incidence`,
   `/positive|negative#quantile`, or `#categorical` while the existing failure
@@ -153,15 +153,15 @@
 - 2026-08-19: added paired driver flags for a schema-2 override and its raw
   SHA-256, authenticated the pair before entering stacked build work, and
   refused any override on the legacy two-spine route
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:307-341`;
-  `tools/build_us_multispine_pool.py:532-548,4463-4485`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:346-380`;
+  `tools/build_us_multispine_pool.py:532-546,4471-4493`).
 - 2026-08-19: threaded the resolved typed snapshot through stacked cold/resume
   execution into the fresh terminal battery
-  (`tools/build_us_multispine_pool.py:2858-2874,3285-3296,4160-4165,4349-4364`).
+  (`tools/build_us_multispine_pool.py:2866-2882,3293-3304,4168-4173,4357-4369`).
   The policy is intentionally absent from configured input-pin and checkpoint
   identity payloads because it changes only the terminal verdict, not the
   simulation artifact
-  (`tools/build_us_multispine_pool.py:1031-1167,1170-1187`).
+  (`tools/build_us_multispine_pool.py:1039-1175,1178-1194`).
 - 2026-08-19: the workspace suite's fail-closed inventory correctly rejected
   the new runtime module until it was reviewed. The policy loader is now
   explicitly classified as a non-population-treatment module, and the pool
@@ -176,3 +176,29 @@
   classification accompanies the loader commit and the graph-count pin
   accompanies the battery-import commit. Their relevant loader/country,
   spine-blindness, battery, and driver suites pass at those commit boundaries.
+- 2026-08-20: adversarial review hardened the register key grammar to the
+  production `entity/family/target[clone_N][/sign]#criterion` forms. It now
+  refuses malformed or noncanonical clone IDs, sign/criterion mismatches,
+  non-categorical joint criteria, and repeated joint members; valid scalar,
+  signed monetary, and joint categorical forms remain accepted
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:37-104`;
+  `packages/microcosm-build/tests/test_us_reviewed_exclusions.py:128-188`).
+- 2026-08-20: the authenticated override is now treated as a read-only source
+  for publication and checkpoint collision checks, but remains absent from
+  verified simulation pins and both configured/live checkpoint identities
+  (`tools/build_us_multispine_pool.py:709-838,1039-1194`;
+  `packages/microcosm-build/tests/test_us_multispine_pool_tool.py:3424-3446,3666-3713`).
+- 2026-08-20: added a same-leg dual-failure regression: approving exact
+  incidence leaves the failed quantile red, and approving exact quantile
+  leaves failed incidence red
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11644-11718,12386-12434`;
+  `packages/microcosm-build/tests/test_us_stacked_spine.py:8317-8353`).
+- 2026-08-20: an independent enumeration passed all 417 unique criterion IDs
+  emitted by the canonical runtime target/metric surface through the hardened
+  parser, while adversarial malformed forms were rejected
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:37-104`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:12238-12486`).
+  The complete workspace suite then passed on commit `a4d90b50` with
+  `.venv/bin/python -m pytest -q` (exit 0); Ruff check, Ruff format check, and
+  `git diff --check` also passed. The committed register was directly asserted
+  to remain schema 2 with an empty `exclusions` object.
