@@ -3,13 +3,16 @@
 ## State
 
 The host 1% verification build rejected the implementation committed at
-`33bf52fe`. Terminal stacked gap-fill validation reports an invalid ACS QRF
-pattern record binding for
-`person/puf_tax_itemization/taxable_interest_income`, which is outside the
-assigned calibration rows. The continuation is therefore in diagnosis; the
-suite-only green result is not sufficient and no after artifact is accepted.
-The uncontaminated 1% before artifact remains recorded at commit `5f5e5e91`.
-No frozen battery band, threshold, comparator, seed, or fold has changed.
+`33bf52fe`. The root cause is isolated: QRF regime detection, receipt
+attachment, and terminal validation were broadened to every ACS transfer
+target even though the calibration owner declares only nine targets. The
+15-target `puf_tax_itemization` family is split into bounded batches, so the
+new validator compares a `puf_tax_itemization__batch_1` record (and its eight
+regimes) with the unsplit family (and all 15 targets). The fix will make QRF
+regime evidence an explicit opt-in for the nine declared targets and restore
+unassigned receipt/runtime behavior. No after artifact is accepted. The
+uncontaminated 1% before artifact remains recorded at commit `5f5e5e91`; no
+frozen battery band, threshold, comparator, seed, or fold has changed.
 
 The required `uv sync --all-packages --extra us` was attempted first. The
 default cache is sandbox-read-only; a retry with a writable cache reached PyPI
@@ -64,16 +67,27 @@ but DNS is unavailable. Verification therefore uses the already-synced
   `_validate_acs_imputed_pattern_evidence` raise site. The failing target is
   outside this lane's assigned rows, so shared gap-fill behavior must be
   restored before another artifact build.
+- Traced the complete failure path. `transfer_acs_inputs` intentionally splits
+  families wider than eight targets and records the bounded family name, while
+  the new terminal validator binds every record to the canonical unsplit
+  family and canonical target list. Merely accepting the batch suffix would
+  expose a second target-order mismatch and would retain the out-of-scope
+  runtime checks.
+- Confirmed that value calibration itself already filters the exact declared
+  stage/entity/family/target triples and mutates only ACS clone-0 cells that
+  were null before transfer and nonnull afterward. The leak is limited to the
+  globally enabled QRF regime detection/verification and receipt surface.
+- Built a fresh local GitNexus graph as directed by the debugging workflow.
+  The sandbox prevents registering it in the user-wide GitNexus registry, so
+  query/context calls could not consume it; source, history, and test tracing
+  independently established the caller and data flow.
 
 ## Next
 
-1. Trace construction and terminal replay of the ACS QRF pattern record
-   binding and identify how post-transfer calibration affects an unassigned
-   target.
-2. Add a regression test that reproduces the host binding rejection and proves
+1. Add a regression test that reproduces the host binding rejection and proves
    unassigned gap-fill targets remain byte- and receipt-identical.
-3. Narrow the implementation to the assigned source-operator, adult-care, and
+2. Narrow the implementation to the assigned source-operator, adult-care, and
    model-required targets; run the focused and full PR suite.
-4. Rebuild off-chain at exactly 1% with sample/clone seed 578 under the
+3. Rebuild off-chain at exactly 1% with sample/clone seed 578 under the
    tightened memory guard when host data access is available, then record the
    16 after measurements and source-preservation invariants.
