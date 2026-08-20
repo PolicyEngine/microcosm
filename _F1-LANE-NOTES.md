@@ -2128,3 +2128,32 @@ head; it still writes `us-f1-certification.json` and
    owner for QRF.
 2. Complete typed QRF, source, and late-transfer broker seams, then activate
    the physical executor only when every planned invocation is consumed.
+
+## F1 continuation r5 QRF stream seam (2026-08-20)
+
+### State
+
+- Primary, source, and transfer QRFs all implement the same legacy-v1 split:
+  `SeedSequence(seed).spawn(2)` yields persistent fit and draw PCG64 streams.
+  The broker already issues that exact pair, but QRF previously had no way to
+  consume it.
+
+### Done
+
+- Added an optional structural generator-pair input to monolithic fit,
+  `start_chain`, and `fit_draw_next`. The default path is unchanged. The
+  injected path uses only the pair's narrow draw methods and opaque state
+  snapshot; fitted prediction retains the broker draw lease.
+- Targetwise execution validates both supplied stream states against the
+  checkpoint before either can advance, then writes post-step states into the
+  existing JSON fields. No new checkpoint member or receipt field is added.
+- Four focused tests pass for monolithic byte equality, targetwise state/draw
+  equality, pre-draw drift refusal, and the existing JSON-resume equivalence.
+  Targeted Ruff and `git diff --check` pass; no sample build ran.
+
+### Next
+
+1. Thread broker-issued QRF pairs into source, primary, and transfer physical
+   callbacks, with exact dynamic invocation plans prepared before dispatch.
+2. Prove existing checkpoint member bytes remain equal when the primary chain
+   runs in-process under the bundle session.

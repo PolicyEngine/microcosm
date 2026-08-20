@@ -53,6 +53,7 @@ import os
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
+from typing import Any, Protocol
 
 import numpy as np
 import pandas as pd
@@ -87,6 +88,32 @@ DEFAULT_N_ESTIMATORS = 100
 #: Absolute tolerance for "equals zero" in regime detection. A magnitude at or
 #: below this counts as a structural zero (the gate's zero class).
 DEFAULT_ZERO_ATOL = 1e-6
+
+
+class _QRFGenerator(Protocol):
+    """Structural RNG surface shared by NumPy and broker generator leases."""
+
+    def choice(self, *args: object, **kwargs: object) -> Any: ...
+
+    def integers(self, *args: object, **kwargs: object) -> Any: ...
+
+    def random(self, *args: object, **kwargs: object) -> Any: ...
+
+
+class _QRFGeneratorLease(_QRFGenerator, Protocol):
+    """Broker generator surface, including its opaque state snapshot."""
+
+    def bit_generator_state(self) -> dict[str, object]: ...
+
+
+class _QRFGeneratorPair(Protocol):
+    """Independent fit/draw streams leased for one QRF invocation."""
+
+    @property
+    def fit(self) -> _QRFGeneratorLease: ...
+
+    @property
+    def draw(self) -> _QRFGeneratorLease: ...
 
 
 class Regime:
@@ -189,7 +216,7 @@ def _weighted_bootstrap(
     x: np.ndarray,
     y: np.ndarray,
     weights: np.ndarray | None,
-    rng: np.random.Generator,
+    rng: _QRFGenerator,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Materialize weights by importance-resampling the training rows.
 
@@ -469,7 +496,7 @@ def _fit_forest(
     seed: int,
     n_estimators: int,
     max_samples_leaf: int | float | None,
-    rng: np.random.Generator,
+    rng: _QRFGenerator,
 ) -> _Forest:
     """Weighted-bootstrap the rows, then grow a quantile forest on them.
 
@@ -619,14 +646,33 @@ def _weight_identity(weights: np.ndarray | None) -> str:
     return digest.hexdigest()
 
 
-def _rng_state_json(rng: np.random.Generator) -> str:
+def _rng_state_json(rng: np.random.Generator | _QRFGeneratorLease) -> str:
     """Serialize a generator state to immutable canonical JSON text."""
+    state = (
+        rng.bit_generator.state
+        if isinstance(rng, np.random.Generator)
+        else rng.bit_generator_state()
+    )
     return json.dumps(
-        rng.bit_generator.state,
+        state,
         sort_keys=True,
         separators=(",", ":"),
         allow_nan=False,
     )
+
+
+def _require_chain_rng_state(
+    rng: _QRFGeneratorLease,
+    expected_state_json: str,
+    *,
+    stream: str,
+) -> None:
+    """Refuse a broker lease that is not at the checkpointed chain state."""
+    if _rng_state_json(rng) != expected_state_json:
+        raise ValueError(
+            f"QRF chain supplied {stream} RNG lease state does not match "
+            "the checkpoint state."
+        )
 
 
 def _rng_from_state_json(value: str, *, stream: str) -> np.random.Generator:
@@ -955,7 +1001,7 @@ def _gate_draw_with_rng(
     gate: HistGradientBoostingClassifier,
     features: pd.DataFrame,
     columns: tuple[str, ...],
-    rng: np.random.Generator,
+    rng: _QRFGenerator,
 ) -> np.ndarray:
     """Draw sign classes from a fitted gate using the supplied RNG stream."""
     x = features.loc[:, list(columns)].to_numpy(dtype=np.float64)
@@ -969,7 +1015,7 @@ def _gate_draw_with_rng(
 def _draw_target_with_rng(
     features: pd.DataFrame,
     model: _TargetModel,
-    rng: np.random.Generator,
+    rng: _QRFGenerator,
 ) -> np.ndarray:
     """Draw one target through its regime pipeline with an explicit RNG.
 
@@ -1054,6 +1100,7 @@ class RegimeGatedQRF:
         targets: list[str],
         *,
         weights: WeightSpec = DESIGN_WEIGHTS,
+        rng_generators: _QRFGeneratorPair | None = None,
     ) -> FittedRegimeGatedQRF:
         """Fit the conditional model. See
         :meth:`~microcosm.fit.model.ConditionalModel.fit`.
@@ -1085,8 +1132,11 @@ class RegimeGatedQRF:
         # gate's bootstrap-selection uniforms — the draws were not independent
         # of the fit's resampling. SeedSequence.spawn keeps both reproducible
         # from the one model seed, so determinism is preserved.
-        fit_seed, draw_seed = np.random.SeedSequence(self.seed).spawn(2)
-        rng = np.random.default_rng(fit_seed)
+        if rng_generators is None:
+            fit_seed, draw_seed = np.random.SeedSequence(self.seed).spawn(2)
+            rng: _QRFGenerator = np.random.default_rng(fit_seed)
+        else:
+            rng = rng_generators.fit
 
         target_models: dict[str, _TargetModel] = {}
         for position, target in enumerate(targets):
@@ -1101,13 +1151,24 @@ class RegimeGatedQRF:
                 rng=rng,
             )
 
+        if rng_generators is None:
+            return FittedRegimeGatedQRF(
+                entity=resolved.entity,
+                predictors=predictors,
+                targets=targets,
+                target_models=target_models,
+                zero_atol=self.zero_atol,
+                draw_seed=draw_seed,
+                weight_kind=resolved.weight_kind,
+            )
         return FittedRegimeGatedQRF(
             entity=resolved.entity,
             predictors=predictors,
             targets=targets,
             target_models=target_models,
             zero_atol=self.zero_atol,
-            draw_seed=draw_seed,
+            draw_seed=None,
+            draw_rng=rng_generators.draw,
             weight_kind=resolved.weight_kind,
         )
 
@@ -1118,6 +1179,7 @@ class RegimeGatedQRF:
         targets: list[str],
         *,
         weights: WeightSpec = DESIGN_WEIGHTS,
+        rng_generators: _QRFGeneratorPair | None = None,
     ) -> QRFChainState:
         """Initialize a safe target-at-a-time chain checkpoint.
 
@@ -1130,9 +1192,17 @@ class RegimeGatedQRF:
         predictors = list(predictors)
         targets = list(targets)
         resolved = _resolve_qrf_fit_input(frame_or_df, predictors, targets, weights)
-        fit_seed, draw_seed = np.random.SeedSequence(self.seed).spawn(2)
-        fit_rng = np.random.default_rng(fit_seed)
-        draw_rng = np.random.default_rng(draw_seed)
+        if rng_generators is None:
+            fit_seed, draw_seed = np.random.SeedSequence(self.seed).spawn(2)
+            fit_rng: np.random.Generator | _QRFGeneratorLease = (
+                np.random.default_rng(fit_seed)
+            )
+            draw_rng: np.random.Generator | _QRFGeneratorLease = (
+                np.random.default_rng(draw_seed)
+            )
+        else:
+            fit_rng = rng_generators.fit
+            draw_rng = rng_generators.draw
         return QRFChainState(
             predictors=tuple(predictors),
             targets=tuple(targets),
@@ -1160,6 +1230,7 @@ class RegimeGatedQRF:
         *,
         state: QRFChainState,
         weights: WeightSpec = DESIGN_WEIGHTS,
+        rng_generators: _QRFGeneratorPair | None = None,
     ) -> QRFChainStepResult:
         """Fit and draw exactly the next target in a checkpointed chain.
 
@@ -1199,8 +1270,29 @@ class RegimeGatedQRF:
         position = len(state.completed_targets)
         target = state.targets[position]
         chained = (*state.predictors, *state.completed_targets)
-        fit_rng = _rng_from_state_json(state.fit_rng_state_json, stream="fit")
-        draw_rng = _rng_from_state_json(state.draw_rng_state_json, stream="draw")
+        if rng_generators is None:
+            fit_rng: np.random.Generator | _QRFGeneratorLease = (
+                _rng_from_state_json(state.fit_rng_state_json, stream="fit")
+            )
+            draw_rng: np.random.Generator | _QRFGeneratorLease = (
+                _rng_from_state_json(state.draw_rng_state_json, stream="draw")
+            )
+        else:
+            fit_rng = rng_generators.fit
+            draw_rng = rng_generators.draw
+            # Validate both streams before either can consume a draw. A resumed
+            # lease at the wrong boundary must fail atomically, rather than
+            # advancing the fit stream before discovering draw-stream drift.
+            _require_chain_rng_state(
+                fit_rng,
+                state.fit_rng_state_json,
+                stream="fit",
+            )
+            _require_chain_rng_state(
+                draw_rng,
+                state.draw_rng_state_json,
+                stream="draw",
+            )
         target_model = self._fit_target(
             features=resolved.table.loc[:, list(chained)].to_numpy(dtype=np.float64),
             y=resolved.table[target].to_numpy(dtype=np.float64),
@@ -1341,7 +1433,7 @@ class RegimeGatedQRF:
         y: np.ndarray,
         columns: tuple[str, ...],
         weights: np.ndarray | None,
-        rng: np.random.Generator,
+        rng: _QRFGenerator,
     ) -> _TargetModel:
         """Fit the gate and per-sign forests for one numeric target."""
         regime = detect_regime(y, zero_atol=self.zero_atol)
@@ -1395,7 +1487,7 @@ class RegimeGatedQRF:
         features: np.ndarray,
         labels: np.ndarray,
         weights: np.ndarray | None,
-        rng: np.random.Generator,
+        rng: _QRFGenerator,
     ) -> HistGradientBoostingClassifier:
         """Fit the sign-gate classifier, weighting it directly by sample_weight.
 
@@ -1480,15 +1572,21 @@ class FittedRegimeGatedQRF:
         targets: list[str],
         target_models: dict[str, _TargetModel],
         zero_atol: float,
-        draw_seed: np.random.SeedSequence,
+        draw_seed: np.random.SeedSequence | None,
         weight_kind: str,
+        draw_rng: _QRFGeneratorLease | None = None,
     ) -> None:
         self.entity = entity
         self.predictors = list(predictors)
         self.targets = list(targets)
         self._target_models = target_models
         self._zero_atol = zero_atol
-        self._rng = np.random.default_rng(draw_seed)
+        if draw_rng is None:
+            if draw_seed is None:
+                raise ValueError("Fitted QRF requires a draw seed or draw RNG lease.")
+            self._rng: _QRFGenerator = np.random.default_rng(draw_seed)
+        else:
+            self._rng = draw_rng
         self._weight_kind = weight_kind
 
     @property

@@ -737,6 +737,154 @@ def _json_roundtrip_chain_state(state: QRFChainState) -> QRFChainState:
     return QRFChainState.from_dict(json.loads(json.dumps(state.to_dict())))
 
 
+class _GeneratorLeaseStub:
+    """GeneratorLease-shaped proxy with no public ``bit_generator`` handle."""
+
+    def __init__(self, rng: np.random.Generator) -> None:
+        self._rng = rng
+        self.draw_calls = 0
+
+    def choice(self, *args, **kwargs):
+        self.draw_calls += 1
+        return self._rng.choice(*args, **kwargs)
+
+    def integers(self, *args, **kwargs):
+        self.draw_calls += 1
+        return self._rng.integers(*args, **kwargs)
+
+    def random(self, *args, **kwargs):
+        self.draw_calls += 1
+        return self._rng.random(*args, **kwargs)
+
+    def bit_generator_state(self) -> dict[str, object]:
+        return json.loads(json.dumps(self._rng.bit_generator.state))
+
+
+class _GeneratorPairStub:
+    """QRFGeneratorLease-shaped fit/draw pair for structural API tests."""
+
+    def __init__(
+        self,
+        fit: np.random.Generator,
+        draw: np.random.Generator,
+    ) -> None:
+        self.fit = _GeneratorLeaseStub(fit)
+        self.draw = _GeneratorLeaseStub(draw)
+
+    @classmethod
+    def from_seed(cls, seed: int) -> _GeneratorPairStub:
+        fit_seed, draw_seed = np.random.SeedSequence(seed).spawn(2)
+        return cls(np.random.default_rng(fit_seed), np.random.default_rng(draw_seed))
+
+    @classmethod
+    def from_state(cls, state: QRFChainState) -> _GeneratorPairStub:
+        return cls(
+            _rng_from_state_json(state.fit_rng_state_json, stream="fit"),
+            _rng_from_state_json(state.draw_rng_state_json, stream="draw"),
+        )
+
+
+def test_broker_generator_pair_preserves_monolithic_fit_and_draw_bits(
+    correlated_targets_frame,
+    monkeypatch,
+) -> None:
+    """Injected leases consume the legacy streams and supply fitted draws."""
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+    frame, _ = correlated_targets_frame(seed=31, n=120)
+    recipient = frame.table("person").iloc[::2].loc[:, ["x"]].copy()
+    model = RegimeGatedQRF(n_estimators=4, seed=37)
+
+    expected = model.fit(frame, ["x"], ["first", "second"]).predict(recipient)
+    generators = _GeneratorPairStub.from_seed(model.seed)
+    actual = model.fit(
+        frame,
+        ["x"],
+        ["first", "second"],
+        rng_generators=generators,
+    ).predict(recipient)
+
+    np.testing.assert_array_equal(actual.to_numpy(), expected.to_numpy())
+    assert generators.fit.draw_calls > 0
+    assert generators.draw.draw_calls > 0
+
+
+def test_broker_generator_pair_preserves_chain_state_and_resumed_step_bits(
+    correlated_targets_frame,
+    monkeypatch,
+) -> None:
+    """Chain checkpoints validate, consume, and serialize leased streams."""
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
+    frame, _ = correlated_targets_frame(seed=41, n=100)
+    recipient = frame.table("person").iloc[:40].loc[:, ["x"]].copy()
+    raw_priors = pd.DataFrame(index=recipient.index)
+    model = RegimeGatedQRF(n_estimators=4, seed=43)
+
+    expected_state = model.start_chain(frame, ["x"], ["first", "second"])
+    generators = _GeneratorPairStub.from_seed(model.seed)
+    leased_state = model.start_chain(
+        frame,
+        ["x"],
+        ["first", "second"],
+        rng_generators=generators,
+    )
+    assert leased_state.to_dict() == expected_state.to_dict()
+
+    expected_step = model.fit_draw_next(
+        frame,
+        recipient,
+        raw_priors,
+        state=expected_state,
+    )
+    leased_step = model.fit_draw_next(
+        frame,
+        recipient,
+        raw_priors,
+        state=leased_state,
+        rng_generators=generators,
+    )
+
+    # This successful step is also the regression for the chain-config tuple:
+    # the resolved fit width appears exactly once on each side of that check.
+    np.testing.assert_array_equal(leased_step.raw_draw, expected_step.raw_draw)
+    assert leased_step.state.to_dict() == expected_step.state.to_dict()
+    assert json.loads(leased_step.state.fit_rng_state_json) == (
+        generators.fit.bit_generator_state()
+    )
+    assert json.loads(leased_step.state.draw_rng_state_json) == (
+        generators.draw.bit_generator_state()
+    )
+
+
+def test_broker_generator_pair_refuses_drift_before_any_chain_draw(
+    correlated_targets_frame,
+    monkeypatch,
+) -> None:
+    """A mismatched lease pair fails atomically before either stream advances."""
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    frame, _ = correlated_targets_frame(seed=47, n=60)
+    recipient = frame.table("person").iloc[:20].loc[:, ["x"]].copy()
+    model = RegimeGatedQRF(n_estimators=3, seed=53)
+    state = model.start_chain(frame, ["x"], ["first", "second"])
+    generators = _GeneratorPairStub.from_state(state)
+    generators.draw.random(1)
+    fit_calls = generators.fit.draw_calls
+    draw_calls = generators.draw.draw_calls
+
+    with pytest.raises(ValueError, match="draw RNG lease state does not match"):
+        model.fit_draw_next(
+            frame,
+            recipient,
+            pd.DataFrame(index=recipient.index),
+            state=state,
+            rng_generators=generators,
+        )
+
+    assert generators.fit.draw_calls == fit_calls
+    assert generators.draw.draw_calls == draw_calls
+
+
 def test_targetwise_chain_is_bit_identical_to_monolith_after_json_resumes(
     correlated_targets_frame,
     monkeypatch,
