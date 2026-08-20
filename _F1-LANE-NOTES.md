@@ -1949,3 +1949,40 @@ head; it still writes `us-f1-certification.json` and
   lane, adjudicates the emitted verdict. A current valid FAIL is evidence of
   the deliberately open executor/node-reuse/final-H5/calibration work and is
   not certification.
+
+## F1 continuation r5 completion pass (2026-08-20)
+
+### State
+
+- The prior r5 handoff is retained as an honest historical receipt, but it did
+  not satisfy Deliverable A: bundle physical execution still has no production
+  `execute_node` caller and no non-vacuous full-stage dual-mode fixture.
+- This pass is reopened solely to close that missing executor/broker wiring,
+  then revalidate Deliverables B and C. Constants mode remains the byte oracle.
+- The four untracked owner charter copies remain untouched. No push, stash,
+  sample build, or process above the 20-GiB lane ceiling is authorized.
+- The lane-specific `NEVER touch PROGRESS.md` rule controls the contradictory
+  generic standing order; this committed journal remains the state/done/next
+  record.
+
+### Done
+
+- Reread the complete lane journal, approved charter and D4 owner ruling, and
+  repository instructions before editing.
+- Confirmed current HEAD `88833a30` contains the fail-closed certification
+  runner and bundle authority plumbing but records Deliverable A as incomplete.
+- Started independent read-only audits of the physical call graph, executor /
+  broker adapter contract, and fixture/certification harness. GitNexus graph
+  resources are unavailable in this session, so source tracing uses `rg`,
+  direct reads, tests, and history.
+
+### Next
+
+1. Define a generic physical-node adapter that executes the real bundle node
+   operations as validated `execute_node` transactions with ledger-owned RNG
+   sessions and broker-issued source snapshots.
+2. Wire it behind `config_authority=bundle` only and prove exact once-per-node
+   full-stage dispatch plus D4 two-tier artifact equality at fixture scale.
+3. Reconcile runner coverage with the completed node journal/reuse surface,
+   run only fixture/unit verification, update the host commands and final
+   output report, and stop before any host build.
