@@ -2,16 +2,27 @@
 
 ## State
 
-The 2026-08-20 21:57Z owner continuation has reopened the supplied host 1%
-ACS QRF record-binding failure for an independent current-tree audit. The
-repository charter and GitNexus debugging workflow have been read, the branch
-and handoff artifacts have been inventoried, and the existing correction and
-report are not yet being treated as fresh proof. No executable or test file
-has changed in this continuation. The owner-provided `_BUILD-FAILURE-1PCT.txt`
-and `.codex-memory-guard.py` remain untracked and untouched. Next is to trace
-the historical raise-site flow against the current assigned-target selectors,
-audit the regression for the exact unassigned target, and rerun proportionate
-guarded verification before refreshing `FINAL_REPORT.md`.
+The 2026-08-20 22:06Z owner continuation has completed an independent
+raise-site, current-source, history, and regression audit of the supplied host
+1% ACS QRF record-binding failure. Commit `33bf52fe` detected and copied QRF
+regimes for every imputed target, receipt builders attached that evidence
+globally, and terminal validation entered strict record binding before looking
+up the nine-target calibration assignment. The real 15-target
+`puf_tax_itemization` producer therefore supplied bounded family
+`puf_tax_itemization__batch_1` for unassigned `taxable_interest_income` while
+the validator expected the unsplit family. The complete current correction is
+already committed in `176c60fc`, `887df056`, and `94b7aecb`: generic transfer
+defaults evidence work off; canonical early/late producers and receipt builders
+derive exact two-early/seven-late selections from the immutable specs; and both
+validators reject evidence on an unassigned target before invoking exact
+record binding only for assigned targets. Existing regressions cover the exact
+synthetic host failure, the real banked 15-target producer, and the unsafe
+permissive workaround via a fully rehashed in-range family alias. No material
+runtime or test gap was found, so no duplicate executable edit is warranted.
+The GitNexus workflow generated a local graph, but registration and subsequent
+query/context calls were blocked by the sandboxed user-wide registry; its
+112 MiB cache was removed. Guarded current-tree verification and final report
+refresh remain next. The owner artifacts remain untracked and untouched.
 
 The immediately preceding completion snapshot follows and is historical rather
 than current state.
@@ -185,6 +196,37 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Reconstructed the exact historical failure at `33bf52fe`: global regime
+  provenance reached every record; both early and late receipt builders
+  attached it for every imputed target; and the early validator called strict
+  QRF record binding before consulting calibration assignment. The traceback
+  line numbers exactly identify its unsplit-versus-`__batch_1` family mismatch.
+- Enumerated the live immutable registry and every canonical selector. The
+  selected surface is exactly two early and seven late targets across the
+  assigned model-required, source-operator, and adult-care families;
+  `taxable_interest_income` is absent. Generic and multispine callers default
+  to no regime work, while canonical stacked producers pass only that exact
+  registry-derived selection.
+- Audited producer provenance, receipt attachment, and terminal validation on
+  both early and late paths. Unassigned records have empty regimes, their
+  receipts omit QRF evidence, and validators reject forged evidence before
+  exact selected-family binding while still enforcing all four transfer
+  counts.
+- Audited the decisive regression trio: the exact synthetic unassigned target,
+  the real banked 15-target family, and the fully rehashed plausible in-range
+  family forgery. Together they distinguish the bad global behavior from both
+  the final scoped fix and the intermediate permissive family matcher; no
+  material binding regression is missing.
+- Followed the GitNexus debugging workflow. Analysis built a fresh 112 MiB
+  local graph, but the sandbox denied its registration through
+  `~/.gitnexus/registry.json`, so query/context could not resolve this repo.
+  The generated cache was removed; direct source, history, and regression
+  tracing independently established the same call path.
+- Checked the active host retry read-only. It had passed survey 47/47 and
+  housing 1/1 and was partway through primary-QRF checkpoints without the old
+  traceback, but it remained mutable, had no runner exit marker or final pool,
+  manifest, or gates files, and carried no Microcosm revision binding. Host
+  success is not claimed.
 - Reopened the committed root journal before any implementation or test work,
   read `CLAUDE.md` and the GitNexus debugging instructions in full, inventoried
   the existing correction/report history, and preserved both untracked owner
@@ -584,13 +626,10 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Reconstruct the historical failing call path from the cited invariant and
-   compare it with every current canonical producer and validator selector.
-2. Audit and rerun the regressions that distinguish unassigned wide-family
-   records from exact assigned-family binding; add a test only if coverage is
-   materially missing.
-3. Run the affected suite and static checks under the supplied memory guard,
+1. Rerun the decisive regressions that distinguish unassigned wide-family
+   records from exact assigned-family binding under the supplied memory guard.
+2. Run the full directly affected suite and static checks under the guard,
    then refresh and commit `PROGRESS.md` and `FINAL_REPORT.md` with only the
    results established on this revision.
-4. Leave the revision-bound off-chain 1% retry as the remaining host step
+3. Leave the revision-bound off-chain 1% retry as the remaining host step
    unless an already-complete terminal artifact can be identified read-only.
