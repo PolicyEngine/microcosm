@@ -8,76 +8,76 @@ from typing import Any
 
 import pytest
 
-from microcosm.build.spec_engine import load_schema_registry
+from microcosm.build.spec_engine import (
+    CompiledSpecIR,
+    compile_spec,
+    load_bundle,
+    load_schema_registry,
+)
 from microcosm.build.spec_engine.model import EntitySpec, thaw_json
 from microcosm.build.spec_engine.typed_closure import (
     TypedClosureError,
-    TypedClosureResult,
     compile_producer_outputs,
     resolve_typed_closure,
 )
-from tools.us_bundle_generation.contracts import build_take_up
-from tools.us_bundle_generation.core import build_catalogs
-from tools.us_bundle_generation.imputation import build_imputation
 
 pytest.importorskip(
     "policyengine_us",
     reason="live-engine oracle: the wheels gate's venv installs no engine",
 )
 
-_ENTITY_IDS = (
-    "person",
-    "tax_unit",
-    "spm_unit",
-    "household",
-    "family",
-    "benunit",
-    "marital_unit",
-    "frame",
-)
-_ENTITIES = tuple(EntitySpec(entity_id) for entity_id in _ENTITY_IDS)
+
+@pytest.fixture(scope="module")
+def compiled_us() -> CompiledSpecIR:
+    return compile_spec(load_bundle("us"))
 
 
 @pytest.fixture(scope="module")
-def typed_resources() -> dict[str, Any]:
-    return {
-        "imputation": build_imputation(),
-        "catalogs": build_catalogs(),
-        "take_up": build_take_up(),
-    }
+def typed_resources(compiled_us: CompiledSpecIR) -> dict[str, Any]:
+    return compiled_us.resources_wire()
 
 
 @pytest.fixture(scope="module")
-def typed_result(typed_resources: dict[str, Any]) -> TypedClosureResult:
-    return resolve_typed_closure(typed_resources, entities=_ENTITIES)
+def typed_entities(compiled_us: CompiledSpecIR) -> tuple[EntitySpec, ...]:
+    return tuple(
+        EntitySpec(str(row["id"])) for row in compiled_us.typed_inventory["entities"]
+    )
 
 
 def test_us_typed_closure_has_exact_inventory_counts(
-    typed_resources: dict[str, Any],
-    typed_result: TypedClosureResult,
+    compiled_us: CompiledSpecIR,
 ) -> None:
-    assert len(typed_result.columns) == 173
-    assert len(typed_result.artifacts) == 84
-    assert len(typed_result.scopes) == 7
-    assert Counter(artifact.kind for artifact in typed_result.artifacts) == {
+    inventory = compiled_us.typed_inventory
+    assert len(inventory["columns"]) == 173
+    assert len(inventory["artifacts"]) == 84
+    assert len(inventory["scopes"]) == 7
+    assert Counter(artifact["kind"] for artifact in inventory["artifacts"]) == {
         "producer_node": 38,
         "virtual_output": 18,
         "virtual_resource_binding": 28,
     }
 
-    graph = typed_resources["imputation"]["producer_graph"]
-    assert sum(len(node["outputs"]) for node in graph["nodes"]) == 92
-    compiled_outputs = compile_producer_outputs(typed_resources)
-    assert sum(len(rows) for rows in compiled_outputs.values()) == 227
-    assert sum(len(node["virtual_resources"]) for node in graph["nodes"]) == 75
-    column_keys = {column.key for column in typed_result.columns}
+    graph = compiled_us.producer_graph
+    assert sum(len(node.source["outputs"]) for node in graph.nodes) == 92
+    assert sum(len(node.outputs) for node in graph.nodes) == 227
+    assert sum(len(node.write_scopes) for node in graph.nodes) == 227
+    assert (
+        sum(
+            len(scope["cell_segments"])
+            for node in graph.nodes
+            for scope in node.write_scopes
+        )
+        == 241
+    )
+    assert sum(len(node.source["virtual_resources"]) for node in graph.nodes) == 75
+    column_keys = {column["key"] for column in inventory["columns"]}
     output_artifact_ids = {
-        artifact.id
-        for artifact in typed_result.artifacts
-        if artifact.kind == "virtual_output"
+        artifact["id"]
+        for artifact in inventory["artifacts"]
+        if artifact["kind"] == "virtual_output"
     }
-    for node in graph["nodes"]:
-        for output in compiled_outputs[node["id"]]:
+    for node in graph.nodes:
+        for output in node.outputs:
             key = f"{output['entity']}.{output['column']}"
             is_virtual = (
                 output["column"].startswith("@")
@@ -89,18 +89,18 @@ def test_us_typed_closure_has_exact_inventory_counts(
             )
 
     resource_artifacts = {
-        artifact.id: artifact
-        for artifact in typed_result.artifacts
-        if artifact.kind == "virtual_resource_binding"
+        artifact["id"]: artifact
+        for artifact in inventory["artifacts"]
+        if artifact["kind"] == "virtual_resource_binding"
     }
     assert set(resource_artifacts) == {
         resource["id"]
-        for node in graph["nodes"]
-        for resource in node["virtual_resources"]
+        for node in graph.nodes
+        for resource in node.source["virtual_resources"]
     }
     assert (
         sum(
-            len(thaw_json(artifact.binding)["rows"])
+            len(thaw_json(artifact["binding"])["rows"])
             for artifact in resource_artifacts.values()
         )
         == 75
@@ -108,9 +108,10 @@ def test_us_typed_closure_has_exact_inventory_counts(
 
 
 def test_us_scope_specs_are_exact_finite_predicates(
-    typed_result: TypedClosureResult,
+    compiled_us: CompiledSpecIR,
 ) -> None:
-    assert [(scope.id, scope.predicate_space) for scope in typed_result.scopes] == [
+    scopes = compiled_us.typed_inventory["scopes"]
+    assert [(scope["id"], scope["predicate_space"]) for scope in scopes] == [
         ("acs_source", "producer_origin_clone_or_receipt"),
         ("asec_source", "producer_origin_clone_or_receipt"),
         ("puf_clone", "producer_origin_clone_or_receipt"),
@@ -120,9 +121,9 @@ def test_us_scope_specs_are_exact_finite_predicates(
         ("puf_support_rows", "take_up_support_channel"),
     ]
     take_up_scopes = {
-        scope.id: set(thaw_json(scope.predicate)["atoms"])
-        for scope in typed_result.scopes
-        if scope.predicate_space == "take_up_support_channel"
+        scope["id"]: set(thaw_json(scope["predicate"])["atoms"])
+        for scope in scopes
+        if scope["predicate_space"] == "take_up_support_channel"
     }
     assert take_up_scopes["asec_rows"].isdisjoint(take_up_scopes["puf_support_rows"])
     assert set().union(*take_up_scopes.values()) == {
@@ -150,9 +151,7 @@ def test_family_owned_output_mirrors_refuse_before_typed_compilation(
         if family["stage"] == "primary_puf_qrf"
     )
     target = next(
-        row
-        for row in primary["targets"]
-        if row["output_coverage_scope"] == "puf_clone"
+        row for row in primary["targets"] if row["output_coverage_scope"] == "puf_clone"
     )
     node = next(
         row
@@ -195,6 +194,7 @@ def test_scope_registries_are_explicit_and_equal_the_compiler_defaults(
 
 def test_missing_physical_column_contract_refuses(
     typed_resources: dict[str, Any],
+    typed_entities: tuple[EntitySpec, ...],
 ) -> None:
     mutated = copy.deepcopy(typed_resources)
     mutated["catalogs"]["columns"] = [
@@ -203,16 +203,17 @@ def test_missing_physical_column_contract_refuses(
         if row["key"] != "family.@resolved_weight"
     ]
     with pytest.raises(TypedClosureError, match="missing compiled physical output"):
-        resolve_typed_closure(mutated, entities=_ENTITIES)
+        resolve_typed_closure(mutated, entities=typed_entities)
 
 
 def test_expired_catalog_metadata_waiver_refuses(
     typed_resources: dict[str, Any],
+    typed_entities: tuple[EntitySpec, ...],
 ) -> None:
     mutated = copy.deepcopy(typed_resources)
     mutated["catalogs"]["metadata_waivers"][0]["expires_on"] = "2000-01-01"
     with pytest.raises(TypedClosureError, match="metadata waiver expired"):
-        resolve_typed_closure(mutated, entities=_ENTITIES)
+        resolve_typed_closure(mutated, entities=typed_entities)
 
 
 @pytest.mark.parametrize(
@@ -232,6 +233,7 @@ def test_expired_catalog_metadata_waiver_refuses(
 )
 def test_dangling_virtual_resource_binding_refuses(
     typed_resources: dict[str, Any],
+    typed_entities: tuple[EntitySpec, ...],
     mutation,
     message: str,
 ) -> None:
@@ -241,18 +243,19 @@ def test_dangling_virtual_resource_binding_refuses(
     ]
     mutation(resource)
     with pytest.raises(TypedClosureError, match=message):
-        resolve_typed_closure(mutated, entities=_ENTITIES)
+        resolve_typed_closure(mutated, entities=typed_entities)
 
 
 def test_dangling_producer_scope_reference_refuses(
     typed_resources: dict[str, Any],
+    typed_entities: tuple[EntitySpec, ...],
 ) -> None:
     mutated = copy.deepcopy(typed_resources)
     mutated["imputation"]["producer_graph"]["nodes"][0]["outputs"][0][
         "coverage_scope"
     ] = "missing_scope"
     with pytest.raises(TypedClosureError, match="dangling producer row scope"):
-        resolve_typed_closure(mutated, entities=_ENTITIES)
+        resolve_typed_closure(mutated, entities=typed_entities)
 
 
 def _replace_scope(value: object, old: str, new: str) -> None:
@@ -270,16 +273,20 @@ def _replace_scope(value: object, old: str, new: str) -> None:
             _replace_scope(child, old, new)
 
 
-def test_orphan_producer_scope_refuses(typed_resources: dict[str, Any]) -> None:
+def test_orphan_producer_scope_refuses(
+    typed_resources: dict[str, Any],
+    typed_entities: tuple[EntitySpec, ...],
+) -> None:
     mutated = copy.deepcopy(typed_resources)
     graph = mutated["imputation"]["producer_graph"]
     _replace_scope(graph, "receipt", "whole_pool")
     with pytest.raises(TypedClosureError, match=r"orphan scopes \['receipt'\]"):
-        resolve_typed_closure(mutated, entities=_ENTITIES)
+        resolve_typed_closure(mutated, entities=typed_entities)
 
 
 def test_mixed_take_up_scope_overlap_refuses(
     typed_resources: dict[str, Any],
+    typed_entities: tuple[EntitySpec, ...],
 ) -> None:
     mutated = copy.deepcopy(typed_resources)
     mixed = next(
@@ -289,4 +296,4 @@ def test_mixed_take_up_scope_overlap_refuses(
     )
     mixed["segments"][1]["row_scope"] = mixed["segments"][0]["row_scope"]
     with pytest.raises(TypedClosureError, match="scope predicates overlap"):
-        resolve_typed_closure(mutated, entities=_ENTITIES)
+        resolve_typed_closure(mutated, entities=typed_entities)

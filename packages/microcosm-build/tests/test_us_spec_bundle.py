@@ -16,10 +16,12 @@ import pytest
 from microcosm.build.country_spec import ResolvedCountrySpec, load_country_spec
 from microcosm.build.spec_engine import (
     F0_KERNEL_REGISTRY,
+    CompiledSpecIR,
     ResolvedSpec,
     ResourceKind,
     SpecResolutionError,
     SpecValidationError,
+    compile_spec,
     load_bundle,
     load_schema_registry,
 )
@@ -207,6 +209,11 @@ def resolved_us_spec() -> ResolvedSpec:
 
 
 @pytest.fixture(scope="module")
+def compiled_us(resolved_us_spec: ResolvedSpec) -> CompiledSpecIR:
+    return compile_spec(resolved_us_spec)
+
+
+@pytest.fixture(scope="module")
 def resolved_country_spec() -> ResolvedCountrySpec:
     return load_country_spec("us")
 
@@ -282,18 +289,18 @@ def test_us_package_has_twelve_typed_domains_and_loads_through_one_seam(
     assert len(resolved_country_spec.support_spine.support_spine.sources) == 2
 
 
-def test_constant_derived_domain_counts_are_complete(
-    resolved_us_spec: ResolvedSpec,
+def test_compiler_domain_counts_and_derived_surfaces_are_complete(
+    compiled_us: CompiledSpecIR,
 ) -> None:
-    sources = _domain(resolved_us_spec, ResourceKind.SOURCES)
-    bundle = _domain(resolved_us_spec, ResourceKind.BUNDLE)
-    spine = _domain(resolved_us_spec, ResourceKind.SPINE)
-    imputation = _domain(resolved_us_spec, ResourceKind.IMPUTATION)
-    take_up = _domain(resolved_us_spec, ResourceKind.TAKE_UP)
-    battery = _domain(resolved_us_spec, ResourceKind.BATTERY)
-    calibration = _domain(resolved_us_spec, ResourceKind.CALIBRATION)
-    selection = _domain(resolved_us_spec, ResourceKind.SELECTION)
-    catalogs = _domain(resolved_us_spec, ResourceKind.CATALOGS)
+    sources = compiled_us.resource(ResourceKind.SOURCES)
+    bundle = compiled_us.resource(ResourceKind.BUNDLE)
+    spine = compiled_us.resource(ResourceKind.SPINE)
+    imputation = compiled_us.resource(ResourceKind.IMPUTATION)
+    take_up = compiled_us.resource(ResourceKind.TAKE_UP)
+    battery = compiled_us.resource(ResourceKind.BATTERY)
+    calibration = compiled_us.resource(ResourceKind.CALIBRATION)
+    selection = compiled_us.resource(ResourceKind.SELECTION)
+    catalogs = compiled_us.resource(ResourceKind.CATALOGS)
 
     assert len(sources["sources"]) == 7
     assert len(sources["stages"]) == 37
@@ -438,6 +445,15 @@ def test_constant_derived_domain_counts_are_complete(
         for step in local_steps
     )
     assert all(step["kernel"].startswith("kernel:") for step in take_up_steps)
+    assert sum(len(node.outputs) for node in compiled_us.producer_graph.nodes) == 227
+    assert (
+        sum(
+            len(scope["cell_segments"])
+            for node in compiled_us.producer_graph.nodes
+            for scope in node.write_scopes
+        )
+        == 241
+    )
     assert len(battery["metric_registry"]) == 131
     assert len(battery["joint_metric_registry"]) == 1
     assert "metric_counts" not in battery
@@ -473,13 +489,15 @@ def test_constant_derived_domain_counts_are_complete(
         assert selection["exact_k"][knob]["required"] is True
         assert selection["exact_k"][knob]["default"] is None
     assert len(catalogs["columns"]) == 173
-    assert len(resolved_us_spec.columns) == 173
-    assert Counter(artifact.kind for artifact in resolved_us_spec.artifacts) == {
+    assert len(compiled_us.typed_inventory["columns"]) == 173
+    assert Counter(
+        artifact["kind"] for artifact in compiled_us.typed_inventory["artifacts"]
+    ) == {
         "producer_node": 38,
         "virtual_output": 18,
         "virtual_resource_binding": 28,
     }
-    assert len(resolved_us_spec.scopes) == 7
+    assert len(compiled_us.typed_inventory["scopes"]) == 7
 
 
 def test_eligibility_blind_targets_have_one_explicit_f_p_waiver(

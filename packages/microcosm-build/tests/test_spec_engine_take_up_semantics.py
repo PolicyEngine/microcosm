@@ -3,22 +3,23 @@
 from __future__ import annotations
 
 import copy
-import importlib.util
 import json
-import sys
-import types
 from collections.abc import Iterator, Mapping
+from functools import lru_cache
 from pathlib import Path
 
 import pytest
 
 from microcosm.build.spec_engine import (
+    CompiledSpecIR,
     SpecValidationError,
+    compile_spec,
+    load_bundle,
     load_schema_registry,
-    load_yaml12_file,
     project_legacy_take_up_contract,
     validate_take_up_semantics,
 )
+from microcosm.build.spec_engine.model import thaw_json
 from microcosm.build.spec_engine.take_up_semantics import (
     project_legacy_take_up_identity,
 )
@@ -34,42 +35,19 @@ pytest.importorskip(
 
 ROOT = Path(__file__).resolve().parents[3]
 US_ROOT = ROOT / "packages/microcosm-build/src/microcosm/build/us"
-SPEC_ROOT = US_ROOT / "spec"
 
 
-def _load_contract_builder():
-    # Pytest's importlib mode intentionally omits the repository root from
-    # sys.path.  Load this migration-only tool by path while registering its
-    # namespace for its own lazy ``tools.*`` imports.
-    if "tools" not in sys.modules:
-        tools_package = types.ModuleType("tools")
-        tools_package.__path__ = [str(ROOT / "tools")]
-        sys.modules["tools"] = tools_package
-    name = "f0_us_bundle_contracts"
-    if name in sys.modules:
-        return sys.modules[name]
-    spec = importlib.util.spec_from_file_location(
-        name,
-        ROOT / "tools/us_bundle_generation/contracts.py",
-    )
-    assert spec is not None and spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-build_take_up_contract = _load_contract_builder().build_take_up_contract
+@lru_cache(maxsize=1)
+def _compiled_us() -> CompiledSpecIR:
+    return compile_spec(load_bundle("us"))
 
 
 def _documents() -> tuple[dict[str, object], dict[str, object]]:
-    # Generate take_up from constants in memory so these migration tests remain
-    # useful while the checked-in YAML is intentionally stale during a schema
-    # change.  The source document is already the source-operation authority.
-    take_up = build_take_up_contract()
-    sources = load_yaml12_file(SPEC_ROOT / "sources.yaml")
-    assert isinstance(sources, dict)
-    return take_up, sources
+    resources = _compiled_us().resources_wire()
+    return (
+        copy.deepcopy(resources["take_up"]),
+        copy.deepcopy(resources["sources"]),
+    )
 
 
 def _program(document: dict[str, object], program_id: str) -> dict[str, object]:
@@ -98,7 +76,9 @@ def _steps(
 
 
 def _engine_abi_lock() -> dict[str, object]:
-    return json.loads((US_ROOT / "engine_abi.lock.json").read_text())
+    lock = thaw_json(_compiled_us().generated_authorities["engine_abi_lock"])
+    assert isinstance(lock, dict)
+    return lock
 
 
 def _project(
@@ -130,10 +110,7 @@ def test_generated_take_up_has_closed_coherent_semantics() -> None:
 
 def test_source_backed_steps_are_thin_resolved_references() -> None:
     take_up, sources = _documents()
-    stages = {
-        stage["stage"]: stage["operations"]
-        for stage in sources["stages"]
-    }
+    stages = {stage["stage"]: stage["operations"] for stage in sources["stages"]}
     residual_fields = {
         "anchor_column",
         "calibration_review",
@@ -330,9 +307,9 @@ def test_normative_owner_mutations_name_the_legacy_fields_they_change() -> None:
     assert baseline["programs"][12]["rate"]["value"] == 0.672
 
     engine = copy.deepcopy(take_up)
-    _program(engine, "chip")["pipeline"][0]["debt"]["rate_review"][
-        "status"
-    ] = "review_mutated"
+    _program(engine, "chip")["pipeline"][0]["debt"]["rate_review"]["status"] = (
+        "review_mutated"
+    )
     assert _project(engine, sources)["programs"][4]["rate"]["status"] == (
         "review_mutated"
     )
