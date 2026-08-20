@@ -458,7 +458,7 @@ def test_dangling_or_kind_incompatible_vintage_authority_is_refused() -> None:
 
 
 def test_us_catalog_has_complete_explicit_contracts() -> None:
-    pytest.importorskip("policyengine_us")
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
     catalog = build_catalogs()
     columns = catalog["columns"]
     assert len(columns) == 173
@@ -530,7 +530,7 @@ def test_us_catalog_has_complete_explicit_contracts() -> None:
 
 @pytest.mark.parametrize("field", ["unit", "domain", "public_stability"])
 def test_catalog_schema_requires_complete_contract_fields(field: str) -> None:
-    pytest.importorskip("policyengine_us")
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
     catalog = build_catalogs()
     del catalog["columns"][0]["contract"][field]
     with pytest.raises(SpecValidationError, match=field):

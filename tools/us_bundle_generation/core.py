@@ -250,7 +250,7 @@ def canonical_input_pins() -> dict[str, dict[str, int | str]]:
         ACS_2022_RENT_ARTIFACT_SHA256,
     )
 
-    rows = load_logbook_file(_REPOSITORY_ROOT / "logbook.jsonl")
+    rows = load_logbook_file(_REPOSITORY_ROOT / "logbook" / "us.jsonl")
     matches = [row for row in rows if row.build_id == _CANONICAL_INPUT_PIN_BUILD_ID]
     if len(matches) != 1:
         raise ValueError(

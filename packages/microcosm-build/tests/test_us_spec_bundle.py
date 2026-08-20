@@ -226,6 +226,7 @@ def generated_documents() -> dict[str, dict[str, object]]:
     pytest.importorskip(
         "policyengine_us",
         reason="live-engine oracle: the wheels gate's venv installs no engine",
+        exc_type=ModuleNotFoundError,
     )
     return generator.build_documents()
 
@@ -671,7 +672,7 @@ def test_nested_normative_objects_refuse_unknown_fields(
 def test_typed_domains_are_exact_legacy_compatibility_projections(
     resolved_us_spec: ResolvedSpec,
 ) -> None:
-    pytest.importorskip("policyengine_us")
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
     documents = {
         f"{kind}.yaml": _domain(resolved_us_spec, kind) for kind in TYPED_DOMAIN_KINDS
     }

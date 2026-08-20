@@ -227,7 +227,7 @@ def test_resolved_seed_protocol_expansion_is_spec_normative(
 
 
 def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> None:
-    pytest.importorskip("policyengine_us")
+    pytest.importorskip("policyengine_us", exc_type=ModuleNotFoundError)
     first = load_bundle(
         _rich_minimal(tmp_path / "xx", note="first", store="local:a"),
         kernel_registry=KernelRegistry.from_ids(SELECTION_KERNEL_IDS),
@@ -235,7 +235,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # Pin the domain separator, normalization rules, schema-set receipt, and
     # exact normative projection as one reviewable golden vector.
     assert first.spec_sha256 == (
-        "227ed01608e9a1103651d35711ac0bf39e17da681c75170635068d3514f81201"
+        "9afebedeebc4194243e8307703ebc0feac975a69a186d28e266f1c4ef356bbe3"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

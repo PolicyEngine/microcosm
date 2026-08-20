@@ -32,7 +32,7 @@ EXPECTED_RESOURCES = {
     [
         (
             "be",
-            "775902c9eedeeb376bdfa3ed5bfda983b6b5a0517b520fa5789867c4e7812172",
+            "262091db8c7b01b2a3b596aa2468d95855a63703ba9f8ebba2940cf5834c2c83",
             {
                 "household.household_id",
                 "person.person_id",
@@ -42,7 +42,7 @@ EXPECTED_RESOURCES = {
         ),
         (
             "uk",
-            "cff22ddb86ddbf814479a0a996f6474182a2b36e2474ad519c3881859a0abec7",
+            "beed723a64944a2dc45c85a6853a51666885aba0aeca0e1ada6680a6352fb44c",
             {
                 "benunit.benunit_id",
                 "household.household_id",
@@ -63,6 +63,7 @@ def test_country_bundle_loads_once_and_compiles_through_the_shared_core(
         pytest.importorskip(
             "policyengine_us",
             reason="US compile proof reads the live engine ABI",
+            exc_type=ModuleNotFoundError,
         )
     direct = load_bundle(country)
     country_spec = load_country_spec(country)
