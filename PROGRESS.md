@@ -4,9 +4,9 @@
 
 Source-operator two-part calibration (13 checks), adult-care
 post-reconciliation (2 checks), and unemployment-compensation targeted
-calibration (1 check) are in diagnosis on `battery-pkg3-two-part` at
-`164027e2`. No artifact-producing code or frozen battery configuration has
-changed yet.
+calibration (1 check) have an uncontaminated 1% before artifact on
+`battery-pkg3-two-part` at `164027e2`. No artifact-producing code or frozen
+battery configuration has changed yet.
 
 The required `uv sync --all-packages --extra us` was attempted first. The
 default cache is sandbox-read-only; a retry with a writable cache reached PyPI
@@ -30,13 +30,24 @@ directories.
   surface for this journal checkpoint.
 - Preserved the mandated off-chain build contract: 1% sample, sample seed 578,
   no previous-row digest, and no pending-chain file changes.
+- Completed the before build with the canonical 100-tree fits under a hard
+  13.5 GiB process guard; peak observed per-process RSS was 10.733 GiB. The
+  expected frozen terminal battery failed and wrote its non-ready diagnostics.
+- Extracted all 16 assigned before measurements. At 1%, adult-care and
+  workers'-compensation conditional quantiles are below the battery's five-row
+  support floor; their manual five-quantile diagnostics are recorded alongside
+  the honest unsupported gate status in `_LANE-NOTES.md`.
+- Completed the implementation design: deterministic nearest-weight carrier
+  mass, five-grid donor inverse-ECDF amounts, exact ACS clone-0 mutable scope,
+  frozen unemployment/disability carriers, byte-preserved negative
+  self-employment values, adult-care structural qualification, and
+  unemployment-compensation-limited weeks capacity.
 
 ## Next
 
-1. Record a 1% before artifact and extract all 16 assigned check values.
-2. Add artifact-side calibrations and focused behavioral tests without changing
+1. Add artifact-side calibrations and focused behavioral tests without changing
    any band, threshold, seed, fold, or comparator.
-3. Commit each coherent green step and update this journal plus
+2. Commit each coherent green step and update this journal plus
    `_LANE-NOTES.md`.
-4. Rebuild at 1%, report per-check before/after movement, run the complete test
+3. Rebuild at 1%, report per-check before/after movement, run the complete test
    and lint suites, and write `FINAL_REPORT.md`.
