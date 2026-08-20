@@ -2,12 +2,14 @@
 
 ## State
 
-Complete on `battery-excl-machinery`, which started from `origin/main` at
-`164027e2`. The empty schema-2 register, strict authenticated loader, exact
+Independent completion audit in progress on `battery-excl-machinery`, which
+started from `origin/main` at `164027e2`. The pre-existing lane history already
+contains the empty schema-2 register, strict authenticated loader, exact
 criterion lifecycle machinery, terminal-manifest validation, CLI wiring,
-configuration-boundary hardening, and tests are committed. The assigned scope
-remains machinery only: no band, threshold, seed, fold, comparison algorithm,
-or exclusion approval changed.
+configuration-boundary hardening, and tests. This pass is preserving that
+history while adversarially rechecking the implementation and current suite.
+The assigned scope remains machinery only: no band, threshold, seed, fold,
+comparison algorithm, or exclusion approval will change.
 
 ## Done
 
@@ -109,9 +111,12 @@ or exclusion approval changed.
 
 ## Next
 
-- Owner review and push. The two measured QBI rows remain non-exclusion
-  `FIX-CANDIDATE` work for a separate per-target clone-role comparator lane;
-  this lane's register intentionally remains empty.
+- Complete independent schema/loader, battery/manifest, and driver/packaging
+  audits; fix and commit any concrete defects; rerun focused and workspace
+  verification; then refresh the final report for owner review and push. The
+  two measured QBI rows remain non-exclusion `FIX-CANDIDATE` work for a
+  separate per-target clone-role comparator lane; this lane's register must
+  remain empty.
 
 ## Historical note
 

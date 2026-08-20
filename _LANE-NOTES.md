@@ -119,6 +119,13 @@
 
 ## Work log
 
+- 2026-08-20: began an independent completion audit after finding the assigned
+  clean worktree already contained ten unpushed lane commits. Re-attempted the
+  required US-extra sync first; the global cache remained sandbox-blocked and
+  the writable-cache retry remained DNS-blocked at the isolated `hatchling`
+  build dependency. The existing history is being preserved while the
+  loader, terminal lifecycle/manifest logic, driver wiring, packaging, and
+  tests are rechecked.
 - 2026-08-19: initialized the lane journals before implementation.
 - 2026-08-19: the required uv sync is currently environment-blocked: the
   managed sandbox denies writes to the default cache, and the writable-cache
