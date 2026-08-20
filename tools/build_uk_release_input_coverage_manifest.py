@@ -994,6 +994,20 @@ def _hmrc_family_coverage_contract(
     stage = stages[0]
     if not isinstance(stage, dict) or stage.get("stage") != "hmrc_spi_income":
         raise ValueError(f"{HMRC_SOURCE_STAGES_PATH}: expected hmrc_spi_income stage.")
+    canonical_payload = _load(SOURCE_STAGES_PATH)
+    canonical_stages = canonical_payload.get("stages")
+    if not isinstance(canonical_stages, list):
+        raise ValueError(f"{SOURCE_STAGES_PATH}: expected source stages list.")
+    canonical_matches = [
+        candidate
+        for candidate in canonical_stages
+        if isinstance(candidate, dict) and candidate.get("stage") == "hmrc_spi_income"
+    ]
+    if len(canonical_matches) != 1:
+        raise ValueError(
+            f"{SOURCE_STAGES_PATH}: expected exactly one hmrc_spi_income stage."
+        )
+    canonical_stage = canonical_matches[0]
     base_candidate = stage.get("base_candidate")
     if not isinstance(base_candidate, dict):
         raise ValueError(
@@ -1011,6 +1025,11 @@ def _hmrc_family_coverage_contract(
         for artifact in stage.get("artifacts", [])
         if isinstance(artifact, dict) and isinstance(artifact.get("role"), str)
     }
+    canonical_artifacts = {
+        artifact["role"]: artifact
+        for artifact in canonical_stage.get("artifacts", [])
+        if isinstance(artifact, dict) and isinstance(artifact.get("role"), str)
+    }
     operations = {
         operation["kind"]: operation
         for operation in stage.get("operations", [])
@@ -1018,6 +1037,7 @@ def _hmrc_family_coverage_contract(
     }
     required_artifacts = {"qrf_donor", "published_fact_surface"}
     missing_artifacts = sorted(required_artifacts - set(artifacts))
+    missing_canonical_artifacts = sorted(required_artifacts - set(canonical_artifacts))
     required_operations = {
         "retain_adjudicated_frs_hmrc_leaves",
         "verify_pinned_hmrc_source_pair",
@@ -1026,10 +1046,11 @@ def _hmrc_family_coverage_contract(
         "gate_distributional_effective_mass",
     }
     missing_operations = sorted(required_operations - set(operations))
-    if missing_artifacts or missing_operations:
+    if missing_artifacts or missing_canonical_artifacts or missing_operations:
         raise ValueError(
             f"{HMRC_SOURCE_STAGES_PATH}: incomplete HMRC family contract; "
             f"missing_artifacts={missing_artifacts}, "
+            f"missing_canonical_artifacts={missing_canonical_artifacts}, "
             f"missing_operations={missing_operations}."
         )
     classification = operations["classify_hmrc_income_facts_with_reviewed_fences"]
@@ -1082,7 +1103,10 @@ def _hmrc_family_coverage_contract(
             "spi_donor": str(artifacts["qrf_donor"]["vintage"]),
             "hmrc_surface": str(artifacts["published_fact_surface"]["vintage"]),
             "mapped_build_period": str(
-                artifacts["published_fact_surface"]["mapped_build_period"]
+                canonical_artifacts["published_fact_surface"]["mapped_build_period"]
+            ),
+            "period_mapping": str(
+                canonical_artifacts["published_fact_surface"]["period_mapping"]
             ),
         },
         "spi_prior_national_household_mass_share": float(

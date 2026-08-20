@@ -75,7 +75,7 @@ def synthetic_efrs(tmp_path, monkeypatch) -> Path:
             "council_tax": np.array([1_000.0, 2_000.0, 3_000.0]),
         }
     )
-    path = tmp_path / "enhanced_frs_2023_24.h5"
+    path = tmp_path / "enhanced_frs_2024_25.h5"
     with pd.HDFStore(path) as store:
         store.put("person", person, format="table", data_columns=True)
         store.put("benunit", benunit, format="table", data_columns=True)

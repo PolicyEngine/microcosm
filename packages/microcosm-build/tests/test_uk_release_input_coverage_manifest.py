@@ -168,7 +168,8 @@ def test_hmrc_stage_is_required_while_the_208_fact_replay_remains_fenced() -> No
     assert family["source_vintages"] == {
         "spi_donor": "2022-23",
         "hmrc_surface": "2023-24",
-        "mapped_build_period": "2023",
+        "mapped_build_period": "2024",
+        "period_mapping": "latest_published_tax_year",
     }
     assert family["spi_prior_national_household_mass_share"] == 0.5
     assert family["required_mass_change_reason"] == (
