@@ -1118,7 +1118,12 @@ def _canonical_late_transfer_receipt(
     )
     for group in pool_tool.CANONICAL_US_LATE_TRANSFER_GROUPS:
         group_targets = {
-            f"{group.entity}/{group.family}/{target}": {"residual_null_rows": 0}
+            f"{group.entity}/{group.family}/{target}": {
+                "authorized_null_rows": 0,
+                "imputed_rows": 0,
+                "unmodeled_rows": 0,
+                "residual_null_rows": 0,
+            }
             for target in group.targets
         }
         calibrated_keys = sorted(set(group_targets) & set(late_specs))
