@@ -4,27 +4,30 @@
 
 Fixed the host 1% verification failure at
 `person/puf_tax_itemization/taxable_interest_income` without opting that
-unassigned target into the package 3 calibration. The final local tree passes
-the complete `microcosm-build` suite and lint surface.
+unassigned target into the package 3 calibration. The final runtime tree is
+identical to the complete `microcosm-build` suite checkpoint, and all 529 tests
+in the five directly affected files plus repository lint pass on the final
+tree.
 
 No after artifact is claimed or accepted. An externally owned exact 1% retry
-started during the final audit and rebuilt all 47 survey targets plus the one
-housing target without a traceback, including the exact bounded
-`taxable_interest_income` record. Its log then became quiet while its guard
-continued to report live build processes and no runner exit marker existed, so
-terminal stacked receipt validation and frozen-battery success are not
-claimed. The frozen sample/clone seed remains 578, and no battery band,
-threshold, comparator, fold, publication boundary, or pending-chain state was
-changed.
+previously rebuilt all 47 survey targets plus the one housing target without
+the supplied traceback and then entered the late DAG. That mutable log was
+truncated to zero bytes during the final local verification, while the external
+guard continued to report a resource wait and the directory still contained no
+pool, manifest, gates artifact, or terminal marker. Terminal stacked receipt
+validation and frozen-battery success therefore are not claimed. The frozen
+sample/clone seed remains 578, and no battery band, threshold, comparator,
+fold, publication boundary, or pending-chain state was changed.
 
 The 2026-08-20 owner continuation independently re-traced the old raise site,
 the current runtime/receipt selector, the failing-to-fixed history, and the
 exact regression surface. It found no remaining canonical path that can opt
-`taxable_interest_income` into QRF regime work or evidence and therefore made
-no further executable change. Eight narrow regressions and all 528 tests in the
-five directly affected files pass on the current executable tree. Three
-independent read-only audits of source, history, and regression coverage reached
-the same scoped-fix verdict.
+`taxable_interest_income` into QRF regime work or evidence. A regression audit
+did find one strictness gap, so the final test tree now rejects a fully rehashed,
+plausible in-range `__batch_1` alias on an assigned target as well as forged and
+out-of-range aliases. All 20 focused cases and all 529 tests in the five
+directly affected files pass. Independent source, history, and regression
+audits agree on the scoped-fix verdict.
 
 ## Root cause and correction
 
@@ -67,7 +70,10 @@ derive it internally from the nine immutable specs. “Assigned-only behavior”
 therefore describes canonical generated values, regime work, provenance, and
 receipts. The shared four-count transfer accounting invariant still validates
 every canonical target so moving QRF validation behind the assignment branch
-does not weaken legacy receipt checks.
+does not weaken legacy receipt checks. The in-memory `AcsTransferPattern` type
+has an empty `target_regimes` field for default/unselected calls; repository
+serializers deliberately omit that empty opt-in field, so persisted generic
+provenance and canonical receipts retain their legacy shape.
 
 ## Regression coverage
 
@@ -76,8 +82,9 @@ The regression surface includes:
 - the exact host target in a real wide, banked `puf_tax_itemization` family,
   proving its `__batch_1` record has no regimes or QRF receipt while selected
   unemployment compensation retains both;
-- selected-family binding, forged batch aliases, regime tampering, and missing
-  or inconsistent early/late transfer counts;
+- exact selected-family binding—including a plausible in-range `__batch_1`
+  alias—regime tampering, and missing or inconsistent early/late transfer
+  counts;
 - mixed selected/unselected output equivalence and selected-sibling behavior;
 - default ordinary and banked transfer behavior plus both generic serializers;
 - rejection of non-default canonical fit widths; and
@@ -99,35 +106,37 @@ confirmed that the exact host family selects no regime-evidence targets.
 
 ## Verification
 
-Verification used the already-synced exact-lock environment with
-`UV_NO_SYNC=1` and a writable temporary uv cache because sandbox DNS and the
-default uv cache are unavailable.
+Verification used the already-synced `microcosm-707` exact-lock environment
+with `PYTHONPATH` pinned to this worktree. Both worktrees have the same
+`uv.lock` SHA-1. The default uv cache remains sandbox-inaccessible, and the
+earlier writable-cache sync could not reach PyPI because sandbox DNS is
+unavailable.
 
 - All 225 `packages/microcosm-build/tests/test_*.py` files passed across fresh
-  pytest processes at `a5be536f`. No executable file changed between that
-  commit and the final audit tree.
+  pytest processes at `a5be536f`. No runtime source, tool, spec, project, or
+  lockfile changed between that commit and the final audit tree.
 - The five directly affected transfer, multispine, stacked, pool-tool, and H5
-  files were rerun together on the final executable tree: all 528 passed. The
-  run used the owner-provided 12 GiB/20 ms guard and peaked at 1.494 GiB
-  observed per-process RSS. Eight narrow scope/binding regressions also passed
-  independently, peaking at 0.559 GiB.
+  files were rerun together on the final tree: all 529 passed. The run used the
+  owner-provided 12 GiB/20 ms guard and peaked at 1.531 GiB observed
+  per-process RSS. The eight narrow scope/serialization tests plus all 12 QRF
+  structure mutations also passed independently, peaking at 0.586 GiB.
 - `ruff check .`: passed on the final audit tree.
-- `ruff format --check` on all nine continuation-touched Python files: passed.
+- `ruff format --check` on all 15 Python files changed since `33bf52fe^`:
+  passed.
 - `git diff --check 33bf52fe^..HEAD`: passed.
-- `git diff --name-only a5be536f..HEAD` lists only `FINAL_REPORT.md` and
-  `PROGRESS.md`, confirming that the current executable tree is identical to
-  the prior complete 225-file build-suite pass.
+- `git diff --quiet a5be536f..HEAD` over build runtime source, tools, specs,
+  `pyproject.toml`, and `uv.lock`: passed. The only test-tree change after that
+  all-suite checkpoint is the new strict in-range-family regression.
 
-The originally cited `battery-verify/pkg3/build.log` was overwritten by the
-later retry. The owner-preserved `_BUILD-FAILURE-1PCT.txt` retains the old
-traceback. At the final read-only check, the reused log had reached survey
-target 47/47, housing target 1/1, and the late DAG, including
-`puf_tax_itemization__batch_1/taxable_interest_income`, without a new traceback.
-The directory still had no runner exit marker, `pool.h5`, pool manifest, or
-gates artifact, and the log did not bind a revision SHA; the external guard
-continued to report other live work. That passage through transfer checkpoints
-is useful progress evidence, but it is neither revision-bound nor a terminal
-certification result.
+The originally cited `battery-verify/pkg3/build.log` was overwritten by a later
+retry. The owner-preserved `_BUILD-FAILURE-1PCT.txt` retains the old traceback.
+During this continuation the reused log reached survey target 47/47, housing
+target 1/1, and the late DAG—including the bounded taxable-interest record—
+without that traceback. At the final read-only check the same mutable log had
+been truncated to zero bytes, `guard.log` still reported a resource wait, and
+the directory had no runner exit marker, `pool.h5`, pool manifest, or gates
+artifact. The earlier checkpoint passage is progress evidence only; it is not
+revision-bound or a terminal certification result.
 
 The sibling package suites were green before this continuation and their code
 was not changed: `microcosm-fit` 93 passed, `microcosm-calibrate` 201 passed,
@@ -156,6 +165,10 @@ skipped.
 - `dd10904c` — record eight focused scope and binding regressions.
 - `e8c91b39` — record the current guarded 528-test affected suite.
 - `ceda1c47` — record lint, format, diff, and executable-tree verification.
+- `4f85040f` — reopen the final owner continuation journal.
+- `31f26ea1` — confirm the current scoped binding diagnosis.
+- `21a48ba5` — cover a plausible in-range ACS record-family forgery.
+- `8bcaf867` — record the guarded 529-test affected-suite verification.
 
 ## Remaining host step
 

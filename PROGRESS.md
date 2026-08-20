@@ -23,9 +23,11 @@ stacked, pool-tool, and H5 files also pass in one guarded process with a 1.531
 GiB peak. Repository lint, formatting of all 15 Python files changed since the
 bad commit's parent, committed-range whitespace, and runtime drift checks pass.
 The runtime tree remains identical to `a5be536f`, where all 225 build-package
-test files passed. Local correction and verification are complete; final-report
-refresh and a last read-only host-status check remain. No host success is
-claimed.
+test files passed. Local correction, regression hardening, verification, and
+reporting are complete. The last read-only host check found the mutable
+`build.log` truncated to zero bytes, the external guard still waiting on other
+work, and no pool, manifest, gates artifact, or terminal marker; no host success
+is claimed. `FINAL_REPORT.md` contains the final revision-bound report.
 The owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain
 untracked and untouched.
 
@@ -157,6 +159,14 @@ but DNS is unavailable. Verification therefore uses the already-synced
   pass. Confirmed no build runtime, tool, spec, project, or lockfile differs
   from all-suite checkpoint `a5be536f`; only the added regression changes that
   checkpoint's test tree.
+- Performed a final read-only host-status check without controlling the external
+  runner. The mutable retry log that had previously crossed all early survey
+  and housing targets was truncated to zero bytes at 20:42Z; `guard.log` still
+  reported a resource wait, and the directory contained only those two logs.
+  No terminal host verdict or revision-bound artifact is available.
+- Refreshed `FINAL_REPORT.md` with the current root cause, assigned-only
+  correction, new in-range family regression, guarded 529-test verification,
+  lint/diff results, continuation commits, and exact remaining host boundary.
 - Reopened the committed progress journal before changing implementation or
   tests, reread `CLAUDE.md`, and recorded the supplied failure as the active
   continuation target.
@@ -391,6 +401,5 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Refresh and commit `FINAL_REPORT.md` with only revision-bound conclusions;
-   do not claim the mutable external host retry without a terminal marker and
-   expected artifacts.
+1. Do not claim a host artifact unless a revision-bound retry reaches a terminal
+   success marker and emits the expected pool, manifest, and gates artifacts.
