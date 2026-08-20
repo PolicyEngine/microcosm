@@ -348,6 +348,7 @@ def e6_identity_receipt(
         allocate_nhs_by_age_gender,
         load_etb_services_anchors,
     )
+
     rail_fare_index = float(
         load_etb_services_anchors()["rail_fare_index_2023"]["value"]
     )
@@ -360,9 +361,7 @@ def e6_identity_receipt(
         if {"electricity_consumption", "gas_consumption"} <= set(household.columns):
             household_out["domestic_energy_consumption"] = household[
                 "electricity_consumption"
-            ].to_numpy(dtype=float) + household["gas_consumption"].to_numpy(
-                dtype=float
-            )
+            ].to_numpy(dtype=float) + household["gas_consumption"].to_numpy(dtype=float)
         if "rail_subsidy_spending" in household.columns:
             household_out["rail_usage"] = (
                 household["rail_subsidy_spending"].to_numpy(dtype=float)
@@ -424,9 +423,9 @@ def e6_identity_receipt(
                 for op in channel["operations"]
                 if op["kind"] == "allocate_zero_weight_prior_mass"
             )
-            household["household_weight"] = household[
-                "household_weight"
-            ].to_numpy(dtype=float) / (1.0 - float(share))
+            household["household_weight"] = household["household_weight"].to_numpy(
+                dtype=float
+            ) / (1.0 - float(share))
     original = recompute(person, benunit, household)
     rng = np.random.default_rng(permutation_seed)
     permuted = recompute(
@@ -510,9 +509,14 @@ def main() -> int:
         from microcosm.build.uk_runtime.take_up_contract import load_uk_take_up_contract
         from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
+        # E4 draws ran on the pre-stack FRS spine and its take-up targets are
+        # unweighted int(rate * n_units): recompute on the survey channel
+        # only, or every target moves with the synthetic rows (the post-#717
+        # scoping rule the E5 receipt already applies).
+        frame = _frs_only_frame(frame)
         engine = PolicyEngineUKEngine()
         lha_category = engine.materialize(
-            frame, ("LHA_category",), uk_time_period(frame)
+            _engine_safe_frame(frame), ("LHA_category",), uk_time_period(frame)
         )["LHA_category"]
         receipt = e4_identity_receipt(
             frame,
@@ -547,6 +551,74 @@ def main() -> int:
         "PASS" if ok else f"FAIL ({args.output})",
     )
     return 0 if ok else 1
+
+
+def _frs_only_frame(frame):
+    """Scope a post-#717 artifact to the survey channel (FRS rows only)."""
+
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_household_weight_kind,
+        uk_national_frame,
+    )
+
+    household = frame.table("household")
+    if "household_is_spi_synthetic" not in household.columns:
+        return frame
+    keep = ~household["household_is_spi_synthetic"].astype(bool)
+    weights = frame.weights_for("household").values[keep.to_numpy()]
+    household = household.loc[keep].reset_index(drop=True)
+    ids = set(household["household_id"].tolist())
+    person = (
+        frame.table("person")
+        .loc[lambda t: t["person_household_id"].isin(ids)]
+        .reset_index(drop=True)
+    )
+    benunit_ids = set(person["person_benunit_id"].tolist())
+    benunit = (
+        frame.table("benunit")
+        .loc[lambda t: t["benunit_id"].isin(benunit_ids)]
+        .reset_index(drop=True)
+    )
+    return uk_national_frame(
+        person=person,
+        benunit=benunit,
+        household=household,
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(frame),
+        household_weights=weights,
+    )
+
+
+def _engine_safe_frame(frame):
+    """Fill by-design NaN on channel-only auxiliary columns for engine reads.
+
+    The #717 SPI channel leaves hmrc_spi_* auxiliaries (e.g.
+    other_investment_income) NaN on FRS rows by design; instruments fill 0,
+    matching stage-time semantics, because the engine adapter rejects NaN.
+    LHA_category derivation does not read these columns.
+    """
+
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_household_weight_kind,
+        uk_national_frame,
+    )
+
+    tables = {}
+    for entity in ("person", "benunit", "household"):
+        table = frame.table(entity).copy()
+        for column in table.columns:
+            if table[column].dtype.kind == "f" and table[column].isna().any():
+                table[column] = table[column].fillna(0.0)
+        tables[entity] = table
+    return uk_national_frame(
+        person=tables["person"],
+        benunit=tables["benunit"],
+        household=tables["household"],
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(frame),
+        household_weights=frame.weights_for("household").values,
+        mass_log=frame.mass_log,
+    )
 
 
 def _reverse_rows(frame):

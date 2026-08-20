@@ -145,6 +145,13 @@ class TestUKSourceStagesManifest:
         expected_operations[6]["reviewed_absent_predictors"][
             "other_investment_income"
         ] = _rephrase_stage2_predictor_note(predictor_note)
+        # FRS retained leaves now come from the FRS 2024-25 spine while the
+        # frozen HMRC fact surface stays byte-pinned.
+        expected_operations[1]["source_vintage"] = "2024-25"
+        expected_operations[1]["mapped_build_period"] = 2024
+        # Signed period re-map (#723) for materialized HMRC SPI facts.
+        expected_operations[7]["mapped_build_period"] = 2024
+        expected_operations[7]["period_mapping"] = "latest_published_tax_year"
 
         assert stage1["operations"] + stage2["operations"] == expected_operations
         _assert_no_forbidden_dependency(
@@ -155,6 +162,11 @@ class TestUKSourceStagesManifest:
 
         expected_artifacts = copy.deepcopy(frozen_stage["artifacts"])
         expected_artifacts[0]["reviewed_source"] = _expected_reviewed_source()
+        # Signed period re-map (#723): the ODS source surface remains the
+        # frozen 2023-24 file, but the canonical manifest declares that it is
+        # replayed against build period 2024.
+        expected_artifacts[1]["mapped_build_period"] = 2024
+        expected_artifacts[1]["period_mapping"] = "latest_published_tax_year"
         # Declared output-name correction (licensed-data acceptance finding):
         # the frozen original listed the SPI concept "state_pension", but the
         # stage writes the auxiliary column SPI_HMRC_STATE_PENSION_INCOME_COLUMN
@@ -611,9 +623,7 @@ class TestE3ManifestLockstep:
         )
         assert (
             tuple(
-                lcfs_ops["materialize_rules_engine_predictors"].parameters[
-                    "predictors"
-                ]
+                lcfs_ops["materialize_rules_engine_predictors"].parameters["predictors"]
             )
             == UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS
         )
@@ -638,14 +648,9 @@ class TestE3ManifestLockstep:
             tuple(stages["etb_services"].operations[1].parameters["predictors"])
             == UK_ETB_SERVICES_ENGINE_VARIABLES
         )
-        assert (
-            set(
-                stages["etb_services"]
-                .operations[1]
-                .parameters["derived_predictors"]
-            )
-            == set(UK_ETB_SERVICES_EDUCATION_COUNTS)
-        )
+        assert set(
+            stages["etb_services"].operations[1].parameters["derived_predictors"]
+        ) == set(UK_ETB_SERVICES_EDUCATION_COUNTS)
         assert (
             tuple(stages["etb_services"].operations[2].parameters["targets"])
             == UK_ETB_SERVICES_OUTPUT_COLUMNS[:3]
