@@ -3,10 +3,12 @@
 ## State
 
 A 2026-08-20 owner continuation is active for the host 1% binding failure at
-`person/puf_tax_itemization/taxable_interest_income`. The branch already
-contains a candidate scoped-binding correction and its earlier local
-verification record, but those claims are being re-audited from the invariant
-raise site before another host build is requested. The supplied
+`person/puf_tax_itemization/taxable_interest_income`. An independent audit from
+the invariant raise site confirms the branch's existing scoped-binding
+correction addresses the exact leaked surface without weakening record-family
+binding. Six focused ordinary, banked, selected, unassigned, serializer, and
+output-equivalence regressions pass; broader package verification is in
+progress before another host build is requested. The supplied
 `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain untracked owner
 artifacts and will not be committed.
 
@@ -36,6 +38,24 @@ but DNS is unavailable. Verification therefore uses the already-synced
 - Reopened the committed journal at the start of the owner continuation,
   preserved both untracked host artifacts, and began an independent audit of
   the existing scoped-binding correction.
+- Re-traced the failing 15-target `puf_tax_itemization` family from its
+  certified eight-target split through serialized QRF evidence and terminal
+  validation. The host record used `puf_tax_itemization__batch_1`, while the
+  old global validator expected the unsplit family; merely accepting the batch
+  alias would next have failed its eight-versus-fifteen target-order check.
+- Confirmed the current correction keeps exact record binding for the nine
+  declared calibration targets while defaulting regime detection,
+  verification, provenance, and receipt evidence off elsewhere. The exact
+  `taxable_interest_income` synthetic binding regression, a real banked
+  15-target transfer, selected-only provenance, default-wide-family behavior,
+  generic serialization, and mixed-family output equivalence all pass (six
+  focused tests).
+- Followed the GitNexus debugging workflow: a local graph was generated and
+  reported current at commit `40b76f6b`, but its final registry write and
+  query/context registration were sandbox-blocked at
+  `~/.gitnexus/registry.json`. Direct graph status, source, history, and test
+  tracing independently converged on the same call chain; the generated local
+  cache was removed afterward.
 - Read `CLAUDE.md`, the adjudication and all assigned machine-readable rows,
   citation registry entries C04-C08, and every cited source range.
 - Built and measured the canonical off-chain 1% before artifact with sample
@@ -137,14 +157,12 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Re-trace the exact record-binding data flow, inspect the supplied host log,
-   and prove the existing regression covers the reported unassigned target.
-2. Re-run the focused binding and transfer tests plus the prescribed package
-   suite; correct and commit any remaining scope leak before declaring the
-   local fix complete.
-3. Rebuild off-chain at exactly 1% with sample/clone seed 578 under the
+1. Re-run the directly affected test files and the prescribed package suite;
+   correct and commit any remaining scope leak before declaring the local fix
+   complete.
+2. Rebuild off-chain at exactly 1% with sample/clone seed 578 under the
    tightened memory guard when host data access is available, then record the
    16 after measurements and source-preservation invariants.
-4. Accept an after artifact only if the host stacked receipt validation and
+3. Accept an after artifact only if the host stacked receipt validation and
    frozen battery checks pass; keep the run off-chain and leave the pending
    logbook chain untouched.
