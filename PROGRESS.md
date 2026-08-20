@@ -16,10 +16,12 @@ validators reject forged evidence before calling strict record binding only on
 assigned targets. The exact synthetic host regression, real 15-target banked
 producer regression, and selected-family in-range alias regression are already
 committed and jointly cover the failure and the unsafe permissive workaround;
-no duplicate runtime or test edit is warranted. Focused and affected-suite
-verification is now the active step. No host success is claimed. The
-owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain
-untracked and untouched.
+no duplicate runtime or test edit is warranted. All 14 decisive focused cases
+and all 529 tests in the five directly affected files pass under the owner
+12 GiB/20 ms guard, with respective 0.568 GiB and 1.594 GiB maximum observed
+per-process RSS. Static and tree-drift verification is now the active step. No
+host success is claimed. The owner-provided `_BUILD-FAILURE-1PCT.txt` and
+`.codex-memory-guard.py` remain untracked and untouched.
 
 Earlier continuation snapshots follow and are historical rather than current
 state.
@@ -170,6 +172,16 @@ but DNS is unavailable. Verification therefore uses the already-synced
   zero bytes, `guard.log` still records resource waits, and no pool, manifest,
   gates artifact, or terminal marker exists, so it cannot establish an after
   verdict for the current revision.
+- Ran the exact synthetic host-target regression, the real banked 15-target
+  producer regression, and all 12 fully rehashed QRF structure mutations: all
+  14 cases passed under the owner 12 GiB/20 ms guard with a 0.568 GiB maximum
+  observed per-process RSS. The only warning was joblib's logical-core
+  fallback.
+- Ran all five directly affected transfer, multispine serialization, stacked
+  spine, pool-tool, and H5 files in one guarded process. Pytest reached 100%
+  with exit zero and no failures; a separate collection bound that run to 529
+  tests. Peak observed per-process RSS was 1.594 GiB, and warning summaries
+  were disabled to avoid the known fixture-fragmentation output.
 - Reopened and committed this root journal before changing implementation or
   tests, reread `CLAUDE.md`, preserved the two untracked owner artifacts, and
   recorded the exact supplied binding failure as the active continuation.
@@ -458,11 +470,8 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Independently rerun the focused producer/validator/binding regressions and
-   the complete directly affected transfer, serialization, stacked, pool-tool,
-   and H5 test files under the owner memory guard.
-2. Run repository lint, scoped formatting, committed-range whitespace, and
+1. Run repository lint, scoped formatting, committed-range whitespace, and
    runtime-tree drift checks.
-3. Commit verification, then refresh and commit `FINAL_REPORT.md` and the final
-   journal state. Do not claim a host artifact without a revision-bound
+2. Commit static verification, then refresh and commit `FINAL_REPORT.md` and
+   the final journal state. Do not claim a host artifact without a revision-bound
    terminal success marker and expected artifacts.
