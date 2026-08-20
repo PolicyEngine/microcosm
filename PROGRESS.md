@@ -2,11 +2,17 @@
 
 ## State
 
-The 2026-08-20 owner continuation is reopened to independently verify the
-reported host 1% stacked gap-fill binding failure against the branch's existing
-scoped-QRF correction. No implementation result or host artifact is currently
-being claimed. The untracked owner artifacts `_BUILD-FAILURE-1PCT.txt` and
-`.codex-memory-guard.py` are preserved unchanged.
+The 2026-08-20 owner continuation independently re-traced the reported host 1%
+stacked gap-fill binding failure against the branch's existing scoped-QRF
+correction. At `33bf52fe`, terminal validation called the QRF evidence validator
+for every early transfer target before consulting the nine-target calibration
+registry. The current tree consults that registry first, forbids evidence on
+unassigned targets, and attaches or validates it only for the exact selected
+targets. Seven focused tests pass, including both the synthetic failing boundary
+and a real banked 15-target `puf_tax_itemization` transfer. Broader affected-suite
+verification is next. No new host artifact is claimed. The untracked owner
+artifacts `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` are preserved
+unchanged.
 
 The 2026-08-20 local continuation is complete for the host 1% binding failure
 at `person/puf_tax_itemization/taxable_interest_income`. An independent audit
@@ -50,6 +56,24 @@ but DNS is unavailable. Verification therefore uses the already-synced
 - Reopened the committed progress journal before implementation work for the
   current owner continuation and recorded the supplied failure as the active
   verification target.
+- Confirmed the supplied traceback's exact pre-fix call order at `33bf52fe`:
+  `validate_stacked_gap_fill_receipt` invoked
+  `_validate_acs_imputed_pattern_evidence` on every early target before checking
+  whether the target had a declared calibration spec. The real bounded record
+  family `puf_tax_itemization__batch_1` could not bind to the canonical unsplit
+  family, producing the reported error at line 4310.
+- Confirmed the current tree scopes regime detection, fitted/chain checking,
+  per-record provenance, receipt attachment, and terminal validation through
+  the exact immutable post-transfer calibration selection. The host target is
+  absent from that selection and cannot carry QRF evidence.
+- Ran seven focused scope tests. The exact synthetic host receipt, real banked
+  wide-family integration, default wide-family behavior, selected-only
+  provenance, mixed-family output equivalence, and both generic JSON
+  serializers all passed.
+- Attempted the GitNexus debugging workflow. No graph-query tools or local index
+  are available in this session; the installed CLI status command produced no
+  output and was stopped. Direct source and history tracing established the
+  failing and corrected call paths without changing the tree.
 - Reopened the committed journal at the start of the owner continuation,
   preserved both untracked host artifacts, and began an independent audit of
   the existing scoped-binding correction.
@@ -187,9 +211,8 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Re-trace the invariant from its raise site through receipt construction and
-   compare the current correction with the exact unassigned host target.
-2. Run the focused regression and directly affected suite, adding or adjusting
-   coverage only if the current tree does not capture the supplied failure.
+1. Run the complete directly affected transfer, stacked, serialization, pool,
+   and H5 test files plus repository lint and diff checks.
+2. Reconcile the independent source, regression, and host-evidence audits.
 3. Update `FINAL_REPORT.md` with the current continuation verdict; do not claim
    a host artifact unless terminal host evidence exists.
