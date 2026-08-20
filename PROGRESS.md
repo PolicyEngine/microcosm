@@ -14,7 +14,9 @@ binding for assigned targets. The exact synthetic taxable-interest case, real
 banked 15-target producer, and all 12 rehashed structure mutations pass (14
 cases total) under the 12 GiB guard with 0.541 GiB maximum observed
 per-process RSS. No duplicate executable edit is warranted. The affected-suite
-and static verification remain in progress. The owner-provided
+rerun is also green: all 529 tests in the five directly affected files passed
+under the same guard with 1.459 GiB maximum observed per-process RSS. Static
+verification remains in progress. The owner-provided
 `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain untracked and
 untouched, and no terminal host result is claimed.
 
@@ -255,6 +257,10 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Reran all 529 tests in the five directly affected ordinary-transfer,
+  multispine-serialization, stacked-spine, pool-tool, and H5 files in one
+  process under the owner 12 GiB/20 ms guard. The run passed with 1.459 GiB
+  maximum observed per-process RSS.
 - Re-traced bad commit `33bf52fe`, the current generic opt-in default,
   owner-derived early/late selections, receipt emission, and terminal
   validation. The old global binding preceded assignment; the current path
@@ -764,8 +770,7 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run the five-file affected suite under the owner memory guard.
-2. Run repository lint, correction-range format/whitespace checks, and exact
+1. Run repository lint, correction-range format/whitespace checks, and exact
    runtime tree comparisons against the all-build-suite checkpoint.
-3. Refresh
+2. Refresh
    `FINAL_REPORT.md` with revision-bound results.
