@@ -19,9 +19,12 @@ committed and jointly cover the failure and the unsafe permissive workaround;
 no duplicate runtime or test edit is warranted. All 14 decisive focused cases
 and all 529 tests in the five directly affected files pass under the owner
 12 GiB/20 ms guard, with respective 0.568 GiB and 1.594 GiB maximum observed
-per-process RSS. Static and tree-drift verification is now the active step. No
-host success is claimed. The owner-provided `_BUILD-FAILURE-1PCT.txt` and
-`.codex-memory-guard.py` remain untracked and untouched.
+per-process RSS. Repository lint, formatting of all 15 Python files changed
+since the bad commit's parent, committed-range whitespace, and both runtime
+tree-object comparisons with all-build-suite checkpoint `a5be536f` pass. Final
+reporting is now the active step. No host success is claimed. The owner-provided
+`_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain untracked and
+untouched.
 
 Earlier continuation snapshots follow and are historical rather than current
 state.
@@ -182,6 +185,12 @@ but DNS is unavailable. Verification therefore uses the already-synced
   with exit zero and no failures; a separate collection bound that run to 529
   tests. Peak observed per-process RSS was 1.594 GiB, and warning summaries
   were disabled to avoid the known fixture-fragmentation output.
+- Ran repository-wide `ruff check .`, `ruff format --check` on all 15 Python
+  files changed since `33bf52fe^`, `git diff --check 33bf52fe^..HEAD`, and exact
+  Git tree-object comparisons for `us_runtime` and all `microcosm-build/src`
+  against `a5be536f`; all pass. The first format invocation supplied the
+  newline-separated paths as one zsh scalar and checked no file; the
+  null-delimited fail-fast rerun checked all 15 successfully.
 - Reopened and committed this root journal before changing implementation or
   tests, reread `CLAUDE.md`, preserved the two untracked owner artifacts, and
   recorded the exact supplied binding failure as the active continuation.
@@ -470,8 +479,6 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run repository lint, scoped formatting, committed-range whitespace, and
-   runtime-tree drift checks.
-2. Commit static verification, then refresh and commit `FINAL_REPORT.md` and
-   the final journal state. Do not claim a host artifact without a revision-bound
-   terminal success marker and expected artifacts.
+1. Refresh and commit `FINAL_REPORT.md` and the final journal state. Do not
+   claim a host artifact without a revision-bound terminal success marker and
+   expected artifacts.
