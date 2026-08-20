@@ -289,13 +289,13 @@
         "reference_registry": {
           "efrs-post-calibration": {
             "identity": {
-              "filename": "enhanced_frs_2023_24.h5",
-              "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
-              "sha256": "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
-              "vintage": "2023_24"
+              "filename": "enhanced_frs_2024_25.h5",
+              "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
+              "sha256": "97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e",
+              "vintage": "2024_25"
             },
-            "totals_sha256": "c36c015a60f796ad9199a4a5652706f5310909cb572b1c90092ef9df1fa7187e",
-            "scope_note": "Post-calibration eFRS production incumbent; structurally lacks the SPI clone channel, so SPI-channel-exclusive columns are comparable only through per-reference reviewed exclusions."
+            "totals_sha256": "e70a45387c6adc13df5d7eb7da3c2cada7972a2f293a9238c8c29c9e885e4659",
+            "scope_note": "Channel-blind post-calibration enhanced-FRS production incumbent, pinned to the 2024-25 line; structurally lacks the SPI clone channel, so SPI-channel-exclusive columns are comparable only through per-reference reviewed exclusions."
           }
         },
         "relative_tolerance": 4.521811483823806,
