@@ -105,6 +105,30 @@ class _QRFGeneratorLease(_QRFGenerator, Protocol):
 
     def bit_generator_state(self) -> dict[str, object]: ...
 
+    def qrf_fit_n_jobs(self) -> int: ...
+
+    def qrf_predict_workers(self) -> int: ...
+
+    def fit_seeded_qrf_estimator(
+        self,
+        estimator: object,
+        features: object,
+        targets: object,
+        *,
+        sample_weight: object | None = None,
+    ) -> object: ...
+
+    def draw_qrf_estimator(
+        self,
+        estimator: object,
+        features: object,
+        row_quantiles: object,
+        *,
+        grid: object,
+        bounds: object,
+        workers: int,
+    ) -> object: ...
+
 
 class _QRFGeneratorPair(Protocol):
     """Independent fit/draw streams leased for one QRF invocation."""
@@ -297,8 +321,15 @@ class _Forest:
 
     model: RandomForestQuantileRegressor
     columns: tuple[str, ...]
+    broker_predict_workers: int | None = None
 
-    def draw(self, frame: pd.DataFrame, quantiles: np.ndarray) -> np.ndarray:
+    def draw(
+        self,
+        frame: pd.DataFrame,
+        quantiles: np.ndarray,
+        *,
+        broker_rng: _QRFGenerator | None = None,
+    ) -> np.ndarray:
         """Draw one value per row at that row's quantile.
 
         The forest is queried on a shared fine grid of quantiles, then each
@@ -342,12 +373,30 @@ class _Forest:
         if n == 0:
             return out
 
-        workers = _predict_workers()
+        workers = (
+            _predict_workers()
+            if self.broker_predict_workers is None
+            else self.broker_predict_workers
+        )
         # Bound the (rows x grid) matrix per chunk (memory) while cutting enough
         # chunks to balance across workers. Boundaries are draw-invariant, so
         # this only changes *when* each row is computed, never *what* it is.
         chunk = max(1, min(_PREDICT_CHUNK_ROWS, -(-n // (4 * workers))))
         bounds = [(start, min(start + chunk, n)) for start in range(0, n, chunk)]
+
+        if broker_rng is not None:
+            broker_draw = broker_rng.draw_qrf_estimator  # type: ignore[attr-defined]
+            return np.asarray(
+                broker_draw(
+                    self.model,
+                    features,
+                    quantiles,
+                    grid=grid,
+                    bounds=tuple(bounds),
+                    workers=workers,
+                ),
+                dtype=np.float64,
+            )
 
         def _draw_chunk(bound: tuple[int, int]) -> None:
             start, stop = bound
@@ -487,6 +536,71 @@ def _predict_workers() -> int:
     return workers
 
 
+def _qrf_fit_n_jobs(rng: _QRFGenerator) -> int:
+    """Resolve fit width without ambient reads for a brokered lease."""
+
+    try:
+        resolver = rng.qrf_fit_n_jobs  # type: ignore[attr-defined]
+    except AttributeError:
+        return _fit_n_jobs()
+    value = resolver()
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or (value != -1 and value < 1)
+    ):
+        raise ValueError("Broker QRF fit width must be -1 or a positive integer.")
+    return value
+
+
+def _qrf_predict_workers(rng: _QRFGenerator) -> int | None:
+    """Return brokered prediction width, retaining the constants default path."""
+
+    try:
+        resolver = rng.qrf_predict_workers  # type: ignore[attr-defined]
+    except AttributeError:
+        return None
+    value = resolver()
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise ValueError("Broker QRF prediction width must be positive.")
+    return value
+
+
+_NO_SAMPLE_WEIGHT = object()
+
+
+def _fit_seeded_estimator(
+    rng: _QRFGenerator,
+    estimator: object,
+    features: np.ndarray,
+    targets: np.ndarray,
+    *,
+    sample_weight: object = _NO_SAMPLE_WEIGHT,
+) -> object:
+    """Fit directly in constants mode or through the broker's pinned adapter."""
+
+    try:
+        broker_fit = rng.fit_seeded_qrf_estimator  # type: ignore[attr-defined]
+    except AttributeError:
+        return estimator.fit(  # type: ignore[attr-defined,no-any-return]
+            features,
+            targets,
+            **(
+                {}
+                if sample_weight is _NO_SAMPLE_WEIGHT
+                else {"sample_weight": sample_weight}
+            ),
+        )
+    if sample_weight is _NO_SAMPLE_WEIGHT:
+        return broker_fit(estimator, features, targets)
+    return broker_fit(
+        estimator,
+        features,
+        targets,
+        sample_weight=sample_weight,
+    )
+
+
 def _fit_forest(
     x: np.ndarray,
     y: np.ndarray,
@@ -535,10 +649,14 @@ def _fit_forest(
         # Tree fitting and prediction parallelize without affecting the
         # seed-determined draws; forests are deterministic per random_state
         # regardless of worker count.
-        n_jobs=_fit_n_jobs(),
+        n_jobs=_qrf_fit_n_jobs(rng),
     )
-    model.fit(x_fit, y_fit)
-    return _Forest(model=model, columns=columns)
+    _fit_seeded_estimator(rng, model, x_fit, y_fit)
+    return _Forest(
+        model=model,
+        columns=columns,
+        broker_predict_workers=_qrf_predict_workers(rng),
+    )
 
 
 #: Sentinel marking a target whose fitted forests were freed by
@@ -648,11 +766,12 @@ def _weight_identity(weights: np.ndarray | None) -> str:
 
 def _rng_state_json(rng: np.random.Generator | _QRFGeneratorLease) -> str:
     """Serialize a generator state to immutable canonical JSON text."""
-    state = (
-        rng.bit_generator.state
-        if isinstance(rng, np.random.Generator)
-        else rng.bit_generator_state()
-    )
+    try:
+        snapshot = rng.bit_generator_state  # type: ignore[union-attr]
+    except AttributeError:
+        state = rng.bit_generator.state  # type: ignore[union-attr]
+    else:
+        state = snapshot()
     return json.dumps(
         state,
         sort_keys=True,
@@ -675,14 +794,34 @@ def _require_chain_rng_state(
         )
 
 
-def _rng_from_state_json(value: str, *, stream: str) -> np.random.Generator:
-    """Restore a generator from a chain state's canonical JSON text."""
+def _parse_rng_state_json(value: str, *, stream: str) -> dict[str, object]:
+    """Parse the supported checkpoint state without constructing an RNG."""
+
     try:
         state = json.loads(value)
     except (TypeError, json.JSONDecodeError) as exc:
         raise ValueError(f"QRF chain {stream} RNG state is not valid JSON.") from exc
     if not isinstance(state, dict) or state.get("bit_generator") != "PCG64":
         raise ValueError(f"QRF chain {stream} RNG state must describe NumPy PCG64.")
+    required = {
+        "bit_generator": str,
+        "state": dict,
+        "has_uint32": int,
+        "uinteger": int,
+    }
+    if any(not isinstance(state.get(key), kind) for key, kind in required.items()):
+        raise ValueError(f"QRF chain {stream} RNG state has an invalid shape.")
+    inner = state["state"]
+    assert isinstance(inner, dict)
+    if any(not isinstance(inner.get(key), int) for key in ("state", "inc")):
+        raise ValueError(f"QRF chain {stream} RNG state has an invalid shape.")
+    return state
+
+
+def _rng_from_state_json(value: str, *, stream: str) -> np.random.Generator:
+    """Restore a generator from a chain state's canonical JSON text."""
+
+    state = _parse_rng_state_json(value, stream=stream)
     # Construct a fixed PCG64 shell before restoring the serialized state.  An
     # entropy-seeded ``default_rng()`` would be overwritten immediately, but it
     # is still ambient RNG access and therefore violates the legacy-v1 broker
@@ -768,8 +907,8 @@ class QRFChainState:
                 "QRF chain max_samples_leaf kind/value mismatch: "
                 f"{self.max_samples_leaf_kind!r} vs {self.max_samples_leaf!r}."
             )
-        _rng_from_state_json(self.fit_rng_state_json, stream="fit")
-        _rng_from_state_json(self.draw_rng_state_json, stream="draw")
+        _parse_rng_state_json(self.fit_rng_state_json, stream="fit")
+        _parse_rng_state_json(self.draw_rng_state_json, stream="draw")
 
     @property
     def next_target(self) -> str | None:
@@ -1032,23 +1171,40 @@ def _draw_target_with_rng(
     if model.regime == Regime.DEGENERATE_ZERO:
         return np.zeros(n, dtype=np.float64)
 
+    def draw_forest(
+        forest: _Forest,
+        rows: pd.DataFrame,
+        row_quantiles: np.ndarray,
+    ) -> np.ndarray:
+        try:
+            broker_draw = rng.draw_qrf_estimator  # type: ignore[attr-defined]
+        except AttributeError:
+            return forest.draw(rows, row_quantiles)
+        if not callable(broker_draw):
+            raise TypeError("Broker QRF draw adapter must be callable.")
+        return forest.draw(rows, row_quantiles, broker_rng=rng)
+
     quantiles = rng.random(n)
     if model.regime == Regime.POSITIVE_ONLY:
-        return model.positive.draw(features, quantiles)
+        return draw_forest(model.positive, features, quantiles)
     if model.regime == Regime.NEGATIVE_ONLY:
-        return model.negative.draw(features, quantiles)
+        return draw_forest(model.negative, features, quantiles)
 
     signs = _gate_draw_with_rng(model.gate, features, model.columns, rng)
     values = np.zeros(n, dtype=np.float64)
     pos_mask = signs == 1
     neg_mask = signs == -1
     if pos_mask.any() and model.positive is not None:
-        values[pos_mask] = model.positive.draw(
-            features.loc[pos_mask], quantiles[pos_mask]
+        values[pos_mask] = draw_forest(
+            model.positive,
+            features.loc[pos_mask],
+            quantiles[pos_mask],
         )
     if neg_mask.any() and model.negative is not None:
-        values[neg_mask] = model.negative.draw(
-            features.loc[neg_mask], quantiles[neg_mask]
+        values[neg_mask] = draw_forest(
+            model.negative,
+            features.loc[neg_mask],
+            quantiles[neg_mask],
         )
     return values
 
@@ -1215,7 +1371,7 @@ class RegimeGatedQRF:
             max_samples_leaf=self.max_samples_leaf,
             max_samples_leaf_kind=_max_samples_leaf_kind(self.max_samples_leaf),
             seed=self.seed,
-            fit_n_jobs=_fit_n_jobs(),
+            fit_n_jobs=_qrf_fit_n_jobs(fit_rng),
             donor_index=_index_identity(resolved.table.index),
             recipient_index=None,
             fit_rng_state_json=_rng_state_json(fit_rng),
@@ -1249,7 +1405,10 @@ class RegimeGatedQRF:
         """
         if not isinstance(state, QRFChainState):
             raise TypeError("state must be a QRFChainState.")
-        self._validate_chain_config(state)
+        self._validate_chain_config(
+            state,
+            fit_rng=(None if rng_generators is None else rng_generators.fit),
+        )
         if state.is_complete:
             raise ValueError("QRF chain is already complete; there is no next target.")
 
@@ -1326,7 +1485,12 @@ class RegimeGatedQRF:
             weight_kind=resolved.weight_kind,
         )
 
-    def _validate_chain_config(self, state: QRFChainState) -> None:
+    def _validate_chain_config(
+        self,
+        state: QRFChainState,
+        *,
+        fit_rng: _QRFGenerator | None,
+    ) -> None:
         """Refuse any model configuration drift across subprocesses."""
         actual = (
             self.n_estimators,
@@ -1334,7 +1498,7 @@ class RegimeGatedQRF:
             self.max_samples_leaf,
             _max_samples_leaf_kind(self.max_samples_leaf),
             self.seed,
-            _fit_n_jobs(),
+            _fit_n_jobs() if fit_rng is None else _qrf_fit_n_jobs(fit_rng),
         )
         expected = (
             state.n_estimators,
@@ -1522,7 +1686,13 @@ class RegimeGatedQRF:
                 fitted gate's ``classes_`` (internal inconsistency).
         """
         gate = _make_gate(int(rng.integers(0, 2**31 - 1)))
-        gate.fit(features, labels, sample_weight=weights)
+        _fit_seeded_estimator(
+            rng,
+            gate,
+            features,
+            labels,
+            sample_weight=weights,
+        )
         training_classes = set(np.unique(labels).tolist())
         fitted_classes = set(np.asarray(gate.classes_).tolist())
         missing = sorted(training_classes - fitted_classes)

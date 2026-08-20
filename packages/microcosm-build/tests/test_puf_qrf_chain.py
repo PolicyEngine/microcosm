@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import stat
+from collections.abc import Callable
 from contextlib import nullcontext
 from pathlib import Path
 
@@ -15,11 +16,21 @@ import pandas as pd
 import pytest
 
 import microcosm.build.us_runtime.puf_qrf_chain as puf_qrf_chain_module
+import microcosm.build.us_runtime.puf_support as puf_support_module
 from microcosm.build.frame_checkpoint import load_frame_checkpoint
 from microcosm.build.serialization_dtypes import (
     CANONICAL_STRING_DTYPE,
     canonicalize_frame_string_dtypes,
 )
+from microcosm.build.spec_engine.brokers import (
+    BrokerSession,
+    KernelBrokerSession,
+    PhysicalOperation,
+    QRFGeneratorLease,
+    RNGInvocation,
+)
+from microcosm.build.spec_engine.compiler_ir import CompiledSpecIR, compile_spec
+from microcosm.build.spec_engine.loader import load_bundle
 from microcosm.build.us_runtime.puf_qrf_chain import (
     PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
     PRIMARY_QRF_TARGET_ORDER,
@@ -51,6 +62,83 @@ _PERSON_OUTPUTS = (
     "qualified_tuition_expenses",
 )
 _TAX_UNIT_OUTPUTS = ("domestic_production_ald",)
+
+
+@pytest.fixture(scope="module")
+def compiled_us_spec() -> CompiledSpecIR:
+    return compile_spec(load_bundle("us"))
+
+
+def _fixture_run_provenance_wire() -> dict[str, object]:
+    return {
+        "identity_generation": 0,
+        "source_grammar_receipt": None,
+        "spec_binding": None,
+        "authority_versions": {"fixture": 1},
+        "code_inventory_digest": "a" * 64,
+        "artifact_protocol_inventory": {"fixture": "primary-qrf-v1"},
+        "run_request": {"rung": "fixture"},
+        "execution_receipt": {"backend": "fixture"},
+    }
+
+
+def _run_under_primary_qrf_broker(
+    compiled: CompiledSpecIR,
+    *,
+    sink_root: Path,
+    seed: int,
+    operation: Callable[[QRFGeneratorLease], None],
+    boundary_key: str = "default",
+    invocation: RNGInvocation | None = None,
+) -> None:
+    node = next(node for node in compiled.nodes if node.id == "primary_puf_qrf")
+    input_binding_sha256 = "b" * 64
+    session: BrokerSession
+
+    def physical_call(context: KernelBrokerSession) -> None:
+        token = context.rng.token("primary_qrf_fit_draw", boundary_key)
+        with context.rng.qrf_generators(token) as generators:
+            operation(generators)
+
+    resolved_sink = sink_root.resolve()
+    physical_operation = PhysicalOperation(
+        function=physical_call,
+        implementation_sha256=node.kernel_implementation_sha256,
+        input_binding_sha256=input_binding_sha256,
+        policy="broker-only",
+        sink_roots=(resolved_sink,),
+    )
+    invocation_plan = {
+        "primary_puf_monolithic_qrf_model": (),
+        "primary_qrf_fit_draw": (
+            RNGInvocation("default") if invocation is None else invocation,
+        ),
+    }
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        run_inputs={"build_model_seed": seed},
+        rng_invocation_plan=invocation_plan,
+        physical_operation=physical_operation,
+    )
+    with session.activate():
+        session.kernel_view.run_physical_operation(
+            input_binding_sha256=input_binding_sha256
+        )
+    receipt = session.seal()
+    assert receipt.status == "complete"
+    assert any(
+        event.broker == "rng" and event.operation == "qrf_generators"
+        for event in receipt.events
+    )
+
+
+def _checkpoint_member_bytes(root: Path) -> dict[str, bytes]:
+    return {
+        str(path.relative_to(root)): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
 
 
 def _expanded_frame() -> Frame:
@@ -379,6 +467,168 @@ def test_primary_qrf_target_fsyncs_file_then_parent_directory_after_rename(
         ("replace", target_path.name),
         ("fsync", "directory"),
     ]
+
+
+def test_brokered_in_process_chain_is_checkpoint_byte_exact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    compiled_us_spec: CompiledSpecIR,
+) -> None:
+    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
+    monkeypatch.delenv("POPULACE_FIT_PREDICT_WORKERS", raising=False)
+    monkeypatch.setattr(
+        puf_qrf_chain_module,
+        "profile_stage",
+        lambda *_args, **_kwargs: nullcontext(),
+    )
+    formula_engine = puf_support_module._formula_owned_engine()
+    monkeypatch.setattr(
+        puf_support_module,
+        "_formula_owned_engine",
+        lambda: formula_engine,
+    )
+    frame = _expanded_frame()
+    donor = _donor()
+    constants_root = tmp_path / "constants" / "primary_qrf"
+    bundle_root = tmp_path / "bundle" / "primary_qrf"
+    common = {
+        "predictors": _PREDICTORS,
+        "person_outputs": _PERSON_OUTPUTS,
+        "tax_unit_outputs": _TAX_UNIT_OUTPUTS,
+        "n_estimators": 2,
+        "seed": 17,
+    }
+
+    initialize_primary_puf_qrf_chain(
+        frame,
+        donor,
+        constants_root,
+        **common,
+    )
+    for target_index in range(len((*_PERSON_OUTPUTS, *_TAX_UNIT_OUTPUTS))):
+        run_primary_puf_qrf_target(constants_root, target_index)
+
+    class RefusingSubprocess:
+        @staticmethod
+        def run(*_args: object, **_kwargs: object) -> object:
+            pytest.fail("brokered primary QRF chain attempted a subprocess")
+
+    monkeypatch.setattr(puf_qrf_chain_module, "subprocess", RefusingSubprocess)
+
+    def brokered_chain(generators: QRFGeneratorLease) -> None:
+        initialize_primary_puf_qrf_chain(
+            frame,
+            donor,
+            bundle_root,
+            rng_generators=generators,
+            **common,
+        )
+        run_primary_puf_qrf_chain(
+            bundle_root,
+            rng_generators=generators,
+        )
+
+    _run_under_primary_qrf_broker(
+        compiled_us_spec,
+        sink_root=tmp_path,
+        seed=17,
+        operation=brokered_chain,
+    )
+
+    assert _checkpoint_member_bytes(bundle_root) == _checkpoint_member_bytes(
+        constants_root
+    )
+
+
+def test_brokered_in_process_chain_resumes_from_restored_public_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    compiled_us_spec: CompiledSpecIR,
+) -> None:
+    monkeypatch.delenv("POPULACE_FIT_N_JOBS", raising=False)
+    monkeypatch.delenv("POPULACE_FIT_PREDICT_WORKERS", raising=False)
+    monkeypatch.setattr(
+        puf_qrf_chain_module,
+        "profile_stage",
+        lambda *_args, **_kwargs: nullcontext(),
+    )
+    formula_engine = puf_support_module._formula_owned_engine()
+    monkeypatch.setattr(
+        puf_support_module,
+        "_formula_owned_engine",
+        lambda: formula_engine,
+    )
+    frame = _expanded_frame()
+    donor = _donor()
+    constants_root = tmp_path / "constants" / "primary_qrf"
+    resumed_root = tmp_path / "resumed" / "primary_qrf"
+    common = {
+        "predictors": _PREDICTORS,
+        "person_outputs": _PERSON_OUTPUTS,
+        "tax_unit_outputs": _TAX_UNIT_OUTPUTS,
+        "n_estimators": 2,
+        "seed": 17,
+    }
+
+    initialize_primary_puf_qrf_chain(
+        frame,
+        donor,
+        constants_root,
+        **common,
+    )
+    for target_index in range(len((*_PERSON_OUTPUTS, *_TAX_UNIT_OUTPUTS))):
+        run_primary_puf_qrf_target(constants_root, target_index)
+
+    def initialize_and_run_first(generators: QRFGeneratorLease) -> None:
+        initialize_primary_puf_qrf_chain(
+            frame,
+            donor,
+            resumed_root,
+            rng_generators=generators,
+            **common,
+        )
+        run_primary_puf_qrf_target(
+            resumed_root,
+            0,
+            rng_generators=generators,
+        )
+
+    _run_under_primary_qrf_broker(
+        compiled_us_spec,
+        sink_root=tmp_path,
+        seed=17,
+        operation=initialize_and_run_first,
+    )
+    first_target = sorted((resumed_root / "targets").glob("*.h5"))[0]
+    with h5py.File(first_target, mode="r") as h5:
+        metadata = json.loads(bytes(h5["metadata_json"][...]).decode())
+    state_after = metadata["state_after"]
+    invocation = RNGInvocation(
+        "resume",
+        {
+            "restored_fit_state": state_after["fit_rng_state"],
+            "restored_draw_state": state_after["draw_rng_state"],
+        },
+    )
+
+    def resume_chain(generators: QRFGeneratorLease) -> None:
+        run_primary_puf_qrf_chain(
+            resumed_root,
+            rng_generators=generators,
+        )
+
+    _run_under_primary_qrf_broker(
+        compiled_us_spec,
+        sink_root=tmp_path,
+        seed=17,
+        operation=resume_chain,
+        boundary_key="resume",
+        invocation=invocation,
+    )
+
+    assert _checkpoint_member_bytes(resumed_root) == _checkpoint_member_bytes(
+        constants_root
+    )
 
 
 def test_target_subprocess_chain_matches_monolith_raw_bits_and_final_frame(

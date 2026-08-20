@@ -1406,6 +1406,7 @@ def test_physical_operation_seed_and_sink_scope_is_grant_bound(
     target = tmp_path / "checkpoint.txt"
 
     def physical_operation() -> int:
+        assert target.parent.resolve() == tmp_path.resolve()
         value = int(np.random.default_rng(7).integers(0, 100))
         target.write_text(str(value), encoding="utf-8")
         return value
@@ -1440,6 +1441,133 @@ def test_physical_operation_seed_and_sink_scope_is_grant_bound(
     )
     load_schema_registry().validate(
         receipt.to_wire(), "locks.schema.json#/$defs/broker_access_receipt"
+    )
+
+
+def test_brokered_qrf_dependency_adapter_preserves_seeded_draws(
+    compiled_us: CompiledSpecIR,
+    tmp_path: Path,
+) -> None:
+    from quantile_forest import RandomForestQuantileRegressor
+    from sklearn.ensemble import HistGradientBoostingClassifier
+
+    node = next(node for node in compiled_us.nodes if node.id == "primary_puf_qrf")
+    seed = 73
+    features = np.array(
+        [[-2.0], [-1.0], [0.0], [1.0], [2.0], [3.0]],
+        dtype=np.float64,
+    )
+    target_values = np.array([1.0, 1.5, 2.0, 4.0, 8.0, 16.0])
+    labels = np.array([0, 0, 0, 1, 1, 1])
+    weights = np.ones(len(features), dtype=np.float64)
+    grid = np.array([0.1, 0.5, 0.9], dtype=np.float64)
+
+    fit_child, draw_child = np.random.SeedSequence(seed).spawn(2)
+    expected_fit_rng = np.random.default_rng(fit_child)
+    expected_draw_rng = np.random.default_rng(draw_child)
+    expected_forest_seed = int(expected_fit_rng.integers(0, 2**31 - 1))
+    expected_gate_seed = int(expected_fit_rng.integers(0, 2**31 - 1))
+    expected_forest = RandomForestQuantileRegressor(
+        n_estimators=3,
+        n_jobs=1,
+        random_state=expected_forest_seed,
+    ).fit(features, target_values)
+    expected_gate = HistGradientBoostingClassifier(
+        max_iter=3,
+        random_state=expected_gate_seed,
+    ).fit(features, labels, sample_weight=weights)
+    row_quantiles = expected_draw_rng.random(len(features))
+    predictions = np.asarray(
+        expected_forest.predict(features, quantiles=list(grid))
+    ).reshape(len(features), len(grid))
+    upper = np.clip(np.searchsorted(grid, row_quantiles, side="left"), 1, 2)
+    lower = upper - 1
+    interpolation_weight = np.clip(
+        (row_quantiles - grid[lower]) / (grid[upper] - grid[lower]),
+        0.0,
+        1.0,
+    )
+    rows = np.arange(len(features))
+    expected_draws = predictions[rows, lower] + interpolation_weight * (
+        predictions[rows, upper] - predictions[rows, lower]
+    )
+    expected_gate_probabilities = expected_gate.predict_proba(features)
+    input_binding_sha256 = sha256_json({"fixture": "brokered-qrf-adapter"})
+
+    def physical_operation(context: KernelBrokerSession) -> dict[str, np.ndarray]:
+        token = context.rng.token("primary_qrf_fit_draw", "default")
+        with context.rng.qrf_generators(token) as generators:
+            forest_seed = int(generators.fit.integers(0, 2**31 - 1))
+            gate_seed = int(generators.fit.integers(0, 2**31 - 1))
+            forest = RandomForestQuantileRegressor(
+                n_estimators=3,
+                n_jobs=1,
+                random_state=forest_seed,
+            )
+            generators.fit.fit_seeded_qrf_estimator(
+                forest,
+                features,
+                target_values,
+            )
+            gate = HistGradientBoostingClassifier(
+                max_iter=3,
+                random_state=gate_seed,
+            )
+            generators.fit.fit_seeded_qrf_estimator(
+                gate,
+                features,
+                labels,
+                sample_weight=weights,
+            )
+            assert gate._feature_subsample_rng is None
+            quantiles = generators.draw.random(len(features))
+            draws = generators.draw.draw_qrf_estimator(
+                forest,
+                features,
+                quantiles,
+                grid=grid,
+                bounds=((0, 2), (2, 4), (4, 6)),
+                workers=2,
+            )
+            return {
+                "draws": np.asarray(draws),
+                "gate_probabilities": gate.predict_proba(features),
+            }
+
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        run_inputs={"build_model_seed": seed},
+        rng_invocation_plan={
+            "primary_qrf_fit_draw": (RNGInvocation("default"),),
+            "primary_puf_monolithic_qrf_model": (),
+        },
+        physical_operation=PhysicalOperation(
+            function=physical_operation,
+            implementation_sha256=node.kernel_implementation_sha256,
+            input_binding_sha256=input_binding_sha256,
+            policy="broker-only",
+            sink_roots=(tmp_path,),
+        ),
+    )
+    with session.activate():
+        actual = session.kernel_view.run_physical_operation(
+            input_binding_sha256=input_binding_sha256
+        )
+    receipt = session.seal()
+
+    np.testing.assert_array_equal(actual["draws"], expected_draws)
+    np.testing.assert_array_equal(
+        actual["gate_probabilities"], expected_gate_probabilities
+    )
+    assert receipt.status == "complete"
+    assert any(
+        event.reason_code == "brokered_seeded_qrf_estimator_fit"
+        for event in receipt.events
+    )
+    assert any(
+        event.reason_code == "brokered_qrf_estimator_draw"
+        for event in receipt.events
     )
 
 

@@ -2316,3 +2316,49 @@ head; it still writes `us-f1-certification.json` and
    and pass `kernel_session.rng` to exactly that callback.
 2. Exercise QRF-bearing source nodes inside the strict broker-only physical
    scope, including dependency compatibility and complete token consumption.
+
+## F1 continuation r5 pinned QRF dependency boundary (2026-08-20)
+
+### State
+
+- Bundle-mode primary QRF must run in process because a subprocess cannot
+  inherit a live broker lease. Its installed sklearn/quantile-forest
+  dependencies create seeded internal generators and operational Joblib ids,
+  so those exact dependency calls need a typed adapter rather than broad
+  ambient-RNG restoration.
+
+### Done
+
+- Added implementation-pinned fit and chunked-draw adapters to the generator
+  lease. Estimator seeds must be scalar integers previously drawn from that
+  exact lease; the sign gate and quantile forest are exact-class checked.
+  Joblib ids use deterministic operational bytes, dependency environment reads
+  are limited to captured `OMP_NUM_THREADS`/`LOKY_MAX_CPU_COUNT` plus the
+  constants-era PyArrow default, and the sign gate's fit-only raw generator is
+  stripped before the estimator returns.
+- Bundle QRF checkpoints now validate JSON state shape without constructing a
+  throwaway generator, keep one fit/draw lease across the complete cold target
+  bank, and run the target bank in process. Constants retain their direct fit,
+  predict, and subprocess paths.
+- Declared sink compatibility now permits only read-only `stat`/`lstat`/
+  `readlink` probes on ancestors of an exact sink root, which is required by
+  `Path.resolve()`; opens and writes remain confined to the declared root.
+- The complete lightweight QRF module passes (46 tests). Focused high-level
+  adapter routing passes (4 tests), and focused broker tests pass for exact
+  forest/sign-gate equality, two-chunk prediction, raw-generator stripping,
+  and ancestor-only sink probing (2 tests). Targeted Ruff, `py_compile`, and
+  `git diff --check` pass; no sample build ran.
+- The full primary-checkpoint test repeatedly exposed and helped close the
+  ambient boundaries above. Its latest repository-level rerun was terminated
+  during cold test collection while the installed PolicyEngine-US static
+  source index was still scanning, before test execution; this is recorded as
+  incomplete validation, not a green test and not a product failure.
+
+### Next
+
+1. Compute exact per-node invocation plans from each reconstructed narrow
+   frame, then dispatch all 38 late producers through `execute_node` only in
+   bundle mode.
+2. Route the primary clone, cold QRF bank, and tail through their three
+   compiled owners, then rerun the full dual-mode stage fixture and affected
+   suite after the production wiring is complete.

@@ -35,6 +35,7 @@ import threading
 import time as time_module
 import uuid
 from collections.abc import Callable, Iterator, Mapping, MutableMapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -118,6 +119,13 @@ _SPEC_BINDING_FIELDS = frozenset(
 )
 _DEFAULT_RNG_BOUNDARY_KEY = "default"
 _PHYSICAL_OPERATION_POLICIES = frozenset({"broker-only", "legacy-v1"})
+_PINNED_DEPENDENCY_ENVIRONMENT_DEFAULTS = MappingProxyType(
+    {
+        "LOKY_MAX_CPU_COUNT": os.environ.get("LOKY_MAX_CPU_COUNT"),
+        "OMP_NUM_THREADS": os.environ.get("OMP_NUM_THREADS"),
+        "PYARROW_IGNORE_TIMEZONE": None,
+    }
+)
 _SAFE_GENERATOR_DRAW_METHODS = frozenset(
     {"choice", "integers", "permutation", "random"}
 )
@@ -207,9 +215,11 @@ _ORIGINAL_GENERATOR = np.random.Generator
 _ORIGINAL_PCG64 = np.random.PCG64
 _ORIGINAL_SEED_SEQUENCE = np.random.SeedSequence
 _ORIGINAL_RANDOM_STATE = np.random.RandomState
+_ORIGINAL_PYTHON_RANDOM_CLASS = python_random.Random
 _ORIGINAL_HASH_PANDAS_OBJECT = pd.util.hash_pandas_object
 _ORIGINAL_DATAFRAME_SAMPLE = pd.DataFrame.sample
 _ORIGINAL_TIME = time_module.time
+_ORIGINAL_OS_CPU_COUNT = os.cpu_count
 _ORIGINAL_DATETIME = datetime_module.datetime
 _ORIGINAL_DATE = datetime_module.date
 _ORIGINAL_PATH_OPEN = Path.open
@@ -1398,6 +1408,28 @@ class _RefusingEnvironment(MutableMapping[str, str]):
         return dict(self._wrapped)
 
 
+class _PinnedDependencyEnvironment(_RefusingEnvironment):
+    """Expose only explicit unset defaults needed by deterministic libraries."""
+
+    def __init__(self, wrapped: MutableMapping[str, str], session: BrokerSession):
+        super().__init__(wrapped)
+        self._session = session
+
+    def get(self, key: str, default: str | None = None) -> str | None:
+        if key not in _PINNED_DEPENDENCY_ENVIRONMENT_DEFAULTS:
+            return super().get(key, default)
+        value = _PINNED_DEPENDENCY_ENVIRONMENT_DEFAULTS[key]
+        self._session._log.record(
+            broker="ambient",
+            operation="physical_operation_dependency_environment",
+            resource=key,
+            disposition="allowed",
+            reason_code="pinned_dependency_environment_default",
+            details={"present": value is not None},
+        )
+        return default if value is None else value
+
+
 class _RefusingDateTime(_ORIGINAL_DATETIME):
     @classmethod
     def now(cls, tz: object = None) -> Any:
@@ -1711,6 +1743,58 @@ def _physical_sink_path(
     return candidate
 
 
+def _physical_sink_probe_path(
+    session: BrokerSession,
+    operation: PhysicalOperation,
+    value: object,
+    *,
+    primitive: str,
+) -> Path:
+    """Allow read-only metadata probes inside or above a declared sink root."""
+
+    if isinstance(value, int | bytes) or not isinstance(value, str | os.PathLike):
+        session._log.record(
+            broker="ambient",
+            operation="physical_operation_sink_path",
+            resource=primitive,
+            disposition="refused",
+            reason_code="physical_sink_path_shape_invalid",
+        )
+        raise BrokerAccessError(
+            f"physical operation {primitive} requires a filesystem path"
+        )
+    lexical = Path(os.path.abspath(os.fspath(value)))
+    with (
+        patch.object(os, "lstat", _ORIGINAL_OS_AMBIENT["lstat"]),
+        patch.object(os, "readlink", _ORIGINAL_OS_AMBIENT["readlink"]),
+    ):
+        resolved = Path(os.path.realpath(lexical))
+    allowed = any(
+        (
+            lexical.is_relative_to(root)
+            and resolved.is_relative_to(root)
+        )
+        or (
+            root.is_relative_to(lexical)
+            and root.is_relative_to(resolved)
+        )
+        for root in operation.sink_roots
+    )
+    if not allowed:
+        session._log.record(
+            broker="ambient",
+            operation="physical_operation_sink_path",
+            resource=primitive,
+            disposition="refused",
+            reason_code="physical_sink_path_outside_grant",
+            details={"path_sha256": _sha256_bytes(os.fsencode(resolved))},
+        )
+        raise BrokerAccessError(
+            f"physical operation {primitive} path is outside its sink roots"
+        )
+    return lexical
+
+
 def _physical_seed_required(
     session: BrokerSession,
     operation: str,
@@ -1773,20 +1857,37 @@ def _physical_seeded_constructor(
 
 
 @contextmanager
-def _legacy_v1_physical_operation_scope(
+def _physical_operation_compatibility_scope(
     session: BrokerSession,
     operation: PhysicalOperation,
+    *,
+    legacy_rng: bool,
 ) -> Iterator[None]:
-    """Narrowly restore primitives for one broker-owned, pinned legacy call.
+    """Narrowly restore declared sinks and, only when requested, legacy RNG.
 
     The registered kernel remains under the ambient guard.  Only the broker's
-    prebound operation runs in this nested scope, at most once, with source
-    access still denied.  Sink access is constrained to the declared roots and
-    entropy-seeking NumPy constructors remain denied.
+    prebound operation runs in this nested scope, at most once. Source access
+    remains denied and sink access is constrained to the declared roots.
+    ``broker-only`` calls set ``legacy_rng=False`` and therefore retain the
+    ambient RNG guard; their implementation-pinned third-party fits use typed
+    lease methods instead.
     """
 
     with ExitStack() as stack:
-        if session.determinism == "seeded":
+        if not legacy_rng:
+            pinned_environment = _PinnedDependencyEnvironment(
+                _ORIGINAL_ENVIRON,
+                session,
+            )
+            stack.enter_context(
+                patch.object(
+                    os,
+                    "environ",
+                    pinned_environment,
+                )
+            )
+            stack.enter_context(patch.object(os, "getenv", pinned_environment.get))
+        if legacy_rng and session.determinism == "seeded":
             for site_id in session.rng.granted_sites:
                 session._log.record(
                     broker="rng",
@@ -1936,34 +2037,48 @@ def _legacy_v1_physical_operation_scope(
                     _original: Callable[..., object] = original,
                     **kwargs: object,
                 ) -> object:
-                    checked = _physical_sink_path(
-                        session, operation, value, primitive=f"os.{_name}"
+                    resolver = (
+                        _physical_sink_probe_path
+                        if _name in {"lstat", "readlink", "stat"}
+                        else _physical_sink_path
+                    )
+                    checked = resolver(
+                        session,
+                        operation,
+                        value,
+                        primitive=f"os.{_name}",
                     )
                     return _original(checked, *args, **kwargs)
 
                 stack.enter_context(patch.object(os, name, path_call))
-            stack.enter_context(patch.object(os, "environ", _ORIGINAL_ENVIRON))
-            if _ORIGINAL_ENVIRONB is not None and hasattr(os, "environb"):
-                stack.enter_context(patch.object(os, "environb", _ORIGINAL_ENVIRONB))
-            for name, original in _ORIGINAL_ENVIRONMENT_CALLS.items():
-                stack.enter_context(patch.object(os, name, original))
-            for name, original in _ORIGINAL_OPERATIONAL_CLOCKS.items():
-                stack.enter_context(patch.object(time_module, name, original))
-            for name, original in _ORIGINAL_SUBPROCESS.items():
-                stack.enter_context(patch.object(subprocess, name, original))
-            stack.enter_context(patch.object(os, "urandom", _ORIGINAL_OS_URANDOM))
-            stack.enter_context(patch.object(uuid, "uuid4", _ORIGINAL_UUID4))
+            if legacy_rng:
+                stack.enter_context(patch.object(os, "environ", _ORIGINAL_ENVIRON))
+                if _ORIGINAL_ENVIRONB is not None and hasattr(os, "environb"):
+                    stack.enter_context(
+                        patch.object(os, "environb", _ORIGINAL_ENVIRONB)
+                    )
+                for name, original in _ORIGINAL_ENVIRONMENT_CALLS.items():
+                    stack.enter_context(patch.object(os, name, original))
+                for name, original in _ORIGINAL_OPERATIONAL_CLOCKS.items():
+                    stack.enter_context(patch.object(time_module, name, original))
+                for name, original in _ORIGINAL_SUBPROCESS.items():
+                    stack.enter_context(patch.object(subprocess, name, original))
+                stack.enter_context(
+                    patch.object(os, "urandom", _ORIGINAL_OS_URANDOM)
+                )
+                stack.enter_context(patch.object(uuid, "uuid4", _ORIGINAL_UUID4))
         yield
 
 
 class _GeneratorLeaseStore:
     """Session-owned serialized states; no raw generator survives a broker call."""
 
-    __slots__ = ("_session", "_states")
+    __slots__ = ("_authorized_child_seeds", "_session", "_states")
 
     def __init__(self, session: BrokerSession) -> None:
         self._session = session
         self._states: dict[object, bytes] = {}
+        self._authorized_child_seeds: dict[object, list[int]] = {}
 
     def register(self, generator: np.random.Generator) -> object:
         self._session._require_active()
@@ -1971,6 +2086,7 @@ class _GeneratorLeaseStore:
         self._states[handle] = pickle.dumps(
             copy.deepcopy(generator.bit_generator.state), protocol=5
         )
+        self._authorized_child_seeds[handle] = []
         return handle
 
     def contains(self, handle: object) -> bool:
@@ -1978,9 +2094,11 @@ class _GeneratorLeaseStore:
 
     def close(self, handle: object) -> None:
         self._states.pop(handle, None)
+        self._authorized_child_seeds.pop(handle, None)
 
     def close_all(self) -> None:
         self._states.clear()
+        self._authorized_child_seeds.clear()
 
     def _decode_state(self, handle: object) -> dict[str, object]:
         try:
@@ -2037,6 +2155,10 @@ class _GeneratorLeaseStore:
         generator = self._materialize(handle)
         result = getattr(generator, method)(*args, **dict(kwargs))
         self._store(handle, generator)
+        if method == "integers" and isinstance(result, int | np.integer) and not (
+            isinstance(result, bool | np.bool_)
+        ):
+            self._authorized_child_seeds[handle].append(int(result))
         if _contains_raw_generator(result):
             self._session._log.record(
                 broker="rng",
@@ -2060,6 +2182,25 @@ class _GeneratorLeaseStore:
             },
         )
         return result
+
+    def consume_child_seed(self, handle: object, value: object) -> int:
+        """Consume one scalar seed previously drawn from this exact lease."""
+
+        self._session._require_active()
+        if isinstance(value, bool) or not isinstance(value, int | np.integer):
+            raise BrokerAccessError(
+                "seeded estimator random_state must be an integer lease draw"
+            )
+        seed = int(value)
+        try:
+            authorized = self._authorized_child_seeds[handle]
+            index = authorized.index(seed)
+        except (KeyError, ValueError) as error:
+            raise BrokerAccessError(
+                "seeded estimator random_state was not drawn from this lease"
+            ) from error
+        authorized.pop(index)
+        return seed
 
 
 class GeneratorLease:
@@ -2134,6 +2275,299 @@ class GeneratorLease:
             token=object.__getattribute__(self, "_token"),
             label=object.__getattribute__(self, "_label"),
         )
+
+    def qrf_fit_n_jobs(self) -> int:
+        """Return the constants-era unset fit-width without ambient env reads."""
+
+        object.__getattribute__(self, "_check")()
+        return -1
+
+    def qrf_predict_workers(self) -> int:
+        """Return the host width through a captured operational primitive."""
+
+        object.__getattribute__(self, "_check")()
+        return _ORIGINAL_OS_CPU_COUNT() or 1
+
+    def draw_qrf_estimator(
+        self,
+        estimator: object,
+        features: object,
+        row_quantiles: object,
+        *,
+        grid: object,
+        bounds: object,
+        workers: int,
+    ) -> object:
+        """Draw a chunked grid through the pinned quantile-forest dependency."""
+
+        object.__getattribute__(self, "_check")()
+        session = object.__getattribute__(self, "_session")
+        token = object.__getattribute__(self, "_token")
+        estimator_type = type(estimator)
+        identity = (estimator_type.__module__, estimator_type.__qualname__)
+        module = sys.modules.get("quantile_forest._quantile_forest")
+        installed_type = (
+            None
+            if module is None
+            else getattr(module, "RandomForestQuantileRegressor", None)
+        )
+        if identity != (
+            "quantile_forest._quantile_forest",
+            "RandomForestQuantileRegressor",
+        ) or estimator_type is not installed_type:
+            session._log.record(
+                broker="rng",
+                operation="draw_qrf_estimator",
+                resource=token.site_id,
+                disposition="refused",
+                reason_code="qrf_estimator_implementation_refused",
+                details={"estimator": f"{identity[0]}.{identity[1]}"},
+            )
+            raise BrokerAccessError(
+                "QRF prediction is not an implementation-pinned dependency"
+            )
+        if (
+            not isinstance(features, np.ndarray)
+            or features.ndim != 2
+            or not isinstance(row_quantiles, np.ndarray)
+            or row_quantiles.ndim != 1
+            or len(row_quantiles) != len(features)
+            or not isinstance(grid, np.ndarray)
+            or grid.ndim != 1
+            or len(grid) < 2
+            or isinstance(workers, bool)
+            or not isinstance(workers, int)
+            or workers < 1
+            or not isinstance(bounds, tuple)
+        ):
+            raise BrokerAccessError("pinned QRF draw arguments are invalid")
+        normalized_bounds: list[tuple[int, int]] = []
+        cursor = 0
+        for bound in bounds:
+            if (
+                not isinstance(bound, tuple)
+                or len(bound) != 2
+                or any(
+                    isinstance(value, bool) or not isinstance(value, int)
+                    for value in bound
+                )
+            ):
+                raise BrokerAccessError("pinned QRF draw bounds are invalid")
+            start, stop = bound
+            if start != cursor or stop <= start or stop > len(features):
+                raise BrokerAccessError("pinned QRF draw bounds are not contiguous")
+            normalized_bounds.append((start, stop))
+            cursor = stop
+        if cursor != len(features):
+            raise BrokerAccessError("pinned QRF draw bounds do not cover the rows")
+        counter = 0
+        counter_lock = threading.Lock()
+        operational_identity = sha256_json(token.to_wire()).encode("ascii")
+
+        def dependency_urandom(size: int) -> bytes:
+            nonlocal counter
+            if isinstance(size, bool) or not isinstance(size, int) or size < 0:
+                raise BrokerAccessError("pinned dependency requested invalid bytes")
+            output = bytearray()
+            with counter_lock:
+                while len(output) < size:
+                    payload = (
+                        b"microcosm-qrf-operational-id-v1\x00"
+                        + operational_identity
+                        + counter.to_bytes(8, "big")
+                    )
+                    output.extend(hashlib.sha256(payload).digest())
+                    counter += 1
+            return bytes(output[:size])
+
+        output = np.empty(len(features), dtype=np.float64)
+
+        def draw_chunk(bound: tuple[int, int]) -> None:
+            start, stop = bound
+            predictions = np.asarray(
+                estimator_type.predict(
+                    estimator,
+                    features[start:stop],
+                    quantiles=list(grid),
+                )
+            ).reshape(stop - start, len(grid))
+            quantiles = row_quantiles[start:stop]
+            upper = np.searchsorted(grid, quantiles, side="left")
+            upper = np.clip(upper, 1, len(grid) - 1)
+            lower = upper - 1
+            grid_lo = grid[lower]
+            grid_hi = grid[upper]
+            span = grid_hi - grid_lo
+            weight = np.where(span > 0, (quantiles - grid_lo) / span, 0.0)
+            weight = np.clip(weight, 0.0, 1.0)
+            rows = np.arange(len(quantiles))
+            values_lo = predictions[rows, lower]
+            values_hi = predictions[rows, upper]
+            output[start:stop] = values_lo + weight * (values_hi - values_lo)
+
+        saved_n_jobs = getattr(estimator, "n_jobs", None)
+        with (
+            patch.object(os, "urandom", dependency_urandom),
+            patch.object(time_module, "time", _ORIGINAL_TIME),
+        ):
+            if workers <= 1 or len(normalized_bounds) <= 1:
+                for bound in normalized_bounds:
+                    draw_chunk(bound)
+            else:
+                estimator.n_jobs = 1
+                try:
+                    with ThreadPoolExecutor(max_workers=workers) as pool:
+                        for _ in pool.map(draw_chunk, normalized_bounds):
+                            pass
+                finally:
+                    estimator.n_jobs = saved_n_jobs
+        if _contains_raw_generator(output):
+            raise BrokerAccessError("QRF prediction returned unexpected authority")
+        session._log.record(
+            broker="rng",
+            operation="draw_qrf_estimator",
+            resource=token.site_id,
+            disposition="allowed",
+            reason_code="brokered_qrf_estimator_draw",
+            details={
+                "owner": token.owner.to_wire(),
+                "estimator": f"{identity[0]}.{identity[1]}",
+                "chunk_count": len(normalized_bounds),
+                "workers": workers,
+            },
+        )
+        return output
+
+    def fit_seeded_qrf_estimator(
+        self,
+        estimator: object,
+        features: object,
+        targets: object,
+        *,
+        sample_weight: object | None = None,
+    ) -> object:
+        """Fit one exact QRF dependency using a seed drawn from this lease.
+
+        The callback cannot supply an arbitrary callable. Only the installed
+        quantile forest and sign-gate implementation classes are accepted, and
+        their explicit ``random_state`` must be a scalar value already drawn
+        from this lease. The dependency's module-level Python shuffle is backed
+        by a call-local ``Random`` instance, never by ambient module state.
+        """
+
+        object.__getattribute__(self, "_check")()
+        session = object.__getattribute__(self, "_session")
+        token = object.__getattribute__(self, "_token")
+        handle = object.__getattribute__(self, "_handle")
+        estimator_type = type(estimator)
+        identity = (estimator_type.__module__, estimator_type.__qualname__)
+        allowed = {
+            (
+                "quantile_forest._quantile_forest",
+                "RandomForestQuantileRegressor",
+            ): ("quantile_forest._quantile_forest", "RandomForestQuantileRegressor"),
+            (
+                "sklearn.ensemble._hist_gradient_boosting.gradient_boosting",
+                "HistGradientBoostingClassifier",
+            ): (
+                "sklearn.ensemble._hist_gradient_boosting.gradient_boosting",
+                "HistGradientBoostingClassifier",
+            ),
+        }
+        module_name, class_name = allowed.get(identity, (None, None))
+        module = None if module_name is None else sys.modules.get(module_name)
+        installed_type = None if module is None else getattr(module, class_name, None)
+        if estimator_type is not installed_type:
+            session._log.record(
+                broker="rng",
+                operation="fit_seeded_qrf_estimator",
+                resource=token.site_id,
+                disposition="refused",
+                reason_code="qrf_estimator_implementation_refused",
+                details={"estimator": f"{identity[0]}.{identity[1]}"},
+            )
+            raise BrokerAccessError(
+                "seeded QRF estimator is not an implementation-pinned dependency"
+            )
+        seed = session._rng_leases.consume_child_seed(
+            handle,
+            getattr(estimator, "random_state", None),
+        )
+        local_python_rng = _ORIGINAL_PYTHON_RANDOM_CLASS(0)
+        fit = estimator_type.fit
+        kwargs = {}
+        if identity[1] == "HistGradientBoostingClassifier":
+            if getattr(estimator, "warm_start", None) is not False:
+                raise BrokerAccessError(
+                    "pinned sign-gate adapter requires warm_start=False"
+                )
+            kwargs["sample_weight"] = sample_weight
+        elif sample_weight is not None:
+            raise BrokerAccessError(
+                "quantile-forest compatibility fit does not accept sample weights"
+            )
+
+        def dependency_default_rng(seed: object = None) -> np.random.Generator:
+            if seed is None:
+                raise BrokerAccessError(
+                    "pinned QRF dependency requested an entropy-seeded generator"
+                )
+            return _ORIGINAL_DEFAULT_RNG(seed)
+
+        operational_counter = 0
+        operational_identity = sha256_json(token.to_wire()).encode("ascii")
+
+        def dependency_urandom(size: int) -> bytes:
+            nonlocal operational_counter
+            if isinstance(size, bool) or not isinstance(size, int) or size < 0:
+                raise BrokerAccessError("pinned dependency requested invalid bytes")
+            output = bytearray()
+            while len(output) < size:
+                payload = (
+                    b"microcosm-qrf-operational-id-v1\x00"
+                    + operational_identity
+                    + operational_counter.to_bytes(8, "big")
+                )
+                output.extend(hashlib.sha256(payload).digest())
+                operational_counter += 1
+            return bytes(output[:size])
+
+        with (
+            patch.object(np.random, "RandomState", _ORIGINAL_RANDOM_STATE),
+            patch.object(np.random, "default_rng", dependency_default_rng),
+            patch.object(python_random, "seed", local_python_rng.seed),
+            patch.object(python_random, "shuffle", local_python_rng.shuffle),
+            patch.object(os, "urandom", dependency_urandom),
+            patch.object(time_module, "time", _ORIGINAL_TIME),
+        ):
+            result = fit(estimator, features, targets, **kwargs)
+        if identity[1] == "HistGradientBoostingClassifier":
+            feature_rng = getattr(estimator, "_feature_subsample_rng", None)
+            if not isinstance(feature_rng, _ORIGINAL_GENERATOR):
+                raise BrokerAccessError(
+                    "pinned sign-gate fit did not retain its expected generator"
+                )
+            # The generator is fit-only state when warm_start is disabled.
+            # Strip it before returning the estimator so raw RNG authority
+            # cannot escape this exact dependency adapter.
+            estimator._feature_subsample_rng = None
+        if result is not estimator or _contains_raw_generator(result):
+            raise BrokerAccessError(
+                "seeded QRF estimator fit returned unexpected authority"
+            )
+        session._log.record(
+            broker="rng",
+            operation="fit_seeded_qrf_estimator",
+            resource=token.site_id,
+            disposition="allowed",
+            reason_code="brokered_seeded_qrf_estimator_fit",
+            details={
+                "owner": token.owner.to_wire(),
+                "estimator": f"{identity[0]}.{identity[1]}",
+                "seed_sha256": _sha256_bytes(str(seed).encode()),
+            },
+        )
+        return result
 
     def __getattr__(self, name: str) -> Any:
         object.__getattribute__(self, "_check")()
@@ -4939,10 +5373,19 @@ class BrokerSession:
         object.__setattr__(self, "_physical_operation_invoked", True)
         try:
             if operation.policy == "legacy-v1":
-                with _legacy_v1_physical_operation_scope(self, operation):
+                with _physical_operation_compatibility_scope(
+                    self,
+                    operation,
+                    legacy_rng=True,
+                ):
                     result = operation.function()
             else:
-                result = operation.function(self.kernel_view)
+                with _physical_operation_compatibility_scope(
+                    self,
+                    operation,
+                    legacy_rng=False,
+                ):
+                    result = operation.function(self.kernel_view)
         except BaseException:
             self._log.record(
                 broker="ambient",
@@ -5112,6 +5555,12 @@ class BrokerSession:
                 ),
                 "ambient": False,
             }[event.broker]
+            if event.broker == "ambient" and (
+                event.operation == "physical_operation_dependency_environment"
+                and event.reason_code == "pinned_dependency_environment_default"
+                and event.resource in _PINNED_DEPENDENCY_ENVIRONMENT_DEFAULTS
+            ):
+                authorized = True
             if authorized:
                 continue
             self._log.record(
@@ -5198,8 +5647,14 @@ class BrokerSession:
         receipt.validate()
         object.__setattr__(self, "_sealed_receipt", receipt)
         if requested_status == "complete" and (tainted or file_close_error is not None):
+            refused = [
+                f"{event.broker}:{event.operation}:{event.reason_code}"
+                for event in events
+                if event.disposition == "refused"
+            ]
             raise BrokerAccessError(
-                "broker session recorded a refused access and cannot complete"
+                "broker session recorded a refused access and cannot complete: "
+                + ", ".join(refused)
             ) from file_close_error
         return receipt
 

@@ -19,6 +19,7 @@ from microcosm.fit import QRFChainState, Regime, RegimeGatedQRF, fit
 from microcosm.fit.qrf import (
     _DISCRETE_Y_LEAF_BOUND,
     _fit_n_jobs,
+    _interp_rows,
     _rng_from_state_json,
     _rng_state_json,
     detect_regime,
@@ -743,6 +744,8 @@ class _GeneratorLeaseStub:
     def __init__(self, rng: np.random.Generator) -> None:
         self._rng = rng
         self.draw_calls = 0
+        self.fit_adapter_calls = 0
+        self.draw_adapter_calls = 0
 
     def choice(self, *args, **kwargs):
         self.draw_calls += 1
@@ -758,6 +761,48 @@ class _GeneratorLeaseStub:
 
     def bit_generator_state(self) -> dict[str, object]:
         return json.loads(json.dumps(self._rng.bit_generator.state))
+
+    def qrf_fit_n_jobs(self) -> int:
+        return _fit_n_jobs()
+
+    def qrf_predict_workers(self) -> int:
+        return 1
+
+    def fit_seeded_qrf_estimator(
+        self,
+        estimator,
+        features,
+        targets,
+        *,
+        sample_weight=None,
+    ):
+        self.fit_adapter_calls += 1
+        kwargs = {} if sample_weight is None else {"sample_weight": sample_weight}
+        return estimator.fit(features, targets, **kwargs)
+
+    def draw_qrf_estimator(
+        self,
+        estimator,
+        features,
+        row_quantiles,
+        *,
+        grid,
+        bounds,
+        workers,
+    ):
+        del workers
+        self.draw_adapter_calls += 1
+        output = np.empty(len(features), dtype=np.float64)
+        for start, stop in bounds:
+            predictions = np.asarray(
+                estimator.predict(features[start:stop], quantiles=list(grid))
+            ).reshape(stop - start, len(grid))
+            output[start:stop] = _interp_rows(
+                row_quantiles[start:stop],
+                grid,
+                predictions,
+            )
+        return output
 
 
 class _GeneratorPairStub:
@@ -807,6 +852,8 @@ def test_broker_generator_pair_preserves_monolithic_fit_and_draw_bits(
     np.testing.assert_array_equal(actual.to_numpy(), expected.to_numpy())
     assert generators.fit.draw_calls > 0
     assert generators.draw.draw_calls > 0
+    assert generators.fit.fit_adapter_calls > 0
+    assert generators.draw.draw_adapter_calls > 0
 
 
 def test_broker_generator_pair_preserves_chain_state_and_resumed_step_bits(

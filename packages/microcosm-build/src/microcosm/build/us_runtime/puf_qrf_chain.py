@@ -23,6 +23,7 @@ from microcosm.build.serialization_dtypes import (
     canonicalize_frame_string_dtypes,
     canonicalize_table_string_dtypes,
 )
+from microcosm.build.spec_engine.brokers import QRFGeneratorLease
 from microcosm.build.stage_profile import profile_stage
 from microcosm.build.us_runtime.puf_support import (
     PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
@@ -127,6 +128,7 @@ def initialize_primary_puf_qrf_chain(
     n_estimators: int = 100,
     require_complete_recipient_predictors: bool = False,
     absent_cells: str = PUF_ABSENT_CELLS_LEGACY_ZERO_FILL,
+    rng_generators: QRFGeneratorLease | None = None,
 ) -> dict[str, object]:
     """Write immutable donor/recipient inputs and the initial RNG manifest.
 
@@ -217,12 +219,21 @@ def initialize_primary_puf_qrf_chain(
     )
 
     model = QRF(n_estimators=n_estimators, seed=seed)
-    state = model.start_chain(
-        donor_frame,
-        list(inputs.predictors),
-        list(target_order),
-        weights="design",
-    )
+    if rng_generators is None:
+        state = model.start_chain(
+            donor_frame,
+            list(inputs.predictors),
+            list(target_order),
+            weights="design",
+        )
+    else:
+        state = model.start_chain(
+            donor_frame,
+            list(inputs.predictors),
+            list(target_order),
+            weights="design",
+            rng_generators=rng_generators,
+        )
     recipient_table = recipient_frame.table("tax_unit")
     manifest: dict[str, object] = {
         "artifact_kind": _ARTIFACT_KIND,
@@ -255,6 +266,7 @@ def run_primary_puf_qrf_chain(
     checkpoint_dir: str | Path,
     *,
     environment: Mapping[str, str] | None = None,
+    rng_generators: QRFGeneratorLease | None = None,
 ) -> None:
     """Run or resume one fresh interpreter per target in exact chain order."""
 
@@ -279,9 +291,42 @@ def run_primary_puf_qrf_chain(
                 "Primary QRF checkpoints have a non-contiguous prefix: "
                 f"target {first_gap} is missing but later target(s) {later} exist."
             )
-    child_environment = None
-    if environment is not None:
-        child_environment = {**os.environ, **dict(environment)}
+    if rng_generators is None:
+        child_environment = None
+        if environment is not None:
+            child_environment = {**os.environ, **dict(environment)}
+        for target_index, _target in enumerate(target_order):
+            target_path = _target_path(root, manifest, target_index)
+            if target_path.exists():
+                _raw_draw, state = _load_target_checkpoint(
+                    root, manifest, target_index, expected_state=state
+                )
+                continue
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "microcosm.build.us_runtime.puf_qrf_worker",
+                    "--checkpoint-dir",
+                    str(root),
+                    "--target-index",
+                    str(target_index),
+                ],
+                env=child_environment,
+                check=False,
+            )
+            if completed.returncode != 0:
+                raise RuntimeError(
+                    f"Primary PUF QRF target {target_index} "
+                    f"({target_order[target_index]}) failed with exit code "
+                    f"{completed.returncode}."
+                )
+            _raw_draw, state = _load_target_checkpoint(
+                root, manifest, target_index, expected_state=state
+            )
+        return
+
+    _validate_in_process_environment(environment)
     for target_index, _target in enumerate(target_order):
         target_path = _target_path(root, manifest, target_index)
         if target_path.exists():
@@ -289,32 +334,31 @@ def run_primary_puf_qrf_chain(
                 root, manifest, target_index, expected_state=state
             )
             continue
-        completed = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "microcosm.build.us_runtime.puf_qrf_worker",
-                "--checkpoint-dir",
-                str(root),
-                "--target-index",
-                str(target_index),
-            ],
-            env=child_environment,
-            check=False,
+        _validate_rng_generators_state(
+            rng_generators,
+            state,
+            boundary=f"before target {target_index}",
         )
-        if completed.returncode != 0:
-            raise RuntimeError(
-                f"Primary PUF QRF target {target_index} ({target_order[target_index]}) "
-                f"failed with exit code {completed.returncode}."
-            )
+        run_primary_puf_qrf_target(
+            root,
+            target_index,
+            rng_generators=rng_generators,
+        )
         _raw_draw, state = _load_target_checkpoint(
             root, manifest, target_index, expected_state=state
         )
+    _validate_rng_generators_state(
+        rng_generators,
+        state,
+        boundary="after completed target prefix",
+    )
 
 
 def run_primary_puf_qrf_target(
     checkpoint_dir: str | Path,
     target_index: int,
+    *,
+    rng_generators: QRFGeneratorLease | None = None,
 ) -> Path:
     """Fit and draw exactly one target, then atomically checkpoint raw bits."""
 
@@ -327,7 +371,15 @@ def run_primary_puf_qrf_target(
         )
     target_path = _target_path(root, manifest, target_index)
     if target_path.exists():
-        _load_target_checkpoint(root, manifest, target_index)
+        _raw_draw, completed_state = _load_target_checkpoint(
+            root, manifest, target_index
+        )
+        if rng_generators is not None:
+            _validate_rng_generators_state(
+                rng_generators,
+                completed_state,
+                boundary=f"after existing target {target_index}",
+            )
         return target_path
 
     with profile_stage(
@@ -366,13 +418,23 @@ def run_primary_puf_qrf_target(
         )
         predictors = _manifest_strings(manifest, "predictors")
         recipient_predictors = recipient_table.loc[:, list(predictors)]
-        result = model.fit_draw_next(
-            donor,
-            recipient_predictors,
-            raw_prior,
-            state=state,
-            weights="design",
-        )
+        if rng_generators is None:
+            result = model.fit_draw_next(
+                donor,
+                recipient_predictors,
+                raw_prior,
+                state=state,
+                weights="design",
+            )
+        else:
+            result = model.fit_draw_next(
+                donor,
+                recipient_predictors,
+                raw_prior,
+                state=state,
+                weights="design",
+                rng_generators=rng_generators,
+            )
         if result.target != target_order[target_index]:
             raise AssertionError(
                 f"QRF step returned {result.target!r}, expected "
@@ -390,6 +452,55 @@ def run_primary_puf_qrf_target(
             weight_kind=result.weight_kind,
         )
     return target_path
+
+
+def _validate_in_process_environment(
+    environment: Mapping[str, str] | None,
+) -> None:
+    """Refuse ambient environment overrides in the brokered in-process path."""
+
+    if not environment:
+        return
+    raise ValueError(
+        "Primary QRF brokered in-process execution does not accept ambient "
+        "environment overrides; operational controls come from the RNG lease."
+    )
+
+
+def _validate_rng_generators_state(
+    rng_generators: QRFGeneratorLease,
+    state: QRFChainState,
+    *,
+    boundary: str,
+) -> None:
+    """Match public broker lease states to one authenticated chain prefix."""
+
+    observed = {
+        "fit": json.dumps(
+            rng_generators.fit.bit_generator_state(),
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ),
+        "draw": json.dumps(
+            rng_generators.draw.bit_generator_state(),
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ),
+    }
+    expected = {
+        "fit": state.fit_rng_state_json,
+        "draw": state.draw_rng_state_json,
+    }
+    mismatches = [
+        stream for stream in ("fit", "draw") if observed[stream] != expected[stream]
+    ]
+    if mismatches:
+        raise ValueError(
+            "Primary QRF broker RNG state does not match the authenticated "
+            f"checkpoint prefix {boundary}; mismatched streams={mismatches!r}."
+        )
 
 
 def load_primary_puf_qrf_predictions(
