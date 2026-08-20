@@ -2,11 +2,11 @@
 
 ## State
 
-Implementation discovery is in progress on `battery-excl-machinery`, starting
-from `origin/main` at `164027e2`. The assigned scope is machinery only: port
-the UK schema-2 reviewed-exclusion pattern to the US stacked battery and ship
-an empty register. No band, threshold, seed, fold, comparator, or exclusion
-approval is in scope.
+Design and baseline discovery are complete on `battery-excl-machinery`, which
+started from `origin/main` at `164027e2`. The assigned scope remains machinery
+only: port the UK schema-2 reviewed-exclusion pattern to the US stacked battery
+and ship an empty register. No band, threshold, seed, fold, comparator, or
+exclusion approval is in scope.
 
 ## Done
 
@@ -22,11 +22,22 @@ approval is in scope.
 - Attempted the GitNexus exploration workflow; no GitNexus MCP resources or
   tools are configured in this session, so discovery is using direct source
   and test call sites.
+- Read every module and line range cited by the assigned adjudication rows,
+  including the cited UK snapshot and the refactored equivalents on current
+  `main`.
+- Captured the existing 1% terminal receipt for both assigned checks: each is
+  `dead_comparison`, with ASEC/ACS incidence 0/0 and nonzero rows 0/0.
+- Confirmed a cold 1% build would violate the lane's 15 GiB RSS ceiling; the
+  existing run records primary-QRF peaks above 80 GiB. The after measurement
+  will therefore re-run fresh terminal gates from its saved simulated frame.
+- Recovered a runnable locked US environment by cloning the already-synced
+  adjudication-worktree venv and rebinding its editable paths locally. The
+  original exact sync command was still attempted first and remains
+  network-blocked as recorded above.
+- Baseline battery/manifest tests pass: 8 targeted tests.
 
 ## Next
 
-- Finish the cited-source and existing-test audit.
-- Record the pre-change 1% behavior for both assigned checks.
 - Implement and test schema-2 loading, exact leg-plus-criterion matching,
   lifecycle/anti-rot reporting, partial-configuration refusal, and sealed
   terminal-manifest receipts with the committed register empty.
