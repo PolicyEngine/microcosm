@@ -16,7 +16,11 @@ cases total) under the 12 GiB guard with 0.541 GiB maximum observed
 per-process RSS. No duplicate executable edit is warranted. The affected-suite
 rerun is also green: all 529 tests in the five directly affected files passed
 under the same guard with 1.459 GiB maximum observed per-process RSS. Static
-verification remains in progress. The owner-provided
+verification also passes: repository lint, formatting of all 15 correction-
+range Python files, committed-range whitespace, and exact `microcosm-build/src`
+and `us_runtime` tree comparisons with all-build-suite checkpoint `a5be536f`.
+Only the strict three-line assigned-family forgery regression and journals
+differ after that checkpoint. Final report refresh remains. The owner-provided
 `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain untracked and
 untouched, and no terminal host result is claimed.
 
@@ -257,6 +261,12 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
+  changed since `33bf52fe^`, and `git diff --check 33bf52fe^..HEAD`; all pass.
+  Exact Git tree objects for both all `microcosm-build/src` and its
+  `us_runtime` subtree match all-build-suite checkpoint `a5be536f`. Since that
+  checkpoint only the already-rerun three-line binding regression and journals
+  changed.
 - Reran all 529 tests in the five directly affected ordinary-transfer,
   multispine-serialization, stacked-spine, pool-tool, and H5 files in one
   process under the owner 12 GiB/20 ms guard. The run passed with 1.459 GiB
@@ -770,7 +780,5 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run repository lint, correction-range format/whitespace checks, and exact
-   runtime tree comparisons against the all-build-suite checkpoint.
-2. Refresh
-   `FINAL_REPORT.md` with revision-bound results.
+1. Refresh `FINAL_REPORT.md` with revision-bound results and the precise
+   remaining host-certification boundary.
