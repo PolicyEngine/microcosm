@@ -45,6 +45,7 @@ import sys
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field
+from datetime import date
 from importlib.resources import files
 from pathlib import Path
 from types import MappingProxyType
@@ -171,6 +172,12 @@ from microcosm.build.us_runtime.puf_support import (
     impute_us_puf_tax_detail_support,
     puf_tax_detail_tail_bound_quantiles_identity,
     validate_puf_clone_attachment,
+)
+from microcosm.build.us_runtime.reviewed_exclusions import (
+    US_BY_ORIGIN_EXCLUSION_REGISTER_RESOURCE,
+    USByOriginReviewedExclusionPolicy,
+    us_default_by_origin_reviewed_exclusion_policy,
+    us_exclusion_evaluation_date,
 )
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
 from microcosm.build.us_runtime.support_provenance import (
@@ -7056,6 +7063,265 @@ def _validate_test_authority(authority: _StackedAuthority, *, boundary: str) -> 
         raise ValueError(f"{boundary} requires a NON-CANONICAL test authority.")
 
 
+def _battery_manifest_criterion_states(
+    comparisons: Mapping[str, object],
+    *,
+    reject: Callable[[str], None],
+) -> tuple[set[str], dict[str, str]]:
+    """Reconstruct eligible criterion states from sealed comparison facts."""
+
+    evaluated: set[str] = set()
+    failing: dict[str, str] = {}
+    lower, upper = _BATTERY_INCIDENCE_RATIO_BOUNDS
+
+    def finite_number(raw: object, *, label: str) -> float:
+        if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+            reject(f"{label} must be a finite number")
+        value = float(raw)
+        if not math.isfinite(value):
+            reject(f"{label} must be a finite number")
+        return value
+
+    def incidence_ratio(raw: object, *, label: str) -> float:
+        if raw == "inf":
+            return math.inf
+        return finite_number(raw, label=label)
+
+    for label, raw_comparison in comparisons.items():
+        if not isinstance(raw_comparison, Mapping):
+            continue
+        metric = raw_comparison.get("metric")
+        status = raw_comparison.get("status")
+        if metric in {"boolean_incidence", "rare_incidence"}:
+            dead_id = f"{label}#dead"
+            if status == "dead_comparison":
+                evaluated.add(dead_id)
+                failing[dead_id] = (
+                    f"{label}: zero weighted incidence on both origins with adequate "
+                    "support; the registered comparison is dead."
+                )
+                continue
+            if status != "tested":
+                continue
+            evaluated.add(dead_id)
+            incidence_id = f"{label}#incidence"
+            evaluated.add(incidence_id)
+            ratio = incidence_ratio(
+                raw_comparison.get("incidence_ratio_acs_over_asec"),
+                label=f"{label} incidence ratio",
+            )
+            if not lower <= ratio <= upper:
+                left = finite_number(
+                    raw_comparison.get("asec_incidence"),
+                    label=f"{label} ASEC incidence",
+                )
+                right = finite_number(
+                    raw_comparison.get("acs_incidence"),
+                    label=f"{label} ACS incidence",
+                )
+                failing[incidence_id] = (
+                    f"{label}: weighted incidence ratio {ratio:.6g} is outside "
+                    f"[{lower:.6g}, {upper:.6g}] "
+                    f"(asec={left:.6g}, acs={right:.6g})."
+                )
+            continue
+        if metric == "monetary_sign_separated" and status == "tested":
+            raw_legs = raw_comparison.get("legs")
+            if not isinstance(raw_legs, Mapping) or set(raw_legs) != {
+                "positive",
+                "negative",
+            }:
+                reject(f"{label} monetary comparison legs are malformed")
+            for leg_name in ("positive", "negative"):
+                raw_leg = raw_legs[leg_name]
+                if not isinstance(raw_leg, Mapping):
+                    reject(f"{label}/{leg_name} comparison leg is malformed")
+                incidence_id = f"{label}/{leg_name}#incidence"
+                evaluated.add(incidence_id)
+                if raw_leg.get("status") == "absent_on_both_origins":
+                    continue
+                ratio = incidence_ratio(
+                    raw_leg.get("incidence_ratio_acs_over_asec"),
+                    label=f"{label}/{leg_name} incidence ratio",
+                )
+                if not lower <= ratio <= upper:
+                    left = finite_number(
+                        raw_leg.get("asec_incidence"),
+                        label=f"{label}/{leg_name} ASEC incidence",
+                    )
+                    right = finite_number(
+                        raw_leg.get("acs_incidence"),
+                        label=f"{label}/{leg_name} ACS incidence",
+                    )
+                    failing[incidence_id] = (
+                        f"{label}/{leg_name}: weighted {leg_name}-leg incidence "
+                        f"ratio {ratio:.6g} is outside "
+                        f"[{lower:.6g}, {upper:.6g}] "
+                        f"(asec={left:.6g}, acs={right:.6g})."
+                    )
+                if "quantile_envelope_distance" not in raw_leg:
+                    continue
+                quantile_id = f"{label}/{leg_name}#quantile"
+                evaluated.add(quantile_id)
+                distance = finite_number(
+                    raw_leg["quantile_envelope_distance"],
+                    label=f"{label}/{leg_name} quantile distance",
+                )
+                if distance > _BATTERY_QUANTILE_ENVELOPE_TOLERANCE:
+                    failing[quantile_id] = (
+                        f"{label}/{leg_name}: conditional-quantile envelope "
+                        f"distance {distance:.6g} exceeds "
+                        f"{_BATTERY_QUANTILE_ENVELOPE_TOLERANCE:.6g}."
+                    )
+            continue
+        if metric == "categorical_tvd" and status == "tested":
+            check_id = f"{label}#categorical"
+            evaluated.add(check_id)
+            distance = finite_number(
+                raw_comparison.get("total_variation_distance"),
+                label=f"{label} categorical distance",
+            )
+            if distance > _BATTERY_CATEGORICAL_TVD_TOLERANCE:
+                failing[check_id] = (
+                    f"{label}: categorical total-variation distance "
+                    f"{distance:.6g} exceeds "
+                    f"{_BATTERY_CATEGORICAL_TVD_TOLERANCE:.6g}."
+                )
+    return evaluated, failing
+
+
+def _validate_battery_reviewed_exclusion_report(
+    raw_report: object,
+    comparisons: Mapping[str, object],
+    *,
+    passed: bool,
+    reject: Callable[[str], None],
+) -> set[str]:
+    """Authenticate one schema-2 report and its anti-rot classification."""
+
+    expected_fields = {
+        "schema_version",
+        "resource",
+        "description",
+        "policy_source",
+        "policy_sha256",
+        "resolved_receipts",
+        "in_force_exclusions",
+        "applied_exclusions",
+        "stale_exclusions",
+        "dormant_exclusions",
+        "expired_exclusions",
+        "premature_exclusions",
+        "exclusions_evaluated_on",
+    }
+    if not isinstance(raw_report, Mapping) or set(raw_report) != expected_fields:
+        reject("reviewed-exclusion report schema mismatch")
+    if (
+        type(raw_report.get("schema_version")) is not int
+        or raw_report.get("schema_version") != 2
+    ):
+        reject("reviewed-exclusion report schema_version must be 2")
+    if raw_report.get("resource") != US_BY_ORIGIN_EXCLUSION_REGISTER_RESOURCE:
+        reject("reviewed-exclusion report resource mismatch")
+    policy_source = raw_report.get("policy_source")
+    resolved_receipts = raw_report.get("resolved_receipts")
+    try:
+        policy = USByOriginReviewedExclusionPolicy(
+            description=raw_report.get("description"),
+            exclusions=resolved_receipts,
+            policy_source=policy_source,
+        )
+    except (TypeError, ValueError) as error:
+        reject(f"reviewed-exclusion policy snapshot is invalid: {error}")
+    if raw_report.get("policy_sha256") != policy.policy_sha256:
+        reject("reviewed-exclusion policy SHA-256 mismatch")
+    committed = us_default_by_origin_reviewed_exclusion_policy()
+    same_as_committed = policy.policy_payload() == committed.policy_payload()
+    if (policy_source == "committed") != same_as_committed:
+        reject("reviewed-exclusion policy source does not match its content")
+
+    raw_evaluated_on = raw_report.get("exclusions_evaluated_on")
+    try:
+        evaluated_on = date.fromisoformat(raw_evaluated_on)
+    except (TypeError, ValueError) as error:
+        reject(f"reviewed-exclusion evaluation date is invalid: {error}")
+    if evaluated_on.isoformat() != raw_evaluated_on:
+        reject("reviewed-exclusion evaluation date is not canonical YYYY-MM-DD")
+
+    def exact_id_list(field_name: str) -> list[str]:
+        raw_ids = raw_report.get(field_name)
+        if (
+            not isinstance(raw_ids, list)
+            or any(not isinstance(check_id, str) for check_id in raw_ids)
+            or raw_ids != sorted(set(raw_ids))
+        ):
+            reject(f"reviewed-exclusion {field_name} must be sorted and unique")
+        return raw_ids
+
+    in_force = exact_id_list("in_force_exclusions")
+    stale = exact_id_list("stale_exclusions")
+    dormant = exact_id_list("dormant_exclusions")
+    expired = exact_id_list("expired_exclusions")
+    premature = exact_id_list("premature_exclusions")
+    expected_expired = sorted(
+        check_id
+        for check_id, record in policy.exclusions.items()
+        if record.expired(evaluated_on)
+    )
+    expected_premature = sorted(
+        check_id
+        for check_id, record in policy.exclusions.items()
+        if record.premature(evaluated_on)
+    )
+    expected_in_force = sorted(
+        set(policy.exclusions) - set(expected_expired) - set(expected_premature)
+    )
+    if (
+        expired != expected_expired
+        or premature != expected_premature
+        or in_force != expected_in_force
+    ):
+        reject("reviewed-exclusion lifecycle classification mismatch")
+
+    evaluated, failing_messages = _battery_manifest_criterion_states(
+        comparisons,
+        reject=reject,
+    )
+    failing = set(failing_messages)
+    expected_applied = sorted(set(in_force) & failing)
+    expected_stale = sorted(set(in_force) & evaluated - failing)
+    expected_dormant = sorted(set(in_force) - evaluated)
+    if stale != expected_stale or dormant != expected_dormant:
+        reject("reviewed-exclusion anti-rot classification mismatch")
+    raw_applied = raw_report.get("applied_exclusions")
+    if (
+        not isinstance(raw_applied, Mapping)
+        or any(not isinstance(check_id, str) for check_id in raw_applied)
+        or sorted(raw_applied) != expected_applied
+    ):
+        reject("reviewed-exclusion applied classification mismatch")
+    for check_id in expected_applied:
+        raw_application = raw_applied[check_id]
+        expected_receipt = policy.exclusions[check_id].policy_payload()
+        if (
+            not isinstance(raw_application, Mapping)
+            or set(raw_application) != {"failure", "receipt"}
+            or raw_application.get("failure") != failing_messages[check_id]
+            or raw_application.get("receipt") != expected_receipt
+        ):
+            reject(f"reviewed-exclusion application {check_id!r} is malformed")
+    applied = set(expected_applied)
+    if passed:
+        if failing - applied:
+            reject(
+                "passing battery has unsuppressed failing criteria "
+                f"{sorted(failing - applied)}"
+            )
+        if stale or expired or premature:
+            reject("passing battery carries a stale or out-of-force exclusion")
+    return applied
+
+
 def _validate_stacked_gate_manifest_details(
     gate_name: str,
     details: Mapping[str, object],
@@ -7429,6 +7695,12 @@ def _validate_stacked_gate_manifest_details(
                 or comparison.get("metric") != metric
             ):
                 reject(f"{label} comparison must use canonical metric {metric!r}")
+        applied_exclusions = _validate_battery_reviewed_exclusion_report(
+            details.get("reviewed_exclusions"),
+            comparisons,
+            passed=passed,
+            reject=reject,
+        )
         if passed:
             allowed_statuses = {"tested", "insufficient_support"}
             statuses = {
@@ -7440,6 +7712,10 @@ def _validate_stacked_gate_manifest_details(
                 label: status
                 for label, status in statuses.items()
                 if status not in allowed_statuses
+                and not (
+                    status == "dead_comparison"
+                    and f"{label}#dead" in applied_exclusions
+                )
             }
             if invalid_statuses:
                 reject(
@@ -7447,7 +7723,13 @@ def _validate_stacked_gate_manifest_details(
                     f"{invalid_statuses}"
                 )
             tested_labels = {
-                label for label, status in statuses.items() if status == "tested"
+                label
+                for label, status in statuses.items()
+                if status == "tested"
+                or (
+                    status == "dead_comparison"
+                    and f"{label}#dead" in applied_exclusions
+                )
             }
             untestable_labels = sorted(
                 label
@@ -11309,6 +11591,133 @@ _BATTERY_QUANTILE_ENVELOPE_TOLERANCE = 0.25
 _BATTERY_CATEGORICAL_TVD_TOLERANCE = 0.25
 
 
+def _record_battery_criterion_failure(
+    *,
+    check_id: str,
+    message: str,
+    failures: list[str],
+    failure_indices: dict[str, int],
+    evaluated_criteria: set[str],
+) -> None:
+    """Append one exact eligible failure without parsing human text later."""
+
+    if check_id in failure_indices:
+        raise RuntimeError(f"Duplicate by-origin battery check ID {check_id!r}.")
+    evaluated_criteria.add(check_id)
+    failure_indices[check_id] = len(failures)
+    failures.append(message)
+
+
+def _reviewed_exclusion_lifecycle_failure(
+    policy: USByOriginReviewedExclusionPolicy,
+    check_ids: list[str],
+    *,
+    condition: str,
+) -> str:
+    records = policy.exclusions
+    if condition == "expired":
+        described = "; ".join(
+            f"{check_id} expired {records[check_id].expires_on} "
+            f"(approved_by {records[check_id].approved_by}, "
+            f"{records[check_id].adjudication})"
+            for check_id in check_ids
+        )
+        return (
+            "Reviewed US by-origin battery exclusions expired — renew the "
+            f"adjudication or remove the entries: {described}."
+        )
+    if condition == "premature":
+        described = "; ".join(
+            f"{check_id} takes force {records[check_id].approved_on} "
+            f"(approved_by {records[check_id].approved_by}, "
+            f"{records[check_id].adjudication})"
+            for check_id in check_ids
+        )
+        return (
+            "Reviewed US by-origin battery exclusions are not yet in force — "
+            "correct the receipt's approved_on or wait for it: "
+            f"{described}."
+        )
+    raise ValueError(f"Unknown reviewed-exclusion condition {condition!r}.")
+
+
+def _apply_battery_reviewed_exclusions(
+    failures: list[str],
+    *,
+    failure_indices: Mapping[str, int],
+    evaluated_criteria: set[str],
+    policy: USByOriginReviewedExclusionPolicy,
+    evaluated_on: date,
+) -> tuple[list[str], dict[str, object]]:
+    """Apply exact in-force receipts and emit the complete anti-rot report."""
+
+    records = dict(policy.exclusions)
+    expired = sorted(
+        check_id for check_id, record in records.items() if record.expired(evaluated_on)
+    )
+    premature = sorted(
+        check_id
+        for check_id, record in records.items()
+        if record.premature(evaluated_on)
+    )
+    out_of_force = set(expired) | set(premature)
+    in_force = sorted(set(records) - out_of_force)
+    applied_ids = sorted(set(in_force) & set(failure_indices))
+    stale = sorted(set(in_force) & evaluated_criteria - set(failure_indices))
+    dormant = sorted(set(in_force) - evaluated_criteria - set(failure_indices))
+    suppressed_indices = {failure_indices[check_id] for check_id in applied_ids}
+    resolved_failures = [
+        failure
+        for index, failure in enumerate(failures)
+        if index not in suppressed_indices
+    ]
+    if stale:
+        resolved_failures.append(
+            "Stale reviewed US by-origin battery exclusions — the exact "
+            f"criterion passes now; remove the entries: {stale}."
+        )
+    if expired:
+        resolved_failures.append(
+            _reviewed_exclusion_lifecycle_failure(
+                policy,
+                expired,
+                condition="expired",
+            )
+        )
+    if premature:
+        resolved_failures.append(
+            _reviewed_exclusion_lifecycle_failure(
+                policy,
+                premature,
+                condition="premature",
+            )
+        )
+    return resolved_failures, {
+        "schema_version": 2,
+        "resource": US_BY_ORIGIN_EXCLUSION_REGISTER_RESOURCE,
+        "description": policy.description,
+        "policy_source": policy.policy_source,
+        "policy_sha256": policy.policy_sha256,
+        "resolved_receipts": {
+            check_id: record.policy_payload()
+            for check_id, record in sorted(records.items())
+        },
+        "in_force_exclusions": in_force,
+        "applied_exclusions": {
+            check_id: {
+                "failure": failures[failure_indices[check_id]],
+                "receipt": records[check_id].policy_payload(),
+            }
+            for check_id in applied_ids
+        },
+        "stale_exclusions": stale,
+        "dormant_exclusions": dormant,
+        "expired_exclusions": expired,
+        "premature_exclusions": premature,
+        "exclusions_evaluated_on": evaluated_on.isoformat(),
+    }
+
+
 @dataclass(frozen=True)
 class OriginBatterySpec:
     """Test-seam grouping for per-column battery metrics.
@@ -11367,6 +11776,8 @@ def by_origin_battery(
     frame: Frame,
     *,
     tail_manifest: Mapping[str, object] | None = None,
+    reviewed_exclusion_policy: USByOriginReviewedExclusionPolicy | None = None,
+    exclusions_evaluated_on: date | None = None,
 ) -> GateResult:
     """Run the canonical 131-target plus joint by-origin battery."""
 
@@ -11375,6 +11786,8 @@ def by_origin_battery(
         authority=_production_stacked_authority(),
         production=True,
         tail_manifest=tail_manifest,
+        reviewed_exclusion_policy=reviewed_exclusion_policy,
+        exclusions_evaluated_on=exclusions_evaluated_on,
     )
 
 
@@ -11383,6 +11796,8 @@ def _by_origin_battery_with_test_authority(
     *,
     authority: _StackedAuthority,
     tail_manifest: Mapping[str, object] | None = None,
+    reviewed_exclusion_policy: USByOriginReviewedExclusionPolicy | None = None,
+    exclusions_evaluated_on: date | None = None,
 ) -> GateResult:
     """Explicit test-only battery seam for a digested authority bundle."""
 
@@ -11392,6 +11807,8 @@ def _by_origin_battery_with_test_authority(
         authority=authority,
         production=False,
         tail_manifest=tail_manifest,
+        reviewed_exclusion_policy=reviewed_exclusion_policy,
+        exclusions_evaluated_on=exclusions_evaluated_on,
     )
 
 
@@ -11418,6 +11835,8 @@ def _by_origin_battery_evaluate(
     authority: _StackedAuthority,
     production: bool,
     tail_manifest: Mapping[str, object] | None = None,
+    reviewed_exclusion_policy: USByOriginReviewedExclusionPolicy | None = None,
+    exclusions_evaluated_on: date | None = None,
     _canonical_gap_fill_plan: tuple[
         GapFillDirection, ...
     ] = CANONICAL_STACKED_GAP_FILL_PLAN,
@@ -11441,6 +11860,27 @@ def _by_origin_battery_evaluate(
     both origins carry ample support.
     """
 
+    committed_exclusion_policy = us_default_by_origin_reviewed_exclusion_policy()
+    if reviewed_exclusion_policy is None:
+        reviewed_exclusion_policy = committed_exclusion_policy
+    if not isinstance(
+        reviewed_exclusion_policy,
+        USByOriginReviewedExclusionPolicy,
+    ):
+        raise TypeError(
+            "reviewed_exclusion_policy must be a fully armed "
+            "USByOriginReviewedExclusionPolicy."
+        )
+    same_as_committed = (
+        reviewed_exclusion_policy.policy_payload()
+        == committed_exclusion_policy.policy_payload()
+    )
+    if (reviewed_exclusion_policy.policy_source == "committed") != same_as_committed:
+        raise ValueError(
+            "reviewed_exclusion_policy source does not match its content; "
+            "resolve policy snapshots through the authenticated loader."
+        )
+    exclusion_clock = us_exclusion_evaluation_date(exclusions_evaluated_on)
     tail_support_receipt = _terminal_tail_support_gate_receipt(
         frame,
         tail_manifest,
@@ -11489,6 +11929,13 @@ def _by_origin_battery_evaluate(
         "support_profile": support_profile_receipt,
     }
     if registration_failures:
+        registration_failures, reviewed_exclusions = _apply_battery_reviewed_exclusions(
+            registration_failures,
+            failure_indices={},
+            evaluated_criteria=set(),
+            policy=reviewed_exclusion_policy,
+            evaluated_on=exclusion_clock,
+        )
         return _sealed_stacked_gate_result(
             name=_BATTERY_GATE_NAME,
             passed=False,
@@ -11499,6 +11946,7 @@ def _by_origin_battery_evaluate(
                 "tested_comparisons": 0,
                 "untestable_comparisons": [],
                 "comparisons": {},
+                "reviewed_exclusions": reviewed_exclusions,
                 **(
                     {_TAIL_SUPPORT_GATE_DETAIL_KEY: tail_support_receipt}
                     if tail_support_receipt is not None
@@ -11509,6 +11957,8 @@ def _by_origin_battery_evaluate(
     validate_stacked_spine_frame(frame, boundary="by-origin battery")
 
     failures: list[str] = []
+    criterion_failure_indices: dict[str, int] = {}
+    evaluated_criteria: set[str] = set()
     comparisons: dict[str, object] = {}
     structural_absence_receipts: dict[str, dict[str, object]] = {}
     untestable: list[str] = []
@@ -11648,6 +12098,8 @@ def _by_origin_battery_evaluate(
                     weights=weights,
                     failures=failures,
                     comparisons=comparisons,
+                    failure_indices=criterion_failure_indices,
+                    evaluated_criteria=evaluated_criteria,
                 )
                 continue
             if values is None:  # pragma: no cover - categorical continued above
@@ -11662,6 +12114,8 @@ def _by_origin_battery_evaluate(
                     weights=weights,
                     failures=failures,
                     comparisons=comparisons,
+                    failure_indices=criterion_failure_indices,
+                    evaluated_criteria=evaluated_criteria,
                 )
             else:
                 _battery_sign_separated_comparison(
@@ -11675,6 +12129,8 @@ def _by_origin_battery_evaluate(
                     min_effective_support=(
                         authority.support_profile.min_effective_support
                     ),
+                    failure_indices=criterion_failure_indices,
+                    evaluated_criteria=evaluated_criteria,
                 )
     for target, metric in authority.joint_metric_registry.items():
         entity, family, columns, clone_role = target
@@ -11736,11 +12192,20 @@ def _by_origin_battery_evaluate(
             weights=weights,
             failures=failures,
             comparisons=comparisons,
+            failure_indices=criterion_failure_indices,
+            evaluated_criteria=evaluated_criteria,
         )
     for label, receipt in structural_absence_receipts.items():
         comparison = comparisons.get(label)
         if isinstance(comparison, dict):
             comparison["recipient_absence_authority"] = receipt
+    failures, reviewed_exclusions = _apply_battery_reviewed_exclusions(
+        failures,
+        failure_indices=criterion_failure_indices,
+        evaluated_criteria=evaluated_criteria,
+        policy=reviewed_exclusion_policy,
+        evaluated_on=exclusion_clock,
+    )
     return _sealed_stacked_gate_result(
         name=_BATTERY_GATE_NAME,
         passed=not failures,
@@ -11760,6 +12225,7 @@ def _by_origin_battery_evaluate(
             "tested_comparisons": tested,
             "untestable_comparisons": sorted(untestable),
             "comparisons": comparisons,
+            "reviewed_exclusions": reviewed_exclusions,
             **(
                 {_TAIL_SUPPORT_GATE_DETAIL_KEY: tail_support_receipt}
                 if tail_support_receipt is not None
@@ -11826,6 +12292,8 @@ def _battery_incidence_comparison(
     weights: np.ndarray,
     failures: list[str],
     comparisons: dict[str, object],
+    failure_indices: dict[str, int],
+    evaluated_criteria: set[str],
 ) -> None:
     left = _weighted_nonzero_incidence(values[left_rows], weights[left_rows])
     right = _weighted_nonzero_incidence(values[right_rows], weights[right_rows])
@@ -11840,20 +12308,37 @@ def _battery_incidence_comparison(
         },
     }
     comparisons[label] = record
+    dead_id = f"{label}#dead"
     if left == 0.0 and right == 0.0:
-        failures.append(
-            f"{label}: zero weighted incidence on both origins with adequate "
-            "support; the registered comparison is dead."
+        _record_battery_criterion_failure(
+            check_id=dead_id,
+            message=(
+                f"{label}: zero weighted incidence on both origins with adequate "
+                "support; the registered comparison is dead."
+            ),
+            failures=failures,
+            failure_indices=failure_indices,
+            evaluated_criteria=evaluated_criteria,
         )
         record["status"] = "dead_comparison"
         return
+    evaluated_criteria.add(dead_id)
+    incidence_id = f"{label}#incidence"
+    evaluated_criteria.add(incidence_id)
     ratio = math.inf if left == 0.0 else right / left
     record["incidence_ratio_acs_over_asec"] = ratio if math.isfinite(ratio) else "inf"
     lower, upper = _BATTERY_INCIDENCE_RATIO_BOUNDS
     if not lower <= ratio <= upper:
-        failures.append(
-            f"{label}: weighted incidence ratio {ratio:.6g} is outside "
-            f"[{lower:.6g}, {upper:.6g}] (asec={left:.6g}, acs={right:.6g})."
+        _record_battery_criterion_failure(
+            check_id=incidence_id,
+            message=(
+                f"{label}: weighted incidence ratio {ratio:.6g} is outside "
+                f"[{lower:.6g}, {upper:.6g}] "
+                f"(asec={left:.6g}, acs={right:.6g})."
+            ),
+            failures=failures,
+            failure_indices=failure_indices,
+            evaluated_criteria=evaluated_criteria,
         )
 
 
@@ -11867,6 +12352,8 @@ def _battery_sign_separated_comparison(
     failures: list[str],
     comparisons: dict[str, object],
     min_effective_support: int,
+    failure_indices: dict[str, int],
+    evaluated_criteria: set[str],
 ) -> None:
     record: dict[str, object] = {
         "status": "tested",
@@ -11896,6 +12383,8 @@ def _battery_sign_separated_comparison(
             },
         }
         record["legs"][leg_name] = leg_record
+        incidence_id = f"{label}/{leg_name}#incidence"
+        evaluated_criteria.add(incidence_id)
         if left_incidence == 0.0 and right_incidence == 0.0:
             leg_record["status"] = "absent_on_both_origins"
             continue
@@ -11904,10 +12393,16 @@ def _battery_sign_separated_comparison(
             ratio if math.isfinite(ratio) else "inf"
         )
         if not lower <= ratio <= upper:
-            failures.append(
-                f"{label}/{leg_name}: weighted {leg_name}-leg incidence ratio "
-                f"{ratio:.6g} is outside [{lower:.6g}, {upper:.6g}] "
-                f"(asec={left_incidence:.6g}, acs={right_incidence:.6g})."
+            _record_battery_criterion_failure(
+                check_id=incidence_id,
+                message=(
+                    f"{label}/{leg_name}: weighted {leg_name}-leg incidence ratio "
+                    f"{ratio:.6g} is outside [{lower:.6g}, {upper:.6g}] "
+                    f"(asec={left_incidence:.6g}, acs={right_incidence:.6g})."
+                ),
+                failures=failures,
+                failure_indices=failure_indices,
+                evaluated_criteria=evaluated_criteria,
             )
         if (
             int(left_leg.sum()) < min_effective_support
@@ -11915,6 +12410,8 @@ def _battery_sign_separated_comparison(
         ):
             leg_record["quantile_envelope"] = "leg_insufficient_support"
             continue
+        quantile_id = f"{label}/{leg_name}#quantile"
+        evaluated_criteria.add(quantile_id)
         left_quantiles = _battery_conditional_quantiles(
             np.abs(values[left_leg]), weights[left_leg]
         )
@@ -11924,10 +12421,16 @@ def _battery_sign_separated_comparison(
         distance = _battery_quantile_envelope_distance(left_quantiles, right_quantiles)
         leg_record["quantile_envelope_distance"] = distance
         if distance > _BATTERY_QUANTILE_ENVELOPE_TOLERANCE:
-            failures.append(
-                f"{label}/{leg_name}: conditional-quantile envelope distance "
-                f"{distance:.6g} exceeds "
-                f"{_BATTERY_QUANTILE_ENVELOPE_TOLERANCE:.6g}."
+            _record_battery_criterion_failure(
+                check_id=quantile_id,
+                message=(
+                    f"{label}/{leg_name}: conditional-quantile envelope distance "
+                    f"{distance:.6g} exceeds "
+                    f"{_BATTERY_QUANTILE_ENVELOPE_TOLERANCE:.6g}."
+                ),
+                failures=failures,
+                failure_indices=failure_indices,
+                evaluated_criteria=evaluated_criteria,
             )
 
 
@@ -11940,6 +12443,8 @@ def _battery_categorical_comparison(
     weights: np.ndarray,
     failures: list[str],
     comparisons: dict[str, object],
+    failure_indices: dict[str, int],
+    evaluated_criteria: set[str],
 ) -> None:
     values = series.to_numpy(dtype=object)
     distributions: dict[str, dict[str, float]] = {}
@@ -11966,10 +12471,18 @@ def _battery_categorical_comparison(
         "total_variation_distance": distance,
         "category_shares": distributions,
     }
+    check_id = f"{label}#categorical"
+    evaluated_criteria.add(check_id)
     if distance > _BATTERY_CATEGORICAL_TVD_TOLERANCE:
-        failures.append(
-            f"{label}: categorical total-variation distance {distance:.6g} "
-            f"exceeds {_BATTERY_CATEGORICAL_TVD_TOLERANCE:.6g}."
+        _record_battery_criterion_failure(
+            check_id=check_id,
+            message=(
+                f"{label}: categorical total-variation distance {distance:.6g} "
+                f"exceeds {_BATTERY_CATEGORICAL_TVD_TOLERANCE:.6g}."
+            ),
+            failures=failures,
+            failure_indices=failure_indices,
+            evaluated_criteria=evaluated_criteria,
         )
 
 

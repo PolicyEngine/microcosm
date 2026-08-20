@@ -22,12 +22,13 @@
 
 ## Mechanism record
 
-- The production US battery accepts only the frame and optional tail manifest,
-  then invokes the comparison evaluator with no exclusion policy
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11366-11378`).
+- The production US battery accepts one fully typed reviewed-exclusion policy
+  snapshot plus an optional plain-date test clock; absent a supplied snapshot,
+  it resolves the committed register, and it rejects any untyped policy
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11739-11837`).
 - A boolean comparison with zero weighted incidence on both origins appends a
   dead-comparison failure and records `status=dead_comparison`
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11819-11849`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:12244-12296`).
 - The QBI reconciliation deliberately sets both clone-0/native SSTB flags
   false on the ASEC-compatible support role
   (`packages/microcosm-build/src/microcosm/build/us_runtime/qbi_inputs.py:1246-1264`),
@@ -74,3 +75,22 @@
   receipt fields, authenticates overrides as a path-plus-SHA pair, and seals a
   canonical content digest
   (`packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:48-211,290-355`).
+- 2026-08-19: integrated exact criterion recording into the unchanged battery
+  comparators. Eligible failures are indexed as `#dead`, `#incidence`,
+  `/positive|negative#quantile`, or `#categorical` while the existing failure
+  messages and frozen constants remain the emitted artifacts
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11551-11572,12244-12444`).
+- 2026-08-19: added lifecycle resolution. Only exact in-force failing IDs are
+  removed; passing evaluated IDs become stale failures, unevaluated IDs are
+  reported dormant, and expired/premature entries add failures without
+  suppressing comparator failures
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11575-11682`).
+- 2026-08-19: the terminal validator reconstructs eligible failing criteria
+  from sealed comparison facts, verifies the policy digest and source,
+  recomputes all lifecycle/anti-rot buckets, and rejects a passing battery with
+  any unapplied criterion failure or stale/out-of-force receipt
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7063-7291,7659-7713`).
+- 2026-08-19: the evaluator embeds the full schema-2 report in gate details,
+  which the existing evaluator seal and `GateReport` manifest copy protect
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11739-11837,12156-12183`;
+  `packages/microcosm-build/src/microcosm/build/gates.py:142-177,204-309`).

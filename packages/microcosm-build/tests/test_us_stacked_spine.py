@@ -17,6 +17,7 @@ from collections import Counter
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import FrozenInstanceError, replace
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -67,6 +68,11 @@ from microcosm.build.us_runtime.puf_support import (
 from microcosm.build.us_runtime.qbi_inputs import (
     US_QBI_BOOLEAN_OUTPUT_COLUMNS,
     US_QBI_OUTPUT_COLUMNS,
+)
+from microcosm.build.us_runtime.reviewed_exclusions import (
+    USByOriginReviewedExclusionPolicy,
+    USReviewedExclusion,
+    us_default_by_origin_reviewed_exclusion_policy,
 )
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
 from microcosm.build.us_runtime.stacked_spine import (
@@ -2194,6 +2200,7 @@ def _battery_with_test_authority(
     frame: Frame,
     *,
     registry: tuple[OriginBatterySpec, ...],
+    **kwargs: object,
 ):
     surface = {
         entity: {family: tuple(targets) for family, targets in families.items()}
@@ -2216,6 +2223,7 @@ def _battery_with_test_authority(
     return stacked_spine_module._by_origin_battery_with_test_authority(
         frame,
         authority=authority,
+        **kwargs,
     )
 
 
@@ -7633,6 +7641,49 @@ def _battery_frame(
     ).frame
 
 
+def _single_target_battery(
+    frame: Frame,
+    *,
+    column: str,
+    metric: str = "boolean_incidence",
+    reviewed_exclusion_policy: USByOriginReviewedExclusionPolicy | None = None,
+    exclusions_evaluated_on: date | None = None,
+) -> GateResult:
+    target = ("person", "puf_tax_itemization", column, 0)
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface={"person": {"puf_tax_itemization": (column,)}},
+        metric_registry={target: metric},
+        joint_metric_registry={},
+    )
+    return stacked_spine_module._by_origin_battery_with_test_authority(
+        frame,
+        authority=authority,
+        reviewed_exclusion_policy=reviewed_exclusion_policy,
+        exclusions_evaluated_on=exclusions_evaluated_on,
+    )
+
+
+def _reviewed_exclusion_policy(
+    *check_ids: str,
+    approved_on: str = "2026-01-01",
+    expires_on: str = "2026-12-31",
+) -> USByOriginReviewedExclusionPolicy:
+    return USByOriginReviewedExclusionPolicy(
+        description="Test-only owner approval fixture.",
+        exclusions={
+            check_id: USReviewedExclusion(
+                reason="Test the reviewed-exclusion mechanism without policy data.",
+                approved_by="test-owner",
+                adjudication="test://reviewed-exclusion",
+                approved_on=approved_on,
+                expires_on=expires_on,
+            )
+            for check_id in check_ids
+        },
+        policy_source="override",
+    )
+
+
 @pytest.mark.parametrize("clone_role", (0, 1))
 def test_completeness_rejects_nonfinite_values_on_every_non_tail_clone_role(
     clone_role: int,
@@ -8029,6 +8080,368 @@ def test_battery_support_awareness_and_dead_comparisons() -> None:
     )
     assert dead.details["support_profile"]["min_effective_support"] == 5
     assert len(dead.details["support_profile"]["sha256"]) == 64
+
+
+@pytest.mark.parametrize(
+    "column",
+    (
+        "business_is_sstb",
+        "sstb_self_employment_income_would_be_qualified",
+    ),
+)
+def test_empty_reviewed_exclusion_register_leaves_assigned_dead_checks_failing(
+    column: str,
+) -> None:
+    frame = _battery_frame(
+        {column: (np.zeros(8, dtype=np.int64), np.zeros(11, dtype=np.int64))}
+    )
+
+    result = _single_target_battery(frame, column=column)
+
+    assert not result.passed
+    label = f"person/puf_tax_itemization/{column}[clone_0]"
+    assert result.details["comparisons"][label]["status"] == "dead_comparison"
+    assert any(
+        label in failure and "comparison is dead" in failure
+        for failure in result.failures
+    )
+    reviewed = result.details["reviewed_exclusions"]
+    assert reviewed["schema_version"] == 2
+    assert reviewed["policy_source"] == "committed"
+    assert reviewed["resolved_receipts"] == {}
+    assert reviewed["in_force_exclusions"] == []
+    assert reviewed["applied_exclusions"] == {}
+
+
+def test_in_force_dead_receipt_is_exact_and_sealed_in_terminal_manifest() -> None:
+    column = "business_is_sstb"
+    label = f"person/puf_tax_itemization/{column}[clone_0]"
+    check_id = f"{label}#dead"
+    policy = _reviewed_exclusion_policy(check_id)
+    frame = _battery_frame(
+        {column: (np.zeros(8, dtype=np.int64), np.zeros(11, dtype=np.int64))}
+    )
+
+    result = by_origin_battery(
+        frame,
+        reviewed_exclusion_policy=policy,
+        exclusions_evaluated_on=date(2026, 8, 19),
+    )
+
+    assert result.passed, result.failures
+    assert result.details["comparisons"][label]["status"] == "dead_comparison"
+    reviewed = result.details["reviewed_exclusions"]
+    assert reviewed["in_force_exclusions"] == [check_id]
+    assert set(reviewed["applied_exclusions"]) == {check_id}
+    assert reviewed["applied_exclusions"][check_id]["receipt"] == (
+        policy.exclusions[check_id].policy_payload()
+    )
+    manifest = GateReport((result,)).to_manifest()
+    sealed = manifest["gates"]["us_by_origin_battery"]["details"]["reviewed_exclusions"]
+    assert sealed == reviewed
+
+    forged_details = deepcopy(dict(result.details))
+    forged_details["reviewed_exclusions"]["resolved_receipts"][check_id]["reason"] = (
+        "Changed after review."
+    )
+    forged = stacked_spine_module._sealed_stacked_gate_result(
+        name=result.name,
+        passed=result.passed,
+        failures=result.failures,
+        details=forged_details,
+    )
+    with pytest.raises(ValueError, match="policy SHA-256 mismatch"):
+        GateReport((forged,)).to_manifest()
+
+    forged_details = deepcopy(dict(result.details))
+    forged_details["reviewed_exclusions"]["applied_exclusions"][check_id]["failure"] = (
+        "Fabricated but non-empty comparator failure."
+    )
+    forged = stacked_spine_module._sealed_stacked_gate_result(
+        name=result.name,
+        passed=result.passed,
+        failures=result.failures,
+        details=forged_details,
+    )
+    with pytest.raises(ValueError, match="application.*is malformed"):
+        GateReport((forged,)).to_manifest()
+
+
+def test_battery_refuses_typed_policy_source_content_mismatches() -> None:
+    column = "business_is_sstb"
+    label = f"person/puf_tax_itemization/{column}[clone_0]"
+    committed = us_default_by_origin_reviewed_exclusion_policy()
+    mismatched = (
+        USByOriginReviewedExclusionPolicy(
+            description="Content falsely labelled as committed.",
+            exclusions=_reviewed_exclusion_policy(f"{label}#dead").exclusions,
+            policy_source="committed",
+        ),
+        USByOriginReviewedExclusionPolicy(
+            description=committed.description,
+            exclusions={},
+            policy_source="override",
+        ),
+    )
+    frame = _battery_frame(
+        {column: (np.zeros(8, dtype=np.int64), np.zeros(11, dtype=np.int64))}
+    )
+
+    for policy in mismatched:
+        with pytest.raises(ValueError, match="source does not match its content"):
+            _single_target_battery(
+                frame,
+                column=column,
+                reviewed_exclusion_policy=policy,
+                exclusions_evaluated_on=date(2026, 8, 19),
+            )
+
+
+def test_reviewed_exclusions_are_criterion_exact_and_stale_when_healed() -> None:
+    column = "business_is_sstb"
+    label = f"person/puf_tax_itemization/{column}[clone_0]"
+    frame = _battery_frame(
+        {
+            column: (
+                np.ones(8, dtype=np.int64),
+                np.zeros(11, dtype=np.int64),
+            )
+        }
+    )
+    evaluated_on = date(2026, 8, 19)
+
+    dead_policy = _reviewed_exclusion_policy(f"{label}#dead")
+    dead_result = _single_target_battery(
+        frame,
+        column=column,
+        reviewed_exclusion_policy=dead_policy,
+        exclusions_evaluated_on=evaluated_on,
+    )
+
+    assert not dead_result.passed
+    assert any("incidence ratio" in failure for failure in dead_result.failures)
+    assert any("Stale reviewed" in failure for failure in dead_result.failures)
+    assert dead_result.details["reviewed_exclusions"]["stale_exclusions"] == [
+        f"{label}#dead"
+    ]
+    assert dead_result.details["reviewed_exclusions"]["applied_exclusions"] == {}
+
+    incidence_policy = _reviewed_exclusion_policy(f"{label}#incidence")
+    incidence_result = _single_target_battery(
+        frame,
+        column=column,
+        reviewed_exclusion_policy=incidence_policy,
+        exclusions_evaluated_on=evaluated_on,
+    )
+
+    assert incidence_result.passed, incidence_result.failures
+    assert set(
+        incidence_result.details["reviewed_exclusions"]["applied_exclusions"]
+    ) == {f"{label}#incidence"}
+
+
+@pytest.mark.parametrize(
+    ("column", "metric", "asec_values", "acs_values", "criterion"),
+    (
+        (
+            "reviewed_amount_incidence",
+            "monetary_sign_separated",
+            np.ones(8),
+            np.zeros(11),
+            "positive#incidence",
+        ),
+        (
+            "reviewed_amount_quantile",
+            "monetary_sign_separated",
+            np.ones(8),
+            np.full(11, 100.0),
+            "positive#quantile",
+        ),
+        (
+            "reviewed_category",
+            "categorical_tvd",
+            np.asarray(["A"] * 8, dtype=object),
+            np.asarray(["B"] * 11, dtype=object),
+            "categorical",
+        ),
+    ),
+)
+def test_reviewed_exclusion_routes_every_eligible_comparator_criterion(
+    column: str,
+    metric: str,
+    asec_values: np.ndarray,
+    acs_values: np.ndarray,
+    criterion: str,
+) -> None:
+    label = f"person/puf_tax_itemization/{column}[clone_0]"
+    check_id = f"{label}/{criterion}" if "#" in criterion else f"{label}#{criterion}"
+    policy = _reviewed_exclusion_policy(check_id)
+    frame = _battery_frame({column: (asec_values, acs_values)})
+
+    result = _single_target_battery(
+        frame,
+        column=column,
+        metric=metric,
+        reviewed_exclusion_policy=policy,
+        exclusions_evaluated_on=date(2026, 8, 19),
+    )
+
+    assert result.passed, result.failures
+    reviewed = result.details["reviewed_exclusions"]
+    assert set(reviewed["applied_exclusions"]) == {check_id}
+    assert reviewed["stale_exclusions"] == []
+
+
+def test_monetary_leg_exclusion_does_not_suppress_the_opposite_leg() -> None:
+    column = "reviewed_signed_amount"
+    label = f"person/puf_tax_itemization/{column}[clone_0]"
+    applied_id = f"{label}/positive#incidence"
+    frame = _battery_frame({column: (np.ones(8), np.full(11, -1.0))})
+
+    result = _single_target_battery(
+        frame,
+        column=column,
+        metric="monetary_sign_separated",
+        reviewed_exclusion_policy=_reviewed_exclusion_policy(applied_id),
+        exclusions_evaluated_on=date(2026, 8, 19),
+    )
+
+    assert not result.passed
+    assert not any("positive-leg incidence ratio" in f for f in result.failures)
+    assert any("negative-leg incidence ratio" in f for f in result.failures)
+    assert set(result.details["reviewed_exclusions"]["applied_exclusions"]) == {
+        applied_id
+    }
+
+
+@pytest.mark.parametrize(
+    ("approved_on", "expires_on", "evaluated_on", "bucket", "message"),
+    (
+        (
+            "2025-01-01",
+            "2025-12-31",
+            date(2026, 8, 19),
+            "expired_exclusions",
+            "exclusions expired",
+        ),
+        (
+            "2026-09-01",
+            "2026-12-31",
+            date(2026, 8, 19),
+            "premature_exclusions",
+            "not yet in force",
+        ),
+    ),
+)
+def test_out_of_force_receipts_never_suppress_failures(
+    approved_on: str,
+    expires_on: str,
+    evaluated_on: date,
+    bucket: str,
+    message: str,
+) -> None:
+    column = "business_is_sstb"
+    label = f"person/puf_tax_itemization/{column}[clone_0]"
+    check_id = f"{label}#dead"
+    policy = _reviewed_exclusion_policy(
+        check_id,
+        approved_on=approved_on,
+        expires_on=expires_on,
+    )
+    frame = _battery_frame(
+        {column: (np.zeros(8, dtype=np.int64), np.zeros(11, dtype=np.int64))}
+    )
+
+    result = _single_target_battery(
+        frame,
+        column=column,
+        reviewed_exclusion_policy=policy,
+        exclusions_evaluated_on=evaluated_on,
+    )
+
+    assert not result.passed
+    assert any("comparison is dead" in failure for failure in result.failures)
+    assert any(message in failure for failure in result.failures)
+    reviewed = result.details["reviewed_exclusions"]
+    assert reviewed[bucket] == [check_id]
+    assert reviewed["applied_exclusions"] == {}
+
+
+def test_expired_receipt_fails_even_after_its_criterion_heals() -> None:
+    column = "business_is_sstb"
+    label = f"person/puf_tax_itemization/{column}[clone_0]"
+    check_id = f"{label}#dead"
+    frame = _battery_frame(
+        {column: (np.ones(8, dtype=np.int64), np.ones(11, dtype=np.int64))}
+    )
+
+    result = _single_target_battery(
+        frame,
+        column=column,
+        reviewed_exclusion_policy=_reviewed_exclusion_policy(
+            check_id,
+            approved_on="2025-01-01",
+            expires_on="2025-12-31",
+        ),
+        exclusions_evaluated_on=date(2026, 8, 19),
+    )
+
+    assert not result.passed
+    assert result.details["comparisons"][label]["status"] == "tested"
+    assert not any("comparison is dead" in failure for failure in result.failures)
+    assert any("exclusions expired" in failure for failure in result.failures)
+    reviewed = result.details["reviewed_exclusions"]
+    assert reviewed["expired_exclusions"] == [check_id]
+    assert reviewed["stale_exclusions"] == []
+
+
+def test_out_of_surface_in_force_receipt_is_reported_dormant() -> None:
+    column = "business_is_sstb"
+    dormant_id = "person/not_registered/absent[clone_0]#dead"
+    frame = _battery_frame(
+        {column: (np.ones(8, dtype=np.int64), np.ones(11, dtype=np.int64))}
+    )
+
+    result = _single_target_battery(
+        frame,
+        column=column,
+        reviewed_exclusion_policy=_reviewed_exclusion_policy(dormant_id),
+        exclusions_evaluated_on=date(2026, 8, 19),
+    )
+
+    assert result.passed, result.failures
+    reviewed = result.details["reviewed_exclusions"]
+    assert reviewed["dormant_exclusions"] == [dormant_id]
+    assert reviewed["applied_exclusions"] == {}
+
+
+def test_in_force_unevaluated_receipt_is_dormant_and_does_not_mask_invalidity() -> None:
+    column = "business_is_sstb"
+    label = f"person/puf_tax_itemization/{column}[clone_0]"
+    check_id = f"{label}#dead"
+    policy = _reviewed_exclusion_policy(check_id)
+    frame = _battery_frame(
+        {
+            column: (
+                np.full(8, 2, dtype=np.int64),
+                np.full(11, 2, dtype=np.int64),
+            )
+        }
+    )
+
+    result = _single_target_battery(
+        frame,
+        column=column,
+        reviewed_exclusion_policy=policy,
+        exclusions_evaluated_on=date(2026, 8, 19),
+    )
+
+    assert not result.passed
+    assert result.details["comparisons"][label]["status"] == "invalid_values"
+    assert any("invalid value(s)" in failure for failure in result.failures)
+    reviewed = result.details["reviewed_exclusions"]
+    assert reviewed["dormant_exclusions"] == [check_id]
+    assert reviewed["applied_exclusions"] == {}
 
 
 def test_battery_rebound_support_profile_with_stale_digest_fails_closed(

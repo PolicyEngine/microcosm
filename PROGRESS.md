@@ -2,11 +2,10 @@
 
 ## State
 
-Design and baseline discovery are complete on `battery-excl-machinery`, which
-started from `origin/main` at `164027e2`. The assigned scope remains machinery
-only: port the UK schema-2 reviewed-exclusion pattern to the US stacked battery
-and ship an empty register. No band, threshold, seed, fold, comparator, or
-exclusion approval is in scope.
+The empty schema-2 register, strict loader, and battery/runtime integration are
+implemented on `battery-excl-machinery`, which started from `origin/main` at
+`164027e2`. The assigned scope remains machinery only: no band, threshold,
+seed, fold, comparator, or exclusion approval has changed.
 
 ## Done
 
@@ -43,12 +42,25 @@ exclusion approval is in scope.
   path-plus-SHA override authentication with partial-arming refusal.
 - New schema/resource tests pass: 27 loader tests and 5 country-package tests;
   Ruff check is clean and both new Python files are Ruff-formatted.
+- Integrated exact criterion IDs into the existing comparator paths without
+  changing their bands, thresholds, status records, or human failure text.
+- Added in-force application and stale/dormant/expired/premature anti-rot
+  classification. Only an exact in-force failing criterion is suppressed;
+  structural invalidity and unevaluated criteria remain unsuppressed.
+- Added an independent terminal-manifest validator that reconstructs criterion
+  failures from comparison evidence, verifies the canonical policy digest and
+  all five receipt fields, rejects inconsistent lifecycle buckets, and permits
+  a passing `dead_comparison` only when its exact `#dead` receipt was applied.
+- Added runtime tests covering the two assigned dead checks, all eligible
+  comparator criteria, lifecycle boundaries, stale/dormant behavior, exact
+  isolation, and post-evaluation receipt tampering.
 
 ## Next
 
-- Integrate exact leg-plus-criterion matching, lifecycle/anti-rot reporting,
-  partial-configuration refusal, and sealed terminal-manifest receipts.
-- Run the affected suites, lint, and the required 1% after measurement.
+- Wire authenticated path-plus-SHA overrides through the pool CLI, refusing
+  partial arming and the legacy two-spine route before build work.
+- Run the affected/full suites, lint, packaging checks, and the required 1%
+  after measurement from the saved terminal checkpoint.
 
 ## Historical note
 
