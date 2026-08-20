@@ -52,3 +52,49 @@
    through the executor/brokers, seal exact artifact member inventories, add
    calibration ownership, and pass the cold D4 fixture gate before issuing
    any 1% or 25% command.
+
+## F1 D7 split-out progress — 2026-08-20 current-head audit
+
+This section is the split-out's `state`/`done`/`next` journal and supersedes
+only earlier D7 status text. It does not update the main lane's D4--D6/D8
+state.
+
+### State
+
+- Deliverable 7 is complete at `5228cf5c`: every active production-shaped
+  derived-closure, segment, and lineage-dashboard consumer is compiler-fed,
+  and exact-cell authority preserves disjoint graph/family atoms.
+- Concurrent main-lane commit `12df8c45` advanced the shared branch after the
+  D7 handoff. It changed no D7 source or test file.
+- The D7 working tree is clean apart from three pre-existing untracked charter
+  drafts. Nothing was pushed and no pool build or sample rung ran.
+
+### Done
+
+- Re-audited tracked tests/tools and found no active reference to the held
+  lineage YAML, 392-column inventory, old closure helper, or authored-class
+  dashboard fields. Two independent read-only reviews approved the compiler
+  boundary and exact-cell closure.
+- Re-ran all four D7 modules: 70 passed in 420.42 seconds. Two separate hash
+  seeds emitted byte-identical dashboard JSON with SHA-256
+  `03c08eb0e59b4ce2fa0d2ffe2bcf62e503005569b1171520a46068dec99ef7df`.
+- Ran every test shard serially. Calibrate, data, fit, and frame completed with
+  865 passed and 37 skipped. The build shard completed with 6,322 passed, 37
+  skipped, and three spine-blindness failures collected before concurrent
+  commit `12df8c45` classified the new main-lane runtime modules. The exact
+  three tests pass at current HEAD (3 passed in 4.42 seconds); the main lane
+  separately records all 495 tests in that module passing.
+- Scoped Ruff check/format and the D7 diff whitespace check pass. Repository-
+  wide Ruff still reports one main-lane import-order finding at
+  `tools/build_us_multispine_pool.py:1157`; D7 does not alter that D5/D6/D8
+  driver.
+- Validation was serialized with no build or sample workload. The sandbox
+  blocks both `ps` and `/usr/bin/time -l` resource reporting, so an exact RSS
+  peak is unavailable and is not asserted.
+
+### Next
+
+- No D7 implementation work remains. Preserve the compiler-derived seam and
+  exact-cell regression when the main lane changes compiler outputs.
+- The main lane owns its clean one-shot full-suite rerun, the unrelated Ruff
+  import-order finding, physical executor work, and certification gates.

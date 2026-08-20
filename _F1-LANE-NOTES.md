@@ -1109,3 +1109,32 @@ deliverables 5/6/8 state.
   owner commit, which pins 213 production modules and 285 classified calls.
   No build or sample rung ran, nothing was pushed, and D7 makes no broader
   certification claim. The scoped output is `FINAL_REPORT_F1_D7.md`.
+
+### SPLIT-OUT COORDINATION — F1 D7 current-head closure audit (2026-08-20)
+
+This append-only section is the final D7 coordination receipt. It supersedes
+only prior D7 verification wording and does not alter main-lane D4--D6/D8
+ownership.
+
+- A tracked-tree consumer sweep and two independent read-only audits found no
+  missed production-shaped consumer and no held authored-class dependency.
+  The exact compiler projection remains 173 contracts, 214 segments, and 809
+  unique cells, including all 20 disjoint graph/family shared columns.
+- All four D7 modules passed together: 70 passed in 420.42 seconds. Two hash-
+  seeded processes emitted byte-identical dashboard JSON with SHA-256
+  `03c08eb0e59b4ce2fa0d2ffe2bcf62e503005569b1171520a46068dec99ef7df`.
+  Scoped Ruff check/format and whitespace checks pass.
+- Serial all-shard testing passed calibrate, data, fit, and frame (865 passed,
+  37 skipped). The build run reached 100% with 6,322 passed, 37 skipped, and
+  three spine-blindness failures collected before concurrent main-lane commit
+  `12df8c45` classified six new runtime-authority modules and changed the
+  import-graph pin from 65 to 70. The exact three tests pass at current HEAD
+  (3 passed in 4.42 seconds), and the main lane records the full 495-test
+  module passing. This is decomposed green evidence, not a clean one-shot
+  current-HEAD rerun.
+- Repository-wide Ruff has one main-lane `I001` at
+  `tools/build_us_multispine_pool.py:1157`. The D7 files are clean; the
+  split-out did not edit that D5/D6/D8 driver.
+- The scoped final output is `FINAL_REPORT_F1_D7.md`. No push, build, sample
+  rung, restricted-data access, or publication occurred. Validation was
+  serialized; sandbox restrictions prevented an exact RSS observation.
