@@ -305,3 +305,59 @@ peaks are 78.91--96.95 GiB against 20 GiB. No build, certification artifact,
 threshold change, logbook-chain mutation, D7 edit, push, or publication was
 performed. Commit `6d91aea9` records the refreshed state and detailed journal;
 this final-report update is the output-file handoff.
+
+### F1 continuation r5 final report (2026-08-20)
+
+The certification runner and exact high-memory-host handoff are delivered,
+but Deliverable A is **NOT COMPLETE**. Bundle mode now compiles
+`USPoolKernelAuthorities` from the sealed runtime plan and threads typed
+authorities through the bundle-only physical call graph while preserving the
+constants oracle. Production physical stages still do not dispatch their
+compiled nodes through `execute_node`, however, and no non-vacuous full-stage
+dual-mode fixture proves exact executor/broker consumption and D4 raw-byte
+artifact equality. The executor lacks sealed sink/checkpoint/process effects;
+the present projections and RNG grants are insufficient for a byte-faithful
+legacy adapter. An experimental stub seam was removed rather than presented
+as evidence.
+
+Deliverable B adds `tools/f1_certification_run.py`. Its `run` command claims a
+fresh root and launches exactly one constants or bundle build with
+`--resume-policy forbid`; its typed receipt validates and seals the full plan
+lock, production selector evidence, raw-byte artifact digest vector, source
+pins, and zero-resume audit. Streaming collection avoids retaining the whole
+encoded vector. Its `compare` command consumes exactly constants A/B and
+bundle A/B receipts, recompiles the current plan and selector contract, and
+emits `us-f1-certification.json` plus `us-f1-certification.md`. Its
+`resume-gate` command writes only the host predicate procedure and starts no
+build, kill, or resume.
+
+The implementation deliberately fails closed. Production cannot yet prove
+runtime node reuse, an independent exact final-H5 inventory, or calibration
+coverage. The four-build comparator is therefore expected to return status 1
+and write a structurally valid **FAIL**, even if every observed normative
+artifact digest matches. Status 0 would mean PASS and status 2 malformed input
+or execution error. Current output must not be described as certification.
+
+Deliverable C is recorded in `_F1-LANE-NOTES.md`: environment setup, the
+documentation-only gate, four exact sequential 1% cold-build commands, the
+four-receipt comparator, recovery constraints, and expected memory. The prior
+authenticated peaks are 78.91, 84.15, 96.28, and 96.95 GiB RSS; they are not
+mode/A-B mapped, so every host build needs more than 96.95 GiB plus margin and
+the builds must not overlap. The host runs those commands; the owner
+adjudicates the verdict.
+
+Committed coherent steps are `1646ee69` (r5 journal), `bc069829` (exact
+artifact-bank coverage), `66fad8fa` (bundle physical-authority plumbing), and
+`aefa83b8` (fail-closed certification runner). Focused verification passed
+78/78 runner/schema/collector/comparator/coverage tests and 19/19 pool-tool
+authority/evidence/resume-policy tests. Ruff and whitespace checks pass, and a
+real documentation-only `resume-gate` invocation exited 0. An independent
+read-only audit found no commit-blocking correctness issue. Two low-risk
+spy-test gaps remain documented in the lane journal.
+
+All executed checks were unit or fixture scale. No pool build, 1% rung,
+four-build comparison, or kill/resume exercise ran. The repository-wide build
+shard was not rerun because its prior authenticated 28.82-GiB peak exceeds this
+lane's 20-GiB process limit, so no repository-wide green claim is made. There
+was no push, stash, or `PROGRESS.md` operation. This lane stops after the host
+handoff as ordered.

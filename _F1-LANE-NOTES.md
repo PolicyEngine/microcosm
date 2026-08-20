@@ -1734,3 +1734,218 @@ deliverable 5.
 - Next is deliverable C only: append the exact sequential host commands and
   observed RSS envelope, update the final output report, and stop. The host
   owns every build and the owner adjudicates any emitted verdict.
+
+## F1 continuation r5 host handoff (2026-08-20)
+
+### State
+
+- Deliverable A remains **NOT COMPLETE**: production does not execute the
+  physical graph through `execute_node`, and the required non-vacuous
+  constants-versus-bundle full-stage fixture does not exist.
+- Deliverable B is mechanically host-invokable and fail-closed. With the
+  present node-reuse, final-H5, and calibration coverage gaps, its comparator
+  is expected to emit a structurally valid **FAIL**, not certification PASS,
+  even if all observed raw-byte artifact digests match.
+- No command below was run in this lane. The high-memory host owns the four
+  builds and comparator, and the owner adjudicates their evidence.
+
+### Exact host sequence
+
+Run from the repository root on the high-memory host. Replace each placeholder
+with an authenticated absolute path or its lowercase 64-hex SHA-256 pin. Every
+build root and the resume-gate output must be absent before its command starts.
+
+```zsh
+export F1_CERT_ROOT='/absolute/host/path/us-f1-certification'
+
+export F1_ASEC_RAW_STAGE_H5='/absolute/path/asec-raw-stage.h5'
+export F1_ASEC_RAW_STAGE_H5_SHA256='<64-lowercase-hex>'
+export F1_ACS_HOUSEHOLD_ZIP='/absolute/path/acs-household.zip'
+export F1_ACS_HOUSEHOLD_ZIP_SHA256='<64-lowercase-hex>'
+export F1_ACS_PERSON_ZIP='/absolute/path/acs-person.zip'
+export F1_ACS_PERSON_ZIP_SHA256='<64-lowercase-hex>'
+export F1_ACS_RENT_H5='/absolute/path/acs-rent.h5'
+export F1_ACS_RENT_H5_SHA256='<64-lowercase-hex>'
+export F1_PUF_H5='/absolute/path/puf.h5'
+export F1_PUF_H5_SHA256='<64-lowercase-hex>'
+export F1_PUF_SOURCE_YEAR_CSV='/absolute/path/puf-source-year.csv'
+export F1_PUF_SOURCE_YEAR_CSV_SHA256='<64-lowercase-hex>'
+
+mkdir -p "$F1_CERT_ROOT/logs"
+set -o pipefail
+```
+
+First write the documentation-only kill/resume predicate. This starts no build
+and performs no kill or resume:
+
+```zsh
+.venv/bin/python tools/f1_certification_run.py resume-gate \
+  --mode bundle \
+  --sample-fraction 0.01 \
+  --seed 578 \
+  --output "$F1_CERT_ROOT/us-f1-resume-gate.md"
+```
+
+Then run the four cold builds strictly sequentially. Require status zero from
+each timed pipeline before proceeding. The `tee` logs are intentionally
+outside the absent run roots.
+
+1. Constants A:
+
+```zsh
+env \
+  -u POPULACE_LOGBOOK_PREV_ROW_DIGEST \
+  -u POPULACE_LEDGER_URL \
+  -u POPULACE_LEDGER_KEY \
+  -u POPULACE_LEDGER_API_KEY \
+  /usr/bin/time -l \
+  .venv/bin/python tools/f1_certification_run.py run \
+  --mode constants \
+  --sample-fraction 0.01 \
+  --seed 578 \
+  --output-root "$F1_CERT_ROOT/constants-a" \
+  --asec-raw-stage-h5 "$F1_ASEC_RAW_STAGE_H5" \
+  --asec-raw-stage-h5-sha256 "$F1_ASEC_RAW_STAGE_H5_SHA256" \
+  --acs-household-zip "$F1_ACS_HOUSEHOLD_ZIP" \
+  --acs-household-zip-sha256 "$F1_ACS_HOUSEHOLD_ZIP_SHA256" \
+  --acs-person-zip "$F1_ACS_PERSON_ZIP" \
+  --acs-person-zip-sha256 "$F1_ACS_PERSON_ZIP_SHA256" \
+  --acs-rent-h5 "$F1_ACS_RENT_H5" \
+  --acs-rent-h5-sha256 "$F1_ACS_RENT_H5_SHA256" \
+  --puf-h5 "$F1_PUF_H5" \
+  --puf-h5-sha256 "$F1_PUF_H5_SHA256" \
+  --puf-source-year-csv "$F1_PUF_SOURCE_YEAR_CSV" \
+  --puf-source-year-csv-sha256 "$F1_PUF_SOURCE_YEAR_CSV_SHA256" \
+  2>&1 | tee "$F1_CERT_ROOT/logs/constants-a.time.log"
+```
+
+2. Constants B:
+
+```zsh
+env \
+  -u POPULACE_LOGBOOK_PREV_ROW_DIGEST \
+  -u POPULACE_LEDGER_URL \
+  -u POPULACE_LEDGER_KEY \
+  -u POPULACE_LEDGER_API_KEY \
+  /usr/bin/time -l \
+  .venv/bin/python tools/f1_certification_run.py run \
+  --mode constants \
+  --sample-fraction 0.01 \
+  --seed 578 \
+  --output-root "$F1_CERT_ROOT/constants-b" \
+  --asec-raw-stage-h5 "$F1_ASEC_RAW_STAGE_H5" \
+  --asec-raw-stage-h5-sha256 "$F1_ASEC_RAW_STAGE_H5_SHA256" \
+  --acs-household-zip "$F1_ACS_HOUSEHOLD_ZIP" \
+  --acs-household-zip-sha256 "$F1_ACS_HOUSEHOLD_ZIP_SHA256" \
+  --acs-person-zip "$F1_ACS_PERSON_ZIP" \
+  --acs-person-zip-sha256 "$F1_ACS_PERSON_ZIP_SHA256" \
+  --acs-rent-h5 "$F1_ACS_RENT_H5" \
+  --acs-rent-h5-sha256 "$F1_ACS_RENT_H5_SHA256" \
+  --puf-h5 "$F1_PUF_H5" \
+  --puf-h5-sha256 "$F1_PUF_H5_SHA256" \
+  --puf-source-year-csv "$F1_PUF_SOURCE_YEAR_CSV" \
+  --puf-source-year-csv-sha256 "$F1_PUF_SOURCE_YEAR_CSV_SHA256" \
+  2>&1 | tee "$F1_CERT_ROOT/logs/constants-b.time.log"
+```
+
+3. Bundle A:
+
+```zsh
+env \
+  -u POPULACE_LOGBOOK_PREV_ROW_DIGEST \
+  -u POPULACE_LEDGER_URL \
+  -u POPULACE_LEDGER_KEY \
+  -u POPULACE_LEDGER_API_KEY \
+  /usr/bin/time -l \
+  .venv/bin/python tools/f1_certification_run.py run \
+  --mode bundle \
+  --sample-fraction 0.01 \
+  --seed 578 \
+  --output-root "$F1_CERT_ROOT/bundle-a" \
+  --asec-raw-stage-h5 "$F1_ASEC_RAW_STAGE_H5" \
+  --asec-raw-stage-h5-sha256 "$F1_ASEC_RAW_STAGE_H5_SHA256" \
+  --acs-household-zip "$F1_ACS_HOUSEHOLD_ZIP" \
+  --acs-household-zip-sha256 "$F1_ACS_HOUSEHOLD_ZIP_SHA256" \
+  --acs-person-zip "$F1_ACS_PERSON_ZIP" \
+  --acs-person-zip-sha256 "$F1_ACS_PERSON_ZIP_SHA256" \
+  --acs-rent-h5 "$F1_ACS_RENT_H5" \
+  --acs-rent-h5-sha256 "$F1_ACS_RENT_H5_SHA256" \
+  --puf-h5 "$F1_PUF_H5" \
+  --puf-h5-sha256 "$F1_PUF_H5_SHA256" \
+  --puf-source-year-csv "$F1_PUF_SOURCE_YEAR_CSV" \
+  --puf-source-year-csv-sha256 "$F1_PUF_SOURCE_YEAR_CSV_SHA256" \
+  2>&1 | tee "$F1_CERT_ROOT/logs/bundle-a.time.log"
+```
+
+4. Bundle B:
+
+```zsh
+env \
+  -u POPULACE_LOGBOOK_PREV_ROW_DIGEST \
+  -u POPULACE_LEDGER_URL \
+  -u POPULACE_LEDGER_KEY \
+  -u POPULACE_LEDGER_API_KEY \
+  /usr/bin/time -l \
+  .venv/bin/python tools/f1_certification_run.py run \
+  --mode bundle \
+  --sample-fraction 0.01 \
+  --seed 578 \
+  --output-root "$F1_CERT_ROOT/bundle-b" \
+  --asec-raw-stage-h5 "$F1_ASEC_RAW_STAGE_H5" \
+  --asec-raw-stage-h5-sha256 "$F1_ASEC_RAW_STAGE_H5_SHA256" \
+  --acs-household-zip "$F1_ACS_HOUSEHOLD_ZIP" \
+  --acs-household-zip-sha256 "$F1_ACS_HOUSEHOLD_ZIP_SHA256" \
+  --acs-person-zip "$F1_ACS_PERSON_ZIP" \
+  --acs-person-zip-sha256 "$F1_ACS_PERSON_ZIP_SHA256" \
+  --acs-rent-h5 "$F1_ACS_RENT_H5" \
+  --acs-rent-h5-sha256 "$F1_ACS_RENT_H5_SHA256" \
+  --puf-h5 "$F1_PUF_H5" \
+  --puf-h5-sha256 "$F1_PUF_H5_SHA256" \
+  --puf-source-year-csv "$F1_PUF_SOURCE_YEAR_CSV" \
+  --puf-source-year-csv-sha256 "$F1_PUF_SOURCE_YEAR_CSV_SHA256" \
+  2>&1 | tee "$F1_CERT_ROOT/logs/bundle-b.time.log"
+```
+
+Finally compare the four receipts:
+
+```zsh
+.venv/bin/python tools/f1_certification_run.py compare \
+  --constants-a "$F1_CERT_ROOT/constants-a/us-f1-build-receipt.json" \
+  --constants-b "$F1_CERT_ROOT/constants-b/us-f1-build-receipt.json" \
+  --bundle-a "$F1_CERT_ROOT/bundle-a/us-f1-build-receipt.json" \
+  --bundle-b "$F1_CERT_ROOT/bundle-b/us-f1-build-receipt.json" \
+  --output-root "$F1_CERT_ROOT/verdict"
+```
+
+The comparator returns 0 for PASS, 1 for a well-formed D4 FAIL, and 2 for
+malformed input or an execution error. Status 1 is expected at the present
+head; it still writes `us-f1-certification.json` and
+`us-f1-certification.md`, so automation must retain those files.
+
+### Memory, order, and recovery constraints
+
+- The four authenticated cold f001 primary-QRF profiles observed
+  84,729,479,168 bytes (78.91 GiB), 90,351,255,552 bytes (84.15 GiB),
+  103,374,684,160 bytes (96.28 GiB), and 104,102,936,576 bytes (96.95 GiB)
+  peak RSS. They are not mapped to a particular mode/A-B position. Provision
+  every build for more than 96.95 GiB plus host margin and never overlap them.
+- On Darwin, `/usr/bin/time -l` reports maximum resident set size in bytes in
+  the external log. Streaming post-build collection has not been separately
+  profiled and must not be assumed to reduce the build peak.
+- A failed `run` leaves its exclusively claimed root in place. Diagnose it and
+  choose a new fresh root; do not blindly delete or reuse the claimed root.
+- Source pins must be exactly 64 lowercase hexadecimal characters.
+  `resume-gate` refuses to overwrite its output, and `compare` refuses to
+  overwrite either verdict file.
+- `set -o pipefail` is required because each timed build is piped through
+  `tee`. Do not start the next command unless the current pipeline returns 0.
+
+### Done / next
+
+- Deliverable C is complete as a handoff only. This lane ran none of the host
+  commands, performed no push or stash, and did not create or modify
+  `PROGRESS.md`.
+- The host may run the commands in the exact order above. The owner, not this
+  lane, adjudicates the emitted verdict. A current valid FAIL is evidence of
+  the deliberately open executor/node-reuse/final-H5/calibration work and is
+  not certification.
