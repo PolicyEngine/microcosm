@@ -14,15 +14,17 @@ failing-target coverage were already committed on the branch.
 No after artifact is claimed or accepted. An externally owned exact 1% retry
 previously rebuilt all 47 survey targets plus the one housing target—including
 the real bounded taxable-interest record—without the supplied traceback, then
-continued into late-transfer checkpoints. The external process subsequently
-truncated its mutable `build.log`; at the final 23:03Z read-only check it was
-zero bytes, `guard.log` continued resource-wait entries, and the output root
-contained only those two logs—no runner exit marker, `pool.h5`, pool manifest,
-or gates artifact. The launcher and mutable checkpoint artifacts also contain
-no Microcosm revision binding. Terminal stacked receipt validation and
-frozen-battery success therefore are not claimed. The frozen sample/clone seed
-remains 578, and no battery band, threshold, comparator, fold, publication
-boundary, or pending-chain state was changed.
+continued into late-transfer checkpoints before its mutable log was truncated.
+At the final 23:42Z read-only check, another active attempt had a 41,748-byte
+`build.log` through survey target 26/47; the bounded taxable-interest target
+completed at 22/47 without the supplied traceback. `guard.log` still reported a
+resource wait with one other matching process, and the output root contained
+only those two logs—no runner exit marker, `pool.h5`, pool manifest, or gates
+artifact. The mutable host files do not bind a Microcosm revision. Terminal
+stacked receipt validation and frozen-battery success therefore are not
+claimed. The frozen sample/clone seed remains 578, and no battery band,
+threshold, comparator, fold, publication boundary, or pending-chain state was
+changed.
 
 The current 2026-08-20 owner continuation independently re-traced the old raise
 site, current producer/receipt/validator selectors, failing-to-fixed history,
@@ -31,8 +33,8 @@ opt `taxable_interest_income` into QRF regime work or evidence. The final test
 tree also rejects a fully rehashed, plausible in-range `__batch_1` alias on an
 assigned target, preventing the unsafe permissive workaround briefly present
 in the first correction. All 14 decisive focused cases and all 529 tests in the
-five directly affected files pass in this continuation, peaking at 0.568 GiB
-and 1.617 GiB respectively under the owner guard. Independent source, history,
+five directly affected files pass in this continuation, peaking at 0.541 GiB
+and 1.459 GiB respectively under the owner guard. Independent source, history,
 and regression audits agree on the scoped-fix verdict.
 
 ## Root cause and correction
@@ -122,10 +124,10 @@ binary directly from `.venv` passed.
   lockfile changed between that commit and the final audit tree.
 - The five directly affected transfer, multispine, stacked, pool-tool, and H5
   files were rerun together on the final tree: all 529 passed. The run used the
-  owner-provided 12 GiB/20 ms guard and peaked at 1.617 GiB observed
+  owner-provided 12 GiB/20 ms guard and peaked at 1.459 GiB observed
   per-process RSS. The exact synthetic host-target test, real banked
   wide-family test, and all 12 QRF structure mutations also passed
-  independently (14 cases total), peaking at 0.568 GiB. Warning summaries were
+  independently (14 cases total), peaking at 0.541 GiB. Warning summaries were
   disabled for the 529-test run; the focused run emitted only joblib's
   logical-core fallback.
 - `ruff check .`: passed on the final audit tree.
@@ -143,17 +145,18 @@ the exact path instead. An earlier branch audit generated a local graph, but
 the sandbox denied its user-wide registry write; that repo-local cache was
 removed and no index residue remains.
 
-The originally cited `battery-verify/pkg3/build.log` was overwritten by a later
-retry. The owner-preserved `_BUILD-FAILURE-1PCT.txt` retains the old traceback.
-During this continuation the reused log reached survey target 47/47, housing
-target 1/1, the bounded taxable-interest record, and multiple late-transfer
-groups without that traceback. The external process later truncated the log.
-At the final 23:03Z read-only check `build.log` was zero bytes, `guard.log`
-continued to report two other matching processes and resource waits, and the
-output root had no runner exit marker, `pool.h5`, pool manifest, or gates
-artifact. Neither the launcher nor current checkpoint text records a Microcosm
-Git SHA. The earlier checkpoint passage is progress evidence only; it is not
-revision-bound or a terminal certification result.
+The originally cited `battery-verify/pkg3/build.log` was overwritten by later
+retries. The owner-preserved `_BUILD-FAILURE-1PCT.txt` retains the old
+traceback. One later log reached survey target 47/47, housing target 1/1, the
+bounded taxable-interest record, and multiple late-transfer groups without
+that traceback before being truncated. At the final 23:42Z read-only check,
+the current 41,748-byte log had again passed the bounded taxable-interest
+record and ended after survey target 26/47. The latest guard entry still
+reported a resource wait with one other matching process; the output root had
+no runner exit marker, `pool.h5`, pool manifest, or gates artifact. Neither the
+launcher nor mutable checkpoint text records a Microcosm Git SHA. Both host
+passages are progress evidence only; neither is revision-bound or a terminal
+certification result.
 
 The sibling package suites were green before this continuation and their code
 was not changed: `microcosm-fit` 93 passed, `microcosm-calibrate` 201 passed,
@@ -205,6 +208,11 @@ skipped.
 - `ded99425` — independently confirm the current scoped binding diagnosis.
 - `f8a47d00` — record the current guarded 529-test affected suite.
 - `8366635a` — record current lint, format, whitespace, and drift checks.
+- `cbcbeecf` — finalize the preceding scoped ACS binding report.
+- `ff36651c` — reopen this owner continuation audit.
+- `41529c79` — reconfirm the scoped diagnosis and focused regressions.
+- `4078bb5f` — record the current guarded 529-test affected suite.
+- `e10cea92` — record current lint, format, whitespace, and drift checks.
 
 ## Remaining host step
 

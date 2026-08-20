@@ -20,7 +20,10 @@ verification also passes: repository lint, formatting of all 15 correction-
 range Python files, committed-range whitespace, and exact `microcosm-build/src`
 and `us_runtime` tree comparisons with all-build-suite checkpoint `a5be536f`.
 Only the strict three-line assigned-family forgery regression and journals
-differ after that checkpoint. Final report refresh remains. The owner-provided
+differ after that checkpoint. `FINAL_REPORT.md` now contains the current
+revision-bound diagnosis, verification, and exact non-terminal host snapshot;
+no local implementation, regression, verification, or reporting work remains.
+The owner-provided
 `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain untracked and
 untouched, and no terminal host result is claimed.
 
@@ -261,6 +264,11 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Refreshed `FINAL_REPORT.md` with this continuation's independent diagnosis,
+  current 14-case and 529-test results, static/tree verification, and the final
+  23:42Z read-only host snapshot. The current external log ended after survey
+  target 26/47, while the guard still reported a resource wait and no final
+  pool, manifest, gates artifact, or runner verdict existed.
 - Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
   changed since `33bf52fe^`, and `git diff --check 33bf52fe^..HEAD`; all pass.
   Exact Git tree objects for both all `microcosm-build/src` and its
@@ -780,5 +788,7 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Refresh `FINAL_REPORT.md` with revision-bound results and the precise
-   remaining host-certification boundary.
+1. Run or identify a revision-bound off-chain 1% retry that reaches a terminal
+   runner verdict and emits the expected final pool, manifest, and gates
+   artifacts. Do not claim an after artifact without that terminal proof, and
+   do not publish or mutate the pending logbook chain as a side effect.
