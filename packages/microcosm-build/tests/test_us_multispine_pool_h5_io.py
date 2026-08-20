@@ -656,6 +656,9 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
     for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS:
         group_targets = {
             f"{group.entity}/{group.family}/{target}": {
+                "authorized_null_rows": 0,
+                "imputed_rows": 0,
+                "unmodeled_rows": 0,
                 "residual_null_rows": 0,
             }
             for target in group.targets

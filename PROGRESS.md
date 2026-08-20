@@ -12,11 +12,14 @@ records and receipts retain their legacy shape, while selected evidence keeps
 exact record-family binding. A follow-up review found and fixed count
 validation bypassed by unassigned receipts. Focused QRF, count, binding,
 serializer, banked wide-family, and real late-executor tests are green; the
-full post-fix suite is next. Canonical production now enforces the certified
-eight-target fit width so selected receipt families remain exactly bound. No
-after artifact is accepted. The uncontaminated 1% before artifact remains
-recorded at commit `5f5e5e91`; no frozen battery band, threshold, comparator,
-seed, or fold has changed.
+full post-fix rerun found one stale H5 test fixture that still emitted a
+partial legacy count block. Its target receipts now use the same valid
+four-zero count schema as the other canonical fixtures; focused verification
+and the remaining shards are next. Canonical production now enforces the
+certified eight-target fit width so selected receipt families remain exactly
+bound. No after artifact is accepted. The uncontaminated 1% before artifact
+remains recorded at commit `5f5e5e91`; no frozen battery band, threshold,
+comparator, seed, or fold has changed.
 
 The required `uv sync --all-packages --extra us` was attempted first. The
 default cache is sandbox-read-only; a retry with a writable cache reached PyPI
@@ -114,6 +117,10 @@ but DNS is unavailable. Verification therefore uses the already-synced
   complete selected siblings are restored only when every family target is
   selected. A mixed selected/unselected regression proves the opt-in does not
   change the unassigned draw.
+- The complete build-package rerun reached the canonical stacked H5 loader and
+  correctly rejected its synthetic late-transfer targets because the fixture
+  supplied only `residual_null_rows`. Updated that fixture to the internally
+  consistent four-zero target-count block; production code was not relaxed.
 
 ## Next
 
