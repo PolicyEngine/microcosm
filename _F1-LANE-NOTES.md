@@ -1460,3 +1460,48 @@ JSON, or certification Markdown exists. No pool build or sample rung ran, no
 threshold or timeout was tuned, the logbook pending chain remained untouched,
 and nothing was pushed. This is the charter-required honest stop at
 deliverable 5.
+
+## F1 continuation r4 verification reprise (2026-08-20)
+
+This append-only main-lane receipt rechecks the committed honest stop at
+`cddb6f18`. It changes no deliverable-7 closure, segment, dashboard, source, or
+test surface.
+
+- The required `git fetch origin && git merge origin/main --no-edit` was again
+  the first command attempted. Sandbox DNS prevented the fetch. A separate
+  local `git merge origin/main --no-edit` then reported already up to date.
+  Cached `origin/main` remains `164027e2`; final #698 `c4e1eb7f` is independently
+  an ancestor through `da45dfcd`.
+- `uv sync --all-packages --extra us` completed from the task-local cache with
+  100 packages checked. The generated US bundle `--check` passes at
+  `d0e4d3c1b3f055dde1056d75837384d4464478be8e2014370aab45ac4a7e8faa`,
+  and coverage `--check` passes at 41,911/41,911 fields and 40/40 checks.
+- Independent source/identity inspection confirms 72 sites, 57 owners, 131
+  bindings, seed protocol
+  `fd22ba3ab69bc88eb5336261104e4b3d38f721521b4e2bbb04e8ddfa773c130e`,
+  seed map
+  `f79d1646f01ad73a991433ebd0b2d6e5625ccabca682f55476a7b9ebfc6e3b30`,
+  and compiler ABI v5
+  `72659ec091a611e3ca63b0187d27249c817ed29b72f851e192f7f7c03bc1745a`.
+  No identity re-pin is required.
+- The decisive production seam remains explicit at
+  `tools/build_us_multispine_pool.py:5402`: physical stage execution stays on
+  constants. Production has no caller of `execute_node`,
+  `USPoolKernelAuthorities.from_runtime_plan`, `collect_artifact_surfaces`, or
+  `compare_artifact_sets`. Source reads are now snapshot-brokered in bundle
+  mode, correcting one older blocker description, but RNG/effect dispatch,
+  exact artifact-member and calibration closure, node reuse, and the dual-mode
+  comparison harness remain open.
+- No dual/four-build certification runner, `--resume-policy=forbid`, typed
+  zero-count resume audit, or real subprocess kill/resume gate exists. The
+  constants-versus-constants-adapter fixture remains a stubbed three-checkpoint
+  comparison rather than a bundle-driven D4 gate.
+- Four authenticated cold f001 primary-QRF profiles still peak at
+  78.91--96.95 GiB RSS, 3.9--4.8 times the hard 20 GiB/process ceiling. No pool
+  build, fixture build, or sample rung was started in this reprise.
+
+Deliverables 5 and 6 therefore remain **NOT RUN**, not PASS. The certification
+JSON and Markdown remain absent by design. No threshold, timeout, seed, band,
+selector, or memory limit changed; the pending logbook chain was not touched;
+nothing was pushed. The charter-required disposition remains an honest stop at
+deliverable 5.

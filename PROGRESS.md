@@ -1,9 +1,13 @@
-# F1 continuation r4 resumed — 2026-08-20
+# F1 continuation r4 verification reprise — 2026-08-20
 
 ## State
 
 - Work remains local on `spec-engine-f1`; nothing has been pushed, no build has
   run in this resumed continuation, and the logbook pending chain is untouched.
+- The committed honest-stop state at `cddb6f18` was re-audited independently.
+  The required fetch still fails on sandbox DNS; the subsequent local merge of
+  cached `origin/main` reports already up to date. Final #698 remains present
+  through `da45dfcd`, together with the superseding 72-site correction.
 - The mandated `git fetch origin && git merge origin/main --no-edit` was the
   first command attempted. DNS is unavailable in the sandbox, so fetch failed
   before the chained merge. Cached `origin/main` is stale at `164027e2`.
@@ -22,6 +26,9 @@
   unchanged, and its complete 78-test module passed unchanged; repository-wide
   Ruff and whitespace checks also pass. This is decomposed green evidence, not
   a claim that the one-shot invocation exited zero.
+- Fresh generated-file checks pass unchanged: the US bundle resolves to
+  `d0e4d3c1b3f055dde1056d75837384d4464478be8e2014370aab45ac4a7e8faa`,
+  and coverage remains 41,911/41,911 fields with 40/40 inventory checks.
 
 ## Done
 
@@ -55,11 +62,16 @@
   passed, and all 78 tests in `test_us_trade_imdb_bulk.py` then passed in
   331.51 seconds without any test or production edit.
 - Ran repository-wide Ruff and `git diff --check`; both pass.
+- Repeated three independent read-only audits of merge/identity state, D4
+  physical wiring, and D5/D6 runner/resource readiness. They agree that no
+  re-pin is needed and no charter-valid D5/D6 run may start: physical bundle
+  execution and production comparison remain absent, while measured cold 1%
+  QRF peaks remain 78.91--96.95 GiB against the 20 GiB process ceiling.
 
 ## Next
 
-1. Stop at deliverable 5 with the renewed evidence and final report committed;
-   do not fabricate the absent certification evidence files.
+1. Keep the honest stop at deliverable 5 and commit this refreshed evidence and
+   final report; do not fabricate the absent certification evidence files.
 2. A future continuation must first complete D4 and a
    behavior-preserving sub-20-GiB memory redesign before any 1% launch.
 
