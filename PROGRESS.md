@@ -9,7 +9,8 @@ cross-fitted/held-out remedy; that adjudication-level gap is explicitly
 unresolved because this branch lacks the required fold/comparator authority.
 No frozen battery band, threshold, comparator, seed, or fold changed. The
 uncontaminated 1% before artifact remains recorded at commit `5f5e5e91`; the
-calibrated 1% after build and per-check measurement are the next step.
+green implementation is committed at `33bf52fe`. The calibrated 1% after build
+and per-check measurement are the next step.
 
 The required `uv sync --all-packages --extra us` was attempted first. The
 default cache is sandbox-read-only; a retry with a writable cache reached PyPI
@@ -63,8 +64,7 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Commit the coherent green implementation and journal state.
-2. Rebuild off-chain at exactly 1% with sample/clone seed 578 under the
+1. Rebuild off-chain at exactly 1% with sample/clone seed 578 under the
    tightened memory guard.
-3. Extract all 16 after measurements and source-preservation invariants, then
+2. Extract all 16 after measurements and source-preservation invariants, then
    write and commit `_LANE-NOTES.md`, `PROGRESS.md`, and `FINAL_REPORT.md`.
