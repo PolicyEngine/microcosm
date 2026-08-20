@@ -268,3 +268,40 @@ or D6 evidence files were created; deliverable-7 surfaces were not modified by
 this continuation; nothing was pushed; and `logbook-pending-chain.txt` was not
 touched. There is still no valid 25% owner command until D4 is completed and
 the 1% path is made behavior-preservingly sub-20-GiB per process.
+
+### Verification reprise at `6d91aea9` (2026-08-20)
+
+The continuation was re-entered from committed honest-stop HEAD `cddb6f18` and
+independently audited again. The mandated fetch-and-merge command remained the
+first action; sandbox DNS blocked the fetch, while the follow-up local merge of
+cached `origin/main` reported already up to date. Final #698 `c4e1eb7f` remains
+an ancestor, and its integer schemas, narrowed guards, and scoped archive
+coexist with the superseding 72-site ledger.
+
+Fresh checks reproduced the pinned state without edits:
+
+- dependency sync: 100 packages checked;
+- US generated bundle: PASS at
+  `d0e4d3c1b3f055dde1056d75837384d4464478be8e2014370aab45ac4a7e8faa`;
+- coverage: PASS at 41,911/41,911 fields and 40/40 inventory checks;
+- seed protocol: 72 sites at
+  `fd22ba3ab69bc88eb5336261104e4b3d38f721521b4e2bbb04e8ddfa773c130e`;
+- compiled seed map: 57 owners and 131 bindings at
+  `f79d1646f01ad73a991433ebd0b2d6e5625ccabca682f55476a7b9ebfc6e3b30`;
+- compiler ABI v5:
+  `72659ec091a611e3ca63b0187d27249c817ed29b72f851e192f7f7c03bc1745a`.
+
+Three separate read-only audits reached the same disposition. The production
+driver explicitly leaves physical stage execution on constants; the executor,
+aggregate kernel authority, collector, and comparator have no production
+callers. RNG/effect brokerage, exact H5/bank/calibration member closure,
+node-reuse persistence, the dual/four-build runner, resume-forbid audit, and a
+real kill/resume harness remain absent. Source snapshots are now correctly
+brokered, narrowing one older blocker, but that does not close D4.
+
+Deliverables 5 and 6 therefore remain **NOT RUN**. Launching the existing 1%
+path would independently breach the process limit: its authenticated cold QRF
+peaks are 78.91--96.95 GiB against 20 GiB. No build, certification artifact,
+threshold change, logbook-chain mutation, D7 edit, push, or publication was
+performed. Commit `6d91aea9` records the refreshed state and detailed journal;
+this final-report update is the output-file handoff.
