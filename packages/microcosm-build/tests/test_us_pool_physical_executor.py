@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 
 import microcosm.build.us_runtime.pool_physical_executor as physical_module
-from microcosm.build.spec_engine.compiler_ir import CompiledNode
+from microcosm.build.spec_engine.compiler_ir import CompiledNode, SeedStreamMap
 from microcosm.build.spec_engine.executor import KernelPatch
 from microcosm.build.spec_engine.model import FrozenMap, freeze_json
 from microcosm.build.spec_engine.scope_algebra import ClosedScopeRegistry
@@ -22,6 +22,16 @@ from microcosm.build.us_runtime.pool_physical_executor import (
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
 _SHA = "a" * 64
+
+
+def _seed_stream_map() -> SeedStreamMap:
+    return SeedStreamMap(
+        protocol_id="fixture-seed-protocol",
+        implementation_id="fixture-seed-implementation",
+        implementation_sha256=_SHA,
+        sites=(),
+        owners=(),
+    )
 
 
 def _frozen(value: object) -> FrozenMap:
@@ -151,7 +161,7 @@ class _FakeKernelBroker:
         self.calls += 1
         if self.calls != 1:
             raise AssertionError("physical callback repeated")
-        return self.operation.function()
+        return self.operation.function(self)
 
 
 @pytest.fixture
@@ -159,6 +169,7 @@ def dispatch_harness(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
     evidence: dict[str, object] = {
         "execute_calls": 0,
         "projection_inputs": None,
+        "projection_frame_calls": 0,
         "virtual_writes": None,
     }
     projection = object()
@@ -178,6 +189,15 @@ def dispatch_harness(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
         return projection
 
     monkeypatch.setattr(physical_module, "frame_to_projection", project)
+    def reconstruct(incoming: object, *, schema: EntitySchema) -> Frame | None:
+        if incoming is not projection or schema != _frame().schema:
+            return None
+        evidence["projection_frame_calls"] = (
+            int(evidence["projection_frame_calls"]) + 1
+        )
+        return _frame(value=7.0)
+
+    monkeypatch.setattr(physical_module, "projection_to_frame", reconstruct)
 
     def encode(
         _before: Frame,
@@ -197,6 +217,7 @@ def dispatch_harness(monkeypatch: pytest.MonkeyPatch) -> dict[str, object]:
         **kwargs: object,
     ) -> object:
         evidence["physical_operation"] = kwargs["physical_operation"]
+        evidence["session_kwargs"] = dict(kwargs)
         return fake_session
 
     monkeypatch.setattr(
@@ -285,12 +306,26 @@ def test_dispatch_uses_executor_broker_and_preserves_result_sidecars(
             run_request=_frozen({"fixture": True}),
             execution_receipt=_frozen({"backend": "fixture"}),
         ),
+        seed_stream_map=_seed_stream_map(),
     )
     callback_calls = 0
+    planner_calls = 0
 
-    def operation() -> _LegacyResult:
+    def plan_rng(
+        narrow: Frame,
+    ) -> Mapping[str, tuple[physical_module.RNGInvocation, ...]]:
+        nonlocal planner_calls
+        planner_calls += 1
+        narrow.table("person").loc[:, "value"] = 99.0
+        return {}
+
+    def operation(
+        narrow: Frame, brokers: physical_module.KernelBrokerSession
+    ) -> _LegacyResult:
         nonlocal callback_calls
         callback_calls += 1
+        assert narrow.table("person")["value"].tolist() == [7.0]
+        assert isinstance(brokers, _FakeKernelBroker)
         return _LegacyResult(
             frame=_frame(value=2.0),
             receipt={"sha256": "e" * 64},
@@ -303,12 +338,16 @@ def test_dispatch_uses_executor_broker_and_preserves_result_sidecars(
         {"person.@resource": {"version": 1}},
         operation,
         absence_receipts={absence_id: {"status": "tolerated"}},
+        rng_invocation_plan_factory=plan_rng,
     )
 
     assert callback_calls == 1
+    assert planner_calls == 1
     assert isinstance(result, _LegacyResult)
     assert result.sidecar == ("preserved",)
     assert dispatch_harness["execute_calls"] == 1
+    assert dispatch_harness["projection_frame_calls"] == 2
+    assert dispatch_harness["session_kwargs"]["rng_invocation_plan"] == {}
     assert dispatch_harness["projection_inputs"] == {
         ("person", "@resource"): {"version": 1},
         ("person", absence_id): {"status": "tolerated"},
@@ -344,10 +383,20 @@ def test_dispatch_enforces_exact_order_and_complete_consumption(
             run_request=_frozen({"fixture": True}),
             execution_receipt=_frozen({"backend": "fixture"}),
         ),
+        seed_stream_map=_seed_stream_map(),
     )
 
+    with pytest.raises(USPoolPhysicalExecutorError, match="mutually exclusive"):
+        executor.dispatch(
+            first.id,
+            _frame(),
+            {},
+            lambda _frame, _brokers: None,
+            rng_invocation_plan={},
+            rng_invocation_plan_factory=lambda _frame: {},
+        )
     with pytest.raises(USPoolPhysicalExecutorError, match="order mismatch"):
-        executor.dispatch(second.id, _frame(), {}, lambda: None)
+        executor.dispatch(second.id, _frame(), {}, lambda _frame, _brokers: None)
     with pytest.raises(USPoolPhysicalExecutorError, match="incomplete"):
         executor.complete()
     assert executor.remaining_node_ids == ("first", "second")
@@ -378,6 +427,7 @@ def test_absence_receipt_mapping_refuses_undeclared_or_ambiguous_ids(
             run_request=_frozen({"fixture": True}),
             execution_receipt=_frozen({"backend": "fixture"}),
         ),
+        seed_stream_map=_seed_stream_map(),
     )
 
     with pytest.raises(USPoolPhysicalExecutorError, match="ambiguous"):
@@ -385,7 +435,7 @@ def test_absence_receipt_mapping_refuses_undeclared_or_ambiguous_ids(
             node.id,
             _frame(),
             {},
-            lambda: None,
+            lambda _frame, _brokers: None,
             absence_receipts={receipt_id: {"status": "tolerated"}},
         )
     with pytest.raises(USPoolPhysicalExecutorError, match="not declared"):
@@ -393,7 +443,7 @@ def test_absence_receipt_mapping_refuses_undeclared_or_ambiguous_ids(
             node.id,
             _frame(),
             {},
-            lambda: None,
+            lambda _frame, _brokers: None,
             absence_receipts={"unknown": {}},
         )
     assert dispatch_harness["execute_calls"] == 0

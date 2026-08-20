@@ -32,7 +32,11 @@ from microcosm.build.spec_engine.brokers import (
     PhysicalOperation,
     RNGInvocation,
 )
-from microcosm.build.spec_engine.compiler_ir import CompiledNode
+from microcosm.build.spec_engine.compiler_ir import (
+    CompiledNode,
+    SeedOwnerIR,
+    SeedStreamMap,
+)
 from microcosm.build.spec_engine.executor import (
     ExecutionContext,
     KernelPatch,
@@ -50,6 +54,7 @@ from microcosm.build.us_runtime.pool_frame_projection import (
     frame_to_projection,
     legacy_result_to_patch,
     merge_projection_into_frame,
+    projection_to_frame,
 )
 from microcosm.frame import Frame
 
@@ -356,13 +361,10 @@ class USPoolPhysicalExecutor:
         nodes: Sequence[CompiledNode],
         *,
         run_provenance_identity: RunProvenanceIdentity,
+        seed_stream_map: SeedStreamMap,
         run_inputs: Mapping[str, int] | None = None,
         sink_roots_by_node: Mapping[str, Sequence[Path | str]] | None = None,
         sources_by_node: Mapping[str, Sequence[DeclaredSource]] | None = None,
-        rng_invocation_plans_by_node: Mapping[
-            str, Mapping[str, Sequence[RNGInvocation]]
-        ]
-        | None = None,
         environment_by_node: Mapping[str, Mapping[str, str | None]] | None = None,
         clocks_by_node: Mapping[str, Mapping[str, float]] | None = None,
         attempt: int = 0,
@@ -383,6 +385,10 @@ class USPoolPhysicalExecutor:
             raise USPoolPhysicalExecutorError(
                 "physical executor requires a typed RunProvenanceIdentity"
             )
+        if not isinstance(seed_stream_map, SeedStreamMap):
+            raise USPoolPhysicalExecutorError(
+                "physical executor requires the compiled SeedStreamMap"
+            )
         if isinstance(attempt, bool) or not isinstance(attempt, int) or attempt < 0:
             raise USPoolPhysicalExecutorError("attempt must be a non-negative integer")
         if not isinstance(resumed, bool) or not isinstance(
@@ -395,6 +401,7 @@ class USPoolPhysicalExecutor:
         node_ids = frozenset(node.id for node in rows)
         self._nodes = rows
         self._run_provenance_identity = run_provenance_identity
+        self._seed_stream_map = seed_stream_map
         self._run_inputs = MappingProxyType(dict(run_inputs or {}))
         self._sink_roots = _per_node_values(
             sink_roots_by_node,
@@ -405,11 +412,6 @@ class USPoolPhysicalExecutor:
             sources_by_node,
             node_ids=node_ids,
             label="sources_by_node",
-        )
-        self._rng_invocation_plans = _per_node_values(
-            rng_invocation_plans_by_node,
-            node_ids=node_ids,
-            label="rng_invocation_plans_by_node",
         )
         self._environments = _per_node_values(
             environment_by_node,
@@ -436,6 +438,26 @@ class USPoolPhysicalExecutor:
     def remaining_node_ids(self) -> tuple[str, ...]:
         return tuple(node.id for node in self._nodes[self._next_index :])
 
+    def seed_site_ids(self, producer_name: str) -> tuple[str, ...]:
+        """Return the compiled direct RNG sites for one physical producer."""
+
+        node = next((row for row in self._nodes if row.id == producer_name), None)
+        if node is None:
+            raise USPoolPhysicalExecutorError(
+                f"unknown physical producer {producer_name!r}"
+            )
+        return tuple(site.id for site in node.seed_sites)
+
+    def seed_owner(self, kind: str, owner_id: str) -> SeedOwnerIR:
+        """Resolve one supplemental owner from the executor's compiled map."""
+
+        owner = self._seed_stream_map.owner(kind, owner_id)
+        if owner is None:
+            raise USPoolPhysicalExecutorError(
+                f"compiled seed owner {(kind, owner_id)!r} is absent"
+            )
+        return owner
+
     def _expected_node(self, producer_name: str) -> CompiledNode:
         if self._failed_node_id is not None:
             raise USPoolPhysicalExecutorError(
@@ -460,9 +482,18 @@ class USPoolPhysicalExecutor:
         producer_name: str,
         before_frame: Frame,
         available_inputs: Mapping[object, object],
-        operation: Callable[[], object],
+        operation: Callable[[Frame, KernelBrokerSession], object],
         *,
         absence_receipts: Mapping[str, object] | None = None,
+        rng_invocation_plan: Mapping[str, Sequence[RNGInvocation]] | None = None,
+        rng_invocation_plan_factory: (
+            Callable[[Frame], Mapping[str, Sequence[RNGInvocation]]] | None
+        ) = None,
+        supplemental_seed_owners: Sequence[SeedOwnerIR] = (),
+        rng_invocation_plans_by_owner: Mapping[
+            tuple[str, str], Mapping[str, Sequence[RNGInvocation]]
+        ]
+        | None = None,
     ) -> object:
         """Run one legacy callback through ``execute_node`` exactly once."""
 
@@ -482,6 +513,23 @@ class USPoolPhysicalExecutor:
             raise USPoolPhysicalExecutorError(
                 "physical executor operation must be callable"
             )
+        if rng_invocation_plan_factory is not None and not callable(
+            rng_invocation_plan_factory
+        ):
+            raise USPoolPhysicalExecutorError(
+                "RNG invocation plan factory must be callable"
+            )
+        if rng_invocation_plan is not None and rng_invocation_plan_factory is not None:
+            raise USPoolPhysicalExecutorError(
+                "RNG invocation plan and factory are mutually exclusive"
+            )
+        if (
+            rng_invocation_plan is not None
+            or rng_invocation_plan_factory is not None
+        ) and (supplemental_seed_owners or rng_invocation_plans_by_owner is not None):
+            raise USPoolPhysicalExecutorError(
+                "direct RNG plans cannot be combined with owner-scoped plans"
+            )
         node = self._expected_node(producer_name)
         executor_inputs = _available_inputs_with_absence(
             node,
@@ -498,10 +546,61 @@ class USPoolPhysicalExecutor:
             node=node,
             available_inputs=executor_inputs,
         )
+        effective_rng_invocation_plan = rng_invocation_plan
+        if rng_invocation_plan_factory is not None:
+            planner_frame = projection_to_frame(
+                projection,
+                schema=before_frame.schema,
+            )
+            if not isinstance(planner_frame, Frame):
+                self._failed_node_id = node.id
+                raise USPoolPhysicalExecutorError(
+                    f"RNG planner frame for {node.id!r} is not a Frame"
+                )
+            try:
+                planned = rng_invocation_plan_factory(planner_frame)
+            except Exception:
+                self._failed_node_id = node.id
+                raise
+            if not isinstance(planned, Mapping):
+                self._failed_node_id = node.id
+                raise USPoolPhysicalExecutorError(
+                    f"RNG planner for {node.id!r} did not return a mapping"
+                )
+            try:
+                normalized_plan = {
+                    site_id: tuple(invocations)
+                    for site_id, invocations in planned.items()
+                }
+            except TypeError as error:
+                self._failed_node_id = node.id
+                raise USPoolPhysicalExecutorError(
+                    f"RNG planner for {node.id!r} returned non-sequence invocations"
+                ) from error
+            if any(
+                not isinstance(site_id, str)
+                or not site_id
+                or any(
+                    not isinstance(invocation, RNGInvocation)
+                    for invocation in invocations
+                )
+                for site_id, invocations in normalized_plan.items()
+            ):
+                self._failed_node_id = node.id
+                raise USPoolPhysicalExecutorError(
+                    f"RNG planner for {node.id!r} returned invalid invocations"
+                )
+            effective_rng_invocation_plan = normalized_plan
+        narrow_frame = projection_to_frame(projection, schema=before_frame.schema)
+        if not isinstance(narrow_frame, Frame):
+            self._failed_node_id = node.id
+            raise USPoolPhysicalExecutorError(
+                f"physical callback frame for {node.id!r} is not a Frame"
+            )
         result_box: list[object] = []
 
-        def physical_call() -> object:
-            result = operation()
+        def physical_call(context: KernelBrokerSession) -> object:
+            result = operation(narrow_frame, context)
             result_frame = getattr(result, "frame", None)
             if not isinstance(result_frame, Frame):
                 raise USPoolPhysicalExecutorError(
@@ -521,6 +620,7 @@ class USPoolPhysicalExecutor:
             function=physical_call,
             implementation_sha256=node.kernel_implementation_sha256,
             input_binding_sha256=input_binding_sha256,
+            policy="broker-only",
             sink_roots=tuple(self._sink_roots.get(node.id, ())),
         )
         capabilities = _node_capabilities(node)
@@ -541,7 +641,10 @@ class USPoolPhysicalExecutor:
             node,
             run_provenance_identity=self._run_provenance_identity.to_wire(),
             run_inputs=self._run_inputs,
-            rng_invocation_plan=self._rng_invocation_plans.get(node.id),
+            rng_invocation_plan=effective_rng_invocation_plan,
+            seed_stream_map=self._seed_stream_map,
+            supplemental_seed_owners=tuple(supplemental_seed_owners),
+            rng_invocation_plans_by_owner=rng_invocation_plans_by_owner,
             sources=tuple(self._sources.get(node.id, ())),
             environment=self._environments.get(node.id),
             clocks=self._clocks.get(node.id),

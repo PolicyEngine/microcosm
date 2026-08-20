@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from microcosm.build.spec_engine.compiler_ir import SeedStreamMap
 from microcosm.build.us_runtime.pool_physical_authority import (
     USPoolPhysicalAuthority,
     compile_us_pool_physical_authority,
@@ -35,6 +36,7 @@ class USPoolKernelAuthorities:
 
     authority_sha256: str
     spec_sha256: str
+    seed_stream_map: SeedStreamMap
     physical: USPoolPhysicalAuthority
     assembly: StackedAssemblyAuthority
     gap_fill: StackedGapFillAuthority
@@ -44,6 +46,7 @@ class USPoolKernelAuthorities:
 
     def __post_init__(self) -> None:
         expected_types = (
+            ("seed_stream_map", self.seed_stream_map, SeedStreamMap),
             ("physical", self.physical, USPoolPhysicalAuthority),
             ("assembly", self.assembly, StackedAssemblyAuthority),
             ("gap_fill", self.gap_fill, StackedGapFillAuthority),
@@ -61,6 +64,13 @@ class USPoolKernelAuthorities:
                 raise USPoolKernelAuthorityError(
                     f"kernel and physical {name} values differ"
                 )
+        if (
+            self.seed_stream_map.implementation_sha256
+            != self.physical.seeds.implementation_sha256
+        ):
+            raise USPoolKernelAuthorityError(
+                "kernel seed stream map differs from physical seed authority"
+            )
 
     @classmethod
     def from_runtime_plan(
@@ -86,6 +96,7 @@ class USPoolKernelAuthorities:
         return cls(
             authority_sha256=physical.authority_sha256,
             spec_sha256=physical.spec_sha256,
+            seed_stream_map=plan.seed_stream_map,
             physical=physical,
             assembly=StackedAssemblyAuthority(
                 **physical.assembly.materializer_kwargs()

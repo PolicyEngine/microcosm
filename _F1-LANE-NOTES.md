@@ -2362,3 +2362,38 @@ head; it still writes `us-f1-certification.json` and
 2. Route the primary clone, cold QRF bank, and tail through their three
    compiled owners, then rerun the full dual-mode stage fixture and affected
    suite after the production wiring is complete.
+
+## F1 continuation r5 narrow-frame RNG planning (2026-08-20)
+
+### State
+
+- Conditional source and transfer invocation counts depend on the exact
+  compiler-declared pre-node frame. Planning from the caller's full frame
+  would let undeclared optional columns alter RNG consumption even if the
+  physical callback itself is narrowed.
+
+### Done
+
+- `USPoolKernelAuthorities` now retains the compiled `SeedStreamMap` and
+  verifies it against the physical seed authority before construction.
+- The physical executor accepts either one static direct-owner plan or a
+  mutually exclusive narrow-frame plan factory. A factory receives a freshly
+  reconstructed projection frame; its result is type-checked and snapshotted,
+  then the callback receives a second reconstruction so planner mutation
+  cannot affect physical execution.
+- Dispatch now binds broker-only callbacks as `(narrow_frame,
+  KernelBrokerSession)`, passes the compiled stream map plus optional
+  supplemental owners into `BrokerSession`, and exposes exact direct site and
+  supplemental-owner lookup helpers for the production DAG.
+- The focused physical-executor module passes (3 tests), including
+  planner/callback frame isolation and plan-form exclusivity. The kernel
+  authority module passes (6 tests). Targeted Ruff, `py_compile`, and
+  `git diff --check` pass; no sample build ran.
+
+### Next
+
+1. Split the late DAG's constants and bundle callbacks, compute source and ACS
+   plans from these narrow planner frames, and dispatch every producer in
+   compiler order.
+2. Bind the primary producer's direct QRF owner plus clone and tail
+   supplemental owners, with `clone_attachment_seed` in the broker run inputs.
