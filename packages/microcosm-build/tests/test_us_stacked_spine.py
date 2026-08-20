@@ -2729,6 +2729,84 @@ def test_gap_fill_validator_accepts_canonical_calibration_evidence() -> None:
     )
 
 
+def test_gap_fill_qrf_binding_excludes_unassigned_batched_targets() -> None:
+    receipt = _canonical_gap_fill_calibration_receipt()
+    direction = next(
+        item
+        for item in stacked_spine_module.CANONICAL_STACKED_GAP_FILL_PLAN
+        if item.name == "asec_survey_to_acs"
+    )
+    family = "puf_tax_itemization"
+    targets = direction.target_families["person"][family]
+    target = "taxable_interest_income"
+    key = f"person/{family}/{target}"
+    target_receipt = receipt["directions"][direction.name]["targets"][key]
+    legacy_counts = {
+        "authorized_null_rows": 1,
+        "imputed_rows": 1,
+        "unmodeled_rows": 0,
+        "residual_null_rows": 0,
+    }
+    target_receipt.update(legacy_counts)
+
+    batch_targets = targets[
+        : acs_transfer_module.DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT
+    ]
+    required_predictors, _optional_predictors = (
+        stacked_spine_module._acs_pattern_predictor_authority(
+            entity="person",
+            family_targets=batch_targets,
+        )
+    )
+    record = AcsImputedInput(
+        column=target,
+        entity="person",
+        family=f"{family}__batch_1",
+        donor_spine="synthetic_batched_gap_validator_fixture",
+        donor_channel=None,
+        predictors=required_predictors,
+        seed=0,
+        weight_kind="design",
+        patterns=(
+            AcsTransferPattern(
+                name=acs_transfer_module._pattern_name(0, ()),
+                observed_optional_predictors=(),
+                predictors=required_predictors,
+                seed=0,
+                weight_kind="design",
+                donor_rows=1,
+                recipient_rows=1,
+                target_regimes=tuple(
+                    (model_target, "positive_only")
+                    for model_target in acs_transfer_module._model_target_names(
+                        batch_targets
+                    )
+                ),
+            ),
+        ),
+        imputed_recipient_rows=1,
+    )
+    target_receipt["qrf_pattern_evidence"] = (
+        stacked_spine_module._acs_imputed_pattern_evidence(record)
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="undeclared ACS QRF pattern evidence.*taxable_interest_income",
+    ):
+        stacked_spine_module.validate_stacked_gap_fill_receipt(
+            receipt,
+            boundary="unassigned batched QRF evidence",
+        )
+
+    target_receipt.pop("qrf_pattern_evidence")
+    stacked_spine_module.validate_stacked_gap_fill_receipt(
+        receipt,
+        boundary="unassigned legacy target receipt",
+    )
+    assert target_receipt == legacy_counts
+
+
 def test_gap_fill_validator_rejects_qrf_regime_evidence_tampering() -> None:
     receipt, direction_name, key, _entity, _family, _targets = (
         _canonical_gap_fill_receipt_with_pattern_evidence()

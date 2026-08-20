@@ -904,6 +904,11 @@ def test_large_target_family_is_split_to_bound_retained_qrf_forests(
         "wide_numeric__batch_3",
         "wide_numeric__batch_4",
     }
+    assert all(
+        not pattern.target_regimes
+        for entry in result.imputed_inputs
+        for pattern in entry.patterns
+    )
 
 
 def test_pattern_provenance_records_ordered_exact_donor_target_regimes(
