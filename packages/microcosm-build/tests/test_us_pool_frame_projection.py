@@ -17,6 +17,7 @@ from microcosm.build.us_runtime.pool_frame_projection import (
     frame_to_projection,
     legacy_result_to_patch,
     merge_projection_into_frame,
+    projection_to_frame,
 )
 from microcosm.frame import (
     EntitySchema,
@@ -244,6 +245,25 @@ def test_frame_projection_is_node_bounded_and_covers_typed_surfaces(
         1: frozenset({"origin:survey_alpha/clone:0"}),
         2: frozenset({"origin:survey_beta/clone:0"}),
     }
+
+    narrow = projection_to_frame(projection, schema=frame.schema)
+    assert narrow.table("person").columns.tolist() == [
+        "person_id",
+        "person_household_id",
+        "person_observed",
+    ]
+    assert narrow.table("household").columns.tolist() == ["household_id"]
+    pd.testing.assert_frame_equal(
+        narrow.link("person_household_edge"),
+        projection.link("person_household_edge"),
+    )
+    np.testing.assert_array_equal(
+        narrow.weights_for("household").values,
+        projection.weights_for("household").values,
+    )
+    assert narrow.weights_for("household").kind.value == "importance"
+    assert narrow.metadata == frame.metadata
+    assert narrow.mass_log == frame.mass_log
     assert projection.row_atoms_for("household") == {
         10: frozenset({"origin:survey_alpha/clone:0"}),
         20: frozenset({"origin:survey_beta/clone:0"}),

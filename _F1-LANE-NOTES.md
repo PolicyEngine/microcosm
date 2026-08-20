@@ -2192,3 +2192,31 @@ head; it still writes `us-f1-certification.json` and
    exact token consumption at broker seal.
 2. Add compiler-bound QRF state restoration for target-bank resume; never
    infer or accept caller-authored state outside a predeclared grant.
+
+## F1 continuation r5 narrow physical input (2026-08-20)
+
+### State
+
+- Validating a callback's output patch is insufficient if the callback can
+  still read undeclared columns from a full `Frame` captured outside the
+  executor. Bundle physical callbacks must receive the compiler projection as
+  their only frame input.
+
+### Done
+
+- Added a lossless conversion from `ImmutableFrameProjection` to a narrow
+  legacy `Frame`. It preserves only projected entity/link tables, typed
+  weights, strata, mass history, and metadata; virtual receipts remain
+  separate. No unprojected physical column can enter the callback through
+  this boundary.
+- The existing projection-boundary fixture now reconstructs the narrow frame
+  and verifies its columns, links, weight kind/bits, metadata, and mass log.
+  The focused test, targeted Ruff, and `git diff --check` pass; no sample build
+  ran.
+
+### Next
+
+1. Change physical dispatch callbacks to accept this narrow frame plus the
+   broker-owned operation context.
+2. Treat any resulting missing read as a compiled input-contract defect; do
+   not reopen the full frame inside bundle execution.

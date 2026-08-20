@@ -55,6 +55,7 @@ __all__ = [
     "frame_to_projection",
     "legacy_result_to_patch",
     "merge_projection_into_frame",
+    "projection_to_frame",
 ]
 
 
@@ -448,6 +449,51 @@ def frame_to_projection(
         raise FrameProjectionCodecError(
             f"frame cannot be represented by the executor projection: {error}"
         ) from error
+
+
+def projection_to_frame(
+    projection: ImmutableFrameProjection,
+    *,
+    schema: EntitySchema,
+) -> Frame:
+    """Materialize the exact kernel-visible projection as a narrow ``Frame``.
+
+    Legacy physical functions can therefore retain their typed ``Frame`` API
+    without receiving any column that the compiled node did not declare.
+    Virtual receipts remain separate inputs and are intentionally not copied
+    into frame metadata.
+    """
+
+    if not isinstance(projection, ImmutableFrameProjection):
+        raise TypeError("projection_to_frame requires an immutable projection")
+    if not isinstance(schema, EntitySchema):
+        raise TypeError("projection_to_frame requires an EntitySchema")
+    if projection.entities != schema.entities:
+        raise FrameProjectionCodecError(
+            "projection entity order differs from the supplied frame schema"
+        )
+    parts = projection._parts()
+    tables = {
+        entity: projection.table(entity) for entity in projection.entities
+    }
+    tables.update(
+        {name: table.copy(deep=True) for name, table in parts["links"].items()}
+    )
+    weights = {
+        entity: Weights(
+            projection.weights_for(entity).values,
+            WeightKind(projection.weights_for(entity).kind),
+        )
+        for entity in parts["weights"]
+    }
+    return Frame(
+        tables,
+        schema,
+        weights,
+        projection.strata,
+        mass_log=projection.mass_history,
+        metadata=projection.metadata,
+    )
 
 
 def _native_source_candidates(
