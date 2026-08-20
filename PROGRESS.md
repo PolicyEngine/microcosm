@@ -2,9 +2,10 @@
 
 ## State
 
-- Deliverable 7 is in discovery: retarget every derived closure, segment, and
-  lineage-dashboard consumer from held authored-class fixtures to compiled-IR
-  outputs (`typed_closure.py` and `compiler_ir` seams).
+- Deliverable 7 discovery is complete. The implementation target is the
+  compiler-declared closure (173 typed columns), 227 compiled producer-output
+  occurrences, and 241 compiler-derived cell segments, plus the dashboard
+  projection that presents them.
 - Work is local on `spec-engine-f1`; nothing has been pushed and no build has
   been run.
 - Main-lane deliverables 5/6/8 have concurrent uncommitted changes in this
@@ -21,16 +22,30 @@
 - Reconciled the charter's historical instruction not to touch `PROGRESS.md`
   with the split-out standing order: this journal follows the newer explicit
   user instruction and is isolated from the main-lane journal changes.
+- Audited the current tree and held `lineage-column-closure-697` branch across
+  tests and tools. Active consumers are the lineage dashboard, the high-level
+  lineage conformance test, production-shaped typed-closure fixtures, take-up
+  segment fixtures, and the derived closure block in the US bundle test.
+- Confirmed the dashboard currently reads normalized authored graph outputs:
+  92 rows, rather than the compiler-expanded 227 outputs, and omits all 241
+  compiled `write_scopes[*].cell_segments`.
+- Confirmed the allowed held H5 inventory is not a valid current closure
+  authority: its 392-column f025 snapshot predates later predictor work and is
+  documented as missing 56 columns. It will not be revived or represented as
+  current compiler closure.
+- Mapped replacements to `CompiledSpecIR.resource()`, `typed_inventory`,
+  `producer_graph.nodes[*].outputs`, and
+  `producer_graph.nodes[*].write_scopes`.
 
 ## Next
 
-1. Complete the charter-mandated source reading relevant to the compiler and
-   typed derived surfaces, then inventory all held-fixture consumers in tests
-   and tools.
-2. Map each consumer to a direct compiled-IR output and record the intended
-   retarget before editing implementation or tests.
-3. Retarget in coherent commits, running focused and complete required suites
-   after each commit.
+1. Retarget the dashboard to compile the packaged bundle, present compiler
+   column closure and exact cell segments, and stop reading authored graph
+   outputs.
+2. Move each production-shaped closure/segment test fixture to compiled IR;
+   retain only genuinely synthetic low-level mutation tests.
+3. Run focused and complete required suites before the coherent implementation
+   commit.
 4. Append a clearly marked deliverable-7 handoff section to
    `_F1-LANE-NOTES.md`, write the final report to the requested output file,
    and leave the full suite green.
