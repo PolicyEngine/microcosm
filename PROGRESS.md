@@ -22,7 +22,8 @@ peak. Repository lint, scoped formatting, and committed-range whitespace also
 pass. Only the two root journals differ from `a5be536f`, so the executable tree
 is identical to the checkpoint where all 225 `microcosm-build` test files
 passed. Local diagnosis and verification are complete; the final report is
-being refreshed. The owner-provided `_BUILD-FAILURE-1PCT.txt` and
+refreshed in `FINAL_REPORT.md`. No local implementation or verification work
+remains. The owner-provided `_BUILD-FAILURE-1PCT.txt` and
 `.codex-memory-guard.py` remain untracked and untouched.
 
 The 2026-08-20 owner continuation independently re-traced the reported host 1%
@@ -124,6 +125,19 @@ but DNS is unavailable. Verification therefore uses the already-synced
   33bf52fe^..HEAD`; all passed. `git diff --name-status a5be536f..HEAD` lists
   only `FINAL_REPORT.md` and `PROGRESS.md`, proving no executable drift from the
   prior complete 225-file `microcosm-build` pass.
+- Reconciled the third independent regression audit. It confirmed that the
+  exact synthetic canonical-validator case and the real banked producer case
+  jointly cover the reported boundary; they remain separate because a
+  test-authority receipt must not acquire canonical production authority.
+- Rechecked the externally owned host directory without controlling it. The
+  reused log reaches all 47 early survey targets, housing 1/1, and the late DAG
+  without the reported traceback, while the directory still has no exit
+  marker, pool, manifest, or gates artifact and the log does not bind a
+  revision SHA. The external guard continues to report other live work, so no
+  host certification is claimed.
+- Refreshed `FINAL_REPORT.md` with the current diagnosis, assigned-only scope,
+  regression structure, guarded verification, continuation commits, and exact
+  remaining host boundary.
 - Reopened the committed progress journal before implementation work for the
   current owner continuation and recorded the supplied failure as the active
   verification target.
@@ -304,6 +318,5 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Refresh `FINAL_REPORT.md` and the final journal state, then commit them. Do
-   not claim a host artifact without a revision-bound terminal success marker
-   and expected artifacts.
+1. Do not claim a host artifact unless a revision-bound retry reaches a terminal
+   success marker and emits the expected pool, manifest, and gates artifacts.

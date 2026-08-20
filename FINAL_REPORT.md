@@ -18,12 +18,13 @@ threshold, comparator, fold, publication boundary, or pending-chain state was
 changed.
 
 The 2026-08-20 owner continuation independently re-traced the old raise site,
-the current runtime/receipt selector, and the exact regression surface. It found
-no remaining canonical path that can opt `taxable_interest_income` into QRF
-regime work or evidence. Seven narrow regressions and all 528 tests in the five
-directly affected files pass on the current executable tree. Three independent
-read-only audits of source, tests, and host evidence reached the same scoped-fix
-verdict.
+the current runtime/receipt selector, the failing-to-fixed history, and the
+exact regression surface. It found no remaining canonical path that can opt
+`taxable_interest_income` into QRF regime work or evidence and therefore made
+no further executable change. Eight narrow regressions and all 528 tests in the
+five directly affected files pass on the current executable tree. Three
+independent read-only audits of source, history, and regression coverage reached
+the same scoped-fix verdict.
 
 ## Root cause and correction
 
@@ -59,6 +60,15 @@ The correction keeps regime work explicitly opt-in:
   matching the existing late-DAG boundary; narrower widths remain a
   non-production test seam.
 
+The generic `transfer_acs_inputs` library API deliberately permits an explicit
+caller to request regime auditing for any target on that caller's requested
+surface. The canonical stacked entry points do not expose that choice: they
+derive it internally from the nine immutable specs. “Assigned-only behavior”
+therefore describes canonical generated values, regime work, provenance, and
+receipts. The shared four-count transfer accounting invariant still validates
+every canonical target so moving QRF validation behind the assignment branch
+does not weaken legacy receipt checks.
+
 ## Regression coverage
 
 The regression surface includes:
@@ -72,6 +82,13 @@ The regression surface includes:
 - default ordinary and banked transfer behavior plus both generic serializers;
 - rejection of non-default canonical fit widths; and
 - canonical pool/H5 receipt fixtures using the strict four-count schema.
+
+The real banked producer case and the canonical terminal-validator case are
+separate fixtures: the first proves the runtime emits no evidence for the real
+bounded record, while the second proves canonical validation rejects forged
+evidence and accepts the evidence-free legacy receipt. Together they cover the
+reported producer/validator boundary without granting a test authority receipt
+canonical production authority.
 
 The full-suite run found one stale synthetic H5 fixture that supplied only
 `residual_null_rows`. The fixture—not production validation—was corrected to
@@ -90,10 +107,10 @@ default uv cache are unavailable.
   pytest processes at `a5be536f`. No executable file changed between that
   commit and the final audit tree.
 - The five directly affected transfer, multispine, stacked, pool-tool, and H5
-  files were rerun together on the final executable tree: 528 passed, zero
-  skipped, zero failed/errors. The run used the owner-provided 12 GiB/20 ms
-  guard and peaked at 1.531 GiB observed per-process RSS. Seven narrow
-  scope/binding regressions also passed independently.
+  files were rerun together on the final executable tree: all 528 passed. The
+  run used the owner-provided 12 GiB/20 ms guard and peaked at 1.494 GiB
+  observed per-process RSS. Eight narrow scope/binding regressions also passed
+  independently, peaking at 0.559 GiB.
 - `ruff check .`: passed on the final audit tree.
 - `ruff format --check` on all nine continuation-touched Python files: passed.
 - `git diff --check 33bf52fe^..HEAD`: passed.
@@ -103,12 +120,14 @@ default uv cache are unavailable.
 
 The originally cited `battery-verify/pkg3/build.log` was overwritten by the
 later retry. The owner-preserved `_BUILD-FAILURE-1PCT.txt` retains the old
-traceback. The reused log now reaches survey target 47/47 and housing target 1/1,
-including `puf_tax_itemization__batch_1/taxable_interest_income`, without a new
-traceback. It then ends without a runner exit marker, `pool.h5`, pool manifest,
-or gates artifact, and it does not record the revision SHA. That passage through
-the transfer checkpoints is useful progress evidence, but it is neither
-revision-bound nor a terminal certification result.
+traceback. At the final read-only check, the reused log had reached survey
+target 47/47, housing target 1/1, and the late DAG, including
+`puf_tax_itemization__batch_1/taxable_interest_income`, without a new traceback.
+The directory still had no runner exit marker, `pool.h5`, pool manifest, or
+gates artifact, and the log did not bind a revision SHA; the external guard
+continued to report other live work. That passage through transfer checkpoints
+is useful progress evidence, but it is neither revision-bound nor a terminal
+certification result.
 
 The sibling package suites were green before this continuation and their code
 was not changed: `microcosm-fit` 93 passed, `microcosm-calibrate` 201 passed,
@@ -132,6 +151,11 @@ skipped.
 - `dbe47560` — reopen the current owner continuation.
 - `8ebfeb08` — record the current independent scoped-binding diagnosis.
 - `bc3d73ba` — record the guarded 528-test and lint verification.
+- `bbe3634c` — reopen the current scoped-binding audit journal.
+- `a1748679` — independently confirm the current assigned-only diagnosis.
+- `dd10904c` — record eight focused scope and binding regressions.
+- `e8c91b39` — record the current guarded 528-test affected suite.
+- `ceda1c47` — record lint, format, diff, and executable-tree verification.
 
 ## Remaining host step
 
