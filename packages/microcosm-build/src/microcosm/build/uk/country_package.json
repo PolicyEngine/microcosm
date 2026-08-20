@@ -53,6 +53,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "frs_release.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "gates.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

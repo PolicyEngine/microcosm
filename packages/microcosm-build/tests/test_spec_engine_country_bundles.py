@@ -42,7 +42,7 @@ EXPECTED_RESOURCES = {
         ),
         (
             "uk",
-            "942ad7df5537e244df7ede7230098e91c617dbdb11e4d0885a94bb3b4f912da5",
+            "54d6c1aa1e79c016081a645c0aaad86ba3fcc8568665804fbe46dfc5a08eb450",
             {
                 "benunit.benunit_id",
                 "household.household_id",
@@ -118,8 +118,7 @@ def test_country_kernel_contract_ids_are_closed_in_the_compiler_registry() -> No
     assert country_contract_ids <= F0_KERNEL_REGISTRY.ids
     assert all(F0_KERNEL_REGISTRY.contains(value) for value in country_contract_ids)
     assert not any(
-        F0_KERNEL_REGISTRY.has_implementation(value)
-        for value in country_contract_ids
+        F0_KERNEL_REGISTRY.has_implementation(value) for value in country_contract_ids
     )
 
 

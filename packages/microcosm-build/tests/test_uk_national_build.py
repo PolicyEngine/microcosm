@@ -251,7 +251,7 @@ def _write_two_row_h5(
                 "child_benefit_opts_out": flags(23),
                 "would_claim_pc": flags(70),
                 "would_claim_uc": flags(55),
-                "would_claim_tfc": flags(59),
+                "would_claim_tfc": flags(88),
                 "would_claim_extended_childcare": flags(81),
                 "would_claim_universal_childcare": flags(56),
                 "would_claim_targeted_childcare": flags(60),
@@ -279,7 +279,7 @@ def _write_two_row_h5(
                         index % 4 >= 2 for index in range(n)
                     ],
                     "household_owns_tv": flags(95),
-                    "would_evade_tv_licence_fee": flags(11),
+                    "would_evade_tv_licence_fee": flags(13),
                     "main_residential_property_purchased_is_first_home": flags(38),
                     "property_purchased": flags(4),
                     "brma": [

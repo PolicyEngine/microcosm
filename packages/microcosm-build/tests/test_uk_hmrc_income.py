@@ -189,10 +189,10 @@ def test_rejects_period_before_opening_ods(monkeypatch, tmp_path) -> None:
 
     monkeypatch.setattr(hmrc_income, "_read_ods_tables", should_not_parse)
 
-    with pytest.raises(ValueError, match="maps to build period '2023'"):
+    with pytest.raises(ValueError, match="replayed against build period '2024'"):
         materialize_hmrc_spi_income_band_targets(
             ods_path,
-            build_period="2024",
+            build_period="2023",
         )
     assert called is False
 
