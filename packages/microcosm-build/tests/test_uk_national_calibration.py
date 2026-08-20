@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -142,3 +144,49 @@ def test_calibration_preserves_entity_ids_and_national_integrity() -> None:
         id_column = f"{entity}_id"
         assert result.table(entity)[id_column].equals(frame.table(entity)[id_column])
     validate_uk_national_frame(result)
+
+
+def test_checkpoint_metadata_round_trips_calibration_evidence() -> None:
+    frame = _frame()
+    stage = UKNationalCalibrationStage(
+        [_fact()], references=[_uc_reference()], epochs=5
+    )
+
+    staged = stage(frame)
+    metadata = json.loads(json.dumps(stage.checkpoint_metadata()))
+
+    resumed = UKNationalCalibrationStage(
+        [_fact()], references=[_uc_reference()], epochs=5
+    )
+    resumed.resume_from_checkpoint(metadata, staged)
+
+    assert resumed.manifest == stage.manifest
+    assert resumed.diagnostics == stage.diagnostics
+    assert resumed.output_content_identity == metadata["output_content_identity"]
+
+    drifted = UKNationalCalibrationStage(
+        [_fact()], references=[_uc_reference()], epochs=5
+    )
+    with pytest.raises(RuntimeError, match="drifted record"):
+        drifted.resume_from_checkpoint(metadata, frame)
+
+    empty = UKNationalCalibrationStage(
+        [_fact()], references=[_uc_reference()], epochs=5
+    )
+    with pytest.raises(RuntimeError, match="calibration counts"):
+        empty.resume_from_checkpoint({}, staged)
+
+    missing_count = dict(metadata)
+    missing_count["calibration"] = {
+        key: value
+        for key, value in metadata["calibration"].items()
+        if key != "activated_reference_count"
+    }
+    with pytest.raises(RuntimeError, match="calibration counts"):
+        empty.resume_from_checkpoint(missing_count, staged)
+
+    unrun = UKNationalCalibrationStage(
+        [_fact()], references=[_uc_reference()], epochs=5
+    )
+    with pytest.raises(RuntimeError, match="has not run"):
+        unrun.checkpoint_metadata()

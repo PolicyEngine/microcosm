@@ -11,6 +11,7 @@ import pandas as pd
 
 from microcosm.build.ledger_targets import compile_ledger_target_references
 from microcosm.build.plan import Stage
+from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.calibrate import calibrate, effective_sample_size
 from microcosm.frame import Frame
 
@@ -44,6 +45,7 @@ class UKNationalCalibrationStage:
         self.seed = seed
         self.manifest: dict[str, object] | None = None
         self.diagnostics: tuple[dict[str, object], ...] = ()
+        self.output_content_identity: str | None = None
 
     def __call__(self, frame: Frame) -> Frame:
         registry = compile_ledger_target_references(
@@ -92,12 +94,56 @@ class UKNationalCalibrationStage:
             "max_weight_ratio": float(ratios.max()),
             "max_weight_ratio_bound": self.max_weight_ratio,
         }
+        self.output_content_identity = uk_frame_content_identity(result.frame)
         return result.frame
 
     def checkpoint_metadata(self) -> Mapping[str, object]:
         if self.manifest is None:
             raise RuntimeError("UK national calibration has not run.")
-        return {"calibration": self.manifest, "diagnostics": self.diagnostics}
+        return {
+            "calibration": self.manifest,
+            "diagnostics": self.diagnostics,
+            "output_content_identity": self.output_content_identity,
+        }
+
+    def resume_from_checkpoint(
+        self,
+        metadata: Mapping[str, object],
+        frame: Frame,
+    ) -> None:
+        """Rehydrate completed calibration evidence from its checkpoint record."""
+
+        calibration = metadata.get("calibration")
+        diagnostics = metadata.get("diagnostics")
+        output_identity = metadata.get("output_content_identity")
+        count_keys = (
+            "activated_reference_count",
+            "resolved_reference_count",
+            "matrix_target_count",
+        )
+        if (
+            not isinstance(calibration, Mapping)
+            or not all(key in calibration for key in count_keys)
+            or not isinstance(diagnostics, list)
+            or not all(isinstance(row, Mapping) for row in diagnostics)
+            or not isinstance(output_identity, str)
+            or not output_identity
+        ):
+            raise RuntimeError(
+                "UK national calibration resume requires the checkpoint record "
+                "to carry calibration counts, diagnostics, and output content "
+                "identity; a record without them cannot feed the calibration "
+                "reference coverage gate or the drift check."
+            )
+        if uk_frame_content_identity(frame) != output_identity:
+            raise RuntimeError(
+                "UK national calibration checkpoint content does not match its "
+                "recorded output identity; refusing to resume from a drifted "
+                "record."
+            )
+        self.manifest = dict(calibration)
+        self.diagnostics = tuple(dict(row) for row in diagnostics)
+        self.output_content_identity = output_identity
 
 
 def uk_national_calibration_stage(
