@@ -2654,7 +2654,7 @@ families:
     output_coverage_scope: whole_pool
 producer_graph:
   graph_schema_version: 2
-  schedule_payload_schema_version: 16
+  schedule_payload_schema_version: 17
   external_stages:
   - post_clone_input_surface
   scope_coverage:
@@ -3162,7 +3162,7 @@ producer_graph:
     - alternatives:
       - - column: business_is_sstb
           entity: person
-          value_kind: finite_numeric
+          value_kind: non_null
       column: '@effective:person_output_allocation_basis:business_is_sstb'
       entity: person
       producing_stage: post_clone_input_surface
@@ -3232,7 +3232,7 @@ producer_graph:
     - alternatives:
       - - column: estate_income_would_be_qualified
           entity: person
-          value_kind: finite_numeric
+          value_kind: non_null
       column: '@effective:person_output_allocation_basis:estate_income_would_be_qualified'
       entity: person
       producing_stage: post_clone_input_surface
@@ -3262,7 +3262,7 @@ producer_graph:
     - alternatives:
       - - column: farm_operations_income_would_be_qualified
           entity: person
-          value_kind: finite_numeric
+          value_kind: non_null
       column: '@effective:person_output_allocation_basis:farm_operations_income_would_be_qualified'
       entity: person
       producing_stage: post_clone_input_surface
@@ -3282,7 +3282,7 @@ producer_graph:
     - alternatives:
       - - column: farm_rent_income_would_be_qualified
           entity: person
-          value_kind: finite_numeric
+          value_kind: non_null
       column: '@effective:person_output_allocation_basis:farm_rent_income_would_be_qualified'
       entity: person
       producing_stage: post_clone_input_surface
@@ -3382,7 +3382,7 @@ producer_graph:
     - alternatives:
       - - column: partnership_s_corp_income_would_be_qualified
           entity: person
-          value_kind: finite_numeric
+          value_kind: non_null
       column: '@effective:person_output_allocation_basis:partnership_s_corp_income_would_be_qualified'
       entity: person
       producing_stage: post_clone_input_surface
@@ -3462,7 +3462,7 @@ producer_graph:
     - alternatives:
       - - column: rental_income_would_be_qualified
           entity: person
-          value_kind: finite_numeric
+          value_kind: non_null
       column: '@effective:person_output_allocation_basis:rental_income_would_be_qualified'
       entity: person
       producing_stage: post_clone_input_surface
@@ -3512,7 +3512,7 @@ producer_graph:
     - alternatives:
       - - column: self_employment_income_would_be_qualified
           entity: person
-          value_kind: finite_numeric
+          value_kind: non_null
       column: '@effective:person_output_allocation_basis:self_employment_income_would_be_qualified'
       entity: person
       producing_stage: post_clone_input_surface
@@ -3582,7 +3582,7 @@ producer_graph:
     - alternatives:
       - - column: sstb_self_employment_income_would_be_qualified
           entity: person
-          value_kind: finite_numeric
+          value_kind: non_null
       column: '@effective:person_output_allocation_basis:sstb_self_employment_income_would_be_qualified'
       entity: person
       producing_stage: post_clone_input_surface

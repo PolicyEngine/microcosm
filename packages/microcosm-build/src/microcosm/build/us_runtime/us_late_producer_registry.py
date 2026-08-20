@@ -99,7 +99,9 @@ __all__ = [
     "us_late_producer_schedule_receipt",
 ]
 
-# v16 declares person.s_corp_income as a whole-pool primary-PUF output: its
+# v17 preserves the logical value kind of optional primary-PUF allocation
+# inputs instead of labeling boolean outputs as finite numeric. v16 declares
+# person.s_corp_income as a whole-pool primary-PUF output: its
 # certified combined-source semantics are carried by partnership_income, while
 # the separate S-corporation leaf is an exact-zero universe. v15 content-binds
 # the complete late dual-producer ownership matrix and
@@ -123,7 +125,7 @@ __all__ = [
 # cardinalities across each execution row, binds source-receipt outputs to the
 # callback receipt, and requires the primary callback to report the exact
 # resources it consumed. Receipt v2 introduced exact virtual-resource payloads.
-US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 16
+US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 17
 US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 3
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
@@ -1089,7 +1091,7 @@ US_LATE_PRIMARY_PUF_INPUT_INVENTORY = _inventory(
             "person",
             column,
             optional=True,
-            value_kind="finite_numeric",
+            value_kind=_late_target_value_kind(column),
         )
         for column in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
     ),

@@ -784,7 +784,7 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
 
     assert reconstructed == CANONICAL_US_LATE_PRODUCER_SCHEDULE
     receipt = us_late_producer_schedule_receipt()
-    assert receipt["schema_version"] == 16
+    assert receipt["schema_version"] == 17
     assert receipt["execution_receipt_contract"] == {
         "version": 3,
         "row_binding": (

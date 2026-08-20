@@ -2055,3 +2055,49 @@ head; it still writes `us-f1-certification.json` and
 2. Resolve the separate audit finding that the compatibility scope currently
    records compiled RNG grants without consuming broker tokens; do not call
    that ledger-routed execution until the broker owns the draws.
+
+## F1 continuation r5 physical-contract correction (2026-08-20)
+
+### State
+
+- The full-graph executor fixture next stopped at the primary-PUF node because
+  eight optional boolean allocation-basis columns were compiled as
+  `finite_numeric`. This is a real registry defect: the late readiness
+  contract preserves their logical `non_null` value kind, and changing the
+  fixture or weakening numeric validation would conceal it.
+- The generated US spec digest consequently changes from
+  `d0e4d3c1b3f055dde1056d75837384d4464478be8e2014370aab45ac4a7e8faa`
+  to `44893ea9631bca8bea53692abfc8f51eabb8dd04f3bcf5874a65459253a285b8`.
+
+### Done
+
+- Bumped the late-producer schedule payload from v16 to v17 and now derive
+  each optional primary-PUF allocation input's value kind from the target
+  column. Regenerated `imputation.yaml`; only the version and the eight
+  boolean input kinds changed. Updated the two tests that pin the current US
+  spec binding.
+- `tools/generate_us_bundle_from_constants.py --check` passes with full
+  generated-bundle validation. The canonical schedule test, live constants
+  adapter binding test, adapter checkpoint byte-equality test, typed
+  imputation reconstruction test, and every-checked-in-byte generator test
+  pass. Targeted Ruff and `git diff --check` pass.
+- One initial combined pytest command was interrupted after it remained in
+  import collection with no output for several minutes. Re-running the tests
+  separately with numerical-library thread counts pinned to one produced the
+  passing results above; no sample build ran.
+- Completed read-only audits of all seeded source, primary-PUF, and late
+  transfer callbacks. They establish that the current compatibility scope is
+  not ledger-routed: it logs grants and re-enables explicitly seeded private
+  RNG, but never consumes broker tokens. The pending 38-node fixture also
+  stubs every stochastic callback and therefore cannot prove this property.
+
+### Next
+
+1. Replace the compatibility exception with a broker-owned operation context,
+   dynamic per-dispatch invocation plans, and broker-controlled QRF streams.
+2. Preserve the three existing RNG owners inside the primary callback via a
+   compiler-bound composite/delegated authority and subprocess continuation,
+   or change the compiled stage graph explicitly; a local adapter cannot
+   honestly bridge those owner boundaries.
+3. Keep the bundle production activation uncommitted until a non-vacuous
+   fixture consumes real broker tokens and remains byte-equal to constants.
