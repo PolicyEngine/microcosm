@@ -2,7 +2,7 @@
 
 ## State
 
-The 2026-08-20 22:06Z owner continuation has completed an independent
+The 2026-08-20 22:12Z owner continuation has completed an independent
 raise-site, current-source, history, and regression audit of the supplied host
 1% ACS QRF record-binding failure. Commit `33bf52fe` detected and copied QRF
 regimes for every imputed target, receipt builders attached that evidence
@@ -21,8 +21,10 @@ permissive workaround via a fully rehashed in-range family alias. No material
 runtime or test gap was found, so no duplicate executable edit is warranted.
 The GitNexus workflow generated a local graph, but registration and subsequent
 query/context calls were blocked by the sandboxed user-wide registry; its
-112 MiB cache was removed. Guarded current-tree verification and final report
-refresh remain next. The owner artifacts remain untracked and untouched.
+112 MiB cache was removed. All 14 decisive focused cases now pass under the
+owner-provided 12 GiB/20 ms guard with a 0.550 GiB maximum observed
+per-process RSS. The full directly affected suite, static checks, and final
+report refresh remain next. The owner artifacts remain untracked and untouched.
 
 The immediately preceding completion snapshot follows and is historical rather
 than current state.
@@ -196,6 +198,11 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Ran the exact synthetic host-target regression, the real banked 15-target
+  producer regression, and all 12 fully rehashed QRF structure mutations under
+  the supplied guard. All 14 cases passed; peak observed per-process RSS was
+  0.550 GiB. The only warning was joblib falling back from unavailable physical
+  core metadata to the logical-core count.
 - Reconstructed the exact historical failure at `33bf52fe`: global regime
   provenance reached every record; both early and late receipt builders
   attached it for every imputed target; and the early validator called strict
@@ -626,10 +633,8 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Rerun the decisive regressions that distinguish unassigned wide-family
-   records from exact assigned-family binding under the supplied memory guard.
-2. Run the full directly affected suite and static checks under the guard,
+1. Run the full directly affected suite and static checks under the guard,
    then refresh and commit `PROGRESS.md` and `FINAL_REPORT.md` with only the
    results established on this revision.
-3. Leave the revision-bound off-chain 1% retry as the remaining host step
+2. Leave the revision-bound off-chain 1% retry as the remaining host step
    unless an already-complete terminal artifact can be identified read-only.
