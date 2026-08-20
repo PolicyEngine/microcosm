@@ -2,6 +2,16 @@
 
 ## State
 
+The 2026-08-20 22:38Z owner continuation is open. The supplied host 1%
+traceback will be re-audited from the invariant raise site against the current
+tree and committed history before relying on the completion claims below.
+The owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` are
+untracked inputs and will remain untouched. No new implementation or host
+success is claimed at this checkpoint.
+
+The completion snapshot below is historical pending this continuation's
+independent audit.
+
 The 2026-08-20 22:35Z owner continuation has completed an independent
 raise-site, current-source, history, and regression audit of the supplied host
 1% ACS QRF record-binding failure. Commit `33bf52fe` detected and copied QRF
@@ -206,6 +216,9 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Reopened the owner-requested ACS QRF binding audit and recorded the exact
+  starting revision, current uncertainty, and protected untracked inputs before
+  changing executable code.
 - Refreshed `FINAL_REPORT.md` with the current independent diagnosis, complete
   three-commit runtime correction, decisive regression coverage, guarded
   14-case and 529-test results, static/tree checks, GitNexus limitation, and
@@ -660,7 +673,11 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run or identify a revision-bound off-chain 1% retry that reaches a terminal
-   runner verdict and emits the expected final pool, manifest, and gates
-   artifacts. Do not claim an after artifact without that terminal proof, and
-   do not publish or mutate the pending logbook chain as a side effect.
+1. Trace the current producer, receipt builder, and terminal validator from the
+   reported raise site and compare them with the failing commit.
+2. Audit the assigned-target selectors and regressions for the exact real
+   `puf_tax_itemization/taxable_interest_income` boundary; make and commit any
+   executable correction that remains necessary.
+3. Run focused regressions, the directly affected suite, lint, formatting, and
+   whitespace checks; then refresh `FINAL_REPORT.md` with only revision-bound
+   results.
