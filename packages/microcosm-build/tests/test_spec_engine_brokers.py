@@ -27,6 +27,7 @@ from microcosm.build.spec_engine.brokers import (
     DeclaredSource,
     DerivedSeedHandle,
     GeneratorLease,
+    PhysicalOperation,
     RNGBehaviorIdentity,
     RNGInvocation,
     TorchGeneratorLease,
@@ -34,7 +35,7 @@ from microcosm.build.spec_engine.brokers import (
 from microcosm.build.spec_engine.canonical import sha256_json
 from microcosm.build.spec_engine.compiler_ir import CompiledSpecIR, compile_spec
 from microcosm.build.spec_engine.loader import load_bundle
-from microcosm.build.spec_engine.model import thaw_json
+from microcosm.build.spec_engine.model import freeze_json, thaw_json
 from microcosm.build.spec_engine.schemas import load_schema_registry
 
 
@@ -824,9 +825,7 @@ def test_file_snapshot_retains_descriptor_across_path_replacement_and_reopen_ref
     path.write_bytes(b"authenticated")
     declared = _source(path)
     original_open = open  # noqa: PTH123
-    session = _non_rng_session(
-        effects=("declared_source_read",), sources=(declared,)
-    )
+    session = _non_rng_session(effects=("declared_source_read",), sources=(declared,))
     replacement = tmp_path / "replacement.bin"
     replacement.write_bytes(b"replacement!!")
     with session.activate(), session.files.open_snapshot("fixture_source") as lease:
@@ -1312,3 +1311,247 @@ def test_broker_event_details_are_recursively_immutable() -> None:
     assert isinstance(nested, Mapping)
     with pytest.raises(TypeError):
         nested["values"] = ()  # type: ignore[index]
+
+
+def test_pinned_physical_operation_runs_once_with_bound_input(
+    compiled_us: CompiledSpecIR,
+) -> None:
+    node = next(
+        node
+        for node in compiled_us.nodes
+        if thaw_json(node.capabilities).get("effects") == ["none"]
+    )
+    calls: list[str] = []
+    input_binding_sha256 = sha256_json({"fixture": "physical-input"})
+
+    def physical_operation() -> dict[str, int]:
+        calls.append("called")
+        return {"value": 42}
+
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        physical_operation=PhysicalOperation(
+            function=physical_operation,
+            implementation_sha256=node.kernel_implementation_sha256,
+            input_binding_sha256=input_binding_sha256,
+        ),
+    )
+    with pytest.raises(BrokerAccessError, match="active bound session"):
+        session.kernel_view.run_physical_operation(
+            input_binding_sha256=input_binding_sha256
+        )
+    with session.activate():
+        assert session.kernel_view.run_physical_operation(
+            input_binding_sha256=input_binding_sha256
+        ) == {"value": 42}
+        with pytest.raises(BrokerAccessError, match="only once"):
+            session.kernel_view.run_physical_operation(
+                input_binding_sha256=input_binding_sha256
+            )
+    assert calls == ["called"]
+    receipt = session.seal(status="aborted")
+    assert receipt.events[-1].reason_code == "physical_operation_repeat_invocation"
+
+
+def test_physical_operation_requires_compiled_implementation_and_input_pins(
+    compiled_us: CompiledSpecIR,
+) -> None:
+    node = next(
+        node
+        for node in compiled_us.nodes
+        if thaw_json(node.capabilities).get("effects") == ["none"]
+    )
+
+    def physical_operation() -> None:
+        return None
+
+    input_binding_sha256 = sha256_json({"fixture": "physical-input"})
+    with pytest.raises(BrokerContractError, match="implementation digest differs"):
+        BrokerSession.for_compiled_node(
+            node,
+            run_provenance_identity=_fixture_run_provenance_wire(),
+            physical_operation=PhysicalOperation(
+                function=physical_operation,
+                implementation_sha256="f" * 64,
+                input_binding_sha256=input_binding_sha256,
+            ),
+        )
+
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        physical_operation=PhysicalOperation(
+            function=physical_operation,
+            implementation_sha256=node.kernel_implementation_sha256,
+            input_binding_sha256=input_binding_sha256,
+        ),
+    )
+    with session.activate():
+        with pytest.raises(BrokerAccessError, match="differs from its contract"):
+            session.kernel_view.run_physical_operation(input_binding_sha256="e" * 64)
+    receipt = session.seal(status="aborted")
+    assert receipt.events[-1].reason_code == "physical_input_binding_mismatch"
+
+
+def test_physical_operation_seed_and_sink_scope_is_grant_bound(
+    compiled_us: CompiledSpecIR, tmp_path: Path
+) -> None:
+    node = next(node for node in compiled_us.nodes if node.id == "primary_puf_qrf")
+    input_binding_sha256 = sha256_json({"fixture": "seeded-sink-input"})
+    target = tmp_path / "checkpoint.txt"
+
+    def physical_operation() -> int:
+        value = int(np.random.default_rng(7).integers(0, 100))
+        target.write_text(str(value), encoding="utf-8")
+        return value
+
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        physical_operation=PhysicalOperation(
+            function=physical_operation,
+            implementation_sha256=node.kernel_implementation_sha256,
+            input_binding_sha256=input_binding_sha256,
+            sink_roots=(tmp_path,),
+        ),
+    )
+    with session.activate():
+        result = session.kernel_view.run_physical_operation(
+            input_binding_sha256=input_binding_sha256
+        )
+    receipt = session.seal()
+    assert target.read_text(encoding="utf-8") == str(result)
+    rng_events = [
+        event
+        for event in receipt.events
+        if event.reason_code == "legacy_v1_physical_rng_grant"
+    ]
+    assert tuple(event.resource for event in rng_events) == tuple(
+        site.id for site in node.seed_sites
+    )
+    assert any(
+        event.reason_code == "legacy_v1_physical_sink_grant" for event in receipt.events
+    )
+    load_schema_registry().validate(
+        receipt.to_wire(), "locks.schema.json#/$defs/broker_access_receipt"
+    )
+
+
+def test_physical_operation_source_effect_does_not_restore_ambient_reads(
+    compiled_us: CompiledSpecIR, tmp_path: Path
+) -> None:
+    node = next(
+        node
+        for node in compiled_us.nodes
+        if thaw_json(node.capabilities).get("determinism") == "deterministic"
+        and thaw_json(node.capabilities).get("effects") == ["declared_source_read"]
+    )
+    source = tmp_path / "source.txt"
+    source.write_text("snapshot me", encoding="utf-8")
+    input_binding_sha256 = sha256_json({"fixture": "source-input"})
+
+    def physical_operation() -> str:
+        return source.read_text(encoding="utf-8")
+
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        physical_operation=PhysicalOperation(
+            function=physical_operation,
+            implementation_sha256=node.kernel_implementation_sha256,
+            input_binding_sha256=input_binding_sha256,
+        ),
+    )
+    with session.activate():
+        with pytest.raises(AmbientAccessError, match="ambient file"):
+            session.kernel_view.run_physical_operation(
+                input_binding_sha256=input_binding_sha256
+            )
+    receipt = session.seal(status="aborted")
+    assert receipt.status == "aborted"
+    assert any(
+        event.reason_code == "ambient_access_prohibited" for event in receipt.events
+    )
+
+
+def test_physical_operation_rejects_unsupported_authority_and_rng_return(
+    compiled_us: CompiledSpecIR,
+) -> None:
+    pure_node = next(
+        node
+        for node in compiled_us.nodes
+        if thaw_json(node.capabilities).get("effects") == ["none"]
+    )
+
+    def no_result() -> None:
+        return None
+
+    operation = PhysicalOperation(
+        function=no_result,
+        implementation_sha256=pure_node.kernel_implementation_sha256,
+        input_binding_sha256="d" * 64,
+    )
+    capabilities = thaw_json(pure_node.capabilities)
+    assert isinstance(capabilities, dict)
+    capabilities["determinism"] = "nondeterministic"
+    unsupported_node = replace(pure_node, capabilities=freeze_json(capabilities))
+    with pytest.raises(BrokerContractError, match="does not support nondeterminism"):
+        BrokerSession.for_compiled_node(
+            unsupported_node,
+            run_provenance_identity=_fixture_run_provenance_wire(),
+            physical_operation=operation,
+        )
+
+    seeded_node = next(
+        node
+        for node in compiled_us.nodes
+        if thaw_json(node.capabilities).get("determinism") == "seeded"
+        and thaw_json(node.capabilities).get("effects") == ["declared_source_read"]
+    )
+
+    def return_generator() -> object:
+        return np.random.default_rng(11)
+
+    seeded_session = BrokerSession.for_compiled_node(
+        seeded_node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        physical_operation=PhysicalOperation(
+            function=return_generator,
+            implementation_sha256=seeded_node.kernel_implementation_sha256,
+            input_binding_sha256="c" * 64,
+        ),
+    )
+    with seeded_session.activate():
+        with pytest.raises(BrokerAccessError, match="raw RNG authority"):
+            seeded_session.kernel_view.run_physical_operation(
+                input_binding_sha256="c" * 64
+            )
+    receipt = seeded_session.seal(status="aborted")
+    assert any(
+        event.reason_code == "physical_rng_authority_returned"
+        for event in receipt.events
+    )
+
+    def seek_entropy() -> object:
+        return np.random.SeedSequence()
+
+    entropy_session = BrokerSession.for_compiled_node(
+        seeded_node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        physical_operation=PhysicalOperation(
+            function=seek_entropy,
+            implementation_sha256=seeded_node.kernel_implementation_sha256,
+            input_binding_sha256="b" * 64,
+        ),
+    )
+    with entropy_session.activate():
+        with pytest.raises(BrokerAccessError, match="explicit seed material"):
+            entropy_session.kernel_view.run_physical_operation(
+                input_binding_sha256="b" * 64
+            )
+    entropy_receipt = entropy_session.seal(status="aborted")
+    assert any(
+        event.reason_code == "physical_rng_entropy_prohibited"
+        for event in entropy_receipt.events
+    )

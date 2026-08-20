@@ -1985,10 +1985,23 @@ head; it still writes `us-f1-certification.json` and
   narrowing, virtual inputs, patch conversion, external-surface refusal,
   clone-copy proof, row classification, and validated merge. Targeted Ruff
   and `git diff --check` also pass.
+- Added a one-shot `PhysicalOperation` capability to compiled-node broker
+  sessions. The registered kernel can invoke only the prebound zero-argument
+  operation with the compiled implementation pin and exact input-binding
+  digest. Source reads stay denied inside this compatibility scope; sink
+  access is confined to absolute compiler-owner roots; seeded NumPy
+  constructors require explicit seed material; raw RNG authority cannot
+  escape in the result.
+- The bridge records every compiler-granted RNG site as an operational event.
+  This transitional `legacy-v1` trust boundary cannot prove which private
+  implementation subcall consumed which site, so the limitation remains
+  explicit rather than being mislabeled as typed draw-by-draw consumption.
+- All five focused physical-operation broker tests pass. Targeted Ruff and
+  `git diff --check` pass.
 
 ### Next
 
-1. Finish the generic physical-node adapter that executes the real bundle node
+1. Finish the generic physical-node dispatcher that executes the real bundle node
    operations as validated `execute_node` transactions with ledger-owned RNG
    sessions and broker-issued source snapshots.
 2. Wire that adapter behind `config_authority=bundle` only and prove exact once-per-node

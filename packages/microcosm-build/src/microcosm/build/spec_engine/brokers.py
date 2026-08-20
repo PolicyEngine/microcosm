@@ -34,7 +34,7 @@ import sys
 import threading
 import time as time_module
 import uuid
-from collections.abc import Iterator, Mapping, MutableMapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, MutableMapping, Sequence
 from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -211,6 +211,53 @@ _ORIGINAL_DATAFRAME_SAMPLE = pd.DataFrame.sample
 _ORIGINAL_TIME = time_module.time
 _ORIGINAL_DATETIME = datetime_module.datetime
 _ORIGINAL_DATE = datetime_module.date
+_ORIGINAL_PATH_OPEN = Path.open
+_ORIGINAL_OS_AMBIENT = MappingProxyType(
+    {name: getattr(os, name) for name in _OS_AMBIENT_NAMES if hasattr(os, name)}
+)
+_ORIGINAL_ENVIRONMENT_CALLS = MappingProxyType(
+    {
+        name: getattr(os, name)
+        for name in ("getenv", "getenvb", "putenv", "unsetenv")
+        if hasattr(os, name)
+    }
+)
+_ORIGINAL_NUMPY_RANDOM = MappingProxyType(
+    {
+        name: getattr(np.random, name)
+        for name in _NUMPY_RANDOM_AMBIENT_NAMES
+        if hasattr(np.random, name)
+    }
+)
+_ORIGINAL_SUBPROCESS = MappingProxyType(
+    {
+        name: getattr(subprocess, name)
+        for name in ("Popen", "call", "check_call", "check_output", "run")
+        if hasattr(subprocess, name)
+    }
+)
+_ORIGINAL_OPERATIONAL_CLOCKS = MappingProxyType(
+    {
+        name: getattr(time_module, name)
+        for name in (
+            "time",
+            "time_ns",
+            "monotonic",
+            "monotonic_ns",
+            "perf_counter",
+            "perf_counter_ns",
+            "process_time",
+            "process_time_ns",
+            "thread_time",
+            "thread_time_ns",
+            "clock_gettime",
+            "clock_gettime_ns",
+            "sleep",
+        )
+        if hasattr(time_module, name)
+    }
+)
+_ORIGINAL_UUID4 = uuid.uuid4
 
 
 def _captured_forbidden_callables() -> Mapping[int, str]:
@@ -663,6 +710,82 @@ class BrokerOwner:
 
     def to_wire(self) -> dict[str, str]:
         return {"kind": self.kind, "id": self.id}
+
+
+@dataclass(frozen=True, slots=True)
+class PhysicalOperation:
+    """One implementation-pinned legacy physical call owned by a node session.
+
+    The callable is deliberately zero-argument: its complete runtime input is
+    closed over before executor dispatch and attested by ``input_binding_sha256``.
+    A kernel can request the call, but cannot replace the callable, pass it RNG
+    authority, or alter its sink roots.
+
+    This is a transitional ``legacy-v1`` bridge.  It keeps the ambient exception
+    inside the broker and behind the same implementation pin as the registered
+    kernel while physical implementations are migrated to typed broker methods.
+    """
+
+    function: Callable[[], object] = field(repr=False, compare=False)
+    implementation_sha256: str
+    input_binding_sha256: str
+    sink_roots: tuple[Path | str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.function, FunctionType):
+            raise BrokerContractError(
+                "physical operation must be a directly inspectable Python function"
+            )
+        if inspect.iscoroutinefunction(self.function) or inspect.isgeneratorfunction(
+            self.function
+        ):
+            raise BrokerContractError(
+                "physical operation must be a synchronous scalar call"
+            )
+        try:
+            signature = inspect.signature(self.function)
+        except (TypeError, ValueError) as error:
+            raise BrokerContractError(
+                "physical operation signature cannot be inspected"
+            ) from error
+        if signature.parameters:
+            raise BrokerContractError(
+                "physical operation must accept no runtime arguments"
+            )
+        for name, digest in (
+            ("implementation", self.implementation_sha256),
+            ("input binding", self.input_binding_sha256),
+        ):
+            if (
+                not isinstance(digest, str)
+                or len(digest) != 64
+                or any(character not in "0123456789abcdef" for character in digest)
+            ):
+                raise BrokerContractError(
+                    f"physical operation {name} digest must be lowercase sha256"
+                )
+        captured: list[object] = list(self.function.__defaults__ or ())
+        captured.extend((self.function.__kwdefaults__ or {}).values())
+        for closure in self.function.__closure__ or ():
+            try:
+                captured.append(closure.cell_contents)
+            except ValueError:  # pragma: no cover - empty cells are harmless
+                continue
+        if _contains_raw_generator(captured):
+            raise BrokerContractError(
+                "physical operation may not capture raw RNG authority"
+            )
+        roots: list[Path] = []
+        for root in self.sink_roots:
+            path = Path(root)
+            if not path.is_absolute():
+                raise BrokerContractError(
+                    "physical operation sink roots must be absolute paths"
+                )
+            resolved = path.resolve(strict=False)
+            if resolved not in roots:
+                roots.append(resolved)
+        object.__setattr__(self, "sink_roots", tuple(roots))
 
 
 @dataclass(frozen=True, slots=True)
@@ -1519,6 +1642,295 @@ def _contains_raw_generator(value: object, *, _seen: set[int] | None = None) -> 
     if isinstance(value, np.ndarray) and value.dtype == object:
         return any(_contains_raw_generator(child, _seen=seen) for child in value.flat)
     return False
+
+
+def _physical_sink_path(
+    session: BrokerSession,
+    operation: PhysicalOperation,
+    value: object,
+    *,
+    primitive: str,
+) -> Path:
+    """Resolve one Python-level sink path without following a symlink escape."""
+
+    if isinstance(value, int | bytes) or not isinstance(value, str | os.PathLike):
+        session._log.record(
+            broker="ambient",
+            operation="physical_operation_sink_path",
+            resource=primitive,
+            disposition="refused",
+            reason_code="physical_sink_path_shape_invalid",
+        )
+        raise BrokerAccessError(
+            f"physical operation {primitive} requires a filesystem path"
+        )
+    with (
+        patch.object(os, "lstat", _ORIGINAL_OS_AMBIENT["lstat"]),
+        patch.object(os, "readlink", _ORIGINAL_OS_AMBIENT["readlink"]),
+    ):
+        candidate = Path(os.path.realpath(os.path.abspath(os.fspath(value))))
+    containing_root = next(
+        (root for root in operation.sink_roots if candidate.is_relative_to(root)),
+        None,
+    )
+    if containing_root is None:
+        session._log.record(
+            broker="ambient",
+            operation="physical_operation_sink_path",
+            resource=primitive,
+            disposition="refused",
+            reason_code="physical_sink_path_outside_grant",
+            details={"path_sha256": _sha256_bytes(os.fsencode(candidate))},
+        )
+        raise BrokerAccessError(
+            f"physical operation {primitive} path is outside its sink roots"
+        )
+    return candidate
+
+
+def _physical_seed_required(
+    session: BrokerSession,
+    operation: str,
+    function: Callable[..., object],
+) -> Callable[..., object]:
+    """Refuse entropy-seeking legacy constructors inside a seeded scope."""
+
+    @functools.wraps(function)
+    def call(seed: object = None, *args: object, **kwargs: object) -> object:
+        if seed is None:
+            session._log.record(
+                broker="ambient",
+                operation="physical_operation_rng",
+                resource=operation,
+                disposition="refused",
+                reason_code="physical_rng_entropy_prohibited",
+            )
+            raise BrokerAccessError(
+                f"physical operation {operation} requires explicit seed material"
+            )
+        return function(seed, *args, **kwargs)
+
+    return call
+
+
+def _physical_seeded_constructor(
+    session: BrokerSession,
+    operation: str,
+    constructor: type,
+) -> type:
+    """Proxy an RNG type while preserving ``isinstance`` compatibility."""
+
+    class SeededConstructorMeta(type):
+        def __instancecheck__(cls, instance: object) -> bool:
+            return isinstance(instance, constructor)
+
+        def __subclasscheck__(cls, subclass: type) -> bool:
+            return issubclass(subclass, constructor)
+
+    class SeededConstructor(metaclass=SeededConstructorMeta):
+        def __new__(
+            cls, seed: object = None, *args: object, **kwargs: object
+        ) -> object:
+            if seed is None:
+                session._log.record(
+                    broker="ambient",
+                    operation="physical_operation_rng",
+                    resource=operation,
+                    disposition="refused",
+                    reason_code="physical_rng_entropy_prohibited",
+                )
+                raise BrokerAccessError(
+                    f"physical operation {operation} requires explicit seed material"
+                )
+            return constructor(seed, *args, **kwargs)
+
+    SeededConstructor.__name__ = constructor.__name__
+    SeededConstructor.__qualname__ = constructor.__qualname__
+    return SeededConstructor
+
+
+@contextmanager
+def _legacy_v1_physical_operation_scope(
+    session: BrokerSession,
+    operation: PhysicalOperation,
+) -> Iterator[None]:
+    """Narrowly restore primitives for one broker-owned, pinned legacy call.
+
+    The registered kernel remains under the ambient guard.  Only the broker's
+    prebound operation runs in this nested scope, at most once, with source
+    access still denied.  Sink access is constrained to the declared roots and
+    entropy-seeking NumPy constructors remain denied.
+    """
+
+    with ExitStack() as stack:
+        if session.determinism == "seeded":
+            for site_id in session.rng.granted_sites:
+                session._log.record(
+                    broker="rng",
+                    operation="physical_operation_scope",
+                    resource=site_id,
+                    disposition="allowed",
+                    reason_code="legacy_v1_physical_rng_grant",
+                    details={
+                        "implementation_sha256": operation.implementation_sha256,
+                        "input_binding_sha256": operation.input_binding_sha256,
+                        "protocol_sha256": session.rng.protocol_sha256,
+                    },
+                )
+            for name in ("BitGenerator", "Generator"):
+                original = _ORIGINAL_NUMPY_RANDOM.get(name)
+                if original is not None:
+                    stack.enter_context(patch.object(np.random, name, original))
+            for name in ("PCG64", "RandomState", "SeedSequence"):
+                original = _ORIGINAL_NUMPY_RANDOM.get(name)
+                if isinstance(original, type):
+                    stack.enter_context(
+                        patch.object(
+                            np.random,
+                            name,
+                            _physical_seeded_constructor(
+                                session,
+                                f"numpy.random.{name}",
+                                original,
+                            ),
+                        )
+                    )
+            for name in ("default_rng",):
+                original = _ORIGINAL_NUMPY_RANDOM.get(name)
+                if original is not None:
+                    stack.enter_context(
+                        patch.object(
+                            np.random,
+                            name,
+                            _physical_seed_required(
+                                session,
+                                f"numpy.random.{name}",
+                                original,
+                            ),
+                        )
+                    )
+
+            @functools.wraps(_ORIGINAL_DATAFRAME_SAMPLE)
+            def sample(
+                frame: pd.DataFrame, *args: object, **kwargs: object
+            ) -> pd.DataFrame:
+                if kwargs.get("random_state") is None:
+                    session._log.record(
+                        broker="ambient",
+                        operation="physical_operation_rng",
+                        resource="pandas.DataFrame.sample",
+                        disposition="refused",
+                        reason_code="physical_rng_entropy_prohibited",
+                    )
+                    raise BrokerAccessError(
+                        "physical pandas sampling requires explicit random_state"
+                    )
+                return _ORIGINAL_DATAFRAME_SAMPLE(frame, *args, **kwargs)
+
+            stack.enter_context(patch.object(pd.DataFrame, "sample", sample))
+
+        if "declared_sink_write" in session.effects:
+            session._log.record(
+                broker="file",
+                operation="physical_operation_sink_scope",
+                resource="declared_sink_roots",
+                disposition="allowed",
+                reason_code="legacy_v1_physical_sink_grant",
+                details={
+                    "implementation_sha256": operation.implementation_sha256,
+                    "input_binding_sha256": operation.input_binding_sha256,
+                    "root_count": len(operation.sink_roots),
+                },
+            )
+
+            def open_file(file: object, *args: object, **kwargs: object) -> IO[Any]:
+                path = _physical_sink_path(
+                    session, operation, file, primitive="builtins.open"
+                )
+                return _ORIGINAL_BUILTINS_OPEN(path, *args, **kwargs)
+
+            def io_open(file: object, *args: object, **kwargs: object) -> IO[Any]:
+                path = _physical_sink_path(
+                    session, operation, file, primitive="io.open"
+                )
+                return _ORIGINAL_IO_OPEN(path, *args, **kwargs)
+
+            def path_open(path: Path, *args: object, **kwargs: object) -> IO[Any]:
+                checked = _physical_sink_path(
+                    session, operation, path, primitive="pathlib.Path.open"
+                )
+                return _ORIGINAL_PATH_OPEN(checked, *args, **kwargs)
+
+            def os_open(
+                path: object,
+                flags: int,
+                mode: int = 0o777,
+                *,
+                dir_fd: int | None = None,
+            ) -> int:
+                if dir_fd is not None:
+                    session._log.record(
+                        broker="ambient",
+                        operation="physical_operation_sink_path",
+                        resource="os.open",
+                        disposition="refused",
+                        reason_code="physical_sink_dir_fd_prohibited",
+                    )
+                    raise BrokerAccessError(
+                        "physical operation os.open dir_fd is prohibited"
+                    )
+                checked = _physical_sink_path(
+                    session, operation, path, primitive="os.open"
+                )
+                return _ORIGINAL_OS_OPEN(checked, flags, mode)
+
+            stack.enter_context(patch.object(builtins, "open", open_file))
+            stack.enter_context(patch.object(io, "open", io_open))
+            stack.enter_context(patch.object(Path, "open", path_open))
+            stack.enter_context(patch.object(os, "open", os_open))
+            for name in ("getcwd", "getcwdb", "fstat"):
+                original = _ORIGINAL_OS_AMBIENT.get(name)
+                if original is not None:
+                    stack.enter_context(patch.object(os, name, original))
+            for name in (
+                "access",
+                "listdir",
+                "lstat",
+                "readlink",
+                "scandir",
+                "stat",
+                "statvfs",
+                "walk",
+            ):
+                original = _ORIGINAL_OS_AMBIENT.get(name)
+                if original is None:
+                    continue
+
+                def path_call(
+                    value: object = ".",
+                    *args: object,
+                    _name: str = name,
+                    _original: Callable[..., object] = original,
+                    **kwargs: object,
+                ) -> object:
+                    checked = _physical_sink_path(
+                        session, operation, value, primitive=f"os.{_name}"
+                    )
+                    return _original(checked, *args, **kwargs)
+
+                stack.enter_context(patch.object(os, name, path_call))
+            stack.enter_context(patch.object(os, "environ", _ORIGINAL_ENVIRON))
+            if _ORIGINAL_ENVIRONB is not None and hasattr(os, "environb"):
+                stack.enter_context(patch.object(os, "environb", _ORIGINAL_ENVIRONB))
+            for name, original in _ORIGINAL_ENVIRONMENT_CALLS.items():
+                stack.enter_context(patch.object(os, name, original))
+            for name, original in _ORIGINAL_OPERATIONAL_CLOCKS.items():
+                stack.enter_context(patch.object(time_module, name, original))
+            for name, original in _ORIGINAL_SUBPROCESS.items():
+                stack.enter_context(patch.object(subprocess, name, original))
+            stack.enter_context(patch.object(os, "urandom", _ORIGINAL_OS_URANDOM))
+            stack.enter_context(patch.object(uuid, "uuid4", _ORIGINAL_UUID4))
+        yield
 
 
 class _GeneratorLeaseStore:
@@ -3099,15 +3511,11 @@ class FileReadLease:
 
     def readable(self) -> bool:
         object.__getattribute__(self, "_verify")()
-        return bool(
-            object.__getattribute__(self, "_FileReadLease__stream").readable()
-        )
+        return bool(object.__getattribute__(self, "_FileReadLease__stream").readable())
 
     def seekable(self) -> bool:
         object.__getattribute__(self, "_verify")()
-        return bool(
-            object.__getattribute__(self, "_FileReadLease__stream").seekable()
-        )
+        return bool(object.__getattribute__(self, "_FileReadLease__stream").seekable())
 
     def __iter__(self) -> FileReadLease:
         object.__getattribute__(self, "_verify")()
@@ -3779,6 +4187,18 @@ class KernelBrokerSession(_KernelBrokerView):
     def clock(self) -> KernelClockBroker:
         return object.__getattribute__(self, "_KernelBrokerSession__clock")
 
+    def run_physical_operation(self, *, input_binding_sha256: str) -> object:
+        """Request the session's prebound physical operation.
+
+        No callable or authority is accepted from kernel code.  The owner
+        session verifies the input binding and performs the call itself.
+        """
+
+        session = object.__getattribute__(self, "_KernelBrokerView__session")
+        return session._run_physical_operation(
+            input_binding_sha256=input_binding_sha256
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class _BrokerAuthority:
@@ -3822,6 +4242,8 @@ class BrokerSession:
         "_files",
         "_kernel_view",
         "_log",
+        "_physical_operation",
+        "_physical_operation_invoked",
         "_rng",
         "_rng_leases",
         "_sealed_receipt",
@@ -3908,6 +4330,8 @@ class BrokerSession:
         self._log = _AccessLog()
         self._active_activation: object | None = None
         self._sealed_receipt: BrokerReceipt | None = None
+        self._physical_operation: PhysicalOperation | None = None
+        self._physical_operation_invoked = False
         self._rng_leases = _GeneratorLeaseStore(self)
         self._torch_rng_leases = _TorchGeneratorLeaseStore(self)
         self._rng = RNGBroker(
@@ -4002,6 +4426,7 @@ class BrokerSession:
         attempt: int = 0,
         attempt_scope: str | None = None,
         require_byte_equivalence: bool = True,
+        physical_operation: PhysicalOperation | None = None,
     ) -> BrokerSession:
         capabilities = _wire(node.capabilities)
         if not isinstance(capabilities, Mapping):
@@ -4009,7 +4434,7 @@ class BrokerSession:
         effects = capabilities.get("effects")
         if not isinstance(effects, list):
             raise BrokerContractError("compiled node effects must be an array")
-        return cls(
+        session = cls(
             owner=BrokerOwner("producer_node", node.id),
             determinism=str(capabilities.get("determinism")),
             effects=[str(effect) for effect in effects],
@@ -4027,6 +4452,9 @@ class BrokerSession:
             attempt_scope=attempt_scope,
             require_byte_equivalence=require_byte_equivalence,
         )
+        if physical_operation is not None:
+            session._bind_physical_operation(node, physical_operation)
+        return session
 
     @classmethod
     def for_seed_owner(
@@ -4107,6 +4535,122 @@ class BrokerSession:
                 "row classifiers may not consume kernel broker authority"
             )
 
+    def _bind_physical_operation(
+        self, node: CompiledNode, operation: PhysicalOperation
+    ) -> None:
+        if self._physical_operation is not None:
+            raise BrokerContractError("physical operation is already bound")
+        if not isinstance(operation, PhysicalOperation):
+            raise BrokerContractError(
+                "physical operation must be a PhysicalOperation contract"
+            )
+        if (
+            self.owner != BrokerOwner("producer_node", node.id)
+            or self.node_key != node.node_key
+        ):
+            raise BrokerContractError(
+                "physical operation node differs from its broker session"
+            )
+        if operation.implementation_sha256 != node.kernel_implementation_sha256:
+            raise BrokerContractError(
+                "physical operation implementation digest differs from compiled node"
+            )
+        if self._authority.protocol_id != "legacy-v1":
+            raise BrokerContractError(
+                "physical operation compatibility requires protocol legacy-v1"
+            )
+        if self.determinism == "nondeterministic":
+            raise BrokerContractError(
+                "physical operation compatibility does not support nondeterminism"
+            )
+        has_sink_effect = "declared_sink_write" in self.effects
+        if has_sink_effect != bool(operation.sink_roots):
+            raise BrokerContractError(
+                "physical operation sink roots must exactly match sink-write authority"
+            )
+        object.__setattr__(self, "_physical_operation", operation)
+
+    def _run_physical_operation(self, *, input_binding_sha256: str) -> object:
+        self._require_active()
+        operation = self._physical_operation
+        if operation is None:
+            self._log.record(
+                broker="ambient",
+                operation="physical_operation_dispatch",
+                resource=self.owner.id,
+                disposition="refused",
+                reason_code="physical_operation_not_bound",
+            )
+            raise BrokerAccessError("broker session has no physical operation")
+        if (
+            not isinstance(input_binding_sha256, str)
+            or len(input_binding_sha256) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in input_binding_sha256
+            )
+        ):
+            self._log.record(
+                broker="ambient",
+                operation="physical_operation_dispatch",
+                resource=self.owner.id,
+                disposition="refused",
+                reason_code="physical_input_binding_shape_invalid",
+            )
+            raise BrokerAccessError(
+                "physical operation input binding must be lowercase sha256"
+            )
+        if input_binding_sha256 != operation.input_binding_sha256:
+            self._log.record(
+                broker="ambient",
+                operation="physical_operation_dispatch",
+                resource=self.owner.id,
+                disposition="refused",
+                reason_code="physical_input_binding_mismatch",
+                details={"actual_sha256": input_binding_sha256},
+            )
+            raise BrokerAccessError(
+                "physical operation input binding differs from its contract"
+            )
+        if self._physical_operation_invoked:
+            self._log.record(
+                broker="ambient",
+                operation="physical_operation_dispatch",
+                resource=self.owner.id,
+                disposition="refused",
+                reason_code="physical_operation_repeat_invocation",
+            )
+            raise BrokerAccessError("physical operation may be invoked only once")
+        object.__setattr__(self, "_physical_operation_invoked", True)
+        try:
+            with _legacy_v1_physical_operation_scope(self, operation):
+                result = operation.function()
+        except BaseException:
+            self._log.record(
+                broker="ambient",
+                operation="physical_operation_dispatch",
+                resource=self.owner.id,
+                disposition="refused",
+                reason_code="physical_operation_failed",
+            )
+            raise
+        if _contains_raw_generator(result):
+            self._log.record(
+                broker="rng",
+                operation="physical_operation_result",
+                resource=(
+                    self.rng.granted_sites[0]
+                    if self.rng.granted_sites
+                    else self.owner.id
+                ),
+                disposition="refused",
+                reason_code="physical_rng_authority_returned",
+            )
+            raise BrokerAccessError(
+                "physical operation may not return raw RNG authority"
+            )
+        return result
+
     def validate_executor_binding(
         self,
         *,
@@ -4136,6 +4680,11 @@ class BrokerSession:
             "seed_sites": self.rng.granted_sites
             == tuple(site.id for site in node.seed_sites),
             "seed_streams": self.rng.granted_streams == node.seed_streams,
+            "physical_operation": (
+                self._physical_operation is None
+                or self._physical_operation.implementation_sha256
+                == node.kernel_implementation_sha256
+            ),
         }
         failures = [name for name, passed in checks.items() if not passed]
         if failures:
@@ -4223,7 +4772,14 @@ class BrokerSession:
                 "rng": (
                     self.determinism == "seeded" and event.resource in granted_sites
                 ),
-                "file": "declared_source_read" in self.effects,
+                "file": (
+                    "declared_source_read" in self.effects
+                    or (
+                        "declared_sink_write" in self.effects
+                        and event.operation == "physical_operation_sink_scope"
+                        and event.reason_code == "legacy_v1_physical_sink_grant"
+                    )
+                ),
                 "environment": (
                     self.determinism == "nondeterministic"
                     and "declared_source_read" in self.effects
@@ -4252,6 +4808,18 @@ class BrokerSession:
             raise BrokerContractError("cannot seal an active broker session")
         if self._sealed_receipt is not None:
             return self._sealed_receipt
+        if (
+            status == "complete"
+            and self._physical_operation is not None
+            and not self._physical_operation_invoked
+        ):
+            self._log.record(
+                broker="ambient",
+                operation="physical_operation_dispatch",
+                resource=self.owner.id,
+                disposition="refused",
+                reason_code="physical_operation_not_invoked",
+            )
         self._rng_leases.close_all()
         self._torch_rng_leases.close_all()
         file_close_error: BrokerAccessError | None = None
@@ -4348,6 +4916,7 @@ __all__ = [
     "FileReadLease",
     "GeneratorLease",
     "KernelBrokerSession",
+    "PhysicalOperation",
     "QRFGeneratorLease",
     "RNGBroker",
     "RNGBehaviorIdentity",
