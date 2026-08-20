@@ -1154,8 +1154,9 @@ def _load_inputs(
 def _preload_bundle_source_parsers() -> None:
     """Resolve lazy parser imports before the ambient-access guard is active."""
 
-    import h5py
     from zipfile import ZipFile
+
+    import h5py
 
     _ = (h5py.File, ZipFile, pd.read_csv)
 

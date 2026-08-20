@@ -14,10 +14,10 @@
   authorities but physical stages still execute through constants, and the
   production artifact collector/comparator is not wired. Deliverables 5 and 6
   therefore cannot be certified honestly.
-- The first post-merge full-suite run reached 100% and exposed only three
-  fail-closed audit pins for the new authority modules. The reviewed
-  classification/runtime-graph correction passes all 495 tests in the
-  spine-blindness module; a clean full-suite rerun is next.
+- The first post-merge full-suite run exposed only three fail-closed audit
+  pins for the new authority modules. After the reviewed classification and
+  runtime-graph correction, the clean committed-tree rerun collected 7,262
+  tests, reached 100%, and exited 0. Repository-wide Ruff is also clean.
 - A 1% run is prohibited on this host: four recorded cold primary-QRF peaks
   are 78.91--96.95 GiB RSS, above the lane's 20 GiB ceiling.
 
@@ -37,14 +37,17 @@
   exact-cell suite (70 passed), generated-bundle check, coverage check, focused
   spine audit (3 passed), complete spine-blindness module (495 passed), Ruff,
   and whitespace checks at their respective checkpoints.
+- Verified a clean full-suite rerun after the audit correction: 7,262 tests
+  collected, 100% reached, exit 0, with expected skips only. After the
+  mechanical import-order correction, full Ruff and the complete pool-tool
+  test module both exit 0.
 - Confirmed read-only that no valid owner 1%/25% command exists at this state:
   the physical executor and sealed two-tier production comparison remain
   preconditions, and measured 1% memory requires a suitably provisioned host.
 
 ## Next
 
-1. Commit the reviewed spine-blindness audit correction and rerun the full
-   suite from the clean committed tree.
+1. Commit the mechanical import-order closure.
 2. Append the exact identity/test receipts and honest D4--D6 stop to the lane
    journal, rollout status, and `FINAL_REPORT.md`; do not create certification
    evidence for builds that did not run.
