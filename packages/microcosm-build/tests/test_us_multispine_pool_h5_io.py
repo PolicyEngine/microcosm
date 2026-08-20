@@ -9,6 +9,7 @@ import pandas as pd
 import pytest
 
 import microcosm.build.us_runtime.h5_io as h5_io
+import microcosm.build.us_runtime.post_transfer_calibration as post_transfer_calibration_runtime
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
 from microcosm.build.frame_checkpoint import (
     load_frame_checkpoint,
@@ -507,6 +508,100 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
     return manifest_path
 
 
+def _canonical_late_calibration_owner_receipt(
+    spec: post_transfer_calibration_runtime.PostTransferCalibrationSpec,
+) -> dict[str, object]:
+    values = np.asarray(
+        [10.0, 20.0, 30.0, 40.0, 50.0, 100.0, 200.0, 300.0, 400.0, 500.0]
+    )
+    weights = np.asarray([2.0, 3.0, 5.0, 5.0, 5.0, 4.0, 4.0, 4.0, 4.0, 4.0])
+    entity_ids = np.arange(1, len(values) + 1)
+    reference = np.asarray([True] * 5 + [False] * 5)
+    recipient = ~reference
+    constrained = spec.special_constraint != "none"
+    result = post_transfer_calibration_runtime.calibrate_post_transfer_values(
+        values,
+        weights,
+        entity_ids,
+        spec=spec,
+        reference_rows=reference,
+        recipient_rows=recipient,
+        mutable_rows=recipient,
+        allowed_carrier_rows=recipient if constrained else None,
+        addition_candidate_rows=recipient if constrained else None,
+    )
+    calibration = result.receipt
+    scope = calibration["scope"]
+    constraint: dict[str, object] = {"constraint": spec.special_constraint}
+    if spec.special_constraint == "adult_care_qualifying_one_per_tax_unit":
+        constraint.update(
+            {
+                "qualifying_mutable_rows": scope["allowed_carrier_rows"],
+                "one_per_empty_tax_unit_addition_candidates": scope[
+                    "addition_candidate_rows"
+                ],
+            }
+        )
+    elif spec.special_constraint == "weeks_requires_positive_unemployment_compensation":
+        constraint["positive_unemployment_mutable_rows"] = scope["allowed_carrier_rows"]
+    owner: dict[str, object] = {
+        "stage": "late_transfer",
+        "reference_selection": "asec_origin_clone_0",
+        "recipient_selection": "acs_origin_clone_0",
+        "mutable_selection": "recipient_null_before_nonnull_after",
+        "reference_rows": scope["reference_rows"],
+        "recipient_rows": scope["recipient_rows"],
+        "mutable_rows": scope["mutable_rows"],
+        "constraint": constraint,
+        "context_binding": {
+            "scope": dict(scope),
+            "weights_sha256": calibration["weights"]["sha256"],
+            "live_output": {
+                "reference_rows": int(reference.sum()),
+                "recipient_rows": int(recipient.sum()),
+                "reference_entity_ids_sha256": (
+                    stacked_spine_module._post_transfer_entity_ids_sha256(
+                        entity_ids[reference]
+                    )
+                ),
+                "recipient_entity_ids_sha256": (
+                    stacked_spine_module._post_transfer_entity_ids_sha256(
+                        entity_ids[recipient]
+                    )
+                ),
+                "reference_output_values_sha256": (
+                    stacked_spine_module._post_transfer_float64_sha256(
+                        result.values[reference],
+                        boundary="synthetic reference calibration output",
+                    )
+                ),
+                "recipient_output_values_sha256": (
+                    stacked_spine_module._post_transfer_float64_sha256(
+                        result.values[recipient],
+                        boundary="synthetic recipient calibration output",
+                    )
+                ),
+                "reference_weights_sha256": (
+                    stacked_spine_module._post_transfer_float64_sha256(
+                        weights[reference],
+                        boundary="synthetic reference calibration weights",
+                    )
+                ),
+                "recipient_weights_sha256": (
+                    stacked_spine_module._post_transfer_float64_sha256(
+                        weights[recipient],
+                        boundary="synthetic recipient calibration weights",
+                    )
+                ),
+            },
+        },
+        "calibration": calibration,
+    }
+    if spec.special_constraint == "adult_care_qualifying_one_per_tax_unit":
+        owner["post_reconciliation"] = {"status": "verified_no_op"}
+    return owner
+
+
 def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
     """Build a signed fixture receipt over the live canonical contracts."""
 
@@ -547,21 +642,41 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
             }
         },
     }
-    group_receipts = {
-        group.name: {
+    late_specs = {
+        spec.key: spec
+        for spec in post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values()
+        if spec.stage == "late_transfer"
+    }
+    policy_sha256 = (
+        post_transfer_calibration_runtime.post_transfer_calibration_policy_identity()[
+            "sha256"
+        ]
+    )
+    group_receipts: dict[str, object] = {}
+    for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS:
+        group_targets = {
+            f"{group.entity}/{group.family}/{target}": {
+                "residual_null_rows": 0,
+            }
+            for target in group.targets
+        }
+        calibrated_keys = sorted(set(group_targets) & set(late_specs))
+        for key in calibrated_keys:
+            group_targets[key]["post_transfer_calibration"] = (
+                _canonical_late_calibration_owner_receipt(late_specs[key])
+            )
+        group_receipts[group.name] = {
             "producer": group.name,
             "entity": group.entity,
             "family": group.family,
             "ordered_targets": list(group.targets),
-            "targets": {
-                f"{group.entity}/{group.family}/{target}": {
-                    "residual_null_rows": 0,
-                }
-                for target in group.targets
+            "targets": group_targets,
+            "post_transfer_calibration": {
+                "policy_sha256": policy_sha256,
+                "target_count": len(calibrated_keys),
+                "targets": calibrated_keys,
             },
         }
-        for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
-    }
     group_by_name = {
         group.name: group
         for group in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS

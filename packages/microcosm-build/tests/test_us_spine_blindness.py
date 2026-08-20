@@ -159,6 +159,7 @@ _SPINE_BLIND_OPERATOR_MODULES = (
     "medicare_take_up.py",
     "multispine_pool.py",
     "other_health_insurance.py",
+    "post_transfer_calibration.py",
     "prior_year_income.py",
     "qbi_inputs.py",
     "retirement_contributions.py",
@@ -3276,8 +3277,8 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 64, (
-            f"{tool.name} must reach the pinned 64-module runtime graph; "
+        assert len(runtime_graph) == 65, (
+            f"{tool.name} must reach the pinned 65-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

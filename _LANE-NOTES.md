@@ -19,40 +19,103 @@ builds in this lane are off-chain at `--sample-fraction 0.01` and
 - The battery computes positive and negative carrier incidence separately,
   compares ACS/ASEC weighted incidence to the frozen band, then computes five
   weighted conditional carrier quantiles when both sides have enough rows
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11860-11930`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:13351-13421`).
 - Its quantile-envelope diagnostic is the maximum symmetric normalized
   separation across those five conditional quantiles
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11990-12021`).
-- ACS transfer partitions each family by recipient optional-predictor
-  availability and fits separately seeded QRFs on complete donor rows
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:896-916`).
-- The banked transfer path writes each availability-pattern QRF raw draw into
-  recipient positions before target decoding
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:1581-1648`).
-- Adult-care expenses are reconciled after transfer, only for transfer-filled
-  cells; the reconciliation is explicitly documented as qualifying-carrier,
-  at-most-one-per-tax-unit structure
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:1100-1117,1205-1227`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:13481-13512`).
+- The fitted QRF draws a weighted sign gate and then a forest amount conditional
+  on the selected sign; that is the two-part mechanism calibrated here
+  (`packages/microcosm-fit/src/microcosm/fit/qrf.py:950-1003,1333-1429`).
+- Ordinary ACS transfers partition recipients by optional-predictor
+  availability, construct exact complete-donor model frames, derive the
+  per-target regime from that encoded frame, and verify the fitted model's
+  reported regime without changing the existing pattern seed
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:1273-1322,1410-1495`).
+- The banked path derives the same regimes before starting the targetwise chain
+  and verifies each returned target regime before accepting its raw draw
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:1595-1662,1703-1750`).
+- Adult-care qualification is a fail-closed section-21 predicate, and the
+  reconciliation clears nonqualifying mutable carriers, permits at most one
+  qualifying mutable carrier per tax unit, and preserves pre-existing positive
+  carriers
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:660-732`).
+- The weeks-unemployed signal gate rejects positive PUF support without
+  unemployment compensation, so carrier additions must respect that compatible
+  capacity (`packages/microcosm-build/src/microcosm/build/us_runtime/weeks_unemployed.py:1328-1358`).
+- The prior-year income gate explicitly requires the ASEC negative
+  self-employment leg to survive, so this lane may calibrate only the positive
+  mutable leg (`packages/microcosm-build/src/microcosm/build/us_runtime/prior_year_income.py:829-887`).
 
-These code paths support artifact-side carrier and conditional-amount
-calibration. They do not justify changing the comparator.
+These mechanisms support an artifact-side correction; they do not justify a
+comparator change.
 
-- The fitted regime first draws a weighted sign gate and then a forest amount
-  conditional on the selected sign (`packages/microcosm-fit/src/microcosm/fit/qrf.py:950-1003,1333-1429`). This is the two-part mechanism targeted here.
-- The transfer fills only recipient nulls and reconstructs the Frame without a
-  by-origin marginal constraint (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:1012-1098`). The stacked owner then verifies donor byte identity and residual-null accounting (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8097-8189`).
-- Positive weeks-unemployed draws are zeroed where unemployment compensation
-  is not positive, and the source gate rejects PUF-role positives without that
-  predictor (`packages/microcosm-build/src/microcosm/build/us_runtime/weeks_unemployed.py:966-979,1201-1276,1333-1337`). Carrier additions must therefore stop at that compatible capacity.
-- Adult-care reconciliation changes only transfer-filled expense cells,
-  requires a qualifying person, and allows at most one surviving carrier per
-  tax unit (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:654-713,1205-1227`). Calibration must select qualifying mutable carriers before the final reconciliation.
-- Prior-year self-employment reconciliation carries signed ASEC source values,
-  so only the positive ACS leg is mutable and the negative leg must remain
-  byte-identical (`packages/microcosm-build/src/microcosm/build/us_runtime/prior_year_income.py:829-887,902-985`).
-- The late producer registry assigns the child-support, disability, weeks,
-  workers'-compensation, energy, and adult-care surfaces to ASEC-scoped source
-  producers (`packages/microcosm-build/src/microcosm/build/us_runtime/operator_boundary.py:277-294,331-333`; `packages/microcosm-build/src/microcosm/build/us_runtime/us_late_producer_registry.py:1377-1454`). The late calibration may therefore change only exact ACS clone-0 transfer recipients.
+## Implemented artifact mechanism
+
+- The immutable nine-target policy declares the exact early/late owner, carrier
+  mode, byte-exact negative leg, adult-care constraint, and weeks/UC constraint
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:123-263`).
+- The kernel requires disjoint reference/recipient masks and mutable-subset
+  scope, snapshots and byte-compares protected surfaces, computes the reference
+  positive mass, and uses deterministic nearest-prefix removal/addition within
+  a proven attainable-mass interval
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:437-525,745-890`).
+- Mutable positive amounts are mapped only to reference positive support and
+  are anchored at the frozen 10/25/50/75/90 percentiles; infeasible or
+  conflicting anchors are recorded rather than hidden
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:555-702`).
+- The kernel proves boundary saturation when capacity-limited and rejects any
+  change to nonmutable, negative, negative-zero, or zero-weight bytes, any
+  donor-support escape, or any preserve-carrier change
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:908-956`).
+- The stacked owner derives ASEC clone-0 reference rows, ACS clone-0 recipient
+  rows, and transferred-null mutable rows. Adult care uses qualifying rows plus
+  one candidate per empty unit; weeks uses positive-UC mutable rows. The final
+  adult-care reconciliation must be byte-identical/no-op
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8799-8955`).
+- Schema-v2 receipts explicitly state that terminal validation cannot replay
+  pre-calibration state; they separate live-replayable output claims from
+  generation-transition evidence
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:43-119,958-1024`).
+- Terminal validation independently recomputes live row/mask hashes, entity and
+  output hashes, full weights, carrier masses, reference/recipient quantiles,
+  QED, and coupled adult/weeks constraints
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:3756-3818,3821-4025`).
+- QRF pattern receipts persist ordered predictors, seeds, weights, row counts,
+  and regimes, then validate canonical predictor/pattern/target order and count
+  accounting. Receipt-only validation deliberately does not claim donor replay
+  or out-of-sample verification
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:4128-4168,4202-4425`).
+- The two pinned 3.73 GB SIPP readers retain chunked selection and downstream
+  explicit coercion while using streaming type inference. Guarded full-donor
+  reruns observed much lower RSS and unchanged locked donor facts
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/sipp_vehicles.py:393-413`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/voluntary_filing.py:375-397`).
+
+## Adjudication limits retained
+
+- The named adjudication remedy calls for target/sign-scoped origin-aware
+  cross-fitted carrier calibration and held-out nonregression. This branch does
+  not have the adjudicated fold/comparator authority in main and does not invent
+  one. Its carrier correction is deterministic terminal reference-margin
+  matching, not cross-fitting or an out-of-sample estimate
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:817-890`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:4211-4217`).
+- The unemployment-compensation row likewise lacks the adjudicated money-OOS
+  authority in this branch. The implementation freezes its carrier membership
+  and calibrates only conditional positive amounts; no OOS nonregression claim
+  is made
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:193-207,930-956`).
+- Weeks-unemployed carrier matching is allowed to stop at the exact
+  positive-UC-compatible capacity, but the receipt must prove the attainable
+  interval and boundary saturation
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:817-924`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8863-8876`).
+- Mutable masks, input hashes, before-state diagnostics, change counts, and
+  byte-preservation proofs need the generation-time pre-frame. Terminal
+  validation authenticates them through the enclosing execution authority and
+  does not claim to reconstruct them from the final frame
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:43-119`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:3925-3938`).
 
 ## Environment receipt
 
@@ -64,12 +127,19 @@ calibration. They do not justify changing the comparator.
   `6b213e740b114d008c0191fa492832a957a0a948` matches
   `../microcosm-707/uv.lock`; that environment imports NumPy 2.4.6, pandas
   3.0.3, and pytest 8.4.2 while `PYTHONPATH` points at this worktree.
-- Initial deterministic contract suite: 4 passed (battery sign separation,
-  matching-leg pass behavior, adult-care statute reconciliation, and declared
-  transfer-surface coverage). Repository-wide and three-module attempts were
-  interrupted after clean partial progress because fitted-model cases make
-  them unsuitable for a journal-only checkpoint; complete verification is
-  reserved for the final tree.
+- The final PR test surface is green: all 225 `microcosm-build` test files;
+  `microcosm-fit` 93 passed; `microcosm-calibrate` 201 passed;
+  `microcosm-frame` 294 passed/36 skipped; and `microcosm-data` 275 passed/one
+  skipped. Heavy files ran in fresh pytest processes.
+- `ruff check .`, touched-file `ruff format --check`, and `git diff --check`
+  pass. Full-tree format checking reports 49 pre-existing files outside this
+  lane's formatting scope.
+- The final successful full-donor tests peaked at 0.485 GiB for vehicles and
+  0.532 GiB for voluntary filing; the largest successful isolated build-test
+  shard peaked at 6.531 GiB. An earlier 13.5 GiB/250 ms diagnostic guard
+  observed one rapid parser spike at 15.424 GiB before termination. The guard
+  was immediately tightened to 10 GiB/20 ms, the streaming reader was fixed,
+  and all successful reruns stayed below the cap.
 
 ## Measurement ledger
 
