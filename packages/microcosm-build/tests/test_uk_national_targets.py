@@ -127,10 +127,11 @@ def test_uk_national_targets_shape_and_accounting():
 
     assert resource["country"] == "uk"
     assert resource["allowed_value_operations"] == ["identity"]
-    assert len(resource["targets"]) == 186
+    assert len(resource["targets"]) == 187
 
     parity = resource["registry_parity"]
-    assert parity["pinned_ref"] == "ebf733c"
+    assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
+    assert parity["pinned_version"] == "1.56.16"
     assert parity["mapped_rows"] + parity["excluded_rows"] == parity["registry_rows"]
     assert len(parity["mapped"]) == parity["mapped_rows"]
     assert len(parity["excluded"]) == parity["excluded_rows"]
@@ -140,7 +141,7 @@ def test_uk_national_targets_shape_and_accounting():
     declared_target_ids = {target["target_id"] for target in resource["targets"]}
     assert mapped_target_ids | set(unmapped_declarations) == declared_target_ids
     assert all(reason for reason in unmapped_declarations.values())
-    assert len(mapped_target_ids) == 183
+    assert len(mapped_target_ids) == 184
 
 
 def test_uk_national_targets_have_unique_target_ids():

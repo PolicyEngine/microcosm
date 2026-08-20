@@ -12,9 +12,10 @@
   },
   "registry_parity": {
     "source_repository": "policyengine-uk-data",
-    "pinned_ref": "ebf733c",
-    "registry_rows": 651,
-    "mapped_rows": 609,
+    "pinned_ref": "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3",
+    "pinned_version": "1.56.16",
+    "registry_rows": 652,
+    "mapped_rows": 610,
     "excluded_rows": 42,
     "mapped": {
       "dwp/benefit_capped_households": "dwp.benefit_cap.capped_households",
@@ -25,6 +26,7 @@
       "dwp/pip_dl_enhanced_claimants": "dwp.pip.daily_living_enhanced_claimants",
       "dwp/pip_dl_standard_claimants": "dwp.pip.daily_living_standard_claimants",
       "dwp/scotland_uc_households_child_under_1": "dwp.uc.scotland_households_child_under_1",
+      "dwp/uc/households": "dwp.uc.households",
       "dwp/uc/claimants_couple_no_children": "dwp.uc.households_couple_no_children",
       "dwp/uc/claimants_couple_with_children": "dwp.uc.households_couple_with_children",
       "dwp/uc/claimants_single_no_children": "dwp.uc.households_single_no_children",
@@ -677,6 +679,7 @@
       "hmrc.salary_sacrifice.it_relief_additional_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is 410-Gone at ebf733c and its rows were silently suppressed by the bare-except drop in build_loss_matrix.py:376-394."
     },
     "accounting_notes": {
+      "v1_56_16_refresh": "Compared with ebf733c, the governed registry surface adds dwp/uc/households. The four deleted universal-credit jobseeker dispatch names were not registry rows in the carried contract, so there were no parity entries to remove; obr/jobseekers_allowance remains a distinct published JSA expenditure target.",
       "cross_level_duplicate_names": "Name-only identity flattens two-level emissions for ons/uk_population, ons/scotland_children_under_16, and ons/scotland_babies_under_1.",
       "two_child_limit_year_surface": "The 15 dwp/uc/two_child_limit/* rows are 2026-only; the incumbent effective surface is 636 at calibration year 2025 and 651 at 2026. This is microcosm#622 Fixture-B input because the incumbent cannot self-report the year-specific surface.",
       "geography_level_order_canonicalization": "The 9 voa.council_tax_stock.* rows use country, region order to match the rest of the contract; consumers use membership only."
@@ -9831,6 +9834,48 @@
         "dimension_values": {
           "student_support_product": "adult_dependants_grant"
         }
+      }
+    },
+    {
+      "target_id": "dwp.uc.households",
+      "family": "dwp_universal_credit",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "benefit_unit",
+        "concept": "uk.benefit_unit.count",
+        "filters": [
+          {
+            "concept": "uk.benefits.universal_credit.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "dwp/uc/households",
+          "value_variable": "universal_credit",
+          "from_entity": "benunit",
+          "filters": [
+            {
+              "variable": "universal_credit",
+              "operator": ">",
+              "value": 0
+            }
+          ],
+          "notes": "Prepared benefit-unit indicator for receipt of Universal Credit; DWP household means the UC unit of assessment, not an ONS household."
+        },
+        "axiom": {
+          "metric_name": "dwp/uc/households",
+          "status": "pending",
+          "value_rule": "uk.benefit_unit.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_benefit_units"
       }
     }
   ]
