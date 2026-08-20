@@ -106,6 +106,7 @@ _GENERATED_LOCK_FILENAMES = frozenset(
 ALLOWED_GATE_FUNCTIONS = frozenset(
     {
         "aggregate_admin",
+        "calibration_reference_coverage",
         "degenerate_release_surface",
         "enum_domain",
         "export_surface",

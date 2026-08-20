@@ -254,6 +254,14 @@
       "notes": "The household BRMA assignment must remain inside the PolicyEngine-UK brma enum domain."
     },
     {
+      "id": "uk_calibration_reference_coverage",
+      "gate": "calibration_reference_coverage",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "notes": "Every activated UK national target reference must resolve and enter the calibration matrix; count mismatch blocks release."
+    },
+    {
       "id": "uk_target_surface",
       "gate": "target_surface",
       "phase": "terminal",

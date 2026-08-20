@@ -582,6 +582,7 @@ class TestUKGatesManifest:
             "uk_export_surface",
             "uk_take_up_signal",
             "uk_brma_enum_domain",
+            "uk_calibration_reference_coverage",
             "uk_target_surface",
             "uk_target_fit",
             "uk_input_mass_parity",
