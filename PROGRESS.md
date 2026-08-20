@@ -6,9 +6,13 @@ A 2026-08-20 owner continuation is active for the host 1% binding failure at
 `person/puf_tax_itemization/taxable_interest_income`. An independent audit from
 the invariant raise site confirms the branch's existing scoped-binding
 correction addresses the exact leaked surface without weakening record-family
-binding. Six focused ordinary, banked, selected, unassigned, serializer, and
-output-equivalence regressions pass; broader package verification is in
-progress before another host build is requested. The supplied
+binding. Six focused regressions and all 528 tests in the five directly
+affected files pass on the current tree; repository lint, touched-file format,
+and committed-range whitespace checks also pass. The executable tree is
+unchanged from `a5be536f`, where all 225 `microcosm-build` test files passed.
+An externally owned host 1% retry is active and has rebuilt the exact bounded
+`taxable_interest_income` record without stopping; its terminal stacked
+receipt validation is not yet claimed. The supplied
 `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain untracked owner
 artifacts and will not be committed.
 
@@ -56,6 +60,18 @@ but DNS is unavailable. Verification therefore uses the already-synced
   `~/.gitnexus/registry.json`. Direct graph status, source, history, and test
   tracing independently converged on the same call chain; the generated local
   cache was removed afterward.
+- Re-ran all five directly affected files—ordinary transfer, multispine
+  serialization, stacked spine, pool tool, and H5 I/O—in one fresh process:
+  528 passed, zero skipped, zero failed/errors. The only output was 2,313
+  pandas fragmentation warnings from stacked-spine fixture construction.
+- Re-ran repository-wide `ruff check .`, format checking on all nine
+  continuation-touched Python files, and `git diff --check 33bf52fe^..HEAD`;
+  all pass. Confirmed no executable file differs from the prior completion
+  commit `a5be536f`, whose all-225-file `microcosm-build` run was green.
+- Observed, without controlling it, an externally owned exact host retry. It
+  rebuilt `person/puf_tax_itemization__batch_1/taxable_interest_income` and
+  continued through subsequent targets; the decisive terminal receipt result
+  remains pending at this checkpoint.
 - Read `CLAUDE.md`, the adjudication and all assigned machine-readable rows,
   citation registry entries C04-C08, and every cited source range.
 - Built and measured the canonical off-chain 1% before artifact with sample
@@ -157,12 +173,9 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Re-run the directly affected test files and the prescribed package suite;
-   correct and commit any remaining scope leak before declaring the local fix
-   complete.
-2. Rebuild off-chain at exactly 1% with sample/clone seed 578 under the
-   tightened memory guard when host data access is available, then record the
-   16 after measurements and source-preservation invariants.
-3. Accept an after artifact only if the host stacked receipt validation and
+1. Observe the active externally owned exact 1% retry through stacked receipt
+   validation; if it succeeds, record the 16 after measurements and
+   source-preservation invariants.
+2. Accept an after artifact only if the host stacked receipt validation and
    frozen battery checks pass; keep the run off-chain and leave the pending
    logbook chain untouched.
