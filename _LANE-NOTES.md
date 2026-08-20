@@ -138,3 +138,8 @@
   identity payloads because it changes only the terminal verdict, not the
   simulation artifact
   (`tools/build_us_multispine_pool.py:1043-1060,1170-1187`).
+- 2026-08-19: the workspace suite's fail-closed inventory correctly rejected
+  the new runtime module until it was reviewed. The policy loader is now
+  explicitly classified as a non-population-treatment module, and the pool
+  tool's source-spine-blind import graph is pinned at 65 modules
+  (`packages/microcosm-build/tests/test_us_spine_blindness.py:180-270,3272-3308`).

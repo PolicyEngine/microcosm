@@ -68,6 +68,11 @@ seed, fold, comparator, or exclusion approval has changed.
   `dead_comparison` at ASEC/ACS incidence 0/0 and rows 0/0, with no exclusion
   applied. This is unchanged by design because approving either exclusion is
   explicitly outside this lane and the shipped register is empty.
+- The first workspace-wide test run exposed the intended fail-closed runtime
+  inventory: the new policy module was unclassified and the CLI graph count
+  remained pinned at 64. Classified it explicitly as a reviewed
+  non-population-treatment module, advanced the graph pin to 65, and confirmed
+  the complete spine-blindness file passes.
 
 ## Next
 
