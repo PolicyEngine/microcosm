@@ -1000,6 +1000,58 @@ def test_selected_regime_fit_keeps_complete_selected_sibling(
     assert result.frame.table("person")[targets[0]].eq(99.0).all()
 
 
+def test_selected_regime_fit_does_not_expand_mixed_family_or_change_unselected_draw(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    targets = (
+        "fixture_selected_complete",
+        "fixture_selected_missing",
+        "fixture_unselected_missing",
+    )
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {
+            target: np.arange(1.0, 9.0) + position
+            for position, target in enumerate(targets)
+        },
+    )
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {targets[0]: np.full(6, 99.0)},
+    )
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+
+    baseline = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={"person": {"mixed_selection": targets}},
+        n_estimators=1,
+    )
+    selected = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={"person": {"mixed_selection": targets}},
+        n_estimators=1,
+        regime_evidence_targets=(
+            ("person", targets[0]),
+            ("person", targets[1]),
+        ),
+    )
+
+    pd.testing.assert_series_equal(
+        selected.frame.table("person")[targets[2]],
+        baseline.frame.table("person")[targets[2]],
+    )
+    records = {record.column: record for record in selected.imputed_inputs}
+    assert all(not pattern.target_regimes for pattern in records[targets[2]].patterns)
+    assert all(
+        tuple(target for target, _regime in pattern.target_regimes) == (targets[1],)
+        for pattern in records[targets[1]].patterns
+    )
+
+
 def test_target_bank_cold_output_matches_unbanked_monolith(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

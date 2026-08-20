@@ -4135,6 +4135,7 @@ def _validate_acs_transfer_row_counts(
     target_receipt: Mapping[str, object],
     *,
     boundary: str,
+    required: bool = False,
 ) -> dict[str, int]:
     """Validate the legacy transfer counts independently of opt-in evidence."""
 
@@ -4142,6 +4143,8 @@ def _validate_acs_transfer_row_counts(
         field for field in _ACS_TRANSFER_ROW_COUNT_FIELDS if field in target_receipt
     }
     if not present:
+        if required:
+            raise ValueError(f"{boundary}: ACS transfer row-count schema is invalid.")
         return {}
     if present != set(_ACS_TRANSFER_ROW_COUNT_FIELDS):
         raise ValueError(f"{boundary}: ACS transfer row-count schema is invalid.")
@@ -4543,6 +4546,7 @@ def validate_stacked_gap_fill_receipt(
             _validate_acs_transfer_row_counts(
                 target_receipt,
                 boundary=f"{boundary} target {key}",
+                required=True,
             )
             owner_receipt = target_receipt.get("post_transfer_calibration")
             spec = expected_calibrations.get(key)
@@ -4770,6 +4774,7 @@ def validate_stacked_post_puf_transfer_receipt(
             _validate_acs_transfer_row_counts(
                 target_receipt,
                 boundary=f"{boundary} target {target_key}",
+                required=True,
             )
             owner_receipt = target_receipt.get("post_transfer_calibration")
             spec = expected_calibrations.get(target_key)
@@ -9119,6 +9124,13 @@ def gap_fill_stacked_spine(
     target_banks: Mapping[str, AcsTransferTargetBank] | None = None,
 ) -> GapFillResult:
     """Run the canonical stacked gap-fill plan with no caller authority."""
+
+    if max_targets_per_fit != DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT:
+        raise ValueError(
+            "Canonical stacked gap fill requires "
+            f"max_targets_per_fit={DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT}; "
+            f"got {max_targets_per_fit}."
+        )
 
     return _gap_fill_stacked_spine_evaluate(
         frame,

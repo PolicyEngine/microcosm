@@ -1012,17 +1012,13 @@ def transfer_acs_inputs(
             (
                 entity,
                 family,
-                tuple(
-                    target
-                    for target in requested_families[(entity, family)]
-                    if target in active_targets
-                    or (
-                        any(
-                            (entity, active_target) in selected_regime_evidence
-                            for active_target in active_targets
-                        )
-                        and (entity, target) in selected_regime_evidence
+                (
+                    requested_families[(entity, family)]
+                    if all(
+                        (entity, target) in selected_regime_evidence
+                        for target in requested_families[(entity, family)]
                     )
+                    else active_targets
                 ),
             )
             for entity, family, active_targets in active

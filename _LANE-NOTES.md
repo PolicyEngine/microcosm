@@ -91,6 +91,10 @@ comparator change.
   serializers omit the empty opt-in field. Receipt-only validation deliberately
   does not claim donor replay or out-of-sample verification
   (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:4128-4445,4529-4795`).
+- Canonical early and late production both use the certified maximum of eight
+  targets per fit. Exact selected-family receipt binding therefore cannot be
+  weakened by caller-selected batching; the non-production test seam retains
+  smaller-width coverage.
 - The two pinned 3.73 GB SIPP readers retain chunked selection and downstream
   explicit coercion while using streaming type inference. Guarded full-donor
   reruns observed much lower RSS and unchanged locked donor facts

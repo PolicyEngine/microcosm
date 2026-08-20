@@ -1685,6 +1685,17 @@ def test_production_entrypoints_take_no_authority_parameters() -> None:
         )
 
 
+def test_canonical_gap_fill_rejects_nondefault_target_fit_width() -> None:
+    with pytest.raises(
+        ValueError,
+        match="Canonical stacked gap fill requires max_targets_per_fit=8",
+    ):
+        gap_fill_stacked_spine(
+            _stacked_gap_fixture(),
+            max_targets_per_fit=1,
+        )
+
+
 def test_canonical_authority_objects_are_deeply_immutable() -> None:
     plan = stacked_spine_module.CANONICAL_STACKED_GAP_FILL_PLAN
     post_puf_surface = stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
@@ -2551,7 +2562,15 @@ def _canonical_gap_fill_calibration_receipt() -> dict[str, object]:
             for target in targets
         }
         calibrated_keys = sorted(target_keys & set(early_specs))
-        target_receipts: dict[str, dict[str, object]] = {key: {} for key in target_keys}
+        target_receipts: dict[str, dict[str, object]] = {
+            key: {
+                "authorized_null_rows": 0,
+                "imputed_rows": 0,
+                "unmodeled_rows": 0,
+                "residual_null_rows": 0,
+            }
+            for key in target_keys
+        }
         for key in calibrated_keys:
             spec = early_specs[key]
             calibration_result = (
@@ -2830,6 +2849,21 @@ def test_gap_fill_validator_rejects_unassigned_legacy_count_tampering() -> None:
         stacked_spine_module.validate_stacked_gap_fill_receipt(
             receipt,
             boundary="forged unassigned early transfer counts",
+        )
+
+
+def test_gap_fill_validator_rejects_unassigned_legacy_count_stripping() -> None:
+    receipt = _canonical_gap_fill_calibration_receipt()
+    target_receipt = receipt["directions"]["asec_survey_to_acs"]["targets"][
+        "person/puf_tax_itemization/taxable_interest_income"
+    ]
+    for field in stacked_spine_module._ACS_TRANSFER_ROW_COUNT_FIELDS:
+        target_receipt.pop(field)
+
+    with pytest.raises(ValueError, match="ACS transfer row-count schema is invalid"):
+        stacked_spine_module.validate_stacked_gap_fill_receipt(
+            receipt,
+            boundary="stripped unassigned early transfer counts",
         )
 
 
