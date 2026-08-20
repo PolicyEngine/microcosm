@@ -2,7 +2,7 @@
 
 ## State
 
-The 2026-08-20 22:33Z owner continuation has completed an independent
+The 2026-08-20 22:35Z owner continuation has completed an independent
 raise-site, current-source, history, and regression audit of the supplied host
 1% ACS QRF record-binding failure. Commit `33bf52fe` detected and copied QRF
 regimes for every imputed target, receipt builders attached that evidence
@@ -26,9 +26,13 @@ the five directly affected files now pass under the owner-provided 12 GiB/
 20 ms guard, with respective 0.550 GiB and 1.523 GiB maximum observed
 per-process RSS. Repository lint, formatting of all 15 Python files changed
 since the bad commit's parent, committed-range whitespace, and exact source-tree
-comparisons with all-build-suite checkpoint `a5be536f` also pass. Only final
-report refresh remains locally. The owner artifacts remain untracked and
-untouched.
+comparisons with all-build-suite checkpoint `a5be536f` also pass. Final
+reporting is complete in `FINAL_REPORT.md`; no local implementation,
+regression, verification, or reporting work remains. The last read-only host
+check found a still-growing 58,003-byte log after all early survey/housing and
+several late-transfer checkpoints, but no runner exit, final artifacts, or
+Microcosm revision binding, so no host success is claimed. The owner artifacts
+remain untracked and untouched.
 
 The immediately preceding completion snapshot follows and is historical rather
 than current state.
@@ -202,6 +206,15 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Refreshed `FINAL_REPORT.md` with the current independent diagnosis, complete
+  three-commit runtime correction, decisive regression coverage, guarded
+  14-case and 529-test results, static/tree checks, GitNexus limitation, and
+  exact remaining host-only boundary.
+- Performed the final external directory check read-only. The mutable retry had
+  rebuilt the exact bounded taxable-interest record, all 47 survey targets,
+  housing 1/1, and several late-transfer groups without the old traceback, but
+  remained active with no runner exit, final pool/manifest/gates artifacts, or
+  Microcosm revision binding. No after artifact is accepted.
 - Ran repository-wide `ruff check .`, `ruff format --check` on all 15 Python
   files changed since `33bf52fe^`, and `git diff --check 33bf52fe^..HEAD`; all
   passed. Exact Git tree objects for both `microcosm-build/src` and its
@@ -647,7 +660,7 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Refresh and commit `PROGRESS.md` and `FINAL_REPORT.md` with only results
-   established on this revision.
-2. Leave the revision-bound off-chain 1% retry as the remaining host step
-   unless an already-complete terminal artifact can be identified read-only.
+1. Run or identify a revision-bound off-chain 1% retry that reaches a terminal
+   runner verdict and emits the expected final pool, manifest, and gates
+   artifacts. Do not claim an after artifact without that terminal proof, and
+   do not publish or mutate the pending logbook chain as a side effect.
