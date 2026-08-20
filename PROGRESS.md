@@ -9,10 +9,15 @@ for every early transfer target before consulting the nine-target calibration
 registry. The current tree consults that registry first, forbids evidence on
 unassigned targets, and attaches or validates it only for the exact selected
 targets. Seven focused tests pass, including both the synthetic failing boundary
-and a real banked 15-target `puf_tax_itemization` transfer. Broader affected-suite
-verification is next. No new host artifact is claimed. The untracked owner
-artifacts `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` are preserved
-unchanged.
+and a real banked 15-target `puf_tax_itemization` transfer. All 528 tests in the
+five affected transfer, stacked, serialization, pool, and H5 files pass under
+the 12 GiB guard with a 1.531 GiB maximum observed per-process RSS. Repository
+lint, touched-file formatting, committed-range whitespace, and the executable
+tree comparison with the prior all-build-suite pass also succeed. No new host
+artifact is claimed: the later host retry reaches every survey and housing
+transfer checkpoint without this traceback but has no terminal marker or output
+artifacts. The untracked owner artifacts `_BUILD-FAILURE-1PCT.txt` and
+`.codex-memory-guard.py` are preserved unchanged.
 
 The 2026-08-20 local continuation is complete for the host 1% binding failure
 at `person/puf_tax_itemization/taxable_interest_income`. An independent audit
@@ -70,6 +75,25 @@ but DNS is unavailable. Verification therefore uses the already-synced
   wide-family integration, default wide-family behavior, selected-only
   provenance, mixed-family output equivalence, and both generic JSON
   serializers all passed.
+- Ran all 528 tests in the five directly affected files in one process under
+  the owner-provided 12 GiB/20 ms guard. All passed; peak observed per-process
+  RSS was 1.531 GiB. The only output was 2,313 known pandas fragmentation
+  warnings from stacked-spine test fixture construction.
+- Re-ran repository-wide `ruff check .`, formatting checks on all nine Python
+  files touched by the scoped correction, and `git diff --check
+  33bf52fe^..HEAD`; all passed. Only `FINAL_REPORT.md` and `PROGRESS.md` differ
+  from `a5be536f`, whose complete 225-file `microcosm-build` run passed, so the
+  currently verified executable tree is identical to that full-suite tree.
+- Reconciled three independent read-only audits. The source audit found no
+  canonical path that can opt the host target into regime work or receipt
+  evidence; the regression audit confirmed the exact synthetic and real banked
+  tests materially cover the reported leak; and the host audit found no newer
+  terminal verdict.
+- Audited the later host retry without controlling it. Its reused build log
+  reaches survey 47/47 and housing 1/1, including the bounded taxable-interest
+  record, with no traceback. It has no terminal exit marker, pool H5, manifest,
+  or gates artifact, and the log does not bind a revision SHA; it is progress
+  evidence only.
 - Attempted the GitNexus debugging workflow. No graph-query tools or local index
   are available in this session; the installed CLI status command produced no
   output and was stopped. Direct source and history tracing established the
@@ -211,8 +235,7 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run the complete directly affected transfer, stacked, serialization, pool,
-   and H5 test files plus repository lint and diff checks.
-2. Reconcile the independent source, regression, and host-evidence audits.
-3. Update `FINAL_REPORT.md` with the current continuation verdict; do not claim
-   a host artifact unless terminal host evidence exists.
+1. Update `FINAL_REPORT.md` with the current continuation verdict and committed
+   verification evidence.
+2. Do not claim a host artifact unless a revision-bound retry reaches a terminal
+   success marker and emits the expected pool, manifest, and gates artifacts.
