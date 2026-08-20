@@ -78,6 +78,46 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "need_energy_targets.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "lcfs_consumption_anchors.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "etb_policy_anchors.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "etb_services_anchors.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "nhs_consumption_by_age_gender.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "lcfs_consumption_support_bounds.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "etb_vat_support_bounds.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "etb_services_support_bounds.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "regional_land_values.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

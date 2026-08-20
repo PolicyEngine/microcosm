@@ -1,0 +1,1778 @@
+{
+  "version": 1,
+  "country": "uk",
+  "source": {
+    "artifact": "nhs_consumption_by_age_gender.csv",
+    "citation": "Incumbent public NHS age-gender activity/cost table carried into microcosm#682.",
+    "sdc_treatment": "Public aggregate table; no licensed donor microdata."
+  },
+  "rows": [
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "0 years",
+      "Metric": "Activity Count",
+      "Total": 212079.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "01-04 years",
+      "Metric": "Activity Count",
+      "Total": 505885.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "05-09 years",
+      "Metric": "Activity Count",
+      "Total": 347081.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "10-14 years",
+      "Metric": "Activity Count",
+      "Total": 371563.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "15-19 years",
+      "Metric": "Activity Count",
+      "Total": 483626.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "20-24 years",
+      "Metric": "Activity Count",
+      "Total": 617087.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "25-29 years",
+      "Metric": "Activity Count",
+      "Total": 611997.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "30-34 years",
+      "Metric": "Activity Count",
+      "Total": 560654.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "35-39 years",
+      "Metric": "Activity Count",
+      "Total": 480036.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "40-44 years",
+      "Metric": "Activity Count",
+      "Total": 402489.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "45-49 years",
+      "Metric": "Activity Count",
+      "Total": 421889.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "50-54 years",
+      "Metric": "Activity Count",
+      "Total": 448613.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "55-59 years",
+      "Metric": "Activity Count",
+      "Total": 418718.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "60-64 years",
+      "Metric": "Activity Count",
+      "Total": 357017.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "65-69 years",
+      "Metric": "Activity Count",
+      "Total": 331175.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "70-74 years",
+      "Metric": "Activity Count",
+      "Total": 384744.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "75-79 years",
+      "Metric": "Activity Count",
+      "Total": 369570.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "80-84 years",
+      "Metric": "Activity Count",
+      "Total": 378626.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "85-89 years",
+      "Metric": "Activity Count",
+      "Total": 327708.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "90-94 years",
+      "Metric": "Activity Count",
+      "Total": 195096.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "95 years or older",
+      "Metric": "Activity Count",
+      "Total": 73381.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "0 years",
+      "Metric": "Activity Count",
+      "Total": 266383.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "01-04 years",
+      "Metric": "Activity Count",
+      "Total": 651982.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "05-09 years",
+      "Metric": "Activity Count",
+      "Total": 411892.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "10-14 years",
+      "Metric": "Activity Count",
+      "Total": 443253.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "15-19 years",
+      "Metric": "Activity Count",
+      "Total": 409286.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "20-24 years",
+      "Metric": "Activity Count",
+      "Total": 499314.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "25-29 years",
+      "Metric": "Activity Count",
+      "Total": 520689.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "30-34 years",
+      "Metric": "Activity Count",
+      "Total": 499270.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "35-39 years",
+      "Metric": "Activity Count",
+      "Total": 452672.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "40-44 years",
+      "Metric": "Activity Count",
+      "Total": 401018.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "45-49 years",
+      "Metric": "Activity Count",
+      "Total": 421480.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "50-54 years",
+      "Metric": "Activity Count",
+      "Total": 437104.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "55-59 years",
+      "Metric": "Activity Count",
+      "Total": 415672.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "60-64 years",
+      "Metric": "Activity Count",
+      "Total": 363507.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "65-69 years",
+      "Metric": "Activity Count",
+      "Total": 334916.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "70-74 years",
+      "Metric": "Activity Count",
+      "Total": 376324.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "75-79 years",
+      "Metric": "Activity Count",
+      "Total": 341874.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "80-84 years",
+      "Metric": "Activity Count",
+      "Total": 323601.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "85-89 years",
+      "Metric": "Activity Count",
+      "Total": 242458.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "90-94 years",
+      "Metric": "Activity Count",
+      "Total": 114545.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "95 years or older",
+      "Metric": "Activity Count",
+      "Total": 31993.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "0 years",
+      "Metric": "Total Cost",
+      "Total": 30148770.7
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "01-04 years",
+      "Metric": "Total Cost",
+      "Total": 73303426.7
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "05-09 years",
+      "Metric": "Total Cost",
+      "Total": 49003152.2
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "10-14 years",
+      "Metric": "Total Cost",
+      "Total": 55261204.8
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "15-19 years",
+      "Metric": "Total Cost",
+      "Total": 79355311.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "20-24 years",
+      "Metric": "Total Cost",
+      "Total": 101677604.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "25-29 years",
+      "Metric": "Total Cost",
+      "Total": 103591677.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "30-34 years",
+      "Metric": "Total Cost",
+      "Total": 96833952.2
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "35-39 years",
+      "Metric": "Total Cost",
+      "Total": 85119455.3
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "40-44 years",
+      "Metric": "Total Cost",
+      "Total": 73111612.4
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "45-49 years",
+      "Metric": "Total Cost",
+      "Total": 79541655.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "50-54 years",
+      "Metric": "Total Cost",
+      "Total": 86739022.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "55-59 years",
+      "Metric": "Total Cost",
+      "Total": 83554003.1
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "60-64 years",
+      "Metric": "Total Cost",
+      "Total": 74921474.2
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "65-69 years",
+      "Metric": "Total Cost",
+      "Total": 74205741.3
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "70-74 years",
+      "Metric": "Total Cost",
+      "Total": 92209066.3
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "75-79 years",
+      "Metric": "Total Cost",
+      "Total": 94937123.5
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "80-84 years",
+      "Metric": "Total Cost",
+      "Total": 104581887.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "85-89 years",
+      "Metric": "Total Cost",
+      "Total": 96823888.9
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "90-94 years",
+      "Metric": "Total Cost",
+      "Total": 60486434.5
+    },
+    {
+      "Service": "AE",
+      "Gender": "Female",
+      "Age group": "95 years or older",
+      "Metric": "Total Cost",
+      "Total": 23345611.4
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "0 years",
+      "Metric": "Total Cost",
+      "Total": 38597370.1
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "01-04 years",
+      "Metric": "Total Cost",
+      "Total": 95191584.1
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "05-09 years",
+      "Metric": "Total Cost",
+      "Total": 58855565.3
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "10-14 years",
+      "Metric": "Total Cost",
+      "Total": 67069862.1
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "15-19 years",
+      "Metric": "Total Cost",
+      "Total": 68299159.1
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "20-24 years",
+      "Metric": "Total Cost",
+      "Total": 83483710.5
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "25-29 years",
+      "Metric": "Total Cost",
+      "Total": 88653812.2
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "30-34 years",
+      "Metric": "Total Cost",
+      "Total": 87093334.1
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "35-39 years",
+      "Metric": "Total Cost",
+      "Total": 80745741.5
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "40-44 years",
+      "Metric": "Total Cost",
+      "Total": 74135948.3
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "45-49 years",
+      "Metric": "Total Cost",
+      "Total": 80953801.4
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "50-54 years",
+      "Metric": "Total Cost",
+      "Total": 88215789.8
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "55-59 years",
+      "Metric": "Total Cost",
+      "Total": 86921818.8
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "60-64 years",
+      "Metric": "Total Cost",
+      "Total": 80659276.5
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "65-69 years",
+      "Metric": "Total Cost",
+      "Total": 79633763.7
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "70-74 years",
+      "Metric": "Total Cost",
+      "Total": 94195978.6
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "75-79 years",
+      "Metric": "Total Cost",
+      "Total": 90252429.9
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "80-84 years",
+      "Metric": "Total Cost",
+      "Total": 90053985.2
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "85-89 years",
+      "Metric": "Total Cost",
+      "Total": 70865034.3
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "90-94 years",
+      "Metric": "Total Cost",
+      "Total": 34791109.0
+    },
+    {
+      "Service": "AE",
+      "Gender": "Male",
+      "Age group": "95 years or older",
+      "Metric": "Total Cost",
+      "Total": 9951869.71
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "0 years",
+      "Metric": "Activity Count",
+      "Total": 179975.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "01-04 years",
+      "Metric": "Activity Count",
+      "Total": 166080.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "05-09 years",
+      "Metric": "Activity Count",
+      "Total": 119129.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "10-14 years",
+      "Metric": "Activity Count",
+      "Total": 116854.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "15-19 years",
+      "Metric": "Activity Count",
+      "Total": 220700.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "20-24 years",
+      "Metric": "Activity Count",
+      "Total": 417022.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "25-29 years",
+      "Metric": "Activity Count",
+      "Total": 604916.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "30-34 years",
+      "Metric": "Activity Count",
+      "Total": 659361.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "35-39 years",
+      "Metric": "Activity Count",
+      "Total": 521586.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "40-44 years",
+      "Metric": "Activity Count",
+      "Total": 373350.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "45-49 years",
+      "Metric": "Activity Count",
+      "Total": 418570.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "50-54 years",
+      "Metric": "Activity Count",
+      "Total": 504566.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "55-59 years",
+      "Metric": "Activity Count",
+      "Total": 591516.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "60-64 years",
+      "Metric": "Activity Count",
+      "Total": 546883.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "65-69 years",
+      "Metric": "Activity Count",
+      "Total": 593173.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "70-74 years",
+      "Metric": "Activity Count",
+      "Total": 745088.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "75-79 years",
+      "Metric": "Activity Count",
+      "Total": 716489.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "80-84 years",
+      "Metric": "Activity Count",
+      "Total": 701215.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "85-89 years",
+      "Metric": "Activity Count",
+      "Total": 575906.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "90-94 years",
+      "Metric": "Activity Count",
+      "Total": 326043.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "95 years or older",
+      "Metric": "Activity Count",
+      "Total": 116671.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "0 years",
+      "Metric": "Activity Count",
+      "Total": 231010.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "01-04 years",
+      "Metric": "Activity Count",
+      "Total": 227129.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "05-09 years",
+      "Metric": "Activity Count",
+      "Total": 150286.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "10-14 years",
+      "Metric": "Activity Count",
+      "Total": 124152.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "15-19 years",
+      "Metric": "Activity Count",
+      "Total": 138695.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "20-24 years",
+      "Metric": "Activity Count",
+      "Total": 165402.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "25-29 years",
+      "Metric": "Activity Count",
+      "Total": 201294.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "30-34 years",
+      "Metric": "Activity Count",
+      "Total": 228088.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "35-39 years",
+      "Metric": "Activity Count",
+      "Total": 250474.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "40-44 years",
+      "Metric": "Activity Count",
+      "Total": 265449.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "45-49 years",
+      "Metric": "Activity Count",
+      "Total": 345386.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "50-54 years",
+      "Metric": "Activity Count",
+      "Total": 449294.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "55-59 years",
+      "Metric": "Activity Count",
+      "Total": 597189.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "60-64 years",
+      "Metric": "Activity Count",
+      "Total": 591735.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "65-69 years",
+      "Metric": "Activity Count",
+      "Total": 671518.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "70-74 years",
+      "Metric": "Activity Count",
+      "Total": 833479.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "75-79 years",
+      "Metric": "Activity Count",
+      "Total": 762975.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "80-84 years",
+      "Metric": "Activity Count",
+      "Total": 679676.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "85-89 years",
+      "Metric": "Activity Count",
+      "Total": 476440.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "90-94 years",
+      "Metric": "Activity Count",
+      "Total": 211073.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "95 years or older",
+      "Metric": "Activity Count",
+      "Total": 52974.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "0 years",
+      "Metric": "Total Cost",
+      "Total": 249777365.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "01-04 years",
+      "Metric": "Total Cost",
+      "Total": 217088968.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "05-09 years",
+      "Metric": "Total Cost",
+      "Total": 177517727.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "10-14 years",
+      "Metric": "Total Cost",
+      "Total": 216733472.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "15-19 years",
+      "Metric": "Total Cost",
+      "Total": 320270378.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "20-24 years",
+      "Metric": "Total Cost",
+      "Total": 601289475.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "25-29 years",
+      "Metric": "Total Cost",
+      "Total": 972425428.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "30-34 years",
+      "Metric": "Total Cost",
+      "Total": 1135682570.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "35-39 years",
+      "Metric": "Total Cost",
+      "Total": 867881313.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "40-44 years",
+      "Metric": "Total Cost",
+      "Total": 553715118.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "45-49 years",
+      "Metric": "Total Cost",
+      "Total": 603048703.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "50-54 years",
+      "Metric": "Total Cost",
+      "Total": 754837523.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "55-59 years",
+      "Metric": "Total Cost",
+      "Total": 847924810.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "60-64 years",
+      "Metric": "Total Cost",
+      "Total": 877315571.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "65-69 years",
+      "Metric": "Total Cost",
+      "Total": 991517578.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "70-74 years",
+      "Metric": "Total Cost",
+      "Total": 1281142417.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "75-79 years",
+      "Metric": "Total Cost",
+      "Total": 1289140495.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "80-84 years",
+      "Metric": "Total Cost",
+      "Total": 1349578327.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "85-89 years",
+      "Metric": "Total Cost",
+      "Total": 1185018283.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "90-94 years",
+      "Metric": "Total Cost",
+      "Total": 704541248.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Female",
+      "Age group": "95 years or older",
+      "Metric": "Total Cost",
+      "Total": 255392422.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "0 years",
+      "Metric": "Total Cost",
+      "Total": 324223190.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "01-04 years",
+      "Metric": "Total Cost",
+      "Total": 294910749.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "05-09 years",
+      "Metric": "Total Cost",
+      "Total": 227643007.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "10-14 years",
+      "Metric": "Total Cost",
+      "Total": 227920739.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "15-19 years",
+      "Metric": "Total Cost",
+      "Total": 236394221.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "20-24 years",
+      "Metric": "Total Cost",
+      "Total": 244330615.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "25-29 years",
+      "Metric": "Total Cost",
+      "Total": 288740865.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "30-34 years",
+      "Metric": "Total Cost",
+      "Total": 316268020.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "35-39 years",
+      "Metric": "Total Cost",
+      "Total": 354154798.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "40-44 years",
+      "Metric": "Total Cost",
+      "Total": 387154627.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "45-49 years",
+      "Metric": "Total Cost",
+      "Total": 524862509.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "50-54 years",
+      "Metric": "Total Cost",
+      "Total": 723066778.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "55-59 years",
+      "Metric": "Total Cost",
+      "Total": 932563200.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "60-64 years",
+      "Metric": "Total Cost",
+      "Total": 1031083117.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "65-69 years",
+      "Metric": "Total Cost",
+      "Total": 1188794886.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "70-74 years",
+      "Metric": "Total Cost",
+      "Total": 1482408081.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "75-79 years",
+      "Metric": "Total Cost",
+      "Total": 1378990921.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "80-84 years",
+      "Metric": "Total Cost",
+      "Total": 1274704997.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "85-89 years",
+      "Metric": "Total Cost",
+      "Total": 940697209.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "90-94 years",
+      "Metric": "Total Cost",
+      "Total": 432169323.0
+    },
+    {
+      "Service": "APC",
+      "Gender": "Male",
+      "Age group": "95 years or older",
+      "Metric": "Total Cost",
+      "Total": 109644790.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "0 years",
+      "Metric": "Activity Count",
+      "Total": 325441.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "01-04 years",
+      "Metric": "Activity Count",
+      "Total": 719275.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "05-09 years",
+      "Metric": "Activity Count",
+      "Total": 897665.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "10-14 years",
+      "Metric": "Activity Count",
+      "Total": 969630.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "15-19 years",
+      "Metric": "Activity Count",
+      "Total": 1156991.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "20-24 years",
+      "Metric": "Activity Count",
+      "Total": 1755334.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "25-29 years",
+      "Metric": "Activity Count",
+      "Total": 2950592.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "30-34 years",
+      "Metric": "Activity Count",
+      "Total": 3530495.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "35-39 years",
+      "Metric": "Activity Count",
+      "Total": 2899647.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "40-44 years",
+      "Metric": "Activity Count",
+      "Total": 2043206.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "45-49 years",
+      "Metric": "Activity Count",
+      "Total": 2228921.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "50-54 years",
+      "Metric": "Activity Count",
+      "Total": 2686270.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "55-59 years",
+      "Metric": "Activity Count",
+      "Total": 2823953.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "60-64 years",
+      "Metric": "Activity Count",
+      "Total": 2693294.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "65-69 years",
+      "Metric": "Activity Count",
+      "Total": 2751613.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "70-74 years",
+      "Metric": "Activity Count",
+      "Total": 3163861.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "75-79 years",
+      "Metric": "Activity Count",
+      "Total": 2672250.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "80-84 years",
+      "Metric": "Activity Count",
+      "Total": 2162918.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "85-89 years",
+      "Metric": "Activity Count",
+      "Total": 1348139.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "90-94 years",
+      "Metric": "Activity Count",
+      "Total": 532412.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "95 years or older",
+      "Metric": "Activity Count",
+      "Total": 137316.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "0 years",
+      "Metric": "Activity Count",
+      "Total": 401692.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "01-04 years",
+      "Metric": "Activity Count",
+      "Total": 947015.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "05-09 years",
+      "Metric": "Activity Count",
+      "Total": 1079069.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "10-14 years",
+      "Metric": "Activity Count",
+      "Total": 1033931.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "15-19 years",
+      "Metric": "Activity Count",
+      "Total": 896856.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "20-24 years",
+      "Metric": "Activity Count",
+      "Total": 709694.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "25-29 years",
+      "Metric": "Activity Count",
+      "Total": 851016.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "30-34 years",
+      "Metric": "Activity Count",
+      "Total": 956355.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "35-39 years",
+      "Metric": "Activity Count",
+      "Total": 1046825.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "40-44 years",
+      "Metric": "Activity Count",
+      "Total": 1121153.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "45-49 years",
+      "Metric": "Activity Count",
+      "Total": 1465178.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "50-54 years",
+      "Metric": "Activity Count",
+      "Total": 1886549.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "55-59 years",
+      "Metric": "Activity Count",
+      "Total": 2283433.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "60-64 years",
+      "Metric": "Activity Count",
+      "Total": 2456193.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "65-69 years",
+      "Metric": "Activity Count",
+      "Total": 2699217.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "70-74 years",
+      "Metric": "Activity Count",
+      "Total": 3186785.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "75-79 years",
+      "Metric": "Activity Count",
+      "Total": 2687074.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "80-84 years",
+      "Metric": "Activity Count",
+      "Total": 2079196.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "85-89 years",
+      "Metric": "Activity Count",
+      "Total": 1161187.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "90-94 years",
+      "Metric": "Activity Count",
+      "Total": 372921.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "95 years or older",
+      "Metric": "Activity Count",
+      "Total": 68484.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "0 years",
+      "Metric": "Total Cost",
+      "Total": 58872702.9
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "01-04 years",
+      "Metric": "Total Cost",
+      "Total": 121444400.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "05-09 years",
+      "Metric": "Total Cost",
+      "Total": 146984131.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "10-14 years",
+      "Metric": "Total Cost",
+      "Total": 164019001.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "15-19 years",
+      "Metric": "Total Cost",
+      "Total": 179659867.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "20-24 years",
+      "Metric": "Total Cost",
+      "Total": 242131906.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "25-29 years",
+      "Metric": "Total Cost",
+      "Total": 407477772.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "30-34 years",
+      "Metric": "Total Cost",
+      "Total": 488197443.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "35-39 years",
+      "Metric": "Total Cost",
+      "Total": 409246386.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "40-44 years",
+      "Metric": "Total Cost",
+      "Total": 298827477.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "45-49 years",
+      "Metric": "Total Cost",
+      "Total": 325925802.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "50-54 years",
+      "Metric": "Total Cost",
+      "Total": 388913382.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "55-59 years",
+      "Metric": "Total Cost",
+      "Total": 402521375.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "60-64 years",
+      "Metric": "Total Cost",
+      "Total": 380833755.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "65-69 years",
+      "Metric": "Total Cost",
+      "Total": 386525748.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "70-74 years",
+      "Metric": "Total Cost",
+      "Total": 440767051.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "75-79 years",
+      "Metric": "Total Cost",
+      "Total": 367629876.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "80-84 years",
+      "Metric": "Total Cost",
+      "Total": 293296393.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "85-89 years",
+      "Metric": "Total Cost",
+      "Total": 177694021.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "90-94 years",
+      "Metric": "Total Cost",
+      "Total": 68202176.6
+    },
+    {
+      "Service": "OP",
+      "Gender": "Female",
+      "Age group": "95 years or older",
+      "Metric": "Total Cost",
+      "Total": 16859358.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "0 years",
+      "Metric": "Total Cost",
+      "Total": 74301400.9
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "01-04 years",
+      "Metric": "Total Cost",
+      "Total": 163252103.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "05-09 years",
+      "Metric": "Total Cost",
+      "Total": 183189795.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "10-14 years",
+      "Metric": "Total Cost",
+      "Total": 178808739.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "15-19 years",
+      "Metric": "Total Cost",
+      "Total": 141828786.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "20-24 years",
+      "Metric": "Total Cost",
+      "Total": 99340346.1
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "25-29 years",
+      "Metric": "Total Cost",
+      "Total": 118503476.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "30-34 years",
+      "Metric": "Total Cost",
+      "Total": 135535727.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "35-39 years",
+      "Metric": "Total Cost",
+      "Total": 149377324.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "40-44 years",
+      "Metric": "Total Cost",
+      "Total": 160115100.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "45-49 years",
+      "Metric": "Total Cost",
+      "Total": 209730217.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "50-54 years",
+      "Metric": "Total Cost",
+      "Total": 271532785.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "55-59 years",
+      "Metric": "Total Cost",
+      "Total": 325197136.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "60-64 years",
+      "Metric": "Total Cost",
+      "Total": 347698137.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "65-69 years",
+      "Metric": "Total Cost",
+      "Total": 379726112.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "70-74 years",
+      "Metric": "Total Cost",
+      "Total": 442751873.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "75-79 years",
+      "Metric": "Total Cost",
+      "Total": 370982792.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "80-84 years",
+      "Metric": "Total Cost",
+      "Total": 282006082.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "85-89 years",
+      "Metric": "Total Cost",
+      "Total": 154559700.0
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "90-94 years",
+      "Metric": "Total Cost",
+      "Total": 48058882.9
+    },
+    {
+      "Service": "OP",
+      "Gender": "Male",
+      "Age group": "95 years or older",
+      "Metric": "Total Cost",
+      "Total": 8573041.95
+    }
+  ],
+  "chronicle": [
+    "Converted from the public incumbent CSV fixture for E6 NHS allocation."
+  ]
+}

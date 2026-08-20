@@ -28,6 +28,8 @@ from microcosm.build.logbook_adoption import (
     sha256_argument,
     write_error_receipt,
 )
+from microcosm.build.uk_runtime.etb_services import UKETBServicesStageTransform
+from microcosm.build.uk_runtime.etb_vat import UKETBVATStageTransform
 from microcosm.build.uk_runtime.frs_brma import UKFRSBRMAStageTransform
 from microcosm.build.uk_runtime.frs_council_tax import UKFRSCouncilTaxStageTransform
 from microcosm.build.uk_runtime.frs_disability import UKFRSDisabilityStageTransform
@@ -50,6 +52,9 @@ from microcosm.build.uk_runtime.frs_spine import (
 )
 from microcosm.build.uk_runtime.frs_take_up import UKFRSTakeUpStageTransform
 from microcosm.build.uk_runtime.hmrc_replay import write_hmrc_replay_report
+from microcosm.build.uk_runtime.lcfs_consumption import (
+    UKLCFSConsumptionStageTransform,
+)
 from microcosm.build.uk_runtime.national_build import write_uk_national_frame
 from microcosm.build.uk_runtime.national_frame import uk_household_weight_kind
 from microcosm.build.uk_runtime.regional_uprating import (
@@ -81,6 +86,9 @@ _STAGE_NAMES = (
     "frs_brma",
     "was_wealth",
     "regional_property_uprating",
+    "lcfs_consumption",
+    "etb_vat",
+    "etb_services",
     "frs_hmrc_spine_leaves",
     "spi_support_channel",
     "hmrc_spi_income_spine",
@@ -128,6 +136,21 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--was-tab",
         type=Path,
         help="Caller-supplied private WAS round-8 household tab for was_wealth.",
+    )
+    parser.add_argument(
+        "--lcfs-hh-tab",
+        type=Path,
+        help="Caller-supplied private LCFS 2023-24 household tab for lcfs_consumption.",
+    )
+    parser.add_argument(
+        "--lcfs-person-tab",
+        type=Path,
+        help="Caller-supplied private LCFS 2023-24 person tab for lcfs_consumption.",
+    )
+    parser.add_argument(
+        "--etb-tab",
+        type=Path,
+        help="Caller-supplied private ETB 1977-2024 household tab for ETB stages.",
     )
     parser.add_argument(
         "--emit-nonzero-shares",
@@ -263,8 +286,7 @@ def _input_artifact_pins(stages) -> dict[str, dict[str, object]]:
             }
             if role in pins and pins[role] != pin:
                 raise ValueError(
-                    f"input artifact role {role!r} has inconsistent pins "
-                    "across stages."
+                    f"input artifact role {role!r} has inconsistent pins across stages."
                 )
             pins[role] = pin
     return dict(sorted(pins.items()))
@@ -321,7 +343,17 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds["stage1"] = seed
                 elif operation.kind == "fit_weighted_qrf_stage2":
                     stage_seeds["stage2"] = seed
+                elif operation.kind == "bridge_donor_column_via_qrf":
+                    stage_seeds["bridge_donor_column_via_qrf"] = seed
+                elif operation.kind == "assign_binary_from_rate":
+                    target = operation.parameters.get("target")
+                    if isinstance(target, str):
+                        stage_seeds[target] = seed
+                    else:
+                        stage_seeds["assign_binary_from_rate"] = seed
                 elif operation.kind == "fit_weighted_qrf_chain":
+                    stage_seeds[stage.stage] = seed
+                elif operation.kind == "fit_weighted_qrf":
                     stage_seeds[stage.stage] = seed
         if stage_seeds:
             declared[stage.stage] = stage_seeds
@@ -465,6 +497,27 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError(
                 "--was-tab is required when the was_wealth stage is scheduled."
             )
+        if "lcfs_consumption" in stage_names:
+            missing_lcfs = [
+                flag
+                for flag, value in (
+                    ("--lcfs-hh-tab", args.lcfs_hh_tab),
+                    ("--lcfs-person-tab", args.lcfs_person_tab),
+                    ("--was-tab", args.was_tab),
+                )
+                if value is None
+            ]
+            if missing_lcfs:
+                raise ValueError(
+                    "lcfs_consumption requires caller-supplied private inputs: "
+                    f"{', '.join(missing_lcfs)}."
+                )
+        if (
+            "etb_vat" in stage_names or "etb_services" in stage_names
+        ) and args.etb_tab is None:
+            raise ValueError(
+                "--etb-tab is required when etb_vat or etb_services is scheduled."
+            )
         stages = [stages_by_name[name] for name in stage_names]
         artifact_pins = _artifact_pins(stages)
         resource_pins = _resource_pins(stages, spec)
@@ -554,6 +607,26 @@ def main(argv: list[str] | None = None) -> int:
                 UKRegionalPropertyUpratingStageTransform(
                     stage=stages_by_name["regional_property_uprating"],
                 )
+            )
+        if "lcfs_consumption" in stage_names:
+            implementations["lcfs_consumption"] = UKLCFSConsumptionStageTransform(
+                stage=stages_by_name["lcfs_consumption"],
+                engine=engine,
+                lcfs_hh_tab_path=args.lcfs_hh_tab,
+                lcfs_person_tab_path=args.lcfs_person_tab,
+                was_tab_path=args.was_tab,
+            )
+        if "etb_vat" in stage_names:
+            implementations["etb_vat"] = UKETBVATStageTransform(
+                stage=stages_by_name["etb_vat"],
+                engine=engine,
+                etb_tab_path=args.etb_tab,
+            )
+        if "etb_services" in stage_names:
+            implementations["etb_services"] = UKETBServicesStageTransform(
+                stage=stages_by_name["etb_services"],
+                engine=engine,
+                etb_tab_path=args.etb_tab,
             )
         implementations["frs_hmrc_spine_leaves"] = UKFRSHMRCSpineLeavesStageTransform(
             args.frs_raw_dir,

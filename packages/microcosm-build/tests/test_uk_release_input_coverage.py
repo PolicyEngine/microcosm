@@ -607,6 +607,9 @@ class TestUKManifest:
                 "hmrc_cgt_gains",
                 "was_wealth",
                 "regional_property_uprating",
+                "lcfs_consumption",
+                "etb_vat",
+                "etb_services",
             }
         )
         assert RESTORED_REFERENCE_EFRS_REQUIRED_INPUTS == frozenset(

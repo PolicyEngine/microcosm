@@ -804,6 +804,18 @@ def build_manifest(
                 stage_name="regional_property_uprating",
                 candidate_source=candidate_source,
             ),
+            "lcfs_consumption": _source_stage_family_coverage_contract(
+                stage_name="lcfs_consumption",
+                candidate_source=candidate_source,
+            ),
+            "etb_vat": _source_stage_family_coverage_contract(
+                stage_name="etb_vat",
+                candidate_source=candidate_source,
+            ),
+            "etb_services": _source_stage_family_coverage_contract(
+                stage_name="etb_services",
+                candidate_source=candidate_source,
+            ),
         },
         "derivation": (
             "Surface = efrs_parity_reference.json populated effective loader "

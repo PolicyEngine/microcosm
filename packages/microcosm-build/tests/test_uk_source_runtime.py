@@ -116,11 +116,17 @@ def test_uk_stage_implementations_names_whole_stage_transforms() -> None:
         hmrc_income_transform=hmrc,
         was_wealth_transform=retained,
         regional_property_uprating_transform=hmrc,
+        lcfs_consumption_transform=retained,
+        etb_vat_transform=hmrc,
+        etb_services_transform=retained,
     ) == {
         "frs_hmrc_retained_leaves": retained,
         "hmrc_spi_income": hmrc,
         "was_wealth": retained,
         "regional_property_uprating": hmrc,
+        "lcfs_consumption": retained,
+        "etb_vat": hmrc,
+        "etb_services": retained,
     }
 
 

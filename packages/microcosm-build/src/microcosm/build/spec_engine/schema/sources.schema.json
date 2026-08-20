@@ -5013,6 +5013,12 @@
       },
       "runtime_sha256_required": {
        "type": "boolean"
+      },
+      "format": {
+       "type": "string"
+      },
+      "vintage": {
+       "type": "string"
       }
      },
      "required": [
@@ -5776,6 +5782,140 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "role",
+      "resource",
+      "format"
+     ],
+     "properties": {
+      "kind": {
+       "const": "public_parameter_reference"
+      },
+      "role": {
+       "type": "string"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "format": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["kind"],
+     "properties": {
+      "kind": {
+       "enum": [
+        "allocate_per_capita_from_cell_table",
+        "assign_binary_from_rate",
+        "bridge_donor_column_via_qrf",
+        "compute_ratio",
+        "derive",
+        "iterative_proportional_fit",
+        "zero_when_false"
+       ]
+      },
+      "age_bands": {"type": "string"},
+      "annualization_weeks": {"type": "number"},
+      "budget_resource": {"type": "string"},
+      "categorical_predictors": {"type": "array", "items": {"type": "string"}},
+      "chain_order": {"type": "array", "items": {"type": "string"}},
+      "columns": {"type": "array", "items": {"type": "string"}},
+      "condition": {"type": "string"},
+      "denominator_key": {"type": "string"},
+      "denominator_resource": {"type": "string"},
+      "donor_weight": {"type": "string"},
+      "exempt": {"type": "array", "items": {"type": "string"}},
+      "fail_loud_on_missing_rate": {"type": "boolean"},
+      "iterations": {"type": "integer", "minimum": 1},
+      "lossy_mappings": {"type": "array", "items": {"type": "string"}},
+      "logged_dropna_row_count": {"type": "boolean"},
+      "margins": {"type": "array", "items": {"type": "string"}},
+      "n_estimators": {"type": "integer", "minimum": 1},
+      "numerator": {"type": "string"},
+      "output": {"type": "string"},
+      "predictors": {"type": "array", "items": {"type": "string"}},
+      "rate_key": {"type": "string"},
+      "range": {"type": "string"},
+      "reduced_rate_share": {"type": "number"},
+      "resource": {"type": "string"},
+      "seed": {"type": "integer"},
+      "source": {"type": "string"},
+      "standard_rate": {"type": "number"},
+      "target": {"type": "string"},
+      "targets": {"type": "array", "items": {"type": "string"}},
+      "top_band_fold_in": {"type": "string"},
+      "weights": {"type": "string"},
+      "weighted": {"type": "boolean"},
+      "year": {"type": ["string", "integer"]},
+      "lowercase_columns": {"type": "boolean"}
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["kind", "predictors", "targets", "seed"],
+     "properties": {
+      "kind": {"const": "fit_weighted_qrf"},
+      "predictors": {"type": "array", "items": {"type": "string"}},
+      "targets": {"type": "array", "items": {"type": "string"}},
+      "weights": {"type": "string"},
+      "n_estimators": {"type": "integer", "minimum": 1},
+      "seed": {"type": "integer"}
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["kind", "predictors", "targets", "seed"],
+     "properties": {
+      "kind": {"const": "fit_weighted_qrf_chain"},
+      "predictors": {"type": "array", "items": {"type": "string"}},
+      "targets": {"type": "array", "items": {"type": "string"}},
+      "categorical_predictors": {"type": "array", "items": {"type": "string"}},
+      "weights": {"type": "string"},
+      "n_estimators": {"type": "integer", "minimum": 1},
+      "seed": {"type": "integer"}
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["kind", "range", "exempt"],
+     "properties": {
+      "kind": {"const": "support_clip"},
+      "range": {"type": "string"},
+      "exempt": {"type": "array", "items": {"type": "string"}}
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["kind", "predictors", "derived_predictors"],
+     "properties": {
+      "kind": {"const": "materialize_rules_engine_predictors"},
+      "predictors": {"type": "array", "items": {"type": "string"}},
+      "derived_predictors": {"type": "object", "additionalProperties": {"type": "string"}}
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["kind", "output", "inputs"],
+     "properties": {
+      "kind": {"const": "fold_into"},
+      "output": {"type": "string"},
+      "inputs": {"type": "array", "items": {"type": "string"}},
+      "drop_inputs": {"type": "boolean"}
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
       "artifact_role",
       "filename",
       "delimiter",
@@ -6446,6 +6586,12 @@
       },
       "runtime_sha256_required": {
        "type": "boolean"
+      },
+      "format": {
+       "type": "string"
+      },
+      "vintage": {
+       "type": "string"
       }
      }
     },
