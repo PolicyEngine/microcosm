@@ -1008,9 +1008,9 @@ def test_national_build_real_terminal_batch_blocks_incomplete_qrf_before_staging
         "uk_brma_enum_domain": "passed",
         # The legacy report omitted unevidenced gates; the battery names
         # every gap — non-blocking off the release-candidate posture.
-            "uk_export_surface": "evidence_absent",
-            "uk_calibration_reference_coverage": "evidence_absent",
-            "uk_target_surface": "evidence_absent",
+        "uk_export_surface": "evidence_absent",
+        "uk_calibration_reference_coverage": "evidence_absent",
+        "uk_target_surface": "evidence_absent",
         "uk_target_fit": "evidence_absent",
         "uk_input_mass_parity": "evidence_absent",
         "uk_qrf_tail_concentration": "failed",
