@@ -3,6 +3,7 @@
  "country": "us",
  "policy": "spec-only country package; Python execution lives in shared runtime modules",
  "resources": [
+  "by_origin_reviewed_exclusions.json",
   "ecps_parity_known_gaps.json",
   "ecps_parity_reference.json",
   "federal_eitc_by_state.json",

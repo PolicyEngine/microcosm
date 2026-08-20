@@ -234,6 +234,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "reform_validation.py",
         "register_consistency.py",
         "relationship_inputs.py",
+        # Reviewed gate-policy schema/loader; no population treatment.
+        "reviewed_exclusions.py",
         "release_gate_preflight.py",
         "release_input_coverage.py",
         "release_target_parity.py",

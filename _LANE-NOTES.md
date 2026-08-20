@@ -69,3 +69,8 @@
   retry cannot resolve PyPI DNS. No dependency or lockfile change was made.
 - 2026-08-19: completed the code-cited design audit and recorded the immutable
   1% baseline receipt.
+- 2026-08-19: added the empty schema-2 US resource and strict typed loader.
+  The loader constrains keys to exact `leg#criterion` IDs, freezes all five
+  receipt fields, authenticates overrides as a path-plus-SHA pair, and seals a
+  canonical content digest
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:48-211,290-355`).

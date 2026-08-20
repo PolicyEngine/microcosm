@@ -35,12 +35,19 @@ exclusion approval is in scope.
   original exact sync command was still attempted first and remains
   network-blocked as recorded above.
 - Baseline battery/manifest tests pass: 8 targeted tests.
+- Added the declared, packaged schema-2 US by-origin exclusion resource with
+  an intentionally empty `exclusions` object.
+- Added a US-specific immutable receipt/policy loader: exact
+  `leg#criterion` keys, exact five-field receipts, canonical date validation,
+  duplicate/non-finite JSON rejection, canonical policy digest, and
+  path-plus-SHA override authentication with partial-arming refusal.
+- New schema/resource tests pass: 27 loader tests and 5 country-package tests;
+  Ruff check is clean and both new Python files are Ruff-formatted.
 
 ## Next
 
-- Implement and test schema-2 loading, exact leg-plus-criterion matching,
-  lifecycle/anti-rot reporting, partial-configuration refusal, and sealed
-  terminal-manifest receipts with the committed register empty.
+- Integrate exact leg-plus-criterion matching, lifecycle/anti-rot reporting,
+  partial-configuration refusal, and sealed terminal-manifest receipts.
 - Run the affected suites, lint, and the required 1% after measurement.
 
 ## Historical note
