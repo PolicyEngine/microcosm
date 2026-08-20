@@ -5,8 +5,11 @@
 - Branch/worktree: `battery-excl-machinery` in the assigned worktree only.
 - Port reviewed-exclusion machinery, not an exclusion decision.
 - The committed US register must remain empty; only the owner may approve an
-  actual exclusion.
-- Frozen bands, thresholds, seeds, folds, and comparators are immutable.
+  actual exclusion
+  (`packages/microcosm-build/src/microcosm/build/us/by_origin_reviewed_exclusions.json:1-5`).
+- Frozen battery bands, thresholds, and comparison operations are immutable
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11587-11591,12311-12486`).
+- No seed or fold edit is part of this lane.
 - Builds use at most the 1% sample with seed 578, remain off-chain, and never
   touch `logbook-pending-chain.txt`.
 - Every mechanism statement added below will carry a source file and line
@@ -17,18 +20,22 @@
 - `experiments/battery_burndown/ADJUDICATION.md` from the read-only
   `microcosm-arm-split` worktree.
 - Its `adjudication.json`, filtered to the two
-  `REVIEWED-EXCLUSION-CANDIDATE` rows and the reviewed-exclusion support
-  record.
+  `FIX-CANDIDATE` dead-QBI rows discussed by the reviewed-exclusion finding,
+  plus the reviewed-exclusion support record. The finding explicitly rejects
+  both as exclusion candidates and assigns them a per-target clone-role fix
+  (`/Users/maxghenis/PolicyEngine/_worktrees/microcosm-arm-split/experiments/battery_burndown/ADJUDICATION.md:59-67`;
+  `/Users/maxghenis/PolicyEngine/_worktrees/microcosm-arm-split/experiments/battery_burndown/adjudication.json:461-470,3815-3860,3865-3910`).
 
 ## Mechanism record
 
 - The production US battery accepts one fully typed reviewed-exclusion policy
   snapshot plus an optional plain-date test clock; absent a supplied snapshot,
   it resolves the committed register, and it rejects any untyped policy
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11739-11837`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11775-11790,11832-11883`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:344-354`).
 - A boolean comparison with zero weighted incidence on both origins appends a
   dead-comparison failure and records `status=dead_comparison`
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:12244-12296`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:12285-12324`).
 - The QBI reconciliation deliberately sets both clone-0/native SSTB flags
   false on the ASEC-compatible support role
   (`packages/microcosm-build/src/microcosm/build/us_runtime/qbi_inputs.py:1246-1264`),
@@ -43,12 +50,23 @@
 - The UK degenerate gate applies only in-force entries, fails stale/expired/
   premature entries, and reports dormant ones
   (`packages/microcosm-build/src/microcosm/build/uk_runtime/terminal_gates.py:294-433`).
+- The rest of the adjudication-named UK template declares register resources,
+  preflights/loads overrides, inserts the typed policies and one evaluation
+  clock into terminal evidence, verifies the declared resource bindings, runs
+  used/stale/dormant projections, and attests available evidence
+  (`packages/microcosm-build/src/microcosm/build/uk/gates.json:37-44,225-260`;
+  `tools/build_uk_national_dataset.py:261-290,336-367,739-758,824-840`;
+  `packages/microcosm-build/src/microcosm/build/uk_runtime/national_build.py:340-393,523-557`;
+  `packages/microcosm-build/src/microcosm/build/uk_runtime/battery_bindings.py:304-460,553-641,703-772`;
+  `packages/microcosm-build/src/microcosm/build/uk_runtime/weighted_integrity.py:998-1093,1162-1228`;
+  `packages/microcosm-build/src/microcosm/build/gates.py:2512-2648`;
+  `packages/microcosm-build/src/microcosm/build/gate_battery.py:601-640,947-1025`).
 - US stacked gate details are snapshotted and evaluator-sealed before
   `GateReport` copies them into a manifest
   (`packages/microcosm-build/src/microcosm/build/gates.py:142-177,204-309`).
 - The pool writes that same gate payload into the immutable terminal receipt
   and final manifest aliases
-  (`tools/build_us_multispine_pool.py:3383-3384,3421-3484,4057-4087`).
+  (`tools/build_us_multispine_pool.py:3405-3406,3443-3445,3503-3506,4061-4068,4089-4108`).
 
 ## 1% before receipt
 
@@ -60,7 +78,9 @@
   ASEC/ACS incidence 0/0; nonzero rows 0/0.
 - An empty register cannot honestly change either measured value or waive
   either failure. The measurable after result must be authenticated policy and
-  exact-criterion reporting while both unapproved checks remain red.
+  exact-criterion reporting while both ineligible-for-exclusion checks remain red
+  (`packages/microcosm-build/src/microcosm/build/us/by_origin_reviewed_exclusions.json:1-5`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11654-11718`).
 
 ## 1% after replay
 
@@ -80,20 +100,22 @@
   | `person/puf_tax_itemization/business_is_sstb[clone_0]#dead` | `dead_comparison`; incidence 0/0; rows 0/0; failed | `dead_comparison`; incidence 0/0; rows 0/0; failed; no receipt applied | None |
 
 - The battery had the same 127 failures before and after. Before, its details
-  had no reviewed-exclusion report. After, the sealed manifest carried schema
-  2, committed policy digest
+  had no reviewed-exclusion report. After, the in-process sealed manifest
+  payload carried schema 2, committed policy digest
   `581b42d0f8ffdfe5a29671fbc9be4efc839a440da2c52951229f85d407d5758d`,
   empty resolved/applied/lifecycle buckets, and evaluation date 2026-08-20.
   The runtime emits that complete report and the manifest independently checks
   its digest, criterion classification, lifecycle, and exact applied failure
   text
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7066-7336,11644-11718,12202-12229`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7066-7322,7698-7703,11644-11718,12202-12229`).
 - Numerical improvement of the two assigned checks was not possible within
-  this machinery-only lane: changing their data artifact is out of scope, and
-  adding either receipt would be an exclusion approval reserved to the owner.
+  this machinery-only lane: the adjudication assigns them a separate
+  per-target clone-role comparator fix and explicitly rejects either receipt.
   The measurable improvement is from no exclusion control/report to an
   authenticated empty schema-2 policy report that proves neither failure was
-  waived.
+  waived
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:290-341`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7193-7322,12202-12235`).
 
 ## Work log
 
@@ -107,39 +129,50 @@
   The loader constrains keys to exact `leg#criterion` IDs, freezes all five
   receipt fields, authenticates overrides as a path-plus-SHA pair, and seals a
   canonical content digest
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:48-211,290-355`).
+  (`packages/microcosm-build/src/microcosm/build/us/by_origin_reviewed_exclusions.json:1-5`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:32-220,223-341`).
 - 2026-08-19: integrated exact criterion recording into the unchanged battery
   comparators. Eligible failures are indexed as `#dead`, `#incidence`,
   `/positive|negative#quantile`, or `#categorical` while the existing failure
   messages and frozen constants remain the emitted artifacts
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11551-11572,12244-12444`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11587-11608,12285-12486`).
 - 2026-08-19: added lifecycle resolution. Only exact in-force failing IDs are
   removed; passing evaluated IDs become stale failures, unevaluated IDs are
   reported dormant, and expired/premature entries add failures without
   suppressing comparator failures
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11575-11682`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11611-11718`).
 - 2026-08-19: the terminal validator reconstructs eligible failing criteria
   from sealed comparison facts, verifies the policy digest and source,
   recomputes all lifecycle/anti-rot buckets, and rejects a passing battery with
   any unapplied criterion failure or stale/out-of-force receipt
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7063-7291,7659-7713`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7066-7322,7698-7742`).
 - 2026-08-19: the evaluator embeds the full schema-2 report in gate details,
   which the existing evaluator seal and `GateReport` manifest copy protect
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11739-11837,12156-12183`;
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11644-11718,11931-11956,12202-12235`;
   `packages/microcosm-build/src/microcosm/build/gates.py:142-177,204-309`).
 - 2026-08-19: added paired driver flags for a schema-2 override and its raw
   SHA-256, authenticated the pair before entering stacked build work, and
   refused any override on the legacy two-spine route
-  (`tools/build_us_multispine_pool.py:532-548,4463-4485`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py:307-341`;
+  `tools/build_us_multispine_pool.py:532-548,4463-4485`).
 - 2026-08-19: threaded the resolved typed snapshot through stacked cold/resume
   execution into the fresh terminal battery
   (`tools/build_us_multispine_pool.py:2858-2874,3285-3296,4160-4165,4349-4364`).
   The policy is intentionally absent from configured input-pin and checkpoint
   identity payloads because it changes only the terminal verdict, not the
   simulation artifact
-  (`tools/build_us_multispine_pool.py:1043-1060,1170-1187`).
+  (`tools/build_us_multispine_pool.py:1031-1167,1170-1187`).
 - 2026-08-19: the workspace suite's fail-closed inventory correctly rejected
   the new runtime module until it was reviewed. The policy loader is now
   explicitly classified as a non-population-treatment module, and the pool
   tool's source-spine-blind import graph is pinned at 65 modules
   (`packages/microcosm-build/tests/test_us_spine_blindness.py:180-270,3272-3308`).
+- 2026-08-20: the complete workspace suite passes at current HEAD with
+  `.venv/bin/python -m pytest -q`; `.venv/bin/ruff check .` and
+  `git diff --check` also pass. The isolated wheel build could not resolve its
+  `hatchling` build dependency because sandbox DNS is disabled; no package or
+  lockfile was changed.
+- 2026-08-20: rewrote only the unpushed lane commits so the module inventory
+  classification accompanies the loader commit and the graph-count pin
+  accompanies the battery-import commit. Their relevant loader/country,
+  spine-blindness, battery, and driver suites pass at those commit boundaries.

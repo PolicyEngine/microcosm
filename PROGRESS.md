@@ -2,22 +2,24 @@
 
 ## State
 
-The empty schema-2 register, strict loader, and battery/runtime integration are
-implemented on `battery-excl-machinery`, which started from `origin/main` at
-`164027e2`. The assigned scope remains machinery only: no band, threshold,
-seed, fold, comparator, or exclusion approval has changed.
+Complete on `battery-excl-machinery`, which started from `origin/main` at
+`164027e2`. The empty schema-2 register, strict authenticated loader, exact
+criterion lifecycle machinery, terminal-manifest validation, CLI wiring, and
+tests are committed. The assigned scope remains machinery only: no band,
+threshold, seed, fold, comparison algorithm, or exclusion approval changed.
 
 ## Done
 
 - Confirmed the worktree started clean on the named branch.
 - Read `CLAUDE.md`, the required adjudication report, and the machine-readable
-  adjudication rows for the two reviewed-exclusion candidates.
+  adjudication rows for the two dead QBI checks that the reviewed-exclusion
+  finding explicitly classifies as `FIX-CANDIDATE`, not exclusion candidates.
 - Started line-by-line inspection of every cited US mechanism and UK template
   module, plus read-only integration and verification audits.
 - Attempted the required `uv sync --all-packages --extra us`. The default uv
   cache is not writable in the managed sandbox; a retry with a private cache
-  reached resolution but cannot download `hf-xet` because sandbox DNS is
-  disabled. Local-cache recovery is in progress.
+  reached resolution but could not download `hf-xet` because sandbox DNS is
+  disabled. No dependency or lockfile changed.
 - Attempted the GitNexus exploration workflow; no GitNexus MCP resources or
   tools are configured in this session, so discovery is using direct source
   and test call sites.
@@ -27,8 +29,9 @@ seed, fold, comparator, or exclusion approval has changed.
 - Captured the existing 1% terminal receipt for both assigned checks: each is
   `dead_comparison`, with ASEC/ACS incidence 0/0 and nonzero rows 0/0.
 - Confirmed a cold 1% build would violate the lane's 15 GiB RSS ceiling; the
-  existing run records primary-QRF peaks above 80 GiB. The after measurement
-  will therefore re-run fresh terminal gates from its saved simulated frame.
+  existing run records a primary-QRF peak of 84.73 GB (78.91 GiB). The after
+  measurement therefore reran fresh terminal gates from its saved simulated
+  frame.
 - Recovered a runnable locked US environment by cloning the already-synced
   adjudication-worktree venv and rebinding its editable paths locally. The
   original exact sync command was still attempted first and remains
@@ -66,18 +69,35 @@ seed, fold, comparator, or exclusion approval has changed.
   validator accepted the new committed empty-policy report.
 - Recorded the honest per-check result: both assigned checks remain
   `dead_comparison` at ASEC/ACS incidence 0/0 and rows 0/0, with no exclusion
-  applied. This is unchanged by design because approving either exclusion is
-  explicitly outside this lane and the shipped register is empty.
+  applied. This is unchanged by design: the adjudication rejects receipts for
+  these two `FIX-CANDIDATE` rows and assigns their per-target clone-role
+  comparator correction to a separate fix lane.
 - The first workspace-wide test run exposed the intended fail-closed runtime
   inventory: the new policy module was unclassified and the CLI graph count
   remained pinned at 64. Classified it explicitly as a reviewed
   non-population-treatment module, advanced the graph pin to 65, and confirmed
   the complete spine-blindness file passes.
+- Confirmed the complete workspace suite passes at current HEAD with
+  `.venv/bin/python -m pytest -q` (exit 0).
+- Confirmed `.venv/bin/ruff check .` and `git diff --check` pass.
+- Attempted a wheel build from `packages/microcosm-build`; the sandbox could
+  not resolve/download the isolated `hatchling` build dependency. The resource
+  declaration and loading remain covered by the passing country-package and
+  exclusion-loader tests, but an isolated wheel could not be produced here.
+- Refreshed every mechanism citation in `_LANE-NOTES.md` and replaced the stale
+  root report with this lane's `FINAL_REPORT.md`.
+- Rewrote only this unpushed lane's local commits so the runtime-module
+  classification lands with the register/loader and the 65-module import-graph
+  pin lands with battery integration. The loader/country/spine-blindness suite
+  is green at the former commit, the focused battery plus spine-blindness
+  suites are green at the latter, and the override-driver tests are green at
+  the driver commit.
 
 ## Next
 
-- Run the full suite, lint, and packaging checks; finalize code-cited notes and
-  the required output report.
+- Owner review and push. The two measured QBI rows remain non-exclusion
+  `FIX-CANDIDATE` work for a separate per-target clone-role comparator lane;
+  this lane's register intentionally remains empty.
 
 ## Historical note
 

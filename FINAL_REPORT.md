@@ -1,111 +1,139 @@
-# Final report: microcosm #462 register alignment
+# Final report: US reviewed-exclusion machinery
 
 ## Outcome
 
-Completed the split-PR remediation on `loss-contract-alignment`, based on
-`origin/main` at `7b6e10b`. The change is now register alignment only: one
-shared critical-target register, one shared congressional-district classifier,
-two consumers, builder contract-row gating, and behavioral containment of the
-publish contract.
+Completed the machinery-only port on `battery-excl-machinery`, based on
+`origin/main` at `164027e2`. The US stacked by-origin battery now has the UK
+schema-2 reviewed-exclusion pattern with exact `leg#criterion` scope, strict
+five-field receipts, authenticated overrides, lifecycle/anti-rot reporting,
+and independent terminal-manifest validation.
 
-The critical-row loss multiplier was removed entirely per
-[microcosm#492](https://github.com/PolicyEngine/microcosm/issues/492). There is no
-constant, CLI option, validation, loss overlay, telemetry, diagnostics/scorer
-provenance, or historical replay pin left. `_fiscal_target_loss_weights` is
-source-identical to `origin/main`, and its output therefore preserves main's
-bit-level behavior for the same registry and family multipliers.
+The committed register is intentionally empty. No exclusion was approved, and
+no band, threshold, seed, fold, comparison algorithm, or comparator failure
+message changed.
 
-## Sol round-1 findings
+## What shipped
 
-1. **Table 1.4 selector parity:** removed the builder-only
-   `accepted_name_prefixes=("irs_soi.",)` constraint. The adapter now has
-   exactly the shared requirement's substring and suffix selectors. The
-   outside-prefix reproduction is builder-rejected.
-2. **Congressional-district parity:** added exported, stdlib-only
-   `is_congressional_district_target(name, metadata)` and made the publisher
-   and builder classifiers thin wrappers. It ORs layout dimension, source-id
-   token, geography level, geography scope, truthy CD GEOID, and name token.
-   The builder's exact/semantic, Table 1.4, and zero-support paths now see the
-   same registry metadata.
-3. **Recorded relative-error shape:** a matched row with missing/`None`
-   `relative_error` now fails with the publish-contract message instead of
-   silently passing after recomputation. Existing non-numeric and stale-value
-   checks remain.
-4. **Behavioral anti-drift:** the load-bearing test now runs adversarial rows
-   through both consumers for exact-name, family+role, Table pattern,
-   missing/non-finite values, and a disallowed incumbent escape at the 0.25
-   hard stop. A production Ledger compile supplies six separate CD evidence
-   rows; builder and publisher exclude identical six-name sets and counts.
-   Field comparisons remain as fast checks, and any added conjunctive prefix
-   is proven to trip the guard.
+- A declared package resource at
+  `packages/microcosm-build/src/microcosm/build/us/by_origin_reviewed_exclusions.json`
+  with schema version 2 and an empty `exclusions` object.
+- An immutable US policy model and strict loader in
+  `packages/microcosm-build/src/microcosm/build/us_runtime/reviewed_exclusions.py`.
+  It accepts only exact `leg#criterion` keys, requires exactly `reason`,
+  `approved_by`, `adjudication`, `approved_on`, and `expires_on`, validates
+  canonical dates and `expires_on > approved_on`, rejects duplicate/non-finite
+  JSON, and seals a canonical content digest.
+- A path-plus-raw-SHA override arming unit. Supplying only a path or only a
+  digest fails before stacked build work; override flags are also refused on
+  the legacy route.
+- Exact criterion indexing in the existing battery paths: `#dead`,
+  `#incidence`, `/positive|negative#incidence`,
+  `/positive|negative#quantile`, and `#categorical`. Only an exact, failing,
+  in-force criterion can be suppressed.
+- Full `in_force`, `applied`, `stale`, `dormant`, `expired`, and `premature`
+  reporting. Stale, expired, and premature receipts fail the gate; dormant
+  receipts remain visible; unevaluated or structurally invalid comparisons are
+  never silently waived.
+- A terminal validator that independently reconstructs eligible failures from
+  sealed comparison evidence, revalidates the policy source/digest and all
+  five receipt fields, recomputes lifecycle buckets, and checks the exact
+  applied failure text. `GateReport` then copies the validated report into the
+  terminal receipt and final manifest.
+- Typed-policy threading through cold and resumed stacked routes. The policy
+  does not alter simulation inputs or checkpoint identity; its verdict and
+  complete receipt are sealed only at the terminal gate.
 
-The [#490](https://github.com/PolicyEngine/microcosm/issues/490) medical 0.25
-adjudication tolerance and its adjacent comment in `us_critical_targets.py`
-remain byte-for-byte unchanged, as required.
+Primary implementation references are
+`reviewed_exclusions.py:32-341`,
+`stacked_spine.py:7066-7322,7698-7742,11644-11718,11775-11883,12202-12486`,
+`gates.py:142-177,204-309`, and
+`tools/build_us_multispine_pool.py:532-548,2858-2874,3285-3296,3405-3506,4089-4108,4160-4165,4349-4364,4463-4485`.
 
-## Reproduction receipts
+## 1% before/after
 
-The Table 1.4 prefix reproduction now returns:
+The before receipt is the existing 1%/seed-578 terminal artifact:
 
-```text
-SOI Table 1.4 national dollar fit failed: other.table_1_4.all.bad_amount@2024: relative_error=1 exceeds 0.25 for SOI Pub 1304 Table 1.4 national dollar rows (soi_table_1_4_national_dollar_rows); target=100.0, final_estimate=200.0.
-```
+`/Users/maxghenis/PolicyEngine/_buildo-runtime/out/smoke-f001-r10/logbook-receipts/populace-us-2024-stacked-f001-s578-asec1688-acs15316-20260813T041921Z-23bea977/terminal-gates.json`
 
-The missing-relative-error reproduction now returns:
+Its SHA-256 is
+`96f68ddac5c833cb3c6a3eb6ea3ceb0cf04a5dcbbf92ef56581479ed368a6ce5`.
+The after measurement was an in-process rerun of the fresh terminal battery
+and manifest validator from its authenticated saved simulated checkpoint,
+using the committed empty policy. Peak RSS was 1,544,634,368 bytes (about
+1.44 GiB); it did not produce a durable after receipt.
 
-```text
-SOI Table 1.4 national dollar fit failed: irs_soi.ty2023.table_1_4.all.adversarial_amount@2024: missing recorded relative_error; the publish contract requires a numeric value.
-```
+| Exact assigned check | Before | After | Delta |
+| --- | --- | --- | --- |
+| `person/puf_tax_itemization/sstb_self_employment_income_would_be_qualified[clone_0]#dead` | `dead_comparison`; ASEC/ACS incidence 0/0; rows 0/0; failed | Same values and failure; no receipt applied | None |
+| `person/puf_tax_itemization/business_is_sstb[clone_0]#dead` | `dead_comparison`; ASEC/ACS incidence 0/0; rows 0/0; failed | Same values and failure; no receipt applied | None |
 
-The CD reproduction has the owner-mandated exclusion result:
+The battery remains failed with 127 failures. This is the only honest result
+for an empty owner-controlled register. The adjudication explicitly classifies
+both rows as `FIX-CANDIDATE`, rejects them as exclusions, and assigns a separate
+per-target clone-role comparator correction. This machinery lane cannot make
+that artifact correction and must not turn either row green with a receipt.
+The literal assigned-check numerical-improvement condition is therefore unmet
+in this machinery-only lane.
 
-```text
-builder_excluded=True
-publisher_excluded=True
-builder_failures=[]
-```
+The measurable machinery delta is:
 
-Calling that row "rejected" would contradict the required OR-union exclusion
-semantics. The two malformed critical rows are rejected; the CD row is
-symmetrically excluded by both consumers.
+- before: no reviewed-exclusion policy/report in gate details;
+- after: schema 2, committed source, policy digest
+  `581b42d0f8ffdfe5a29671fbc9be4efc839a440da2c52951229f85d407d5758d`,
+  evaluation date `2026-08-20`, and empty resolved/applied/lifecycle buckets;
+- after manifest validation: accepted, proving that neither assigned failure
+  was waived and that no receipt was forged or partially armed.
+
+The replay used
+`simulated.checkpoint.h5` SHA-256
+`78721fa97cecf6f6befc83fd219abbce9453542da429e80432346d4e8272eb76`
+(260,260,648 bytes). It ran off-chain, supplied no predecessor digest, wrote no
+build/logbook artifacts, and did not touch `logbook-pending-chain.txt`.
 
 ## Verification
 
-The requested suite ran with `UV_NO_SYNC=1` to use the already-synced workspace
-environment in the network-restricted sandbox:
+- `.venv/bin/python -m pytest -q` — complete workspace suite passed, exit 0.
+- Complete exclusion-loader, stacked-battery, pool-driver, country-package,
+  and spine-blindness test files passed. Coverage includes every eligible
+  criterion form; in-force, stale, dormant, expired, and premature states;
+  exact-leg isolation; both assigned checks; receipt/application tampering;
+  source mismatch; partial CLI arming; cold/resume threading; and
+  checkpoint-identity noninterference.
+- `.venv/bin/ruff check .` — passed.
+- `git diff --check` — passed.
+- The committed policy digest and empty payload were reloaded directly from
+  the declared package resource.
+- The unpushed history was corrected so runtime classification travels with
+  the loader commit and the 65-module graph pin travels with the battery-import
+  commit. Relevant loader/country/spine, battery/spine, and driver suites pass
+  at those respective commit boundaries.
 
-```text
-uv run --package microcosm-build --extra us --group dev python -m pytest packages/microcosm-data/tests packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py packages/microcosm-build/tests/test_us_state_files_scorer.py -q
-264 passed, 3 skipped (267 collected)
-```
+The required `uv sync --all-packages --extra us` was attempted first. The
+managed sandbox rejected the default uv cache, and a private-cache retry could
+not resolve/download `hf-xet` because DNS is disabled. A pre-existing locked
+US environment was copied and rebound to this worktree for testing; neither
+the lockfile nor dependencies were changed.
 
-Additional receipts:
+An isolated wheel build was also attempted, but could not resolve/download its
+`hatchling` build dependency for the same network reason. Package-resource
+declaration and loading are covered by the green tests, but a wheel artifact
+could not be produced in this sandbox.
 
-- Complete `test_gates.py`: passed.
-- Required multiplier grep: zero Python hits.
-- Ruff check: clean on all ten touched Python files.
-- Ruff format check: clean on the eight non-exempt touched Python files; the
-  two historical experiment files were not reformatted, as instructed.
-- `git diff --check`: clean.
-- The medical adjudication block compares byte-for-byte equal to pre-fix
-  commit `068854d`.
-- Pytest emitted non-failing macOS temporary-directory cleanup warnings; no
-  test failed.
+A cold 1% rebuild was not run because the saved stage profile records a
+primary-QRF peak of 84.73 GB (78.91 GiB), which would violate the explicit
+15 GiB RSS ceiling. The bounded terminal replay used the correct saved
+1%/seed-578 simulation surface and stayed well below the limit.
 
-## Remediation commits
+## Local commits
 
-- `5077f95` — start microcosm#462 Sol remediation progress.
-- `c48ba37` — remove the microcosm#462 loss multiplier per microcosm#492.
-- `afa910a` — fix Sol finding 1 selector parity.
-- `89f74f4` — fix Sol finding 2 CD classifier parity.
-- `77040fb` — fix Sol finding 3 relative-error shape.
-- `bad7145` — fix Sol finding 4 behavioral containment.
-- `3c96514` — apply the finding-2 classifier's required Ruff formatting.
+- `bf670576` — start US exclusion machinery lane journal.
+- `11e382c3` — record exclusion machinery design and baseline.
+- `637788ab` — add empty US schema-2 exclusion register and classify its loader.
+- `ac27ed1b` — integrate reviewed exclusions into the US battery and pin its
+  runtime graph.
+- `e6e09e56` — wire authenticated US exclusion policy into the pool driver.
+- `48e61e81` — record honest 1% exclusion replay.
+- `736a2ecb` — record the runtime-inventory audit in the lane journals.
 
-Nothing was pushed at the time of this report; the branch was subsequently
-pushed and merged as #491 (2026-07-22).
-
-The sandbox rejected writing
-`/Users/maxghenis/PolicyEngine/_reviews/sol-491-fix-out.md` with `Operation not
-permitted`; the full completion report is therefore committed here and will be
-printed to stdout as the requested fallback.
+Nothing was pushed. Owner review and the push remain external to this lane;
+the two measured QBI rows remain separate non-exclusion fix work.
