@@ -155,6 +155,10 @@ from microcosm.build.us_runtime.qbi_inputs import (
     us_qbi_reconciliation_contract_identity,
     validate_us_qbi_reconciliation_live_output,
 )
+from microcosm.build.us_runtime.reviewed_exclusions import (
+    USByOriginReviewedExclusionPolicy,
+    load_us_by_origin_reviewed_exclusion_policy,
+)
 from microcosm.build.us_runtime.stacked_spine import (
     CANONICAL_STACKED_GAP_FILL_SURFACE,
     CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE,
@@ -522,6 +526,22 @@ def _parser() -> argparse.ArgumentParser:
         help=(
             "Optional current Logbook chain head. If omitted, "
             "POPULACE_LOGBOOK_PREV_ROW_DIGEST is used, then genesis null."
+        ),
+    )
+    parser.add_argument(
+        "--by-origin-reviewed-exclusions",
+        type=Path,
+        help=(
+            "Optional schema-2 reviewed-exclusion register for the stacked "
+            "by-origin battery. Requires the matching SHA-256 option."
+        ),
+    )
+    parser.add_argument(
+        "--by-origin-reviewed-exclusions-sha256",
+        type=_sha256_argument,
+        help=(
+            "Expected raw-file SHA-256 of "
+            "--by-origin-reviewed-exclusions; both options are required together."
         ),
     )
     parser.add_argument(
@@ -2847,6 +2867,7 @@ def build_stacked_pool(
     checkpoint_identity: Mapping[str, object],
     clone_attachment_fraction: float,
     clone_attachment_seed: int,
+    reviewed_exclusion_policy: USByOriginReviewedExclusionPolicy,
     checkpoint: Callable[[MultispinePoolCheckpoint], None] | None = None,
     resume: MultispinePoolCheckpoint | None = None,
     phase_reached: Callable[[str], None] | None = None,
@@ -3268,6 +3289,7 @@ def build_stacked_pool(
     battery = by_origin_battery(
         simulation_frame,
         tail_manifest=tail_manifest,
+        reviewed_exclusion_policy=reviewed_exclusion_policy,
     )
     # Manifest conversion is itself the final canonical-authority check and
     # deliberately happens before publication or readiness is asserted.
@@ -4135,7 +4157,11 @@ def _promote_stacked_attempt_identity(
     state.identity_digest = identity_digest
 
 
-def _main_stacked(args: argparse.Namespace) -> int:
+def _main_stacked(
+    args: argparse.Namespace,
+    *,
+    reviewed_exclusion_policy: USByOriginReviewedExclusionPolicy,
+) -> int:
     """Build the default stacked pipeline and emit one terminal Logbook row."""
 
     started_at = time.perf_counter()
@@ -4331,6 +4357,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
             checkpoint_identity=checkpoint_store.base_identity,
             clone_attachment_fraction=args.clone_attachment_fraction,
             clone_attachment_seed=args.clone_attachment_seed,
+            reviewed_exclusion_policy=reviewed_exclusion_policy,
             checkpoint=checkpoint_store.write,
             resume=resume,
             phase_reached=lambda phase: _append_phase(state, phase),
@@ -4437,9 +4464,25 @@ def main(argv: list[str] | None = None) -> int:
     """Dispatch to the stacked default or explicit legacy two-spine path."""
 
     args = _parser().parse_args(argv)
+    exclusion_source = args.by_origin_reviewed_exclusions
+    exclusion_sha256 = args.by_origin_reviewed_exclusions_sha256
+    if args.legacy_two_spine and (
+        exclusion_source is not None or exclusion_sha256 is not None
+    ):
+        raise ValueError(
+            "By-origin reviewed exclusions are available only for the stacked "
+            "pipeline; remove --legacy-two-spine or both exclusion options."
+        )
     if args.legacy_two_spine:
         return _main_legacy(args)
-    return _main_stacked(args)
+    reviewed_exclusion_policy = load_us_by_origin_reviewed_exclusion_policy(
+        exclusion_source,
+        expected_sha256=exclusion_sha256,
+    )
+    return _main_stacked(
+        args,
+        reviewed_exclusion_policy=reviewed_exclusion_policy,
+    )
 
 
 if __name__ == "__main__":

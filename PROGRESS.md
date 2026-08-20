@@ -54,11 +54,16 @@ seed, fold, comparator, or exclusion approval has changed.
 - Added runtime tests covering the two assigned dead checks, all eligible
   comparator criteria, lifecycle boundaries, stale/dormant behavior, exact
   isolation, and post-evaluation receipt tampering.
+- Added paired CLI options for an override path and raw-file SHA-256. The
+  driver authenticates the complete policy before starting stacked work,
+  rejects either half alone, and rejects any override on the legacy route.
+- Threaded the typed policy through cold and resumed stacked execution into
+  the fresh terminal battery. It is deliberately excluded from input pins and
+  simulation checkpoint identity, while the resulting report remains in the
+  sealed terminal receipt and final manifest.
 
 ## Next
 
-- Wire authenticated path-plus-SHA overrides through the pool CLI, refusing
-  partial arming and the legacy two-spine route before build work.
 - Run the affected/full suites, lint, packaging checks, and the required 1%
   after measurement from the saved terminal checkpoint.
 

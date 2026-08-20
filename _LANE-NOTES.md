@@ -94,3 +94,14 @@
   which the existing evaluator seal and `GateReport` manifest copy protect
   (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11739-11837,12156-12183`;
   `packages/microcosm-build/src/microcosm/build/gates.py:142-177,204-309`).
+- 2026-08-19: added paired driver flags for a schema-2 override and its raw
+  SHA-256, authenticated the pair before entering stacked build work, and
+  refused any override on the legacy two-spine route
+  (`tools/build_us_multispine_pool.py:532-548,4463-4485`).
+- 2026-08-19: threaded the resolved typed snapshot through stacked cold/resume
+  execution into the fresh terminal battery
+  (`tools/build_us_multispine_pool.py:2858-2874,3285-3296,4160-4165,4349-4364`).
+  The policy is intentionally absent from configured input-pin and checkpoint
+  identity payloads because it changes only the terminal verdict, not the
+  simulation artifact
+  (`tools/build_us_multispine_pool.py:1043-1060,1170-1187`).

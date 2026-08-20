@@ -1560,9 +1560,16 @@ def _install_stacked_entrypoint_stubs(
         _frame: Frame,
         *,
         tail_manifest: Mapping[str, object],
+        reviewed_exclusion_policy: object,
     ) -> GateResult:
         order.append("battery")
         assert tail_manifest == {"fixture": "tail"}
+        assert isinstance(
+            reviewed_exclusion_policy,
+            pool_tool.USByOriginReviewedExclusionPolicy,
+        )
+        assert reviewed_exclusion_policy.policy_source == "committed"
+        assert reviewed_exclusion_policy.exclusions == {}
         if terminal == "red":
             return GateResult(
                 name="fixture_battery",
@@ -2111,7 +2118,7 @@ def test_logbook_gate_receipts_are_immutable_across_later_attempts(
     monkeypatch.setattr(
         pool_tool,
         "by_origin_battery",
-        lambda _frame, *, tail_manifest: GateResult(
+        lambda _frame, *, tail_manifest, reviewed_exclusion_policy: GateResult(
             name="fixture_battery",
             passed=False,
             failures=("later red verdict",),
@@ -2894,6 +2901,9 @@ def test_stacked_resume_rejects_noncanonical_post_puf_transfer_receipt(
             checkpoint_identity={},
             clone_attachment_fraction=1.0,
             clone_attachment_seed=578,
+            reviewed_exclusion_policy=(
+                pool_tool.load_us_by_origin_reviewed_exclusion_policy()
+            ),
             resume=resume,
         )
 
@@ -3272,7 +3282,11 @@ def test_main_dispatches_only_to_the_selected_pipeline(
     legacy: bool,
 ) -> None:
     calls: list[str] = []
-    namespace = SimpleNamespace(legacy_two_spine=legacy)
+    namespace = SimpleNamespace(
+        legacy_two_spine=legacy,
+        by_origin_reviewed_exclusions=None,
+        by_origin_reviewed_exclusions_sha256=None,
+    )
     parser = SimpleNamespace(parse_args=lambda _argv: namespace)
     monkeypatch.setattr(pool_tool, "_parser", lambda: parser)
     monkeypatch.setattr(
@@ -3283,11 +3297,153 @@ def test_main_dispatches_only_to_the_selected_pipeline(
     monkeypatch.setattr(
         pool_tool,
         "_main_stacked",
-        lambda _args: calls.append("stacked") or 23,
+        lambda _args, *, reviewed_exclusion_policy: calls.append("stacked") or 23,
     )
 
     assert pool_tool.main(["fixture"]) == (17 if legacy else 23)
     assert calls == (["legacy"] if legacy else ["stacked"])
+
+
+@pytest.mark.parametrize(
+    ("source", "digest"),
+    ((Path("reviewed.json"), None), (None, "1" * 64)),
+)
+def test_main_refuses_partially_armed_reviewed_exclusion_override_before_work(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    source: Path | None,
+    digest: str | None,
+) -> None:
+    namespace = SimpleNamespace(
+        legacy_two_spine=False,
+        by_origin_reviewed_exclusions=source,
+        by_origin_reviewed_exclusions_sha256=digest,
+    )
+    parser = SimpleNamespace(parse_args=lambda _argv: namespace)
+    monkeypatch.setattr(pool_tool, "_parser", lambda: parser)
+    monkeypatch.setattr(
+        pool_tool,
+        "_main_stacked",
+        lambda *_args, **_kwargs: pytest.fail("stacked work must not begin"),
+    )
+
+    with pytest.raises(ValueError, match="source and expected_sha256 together"):
+        pool_tool.main(["fixture"])
+
+
+def test_main_refuses_reviewed_exclusions_on_legacy_pipeline(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    namespace = SimpleNamespace(
+        legacy_two_spine=True,
+        by_origin_reviewed_exclusions=Path("reviewed.json"),
+        by_origin_reviewed_exclusions_sha256="1" * 64,
+    )
+    parser = SimpleNamespace(parse_args=lambda _argv: namespace)
+    monkeypatch.setattr(pool_tool, "_parser", lambda: parser)
+    monkeypatch.setattr(
+        pool_tool,
+        "_main_legacy",
+        lambda *_args, **_kwargs: pytest.fail("legacy work must not begin"),
+    )
+
+    with pytest.raises(ValueError, match="available only for the stacked pipeline"):
+        pool_tool.main(["fixture"])
+
+
+def test_main_authenticates_reviewed_exclusion_override_before_stacked_work(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    check_id = "person/puf_tax_itemization/business_is_sstb[clone_0]#dead"
+    payload = {
+        "schema_version": 2,
+        "description": "Test-only driver policy.",
+        "exclusions": {
+            check_id: {
+                "reason": "Test authenticated driver plumbing.",
+                "approved_by": "test-owner",
+                "adjudication": "test://driver-policy",
+                "approved_on": "2026-08-01",
+                "expires_on": "2026-09-01",
+            }
+        },
+    }
+    raw = json.dumps(payload, sort_keys=True).encode("utf-8")
+    path = tmp_path / "reviewed.json"
+    path.write_bytes(raw)
+    namespace = SimpleNamespace(
+        legacy_two_spine=False,
+        by_origin_reviewed_exclusions=path,
+        by_origin_reviewed_exclusions_sha256=hashlib.sha256(raw).hexdigest(),
+    )
+    parser = SimpleNamespace(parse_args=lambda _argv: namespace)
+    observed: list[object] = []
+    monkeypatch.setattr(pool_tool, "_parser", lambda: parser)
+
+    def stacked(_args: object, *, reviewed_exclusion_policy: object) -> int:
+        observed.append(reviewed_exclusion_policy)
+        return 29
+
+    monkeypatch.setattr(pool_tool, "_main_stacked", stacked)
+
+    assert pool_tool.main(["fixture"]) == 29
+    assert len(observed) == 1
+    policy = observed[0]
+    assert isinstance(policy, pool_tool.USByOriginReviewedExclusionPolicy)
+    assert policy.policy_source == "override"
+    assert policy.policy_payload() == payload
+
+
+def test_main_rejects_reviewed_exclusion_digest_before_stacked_work(
+    pool_tool: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "reviewed.json"
+    path.write_text("{}", encoding="utf-8")
+    namespace = SimpleNamespace(
+        legacy_two_spine=False,
+        by_origin_reviewed_exclusions=path,
+        by_origin_reviewed_exclusions_sha256="1" * 64,
+    )
+    parser = SimpleNamespace(parse_args=lambda _argv: namespace)
+    monkeypatch.setattr(pool_tool, "_parser", lambda: parser)
+    monkeypatch.setattr(
+        pool_tool,
+        "_main_stacked",
+        lambda *_args, **_kwargs: pytest.fail("stacked work must not begin"),
+    )
+
+    with pytest.raises(ValueError, match="SHA-256 mismatch"):
+        pool_tool.main(["fixture"])
+
+
+def test_reviewed_exclusion_policy_is_not_part_of_simulation_checkpoint_identity(
+    pool_tool: ModuleType,
+    tmp_path: Path,
+) -> None:
+    parser = pool_tool._parser()
+    base_argv = _stacked_main_argv(tmp_path)
+    base = parser.parse_args(base_argv)
+    override = parser.parse_args(
+        [
+            *base_argv,
+            "--by-origin-reviewed-exclusions",
+            str(tmp_path / "reviewed.json"),
+            "--by-origin-reviewed-exclusions-sha256",
+            "2" * 64,
+        ]
+    )
+
+    assert pool_tool._configured_input_pins_digest(override) == (
+        pool_tool._configured_input_pins_digest(base)
+    )
+    assert pool_tool._configured_stacked_identity(override) == (
+        pool_tool._configured_stacked_identity(base)
+    )
 
 
 def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
@@ -3309,6 +3465,8 @@ def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
         "logbook_prev_row_digest",
         "clone_attachment_fraction",
         "clone_attachment_seed",
+        "by_origin_reviewed_exclusions",
+        "by_origin_reviewed_exclusions_sha256",
         "checkpoint_root",
         "legacy_two_spine",
         "out",
@@ -3325,6 +3483,8 @@ def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
             "logbook_prev_row_digest",
             "clone_attachment_fraction",
             "clone_attachment_seed",
+            "by_origin_reviewed_exclusions",
+            "by_origin_reviewed_exclusions_sha256",
             "legacy_two_spine",
             "sample_fraction",
             "sample_seed",
@@ -3338,6 +3498,13 @@ def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
     assert actions["sample_seed"].default == 578
     assert actions["clone_attachment_fraction"].default == 1.0
     assert actions["clone_attachment_seed"].default == 578
+    assert actions["by_origin_reviewed_exclusions"].default is None
+    assert actions["by_origin_reviewed_exclusions"].type is Path
+    assert actions["by_origin_reviewed_exclusions_sha256"].default is None
+    assert (
+        actions["by_origin_reviewed_exclusions_sha256"].type
+        is pool_tool._sha256_argument
+    )
     assert actions["legacy_two_spine"].default is False
     assert actions["logbook_prev_row_digest"].default is None
     for path_destination, sha_destination in pairs:
