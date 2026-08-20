@@ -2812,6 +2812,27 @@ def test_gap_fill_qrf_binding_excludes_unassigned_batched_targets() -> None:
     assert target_receipt == legacy_counts
 
 
+def test_gap_fill_validator_rejects_unassigned_legacy_count_tampering() -> None:
+    receipt = _canonical_gap_fill_calibration_receipt()
+    target_receipt = receipt["directions"]["asec_survey_to_acs"]["targets"][
+        "person/puf_tax_itemization/taxable_interest_income"
+    ]
+    target_receipt.update(
+        {
+            "authorized_null_rows": 0,
+            "imputed_rows": 1,
+            "unmodeled_rows": 0,
+            "residual_null_rows": 99,
+        }
+    )
+
+    with pytest.raises(ValueError, match="ACS transfer row-count"):
+        stacked_spine_module.validate_stacked_gap_fill_receipt(
+            receipt,
+            boundary="forged unassigned early transfer counts",
+        )
+
+
 def test_gap_fill_validator_rejects_qrf_regime_evidence_tampering() -> None:
     receipt, direction_name, key, _entity, _family, _targets = (
         _canonical_gap_fill_receipt_with_pattern_evidence()
@@ -5621,6 +5642,34 @@ def test_late_executor_signature_rejects_qrf_regime_evidence_tampering(
         stacked_spine_module.validate_stacked_late_producer_receipt(
             forged,
             boundary="tampered signed QRF regime evidence",
+        )
+
+
+def test_post_puf_validator_rejects_unassigned_legacy_count_tampering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    transfer = deepcopy(dict(result.receipt["post_puf_transfer"]))
+    target_key, target_receipt = next(
+        (key, target)
+        for group in transfer["groups"].values()
+        for key, target in group["targets"].items()
+        if "qrf_pattern_evidence" not in target
+    )
+    target = target_key.rsplit("/", 1)[1]
+    aggregate_receipt = next(
+        receipt
+        for key, receipt in transfer["targets"].items()
+        if key.rsplit("/", 1)[1] == target
+    )
+    for receipt in (target_receipt, aggregate_receipt):
+        receipt["imputed_rows"] = "forged"
+
+    with pytest.raises(ValueError, match="ACS transfer row-count"):
+        stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+            transfer,
+            boundary="forged unassigned late transfer counts",
+            frame=result.frame,
         )
 
 
