@@ -2,7 +2,7 @@
 
 ## State
 
-The 2026-08-20 22:32Z owner continuation has completed an independent
+The 2026-08-20 22:33Z owner continuation has completed an independent
 raise-site, current-source, history, and regression audit of the supplied host
 1% ACS QRF record-binding failure. Commit `33bf52fe` detected and copied QRF
 regimes for every imputed target, receipt builders attached that evidence
@@ -24,8 +24,11 @@ query/context calls were blocked by the sandboxed user-wide registry; its
 112 MiB cache was removed. All 14 decisive focused cases and all 529 tests in
 the five directly affected files now pass under the owner-provided 12 GiB/
 20 ms guard, with respective 0.550 GiB and 1.523 GiB maximum observed
-per-process RSS. Static checks and final report refresh remain next. The owner
-artifacts remain untracked and untouched.
+per-process RSS. Repository lint, formatting of all 15 Python files changed
+since the bad commit's parent, committed-range whitespace, and exact source-tree
+comparisons with all-build-suite checkpoint `a5be536f` also pass. Only final
+report refresh remains locally. The owner artifacts remain untracked and
+untouched.
 
 The immediately preceding completion snapshot follows and is historical rather
 than current state.
@@ -199,6 +202,11 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Ran repository-wide `ruff check .`, `ruff format --check` on all 15 Python
+  files changed since `33bf52fe^`, and `git diff --check 33bf52fe^..HEAD`; all
+  passed. Exact Git tree objects for both `microcosm-build/src` and its
+  `us_runtime` subtree match checkpoint `a5be536f`, where all 225 build-package
+  test files passed.
 - Ran all 529 tests in the five directly affected ordinary-transfer,
   multispine-serialization, stacked-spine, pool-tool, and H5 I/O files in one
   guarded process. Pytest reached 100% with exit zero and no failures; peak
@@ -639,8 +647,7 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run repository lint, scoped formatting, committed-range whitespace, and
-   executable-tree drift checks, then refresh and commit `PROGRESS.md` and
-   `FINAL_REPORT.md` with only results established on this revision.
+1. Refresh and commit `PROGRESS.md` and `FINAL_REPORT.md` with only results
+   established on this revision.
 2. Leave the revision-bound off-chain 1% retry as the remaining host step
    unless an already-complete terminal artifact can be identified read-only.
