@@ -2157,3 +2157,38 @@ head; it still writes `us-f1-certification.json` and
    callbacks, with exact dynamic invocation plans prepared before dispatch.
 2. Prove existing checkpoint member bytes remain equal when the primary chain
    runs in-process under the bundle session.
+
+## F1 continuation r5 late-transfer ledger route (2026-08-20)
+
+### State
+
+- Every late-transfer producer derives one family receipt seed, then one
+  pattern seed and one persistent QRF fit/draw pair per live optional-predictor
+  availability pattern. Pattern counts and boundaries depend on the current
+  recipient frame and therefore cannot be frozen at executor construction.
+
+### Done
+
+- Added a side-effect-free per-family invocation planner that reproduces the
+  live readiness/availability partition and emits ordered
+  `acs_transfer_family_seed`, `acs_transfer_pattern_seed`, and
+  `acs_qrf_fit_draw` invocations with the ledger's exact semantic material.
+- Added an optional narrow transfer RNG broker. It consumes and verifies both
+  legacy SHA-derived receipt seeds, obtains QRF pairs by pattern boundary, and
+  passes those pairs into monolithic and cold target-banked QRF chains. The
+  constants path remains unchanged.
+- A one-family monolithic fixture and a three-target cold-bank fixture are
+  byte-exact between private-seed and injected-stream paths. The cold-bank
+  test compares every H5 target member as raw bytes. Both focused tests,
+  targeted Ruff, and `git diff --check` pass; no sample build ran.
+- Brokered target-bank prefix resume currently fails closed with a named
+  restoration-grant error instead of reconstructing private RNG. Cold
+  certification roots are unaffected; the documented host resume predicate
+  still needs an exact compiled state-restoration route before it can pass.
+
+### Next
+
+1. Supply each plan per dispatch through the physical executor and require
+   exact token consumption at broker seal.
+2. Add compiler-bound QRF state restoration for target-bank resume; never
+   infer or accept caller-authored state outside a predeclared grant.

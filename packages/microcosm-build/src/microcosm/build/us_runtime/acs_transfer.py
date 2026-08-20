@@ -31,6 +31,7 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
+from microcosm.build.spec_engine.brokers import RNGInvocation
 from microcosm.build.us_runtime.capital_gain_distributions import (
     capital_gain_distribution_shares_asset_identity,
 )
@@ -65,6 +66,7 @@ __all__ = [
     "AcsTransferTargetBank",
     "AcsTransferTargetCheckpoint",
     "TargetFamilies",
+    "acs_transfer_rng_invocation_plan",
     "acs_transfer_donor_requirements",
     "acs_transfer_execution_contract_identity",
     "assert_acs_transfer_targets_are_input_leaves",
@@ -77,6 +79,18 @@ __all__ = [
     "resolve_acs_donor_channel",
     "transfer_acs_inputs",
 ]
+
+
+class _TransferRNGBroker(Protocol):
+    """Narrow ledger surface used by bundle-mode ACS transfer."""
+
+    def token(self, site_id: str, boundary_key: str = "default") -> object: ...
+
+    def sha256_derived_seed(self, token: object) -> object: ...
+
+    def assert_derived_seed(self, handle: object, claimed_value: int) -> None: ...
+
+    def qrf_generators(self, token: object) -> object: ...
 
 ASEC_PUF_DONOR_SPINE = "asec_puf"
 
@@ -877,6 +891,135 @@ def assert_acs_transfer_targets_are_input_leaves(
         )
 
 
+def _transfer_family_boundary(*, entity: str, family: str) -> str:
+    return f"{entity}/{family}"
+
+
+def _transfer_pattern_boundary(
+    *, entity: str, family: str, pattern_name: str
+) -> str:
+    return f"{entity}/{family}/{pattern_name}"
+
+
+def acs_transfer_rng_invocation_plan(
+    recipient: Frame,
+    donor: Frame,
+    *,
+    entity: str,
+    family: str,
+    targets: Sequence[str],
+    donor_channel: str | None = ACS_DONOR_CHANNEL_AUTO,
+) -> dict[str, tuple[RNGInvocation, ...]]:
+    """Plan the exact dynamic ledger boundaries for one transfer family.
+
+    The planner repeats only the side-effect-free readiness and availability
+    partition used by :func:`transfer_acs_inputs`. The broker later requires
+    exact in-order consumption, so any planner/executor drift fails closed.
+    """
+
+    _validate_frames(recipient, donor)
+    normalized_targets = tuple(targets)
+    if not normalized_targets or len(normalized_targets) != len(
+        set(normalized_targets)
+    ):
+        raise ValueError("ACS transfer RNG planning requires unique targets.")
+    requested = _normalize_target_families(
+        {entity: {family: normalized_targets}},
+        recipient=recipient,
+    )
+    active = _missing_target_families(requested, recipient=recipient)
+    if not active:
+        return {
+            "acs_transfer_family_seed": (),
+            "acs_transfer_pattern_seed": (),
+            "acs_qrf_fit_draw": (),
+        }
+    if len(active) != 1 or active[0][:2] != (entity, family):
+        raise ValueError("ACS transfer RNG planning changed the requested family.")
+    active_targets = active[0][2]
+    fit_donor, _resolved_channel = resolve_acs_donor_channel(donor, donor_channel)
+    _validate_donor_targets(fit_donor, entity=entity, targets=active_targets)
+    donor_table = fit_donor.table(entity)
+    target_complete = _complete_target_mask(donor_table, targets=active_targets)
+    if not target_complete.any():
+        raise ValueError(
+            f"ACS transfer family {family!r} on entity {entity!r} has no "
+            "complete donor rows."
+        )
+    surface = _transfer_feature_surface(
+        fit_donor,
+        recipient,
+        entity=entity,
+        targets=active_targets,
+    )
+    target_missing = {
+        target: (
+            recipient.table(entity)[target].isna().to_numpy(dtype=bool)
+            if target in recipient.table(entity)
+            else np.ones(len(recipient.table(entity)), dtype=bool)
+        )
+        for target in active_targets
+    }
+    needs_prediction = np.logical_or.reduce(
+        [np.asarray(target_missing[target], dtype=bool) for target in active_targets]
+    )
+    eligible = (
+        _complete_predictor_mask(surface.recipient, predictors=surface.required)
+        & needs_prediction
+    )
+    if not eligible.any():
+        raise ValueError(
+            f"ACS transfer family {family!r} on entity {entity!r} has no "
+            "eligible recipient rows."
+        )
+
+    family_boundary = _transfer_family_boundary(entity=entity, family=family)
+    pattern_invocations: list[RNGInvocation] = []
+    qrf_invocations: list[RNGInvocation] = []
+    for position, (observed_optional, _positions) in enumerate(
+        _availability_patterns(surface, eligible=eligible)
+    ):
+        pattern_name = _pattern_name(position, observed_optional)
+        boundary = _transfer_pattern_boundary(
+            entity=entity,
+            family=family,
+            pattern_name=pattern_name,
+        )
+        pattern_invocations.append(
+            RNGInvocation(
+                boundary,
+                {
+                    "entity": entity,
+                    "family": family,
+                    "nul_joined_ordered_optional_predictors": "\0".join(
+                        observed_optional
+                    ),
+                },
+            )
+        )
+        qrf_invocations.append(
+            RNGInvocation(
+                boundary,
+                {
+                    "derived_from": {
+                        "site_id": "acs_transfer_pattern_seed",
+                        "boundary_key": boundary,
+                    }
+                },
+            )
+        )
+    return {
+        "acs_transfer_family_seed": (
+            RNGInvocation(
+                family_boundary,
+                {"entity": entity, "family": family},
+            ),
+        ),
+        "acs_transfer_pattern_seed": tuple(pattern_invocations),
+        "acs_qrf_fit_draw": tuple(qrf_invocations),
+    }
+
+
 def transfer_acs_inputs(
     recipient: Frame,
     donor: Frame,
@@ -890,6 +1033,7 @@ def transfer_acs_inputs(
     target_bank: AcsTransferTargetBank | None = None,
     derive_schedule_d: bool = True,
     execution_contract: Mapping[str, object] | None = None,
+    rng_broker: _TransferRNGBroker | None = None,
 ) -> AcsTransferResult:
     """Impute requested missing leaves from ``donor`` onto ``recipient``.
 
@@ -1009,6 +1153,7 @@ def transfer_acs_inputs(
                 target_missing=target_missing,
                 seed=seed,
                 n_estimators=n_estimators,
+                rng_broker=rng_broker,
             )
         else:
             fitted = _fit_family_patterns_banked(
@@ -1026,6 +1171,7 @@ def transfer_acs_inputs(
                     for model_target in _model_target_names(targets)
                 },
                 total_targets=len(ordered_bank_targets),
+                rng_broker=rng_broker,
             )
         for target in targets:
             predicted = _prediction_values(
@@ -1254,6 +1400,7 @@ def _fit_family_patterns(
     target_missing: Mapping[str, np.ndarray],
     seed: int,
     n_estimators: int,
+    rng_broker: _TransferRNGBroker | None,
 ) -> _FamilyFit:
     _validate_donor_targets(donor, entity=entity, targets=targets)
     donor_table = donor.table(entity)
@@ -1305,6 +1452,12 @@ def _fit_family_patterns(
     pattern_records: list[AcsTransferPattern] = []
     fit_records: list[FitWeightRecord] = []
     family_seed = _family_seed(seed, entity=entity, family=family)
+    if rng_broker is not None:
+        family_boundary = _transfer_family_boundary(entity=entity, family=family)
+        family_handle = rng_broker.sha256_derived_seed(
+            rng_broker.token("acs_transfer_family_seed", family_boundary)
+        )
+        rng_broker.assert_derived_seed(family_handle, family_seed)
 
     for position, (observed_optional, recipient_positions) in enumerate(
         _availability_patterns(surface, eligible=eligible)
@@ -1329,6 +1482,20 @@ def _fit_family_patterns(
             family=family,
             observed_optional=observed_optional,
         )
+        rng_generators = None
+        if rng_broker is not None:
+            boundary = _transfer_pattern_boundary(
+                entity=entity,
+                family=family,
+                pattern_name=pattern_name,
+            )
+            pattern_handle = rng_broker.sha256_derived_seed(
+                rng_broker.token("acs_transfer_pattern_seed", boundary)
+            )
+            rng_broker.assert_derived_seed(pattern_handle, pattern_seed)
+            rng_generators = rng_broker.qrf_generators(
+                rng_broker.token("acs_qrf_fit_draw", boundary)
+            )
         model_frame = _model_frame(
             donor,
             entity=entity,
@@ -1338,12 +1505,22 @@ def _fit_family_patterns(
             mask=donor_mask,
         )
         resolved_kind = model_frame.resolve_weights(entity).kind.value
-        fitted = _qrf()(n_estimators=n_estimators, seed=pattern_seed).fit(
-            model_frame,
-            list(predictors),
-            list(model_targets),
-            weights=resolved_kind,
-        )
+        model = _qrf()(n_estimators=n_estimators, seed=pattern_seed)
+        if rng_generators is None:
+            fitted = model.fit(
+                model_frame,
+                list(predictors),
+                list(model_targets),
+                weights=resolved_kind,
+            )
+        else:
+            fitted = model.fit(
+                model_frame,
+                list(predictors),
+                list(model_targets),
+                weights=resolved_kind,
+                rng_generators=rng_generators,
+            )
         if fitted.weight_kind != resolved_kind:
             raise RuntimeError(
                 f"ACS transfer {entity!r}/{family!r}/{pattern_name!r} resolved "
@@ -1421,6 +1598,7 @@ def _fit_family_patterns_banked(
     target_bank: AcsTransferTargetBank,
     target_indexes: Mapping[str, int],
     total_targets: int,
+    rng_broker: _TransferRNGBroker | None,
 ) -> _FamilyFit:
     """Fit one family targetwise, resuming exact raw chained draws."""
 
@@ -1479,6 +1657,14 @@ def _fit_family_patterns_banked(
     raw_priors: dict[str, pd.DataFrame] = {}
     pattern_records: list[AcsTransferPattern] = []
     fit_records: list[FitWeightRecord] = []
+    rng_generators_by_pattern: dict[str, object] = {}
+    family_seed = _family_seed(seed, entity=entity, family=family)
+    if rng_broker is not None:
+        family_boundary = _transfer_family_boundary(entity=entity, family=family)
+        family_handle = rng_broker.sha256_derived_seed(
+            rng_broker.token("acs_transfer_family_seed", family_boundary)
+        )
+        rng_broker.assert_derived_seed(family_handle, family_seed)
     for position, (observed_optional, recipient_positions) in enumerate(
         _availability_patterns(surface, eligible=eligible)
     ):
@@ -1501,6 +1687,21 @@ def _fit_family_patterns_banked(
             family=family,
             observed_optional=observed_optional,
         )
+        rng_generators = None
+        if rng_broker is not None:
+            boundary = _transfer_pattern_boundary(
+                entity=entity,
+                family=family,
+                pattern_name=pattern_name,
+            )
+            pattern_handle = rng_broker.sha256_derived_seed(
+                rng_broker.token("acs_transfer_pattern_seed", boundary)
+            )
+            rng_broker.assert_derived_seed(pattern_handle, pattern_seed)
+            rng_generators = rng_broker.qrf_generators(
+                rng_broker.token("acs_qrf_fit_draw", boundary)
+            )
+            rng_generators_by_pattern[pattern_name] = rng_generators
         model_frame = _model_frame(
             donor,
             entity=entity,
@@ -1516,12 +1717,21 @@ def _fit_family_patterns_banked(
                 "Banked ACS transfer requires a QRF with start_chain and "
                 "fit_draw_next support."
             )
-        state = model.start_chain(
-            model_frame,
-            list(predictors),
-            list(model_targets),
-            weights=resolved_kind,
-        )
+        if rng_generators is None:
+            state = model.start_chain(
+                model_frame,
+                list(predictors),
+                list(model_targets),
+                weights=resolved_kind,
+            )
+        else:
+            state = model.start_chain(
+                model_frame,
+                list(predictors),
+                list(model_targets),
+                weights=resolved_kind,
+                rng_generators=rng_generators,
+            )
         if state.weight_kind != resolved_kind:
             raise RuntimeError(
                 f"ACS transfer {entity!r}/{family!r}/{pattern_name!r} resolved "
@@ -1577,6 +1787,11 @@ def _fit_family_patterns_banked(
             recipient_rows=n_recipient,
             expected_states=expected_states,
         )
+        if checkpoint is not None and rng_broker is not None:
+            raise ValueError(
+                "Brokered ACS transfer cannot resume a target-bank prefix "
+                "without a compiler-declared RNG-state restoration grant."
+            )
         if checkpoint is None:
             raw_draw = np.full(n_recipient, np.nan, dtype=np.float64)
             steps: list[AcsTransferBankPatternStep] = []
@@ -1595,16 +1810,28 @@ def _fit_family_patterns_banked(
                     surface.recipient.iloc[context.recipient_positions],
                     predictors=pattern.predictors,
                 )
-                result = _qrf()(
+                model = _qrf()(
                     n_estimators=n_estimators,
                     seed=pattern.seed,
-                ).fit_draw_next(
-                    model_frame,
-                    recipient_pattern,
-                    raw_priors[pattern.name],
-                    state=state_before,
-                    weights=pattern.weight_kind,
                 )
+                rng_generators = rng_generators_by_pattern.get(pattern.name)
+                if rng_generators is None:
+                    result = model.fit_draw_next(
+                        model_frame,
+                        recipient_pattern,
+                        raw_priors[pattern.name],
+                        state=state_before,
+                        weights=pattern.weight_kind,
+                    )
+                else:
+                    result = model.fit_draw_next(
+                        model_frame,
+                        recipient_pattern,
+                        raw_priors[pattern.name],
+                        state=state_before,
+                        weights=pattern.weight_kind,
+                        rng_generators=rng_generators,
+                    )
                 if result.target != model_target:
                     raise AssertionError(
                         f"ACS transfer chain returned {result.target!r}, "
@@ -1698,7 +1925,7 @@ def _fit_family_patterns_banked(
         fit_records=tuple(fit_records),
         predictors=used_predictors,
         weight_kind=next(iter(kinds)),
-        family_seed=_family_seed(seed, entity=entity, family=family),
+        family_seed=family_seed,
         target_encodings=target_encodings,
     )
 

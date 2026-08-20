@@ -21,6 +21,7 @@ from microcosm.build.us_runtime.acs_transfer import (
     ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS,
     ACS_PERSON_TRANSFER_PREDICTORS,
     AcsTransferResult,
+    acs_transfer_rng_invocation_plan,
     declared_acs_transfer_target_families,
     default_acs_transfer_target_families,
     transfer_acs_inputs,
@@ -489,6 +490,8 @@ class _MeanFitted:
 
 def _run_bank_fixture(
     target_bank: AcsTransferTargetBankStore | None = None,
+    *,
+    rng_broker: object | None = None,
 ) -> AcsTransferResult:
     return transfer_acs_inputs(
         _recipient_frame(),
@@ -497,6 +500,7 @@ def _run_bank_fixture(
         seed=37,
         n_estimators=1,
         target_bank=target_bank,
+        rng_broker=rng_broker,
     )
 
 
@@ -530,6 +534,113 @@ def _assert_transfer_results_exact(
     assert actual.fit_records == expected.fit_records
     assert actual.deferred_inputs == expected.deferred_inputs
     assert actual.resolved_donor_channel == expected.resolved_donor_channel
+
+
+class _TransferGeneratorLeaseStub:
+    def __init__(self, generator: np.random.Generator) -> None:
+        self._generator = generator
+
+    def choice(self, *args, **kwargs):
+        return self._generator.choice(*args, **kwargs)
+
+    def integers(self, *args, **kwargs):
+        return self._generator.integers(*args, **kwargs)
+
+    def random(self, *args, **kwargs):
+        return self._generator.random(*args, **kwargs)
+
+    def bit_generator_state(self) -> dict[str, object]:
+        return self._generator.bit_generator.state
+
+
+class _TransferGeneratorPairStub:
+    def __init__(self, seed: int) -> None:
+        fit_seed, draw_seed = np.random.SeedSequence(seed).spawn(2)
+        self.fit = _TransferGeneratorLeaseStub(np.random.default_rng(fit_seed))
+        self.draw = _TransferGeneratorLeaseStub(np.random.default_rng(draw_seed))
+
+
+class _TransferBrokerStub:
+    """Exact-plan test double for the transfer module's narrow broker view."""
+
+    def __init__(
+        self,
+        plan: dict[str, tuple[object, ...]],
+        *,
+        seed: int,
+    ) -> None:
+        self._remaining = {site: list(rows) for site, rows in plan.items()}
+        self._seed = seed
+        self._derived: dict[str, int] = {}
+
+    def token(self, site_id: str, boundary_key: str = "default") -> object:
+        invocation = self._remaining[site_id].pop(0)
+        assert invocation.boundary_key == boundary_key
+        return site_id, boundary_key, invocation
+
+    def sha256_derived_seed(self, token: object) -> object:
+        site_id, boundary, invocation = token
+        material = dict(invocation.semantic_material)
+        if site_id == "acs_transfer_family_seed":
+            value = acs_transfer_module._family_seed(
+                self._seed,
+                entity=material["entity"],
+                family=material["family"],
+            )
+        else:
+            value = acs_transfer_module._pattern_seed(
+                self._seed,
+                entity=material["entity"],
+                family=material["family"],
+                observed_optional=tuple(
+                    material["nul_joined_ordered_optional_predictors"].split("\0")
+                    if material["nul_joined_ordered_optional_predictors"]
+                    else ()
+                ),
+            )
+            self._derived[boundary] = value
+        return value
+
+    def assert_derived_seed(self, handle: object, claimed_value: int) -> None:
+        assert handle == claimed_value
+
+    def qrf_generators(self, token: object) -> object:
+        site_id, boundary, _invocation = token
+        assert site_id == "acs_qrf_fit_draw"
+        return _TransferGeneratorPairStub(self._derived[boundary])
+
+    def assert_exhausted(self) -> None:
+        assert all(not rows for rows in self._remaining.values())
+
+
+def test_transfer_rng_plan_drives_byte_exact_brokered_qrf(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    donor = _donor_frame()
+    recipient = _recipient_frame()
+    targets = ("qualified_dividend_income",)
+    plan = acs_transfer_rng_invocation_plan(
+        recipient,
+        donor,
+        entity="person",
+        family="puf_tax_itemization",
+        targets=targets,
+        donor_channel=None,
+    )
+    broker = _TransferBrokerStub(plan, seed=17)
+    kwargs = {
+        "target_families": {"person": {"puf_tax_itemization": targets}},
+        "donor_channel": None,
+        "seed": 17,
+        "n_estimators": 5,
+    }
+
+    expected = transfer_acs_inputs(recipient, donor, **kwargs)
+    actual = transfer_acs_inputs(recipient, donor, rng_broker=broker, **kwargs)
+
+    _assert_transfer_results_exact(actual, expected)
+    broker.assert_exhausted()
 
 
 def _lock_bank_fixture_threads(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -921,6 +1032,37 @@ def test_target_bank_cold_output_matches_unbanked_monolith(
         load_statuses=("missing", "missing", "missing"),
     )
     assert all(path.is_file() for path in _bank_paths(bank))
+
+
+def test_target_bank_cold_broker_streams_preserve_checkpoint_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    recipient = _recipient_frame()
+    donor = _donor_frame()
+    plan = acs_transfer_rng_invocation_plan(
+        recipient,
+        donor,
+        entity="person",
+        family=_BANK_FAMILY,
+        targets=_BANK_TARGETS,
+    )
+    broker = _TransferBrokerStub(plan, seed=37)
+    constants_bank = _bank_store(tmp_path / "constants")
+    bundle_bank = _bank_store(tmp_path / "bundle")
+
+    expected = _run_bank_fixture(constants_bank)
+    actual = _run_bank_fixture(bundle_bank, rng_broker=broker)
+
+    _assert_transfer_results_exact(actual, expected)
+    broker.assert_exhausted()
+    for constants_path, bundle_path in zip(
+        _bank_paths(constants_bank),
+        _bank_paths(bundle_bank),
+        strict=True,
+    ):
+        assert constants_path.read_bytes() == bundle_path.read_bytes()
 
 
 def test_target_bank_materializer_v1_artifacts_fail_closed_with_named_receipts(
