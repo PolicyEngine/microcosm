@@ -1752,6 +1752,8 @@ def prepare_multispine_source_inputs_for_clone(
     frame: Frame,
     *,
     acs_rent_donor: pd.DataFrame,
+    remaining_stage_authority: RemainingStagePhysicalAuthority | None = None,
+    simulation_settings: SimulationSettings | None = None,
 ) -> PoolStageOutput:
     """Prepare source-derived values whose grain would be corrupted by cloning.
 
@@ -1761,7 +1763,91 @@ def prepare_multispine_source_inputs_for_clone(
     including the transient prior-year wage target needed by the later PUF QRF.
     """
 
-    operators: Mapping[str, SourceFrameOperator] = {
+    supplied = (
+        remaining_stage_authority is not None,
+        simulation_settings is not None,
+    )
+    if any(supplied) and not all(supplied):
+        raise ValueError(
+            "Compiler pre-clone preparation requires remaining-stage and "
+            "simulation authorities together."
+        )
+    if all(supplied):
+        if not isinstance(
+            remaining_stage_authority,
+            RemainingStagePhysicalAuthority,
+        ):
+            raise TypeError(
+                "remaining_stage_authority must be a "
+                "RemainingStagePhysicalAuthority."
+            )
+        if not isinstance(simulation_settings, SimulationSettings):
+            raise TypeError("simulation_settings must be SimulationSettings.")
+        operator_names = remaining_stage_authority.pre_clone_source_operator_order
+        model_seed = simulation_settings.model_seed
+        target_period = simulation_settings.target_period
+        operators: Mapping[str, SourceFrameOperator] = {
+            "derive_us_cps_carried_inputs": derive_us_cps_carried_inputs,
+            "with_us_hours_worked_inputs": lambda current: (
+                _with_gated_us_hours_worked_inputs(
+                    current,
+                    seed=model_seed,
+                    time_period=target_period,
+                )
+            ),
+            "with_us_prior_year_income_inputs": lambda current: (
+                with_us_prior_year_income_inputs(
+                    current,
+                    seed=model_seed,
+                    time_period=target_period,
+                )
+            ),
+            "with_us_relationship_inputs": lambda current: (
+                with_us_relationship_inputs(
+                    current,
+                    seed=model_seed,
+                    time_period=target_period,
+                )
+            ),
+            "with_us_housing_inputs": lambda current: with_us_housing_inputs(
+                current,
+                seed=model_seed,
+                time_period=target_period,
+                acs_rent_donor=acs_rent_donor,
+            ),
+            "with_us_eligibility_inputs": lambda current: (
+                with_us_eligibility_inputs(
+                    current,
+                    seed=model_seed,
+                    time_period=target_period,
+                )
+            ),
+        }
+        missing_operators = tuple(
+            name for name in operators if name not in operator_names
+        )
+        unsupported_operators = tuple(
+            name for name in operator_names if name not in operators
+        )
+        if (
+            missing_operators
+            or unsupported_operators
+            or len(operator_names) != len(set(operator_names))
+        ):
+            raise ValueError(
+                "Compiler pre-clone operator order must exactly cover its "
+                "supported kernels; "
+                f"missing={missing_operators}, "
+                f"unsupported={unsupported_operators}."
+            )
+        return _run_source_operator_chain(
+            frame,
+            phase=_PRE_CLONE_PHASE,
+            operator_names=operator_names,
+            operators={name: operators[name] for name in operator_names},
+        )
+
+    operators = {
         "derive_us_cps_carried_inputs": derive_us_cps_carried_inputs,
         "with_us_hours_worked_inputs": _with_gated_us_hours_worked_inputs,
         "with_us_prior_year_income_inputs": lambda current: (
@@ -1796,13 +1882,20 @@ def prepare_multispine_source_inputs_for_clone(
     )
 
 
-def _with_gated_us_hours_worked_inputs(frame: Frame) -> PoolStageOutput:
+def _with_gated_us_hours_worked_inputs(
+    frame: Frame,
+    *,
+    seed: int | None = None,
+    time_period: int | None = None,
+) -> PoolStageOutput:
     """Run the shared hours kernel, then keep only pool-owned input leaves."""
 
+    resolved_seed = POOL_RANDOM_SEED if seed is None else seed
+    resolved_time_period = POOL_TIME_PERIOD if time_period is None else time_period
     produced = with_us_hours_worked_inputs(
         frame,
-        seed=POOL_RANDOM_SEED,
-        time_period=POOL_TIME_PERIOD,
+        seed=resolved_seed,
+        time_period=resolved_time_period,
     )
     gate = us_hours_worked_signal_gate(produced)
     if not gate.passed:

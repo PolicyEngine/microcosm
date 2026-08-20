@@ -3985,6 +3985,42 @@ def _assert_pool_stage_output_exact(
         assert np.array_equal(observed_weights.values, expected_weights.values)
 
 
+def test_compiler_prepare_authorities_are_independent_of_retiring_constants(
+    monkeypatch: pytest.MonkeyPatch,
+    compiled_pool_physical_authority: USPoolPhysicalAuthority,
+) -> None:
+    monkeypatch.setattr(housing_inputs_module, "QRF", _RowSensitiveRentQRF)
+    assembled = assemble_spines(
+        {
+            "asec": _real_pre_clone_source_frame(),
+            "acs": _source_frame(offset=100.0),
+        },
+        household_mass_shares={"asec": 0.5, "acs": 0.5},
+    )
+    expected = prepare_multispine_source_inputs_for_clone(
+        assembled,
+        acs_rent_donor=_rent_donor(),
+    )
+
+    monkeypatch.setattr(
+        multispine_pool_module,
+        "POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER",
+        ("retired_constant_must_not_run",),
+    )
+    monkeypatch.setattr(multispine_pool_module, "POOL_RANDOM_SEED", 2_147_483_647)
+    monkeypatch.setattr(multispine_pool_module, "POOL_TIME_PERIOD", 1900)
+    observed = prepare_multispine_source_inputs_for_clone(
+        assembled,
+        acs_rent_donor=_rent_donor(),
+        remaining_stage_authority=(
+            compiled_pool_physical_authority.remaining_stage
+        ),
+        simulation_settings=compiled_pool_physical_authority.simulation,
+    )
+
+    _assert_pool_stage_output_exact(expected, observed)
+
+
 def test_compiler_derive_authority_is_independent_of_retiring_constants(
     monkeypatch: pytest.MonkeyPatch,
     compiled_pool_physical_authority: USPoolPhysicalAuthority,
@@ -4116,6 +4152,21 @@ def test_compiler_leaf_seams_reject_untyped_authorities(
     compiled_pool_physical_authority: USPoolPhysicalAuthority,
 ) -> None:
     frame = _assembled_cloned_with_partial_take_up()
+    with pytest.raises(ValueError, match="requires remaining-stage and simulation"):
+        prepare_multispine_source_inputs_for_clone(
+            frame,
+            acs_rent_donor=_rent_donor(),
+            remaining_stage_authority=(
+                compiled_pool_physical_authority.remaining_stage
+            ),
+        )
+    with pytest.raises(TypeError, match="RemainingStagePhysicalAuthority"):
+        prepare_multispine_source_inputs_for_clone(
+            frame,
+            acs_rent_donor=_rent_donor(),
+            remaining_stage_authority=object(),  # type: ignore[arg-type]
+            simulation_settings=compiled_pool_physical_authority.simulation,
+        )
     with pytest.raises(TypeError, match="RemainingStagePhysicalAuthority"):
         multispine_pool_module.derive_multispine_pool_inputs(
             frame,

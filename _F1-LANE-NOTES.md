@@ -1589,3 +1589,40 @@ deliverable 5.
    from the members returned by the selector itself.
 2. Bind this coverage receipt into the production evidence sidecar and the
    four-receipt comparator.
+
+## F1 continuation r5 physical-authority plumbing step (2026-08-20)
+
+### State
+
+- Bundle configuration now compiles one `USPoolKernelAuthorities` value from
+  the sealed runtime plan and retains it as a typed, non-receipt capability.
+  Constants mode still constructs no compiler authority and continues down
+  its explicit no-authority calls.
+- This step closes the constants-at-physical-leaves defect, but per-node
+  `execute_node`/broker dispatch is a separate next step and is not claimed by
+  this commit.
+
+### Done
+
+- Threaded compiler-issued assembly, model, gap-fill, primary-QRF,
+  late-producer, remaining-stage, take-up, simulation, terminal, receipt,
+  checkpoint, and publication-validation authorities through the bundle-only
+  production path. Bundle pre-clone preparation requires its remaining-stage
+  and simulation authorities as an all-or-nothing pair.
+- Derived early/late target-bank schedules and target surfaces from the typed
+  authorities. Checkpoint resume/write and terminal publication validation
+  now retain the same authority rather than reopening constants.
+- Added the cold-run `--resume-policy forbid` preflight before any publication
+  or checkpoint discovery; default `allow` preserves the oracle path.
+- Root verification: 10 focused authority/config/publication tests pass after
+  correcting the newly fail-closed publication fixture; Ruff and diff checks
+  pass. Earlier decomposed checks covered the five constants fixture terminal,
+  resume, and checkpoint cases. No build ran.
+
+### Next
+
+1. Construct the bundle-only per-node executor dispatcher from
+   `kernel_authorities.physical.late_producers.nodes` and prove every compiled
+   node executes exactly once in sealed order.
+2. Route stochastic work through node ledger sessions and refuse undeclared
+   file/process/sink access; then run the full dual-mode fixture graph.

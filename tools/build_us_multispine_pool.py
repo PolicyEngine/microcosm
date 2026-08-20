@@ -156,6 +156,9 @@ from microcosm.build.us_runtime.multispine_pool import (
 from microcosm.build.us_runtime.operator_boundary import (
     assert_operator_free_source_frame,
 )
+from microcosm.build.us_runtime.pool_kernel_authority import (
+    USPoolKernelAuthorities,
+)
 from microcosm.build.us_runtime.pool_runtime_plan import USPoolRuntimePlan
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION,
@@ -639,6 +642,16 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--resume-policy",
+        choices=("allow", "forbid"),
+        default="allow",
+        help=(
+            "Checkpoint policy. 'allow' preserves automatic durable resume; "
+            "'forbid' refuses any pre-existing publication or checkpoint "
+            "state before loading (default: allow)."
+        ),
+    )
+    parser.add_argument(
         "--sample-fraction",
         type=_standard_sample_fraction,
         default=1.0,
@@ -725,6 +738,35 @@ def _stacked_output_paths(
         outputs,
         agreement_diagnostics=outputs.pool_h5.with_suffix(".gates.json"),
     )
+
+
+def _refuse_preexisting_resume_state(
+    args: argparse.Namespace,
+    outputs: PoolBuildOutputs,
+) -> None:
+    """Enforce the certification cold-start boundary before any state load."""
+
+    policy = getattr(args, "resume_policy", "allow")
+    if policy == "allow":
+        return
+    if policy != "forbid":  # pragma: no cover - argparse owns the public enum
+        raise ValueError(f"Unsupported resume policy: {policy!r}")
+    candidates = (
+        outputs.pool_h5,
+        outputs.manifest,
+        outputs.agreement_diagnostics,
+        outputs.checkpoint_root,
+    )
+    existing = sorted(
+        str(path)
+        for path in candidates
+        if os.path.lexists(Path(path))
+    )
+    if existing:
+        raise ValueError(
+            "--resume-policy forbid refuses pre-existing publication or "
+            f"checkpoint state: {existing}"
+        )
 
 
 def _with_checkpoint_identity(
@@ -1966,6 +2008,32 @@ def _canonical_json_bytes(value: object) -> bytes:
     ).encode("utf-8")
 
 
+def _stacked_kernel_authorities_from_config(
+    run_config: Mapping[str, object] | None,
+    *,
+    runtime_plan: USPoolRuntimePlan | None,
+) -> USPoolKernelAuthorities | None:
+    """Recover the typed capability without placing it in receipt mappings."""
+
+    candidate = getattr(run_config, "kernel_authorities", None)
+    if runtime_plan is None:
+        if candidate is not None:
+            raise ValueError(
+                "Kernel authorities require their sealed bundle runtime plan."
+            )
+        return None
+    if not isinstance(candidate, USPoolKernelAuthorities):
+        raise TypeError("Bundle execution requires USPoolKernelAuthorities.")
+    if (
+        candidate.authority_sha256 != runtime_plan.authority_sha256
+        or candidate.spec_sha256 != runtime_plan.spec_sha256
+    ):
+        raise ValueError(
+            "Bundle kernel authorities differ from the sealed runtime plan."
+        )
+    return candidate
+
+
 class _PoolStageCheckpointStore:
     """Identity-guarded durable storage for the three pool cut points."""
 
@@ -2002,6 +2070,10 @@ class _PoolStageCheckpointStore:
         self._base_identity = normalized_identity
         self._materializer_version = resolved_materializer_version
         self._runtime_plan = runtime_plan
+        self._kernel_authorities = _stacked_kernel_authorities_from_config(
+            run_config,
+            runtime_plan=runtime_plan,
+        )
         self._run_config_receipt = (
             None if run_config is None else _stacked_run_config_receipt(run_config)
         )
@@ -2108,15 +2180,27 @@ class _PoolStageCheckpointStore:
         )
         qbi_route = _checkpoint_qbi_route(self._base_identity)
         if stage in {"transferred", "simulated"} and qbi_route == "stacked":
-            _validate_stacked_post_puf_stage_receipt(
-                persistent_frame,
-                checkpoint.stage_receipts,
-                boundary=f"pool {stage} durable checkpoint write",
-                transition_authority_sha256=(
-                    checkpoint.late_producer_transition_authority_sha256
-                ),
-                require_live_output=stage == "transferred",
-            )
+            if self._kernel_authorities is None:
+                _validate_stacked_post_puf_stage_receipt(
+                    persistent_frame,
+                    checkpoint.stage_receipts,
+                    boundary=f"pool {stage} durable checkpoint write",
+                    transition_authority_sha256=(
+                        checkpoint.late_producer_transition_authority_sha256
+                    ),
+                    require_live_output=stage == "transferred",
+                )
+            else:
+                _validate_stacked_post_puf_stage_receipt(
+                    persistent_frame,
+                    checkpoint.stage_receipts,
+                    boundary=f"pool {stage} durable checkpoint write",
+                    transition_authority_sha256=(
+                        checkpoint.late_producer_transition_authority_sha256
+                    ),
+                    require_live_output=stage == "transferred",
+                    kernel_authorities=self._kernel_authorities,
+                )
         if stage == "simulated" and qbi_route is not None:
             _validate_qbi_stage_receipt(
                 persistent_frame,
@@ -2584,15 +2668,27 @@ class _PoolStageCheckpointStore:
 
             qbi_route = _checkpoint_qbi_route(self._base_identity)
             if stage in {"transferred", "simulated"} and qbi_route == "stacked":
-                _validate_stacked_post_puf_stage_receipt(
-                    persistent_frame,
-                    restored_stage_receipts,
-                    boundary=f"pool {stage} durable checkpoint load",
-                    transition_authority_sha256=(
-                        late_producer_transition_authority_sha256
-                    ),
-                    require_live_output=stage == "transferred",
-                )
+                if self._kernel_authorities is None:
+                    _validate_stacked_post_puf_stage_receipt(
+                        persistent_frame,
+                        restored_stage_receipts,
+                        boundary=f"pool {stage} durable checkpoint load",
+                        transition_authority_sha256=(
+                            late_producer_transition_authority_sha256
+                        ),
+                        require_live_output=stage == "transferred",
+                    )
+                else:
+                    _validate_stacked_post_puf_stage_receipt(
+                        persistent_frame,
+                        restored_stage_receipts,
+                        boundary=f"pool {stage} durable checkpoint load",
+                        transition_authority_sha256=(
+                            late_producer_transition_authority_sha256
+                        ),
+                        require_live_output=stage == "transferred",
+                        kernel_authorities=self._kernel_authorities,
+                    )
             if stage == "simulated" and qbi_route is not None:
                 _validate_qbi_stage_receipt(
                     persistent_frame,
@@ -3319,6 +3415,27 @@ def _stacked_direction_bank_identity(
     }
 
 
+def _stacked_gap_fill_authority_surface(
+    kernel_authorities: USPoolKernelAuthorities,
+) -> dict[str, dict[str, tuple[str, ...]]]:
+    """Project the exact early-transfer surface from compiler directions."""
+
+    if not isinstance(kernel_authorities, USPoolKernelAuthorities):
+        raise TypeError("kernel_authorities must be USPoolKernelAuthorities.")
+    surface: dict[str, dict[str, tuple[str, ...]]] = {}
+    for direction in kernel_authorities.gap_fill.directions:
+        for entity, families in direction.target_families.items():
+            for family, targets in families.items():
+                entity_surface = surface.setdefault(entity, {})
+                if family in entity_surface:
+                    raise ValueError(
+                        "Compiler gap-fill directions repeat target family "
+                        f"{entity}.{family}."
+                    )
+                entity_surface[family] = tuple(targets)
+    return surface
+
+
 def _stacked_late_producer_bank_identity(
     checkpoint_identity: Mapping[str, object],
     *,
@@ -3326,13 +3443,25 @@ def _stacked_late_producer_bank_identity(
     entity: str,
     family: str,
     ordered_targets: tuple[str, ...],
+    schedule_receipt: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    schedule = us_late_producer_schedule_receipt()
+    schedule = (
+        us_late_producer_schedule_receipt()
+        if schedule_receipt is None
+        else schedule_receipt
+    )
+    schedule_sha256 = schedule.get("schedule_sha256")
+    payload_sha256 = schedule.get("payload_sha256")
+    if not isinstance(schedule_sha256, str) or not isinstance(
+        payload_sha256,
+        str,
+    ):
+        raise ValueError("Late-producer schedule authority has no SHA-256 identity.")
     return {
         **_pool_checkpoint_stage_identity(checkpoint_identity, "transferred"),
         "stacked_transfer_stage": "late_producer_dag",
-        "late_producer_dag_sha256": schedule["schedule_sha256"],
-        "late_producer_schedule_sha256": schedule["payload_sha256"],
+        "late_producer_dag_sha256": schedule_sha256,
+        "late_producer_schedule_sha256": payload_sha256,
         "late_producer": {
             "name": producer_name,
             "entity": entity,
@@ -3364,8 +3493,24 @@ def _validate_stacked_post_puf_stage_receipt(
     boundary: str,
     transition_authority_sha256: str | None,
     require_live_output: bool,
+    kernel_authorities: USPoolKernelAuthorities | None = None,
 ) -> None:
     """Require the complete DAG proof and both exact compatibility aliases."""
+
+    if kernel_authorities is not None and not isinstance(
+        kernel_authorities,
+        USPoolKernelAuthorities,
+    ):
+        raise TypeError("kernel_authorities must be USPoolKernelAuthorities.")
+    late_authority = (
+        None if kernel_authorities is None else kernel_authorities.late_producers
+    )
+    runtime_authority = (
+        None if kernel_authorities is None else kernel_authorities.terminal
+    )
+    qrf_authority = (
+        None if kernel_authorities is None else kernel_authorities.primary_qrf
+    )
 
     impute = stage_receipts.get("impute")
     if not isinstance(impute, Mapping):
@@ -3382,26 +3527,57 @@ def _validate_stacked_post_puf_stage_receipt(
     # independently propagated live-frame anchor. This keeps malformed DAGs
     # attributable to their receipt defect even when their authority carrier
     # is also absent or corrupt.
-    validate_stacked_late_producer_receipt(dag_receipt, boundary=boundary)
+    if kernel_authorities is None:
+        validate_stacked_late_producer_receipt(dag_receipt, boundary=boundary)
+    else:
+        validate_stacked_late_producer_receipt(
+            dag_receipt,
+            boundary=boundary,
+            late_authority=late_authority,
+            runtime_authority=runtime_authority,
+            qrf_authority=qrf_authority,
+        )
     if not isinstance(transition_authority_sha256, str):
         raise ValueError(
             f"{boundary}: independently carried late-producer transition "
             "authority is absent."
         )
     if require_live_output:
-        validate_stacked_late_producer_receipt(
-            dag_receipt,
-            boundary=boundary,
-            frame=frame,
-            expected_transition_authority_sha256=(transition_authority_sha256),
-        )
+        if kernel_authorities is None:
+            validate_stacked_late_producer_receipt(
+                dag_receipt,
+                boundary=boundary,
+                frame=frame,
+                expected_transition_authority_sha256=(transition_authority_sha256),
+            )
+        else:
+            validate_stacked_late_producer_receipt(
+                dag_receipt,
+                boundary=boundary,
+                frame=frame,
+                expected_transition_authority_sha256=(transition_authority_sha256),
+                late_authority=late_authority,
+                runtime_authority=runtime_authority,
+                qrf_authority=qrf_authority,
+            )
     else:
-        validate_stacked_late_producer_transition_authority(
-            frame,
-            dag_receipt,
-            boundary=boundary,
-            expected_transition_authority_sha256=(transition_authority_sha256),
-        )
+        if kernel_authorities is None:
+            validate_stacked_late_producer_transition_authority(
+                frame,
+                dag_receipt,
+                boundary=boundary,
+                expected_transition_authority_sha256=(transition_authority_sha256),
+            )
+        else:
+            validate_stacked_late_producer_transition_authority(
+                frame,
+                dag_receipt,
+                boundary=boundary,
+                expected_transition_authority_sha256=(transition_authority_sha256),
+                late_authority=late_authority,
+                runtime_authority=runtime_authority,
+                qrf_authority=qrf_authority,
+            )
     transfer_receipt = impute.get("stacked_post_puf_transfer")
     if not isinstance(transfer_receipt, Mapping):
         raise ValueError(
@@ -3508,15 +3684,30 @@ def _emit_stacked_checkpoint(
     simulation_frame: Frame | None = None,
     qbi_transition_authority_sha256: str | None = None,
     late_producer_transition_authority_sha256: str | None = None,
+    kernel_authorities: USPoolKernelAuthorities | None = None,
 ) -> None:
     if stage in {"transferred", "simulated"}:
-        _validate_stacked_post_puf_stage_receipt(
-            frame,
-            stage_receipts,
-            boundary=f"stacked {stage} checkpoint emission",
-            transition_authority_sha256=(late_producer_transition_authority_sha256),
-            require_live_output=stage == "transferred",
-        )
+        if kernel_authorities is None:
+            _validate_stacked_post_puf_stage_receipt(
+                frame,
+                stage_receipts,
+                boundary=f"stacked {stage} checkpoint emission",
+                transition_authority_sha256=(
+                    late_producer_transition_authority_sha256
+                ),
+                require_live_output=stage == "transferred",
+            )
+        else:
+            _validate_stacked_post_puf_stage_receipt(
+                frame,
+                stage_receipts,
+                boundary=f"stacked {stage} checkpoint emission",
+                transition_authority_sha256=(
+                    late_producer_transition_authority_sha256
+                ),
+                require_live_output=stage == "transferred",
+                kernel_authorities=kernel_authorities,
+            )
     if stage == "simulated":
         _validate_qbi_stage_receipt(
             frame,
@@ -3560,12 +3751,28 @@ def build_stacked_pool(
     resume: MultispinePoolCheckpoint | None = None,
     phase_reached: Callable[[str], None] | None = None,
     runtime_plan: USPoolRuntimePlan | None = None,
+    kernel_authorities: USPoolKernelAuthorities | None = None,
 ) -> StackedPoolBuildResult:
     """Run the fixed stacked production pipeline across #599 boundaries."""
 
     if runtime_plan is None:
+        if kernel_authorities is not None:
+            raise ValueError(
+                "Kernel authorities require their sealed bundle runtime plan."
+            )
         release_id_matches = _STACKED_RELEASE_ID_PATTERN.fullmatch(release_id)
     else:
+        if not isinstance(kernel_authorities, USPoolKernelAuthorities):
+            raise TypeError(
+                "Bundle execution requires USPoolKernelAuthorities."
+            )
+        if (
+            kernel_authorities.authority_sha256 != runtime_plan.authority_sha256
+            or kernel_authorities.spec_sha256 != runtime_plan.spec_sha256
+        ):
+            raise ValueError(
+                "Bundle kernel authorities differ from the sealed runtime plan."
+            )
         compiled_regex = _stacked_publication_runtime(runtime_plan).get(
             "compiled_regex"
         )
@@ -3633,13 +3840,27 @@ def build_stacked_pool(
         )
         resume_stage = resume.stage
         if resume_stage in {"transferred", "simulated"}:
-            _validate_stacked_post_puf_stage_receipt(
-                current,
-                receipts,
-                boundary=f"stacked {resume_stage} checkpoint resume",
-                transition_authority_sha256=(late_producer_transition_authority_sha256),
-                require_live_output=resume_stage == "transferred",
-            )
+            if kernel_authorities is None:
+                _validate_stacked_post_puf_stage_receipt(
+                    current,
+                    receipts,
+                    boundary=f"stacked {resume_stage} checkpoint resume",
+                    transition_authority_sha256=(
+                        late_producer_transition_authority_sha256
+                    ),
+                    require_live_output=resume_stage == "transferred",
+                )
+            else:
+                _validate_stacked_post_puf_stage_receipt(
+                    current,
+                    receipts,
+                    boundary=f"stacked {resume_stage} checkpoint resume",
+                    transition_authority_sha256=(
+                        late_producer_transition_authority_sha256
+                    ),
+                    require_live_output=resume_stage == "transferred",
+                    kernel_authorities=kernel_authorities,
+                )
         if resume_stage == "simulated":
             _validate_qbi_stage_receipt(
                 current,
@@ -3674,10 +3895,20 @@ def build_stacked_pool(
                 "A cold or assembled-resume stacked build requires the canonical "
                 "ACS rent donor."
             )
-        prepared = prepare_multispine_source_inputs_for_clone(
-            current,
-            acs_rent_donor=acs_rent_donor,
-        )
+        if kernel_authorities is None:
+            prepared = prepare_multispine_source_inputs_for_clone(
+                current,
+                acs_rent_donor=acs_rent_donor,
+            )
+        else:
+            prepared = prepare_multispine_source_inputs_for_clone(
+                current,
+                acs_rent_donor=acs_rent_donor,
+                remaining_stage_authority=(
+                    kernel_authorities.physical.remaining_stage
+                ),
+                simulation_settings=kernel_authorities.physical.simulation,
+            )
         validate_stacked_spine_frame(
             prepared.frame,
             boundary="stacked pool source preparation output",
@@ -3692,7 +3923,12 @@ def build_stacked_pool(
             current_base_identity_sha256=current_base_identity_sha256,
         )
         target_banks: dict[str, AcsTransferTargetBankStore] = {}
-        for direction in stacked_gap_fill_plan():
+        gap_fill_directions = (
+            stacked_gap_fill_plan()
+            if kernel_authorities is None
+            else kernel_authorities.gap_fill.directions
+        )
+        for direction in gap_fill_directions:
             target_banks[direction.name] = AcsTransferTargetBankStore(
                 acs_transfer_checkpoint_dir / direction.name,
                 identity=_stacked_direction_bank_identity(
@@ -3700,13 +3936,28 @@ def build_stacked_pool(
                     direction_name=direction.name,
                 ),
             )
-        gap_filled = gap_fill_stacked_spine(
-            prepared.frame,
-            seed=POOL_RANDOM_SEED,
-            n_estimators=_ACS_TRANSFER_N_ESTIMATORS,
-            max_targets_per_fit=DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
-            target_banks=target_banks,
-        )
+        if kernel_authorities is None:
+            gap_filled = gap_fill_stacked_spine(
+                prepared.frame,
+                seed=POOL_RANDOM_SEED,
+                n_estimators=_ACS_TRANSFER_N_ESTIMATORS,
+                max_targets_per_fit=DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+                target_banks=target_banks,
+            )
+        else:
+            gap_filled = gap_fill_stacked_spine(
+                prepared.frame,
+                seed=kernel_authorities.physical.model.model_seed,
+                n_estimators=(
+                    kernel_authorities.physical.model.transfer_n_estimators
+                ),
+                max_targets_per_fit=(
+                    kernel_authorities.physical.model.max_targets_per_fit
+                ),
+                target_banks=target_banks,
+                runtime_authority=kernel_authorities.terminal,
+                gap_fill_authority=kernel_authorities.gap_fill,
+            )
         mark_phase("gap_filled")
 
         fit_records: list[FitWeightRecord] = []
@@ -3717,36 +3968,74 @@ def build_stacked_pool(
             primary_qrf_checkpoint_dir,
             current_base_identity_sha256=current_base_identity_sha256,
         )
-        late_target_banks = {
-            group.name: AcsTransferTargetBankStore(
-                acs_transfer_checkpoint_dir
-                / "late_producer_dag"
-                / group.entity
-                / group.family,
-                identity=_stacked_late_producer_bank_identity(
-                    checkpoint_identity,
-                    producer_name=group.name,
-                    entity=group.entity,
-                    family=group.family,
-                    ordered_targets=group.targets,
-                ),
-            )
-            for group in CANONICAL_US_LATE_TRANSFER_GROUPS
-        }
+        if kernel_authorities is None:
+            late_target_banks = {
+                group.name: AcsTransferTargetBankStore(
+                    acs_transfer_checkpoint_dir
+                    / "late_producer_dag"
+                    / group.entity
+                    / group.family,
+                    identity=_stacked_late_producer_bank_identity(
+                        checkpoint_identity,
+                        producer_name=group.name,
+                        entity=group.entity,
+                        family=group.family,
+                        ordered_targets=group.targets,
+                    ),
+                )
+                for group in CANONICAL_US_LATE_TRANSFER_GROUPS
+            }
+        else:
+            late_target_banks = {
+                group.name: AcsTransferTargetBankStore(
+                    acs_transfer_checkpoint_dir
+                    / "late_producer_dag"
+                    / group.entity
+                    / group.family,
+                    identity=_stacked_late_producer_bank_identity(
+                        checkpoint_identity,
+                        producer_name=group.name,
+                        entity=group.entity,
+                        family=group.family,
+                        ordered_targets=group.targets,
+                        schedule_receipt=(
+                            kernel_authorities.late_producers.schedule_receipt
+                        ),
+                    ),
+                )
+                for group in kernel_authorities.late_producers.transfer_groups
+            }
 
         def primary_puf_producer(primary_input: Frame):
-            produced = run_stacked_puf_pass(
-                primary_input,
-                puf_donor,
-                clone_attachment_fraction=clone_attachment_fraction,
-                clone_attachment_seed=clone_attachment_seed,
-                seed=POOL_RANDOM_SEED,
-                n_estimators=_PRIMARY_QRF_N_ESTIMATORS,
-                fit_records=fit_records,
-                tail_bound_diagnostics=tail_bound_diagnostics,
-                primary_qrf_checkpoint_dir=primary_qrf_checkpoint_dir,
-                primary_qrf_input_binding=primary_qrf_input_binding,
-            )
+            if kernel_authorities is None:
+                produced = run_stacked_puf_pass(
+                    primary_input,
+                    puf_donor,
+                    clone_attachment_fraction=clone_attachment_fraction,
+                    clone_attachment_seed=clone_attachment_seed,
+                    seed=POOL_RANDOM_SEED,
+                    n_estimators=_PRIMARY_QRF_N_ESTIMATORS,
+                    fit_records=fit_records,
+                    tail_bound_diagnostics=tail_bound_diagnostics,
+                    primary_qrf_checkpoint_dir=primary_qrf_checkpoint_dir,
+                    primary_qrf_input_binding=primary_qrf_input_binding,
+                )
+            else:
+                produced = run_stacked_puf_pass(
+                    primary_input,
+                    puf_donor,
+                    clone_attachment_fraction=clone_attachment_fraction,
+                    clone_attachment_seed=clone_attachment_seed,
+                    seed=kernel_authorities.physical.model.model_seed,
+                    n_estimators=(
+                        kernel_authorities.physical.model.primary_n_estimators
+                    ),
+                    fit_records=fit_records,
+                    tail_bound_diagnostics=tail_bound_diagnostics,
+                    primary_qrf_checkpoint_dir=primary_qrf_checkpoint_dir,
+                    primary_qrf_input_binding=primary_qrf_input_binding,
+                    qrf_authority=kernel_authorities.primary_qrf,
+                )
             produced_tail = produced.receipt.get("puf_capital_gains_tail_transfer")
             if not isinstance(produced_tail, Mapping):
                 raise ValueError("Stacked PUF pass emitted no tail manifest.")
@@ -3756,39 +4045,89 @@ def build_stacked_pool(
             mark_phase("puf_passed")
             return produced
 
-        primary_resource_receipts = stacked_late_primary_resource_receipts(
-            puf_donor,
-            primary_qrf_checkpoint_identity_sha256=(current_base_identity_sha256),
-            clone_attachment_fraction=clone_attachment_fraction,
-            clone_attachment_seed=clone_attachment_seed,
-            seed=POOL_RANDOM_SEED,
-            n_estimators=_PRIMARY_QRF_N_ESTIMATORS,
-            fit_records_enabled=True,
-            tail_bound_diagnostics_enabled=True,
-        )
+        if kernel_authorities is None:
+            primary_resource_receipts = stacked_late_primary_resource_receipts(
+                puf_donor,
+                primary_qrf_checkpoint_identity_sha256=(
+                    current_base_identity_sha256
+                ),
+                clone_attachment_fraction=clone_attachment_fraction,
+                clone_attachment_seed=clone_attachment_seed,
+                seed=POOL_RANDOM_SEED,
+                n_estimators=_PRIMARY_QRF_N_ESTIMATORS,
+                fit_records_enabled=True,
+                tail_bound_diagnostics_enabled=True,
+            )
+        else:
+            primary_resource_receipts = stacked_late_primary_resource_receipts(
+                puf_donor,
+                primary_qrf_checkpoint_identity_sha256=(
+                    current_base_identity_sha256
+                ),
+                clone_attachment_fraction=clone_attachment_fraction,
+                clone_attachment_seed=clone_attachment_seed,
+                seed=kernel_authorities.physical.model.model_seed,
+                n_estimators=(
+                    kernel_authorities.physical.model.primary_n_estimators
+                ),
+                fit_records_enabled=True,
+                tail_bound_diagnostics_enabled=True,
+                qrf_authority=kernel_authorities.primary_qrf,
+            )
         primary_qrf_input_binding = stacked_late_primary_checkpoint_input_binding(
             primary_resource_receipts
         )
-        late_stage = run_stacked_late_producer_dag(
-            gap_filled.frame,
-            primary_puf_producer=primary_puf_producer,
-            primary_resource_receipts=primary_resource_receipts,
-            seed=POOL_RANDOM_SEED,
-            n_estimators=_ACS_TRANSFER_N_ESTIMATORS,
-            max_targets_per_fit=DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
-            target_banks=late_target_banks,
-        )
+        if kernel_authorities is None:
+            late_stage = run_stacked_late_producer_dag(
+                gap_filled.frame,
+                primary_puf_producer=primary_puf_producer,
+                primary_resource_receipts=primary_resource_receipts,
+                seed=POOL_RANDOM_SEED,
+                n_estimators=_ACS_TRANSFER_N_ESTIMATORS,
+                max_targets_per_fit=DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+                target_banks=late_target_banks,
+            )
+        else:
+            late_stage = run_stacked_late_producer_dag(
+                gap_filled.frame,
+                primary_puf_producer=primary_puf_producer,
+                primary_resource_receipts=primary_resource_receipts,
+                seed=kernel_authorities.physical.model.model_seed,
+                n_estimators=(
+                    kernel_authorities.physical.model.transfer_n_estimators
+                ),
+                max_targets_per_fit=(
+                    kernel_authorities.physical.model.max_targets_per_fit
+                ),
+                target_banks=late_target_banks,
+                late_authority=kernel_authorities.late_producers,
+                runtime_authority=kernel_authorities.terminal,
+                qrf_authority=kernel_authorities.primary_qrf,
+            )
         late_producer_transition_authority_sha256 = (
             late_stage.transition_authority_sha256
         )
-        validate_stacked_late_producer_receipt(
-            late_stage.receipt,
-            boundary="stacked cold-build late-producer DAG",
-            frame=late_stage.frame,
-            expected_transition_authority_sha256=(
-                late_producer_transition_authority_sha256
-            ),
-        )
+        if kernel_authorities is None:
+            validate_stacked_late_producer_receipt(
+                late_stage.receipt,
+                boundary="stacked cold-build late-producer DAG",
+                frame=late_stage.frame,
+                expected_transition_authority_sha256=(
+                    late_producer_transition_authority_sha256
+                ),
+            )
+        else:
+            validate_stacked_late_producer_receipt(
+                late_stage.receipt,
+                boundary="stacked cold-build late-producer DAG",
+                frame=late_stage.frame,
+                expected_transition_authority_sha256=(
+                    late_producer_transition_authority_sha256
+                ),
+                late_authority=kernel_authorities.late_producers,
+                runtime_authority=kernel_authorities.terminal,
+                qrf_authority=kernel_authorities.primary_qrf,
+            )
         puf_result = late_stage.primary_puf_result
         puf_receipt = dict(puf_result.receipt)
         primary_qrf_receipt = puf_receipt.pop("primary_puf_qrf")
@@ -3796,7 +4135,12 @@ def build_stacked_pool(
             raise ValueError("Stacked PUF pass emitted no primary-QRF receipt.")
         primary_qrf_receipt = dict(primary_qrf_receipt)
         primary_qrf_receipt["identity_routing"] = primary_qrf_identity_routing
-        qrf_manifest_path = _primary_qrf_manifest_path(primary_qrf_checkpoint_dir)
+        qrf_manifest_path = (
+            _primary_qrf_manifest_path(primary_qrf_checkpoint_dir)
+            if kernel_authorities is None
+            else primary_qrf_checkpoint_dir
+            / kernel_authorities.primary_qrf.manifest_filename
+        )
         reported_manifest_path = primary_qrf_receipt.pop(
             "checkpoint_manifest",
             None,
@@ -3813,7 +4157,11 @@ def build_stacked_pool(
                 "checkpoint_manifest_path": str(qrf_manifest_path.resolve()),
                 "checkpoint_manifest_receipt": _read_json_object(qrf_manifest_path),
                 "checkpoint_manifest_sha256": _file_sha256(qrf_manifest_path),
-                "n_estimators": _PRIMARY_QRF_N_ESTIMATORS,
+                "n_estimators": (
+                    _PRIMARY_QRF_N_ESTIMATORS
+                    if kernel_authorities is None
+                    else kernel_authorities.physical.model.primary_n_estimators
+                ),
                 "tail_bound_diagnostics": tail_bound_diagnostics,
             }
         )
@@ -3860,13 +4208,31 @@ def build_stacked_pool(
             "tail_preservation_after_late_producer_dag": late_stage_preservation,
             "acs_qrf_transfer": {
                 "target_families": {
-                    "early_gap_fill": _json_ready(CANONICAL_STACKED_GAP_FILL_SURFACE),
+                    "early_gap_fill": (
+                        _json_ready(CANONICAL_STACKED_GAP_FILL_SURFACE)
+                        if kernel_authorities is None
+                        else _json_ready(
+                            _stacked_gap_fill_authority_surface(
+                                kernel_authorities
+                            )
+                        )
+                    ),
                     "post_puf_transfer": _json_ready(
                         CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
+                        if kernel_authorities is None
+                        else kernel_authorities.terminal.post_puf_transfer_surface
                     ),
                 },
-                "n_estimators": _ACS_TRANSFER_N_ESTIMATORS,
-                "max_targets_per_fit": DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
+                "n_estimators": (
+                    _ACS_TRANSFER_N_ESTIMATORS
+                    if kernel_authorities is None
+                    else kernel_authorities.physical.model.transfer_n_estimators
+                ),
+                "max_targets_per_fit": (
+                    DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT
+                    if kernel_authorities is None
+                    else kernel_authorities.physical.model.max_targets_per_fit
+                ),
                 "target_bank": {
                     "identity_routing": gap_fill_identity_routing,
                     "directions": {
@@ -3881,16 +4247,29 @@ def build_stacked_pool(
             },
             "weights_audit": GateReport((weights_audit,)).to_manifest(),
         }
-        _emit_stacked_checkpoint(
-            checkpoint,
-            stage="transferred",
-            frame=current,
-            assembly_receipt=assembly_receipt,
-            stage_receipts=receipts,
-            late_producer_transition_authority_sha256=(
-                late_producer_transition_authority_sha256
-            ),
-        )
+        if kernel_authorities is None:
+            _emit_stacked_checkpoint(
+                checkpoint,
+                stage="transferred",
+                frame=current,
+                assembly_receipt=assembly_receipt,
+                stage_receipts=receipts,
+                late_producer_transition_authority_sha256=(
+                    late_producer_transition_authority_sha256
+                ),
+            )
+        else:
+            _emit_stacked_checkpoint(
+                checkpoint,
+                stage="transferred",
+                frame=current,
+                assembly_receipt=assembly_receipt,
+                stage_receipts=receipts,
+                late_producer_transition_authority_sha256=(
+                    late_producer_transition_authority_sha256
+                ),
+                kernel_authorities=kernel_authorities,
+            )
         mark_phase("transferred")
     else:
         validate_stacked_spine_frame(
@@ -3903,7 +4282,15 @@ def build_stacked_pool(
         derivation_input, tail_derivation_receipt = prepare_stacked_tail_derivation(
             current
         )
-        derived = derive_multispine_pool_inputs(derivation_input)
+        if kernel_authorities is None:
+            derived = derive_multispine_pool_inputs(derivation_input)
+        else:
+            derived = derive_multispine_pool_inputs(
+                derivation_input,
+                remaining_stage_authority=(
+                    kernel_authorities.physical.remaining_stage
+                ),
+            )
         qbi_transition_authority_sha256 = derived.qbi_transition_authority_sha256
         current = canonicalize_frame_string_dtypes(
             derived.frame,
@@ -3921,7 +4308,17 @@ def build_stacked_pool(
         }
         mark_phase("derived")
 
-        seeded = seed_multispine_pool_inputs(current)
+        if kernel_authorities is None:
+            seeded = seed_multispine_pool_inputs(current)
+        else:
+            seeded = seed_multispine_pool_inputs(
+                current,
+                remaining_stage_authority=(
+                    kernel_authorities.physical.remaining_stage
+                ),
+                take_up_authority=kernel_authorities.physical.take_up,
+                simulation_settings=kernel_authorities.physical.simulation,
+            )
         current = canonicalize_frame_string_dtypes(
             seeded.frame,
             boundary="stacked pool seed output",
@@ -3937,7 +4334,13 @@ def build_stacked_pool(
         }
         mark_phase("seeded")
 
-        simulated = materialize_multispine_agreement_outputs(current)
+        if kernel_authorities is None:
+            simulated = materialize_multispine_agreement_outputs(current)
+        else:
+            simulated = materialize_multispine_agreement_outputs(
+                current,
+                simulation_settings=kernel_authorities.physical.simulation,
+            )
         simulation_frame = canonicalize_frame_string_dtypes(
             simulated.frame,
             boundary="stacked pool simulated checkpoint",
@@ -3954,18 +4357,33 @@ def build_stacked_pool(
                 tail_manifest,
             ),
         }
-        _emit_stacked_checkpoint(
-            checkpoint,
-            stage="simulated",
-            frame=current,
-            assembly_receipt=assembly_receipt,
-            stage_receipts=receipts,
-            simulation_frame=simulation_frame,
-            qbi_transition_authority_sha256=(qbi_transition_authority_sha256),
-            late_producer_transition_authority_sha256=(
-                late_producer_transition_authority_sha256
-            ),
-        )
+        if kernel_authorities is None:
+            _emit_stacked_checkpoint(
+                checkpoint,
+                stage="simulated",
+                frame=current,
+                assembly_receipt=assembly_receipt,
+                stage_receipts=receipts,
+                simulation_frame=simulation_frame,
+                qbi_transition_authority_sha256=(qbi_transition_authority_sha256),
+                late_producer_transition_authority_sha256=(
+                    late_producer_transition_authority_sha256
+                ),
+            )
+        else:
+            _emit_stacked_checkpoint(
+                checkpoint,
+                stage="simulated",
+                frame=current,
+                assembly_receipt=assembly_receipt,
+                stage_receipts=receipts,
+                simulation_frame=simulation_frame,
+                qbi_transition_authority_sha256=(qbi_transition_authority_sha256),
+                late_producer_transition_authority_sha256=(
+                    late_producer_transition_authority_sha256
+                ),
+                kernel_authorities=kernel_authorities,
+            )
         mark_phase("simulated")
     else:
         if resume is None or resume.simulation_frame is None:
@@ -3980,14 +4398,26 @@ def build_stacked_pool(
         )
         assert_stacked_tail_cells_preserved(simulation_frame, tail_manifest)
 
-    completeness = stacked_completeness_gate(
-        simulation_frame,
-        tail_manifest=tail_manifest,
-    )
-    battery = by_origin_battery(
-        simulation_frame,
-        tail_manifest=tail_manifest,
-    )
+    if kernel_authorities is None:
+        completeness = stacked_completeness_gate(
+            simulation_frame,
+            tail_manifest=tail_manifest,
+        )
+        battery = by_origin_battery(
+            simulation_frame,
+            tail_manifest=tail_manifest,
+        )
+    else:
+        completeness = stacked_completeness_gate(
+            simulation_frame,
+            tail_manifest=tail_manifest,
+            runtime_authority=kernel_authorities.terminal,
+        )
+        battery = by_origin_battery(
+            simulation_frame,
+            tail_manifest=tail_manifest,
+            runtime_authority=kernel_authorities.terminal,
+        )
     # Manifest conversion is itself the final canonical-authority check and
     # deliberately happens before publication or readiness is asserted.
     GateReport((completeness, battery)).to_manifest()
@@ -4133,13 +4563,31 @@ def _stacked_manifest_payload(
 ) -> dict[str, object]:
     """Build the stacked-only manifest without changing the legacy envelope."""
 
-    _validate_stacked_post_puf_stage_receipt(
-        result.frame,
-        result.stage_receipts,
-        boundary="stacked production manifest",
-        transition_authority_sha256=(result.late_producer_transition_authority_sha256),
-        require_live_output=False,
+    kernel_authorities = _stacked_kernel_authorities_from_config(
+        run_config,
+        runtime_plan=runtime_plan,
     )
+    if kernel_authorities is None:
+        _validate_stacked_post_puf_stage_receipt(
+            result.frame,
+            result.stage_receipts,
+            boundary="stacked production manifest",
+            transition_authority_sha256=(
+                result.late_producer_transition_authority_sha256
+            ),
+            require_live_output=False,
+        )
+    else:
+        _validate_stacked_post_puf_stage_receipt(
+            result.frame,
+            result.stage_receipts,
+            boundary="stacked production manifest",
+            transition_authority_sha256=(
+                result.late_producer_transition_authority_sha256
+            ),
+            require_live_output=False,
+            kernel_authorities=kernel_authorities,
+        )
     _validate_qbi_stage_receipt(
         result.frame,
         result.stage_receipts,
@@ -4418,13 +4866,31 @@ def _write_stacked_outputs(
 ) -> dict[str, object]:
     """Atomically publish the stacked input-only pool and terminal receipts."""
 
-    _validate_stacked_post_puf_stage_receipt(
-        result.frame,
-        result.stage_receipts,
-        boundary="stacked publication entry",
-        transition_authority_sha256=(result.late_producer_transition_authority_sha256),
-        require_live_output=False,
+    kernel_authorities = _stacked_kernel_authorities_from_config(
+        run_config,
+        runtime_plan=runtime_plan,
     )
+    if kernel_authorities is None:
+        _validate_stacked_post_puf_stage_receipt(
+            result.frame,
+            result.stage_receipts,
+            boundary="stacked publication entry",
+            transition_authority_sha256=(
+                result.late_producer_transition_authority_sha256
+            ),
+            require_live_output=False,
+        )
+    else:
+        _validate_stacked_post_puf_stage_receipt(
+            result.frame,
+            result.stage_receipts,
+            boundary="stacked publication entry",
+            transition_authority_sha256=(
+                result.late_producer_transition_authority_sha256
+            ),
+            require_live_output=False,
+            kernel_authorities=kernel_authorities,
+        )
     _validate_qbi_stage_receipt(
         result.frame,
         result.stage_receipts,
@@ -4862,6 +5328,10 @@ class _ResolvedStackedRunConfig(Mapping[str, object]):
 
     runtime_authorities: RuntimeAuthorities = field(repr=False, compare=False)
     runtime_plan: USPoolRuntimePlan = field(repr=False, compare=False)
+    kernel_authorities: USPoolKernelAuthorities = field(
+        repr=False,
+        compare=False,
+    )
     run_provenance_identity: RunProvenanceIdentity = field(
         repr=False,
         compare=False,
@@ -4874,6 +5344,10 @@ class _ResolvedStackedRunConfig(Mapping[str, object]):
             )
         if self.runtime_plan.identity_generation != 1:
             raise ValueError("Bundle runtime plan requires identity_generation 1.")
+        if not isinstance(self.kernel_authorities, USPoolKernelAuthorities):
+            raise TypeError(
+                "Bundle configuration requires USPoolKernelAuthorities."
+            )
         if (
             self.runtime_plan.authority_sha256
             != self.runtime_authorities.authority_sha256
@@ -4884,6 +5358,14 @@ class _ResolvedStackedRunConfig(Mapping[str, object]):
         ):
             raise ValueError(
                 "Bundle runtime plan differs from its resolved spec binding."
+            )
+        if (
+            self.kernel_authorities.authority_sha256
+            != self.runtime_plan.authority_sha256
+            or self.kernel_authorities.spec_sha256 != self.runtime_plan.spec_sha256
+        ):
+            raise ValueError(
+                "Bundle kernel authorities differ from their sealed runtime plan."
             )
         if self.run_provenance_identity.identity_generation != 1:
             raise ValueError("Bundle run provenance requires identity_generation 1.")
@@ -4943,6 +5425,7 @@ def _stacked_run_config(
         runtime_plan = USPoolRuntimePlan.from_spec_authority(
             compile_us_spec_authority(runtime_authorities)
         )
+        kernel_authorities = USPoolKernelAuthorities.from_runtime_plan(runtime_plan)
         binding = runtime_authorities.spec_binding.to_wire()
         binding["attestation"] = "bundle-authoritative"
         execution_abi_sha256 = runtime_authorities.execution_abi.get("sha256")
@@ -4974,6 +5457,7 @@ def _stacked_run_config(
         return _ResolvedStackedRunConfig(
             runtime_authorities=runtime_authorities,
             runtime_plan=runtime_plan,
+            kernel_authorities=kernel_authorities,
             run_provenance_identity=provenance,
         )
     if config_authority != "constants_adapter":
@@ -5048,6 +5532,7 @@ def _main_legacy(args: argparse.Namespace) -> int:
         args.out,
         checkpoint_root=args.checkpoint_root,
     )
+    _refuse_preexisting_resume_state(args, outputs)
     verified_inputs, acs_source_manifest = _verify_inputs(args, outputs)
     checkpoint_store = _PoolStageCheckpointStore(
         outputs.checkpoint_root,
@@ -5399,9 +5884,9 @@ def _main_stacked(args: argparse.Namespace) -> int:
             args.out,
             checkpoint_root=args.checkpoint_root,
         )
+        _refuse_preexisting_resume_state(args, outputs)
         # Select and fully resolve configuration authority before consulting
-        # authority-owned publication and checkpoint constructors. Physical
-        # stage execution remains on the constants implementation in this seam.
+        # authority-owned publication, checkpoint, and physical constructors.
         try:
             run_config = _stacked_run_config(args, code_pin=code_pin)
         except Exception:
@@ -5561,12 +6046,21 @@ def _main_stacked(args: argparse.Namespace) -> int:
                 label="ACS native-mapped stacked input",
                 native_inputs=loaded.acs_native_inputs,
             )
-            stack = assemble_stacked_spine(
-                loaded.asec,
-                loaded.acs,
-                sample_fraction=args.sample_fraction,
-                sample_seed=args.sample_seed,
-            )
+            if isinstance(run_config, _ResolvedStackedRunConfig):
+                stack = assemble_stacked_spine(
+                    loaded.asec,
+                    loaded.acs,
+                    sample_fraction=args.sample_fraction,
+                    sample_seed=args.sample_seed,
+                    assembly_authority=run_config.kernel_authorities.assembly,
+                )
+            else:
+                stack = assemble_stacked_spine(
+                    loaded.asec,
+                    loaded.acs,
+                    sample_fraction=args.sample_fraction,
+                    sample_seed=args.sample_seed,
+                )
             stack_frame = stack.frame
             stack_receipt = stack.receipt
             puf_donor = loaded.puf_donor
@@ -5620,22 +6114,41 @@ def _main_stacked(args: argparse.Namespace) -> int:
         ):  # pragma: no cover - cold/resume branches establish all four
             raise AssertionError("Stacked checkpoint routing did not initialize.")
 
-        result = build_stacked_pool(
-            stack_frame,
-            expected_stack_receipt=stack_receipt,
-            release_id=state.build_id,
-            puf_donor=puf_donor,
-            acs_rent_donor=acs_rent_donor,
-            primary_qrf_checkpoint_dir=outputs.primary_qrf_checkpoint_dir,
-            acs_transfer_checkpoint_dir=outputs.acs_transfer_checkpoint_dir,
-            checkpoint_identity=checkpoint_store.base_identity,
-            clone_attachment_fraction=args.clone_attachment_fraction,
-            clone_attachment_seed=args.clone_attachment_seed,
-            checkpoint=checkpoint_store.write,
-            resume=resume,
-            phase_reached=lambda phase: _append_phase(state, phase),
-            runtime_plan=runtime_plan,
-        )
+        if isinstance(run_config, _ResolvedStackedRunConfig):
+            result = build_stacked_pool(
+                stack_frame,
+                expected_stack_receipt=stack_receipt,
+                release_id=state.build_id,
+                puf_donor=puf_donor,
+                acs_rent_donor=acs_rent_donor,
+                primary_qrf_checkpoint_dir=outputs.primary_qrf_checkpoint_dir,
+                acs_transfer_checkpoint_dir=outputs.acs_transfer_checkpoint_dir,
+                checkpoint_identity=checkpoint_store.base_identity,
+                clone_attachment_fraction=args.clone_attachment_fraction,
+                clone_attachment_seed=args.clone_attachment_seed,
+                checkpoint=checkpoint_store.write,
+                resume=resume,
+                phase_reached=lambda phase: _append_phase(state, phase),
+                runtime_plan=runtime_plan,
+                kernel_authorities=run_config.kernel_authorities,
+            )
+        else:
+            result = build_stacked_pool(
+                stack_frame,
+                expected_stack_receipt=stack_receipt,
+                release_id=state.build_id,
+                puf_donor=puf_donor,
+                acs_rent_donor=acs_rent_donor,
+                primary_qrf_checkpoint_dir=outputs.primary_qrf_checkpoint_dir,
+                acs_transfer_checkpoint_dir=outputs.acs_transfer_checkpoint_dir,
+                checkpoint_identity=checkpoint_store.base_identity,
+                clone_attachment_fraction=args.clone_attachment_fraction,
+                clone_attachment_seed=args.clone_attachment_seed,
+                checkpoint=checkpoint_store.write,
+                resume=resume,
+                phase_reached=lambda phase: _append_phase(state, phase),
+                runtime_plan=runtime_plan,
+            )
         terminal_receipt_path = _write_stacked_terminal_gate_receipt(
             result,
             outputs=outputs,

@@ -1319,6 +1319,7 @@ def _install_stacked_entrypoint_stubs(
     *,
     terminal: str,
     post_puf_authority: Mapping[str, object] | None = None,
+    authority_calls: dict[str, object] | None = None,
 ) -> tuple[list[str], int]:
     order: list[str] = []
     verified = _verified_inputs_fixture(pool_tool, tmp_path / "pins")
@@ -1360,6 +1361,8 @@ def _install_stacked_entrypoint_stubs(
 
     def stack(*args, **kwargs):
         order.append("stack")
+        if authority_calls is not None:
+            authority_calls["assembly"] = kwargs.get("assembly_authority")
         return real_stack(*args, **kwargs)
 
     monkeypatch.setattr(pool_tool, "assemble_stacked_spine", stack)
@@ -1368,6 +1371,8 @@ def _install_stacked_entrypoint_stubs(
 
     def build_stacked_pool(*args, **kwargs):
         order.append("build_stacked_pool")
+        if authority_calls is not None:
+            authority_calls["kernel_set"] = kwargs.get("kernel_authorities")
         return real_build_stacked_pool(*args, **kwargs)
 
     monkeypatch.setattr(pool_tool, "build_stacked_pool", build_stacked_pool)
@@ -1381,6 +1386,8 @@ def _install_stacked_entrypoint_stubs(
         **_kwargs: object,
     ) -> PoolStageOutput:
         order.append("prepare")
+        if authority_calls is not None:
+            authority_calls["prepare_operator_order"] = operator_names
         assert phase == "pre_clone"
         assert operator_names
         assert set(operator_names) == set(operators)
@@ -1410,18 +1417,31 @@ def _install_stacked_entrypoint_stubs(
 
     def gap_fill(frame: Frame, **kwargs):
         order.append("gap")
-        assert set(kwargs["target_banks"]) == {"asec_survey_to_acs"}
-        counts = stacked_spine_module._verify_gap_fill_activation_authority(
-            frame,
-            direction=directions[0],
-        )
-        assert counts == {
-            ("person", "strike_benefits"): {
-                "authorized_null_rows": 1,
-                "recipient_rows": 1,
-                "donor_rows": 1,
+        if authority_calls is None:
+            assert set(kwargs["target_banks"]) == {"asec_survey_to_acs"}
+            counts = stacked_spine_module._verify_gap_fill_activation_authority(
+                frame,
+                direction=directions[0],
+            )
+            assert counts == {
+                ("person", "strike_benefits"): {
+                    "authorized_null_rows": 1,
+                    "recipient_rows": 1,
+                    "donor_rows": 1,
+                }
             }
-        }
+        else:
+            gap_authority = kwargs.get("gap_fill_authority")
+            authority_calls["gap"] = gap_authority
+            authority_calls["gap_terminal"] = kwargs.get("runtime_authority")
+            authority_calls["gap_model"] = (
+                kwargs["seed"],
+                kwargs["n_estimators"],
+                kwargs["max_targets_per_fit"],
+            )
+            assert set(kwargs["target_banks"]) == {
+                direction.name for direction in gap_authority.directions
+            }
         return SimpleNamespace(
             frame=frame,
             receipt={"fixture": "gap"},
@@ -1444,6 +1464,12 @@ def _install_stacked_entrypoint_stubs(
 
     def puf_pass(frame: Frame, donor: pd.DataFrame, **kwargs):
         order.append("puf")
+        if authority_calls is not None:
+            authority_calls["primary_qrf"] = kwargs.get("qrf_authority")
+            authority_calls["primary_qrf_model"] = (
+                kwargs["seed"],
+                kwargs["n_estimators"],
+            )
         assert donor is puf_donor
         assert len(donor) == 7
         assert kwargs["clone_attachment_fraction"] == 1.0
@@ -1457,8 +1483,14 @@ def _install_stacked_entrypoint_stubs(
         if terminal == "error":
             raise RuntimeError("fixture stacked error")
         checkpoint_dir = Path(kwargs["primary_qrf_checkpoint_dir"])
+        qrf_authority = kwargs.get("qrf_authority")
+        manifest_filename = (
+            pool_tool.PRIMARY_QRF_MANIFEST_FILENAME
+            if qrf_authority is None
+            else qrf_authority.manifest_filename
+        )
         pool_tool._atomic_write_json(
-            checkpoint_dir / pool_tool.PRIMARY_QRF_MANIFEST_FILENAME,
+            checkpoint_dir / manifest_filename,
             {"fixture": "primary-qrf"},
         )
         return SimpleNamespace(
@@ -1483,6 +1515,15 @@ def _install_stacked_entrypoint_stubs(
     def late_producer_dag(frame: Frame, **kwargs: object):
         primary_puf_result = kwargs["primary_puf_producer"](frame)
         order.append("late_producer_dag")
+        if authority_calls is not None:
+            authority_calls["late"] = kwargs.get("late_authority")
+            authority_calls["late_terminal"] = kwargs.get("runtime_authority")
+            authority_calls["late_qrf"] = kwargs.get("qrf_authority")
+            authority_calls["late_model"] = (
+                kwargs["seed"],
+                kwargs["n_estimators"],
+                kwargs["max_targets_per_fit"],
+            )
         assert set(kwargs["primary_resource_receipts"]) == {
             "tax_unit.@puf_donor_tax_units",
             "tax_unit.@primary_qrf_checkpoint",
@@ -1501,20 +1542,30 @@ def _install_stacked_entrypoint_stubs(
             "support_channels": ["asec", "puf_tax_detail"],
             "puf_clone_index": 1,
         }
-        assert primary_config["qrf"]["seed"] == pool_tool.POOL_RANDOM_SEED
-        assert (
-            primary_config["qrf"]["n_estimators"] == pool_tool._PRIMARY_QRF_N_ESTIMATORS
+        assert primary_config["qrf"]["seed"] == kwargs["seed"]
+        expected_primary_estimators = (
+            pool_tool._PRIMARY_QRF_N_ESTIMATORS
+            if authority_calls is None
+            else authority_calls["primary_qrf_model"][1]
         )
+        assert primary_config["qrf"]["n_estimators"] == expected_primary_estimators
         target_banks = kwargs["target_banks"]
         assert isinstance(target_banks, Mapping)
-        assert set(target_banks) == {
-            group.name for group in pool_tool.CANONICAL_US_LATE_TRANSFER_GROUPS
-        }
-        schedule_sha256 = pool_tool.us_late_producer_schedule_receipt()[
-            "payload_sha256"
-        ]
-        dag_sha256 = pool_tool.us_late_producer_schedule_receipt()["schedule_sha256"]
-        for group in pool_tool.CANONICAL_US_LATE_TRANSFER_GROUPS:
+        late_authority = kwargs.get("late_authority")
+        groups = (
+            pool_tool.CANONICAL_US_LATE_TRANSFER_GROUPS
+            if late_authority is None
+            else late_authority.transfer_groups
+        )
+        assert set(target_banks) == {group.name for group in groups}
+        schedule = (
+            pool_tool.us_late_producer_schedule_receipt()
+            if late_authority is None
+            else late_authority.schedule_receipt
+        )
+        schedule_sha256 = schedule["payload_sha256"]
+        dag_sha256 = schedule["schedule_sha256"]
+        for group in groups:
             bank = target_banks[group.name]
             assert bank.root.parts[-3:] == (
                 "late_producer_dag",
@@ -1569,8 +1620,10 @@ def _install_stacked_entrypoint_stubs(
     monkeypatch.setattr(pool_tool, "prepare_stacked_tail_derivation", tail_prepare)
 
     def identity_stage(name: str):
-        def stage(frame: Frame):
+        def stage(frame: Frame, **kwargs: object):
             order.append(name)
+            if authority_calls is not None:
+                authority_calls[name] = dict(kwargs)
             if name == "derive":
                 return _fixture_qbi_stage_output(frame, {"fixture": name})
             return PoolStageOutput(frame, {"fixture": name})
@@ -1588,8 +1641,10 @@ def _install_stacked_entrypoint_stubs(
         identity_stage("seed"),
     )
 
-    def simulate(frame: Frame):
+    def simulate(frame: Frame, **kwargs: object):
         order.append("simulate")
+        if authority_calls is not None:
+            authority_calls["simulate"] = dict(kwargs)
         person = frame.table("person").copy()
         person["ssi"] = 0.0
         return PoolStageOutput(_replace_person(frame, person), {"fixture": "simulate"})
@@ -1604,8 +1659,11 @@ def _install_stacked_entrypoint_stubs(
         _frame: Frame,
         *,
         tail_manifest: Mapping[str, object],
+        **kwargs: object,
     ) -> GateResult:
         order.append("completeness")
+        if authority_calls is not None:
+            authority_calls["completeness"] = dict(kwargs)
         assert tail_manifest == {"fixture": "tail"}
         return GateResult(name="fixture_completeness", passed=True)
 
@@ -1613,8 +1671,11 @@ def _install_stacked_entrypoint_stubs(
         _frame: Frame,
         *,
         tail_manifest: Mapping[str, object],
+        **kwargs: object,
     ) -> GateResult:
         order.append("battery")
+        if authority_calls is not None:
+            authority_calls["battery"] = dict(kwargs)
         assert tail_manifest == {"fixture": "tail"}
         if terminal == "red":
             return GateResult(
@@ -1835,11 +1896,14 @@ def test_bundle_entrypoint_threads_runtime_plan_through_authority_constructors(
 ) -> None:
     pytest.importorskip("tables")
     plan = bundle_run_config.runtime_plan
+    kernels = bundle_run_config.kernel_authorities
+    authority_calls: dict[str, object] = {}
     _install_stacked_entrypoint_stubs(
         pool_tool,
         monkeypatch,
         tmp_path,
         terminal="success",
+        authority_calls=authority_calls,
     )
     monkeypatch.setattr(
         pool_tool,
@@ -1851,6 +1915,49 @@ def test_bundle_entrypoint_threads_runtime_plan_through_authority_constructors(
         pool_tool.main([*_stacked_main_argv(tmp_path), "--config-authority", "bundle"])
         == 0
     )
+
+    assert authority_calls["assembly"] is kernels.assembly
+    assert authority_calls["kernel_set"] is kernels
+    assert authority_calls["prepare_operator_order"] == (
+        kernels.physical.remaining_stage.pre_clone_source_operator_order
+    )
+    assert authority_calls["gap"] is kernels.gap_fill
+    assert authority_calls["gap_terminal"] is kernels.terminal
+    assert authority_calls["gap_model"] == (
+        kernels.physical.model.model_seed,
+        kernels.physical.model.transfer_n_estimators,
+        kernels.physical.model.max_targets_per_fit,
+    )
+    assert authority_calls["primary_qrf"] is kernels.primary_qrf
+    assert authority_calls["primary_qrf_model"] == (
+        kernels.physical.model.model_seed,
+        kernels.physical.model.primary_n_estimators,
+    )
+    assert authority_calls["late"] is kernels.late_producers
+    assert authority_calls["late_terminal"] is kernels.terminal
+    assert authority_calls["late_qrf"] is kernels.primary_qrf
+    assert authority_calls["late_model"] == (
+        kernels.physical.model.model_seed,
+        kernels.physical.model.transfer_n_estimators,
+        kernels.physical.model.max_targets_per_fit,
+    )
+    assert authority_calls["derive"] == {
+        "remaining_stage_authority": kernels.physical.remaining_stage,
+    }
+    assert authority_calls["seed"] == {
+        "remaining_stage_authority": kernels.physical.remaining_stage,
+        "take_up_authority": kernels.physical.take_up,
+        "simulation_settings": kernels.physical.simulation,
+    }
+    assert authority_calls["simulate"] == {
+        "simulation_settings": kernels.physical.simulation,
+    }
+    assert authority_calls["completeness"] == {
+        "runtime_authority": kernels.terminal,
+    }
+    assert authority_calls["battery"] == {
+        "runtime_authority": kernels.terminal,
+    }
 
     row_path = next((tmp_path / "logbook-spool").glob("*.json"))
     row = load_logbook_row(row_path)
@@ -1934,6 +2041,13 @@ def test_stacked_config_authority_defaults_to_constants_without_loading_bundle(
         "compile_runtime_authorities",
         lambda _compiled: (_ for _ in ()).throw(
             AssertionError("the constants mode must not issue runtime authorities")
+        ),
+    )
+    monkeypatch.setattr(
+        pool_tool.USPoolKernelAuthorities,
+        "from_runtime_plan",
+        lambda _plan: (_ for _ in ()).throw(
+            AssertionError("the constants mode must not compile kernel authorities")
         ),
     )
 
@@ -2043,6 +2157,9 @@ def test_bundle_config_compiles_one_runtime_authority_without_legacy_adapter(
             }
         ),
     )
+    kernel_authorities = object.__new__(pool_tool.USPoolKernelAuthorities)
+    object.__setattr__(kernel_authorities, "authority_sha256", "b" * 64)
+    object.__setattr__(kernel_authorities, "spec_sha256", "a" * 64)
     calls: list[tuple[str, object]] = []
 
     def load(country: str) -> object:
@@ -2065,6 +2182,10 @@ def test_bundle_config_compiles_one_runtime_authority_without_legacy_adapter(
         calls.append(("compile_runtime_plan", value))
         return runtime_plan
 
+    def compile_kernel_authorities(value: object) -> object:
+        calls.append(("compile_kernel_authorities", value))
+        return kernel_authorities
+
     monkeypatch.setattr(pool_tool, "load_bundle", load)
     monkeypatch.setattr(pool_tool, "compile_spec", compile_ir)
     monkeypatch.setattr(
@@ -2077,6 +2198,11 @@ def test_bundle_config_compiles_one_runtime_authority_without_legacy_adapter(
         pool_tool.USPoolRuntimePlan,
         "from_spec_authority",
         staticmethod(compile_runtime_plan),
+    )
+    monkeypatch.setattr(
+        pool_tool.USPoolKernelAuthorities,
+        "from_runtime_plan",
+        staticmethod(compile_kernel_authorities),
     )
     monkeypatch.setattr(
         pool_tool,
@@ -2094,10 +2220,12 @@ def test_bundle_config_compiles_one_runtime_authority_without_legacy_adapter(
         ("compile_runtime_authorities", compiled),
         ("compile_us_spec_authority", runtime_authorities),
         ("compile_runtime_plan", us_authority),
+        ("compile_kernel_authorities", runtime_plan),
     ]
     assert isinstance(run_config, pool_tool._ResolvedStackedRunConfig)
     assert run_config.runtime_authorities is runtime_authorities
     assert run_config.runtime_plan is runtime_plan
+    assert run_config.kernel_authorities is kernel_authorities
     assert dict(run_config) == {
         "config_authority": "bundle",
         "spec_binding_status": "resolved",
@@ -2116,6 +2244,7 @@ def test_bundle_config_compiles_one_runtime_authority_without_legacy_adapter(
     }
     assert "runtime_authorities" not in run_config
     assert "runtime_plan" not in run_config
+    assert "kernel_authorities" not in run_config
     assert "b" * 64 not in repr(run_config)
     with pytest.raises(AttributeError):
         run_config.runtime_authorities = object()
@@ -2221,6 +2350,7 @@ def test_bundle_plan_drives_checkpoint_identity_discovery_and_order(
         sample_seed=578,
         clone_attachment_fraction=1.0,
         clone_attachment_seed=579,
+        run_config=bundle_run_config,
         runtime_plan=plan,
     )
     assert actual == expected
@@ -2391,6 +2521,7 @@ def test_bundle_plan_drives_publication_payload_values(
         sample_seed=578,
         clone_attachment_fraction=1.0,
         clone_attachment_seed=579,
+        run_config=bundle_run_config,
         runtime_plan=plan,
     )
     assert payload["pipeline"] == plan.execution.pipeline["id"]
@@ -4969,6 +5100,7 @@ def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
         "checkpoint_root",
         "legacy_two_spine",
         "out",
+        "resume_policy",
         "sample_fraction",
         "sample_seed",
     }
@@ -4984,6 +5116,7 @@ def test_parser_exposes_six_pinned_inputs_out_and_checkpoint_root(
             "clone_attachment_fraction",
             "clone_attachment_seed",
             "legacy_two_spine",
+            "resume_policy",
             "sample_fraction",
             "sample_seed",
         }
