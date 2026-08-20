@@ -1998,14 +1998,25 @@ head; it still writes `us-f1-certification.json` and
   explicit rather than being mislabeled as typed draw-by-draw consumption.
 - All five focused physical-operation broker tests pass. Targeted Ruff and
   `git diff --check` pass.
+- Added the bundle physical dispatcher. It consumes one exact compiled-node
+  order, merges uniquely owned tolerated-absence receipts into the node
+  projection, binds each callback input, invokes real `execute_node` and
+  `apply_patch`, registers the compiler-pinned classifier only for EXPAND,
+  restores validated frames without losing legacy sidecars, and refuses
+  completion until every node ran exactly once.
+- The dispatcher resolves only the three authored virtual-output forms
+  (`frame.@...`, source receipts, and resolved weights), failing closed on an
+  unknown meaning. Its operational journal records node ids/keys and validated
+  patch, result-projection, and broker-receipt digests without entering
+  normative artifact bytes.
+- All three focused dispatcher tests, Ruff, `git diff --check`, and a real
+  `execute_node` fixture-scale JOIN smoke pass.
 
 ### Next
 
-1. Finish the generic physical-node dispatcher that executes the real bundle node
-   operations as validated `execute_node` transactions with ledger-owned RNG
-   sessions and broker-issued source snapshots.
-2. Wire that adapter behind `config_authority=bundle` only and prove exact once-per-node
+1. Finish validating the production wiring behind `config_authority=bundle`
+   and prove exact once-per-node
    full-stage dispatch plus D4 two-tier artifact equality at fixture scale.
-3. Reconcile runner coverage with the completed node journal/reuse surface,
+2. Reconcile runner coverage with the completed node journal/reuse surface,
    run only fixture/unit verification, update the host commands and final
    output report, and stop before any host build.
