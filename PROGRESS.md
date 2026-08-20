@@ -2,7 +2,7 @@
 
 ## State
 
-The 2026-08-20 23:03Z owner continuation has independently confirmed the exact
+The 2026-08-20 23:04Z owner continuation has independently confirmed the exact
 failure path and current correction. At bad commit `33bf52fe`, receipt
 production attached QRF evidence to every imputed target and terminal
 validation checked exact record-family binding before consulting calibration
@@ -19,7 +19,9 @@ producer, and rehashed in-range family-forgery cases already committed and
 adequate, so no duplicate executable edit is warranted. All 14 decisive
 focused cases and all 529 tests in the five directly affected files pass under
 the 12 GiB guard, with respective 0.568 GiB and 1.617 GiB maximum observed
-per-process RSS. Static checks and final reporting remain in progress. The
+per-process RSS. Repository lint, formatting of all 15 correction-range Python
+files, committed-range whitespace, and exact source-tree comparisons with the
+all-build-suite checkpoint also pass. Only final report refresh remains. The
 owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain
 untracked and untouched; no terminal host success is claimed.
 
@@ -229,6 +231,16 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
+  changed since `33bf52fe^`, and `git diff --check 33bf52fe^..HEAD`; all pass.
+  The exact Git tree objects for both `microcosm-build/src` and its `us_runtime`
+  subtree match checkpoint `a5be536f`, where all 225 build-package test files
+  passed. Since that checkpoint only one three-line binding-test extension and
+  journals changed; the extended file is included in the current 529-test run.
+- The prescribed `uv run --no-sync` lint attempt was blocked before execution
+  by the sandboxed user-wide uv cache. The same lock-synced worktree Ruff binary
+  was invoked directly from `.venv` and passed; no dependency or lockfile was
+  changed.
 - Ran all five directly affected ordinary-transfer, multispine-serialization,
   stacked-spine, pool-tool, and H5 files in one guarded process. Collection
   confirmed 529 cases; pytest reached 100% with exit zero and no failures, and
@@ -704,7 +716,5 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run repository lint, scoped formatting, committed-range whitespace, and
-   executable-tree drift checks.
-2. Refresh and commit `FINAL_REPORT.md` and this journal with only results
+1. Refresh and commit `FINAL_REPORT.md` and this journal with only results
    established on the current revision.
