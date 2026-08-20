@@ -2,6 +2,19 @@
 
 ## State
 
+The current 2026-08-20 owner continuation is open. The supplied host 1%
+traceback at
+`person/puf_tax_itemization/taxable_interest_income` is the active failure,
+even though earlier branch commits report a scoped correction and green local
+tests. Those claims will be independently checked from the invariant raise
+site against the current tree and failing revision before any further runtime
+change. No executable change or host-success claim has been made in this
+continuation. The owner-provided `_BUILD-FAILURE-1PCT.txt` and
+`.codex-memory-guard.py` remain untracked and untouched.
+
+Earlier continuation snapshots follow and are historical rather than current
+state.
+
 The 2026-08-20 20:22Z owner continuation has completed an independent
 raise-site and history diagnosis against the current tree. Commit `33bf52fe`
 computed QRF regimes and emitted evidence for every ACS target, and terminal
@@ -113,6 +126,10 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Loaded `CLAUDE.md` and the GitNexus debugging instructions, inspected branch
+  status and recent history, preserved both untracked owner artifacts, and
+  recorded the newly supplied host traceback as the active continuation before
+  implementation or test changes.
 - Reopened and committed this root journal before changing implementation or
   tests, reread `CLAUDE.md`, preserved the two untracked owner artifacts, and
   recorded the exact supplied binding failure as the active continuation.
@@ -401,5 +418,13 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Do not claim a host artifact unless a revision-bound retry reaches a terminal
-   success marker and emits the expected pool, manifest, and gates artifacts.
+1. Trace the invariant raise, callers, receipt producer, assigned-target
+   selectors, and failing-to-current history; establish whether the existing
+   correction fully excludes the host target or whether another scoped runtime
+   change is required.
+2. Add or strengthen a regression that captures exact record-family binding at
+   the unassigned batched target, then run focused and proportionate affected
+   suites plus lint.
+3. Commit each coherent diagnosis, test, implementation, verification, journal,
+   and final-report step. Do not claim a host artifact without a revision-bound
+   terminal success marker and expected artifacts.
