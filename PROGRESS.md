@@ -2,6 +2,17 @@
 
 ## State
 
+The 2026-08-20 23:44Z owner continuation is open. It will independently
+retrace the supplied host 1% `taxable_interest_income` record-binding failure
+from the invariant raise site, audit the current assigned-target scoping and
+regression coverage, rerun proportionate verification, and refresh
+`FINAL_REPORT.md` with revision-bound evidence. The owner-provided
+`_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` are untracked inputs and
+will remain untouched. No terminal host success is assumed from earlier
+mutable logs.
+
+The immediately preceding completion snapshot follows and is historical.
+
 The 2026-08-20 23:08Z owner continuation has independently reconfirmed the
 raise-site diagnosis and found no remaining executable or regression gap. At
 bad commit `33bf52fe`, every imputed target carried QRF regimes and terminal
