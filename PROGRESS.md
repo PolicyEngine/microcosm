@@ -2,7 +2,7 @@
 
 ## State
 
-The 2026-08-20 22:47Z owner continuation has independently confirmed the exact
+The 2026-08-20 23:03Z owner continuation has independently confirmed the exact
 failure path and current correction. At bad commit `33bf52fe`, receipt
 production attached QRF evidence to every imputed target and terminal
 validation checked exact record-family binding before consulting calibration
@@ -17,8 +17,9 @@ targets before applying strict binding to assigned targets. Independent
 regression review found the exact synthetic failure, real banked wide-family
 producer, and rehashed in-range family-forgery cases already committed and
 adequate, so no duplicate executable edit is warranted. All 14 decisive
-focused cases pass under the 12 GiB guard with 0.568 GiB maximum observed RSS.
-The larger affected suite and static checks remain in progress. The
+focused cases and all 529 tests in the five directly affected files pass under
+the 12 GiB guard, with respective 0.568 GiB and 1.617 GiB maximum observed
+per-process RSS. Static checks and final reporting remain in progress. The
 owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain
 untracked and untouched; no terminal host success is claimed.
 
@@ -228,6 +229,10 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Ran all five directly affected ordinary-transfer, multispine-serialization,
+  stacked-spine, pool-tool, and H5 files in one guarded process. Collection
+  confirmed 529 cases; pytest reached 100% with exit zero and no failures, and
+  peak observed per-process RSS was 1.617 GiB.
 - Reconstructed the failure at `33bf52fe`: global QRF regime provenance was
   attached to every imputed record and validated before the assigned-spec
   branch, so the real bounded `puf_tax_itemization__batch_1` record conflicted
@@ -699,9 +704,7 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run the complete directly affected transfer, serialization, stacked, pool,
-   and H5 test files under the memory guard.
-2. Run repository lint, scoped formatting, committed-range whitespace, and
+1. Run repository lint, scoped formatting, committed-range whitespace, and
    executable-tree drift checks.
-3. Refresh and commit `FINAL_REPORT.md` and this journal with only results
+2. Refresh and commit `FINAL_REPORT.md` and this journal with only results
    established on the current revision.
