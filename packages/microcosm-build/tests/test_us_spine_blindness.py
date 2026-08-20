@@ -193,6 +193,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "block_ladder_sources.py",
         "capital_gain_distributions.py",
         "casualty_losses.py",
+        # Compiler-issued checkpoint identity materializer; no population treatment.
+        "checkpoint_authority.py",
         "congressional_district_geography.py",
         "congressional_district_vintage.py",
         "congressional_district_vintage_crosswalk.py",
@@ -217,6 +219,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "org_wages.py",
         "parity_reference.py",
         "pregnancy.py",
+        # Compiler-issued pool capability projections; no population treatment.
+        "pool_kernel_authority.py",
+        "pool_physical_authority.py",
+        "pool_runtime_plan.py",
         # Pinned-archive sidecar restore (PAW_TYP); no population treatment.
         "public_assistance_type_source.py",
         "puf_aggregate_records.py",
@@ -248,6 +254,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "source_coverage.py",
         "source_runtime.py",
         "sources.py",
+        # Compiler-issued authority and source materializers; no population treatment.
+        "spec_authority.py",
+        "spec_materializers.py",
         "spine_agreement.py",
         "spine_assembly.py",
         # Data-only live battery authority extraction; never reads or mutates Frames.
@@ -3278,8 +3287,8 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 65, (
-            f"{tool.name} must reach the pinned 65-module runtime graph; "
+        assert len(runtime_graph) == 70, (
+            f"{tool.name} must reach the pinned 70-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (
