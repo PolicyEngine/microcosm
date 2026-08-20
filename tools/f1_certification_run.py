@@ -141,6 +141,8 @@ def _run_one_cold_build(args: argparse.Namespace) -> int:
     pool_output = output_root / "pool.h5"
     checkpoint_root = output_root / "checkpoints"
     evidence_path = output_root / PRODUCTION_EVIDENCE_FILENAME
+    plan_path = output_root / "plan.lock.json"
+    receipt_path = output_root / COLD_BUILD_RECEIPT_FILENAME
     command = [
         sys.executable,
         str(Path(__file__).resolve().with_name("build_us_multispine_pool.py")),
@@ -176,6 +178,8 @@ def _run_one_cold_build(args: argparse.Namespace) -> int:
     if return_code != 0:
         return return_code
 
+    _refuse_preexisting_runner_outputs((plan_path, receipt_path))
+
     evidence = load_f1_production_evidence(evidence_path)
     if evidence.mode != args.mode:
         raise F1CertificationError(
@@ -190,15 +194,15 @@ def _run_one_cold_build(args: argparse.Namespace) -> int:
     assert_request_matches_evidence(request, evidence)
     resume_audit_from_evidence(evidence)
     atomic_write_bytes(
-        output_root / "plan.lock.json",
+        plan_path,
         _canonical_plan_lock_bytes(evidence.plan_lock),
     )
     receipt = emit_f1_cold_build_receipt(
-        output_root / COLD_BUILD_RECEIPT_FILENAME,
+        receipt_path,
         request=request,
         production_evidence=evidence,
     )
-    print(f"Wrote cold build receipt: {output_root / COLD_BUILD_RECEIPT_FILENAME}")
+    print(f"Wrote cold build receipt: {receipt_path}")
     print(f"Cold build receipt SHA-256: {receipt.receipt_sha256}")
     return 0
 
@@ -366,12 +370,17 @@ def _compile_current_spec() -> CompiledSpecIR:
 
 
 def _claim_absent_output_root(path: Path) -> Path:
-    output = Path(path).resolve()
+    requested = Path(path)
+    if os.path.lexists(requested):
+        raise F1CertificationError(
+            f"cold build output root must not pre-exist: {requested}"
+        )
+    output = requested.resolve()
     if output == Path(output.anchor):
         raise F1CertificationError("output root cannot be a filesystem root")
     if os.path.lexists(output):
         raise F1CertificationError(
-            f"cold build output root must not pre-exist: {output}"
+            f"cold build output root must not pre-exist: {requested}"
         )
     output.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -381,6 +390,16 @@ def _claim_absent_output_root(path: Path) -> Path:
             f"cold build output root was claimed concurrently: {output}"
         ) from error
     return output
+
+
+def _refuse_preexisting_runner_outputs(paths: tuple[Path, ...]) -> None:
+    """Keep the pool child from pre-empting runner-owned receipt surfaces."""
+
+    existing = [str(path) for path in paths if os.path.lexists(path)]
+    if existing:
+        raise F1CertificationError(
+            f"refusing pre-existing runner output: {sorted(existing)}"
+        )
 
 
 def _canonical_plan_lock_bytes(value: Mapping[str, object]) -> bytes:

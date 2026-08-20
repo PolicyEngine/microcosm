@@ -5,7 +5,7 @@ import importlib.util
 import json
 import uuid
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -274,10 +274,14 @@ def _identities(
 
 
 def _publication(
-    *, operational: str, primary_status: str = "initialized"
+    *,
+    operational: str,
+    primary_status: str = "initialized",
+    unsealed_marker: str = "same",
 ) -> dict[str, object]:
     return {
         "operational": operational,
+        "unsealed_marker": unsealed_marker,
         "sampling": {"sample_fraction": 0.01, "sample_seed": 578},
         "clone_attachment": {"fraction": 1.0, "seed": 578},
         "stage_checkpoints": {"deepest_resumed_stage": None, "stages": {}},
@@ -515,7 +519,9 @@ def _cold_receipt(
     payload: bytes = b"same",
     coverage_complete: bool = True,
     node_reuse_complete: bool = True,
+    node_reuse_value: str = "1" * 64,
     primary_status: str = "initialized",
+    unsealed_marker: str = "same",
 ) -> F1ColdBuildReceipt:
     plan = _plan_lock()
     constants, bundle = _identities(plan)
@@ -527,11 +533,14 @@ def _cold_receipt(
             "publication_manifest": _publication(
                 operational=f"run-{run_number}",
                 primary_status=primary_status,
+                unsealed_marker=unsealed_marker,
             )
         },
         run_provenance_identity=constants if mode == "constants" else bundle,
         node_reuse_keys=(
-            {"node:z": "1" * 64, "node:a": "2" * 64} if node_reuse_complete else {}
+            {"node:z": node_reuse_value, "node:a": "2" * 64}
+            if node_reuse_complete
+            else {}
         ),
         coverage=_coverage(
             complete=coverage_complete,
@@ -635,6 +644,54 @@ def test_synthetic_cross_mode_drift_fails_with_deterministic_modes() -> None:
         bundle_a=bundle_a,
         bundle_b=bundle_b,
     ).to_wire()
+    assert verdict["within_mode_determinism"]["passed"] is True
+    assert verdict["cross_mode_equality"]["passed"] is False
+    assert verdict["passed"] is False
+
+
+def test_synthetic_unsealed_receipt_drift_fails_cross_mode() -> None:
+    constants_a, constants_b, _, _ = _four_receipts()
+    bundle_a = _cold_receipt(
+        "bundle",
+        run_number=3,
+        unsealed_marker="changed",
+    )
+    bundle_b = _cold_receipt(
+        "bundle",
+        run_number=4,
+        unsealed_marker="changed",
+    )
+    verdict = compare_f1_cold_build_receipts(
+        constants_a=constants_a,
+        constants_b=constants_b,
+        bundle_a=bundle_a,
+        bundle_b=bundle_b,
+    ).to_wire()
+
+    assert verdict["within_mode_determinism"]["passed"] is True
+    assert verdict["cross_mode_equality"]["passed"] is False
+    assert verdict["passed"] is False
+
+
+def test_synthetic_node_reuse_drift_fails_cross_mode() -> None:
+    constants_a, constants_b, _, _ = _four_receipts()
+    bundle_a = _cold_receipt(
+        "bundle",
+        run_number=3,
+        node_reuse_value="9" * 64,
+    )
+    bundle_b = _cold_receipt(
+        "bundle",
+        run_number=4,
+        node_reuse_value="9" * 64,
+    )
+    verdict = compare_f1_cold_build_receipts(
+        constants_a=constants_a,
+        constants_b=constants_b,
+        bundle_a=bundle_a,
+        bundle_b=bundle_b,
+    ).to_wire()
+
     assert verdict["within_mode_determinism"]["passed"] is True
     assert verdict["cross_mode_equality"]["passed"] is False
     assert verdict["passed"] is False
@@ -750,6 +807,47 @@ def test_compare_cli_writes_typed_json_and_markdown(
     assert "Overall verdict: **PASS**" in (
         output / CERTIFICATION_MARKDOWN_FILENAME
     ).read_text(encoding="utf-8")
+
+
+def test_compare_cli_refuses_receipts_from_a_noncurrent_plan(
+    runner: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    constants_a, constants_b, bundle_a, bundle_b = _write_four(
+        tmp_path, _four_receipts()
+    )
+
+    def refuse(_plan: object) -> None:
+        raise runner.F1CertificationError("fixture plan is not current")
+
+    monkeypatch.setattr(runner, "_assert_current_plan", refuse)
+    monkeypatch.setattr(
+        runner,
+        "_assert_current_selector_coverage_contracts",
+        lambda _receipts: pytest.fail("coverage check must follow the plan check"),
+    )
+    output = tmp_path / "noncurrent-verdict"
+
+    assert (
+        runner.main(
+            [
+                "compare",
+                "--constants-a",
+                str(constants_a),
+                "--constants-b",
+                str(constants_b),
+                "--bundle-a",
+                str(bundle_a),
+                "--bundle-b",
+                str(bundle_b),
+                "--output-root",
+                str(output),
+            ]
+        )
+        == 2
+    )
+    assert not output.exists()
 
 
 def test_compare_cli_returns_one_for_valid_fail(
@@ -893,6 +991,62 @@ def test_production_selector_receipt_validates_seals_and_current_contract() -> N
         assert_f1_selector_coverage_contract_current(evidence.coverage, changed)
 
 
+def test_runner_checks_all_selector_receipts_against_one_current_authority(
+    runner: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compiled = object()
+    runtime_authority = object()
+    spec_authority = object()
+    runtime_plan = object()
+    kernel_authority = object()
+    expected_contract = object()
+    coverages = tuple(object() for _ in range(4))
+    calls: list[tuple[object, object]] = []
+
+    monkeypatch.setattr(runner, "_compile_current_spec", lambda: compiled)
+    monkeypatch.setattr(
+        runner,
+        "compile_runtime_authorities",
+        lambda value: runtime_authority if value is compiled else pytest.fail(),
+    )
+    monkeypatch.setattr(
+        runner,
+        "compile_us_spec_authority",
+        lambda value: spec_authority if value is runtime_authority else pytest.fail(),
+    )
+    monkeypatch.setattr(
+        runner.USPoolRuntimePlan,
+        "from_spec_authority",
+        lambda value: runtime_plan if value is spec_authority else pytest.fail(),
+    )
+    monkeypatch.setattr(
+        runner.USPoolKernelAuthorities,
+        "from_runtime_plan",
+        lambda value: kernel_authority if value is runtime_plan else pytest.fail(),
+    )
+
+    def compile_coverage(plan: object, kernels: object) -> object:
+        assert plan is runtime_plan
+        assert kernels is kernel_authority
+        return expected_contract
+
+    monkeypatch.setattr(runner, "compile_pool_artifact_coverage", compile_coverage)
+    monkeypatch.setattr(
+        runner,
+        "assert_f1_selector_coverage_contract_current",
+        lambda coverage, expected: calls.append((coverage, expected)),
+    )
+    receipts = tuple(
+        SimpleNamespace(production_evidence=SimpleNamespace(coverage=coverage))
+        for coverage in coverages
+    )
+
+    runner._assert_current_selector_coverage_contracts(receipts)
+
+    assert calls == [(coverage, expected_contract) for coverage in coverages]
+
+
 def test_production_selector_receipt_rejects_resealed_false_summary() -> None:
     plan, selector = _production_plan_and_selector_receipt()
     selector["container_member_coverage_complete"] = True
@@ -995,6 +1149,40 @@ def test_run_refuses_existing_root_before_launch(
     )
 
 
+def test_run_refuses_dangling_symlink_root_before_launch(
+    runner: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "dangling-output-root"
+    output.symlink_to(tmp_path / "missing-target", target_is_directory=True)
+    monkeypatch.setattr(
+        runner,
+        "_launch_pool_child",
+        lambda *_args: pytest.fail("child must not launch"),
+    )
+
+    assert (
+        runner.main(
+            [
+                "run",
+                "--mode",
+                "constants",
+                "--sample-fraction",
+                "0.01",
+                "--seed",
+                "578",
+                "--output-root",
+                str(output),
+                *_source_cli_args(tmp_path),
+            ]
+        )
+        == 2
+    )
+    assert output.is_symlink()
+    assert not (tmp_path / "missing-target").exists()
+
+
 def test_run_launches_exactly_one_sanitized_forbid_child(
     runner: ModuleType,
     tmp_path: Path,
@@ -1039,6 +1227,102 @@ def test_run_launches_exactly_one_sanitized_forbid_child(
     assert "--logbook-prev-row-digest" not in command
     assert all(key not in environment for key in runner._SANITIZED_ENVIRONMENT_KEYS)
     assert (output / COLD_BUILD_RECEIPT_FILENAME).is_file()
+
+
+@pytest.mark.parametrize(
+    ("reserved_name", "sentinel"),
+    (
+        ("plan.lock.json", b"child-plan"),
+        (COLD_BUILD_RECEIPT_FILENAME, b"child-receipt"),
+    ),
+)
+def test_run_refuses_child_created_runner_output(
+    runner: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reserved_name: str,
+    sentinel: bytes,
+) -> None:
+    output = tmp_path / reserved_name.replace(".", "-")
+
+    def launch(command: list[str], _environment: dict[str, str]) -> int:
+        evidence_path = Path(command[command.index("--f1-evidence-out") + 1])
+        evidence = _cold_receipt("constants", run_number=11).production_evidence
+        atomic_write_json(evidence_path, evidence.to_wire())
+        (output / reserved_name).write_bytes(sentinel)
+        return 0
+
+    monkeypatch.setattr(runner, "_launch_pool_child", launch)
+    monkeypatch.setattr(runner, "_assert_current_plan", lambda _plan: None)
+    assert (
+        runner.main(
+            [
+                "run",
+                "--mode",
+                "constants",
+                "--sample-fraction",
+                "0.01",
+                "--seed",
+                "578",
+                "--output-root",
+                str(output),
+                *_source_cli_args(tmp_path),
+            ]
+        )
+        == 2
+    )
+    assert (output / reserved_name).read_bytes() == sentinel
+    other = (
+        COLD_BUILD_RECEIPT_FILENAME
+        if reserved_name == "plan.lock.json"
+        else "plan.lock.json"
+    )
+    assert not (output / other).exists()
+
+
+@pytest.mark.parametrize(
+    ("mode", "sample_fraction", "evidence_mode"),
+    (
+        ("bundle", "0.01", "constants"),
+        ("constants", "0.04", "constants"),
+    ),
+)
+def test_run_refuses_evidence_that_differs_from_cli_request(
+    runner: ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    sample_fraction: str,
+    evidence_mode: str,
+) -> None:
+    output = tmp_path / f"mismatch-{mode}-{sample_fraction}"
+
+    def launch(command: list[str], _environment: dict[str, str]) -> int:
+        evidence_path = Path(command[command.index("--f1-evidence-out") + 1])
+        evidence = _cold_receipt(evidence_mode, run_number=12).production_evidence
+        atomic_write_json(evidence_path, evidence.to_wire())
+        return 0
+
+    monkeypatch.setattr(runner, "_launch_pool_child", launch)
+    monkeypatch.setattr(runner, "_assert_current_plan", lambda _plan: None)
+    assert (
+        runner.main(
+            [
+                "run",
+                "--mode",
+                mode,
+                "--sample-fraction",
+                sample_fraction,
+                "--seed",
+                "578",
+                "--output-root",
+                str(output),
+                *_source_cli_args(tmp_path),
+            ]
+        )
+        == 2
+    )
+    assert not (output / COLD_BUILD_RECEIPT_FILENAME).exists()
 
 
 def test_failed_child_emits_no_cold_receipt(

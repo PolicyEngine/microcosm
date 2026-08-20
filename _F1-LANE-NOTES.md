@@ -2253,3 +2253,34 @@ head; it still writes `us-f1-certification.json` and
    plans for the primary node plus its clone and tail supplemental owners.
 2. Route source and transfer sites through the same typed kernel view, then
    prove complete-seal consumption across a real fixture-scale stage graph.
+
+## F1 continuation r5 certification-runner hardening (2026-08-20)
+
+### State
+
+- The host runner already owns the one-build cold invocation, four-receipt D4
+  comparison, and documentation-only resume gate. Its receipt embeds the
+  complete sealed `plan_lock`, and comparison validates typed generation-0/1
+  provenance before applying only the plan's named receipt normalizations.
+
+### Done
+
+- Cold-root claiming now refuses dangling symlinks as pre-existing state, and
+  the runner refuses a child that pre-empts either runner-owned plan-lock or
+  cold-receipt output instead of overwriting it.
+- Expanded synthetic comparison coverage proves that unsealed receipt drift
+  and node-reuse-key drift fail cross-mode equality even when both modes are
+  internally deterministic. Current-plan, all-four coverage-contract, and CLI
+  request/evidence mismatch checks are also pinned.
+- The dedicated runner module passes all 35 tests. Targeted Ruff check and
+  format check plus `git diff --check` pass; no build ran.
+- Production evidence remains honestly incomplete until physical execution
+  reports all plan-order node-reuse keys. Final-H5 member closure and
+  calibration-scope coverage are separate outstanding vector-coverage facts;
+  the comparator will report FAIL rather than masking either gap.
+
+### Next
+
+1. Finish physical node wiring and emit the complete 38-node reuse inventory.
+2. Preserve the runner's fail-closed verdict for any still-unsealed final-H5
+   or calibration vector member in the host handoff.
