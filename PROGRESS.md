@@ -2,6 +2,12 @@
 
 ## State
 
+The 2026-08-20 owner continuation is reopened to independently verify the
+reported host 1% stacked gap-fill binding failure against the branch's existing
+scoped-QRF correction. No implementation result or host artifact is currently
+being claimed. The untracked owner artifacts `_BUILD-FAILURE-1PCT.txt` and
+`.codex-memory-guard.py` are preserved unchanged.
+
 The 2026-08-20 local continuation is complete for the host 1% binding failure
 at `person/puf_tax_itemization/taxable_interest_income`. An independent audit
 from the invariant raise site confirms the branch's existing scoped-binding
@@ -41,6 +47,9 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Reopened the committed progress journal before implementation work for the
+  current owner continuation and recorded the supplied failure as the active
+  verification target.
 - Reopened the committed journal at the start of the owner continuation,
   preserved both untracked host artifacts, and began an independent audit of
   the existing scoped-binding correction.
@@ -178,9 +187,9 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Let the externally owned exact 1% retry reach a terminal runner verdict; if
-   it succeeds, record the 16 after measurements and source-preservation
-   invariants.
-2. Accept an after artifact only if the host stacked receipt validation and
-   frozen battery checks pass; keep the run off-chain and leave the pending
-   logbook chain untouched.
+1. Re-trace the invariant from its raise site through receipt construction and
+   compare the current correction with the exact unassigned host target.
+2. Run the focused regression and directly affected suite, adding or adjusting
+   coverage only if the current tree does not capture the supplied failure.
+3. Update `FINAL_REPORT.md` with the current continuation verdict; do not claim
+   a host artifact unless terminal host evidence exists.
