@@ -2,6 +2,16 @@
 
 ## State
 
+The 2026-08-20 23:08Z owner continuation is in progress. The prior committed
+state reports a complete assigned-only QRF receipt correction, but this pass is
+independently rechecking the cited raise site, current canonical producer and
+validator selectors, failing-to-fixed history, and exact regression surface
+before relying on that verdict. No executable edit has been made. The
+owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain
+untracked and untouched, and no terminal host result is claimed.
+
+The immediately preceding completion snapshot follows and is historical.
+
 The 2026-08-20 23:05Z owner continuation is complete. It independently
 confirmed the exact
 failure path and current correction. At bad commit `33bf52fe`, receipt
@@ -237,6 +247,10 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Reopened the committed journal for the 23:08Z continuation, preserved both
+  untracked owner artifacts, selected the GitNexus debugging workflow, and
+  began independent source, history, and regression audits of the supplied
+  binding failure.
 - Refreshed `FINAL_REPORT.md` with this continuation's independent diagnosis,
   current 14-case and 529-test results, static/tree verification, tooling
   boundary, and exact non-terminal host status.
@@ -729,7 +743,9 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run or identify a revision-bound off-chain 1% retry that reaches a terminal
-   runner verdict and emits the expected final pool, manifest, and gates
-   artifacts. Do not claim an after artifact without that terminal proof, and
-   do not publish or mutate the pending logbook chain as a side effect.
+1. Reconfirm the failing and corrected call paths from the invariant raise
+   site, including the exact early/late owner-derived target selections.
+2. Audit and rerun the exact synthetic host regression, real banked wide-family
+   producer regression, and strict assigned-family binding mutations.
+3. Run proportional affected-suite and static verification, then refresh
+   `FINAL_REPORT.md` with revision-bound results.
