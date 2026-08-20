@@ -1069,3 +1069,43 @@ above; it does not alter the main lane's deliverables 5/6/8 state.
 - The scoped final output is `FINAL_REPORT_F1_D7.md`. No build or sample rung
   was run, nothing was pushed, and the split-out stayed under its 15 GiB RSS
   ceiling.
+
+### SPLIT-OUT COORDINATION — F1 D7 exact-cell correction (2026-08-20)
+
+This append-only section supersedes the prior D7 counts and the statement that
+Medicare/Housing "defer" to take-up. It does not alter the main lane's
+deliverables 5/6/8 state.
+
+- A continuation audit committed at `823a0100` found that the first retarget's
+  whole-column subtraction dropped 20 early-family segments whenever their
+  typed column also appeared in the producer graph. The compiler cells do not
+  overlap: graph and family use disjoint exact atoms on every shared column.
+- The correction retains authority per exact compiler predicate cell and does
+  not invent supersession between predicate spaces. The current closure is
+  214 segments over all 173 typed contracts: 152 graph segments/134 columns,
+  48 early-family segments/columns, and 14 take-up leaves/13 columns. It has
+  809 unique `(predicate_space, column_key, atom)` cells.
+- Before typed filtering, graph final ownership remains 170 segments/763
+  exact cells and exactly equals the 241-segment raw compiler write-cell
+  union. The graph/family shared set has 20 columns and zero exact-cell
+  collisions.
+- Column surface membership is 113 graph-only, 28 family-only, 11 take-up-only,
+  19 graph+family, one graph+take-up (Medicare), and one graph+family+take-up
+  (Housing). The value summary now accounts for every variable: 45 flags, 132
+  amounts, five categories, and one count, totaling 183.
+- The source/test correction is present in concurrent commit `5875be22`
+  (`Correct F0 kernel and seed contracts`). A main-lane process committed the
+  shared index while the D7 patch was verified, sweeping the two D7 files into
+  its unrelated F0 commit. The split-out did not rewrite shared history; this
+  prefixed handoff documents exact file ownership and provenance.
+- Post-correction verification is green: all 70 tests in the four D7 modules
+  passed in 407.29 seconds; the exact projection test passed alone in 85.94
+  seconds; direct emission completed in 43.10 seconds; and Ruff, formatting,
+  bytecode, and whitespace checks passed.
+- Two read-only independent audits approve the result. One reconstructed the
+  809-cell closure directly from `CompiledSpecIR` without dashboard imports;
+  the other confirmed byte-identical output under two distinct hash seeds.
+- The seed-attestation blocker recorded above was resolved by the concurrent
+  owner commit, which pins 213 production modules and 285 classified calls.
+  No build or sample rung ran, nothing was pushed, and D7 makes no broader
+  certification claim. The scoped output is `FINAL_REPORT_F1_D7.md`.

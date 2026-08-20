@@ -4,57 +4,52 @@
 
 - Work is local on `spec-engine-f1`; nothing has been pushed and no sample
   build has run in this continuation.
-- Deliverable 7's compiler-input retarget is committed at `ef036572`, but an
-  independent continuation audit reopened its derived closure: whole-column
-  precedence drops 20 cell-disjoint early-family segments whenever the same
-  typed column also has a graph writer. The fix must preserve authority per
-  exact compiler predicate cell and must not invent supersession between the
-  graph and take-up compiler predicate spaces.
-- The first required `git fetch origin` was attempted and failed because this
-  host could not resolve `github.com`. The final #698 commits are available on
-  the cached local `spec-engine-schema` branch and are the next merge source.
-- Deliverable 4 remains incomplete: typed authorities are materialized, but
-  production physical kernels and all 72 stochastic sites are not yet routed
-  through the generic executor and brokers. Deliverables 5 and 6 therefore
-  cannot honestly emit PASS receipts.
-- The host ceiling is 20 GiB RSS. Prior cold f001 QRF attempts peaked between
-  78.91 and 96.95 GiB, so no 1% certification build may be launched here.
+- Deliverable 7 is complete. Commit `ef036572` retargeted the active lineage
+  consumers to compiler outputs, `823a0100` reopened a whole-column closure
+  defect, and the exact-cell correction is present at HEAD `5875be22`.
+- The correction preserves authority independently in each compiler predicate
+  space. A typed column may therefore have graph, early-family, and take-up
+  segments when their exact scoped cells do not collide; the dashboard does
+  not invent cross-space supersession.
+- The source correction was swept into concurrent main-lane commit `5875be22`
+  while both lanes shared the index. Its D7 files and evidence are being
+  closed out separately in a prefixed D7 handoff commit; the shared commit is
+  not rewritten.
+- Deliverables 4/5/6/8 and certification remain owned by the main F1 lane.
+  The host ceiling is 20 GiB RSS, and this split-out remains capped at 15 GiB.
 
 ## Done
 
-- Completed the required RFC, schema, compiler, review, coverage, pool-tool,
-  and lane-journal readings.
-- Implemented and tested the generic executor and broker foundations, sealed
-  comparison surfaces, source snapshots, provenance routing, and typed bundle
-  kernel-authority materialization.
-- Completed the deliverable-7 parallel lane without touching closure,
-  segments, or dashboard code from the main lane.
-- Reverified all four deliverable-7 modules on merged compiler-schema HEAD
-  `da45dfcd` in 426.33 seconds and recorded the exact result in
-  `FINAL_REPORT_F1_D7.md`.
-- Re-audited every current test/tool consumer against the held #697 authored
-  YAML and 392-column fixture. No held filename, loader, or class consumer
-  remains. The current four-module D7 baseline reached 100% with no pytest
-  failure in 1,273.76 seconds; its `/usr/bin/time -l` wrapper alone returned
-  nonzero after the run because the sandbox refused `sysctl kern.clockrate`.
-- Audited the remaining physical executor, RNG, artifact-selector,
-  calibration, receipt, and resume seams. The audit found two F0 contract
-  corrections and two exact seed-ledger corrections that require regeneration
-  and identity re-pinning after the cached #698 merge.
-- Kept the historical root journal and all commits local; no logbook chain was
-  touched.
+- Read the charter, owner ruling, lane journal, RFC evidence, compiler seams,
+  and held #697 closure artifacts before changing consumers.
+- Audited tests and tools for held `us_imputation_lineage.yaml`, the stale
+  392-column f025 inventory, authored lineage classes, closure helpers,
+  segment surfaces, and the dashboard. No active held filename, loader, or
+  class consumer remains.
+- Retargeted the dashboard and all four production-shaped test consumers to
+  `compile_spec(load_bundle(...))`, `CompiledSpecIR.resource()`, typed
+  inventory, producer graph, and compiler predicate registries. Explicit
+  generation-0 parity oracles and synthetic low-level tests remain authored.
+- Corrected the derived closure to retain all 20 graph/family shared columns
+  because their exact atoms are disjoint. Added fail-closed checks for unknown
+  contracts, empty or duplicate atoms, peer-surface cell collisions, and
+  missing typed-column closure.
+- Independently established the current projection: 173 typed contracts, 241
+  raw graph write segments, 170 final graph-owner segments/763 cells, 152
+  typed graph segments/134 columns/735 cells, 48 early-family segments/cells,
+  14 take-up leaves/13 columns/26 cells, and 214 combined segments/809 unique
+  scoped cells.
+- Ran all four D7 modules after the correction: 70 tests passed in 407.29
+  seconds. The exact projection regression also passed alone in 85.94 seconds;
+  the emitter completed in 43.10 seconds; Ruff, formatting, bytecode, and
+  whitespace checks passed.
+- Obtained two read-only independent approvals. One reconstructed the exact
+  closure directly from compiler IR without importing dashboard helpers; the
+  other emitted byte-identical JSON under two `PYTHONHASHSEED` values.
+- Kept the historical root journal and unrelated main-lane files intact.
 
 ## Next
 
-1. Correct D7 closure from whole-column to exact-cell authority, add the 20
-   graph/family overlap regression, and include the omitted `count` summary.
-2. Re-run the D7 suite and append the corrected handoff/report evidence.
-3. Merge the cached final #698 spec-engine tip, resolving conflicts by keeping
-   both main's fixes and the 72-site ledger.
-4. Correct the two adaptive-cap ledger rows plus the finalizer structural delta
-   and late-transfer effects; regenerate bundles, coverage, and every identity
-   pin.
-5. Run the allowed focused and repository test gates under 20 GiB RSS.
-6. Record the exact D4/D5/D6 blockers and owner-run requirements in the lane
-   notes, rollout status, and `FINAL_REPORT.md`; stop without fabricating
-   certification evidence.
+1. No further deliverable-7 implementation or verification is pending.
+2. The main F1 lane may consume the append-only D7 handoff while continuing
+   its deliverables 4/5/6/8 work and owner-run certification gates.
