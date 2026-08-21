@@ -4,10 +4,12 @@
 
 ### State
 
-In progress. Revalidating the reported host 1% ACS QRF record-binding failure
-against the current branch before deciding whether any additional executable
-or regression change is required. Earlier journal completion claims are
-historical evidence, not assumed current truth.
+Diagnosis complete; current-tree verification is in progress. The supplied
+line numbers resolve to historical commit `33bf52fe`, where QRF evidence was
+validated for every target before assignment lookup. The present branch
+already contains a scoped correction and the exact regression, so no duplicate
+executable edit will be made unless fresh tests or independent audits expose a
+remaining current gap.
 
 ### Done
 
@@ -19,13 +21,34 @@ historical evidence, not assumed current truth.
   `.codex-memory-guard.py` artifacts untouched.
 - Confirmed `FINAL_REPORT.md` is the existing required output file.
 - Reopened and committed this progress journal before implementation work.
+- Matched the supplied line 4512 caller and line 4310 raise exactly at
+  `33bf52fe`: the old path validated every target against its public family
+  before consulting the early calibration registry.
+- Confirmed the canonical 15-target `puf_tax_itemization` family is bounded at
+  eight targets, so unassigned taxable interest carried the physical
+  `puf_tax_itemization__batch_1` record that triggered the reported mismatch.
+- Enumerated the immutable policy registry: two early and seven late targets,
+  all within the assigned model-required, source-operator, and adult-care
+  surface; taxable interest is absent.
+- Traced the current correction lineage. `22b2c6bc` added the exact boundary
+  regression; `176c60fc` made regime work/evidence default-empty and explicitly
+  registry-selected; `0b4339d1`, `887df056`, `94b7aecb`, and `21a48ba5`
+  hardened legacy counts, banked/wide-family behavior, canonical width, and
+  exact selected-target record binding.
+- Confirmed both current stacked owners derive `regime_evidence_targets` only
+  from the registry; unselected records receive empty regimes, receipt builders
+  omit their evidence, and both validators reject undeclared evidence before
+  invoking strict assigned-target record binding.
+- Read the mutable host log without changing it. A later retry has rebuilt
+  taxable interest successfully as target 22/47 and continued through 23/47,
+  but has no terminal exit, final pool, manifest, gates, or explicit Microcosm
+  revision binding, so it is not a certification verdict.
 
 ### Next
 
-Reconstruct the failing revision from the invariant, audit the current assigned
-target surface end to end, run the exact regression and affected suite, and
-either make a failing-first scoped correction or document why the existing
-committed correction is already complete.
+Run the exact failing-target, real banked wide-family, and forged-binding
+regressions; reconcile independent audits; then run the directly affected suite
+and static checks before closing the journal and final report.
 
 ## Reopened owner continuation — 2026-08-21
 
