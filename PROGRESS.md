@@ -1,5 +1,29 @@
 # Battery package 3 progress
 
+## Owner continuation revalidation — 2026-08-21 09:47Z
+
+### State
+
+In progress. The owner has renewed the ACS QRF binding continuation. Earlier
+sections and commits report an assigned-only correction, but their verdicts are
+historical until the current tree, invariant path, regression, and relevant
+verification surface are independently rechecked.
+
+### Done
+
+- Re-read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
+- Confirmed the required `PROGRESS.md` and `FINAL_REPORT.md` are tracked and
+  committed at the start of this continuation.
+- Inspected branch status and the most recent continuation commit; preserved
+  the pre-existing untracked memory-guard and host-failure diagnostics.
+
+### Next
+
+Trace the supplied error through GitNexus where available and direct source and
+history, audit the assigned-surface fences and regression coverage, run the
+focused and proportionate affected verification, then refresh the required
+final report with a revision-bound result.
+
 ## Owner continuation verification — 2026-08-21 09:17Z
 
 ### State
