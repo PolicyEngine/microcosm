@@ -43,6 +43,9 @@ from microcosm.build.us_runtime.disability_benefits import (
     with_us_disability_benefits,
 )
 from microcosm.build.us_runtime.education_inputs import with_us_education_inputs
+from microcosm.build.us_runtime.work_experience_inputs import (
+    with_us_work_experience_inputs,
+)
 from microcosm.build.us_runtime.eligibility_inputs import (
     with_us_eligibility_inputs,
 )
@@ -222,6 +225,7 @@ POOL_SOURCE_OPERATOR_ORDER = (
     "with_us_retirement_distribution_inputs",
     "with_us_immigration_inputs",
     "with_us_education_inputs",
+    "with_us_work_experience_inputs",
 )
 """Logical source-input ownership inventory in legacy relative order.
 
@@ -593,6 +597,12 @@ POOL_OPERATOR_CONTRACTS: Mapping[str, SourceOperatorContract] = {
         "education_inputs",
         (_POST_CLONE_PHASE,),
         "deterministic rowwise derivation follows PUF tuition imputation",
+    ),
+    "with_us_work_experience_inputs": SourceOperatorContract(
+        "work_experience_inputs",
+        (_POST_CLONE_PHASE,),
+        "exact sidecar identity join must cover both support clones of every "
+        "source person",
     ),
     "_complete_schedule_d_input": SourceOperatorContract(
         "capital_gain_distributions",
@@ -1951,6 +1961,14 @@ def _post_clone_source_operators() -> Mapping[str, SourceFrameOperator]:
             seed=POOL_RANDOM_SEED,
             time_period=POOL_TIME_PERIOD,
             asec_education_source=None,
+        ),
+        "with_us_work_experience_inputs": lambda current: (
+            with_us_work_experience_inputs(
+                current,
+                seed=POOL_RANDOM_SEED,
+                time_period=POOL_TIME_PERIOD,
+                asec_work_experience_source=None,
+            )
         ),
     }
     return operators

@@ -47,6 +47,7 @@ from microcosm.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_ZIP_URL,
     ASEC_EDUCATION_ASSISTANCE_ARCHIVES,
     ASEC_RAW_STAGE_ARTIFACT_KIND,
+    ASEC_WORK_EXPERIENCE_ARCHIVES,
     ASEC_RAW_STAGE_CHECKPOINT_FILENAME,
     ASEC_RAW_STAGE_OPERATOR_STATUS,
     ASEC_RAW_STAGE_SCHEMA_VERSION,
@@ -76,6 +77,7 @@ from microcosm.build.us_runtime import (
     fill_asec_2022_weeks_unemployed_source,
     fill_asec_education_assistance_source,
     fill_asec_public_assistance_type_source,
+    fill_asec_work_experience_source,
     finalize_puf_e01000_reconciliation,
     impute_us_housing_assistance_to_puf_support,
     impute_us_puf_tax_detail_support,
@@ -83,6 +85,7 @@ from microcosm.build.us_runtime import (
     load_asec_2023_weeks_unemployed_source,
     load_asec_education_assistance_sources,
     load_asec_public_assistance_type_sources,
+    load_asec_work_experience_sources,
     load_asec_raw_stage_checkpoint,
     load_congressional_district_vintage_crosswalk,
     load_us_block_ladder,
@@ -122,6 +125,7 @@ from microcosm.build.us_runtime import (
     us_source_operation_handlers,
     us_weeks_unemployed_signal_gate,
     us_wic_claim_signal_gate,
+    us_work_experience_signal_gate,
     us_workers_compensation_signal_gate,
     validate_puf_capital_gains_tail_manifest,
     with_household_congressional_districts,
@@ -144,6 +148,7 @@ from microcosm.build.us_runtime import (
     with_us_retirement_distribution_inputs,
     with_us_weeks_unemployed,
     with_us_wic_claim_input,
+    with_us_work_experience_inputs,
     with_us_workers_compensation,
     write_puf_capital_gains_tail_manifest,
 )
@@ -185,6 +190,7 @@ PIPELINE_STEPS = (
     "retirement_contributions_post_clone",
     "retirement_distributions_post_clone",
     "education_inputs_post_clone",
+    "work_experience_inputs_post_clone",
     "congressional_district_assignment",
     "block_ladder_assignment",
     "final_export",
@@ -261,6 +267,10 @@ STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
     ("education_inputs_post_clone", ("with_us_education_inputs",)),
     (
+        "work_experience_inputs_post_clone",
+        ("with_us_work_experience_inputs",),
+    ),
+    (
         "congressional_district_assignment",
         ("with_household_congressional_districts",),
     ),
@@ -322,10 +332,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Optional INCOME_YEAR=PATH mapping to a local copy of the "
             "SHA-pinned official ASEC survey archive (zip or extracted "
-            "pppub member) restoring that pooled income year's ED_VAL and "
-            "PAW_TYP (income year YYYY maps to the survey-year YYYY+1 "
-            "archive). Years without a mapping are fetched from the "
-            "official Census archive and verified against the same pins."
+            "pppub member) restoring that pooled income year's ED_VAL, "
+            "PAW_TYP, and WEIND/WEMIND (income year YYYY maps to the "
+            "survey-year YYYY+1 archive). Years without a mapping are "
+            "fetched from the official Census archive and verified against "
+            "the same pins."
         ),
     )
     parser.add_argument(
@@ -1326,6 +1337,21 @@ def _run_all(
             + "\n  ".join(education_inputs_gate.failures)
         )
     _observe_frame_boundary(boundary_observer, "education_inputs_post_clone", imputed)
+    imputed = with_us_work_experience_inputs(
+        imputed,
+        seed=args.seed,
+        time_period=args.target_year,
+        asec_work_experience_source=work_experience_source,
+    )
+    work_experience_gate = us_work_experience_signal_gate(imputed)
+    if not work_experience_gate.passed:
+        raise SystemExit(
+            "Work-experience signal gate failed:\n  "
+            + "\n  ".join(work_experience_gate.failures)
+        )
+    _observe_frame_boundary(
+        boundary_observer, "work_experience_inputs_post_clone", imputed
+    )
     congressional_district_assignment = {"applied": False}
     if args.assign_congressional_districts:
         ledger_facts = load_ledger_consumer_artifact(args.ledger_facts).facts
@@ -1909,6 +1935,10 @@ def _asec_raw_source_mapping_frame(
         _asec_education_source_paths(args),
         income_years=_pooled_income_years(args),
     )
+    work_experience_source = load_asec_work_experience_sources(
+        _asec_education_source_paths(args),
+        income_years=_pooled_income_years(args),
+    )
     tables = {
         entity: source_frame.table(entity).copy(deep=True)
         for entity in source_frame.entities
@@ -1922,6 +1952,7 @@ def _asec_raw_source_mapping_frame(
         person,
         public_assistance_type_source,
     )
+    person = fill_asec_work_experience_source(person, work_experience_source)
     tables["person"] = person
     raw_frame = Frame(
         tables,
@@ -1950,6 +1981,18 @@ def _asec_raw_source_mapping_frame(
                 ASEC_EDUCATION_ASSISTANCE_ARCHIVES[income_year].member_sha256
             ),
             "sha256": ASEC_EDUCATION_ASSISTANCE_ARCHIVES[income_year].zip_sha256,
+        }
+        for income_year in _pooled_income_years(args)
+    ]
+    work_experience_pins = [
+        {
+            "income_year": income_year,
+            "locator": ASEC_WORK_EXPERIENCE_ARCHIVES[income_year].zip_url,
+            "member": ASEC_WORK_EXPERIENCE_ARCHIVES[income_year].member,
+            "member_sha256": (
+                ASEC_WORK_EXPERIENCE_ARCHIVES[income_year].member_sha256
+            ),
+            "sha256": ASEC_WORK_EXPERIENCE_ARCHIVES[income_year].zip_sha256,
         }
         for income_year in _pooled_income_years(args)
     ]
@@ -1987,6 +2030,25 @@ def _asec_raw_source_mapping_frame(
             "join_keys": ["source_year", "PERIDNUM"],
             "operation": "exact_source_join",
             "source_pins": education_pins,
+        },
+        # WEIND/WEMIND live in the same pinned survey-year person members;
+        # the work-experience sidecar pins the identical archives with its
+        # own audit statistics (microcosm#719).
+        "WEIND": {
+            "audit": dict(work_experience_source.attrs.get("source_audit", {})),
+            "column": "WEIND",
+            "entity": "person",
+            "join_keys": ["source_year", "PERIDNUM"],
+            "operation": "exact_source_join",
+            "source_pins": work_experience_pins,
+        },
+        "WEMIND": {
+            "audit": dict(work_experience_source.attrs.get("source_audit", {})),
+            "column": "WEMIND",
+            "entity": "person",
+            "join_keys": ["source_year", "PERIDNUM"],
+            "operation": "exact_source_join",
+            "source_pins": work_experience_pins,
         },
     }
 
@@ -2665,6 +2727,21 @@ def _post_qrf_frame_stage(
         signals["education_inputs_signal"] = _checked_gate_payload(
             us_education_inputs_signal_gate(frame),
             "Education-input signal gate failed",
+        )
+    elif stage == "work_experience_inputs_post_clone":
+        work_experience_source = load_asec_work_experience_sources(
+            _asec_education_source_paths(args),
+            income_years=_pooled_income_years(args),
+        )
+        frame = with_us_work_experience_inputs(
+            frame,
+            seed=args.seed,
+            time_period=args.target_year,
+            asec_work_experience_source=work_experience_source,
+        )
+        signals["work_experience_signal"] = _checked_gate_payload(
+            us_work_experience_signal_gate(frame),
+            "Work-experience signal gate failed",
         )
     elif stage == "congressional_district_assignment":
         assignment: dict[str, object] = {"applied": False}

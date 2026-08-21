@@ -60,7 +60,11 @@ ASEC_RAW_STAGE_OPERATOR_STATUS = "operator_untouched"
 # Version 3 added the PAW_TYP restoration that gates TANF enrollment; older
 # artifacts lack the gate column and must fail loudly rather than let
 # PAW_VAL-only conflation back in (microcosm#591).
-ASEC_RAW_STAGE_SCHEMA_VERSION = 3
+# Version 4 added the WEIND/WEMIND work-experience industry restoration
+# feeding detailed_industry_recode, major_industry_recode, and
+# worked_last_year; older artifacts lack the industry columns and must fail
+# loudly rather than ship an industry-blind person schema (microcosm#719).
+ASEC_RAW_STAGE_SCHEMA_VERSION = 4
 ASEC_RAW_STAGE_STAGE = "raw_source_mapping"
 _RAW_STAGE_BINDING_KEYS = frozenset(
     {
@@ -75,9 +79,11 @@ _RAW_STAGE_BINDING_KEYS = frozenset(
         "stage",
     }
 )
-_RAW_SOURCE_MAPPING_COLUMNS = frozenset({"ED_VAL", "LKWEEKS", "PAW_TYP"})
+_RAW_SOURCE_MAPPING_COLUMNS = frozenset(
+    {"ED_VAL", "LKWEEKS", "PAW_TYP", "WEIND", "WEMIND"}
+)
 _RAW_STAGE_REQUIRED_PERSON_COLUMNS = frozenset(
-    {"ED_VAL", "LKWEEKS", "PAW_TYP", "PERIDNUM", "source_year"}
+    {"ED_VAL", "LKWEEKS", "PAW_TYP", "PERIDNUM", "WEIND", "WEMIND", "source_year"}
 )
 _RAW_SOURCE_MAPPING_KEYS = frozenset(
     {
@@ -456,6 +462,35 @@ def _validate_raw_stage_source_columns(frame: Frame, *, path: Path) -> None:
         raise ValueError(
             f"ASEC raw-stage checkpoint {path} PAW_TYP must be complete integers "
             "in {0, 1, 2, 3}."
+        )
+
+    detailed_industry = pd.to_numeric(person["WEIND"], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    valid_detailed = np.isfinite(detailed_industry)
+    valid_detailed &= np.equal(detailed_industry, np.floor(detailed_industry))
+    valid_detailed &= (detailed_industry >= 0.0) & (detailed_industry <= 23.0)
+    if not valid_detailed.all():
+        raise ValueError(
+            f"ASEC raw-stage checkpoint {path} WEIND must be complete integers "
+            "in {0, ..., 23}."
+        )
+
+    major_industry = pd.to_numeric(person["WEMIND"], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    valid_major = np.isfinite(major_industry)
+    valid_major &= np.equal(major_industry, np.floor(major_industry))
+    valid_major &= (major_industry >= 0.0) & (major_industry <= 15.0)
+    if not valid_major.all():
+        raise ValueError(
+            f"ASEC raw-stage checkpoint {path} WEMIND must be complete integers "
+            "in {0, ..., 15}."
+        )
+    if int(np.count_nonzero((detailed_industry == 0.0) != (major_industry == 0.0))):
+        raise ValueError(
+            f"ASEC raw-stage checkpoint {path} WEIND and WEMIND must be zero "
+            "on exactly the same not-in-universe rows."
         )
 
 
