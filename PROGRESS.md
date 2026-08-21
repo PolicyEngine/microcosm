@@ -48,12 +48,27 @@ traceback before deciding whether any further executable change is warranted.
   ordinary/banked 15-target producer-to-validator regression under the owner
   12 GiB/20 ms guard. All three cases passed; output was limited to the known
   joblib physical-core fallback warning.
+- Ran all five directly affected files together under the owner guard: 64
+  ordinary-transfer tests, five multispine-serialization tests, 259
+  stacked-spine tests, 164 pool-tool tests, and 38 H5 receipt-I/O tests. All
+  530 passed with exit zero; maximum observed per-process RSS was 1.659 GiB.
+- Ran repository-wide Ruff lint, Ruff formatting checks on all 15 extant Python
+  files changed since `33bf52fe^`, and `git diff --check
+  33bf52fe^..d67df37c`; all passed. The sandbox-blocked user UV cache was
+  bypassed with the already-synchronized project virtual environment.
+- Confirmed all production package source trees, `tools`, `specs`,
+  `pyproject.toml`, and `uv.lock` are exact Git-object matches to complete-suite
+  checkpoint `d29a8705`. Only the journals and the strengthened stacked-spine
+  regression differ.
+- Took a read-only restricted-host snapshot at `2026-08-21 08:42:44Z`. The
+  retry was live and had completed the taxable-interest fit without an error,
+  but it had not yet reached the final stacked gap-fill receipt validator. No
+  terminal exit marker, final pool H5, manifest, or gates artifact existed, so
+  neither passage of the supplied invariant nor host certification is claimed.
 
 ### Next
 
-1. Verify the complete directly affected suite and static checks against the
-   current tip.
-2. Update `FINAL_REPORT.md` and close this journal without claiming restricted
+1. Update `FINAL_REPORT.md` and close this journal without claiming restricted
    host certification unless terminal revision-bound artifacts exist.
 
 ## Owner-reported host failure continuation — 2026-08-21 07:59Z
