@@ -43,12 +43,17 @@ warranted unless the remaining verification exposes a gap.
   producer, and all 12 rehashed QRF structure mutations under the owner 12 GiB
   guard. All 14 cases passed; maximum observed per-process RSS was 0.571 GiB.
   The only warning was joblib's logical-core fallback.
+- Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
+  changed since `33bf52fe^`, committed-range and worktree whitespace checks,
+  and exact executable-tree comparisons against all-suite checkpoint
+  `a5be536f`; all passed. The current `microcosm-build/src`, `tools`, `specs`,
+  project, and lockfile content is unchanged from that checkpoint.
 
 ### Next
 
-Run the five directly affected test files under the owner memory guard, then
-run lint, formatting, whitespace, and executable-tree drift checks before
-refreshing the final report.
+Finish the running five-file affected suite under the owner memory guard,
+inspect the host retry state without claiming mutable evidence as revision-
+bound, then refresh the final report.
 
 ## Current continuation — 2026-08-21 01:39Z
 
