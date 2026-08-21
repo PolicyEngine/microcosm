@@ -4,8 +4,8 @@
 
 ### State
 
-Diagnosis, regression strengthening, and affected-suite verification are
-complete; static verification and the final report are in progress.
+Diagnosis, regression strengthening, affected-suite verification, and static
+verification are complete. The required final report remains to refresh.
 The supplied traceback fingerprints historical commit `33bf52fe`. The current
 implementation contains the assigned-only repair and the exact failing-first
 regression passes. Independent call-path and test audits found no remaining
@@ -77,12 +77,26 @@ ordinary-path parity case is now green; the affected suite remains to rerun.
   owner guard. All passed with exit zero and 1.643 GiB maximum observed
   per-process RSS. The only output beyond progress was the known joblib
   physical-core fallback plus 2,313 pandas fixture-fragmentation warnings.
+- Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
+  changed since `33bf52fe^`, committed-range whitespace checks, and worktree
+  whitespace checks; all pass.
+- Compared the current tree with complete-suite checkpoint `d29a8705`. The only
+  differences are the root journals and the one stacked-spine test file
+  strengthened here; every production source/tool/spec/project/lock object is
+  unchanged. At `d29a8705`, guarded fresh-process shards covered all 6,608
+  collected repository items without a failed shard, and the complete changed
+  259-test stacked-spine file is green now.
+- Took a final read-only host snapshot at 2026-08-21 07:32:33Z. The retry had
+  written all 47 survey-target checkpoints and the 1/1 housing checkpoint,
+  including taxable interest, without the old traceback. The top-level host
+  directory still had only `build.log` and `guard.log`: no terminal exit,
+  `pool.h5`, manifest, gates, or Git-revision binding. This remains progress,
+  not certification.
 
 ### Next
 
-1. Run repository lint, touched-file format, and committed/worktree whitespace
-   checks.
-2. Update `FINAL_REPORT.md` with current evidence and close this continuation.
+1. Update `FINAL_REPORT.md` with current evidence and commit it.
+2. Mark this journal complete with the final report commit and handoff boundary.
 
 ## Active owner continuation — 2026-08-21 06:49Z
 
