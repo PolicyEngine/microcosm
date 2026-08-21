@@ -4,11 +4,10 @@
 
 ### State
 
-Diagnosis, decisive focused verification, and affected-suite verification are
-complete; static verification is in progress. The supplied traceback exactly
-fingerprints bad commit `33bf52fe`, while current source already contains the
-complete scoped correction and regression coverage. No duplicate runtime or
-test edit is warranted unless the remaining verification exposes a gap.
+Local diagnosis and verification are complete; final reporting is in progress.
+The supplied traceback exactly fingerprints bad commit `33bf52fe`, while
+current source already contains the complete scoped correction and regression
+coverage. No duplicate runtime or test edit is warranted.
 
 ### Done
 
@@ -51,12 +50,17 @@ test edit is warranted unless the remaining verification exposes a gap.
   multispine-serialization, stacked-spine, pool-tool, and H5 files together
   under the owner guard. The run reached 100% with exit zero and no failures;
   maximum observed per-process RSS was 1.858 GiB.
+- Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
+  changed since `33bf52fe^`, committed-range and worktree whitespace checks,
+  and executable-tree comparisons against `a5be536f`; all passed. The current
+  `microcosm-build/src`, `tools`, `specs`, project, and lockfile content is
+  unchanged from that all-suite checkpoint. Its only affected-test difference
+  is the committed three-line in-range-family forgery regression.
 
 ### Next
 
-Run lint, formatting, whitespace, and executable-tree drift checks, inspect the
-latest read-only host retry state without claiming it as revision-bound, then
-refresh the final report.
+Inspect the latest read-only host retry state without claiming it as
+revision-bound, then refresh and commit `FINAL_REPORT.md` and this journal.
 
 ## Current continuation — 2026-08-21 01:11Z
 
