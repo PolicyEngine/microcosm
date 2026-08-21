@@ -4,13 +4,14 @@
 
 ### State
 
-Diagnosis complete; verification in progress. The supplied traceback maps to
-the historical globally attached QRF audit-evidence path at `33bf52fe`. The
-current tree already contains the assigned-only executable correction and the
-exact synthetic plus real ordinary/banked regressions, so a duplicate runtime
-or test edit is not warranted unless fresh verification exposes a gap. No
-current completion or host-certification claim is inherited from earlier
-journal entries.
+Diagnosis and directly affected verification complete; repository-wide
+verification in progress. The supplied traceback maps to the historical
+globally attached QRF audit-evidence path at `33bf52fe`. The current tree
+already contains the assigned-only executable correction and the exact
+synthetic plus real ordinary/banked regressions, so a duplicate runtime or test
+edit is not warranted unless remaining verification exposes a gap. No current
+completion or host-certification claim is inherited from earlier journal
+entries.
 
 ### Done
 
@@ -62,13 +63,16 @@ journal entries.
   first launcher attempt never reached collection because `uv` could not write
   its default user cache, so the successful run used a task-local cache under
   `/private/tmp`.
+- Ran all five directly affected files together under the same guard. Fresh
+  collection was 64 ordinary-transfer, five multispine, 259 stacked-spine, 164
+  pool-tool, and 38 H5 receipt-I/O tests. All 530 completed with exit zero; the
+  guard reported 0.029 GiB maximum observed per-process RSS.
 
 ### Next
 
-Run the five directly affected files together, then repository-wide tests and
-static checks. If all pass, refresh `FINAL_REPORT.md` with revision-bound
-results and close this continuation without claiming restricted host
-certification.
+Run repository-wide tests and static checks. If all pass, refresh
+`FINAL_REPORT.md` with revision-bound results and close this continuation
+without claiming restricted host certification.
 
 ## Owner continuation revalidation — 2026-08-21 09:47Z
 
