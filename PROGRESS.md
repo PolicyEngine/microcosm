@@ -4,9 +4,10 @@
 
 ### State
 
-In progress. Independently verifying the reported ACS QRF record-binding
-failure against the current branch before deciding whether any further runtime
-or regression change is warranted.
+Verification in progress. The reported traceback exactly identifies historical
+commit `33bf52fe`; the current branch already contains the complete scoped
+runtime correction and direct regression coverage. Three independent audits
+found no remaining canonical leak and no warranted duplicate executable edit.
 
 ### Done
 
@@ -20,12 +21,38 @@ or regression change is warranted.
 - Established that the branch already carries earlier scoped-fix and regression
   commits; their claims will be revalidated rather than treated as current
   state.
+- Reconstructed the old failure at the cited lines. The 15-target
+  `puf_tax_itemization` family was split at the certified width of eight, so
+  `taxable_interest_income` recorded family `puf_tax_itemization__batch_1`.
+  Commit `33bf52fe` attached QRF evidence to every imputed target and validated
+  exact record binding against the unsplit public family before consulting the
+  calibration registry.
+- Enumerated the live immutable selection at runtime: exactly two early and
+  seven late model-required, source-operator, and adult-care targets.
+  `person/puf_tax_itemization/taxable_interest_income` is absent.
+- Traced ordinary and banked transfer fitting, both canonical stacked owners,
+  both receipt builders, both validators, and the generic serializers. Generic
+  regime work defaults off; canonical owners select only immutable specs;
+  unassigned records and receipts carry no regimes or QRF evidence; validators
+  reject forged unassigned evidence before retaining exact record-family
+  binding for assigned targets; all targets retain the mandatory four-count
+  transfer invariant.
+- Reconciled independent runtime, target-scope, and regression/history audits.
+  Each found the current correction complete and no alternative canonical
+  caller that broadens the selection.
+- Confirmed correction history: `176c60fc`, `887df056`, and `94b7aecb` scope and
+  harden the runtime; `22b2c6bc` covers the exact taxable-interest boundary;
+  `21a48ba5` rejects a fully rehashed plausible assigned `__batch_1` alias.
+- Ran the exact synthetic host target, real banked 15-target producer, and all
+  12 rehashed QRF structure mutations under the owner 12 GiB/20 ms guard. All
+  14 cases passed; maximum observed per-process RSS was 0.571 GiB. The only
+  warning was joblib's logical-core fallback.
 
 ### Next
 
-Trace the current and historical validator/producer paths, enumerate the exact
-assigned target set, and run the narrow binding regressions before making any
-executable change.
+Run the five directly affected test files together, then repository lint,
+format, whitespace, and executable-tree drift checks. Refresh and commit the
+final report only after those results are known.
 
 ## Current continuation — 2026-08-21 02:14Z
 
