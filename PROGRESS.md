@@ -4,7 +4,8 @@
 
 ### State
 
-Diagnosis and regression strengthening are complete; verification is in progress.
+Diagnosis, regression strengthening, and affected-suite verification are
+complete; static verification and the final report are in progress.
 The supplied traceback fingerprints historical commit `33bf52fe`. The current
 implementation contains the assigned-only repair and the exact failing-first
 regression passes. Independent call-path and test audits found no remaining
@@ -71,10 +72,16 @@ ordinary-path parity case is now green; the affected suite remains to rerun.
 - Ran the strengthened three-case focused matrix (exact validator plus ordinary
   and banked real transfers): 3 passed, with 0.584 GiB maximum observed
   per-process RSS.
+- Ran all 530 tests across ordinary ACS transfer, multispine serialization,
+  stacked spine, multispine pool tooling, and H5 receipt I/O together under the
+  owner guard. All passed with exit zero and 1.643 GiB maximum observed
+  per-process RSS. The only output beyond progress was the known joblib
+  physical-core fallback plus 2,313 pandas fixture-fragmentation warnings.
 
 ### Next
 
-1. Run the directly affected suite and static checks.
+1. Run repository lint, touched-file format, and committed/worktree whitespace
+   checks.
 2. Update `FINAL_REPORT.md` with current evidence and close this continuation.
 
 ## Active owner continuation — 2026-08-21 06:49Z
