@@ -5,7 +5,7 @@
 ### State
 
 Diagnosis, focused regression, affected-suite, and static verification are
-complete; repository-suite verification is in progress. The supplied traceback
+complete; sharded repository-suite verification is in progress. The supplied traceback
 fingerprints historical commit `33bf52fe`, while the current tree already
 contains the narrow assigned-target correction and exact taxable-interest
 regression. Current source, history, runtime enumeration, and two independent
@@ -13,8 +13,10 @@ audits find no remaining scope leak or reason for a duplicate executable edit.
 The regression is demonstrably failing-first, all 14 decisive cases pass, and
 all 529 tests in the five directly affected files pass on the current tree.
 Repository lint, formatting, whitespace, and executable-drift checks also
-pass. Prior full-suite and completion claims below remain historical until this
-continuation reruns them.
+pass. A monolithic repository run reached 83% without test failures before the
+owner guard stopped cumulative process RSS, so it is not counted as a suite
+verdict; fresh-process shards remain to be run. Prior full-suite and completion
+claims below remain historical until this continuation completes them.
 
 ### Done
 
@@ -85,10 +87,15 @@ continuation reruns them.
   `pyproject.toml`, and `uv.lock` against all-build-suite checkpoint
   `a5be536f`; every pair matched. Only committed regression hardening and
   journals differ after that checkpoint.
+- Ran the full repository collection in one guarded pytest process. It reached
+  83% with no test failures, then the owner guard terminated the process at
+  12.170 GiB observed RSS (exit 99). This is recorded as a resource-bound
+  non-verdict, not a green suite result; it indicates cumulative single-process
+  memory and will be replaced by fresh-process package/file shards.
 
 ### Next
 
-Run the full repository test suite under the owner guard, then complete final
+Complete the repository suite in fresh guarded shards, then perform final
 host-artifact and worktree-cleanliness checks and refresh `FINAL_REPORT.md`.
 
 ## Current continuation — 2026-08-21 03:29Z
