@@ -74,10 +74,15 @@ failure transcript are preserved unchanged.
   one process reached 13.225 GiB against the 12 GiB ceiling. This is a resource
   termination, not a green full-suite result, and is retained explicitly. The
   repository suite must be rerun in fresh bounded shards.
+- Ran all four sibling packages in fresh guarded processes. `microcosm-fit`
+  passed 93 tests at 0.785 GiB peak; `microcosm-calibrate` passed 201 at
+  0.438 GiB; `microcosm-data` passed 275 with one expected skip at 11.053 GiB;
+  and `microcosm-frame` passed 294 with 36 expected skips at 6.493 GiB. These
+  green shards account for all 900 non-build cases.
 
 ### Next
 
-1. Run every repository test in fresh bounded shards on the unchanged
+1. Run all build-package core+UK, US a-r, and US s-z shards on the unchanged
    executable tree, preserving the 12 GiB ceiling.
 2. Refresh and commit `FINAL_REPORT.md`; leave restricted host certification
    and publication outside this local correction.
