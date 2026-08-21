@@ -1,5 +1,32 @@
 # Battery package 3 progress
 
+## Active owner continuation — 2026-08-21 06:49Z
+
+### State
+
+In progress. Revalidating the reported host 1% ACS QRF record-binding failure
+against the current branch before deciding whether any additional executable
+or regression change is required. Earlier journal completion claims are
+historical evidence, not assumed current truth.
+
+### Done
+
+- Read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
+- Confirmed the GitNexus query/context tools are unavailable in this session;
+  direct raise-site, caller, producer, serializer, validator, test, and Git
+  history tracing will be used as the documented fallback.
+- Preserved the owner-provided untracked `_BUILD-FAILURE-1PCT.txt` and
+  `.codex-memory-guard.py` artifacts untouched.
+- Confirmed `FINAL_REPORT.md` is the existing required output file.
+- Reopened and committed this progress journal before implementation work.
+
+### Next
+
+Reconstruct the failing revision from the invariant, audit the current assigned
+target surface end to end, run the exact regression and affected suite, and
+either make a failing-first scoped correction or document why the existing
+committed correction is already complete.
+
 ## Reopened owner continuation — 2026-08-21
 
 ### State
