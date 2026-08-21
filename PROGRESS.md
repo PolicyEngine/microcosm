@@ -4,11 +4,9 @@
 
 ### State
 
-Complete. The reported traceback exactly identifies historical commit
-`33bf52fe`; the current branch contains the complete scoped runtime correction
-and direct regression coverage. Three independent audits, fresh guarded tests,
-and static checks found no remaining canonical leak and no warranted duplicate
-executable edit. `FINAL_REPORT.md` contains the final continuation report.
+In progress. Reproducing and tracing the owner-reported host 1% failure from
+the exact stacked-gap-fill raise site, then revalidating the current runtime
+and regression tree instead of relying on historical journal claims.
 
 ### Done
 
@@ -19,9 +17,9 @@ executable edit. `FINAL_REPORT.md` contains the final continuation report.
 - Confirmed `FINAL_REPORT.md` is the existing charter output file.
 - Preserved the owner-provided untracked `_BUILD-FAILURE-1PCT.txt` and
   `.codex-memory-guard.py` artifacts untouched.
-- Established that the branch already carries earlier scoped-fix and regression
-  commits; their claims will be revalidated rather than treated as current
-  state.
+- Reopened the committed journal for the supplied continuation. The branch
+  carries earlier scoped-fix and regression commits, but their claims remain
+  untrusted until revalidated against the supplied host log and current tree.
 - Reconstructed the old failure at the cited lines. The 15-target
   `puf_tax_itemization` family was split at the certified width of eight, so
   `taxable_interest_income` recorded family `puf_tax_itemization__batch_1`.
@@ -72,9 +70,9 @@ executable edit. `FINAL_REPORT.md` contains the final continuation report.
 
 ### Next
 
-Run or identify a revision-bound restricted host 1% retry that reaches a
-terminal runner verdict and emits the expected pool, manifest, and gates
-artifacts; this remains external to the completed local correction.
+Inspect the full host log and cited validation path, identify the executing
+revision if possible, reconstruct the selection and record-family data flow,
+then add or strengthen the failing regression before any runtime correction.
 
 ## Current continuation — 2026-08-21 02:14Z
 
