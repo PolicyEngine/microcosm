@@ -1,5 +1,28 @@
 # Battery package 3 progress
 
+## Current continuation — 2026-08-21 00:22Z
+
+### State
+
+Active. Re-auditing the owner-reported host 1% ACS QRF record-binding failure
+from the invariant raise site against the current branch; prior journal
+completion claims are being treated as historical evidence, not current truth.
+
+### Done
+
+- Read `CLAUDE.md` and the GitNexus debugging skill instructions.
+- Preserved the owner-provided untracked failure and memory-guard artifacts.
+- Confirmed that GitNexus query/context tools are not exposed in this session,
+  so direct source, call-site, regression, and Git-history tracing will be used.
+
+### Next
+
+Trace the validator, receipt producers, immutable calibration selectors, and
+the exact taxable-interest regression; independently establish whether a code
+or test gap remains before running focused and affected-suite verification.
+
+The completion snapshots below are historical until this continuation closes.
+
 ## State
 
 The 2026-08-21 00:20Z owner continuation is complete. Its independent
