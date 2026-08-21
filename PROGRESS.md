@@ -4,14 +4,16 @@
 
 ### State
 
-Diagnosis complete; verification is in progress. The owner traceback binds
-exactly to the historical globally enabled QRF-evidence path at `33bf52fe`.
+Local verification complete; final reporting is in progress. The owner
+traceback binds exactly to the historical globally enabled QRF-evidence path at
+`33bf52fe`.
 The current tree already contains the narrow assigned-only correction and the
 exact synthetic plus real ordinary/banked regressions. Three independent
 read-only audits found no remaining canonical path by which taxable interest
 can receive regime evidence, a QRF receipt, or a calibration write, so no
-duplicate runtime or test edit is warranted. The fresh affected-suite and
-static checks remain to be recorded before the required report is refreshed.
+duplicate runtime or test edit is warranted. All 530 directly affected tests,
+static checks, and exact prior-suite object bindings are green. A final
+read-only host snapshot and refresh of `FINAL_REPORT.md` remain.
 
 ### Done
 
@@ -67,16 +69,34 @@ static checks remain to be recorded before the required report is refreshed.
 - An independent focused run passed the synthetic plus real ordinary/banked
   cases (3 passed), and a separate strict-binding mutation run passed all 12
   parameter variants. These used the project environment without the owner
-  memory guard; guarded affected-suite verification is next.
+  memory guard; the guarded affected-suite verification below independently
+  supersedes that resource boundary.
+- Ran all five directly affected files together under the owner-provided 12 GiB
+  and 20 ms guard. Collection was 64 ordinary-transfer, five generic
+  multispine, 259 stacked-spine, 164 pool-tool, and 38 H5 receipt-I/O tests.
+  All 530 passed in one process with exit zero and 1.596 GiB maximum observed
+  per-process RSS; warning display was disabled for this broad run.
+- Ran repository-wide `ruff check .`, `ruff format --check` on all 15 Python
+  files changed since `33bf52fe^`, `git diff --check 33bf52fe^..HEAD`, and
+  worktree whitespace checks. All passed.
+- Reconfirmed exact Git tree identities: current `microcosm-build/src`,
+  `tools`, and `specs` match complete-suite checkpoint `d29a8705`; current
+  production and tests match reviewed regression checkpoint `ad2a44c1`. The
+  only package-test difference from the complete-suite checkpoint is the
+  strengthened stacked-spine regression file, whose complete 259-test run is
+  included in the fresh affected matrix.
+- Reviewed the two pre-existing SIPP streaming-inference changes flagged by
+  the history audit. Their vehicle and voluntary-filing outputs do not overlap
+  any of the nine calibration targets or their call paths. They are documented
+  in `_LANE-NOTES.md` as independently locked-fact-tested memory mitigations,
+  so this continuation preserves them rather than expanding into an unrelated
+  parser revert.
 
 ### Next
 
-1. Run all five directly affected test files together under the owner memory
-   guard, then run repository lint, touched-file formatting, and whitespace
-   checks.
-2. Reconcile the current read-only host retry status without controlling or
+1. Reconcile the current read-only host retry status without controlling or
    certifying the external build.
-3. Refresh and commit `FINAL_REPORT.md`, close this journal section, and report
+2. Refresh and commit `FINAL_REPORT.md`, close this journal section, and report
    any remaining host-only boundary.
 
 ## Owner continuation recheck — 2026-08-21 08:58Z
