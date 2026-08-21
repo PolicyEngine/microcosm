@@ -4,32 +4,67 @@
 
 ### State
 
-In progress. Revalidating the supplied host 1% ACS QRF record-binding failure
-from the cited raise site against the current branch, including the exact
-assigned-target boundary, producer/validator call paths, failing-first
-regression, and affected suite. Prior completion entries below are historical
-until this continuation independently confirms them.
+Diagnosis complete; verification in progress. The supplied traceback
+fingerprints historical commit `33bf52fe`, while the current tree already
+contains the narrow assigned-target correction and exact taxable-interest
+regression. Current source, history, runtime enumeration, and two independent
+audits find no remaining scope leak or reason for a duplicate executable edit.
+Prior test and completion claims below remain historical until this
+continuation reruns them on the current tree.
 
 ### Done
 
 - Read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
-- Confirmed GitNexus graph query/context tools and resources are unavailable
-  in this session; using direct raise-site, caller, source, test, and Git
-  history tracing as the prescribed fallback.
+- Confirmed GitNexus MCP graph query/context tools and resources are unavailable
+  in this session. The local CLI built a 563-file graph but could not register
+  it because its hard-coded global registry is outside the writable sandbox;
+  moved the generated cache to the recoverable
+  `/private/tmp/microcosm-pkg3-two-part-gitnexus-23236043` location and used
+  direct raise-site, caller, source, test, and Git-history tracing as the
+  prescribed fallback.
 - Confirmed `FINAL_REPORT.md` is the existing charter output file.
 - Preserved the owner-provided untracked `_BUILD-FAILURE-1PCT.txt` and
   `.codex-memory-guard.py` artifacts untouched.
 - Reopened this committed journal before implementation work. The branch
   carries earlier scoped-fix and regression commits, but their claims remain
   untrusted pending current-tree diagnosis and verification.
+- Matched the supplied lines 4310 and 4512 exactly to `33bf52fe`. That revision
+  attached QRF evidence to every imputed target and validated every target
+  before consulting the calibration registry. The canonical 15-target
+  `puf_tax_itemization` family splits at width eight, so taxable interest
+  carried record family `puf_tax_itemization__batch_1` while validation expected
+  the unsplit public family and raised at the reported predicate.
+- Enumerated the immutable live registry: exactly two early and seven late
+  model-required, source-operator, and adult-care targets. Taxable interest is
+  absent.
+- Traced current ordinary and banked transfer fitting, both canonical stacked
+  owners, both receipt builders, and both terminal validators. Regime work
+  defaults off; owners select only immutable specs; unassigned records and
+  receipts omit regimes and QRF evidence; validators reject forged unassigned
+  evidence before record binding; all targets retain strict four-count transfer
+  accounting; assigned targets retain exact family binding.
+- Confirmed correction history: `22b2c6bc` adds the exact failing-target
+  regression; `176c60fc` supplies the primary opt-in runtime correction;
+  `887df056` restores strict record-family binding and independent legacy
+  counts; `94b7aecb` closes mixed-family/count/width gaps; and `21a48ba5`
+  rejects a plausible rehashed assigned `__batch_1` alias.
+- Confirmed the current regression surface includes both the exact synthetic
+  taxable-interest validator boundary and a real banked wide-family producer
+  that proves taxable interest has no regimes or evidence while assigned
+  unemployment compensation retains both.
+- Reconciled two independent read-only invariant and branch-history audits;
+  both reached the same root cause and current scoped-fix verdict.
+- Inspected the mutable host log. It has been overwritten by a later retry that
+  records taxable interest rebuilt successfully at survey target 22/47 without
+  the supplied traceback, but it carries no revision binding and is not treated
+  as terminal certification evidence.
 
 ### Next
 
-Trace the record-binding invariant and every canonical evidence-selection
-path, determine whether the existing correction fully confines behavior to the
-assigned source-operator, adult-care, and model-required targets, then add or
-repair regression coverage and implementation only where current evidence
-shows a gap.
+Demonstrate the exact boundary regression failing on the unchanged bad runtime
+and passing on the current tree, then run the decisive focused cases, affected
+suite, lint, format, whitespace, and executable-drift checks under the owner
+guard.
 
 ## Current continuation — 2026-08-21 03:29Z
 
