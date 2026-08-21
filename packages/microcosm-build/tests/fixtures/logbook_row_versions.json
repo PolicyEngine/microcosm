@@ -1,0 +1,112 @@
+{
+  "legacy": {
+    "expected_row_digest": "80a01b5cdefeeed6a8acd36dfa06b1e4506f4853c2786101d3c3ba414cd8a927",
+    "row": {
+      "artifact_location": null,
+      "build_id": "fixture-build-1",
+      "code_pin": "1c1fc717",
+      "cost_usd": 1.0,
+      "disposition": "failed",
+      "gate_verdicts": {
+        "agreement": {
+          "diagnostics": {
+            "ratio": 1.0,
+            "unicode": "café"
+          },
+          "receipt": "receipt://fixture/agreement.json",
+          "verdict": "failed"
+        }
+      },
+      "identity_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+      "input_pins_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+      "phases_reached": [
+        "assembled",
+        "simulated"
+      ],
+      "pipeline": "fixture-pipeline",
+      "prediction_id": "p001",
+      "prev_row_digest": null,
+      "row_digest": "80a01b5cdefeeed6a8acd36dfa06b1e4506f4853c2786101d3c3ba414cd8a927",
+      "rung": "f010",
+      "seed": 628,
+      "ts": "2026-08-04T19:06:00.000000Z",
+      "wall_seconds": 12.5
+    }
+  },
+  "version_2": {
+    "expected_row_digest": "00845773dfd0093e30eb873655137619b181f235b998394a7b9d0db4020f030b",
+    "row": {
+      "artifact_location": null,
+      "build_id": "fixture-build-1",
+      "code_pin": "1c1fc717",
+      "cost_usd": 1.0,
+      "disposition": "failed",
+      "gate_verdicts": {
+        "agreement": {
+          "diagnostics": {
+            "ratio": 1.0,
+            "unicode": "café"
+          },
+          "receipt": "receipt://fixture/agreement.json",
+          "verdict": "failed"
+        }
+      },
+      "identity_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+      "input_pins_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+      "phases_reached": [
+        "assembled",
+        "simulated"
+      ],
+      "pipeline": "fixture-pipeline",
+      "prediction_id": "p001",
+      "prev_row_digest": null,
+      "realized_k": 20000,
+      "record_unit": "household",
+      "requested_k": 20000,
+      "row_digest": "00845773dfd0093e30eb873655137619b181f235b998394a7b9d0db4020f030b",
+      "row_format_version": 2,
+      "rung": "f010",
+      "seed": 628,
+      "ts": "2026-08-04T19:06:00.000000Z",
+      "wall_seconds": 12.5
+    }
+  },
+  "version_2_exact_k": {
+    "expected_row_digest": "1390cb69de86116232b0c27782d298c8bc4e25df746957c689e4d0813c9e45a8",
+    "row": {
+      "artifact_location": null,
+      "build_id": "fixture-build-1",
+      "code_pin": "1c1fc717",
+      "cost_usd": 1.0,
+      "disposition": "failed",
+      "gate_verdicts": {
+        "agreement": {
+          "diagnostics": {
+            "ratio": 1.0,
+            "unicode": "café"
+          },
+          "receipt": "receipt://fixture/agreement.json",
+          "verdict": "failed"
+        }
+      },
+      "identity_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+      "input_pins_digest": "1111111111111111111111111111111111111111111111111111111111111111",
+      "phases_reached": [
+        "assembled",
+        "simulated"
+      ],
+      "pipeline": "fixture-pipeline",
+      "prediction_id": "p001",
+      "prev_row_digest": null,
+      "realized_k": 20000,
+      "record_unit": "household",
+      "requested_k": 20000,
+      "row_digest": "1390cb69de86116232b0c27782d298c8bc4e25df746957c689e4d0813c9e45a8",
+      "row_format_version": 2,
+      "rung": null,
+      "seed": 628,
+      "ts": "2026-08-04T19:06:00.000000Z",
+      "wall_seconds": 12.5
+    }
+  }
+}

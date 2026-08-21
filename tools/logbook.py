@@ -26,15 +26,31 @@ from urllib.parse import urlencode
 from urllib.request import Request
 
 from microcosm.build.logbook import (
+    DECLARED_LOGBOOK_SCOPES,
+    LEGACY_US_PIPELINES,
     LOGBOOK_ROW_FIELDS,
     LogbookRow,
     _validate_remote_url,
     export_rows,
     load_logbook_file,
     load_spool_rows,
+    logbook_chain_scope,
     order_rows_by_chain,
     render_markdown,
+    spool_build_rows,
     urlopen,
+)
+from microcosm.build.logbook_family import (
+    FamilyAction,
+    FamilyArchiveRecords,
+    FamilyMember,
+    LogbookFamily,
+    export_family_scope,
+    import_family_scope,
+    load_family_archive_records,
+    load_family_spool,
+    reconcile_logbook_spool,
+    validate_family_membership,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -49,23 +65,12 @@ DEFAULT_SPOOL_ROOT = ROOT / "logbook-spool"
 REMOTE_EXPORT_KEY_ENV = "POPULACE_LEDGER_EXPORT_KEY"
 REMOTE_API_KEY_ENV = "POPULACE_LEDGER_API_KEY"
 REMOTE_PAGE_SIZE = 500
-# Mirror of logbook.chain_scope() in
-# supabase/migrations/20260818000000_logbook_chain_scopes.sql. The legacy US
-# rows predate the scope split and must continue one mixed `us` chain forever.
-LEGACY_US_PIPELINES = (
-    "us-2024-release",
-    "us-pool-inc2",
-    "us-stacked-pool",
-)
-_PIPELINE_SCOPE_PATTERN = re.compile(
-    r"^(?P<country>[a-z]{2})-(?P<line>[a-z0-9_]+)(?:-[a-z0-9_-]+)?$"
-)
-#: Mirror of logbook.scope_declared() in
-#: supabase/migrations/20260829000000_logbook_uk_local_scope.sql: the ratified
+FAMILY_ARCHIVE_DIRECTORIES = frozenset({"families", "family_members", "family_actions"})
+#: Mirror of logbook.scope_declared() in the database migrations: the ratified
 #: scope vocabulary, closed-world. Opening a scope is a reviewed diff here,
 #: in the migration, and in logbook/README.md -- never a side effect of a
 #: well-formed pipeline name.
-DECLARED_SCOPES = frozenset({"us", "uk/frs", "uk/local"})
+DECLARED_SCOPES = DECLARED_LOGBOOK_SCOPES
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -145,6 +150,91 @@ def _parser() -> argparse.ArgumentParser:
         action="append",
         help="Include this disposition; repeat to include more than one.",
     )
+
+    family_export = subparsers.add_parser(
+        "family-export",
+        help="Append family records to the three archives for one scope.",
+    )
+    family_export.add_argument(
+        "--scope", choices=sorted(DECLARED_SCOPES), required=True
+    )
+    family_export.add_argument(
+        "--archive-root",
+        type=Path,
+        default=DEFAULT_ARCHIVE_ROOT,
+    )
+    family_source = family_export.add_mutually_exclusive_group(required=True)
+    family_source.add_argument(
+        "--source",
+        type=Path,
+        help="A Logbook spool containing family record subdirectories.",
+    )
+    family_source.add_argument(
+        "--remote",
+        action="store_true",
+        help="Read family records for the scope from the live store.",
+    )
+
+    family_import = subparsers.add_parser(
+        "family-import",
+        help="Copy one scope's family archives into a durable local spool.",
+    )
+    family_import.add_argument(
+        "--scope", choices=sorted(DECLARED_SCOPES), required=True
+    )
+    family_import.add_argument(
+        "--archive-root",
+        type=Path,
+        default=DEFAULT_ARCHIVE_ROOT,
+    )
+    family_import.add_argument(
+        "--spool",
+        type=Path,
+        default=DEFAULT_SPOOL_ROOT,
+    )
+
+    reconcile = subparsers.add_parser(
+        "reconcile",
+        help="Send queued builds and family records in dependency order.",
+    )
+    reconcile.add_argument(
+        "--spool",
+        type=Path,
+        default=DEFAULT_SPOOL_ROOT,
+    )
+
+    list_families = subparsers.add_parser(
+        "list-families",
+        help="List archived dataset families.",
+    )
+    list_families.add_argument(
+        "--archive-root",
+        type=Path,
+        default=DEFAULT_ARCHIVE_ROOT,
+    )
+    list_families.add_argument("--scope", choices=sorted(DECLARED_SCOPES))
+
+    list_builds = subparsers.add_parser(
+        "list-family-builds",
+        help="List archived builds associated with one family.",
+    )
+    list_builds.add_argument("--family-id", required=True)
+    list_builds.add_argument(
+        "--archive-root",
+        type=Path,
+        default=DEFAULT_ARCHIVE_ROOT,
+    )
+
+    show_history = subparsers.add_parser(
+        "show-family-history",
+        help="Show archived revocations and replacements for one family.",
+    )
+    show_history.add_argument("--family-id", required=True)
+    show_history.add_argument(
+        "--archive-root",
+        type=Path,
+        default=DEFAULT_ARCHIVE_ROOT,
+    )
     return parser
 
 
@@ -162,12 +252,33 @@ def _archive_files(path: Path) -> tuple[Path, ...]:
     one invocation without ever merging the chains themselves.
     """
 
+    if _within_family_archive_directory(path):
+        raise ValueError(f"No Logbook build archives found under {path}.")
     if not path.is_dir():
         return (path,)
-    files = tuple(sorted(path.rglob("*.jsonl")))
+    files = tuple(
+        sorted(
+            candidate
+            for candidate in path.rglob("*.jsonl")
+            if not _is_family_archive(candidate, root=path)
+        )
+    )
     if not files:
         raise ValueError(f"No Logbook scope archives found under {path}.")
     return files
+
+
+def _is_family_archive(path: Path, *, root: Path) -> bool:
+    try:
+        relative = path.relative_to(root)
+    except ValueError:
+        return False
+    return bool(relative.parts) and relative.parts[0] in FAMILY_ARCHIVE_DIRECTORIES
+
+
+def _within_family_archive_directory(path: Path) -> bool:
+    candidates = (path, *path.parents)
+    return any(candidate.name in FAMILY_ARCHIVE_DIRECTORIES for candidate in candidates)
 
 
 def _scope_label(archive: Path, root: Path | None = None) -> str:
@@ -193,12 +304,7 @@ def _scope_label(archive: Path, root: Path | None = None) -> str:
 def _chain_scope(pipeline: str) -> str | None:
     """Return the Logbook chain scope declared by a pipeline name."""
 
-    if pipeline in LEGACY_US_PIPELINES:
-        return "us"
-    match = _PIPELINE_SCOPE_PATTERN.fullmatch(pipeline)
-    if match is None:
-        return None
-    return f"{match.group('country')}/{match.group('line')}"
+    return logbook_chain_scope(pipeline)
 
 
 def _archive_scope(archive: Path) -> str:
@@ -277,7 +383,7 @@ def _remote_rows(scope: str) -> tuple[LogbookRow, ...]:
                 raise RuntimeError(f"Logbook live store returned HTTP {status}")
             page = _decode_remote_page(response.read())
             total = _content_range_total(getattr(response, "headers", {}))
-        rows.extend(LogbookRow.from_mapping(item) for item in page)
+        rows.extend(LogbookRow.from_database_mapping(item) for item in page)
         offset += len(page)
         if total is not None and offset >= total:
             break
@@ -288,11 +394,7 @@ def _remote_rows(scope: str) -> tuple[LogbookRow, ...]:
                 )
             break
     wrong_scope = sorted(
-        {
-            row.pipeline
-            for row in rows
-            if _chain_scope(row.pipeline) != scope
-        }
+        {row.pipeline for row in rows if _chain_scope(row.pipeline) != scope}
     )
     if wrong_scope:
         raise ValueError(
@@ -334,6 +436,126 @@ def _remote_builds_endpoint(
     return f"{endpoint}?{query}"
 
 
+def _remote_family_records(scope: str) -> FamilyArchiveRecords:
+    families = tuple(
+        LogbookFamily.from_mapping(row)
+        for row in _remote_table_rows(
+            table="families",
+            fields=("family_id", "chain_scope", "source_pool_sha256"),
+            scope=scope,
+        )
+    )
+    members = tuple(
+        FamilyMember.from_mapping(row)
+        for row in _remote_table_rows(
+            table="family_members_public",
+            fields=("family_id", "build_id"),
+            scope=scope,
+        )
+    )
+    actions = tuple(
+        FamilyAction.from_mapping(row)
+        for row in _remote_table_rows(
+            table="family_actions_public",
+            fields=(
+                "action_id",
+                "family_id",
+                "build_id",
+                "action_type",
+                "related_build_id",
+                "recorded_at",
+                "actor",
+                "reason",
+                "evidence_location",
+            ),
+            scope=scope,
+        )
+    )
+    return FamilyArchiveRecords(families, members, actions)
+
+
+def _remote_table_rows(
+    *,
+    table: str,
+    fields: tuple[str, ...],
+    scope: str,
+) -> tuple[dict[str, Any], ...]:
+    ledger_url = os.environ.get("POPULACE_LEDGER_URL")
+    export_key = os.environ.get(REMOTE_EXPORT_KEY_ENV)
+    api_key = os.environ.get(REMOTE_API_KEY_ENV)
+    if not ledger_url or not export_key or not api_key:
+        raise ValueError(
+            "remote export requires POPULACE_LEDGER_URL, "
+            f"{REMOTE_EXPORT_KEY_ENV}, and {REMOTE_API_KEY_ENV}"
+        )
+
+    rows: list[dict[str, Any]] = []
+    offset = 0
+    while True:
+        endpoint = _remote_table_endpoint(
+            ledger_url,
+            table=table,
+            fields=fields,
+            scope=scope,
+            offset=offset,
+            limit=REMOTE_PAGE_SIZE,
+        )
+        request = Request(
+            endpoint,
+            headers={
+                "Accept": "application/json",
+                "Accept-Profile": "logbook",
+                "apikey": api_key,
+                "Authorization": f"Bearer {export_key}",
+                "Prefer": "count=exact",
+            },
+        )
+        with urlopen(request, timeout=30.0) as response:
+            status = getattr(response, "status", 200)
+            if not 200 <= status < 300:
+                raise RuntimeError(f"Logbook live store returned HTTP {status}")
+            page = _decode_remote_page(response.read())
+            total = _content_range_total(getattr(response, "headers", {}))
+        rows.extend(page)
+        offset += len(page)
+        if total is not None and offset >= total:
+            break
+        if not page:
+            if total is not None:
+                raise RuntimeError(
+                    "Logbook live store ended before its declared row count"
+                )
+            break
+    return tuple(rows)
+
+
+def _remote_table_endpoint(
+    url: str,
+    *,
+    table: str,
+    fields: tuple[str, ...],
+    scope: str,
+    offset: int,
+    limit: int,
+) -> str:
+    _validate_remote_url(url)
+    base = url.rstrip("/")
+    if base.endswith("/rest/v1/builds"):
+        base = base[: -len("/builds")]
+    elif not base.endswith("/rest/v1"):
+        base = f"{base}/rest/v1"
+    query = urlencode(
+        {
+            "select": ",".join(fields),
+            "chain_scope": f"eq.{scope}",
+            "order": ",".join(f"{field}.asc" for field in fields[:2]),
+            "limit": str(limit),
+            "offset": str(offset),
+        }
+    )
+    return f"{base}/{table}?{query}"
+
+
 def _decode_remote_page(payload: bytes) -> list[dict[str, Any]]:
     try:
         value = json.loads(payload)
@@ -364,11 +586,215 @@ def _content_range_total(headers: Any) -> int | None:
     return parsed
 
 
+def _archived_family_records(
+    archive_root: Path,
+    *,
+    scope: str | None = None,
+) -> FamilyArchiveRecords:
+    scopes = (scope,) if scope is not None else tuple(sorted(DECLARED_SCOPES))
+    families: list[LogbookFamily] = []
+    members: list[FamilyMember] = []
+    actions: list[FamilyAction] = []
+    for candidate_scope in scopes:
+        records = load_family_archive_records(archive_root, candidate_scope)
+        families.extend(records.families)
+        members.extend(records.family_members)
+        actions.extend(records.family_actions)
+    family_ids: dict[str, LogbookFamily] = {}
+    for family in families:
+        previous = family_ids.get(family.family_id)
+        if previous is not None and previous != family:
+            raise ValueError(
+                f"Family {family.family_id} has conflicting archived records."
+            )
+        family_ids[family.family_id] = family
+    return FamilyArchiveRecords(tuple(families), tuple(members), tuple(actions))
+
+
+def _archived_builds(archive_root: Path) -> dict[str, LogbookRow]:
+    return {
+        row.build_id: row
+        for archive in _archive_files(archive_root)
+        for row in load_logbook_file(archive)
+    }
+
+
+def _scope_build_archive(archive_root: Path, scope: str) -> Path:
+    return archive_root / Path(*scope.split("/")).with_suffix(".jsonl")
+
+
+def _print_json_lines(values: list[dict[str, Any]]) -> None:
+    for value in values:
+        print(
+            json.dumps(
+                value,
+                allow_nan=False,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+
+
+def _public_build_mapping(row: LogbookRow) -> dict[str, Any]:
+    mapping = row.to_mapping()
+    mapping.pop("gate_verdicts")
+    mapping.pop("cost_usd")
+    mapping.pop("row_format_version", None)
+    if row.disposition not in {"published", "certified"}:
+        mapping["artifact_location"] = None
+    mapping.setdefault("requested_k", None)
+    mapping.setdefault("realized_k", None)
+    mapping.setdefault("record_unit", None)
+    return mapping
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run one Logbook command and return its process exit code."""
 
     args = _parser().parse_args(argv)
     try:
+        if args.command == "family-export":
+            records = (
+                _remote_family_records(args.scope)
+                if args.remote
+                else load_family_spool(args.source)
+            )
+            receipts = export_family_scope(
+                args.archive_root,
+                scope=args.scope,
+                families=records.families,
+                family_members=records.family_members,
+                family_actions=records.family_actions,
+            )
+            print(
+                "exported family records for "
+                f"{args.scope}: "
+                + ", ".join(
+                    f"{record_type}={receipt.appended} new/{receipt.existing} existing"
+                    for record_type, receipt in receipts.items()
+                )
+            )
+            return 0
+
+        if args.command == "family-import":
+            records = load_family_archive_records(
+                args.archive_root,
+                args.scope,
+            )
+            build_archive = _scope_build_archive(args.archive_root, args.scope)
+            if records.family_members and not build_archive.is_file():
+                raise ValueError(
+                    f"Family members for {args.scope} require build archive "
+                    f"{build_archive}."
+                )
+            builds = load_logbook_file(build_archive) if build_archive.is_file() else ()
+            builds_by_id = {build.build_id: build for build in builds}
+            families_by_id = {family.family_id: family for family in records.families}
+            for member in records.family_members:
+                try:
+                    family = families_by_id[member.family_id]
+                    build = builds_by_id[member.build_id]
+                except KeyError as exc:
+                    raise ValueError(
+                        f"Family member import is missing archived record "
+                        f"{exc.args[0]}."
+                    ) from exc
+                validate_family_membership(family, member, build)
+            spool_build_rows(builds, spool_dir=args.spool)
+            imported = import_family_scope(
+                args.archive_root,
+                scope=args.scope,
+                spool_dir=args.spool,
+            )
+            print(
+                f"imported family records for {args.scope}: "
+                f"builds={len(builds)}, families={len(imported.families)}, "
+                f"members={len(imported.family_members)}, "
+                f"actions={len(imported.family_actions)}"
+            )
+            return 0
+
+        if args.command == "reconcile":
+            receipt = reconcile_logbook_spool(args.spool)
+            print(
+                "reconciled Logbook spool: "
+                f"builds={receipt.builds.posted} posted/"
+                f"{receipt.builds.retained} retained; "
+                f"family records={receipt.families.posted} posted/"
+                f"{receipt.families.retained} retained"
+            )
+            errors = (*receipt.builds.errors, *receipt.families.errors)
+            if errors:
+                raise RuntimeError("; ".join(errors))
+            return 0
+
+        if args.command == "list-families":
+            records = _archived_family_records(
+                args.archive_root,
+                scope=args.scope,
+            )
+            _print_json_lines(
+                [
+                    family.to_mapping()
+                    for family in sorted(
+                        records.families,
+                        key=lambda value: (value.chain_scope, value.family_id),
+                    )
+                ]
+            )
+            return 0
+
+        if args.command == "list-family-builds":
+            records = _archived_family_records(args.archive_root)
+            family = next(
+                (
+                    value
+                    for value in records.families
+                    if value.family_id == args.family_id
+                ),
+                None,
+            )
+            if family is None:
+                raise ValueError(f"Unknown family_id {args.family_id}.")
+            builds = _archived_builds(args.archive_root)
+            selected: list[LogbookRow] = []
+            for member in records.family_members:
+                if member.family_id != family.family_id:
+                    continue
+                try:
+                    selected.append(builds[member.build_id])
+                except KeyError as exc:
+                    raise ValueError(
+                        f"Family member {member.build_id} has no archived build."
+                    ) from exc
+            selected.sort(
+                key=lambda value: (
+                    value.requested_k is None,
+                    value.requested_k or 0,
+                    value.build_id,
+                )
+            )
+            _print_json_lines([_public_build_mapping(row) for row in selected])
+            return 0
+
+        if args.command == "show-family-history":
+            records = _archived_family_records(args.archive_root)
+            if not any(
+                family.family_id == args.family_id for family in records.families
+            ):
+                raise ValueError(f"Unknown family_id {args.family_id}.")
+            actions = sorted(
+                (
+                    action
+                    for action in records.family_actions
+                    if action.family_id == args.family_id
+                ),
+                key=lambda value: (value.recorded_at, value.action_id),
+            )
+            _print_json_lines([action.to_mapping() for action in actions])
+            return 0
+
         if args.command == "validate":
             archives = _archive_files(args.archive)
             root = args.archive if args.archive.is_dir() else None

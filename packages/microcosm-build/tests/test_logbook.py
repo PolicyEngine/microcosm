@@ -12,18 +12,28 @@ import pytest
 
 import microcosm.build.logbook as logbook
 from microcosm.build.logbook import (
+    LEGACY_LOGBOOK_ROW_FIELDS,
     LOGBOOK_ROW_FIELDS,
+    REMOTE_LOGBOOK_ROW_FIELDS,
+    VERSION_2_LOGBOOK_ROW_FIELDS,
     LogbookRow,
     canonical_json_bytes,
     load_logbook_row,
     reconcile_spool,
     record_build_attempt,
+    render_markdown,
 )
 
 ROOT = Path(__file__).resolve().parents[3]
 MIGRATION = ROOT / "supabase/migrations/20260805000000_logbook.sql"
 CHAIN_SCOPE_MIGRATION = (
     ROOT / "supabase/migrations/20260818000000_logbook_chain_scopes.sql"
+)
+FAMILY_MODEL_MIGRATION = (
+    ROOT / "supabase/migrations/20260830000000_logbook_family_model.sql"
+)
+ROW_VERSION_FIXTURES = (
+    ROOT / "packages/microcosm-build/tests/fixtures/logbook_row_versions.json"
 )
 
 
@@ -71,17 +81,36 @@ def test_row_schema_json_round_trip_matches_628_golden() -> None:
     restored = LogbookRow.from_mapping(json.loads(row.to_json_line()))
 
     assert restored == row
-    assert frozenset(row.to_mapping()) == LOGBOOK_ROW_FIELDS
+    assert frozenset(row.to_mapping()) == LEGACY_LOGBOOK_ROW_FIELDS
     assert restored.ts == "2026-08-04T19:06:00.000000Z"
     assert restored.row_digest == (
         "80a01b5cdefeeed6a8acd36dfa06b1e4506f4853c2786101d3c3ba414cd8a927"
     )
 
 
+def test_version_2_row_matches_shared_golden() -> None:
+    fixtures = json.loads(ROW_VERSION_FIXTURES.read_text(encoding="utf-8"))
+    expected = fixtures["version_2"]
+
+    row = LogbookRow.create(
+        **_row_kwargs(),
+        row_format_version=2,
+        requested_k=20_000,
+        realized_k=20_000,
+        record_unit="household",
+    )
+
+    assert row.to_mapping() == expected["row"]
+    assert row.row_digest == expected["expected_row_digest"]
+    assert frozenset(row.to_mapping()) == VERSION_2_LOGBOOK_ROW_FIELDS
+    assert LOGBOOK_ROW_FIELDS == VERSION_2_LOGBOOK_ROW_FIELDS
+    assert REMOTE_LOGBOOK_ROW_FIELDS == VERSION_2_LOGBOOK_ROW_FIELDS
+
+
 def test_sql_schema_round_trip_matches_python_hash_surface() -> None:
     sql = MIGRATION.read_text(encoding="utf-8")
     builds = sql.split("CREATE TABLE logbook.builds (", 1)[1].split("\n);", 1)[0]
-    for field in LOGBOOK_ROW_FIELDS:
+    for field in LEGACY_LOGBOOK_ROW_FIELDS:
         assert re.search(rf"^    {field}\s", builds, flags=re.MULTILINE), field
 
     payload = sql.split("CREATE OR REPLACE FUNCTION logbook.build_hash_payload", 1)[
@@ -89,7 +118,7 @@ def test_sql_schema_round_trip_matches_python_hash_surface() -> None:
     ].split("$function$;", 1)[0]
     payload_fields = set(re.findall(r"'([a-z_]+)',\s+p_build\.", payload))
     payload_fields.add("ts")
-    assert payload_fields == LOGBOOK_ROW_FIELDS - {
+    assert payload_fields == LEGACY_LOGBOOK_ROW_FIELDS - {
         "prev_row_digest",
         "row_digest",
     }
@@ -162,6 +191,24 @@ def test_sql_schema_round_trip_matches_python_hash_surface() -> None:
     assert "CREATE POLICY builds_exporter_select" in sql
     assert "CREATE POLICY predictions_exporter_select" not in sql
     assert "GRANT logbook_writer, logbook_exporter TO authenticator" in sql
+
+    extension = FAMILY_MODEL_MIGRATION.read_text(encoding="utf-8")
+    for field in (
+        "row_format_version",
+        "requested_k",
+        "realized_k",
+        "record_unit",
+    ):
+        assert re.search(rf"ADD COLUMN {field}\s", extension), field
+    assert "'row_format_version', p_build.row_format_version" in extension
+    assert "'requested_k', p_build.requested_k" in extension
+    assert "'realized_k', p_build.realized_k" in extension
+    assert "'record_unit', p_build.record_unit" in extension
+    assert "ALTER COLUMN rung DROP NOT NULL" in extension
+    assert "builds_rung_by_row_format" in extension
+    assert "CREATE OR REPLACE FUNCTION logbook.enforce_build_chain" not in extension
+    assert "CREATE OR REPLACE FUNCTION logbook.chain_scope" not in extension
+    assert "CREATE OR REPLACE FUNCTION logbook.scope_declared" not in extension
 
 
 def test_logbook_chain_scope_migration_contract() -> None:
@@ -257,6 +304,108 @@ def test_schema_rejects_missing_and_extra_fields_by_name() -> None:
         LogbookRow.from_mapping(mapping)
 
 
+def test_remote_legacy_null_columns_restore_exact_legacy_shape() -> None:
+    legacy = LogbookRow.create(**_row_kwargs()).to_mapping()
+    database_row = {
+        **legacy,
+        "row_format_version": None,
+        "requested_k": None,
+        "realized_k": None,
+        "record_unit": None,
+    }
+
+    restored = LogbookRow.from_database_mapping(database_row)
+
+    assert restored.to_mapping() == legacy
+    assert frozenset(restored.to_mapping()) == LEGACY_LOGBOOK_ROW_FIELDS
+
+
+def test_remote_partially_versioned_legacy_row_is_rejected() -> None:
+    database_row = {
+        **LogbookRow.create(**_row_kwargs()).to_mapping(),
+        "row_format_version": None,
+        "requested_k": 20_000,
+        "realized_k": None,
+        "record_unit": "household",
+    }
+
+    with pytest.raises(ValueError, match="version-2 cardinality"):
+        LogbookRow.from_database_mapping(database_row)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"row_format_version": 3}, "row_format_version"),
+        (
+            {"row_format_version": 2, "requested_k": 0, "record_unit": "household"},
+            "requested_k",
+        ),
+        (
+            {"row_format_version": 2, "realized_k": True, "record_unit": "household"},
+            "realized_k",
+        ),
+        ({"row_format_version": 2, "requested_k": 20_000}, "record_unit"),
+        ({"row_format_version": 2, "record_unit": "household"}, "record_unit"),
+        (
+            {
+                "row_format_version": 2,
+                "requested_k": 20_000,
+                "record_unit": "Household",
+            },
+            "normalized lowercase",
+        ),
+        (
+            {
+                "row_format_version": 2,
+                "requested_k": 20_000,
+                "realized_k": 19_999,
+                "record_unit": "household",
+                "disposition": "published",
+                "artifact_location": "hf://fixture",
+            },
+            "requires realized_k to equal",
+        ),
+    ],
+)
+def test_version_2_cardinality_validation_fails_closed(
+    overrides: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        LogbookRow.create(**_row_kwargs(**overrides))
+
+
+def test_failed_version_2_row_can_retain_request_without_output() -> None:
+    row = LogbookRow.create(
+        **_row_kwargs(),
+        row_format_version=2,
+        requested_k=20_000,
+        realized_k=None,
+        record_unit="household",
+    )
+
+    assert row.requested_k == 20_000
+    assert row.realized_k is None
+
+
+def test_version_2_exact_k_row_accepts_null_rung() -> None:
+    fixture = json.loads(ROW_VERSION_FIXTURES.read_text(encoding="utf-8"))[
+        "version_2_exact_k"
+    ]
+    row = LogbookRow.from_mapping(fixture["row"])
+
+    assert row.rung is None
+    assert row.row_digest == fixture["expected_row_digest"]
+    assert json.loads(row.to_json_line())["rung"] is None
+    assert "| — |" in render_markdown([row])
+
+
+def test_legacy_row_rejects_null_rung() -> None:
+    with pytest.raises(ValueError, match="only for a version-2"):
+        LogbookRow.create(**_row_kwargs(rung=None))
+
+
 def test_row_rejects_nul_in_nested_gate_diagnostics() -> None:
     gate_verdicts = {
         "agreement": {
@@ -301,6 +450,8 @@ def test_predecessor_is_bound_once_into_the_row_digest() -> None:
 def test_spool_round_trip_authenticates_contents_and_filename(tmp_path: Path) -> None:
     result = record_build_attempt(**_row_kwargs(), spool_dir=tmp_path)
 
+    assert result.row.row_format_version == 2
+    assert frozenset(result.row.to_mapping()) == VERSION_2_LOGBOOK_ROW_FIELDS
     assert result.spool_path == tmp_path / f"{result.row.row_digest}.json"
     assert load_logbook_row(result.spool_path) == result.row
 

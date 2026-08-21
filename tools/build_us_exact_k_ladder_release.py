@@ -13,10 +13,11 @@ Example::
         --config configs/us_exact_k_57240.json \
         --out build/us-exact-k
 
-Schema-v1 configuration (paths are resolved relative to the config file)::
+Schema-v2 configuration (paths are resolved relative to the config file)::
 
     {
-      "schema_version": 1,
+      "schema_version": 2,
+      "family": {"id": "12345678-1234-4234-9234-123456789abc"},
       "pool": {"release_id": "...", "manifest_sha256": "<sha256>"},
       "ladder": {"k": 57240, "seed": 17, "pi_hi": 0.95},
       "targets": {
@@ -56,8 +57,11 @@ import os
 import re
 import shlex
 import sys
+import time
+import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 _TOOLS_DIR = Path(__file__).resolve().parent
@@ -65,13 +69,39 @@ if str(_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(_TOOLS_DIR))
 
 import build_us_fiscal_refresh_release as fiscal_release
+from microcosm.build.logbook import (
+    LogbookWriteResult,
+    canonical_json_bytes,
+    record_build_attempt,
+)
+from microcosm.build.logbook_adoption import (
+    AttemptState,
+    append_phase,
+    attempt_receipt_dir,
+    atomic_write_json,
+    error_receipt_path,
+    git_code_pin,
+    local_artifact_reference,
+    resolve_predecessor,
+    sha256_argument,
+    write_error_receipt,
+)
+from microcosm.build.logbook_family import (
+    FamilyMember,
+    LogbookFamily,
+    reconcile_logbook_spool,
+    record_family,
+    record_family_member,
+)
 from microcosm.build.us_runtime.h5_io import (
     load_simulation_ready_us_multispine_pool_manifest,
 )
 
-CONFIG_SCHEMA_VERSION = 1
+CONFIG_SCHEMA_VERSION = 2
 RATIFIED_SPARSE_K = fiscal_release.RATIFIED_EXACT_K_COUNTS
 US_RELEASE_REPO_ID = "policyengine/populace-us"
+_LOGBOOK_PIPELINE = "us-2024-release"
+_REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 _LOWERCASE_SHA256 = re.compile(r"[0-9a-f]{64}")
 _RELEASE_ID = re.compile(r"[A-Za-z0-9-]+")
 
@@ -80,6 +110,7 @@ _RELEASE_ID = re.compile(r"[A-Za-z0-9-]+")
 class LadderReleaseConfig:
     """Validated, path-resolved launcher configuration."""
 
+    family_id: str
     pool_release_id: str
     pool_manifest_sha256: str
     requested_k: str | int
@@ -115,9 +146,17 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--config",
         type=Path,
         required=True,
-        help="Strict schema-v1 JSON release configuration.",
+        help="Strict schema-v2 JSON release configuration.",
     )
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument(
+        "--logbook-prev-row-digest",
+        type=sha256_argument,
+        help=(
+            "Current US Logbook row checksum. May instead be supplied through "
+            "POPULACE_LOGBOOK_PREV_ROW_DIGEST."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -131,6 +170,7 @@ def _read_config(path: Path) -> LadderReleaseConfig:
         root,
         required={
             "schema_version",
+            "family",
             "pool",
             "ladder",
             "targets",
@@ -148,6 +188,8 @@ def _read_config(path: Path) -> LadderReleaseConfig:
             f"{CONFIG_SCHEMA_VERSION}, got {root['schema_version']!r}."
         )
 
+    family = _object(root["family"], label="family")
+    _keys(family, required={"id"}, label="family")
     pool = _object(root["pool"], label="pool")
     _keys(pool, required={"release_id", "manifest_sha256"}, label="pool")
     ladder = _object(root["ladder"], label="ladder")
@@ -264,6 +306,7 @@ def _read_config(path: Path) -> LadderReleaseConfig:
         )
 
     return LadderReleaseConfig(
+        family_id=_uuid_value(family["id"], label="family.id"),
         pool_release_id=pool_release_id,
         pool_manifest_sha256=_sha256_value(
             pool["manifest_sha256"], label="pool.manifest_sha256"
@@ -455,35 +498,245 @@ def _builder_argv(
     return argv
 
 
+def _logbook_input_pins_digest(config: LadderReleaseConfig) -> str:
+    payload = {
+        "pool_manifest_sha256": config.pool_manifest_sha256,
+        "ledger_facts_sha256": config.ledger_facts_sha256,
+        "ledger_manifest_sha256": config.ledger_manifest_sha256,
+        "incumbent_diagnostics_sha256": config.incumbent_diagnostics_sha256,
+        "target_surface_sha256": config.target_surface_sha256,
+        "ssi_take_up_prior_weight_basis_sha256": (
+            config.ssi_take_up_prior_weight_basis_sha256
+        ),
+    }
+    return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
+
+
+def _logbook_identity_digest(
+    config: LadderReleaseConfig,
+    *,
+    resolved_k: int | None,
+) -> str:
+    payload = {
+        "pipeline": _LOGBOOK_PIPELINE,
+        "build_id": config.release_id,
+        "family_id": config.family_id,
+        "source_pool_sha256": config.pool_manifest_sha256,
+        "requested_k_input": config.requested_k,
+        "requested_k_resolved": resolved_k,
+        "record_unit": "household" if resolved_k is not None else None,
+        "seed": config.seed,
+        "pi_hi": config.pi_hi,
+        "calibration": {
+            "epochs": config.epochs,
+            "learning_rate": config.learning_rate,
+            "max_weight_ratio": config.max_weight_ratio,
+            "l0_refit_lambda_share": config.l0_refit_lambda_share,
+            "l2_lambda": config.l2_lambda,
+            "refit_l2_lambda": config.refit_l2_lambda,
+        },
+    }
+    return hashlib.sha256(canonical_json_bytes(payload)).hexdigest()
+
+
+def _record_exact_k_attempt(
+    *,
+    state: AttemptState,
+    started_at: float,
+    started_ts: datetime,
+    code_pin: str,
+    seed: int,
+    predecessor: str | None,
+    spool_dir: Path,
+    requested_k: int | None,
+    realized_k: int | None,
+    disposition: str,
+) -> LogbookWriteResult:
+    return record_build_attempt(
+        build_id=state.build_id,
+        ts=started_ts,
+        pipeline=_LOGBOOK_PIPELINE,
+        rung=None,
+        seed=seed,
+        code_pin=code_pin,
+        input_pins_digest=state.input_pins_digest,
+        identity_digest=state.identity_digest,
+        phases_reached=state.phases_reached,
+        gate_verdicts=state.gate_verdicts,
+        wall_seconds=time.perf_counter() - started_at,
+        cost_usd=None,
+        artifact_location=state.artifact_location,
+        disposition=disposition,
+        prediction_id=None,
+        prev_row_digest=predecessor,
+        row_format_version=2,
+        requested_k=requested_k,
+        realized_k=realized_k,
+        record_unit="household" if requested_k is not None else None,
+        spool_dir=spool_dir,
+        post_remote=False,
+    )
+
+
 def launch(
     *,
     pool_manifest: Path,
     config_path: Path,
     out: Path,
+    logbook_prev_row_digest: str | None = None,
     release_builder: Callable[[Sequence[str] | None], object] = fiscal_release.main,
 ) -> dict[str, object]:
-    """Validate pins, run the house release path, and write a publish receipt."""
+    """Validate pins, build, persist Logbook records, and write a receipt."""
 
+    started_at = time.perf_counter()
+    started_ts = datetime.now(UTC)
     config = _read_config(config_path)
     resolved_pool_manifest = pool_manifest.resolve()
     resolved_out = out.resolve()
-    k, _ = _validate_pins_and_resolve_k(
-        config=config,
-        pool_manifest_path=resolved_pool_manifest,
+    spool_dir = resolved_out / "logbook-spool"
+    predecessor = resolve_predecessor(logbook_prev_row_digest)
+    code_pin = git_code_pin(_REPOSITORY_ROOT)
+    requested_k = (
+        int(config.requested_k) if isinstance(config.requested_k, int) else None
     )
-    release_builder(
-        _builder_argv(
+    success_receipt = (
+        attempt_receipt_dir(resolved_out, build_id=config.release_id) / "release.json"
+    )
+    success_receipt_reference = local_artifact_reference(
+        success_receipt,
+        repository_hint=_REPOSITORY_ROOT,
+    )
+    state = AttemptState(
+        build_id=config.release_id,
+        identity_digest=_logbook_identity_digest(
             config=config,
-            pool_manifest=resolved_pool_manifest,
-            out=resolved_out,
-            k=config.requested_k,
-        )
+            resolved_k=requested_k,
+        ),
+        input_pins_digest=_logbook_input_pins_digest(config),
+        phases_reached=["attempt_started"],
+        gate_verdicts={
+            "exact_k_build": {
+                "verdict": "running",
+                "receipt": success_receipt_reference,
+            }
+        },
     )
-    build = {
-        "release_id": config.release_id,
-        "release_dir": str(resolved_out / "releases" / config.release_id),
-        "artifact_root": str(resolved_out / "artifacts"),
-    }
+    family = LogbookFamily.create(
+        family_id=config.family_id,
+        chain_scope="us",
+        source_pool_sha256=config.pool_manifest_sha256,
+    )
+
+    try:
+        k, _ = _validate_pins_and_resolve_k(
+            config=config,
+            pool_manifest_path=resolved_pool_manifest,
+        )
+        requested_k = k
+        state.identity_digest = _logbook_identity_digest(
+            config,
+            resolved_k=requested_k,
+        )
+        append_phase(state, "source_pool_verified")
+        record_family(family, spool_dir=spool_dir, post_remote=False)
+        append_phase(state, "family_record_spooled")
+        release_builder(
+            _builder_argv(
+                config=config,
+                pool_manifest=resolved_pool_manifest,
+                out=resolved_out,
+                k=config.requested_k,
+            )
+        )
+        append_phase(state, "dataset_built")
+        build = {
+            "release_id": config.release_id,
+            "release_dir": str(resolved_out / "releases" / config.release_id),
+            "artifact_root": str(resolved_out / "artifacts"),
+        }
+        atomic_write_json(
+            success_receipt,
+            {
+                "artifact_kind": "populace_exact_k_release_receipt",
+                "schema_version": 1,
+                **build,
+                "family_id": config.family_id,
+                "source_pool_sha256": config.pool_manifest_sha256,
+                "requested_k": requested_k,
+                "realized_k": requested_k,
+                "record_unit": "household",
+                "rung": None,
+            },
+        )
+        state.gate_verdicts = {
+            "exact_k_build": {
+                "verdict": "passed",
+                "receipt": success_receipt_reference,
+            }
+        }
+        state.artifact_location = local_artifact_reference(
+            Path(build["release_dir"]),
+            repository_hint=_REPOSITORY_ROOT,
+        )
+    except BaseException as error:
+        try:
+            failure_path = write_error_receipt(
+                error_receipt_path(resolved_out, build_id=config.release_id),
+                state=state,
+                pipeline=_LOGBOOK_PIPELINE,
+                error=error,
+            )
+            failure_reference = local_artifact_reference(
+                failure_path,
+                repository_hint=_REPOSITORY_ROOT,
+            )
+            state.gate_verdicts = {
+                "exact_k_build": {
+                    "verdict": "error",
+                    "receipt": failure_reference,
+                }
+            }
+            state.artifact_location = failure_reference
+            append_phase(state, "error")
+            _record_exact_k_attempt(
+                state=state,
+                started_at=started_at,
+                started_ts=started_ts,
+                code_pin=code_pin,
+                seed=config.seed,
+                predecessor=predecessor,
+                spool_dir=spool_dir,
+                requested_k=requested_k,
+                realized_k=None,
+                disposition="failed",
+            )
+            reconcile_logbook_spool(spool_dir)
+        except Exception as recording_error:
+            error.add_note(
+                "Exact-k Logbook failure recording also failed: "
+                f"{type(recording_error).__name__}: {recording_error}"
+            )
+        raise
+
+    assert requested_k is not None
+    write_result = _record_exact_k_attempt(
+        state=state,
+        started_at=started_at,
+        started_ts=started_ts,
+        code_pin=code_pin,
+        seed=config.seed,
+        predecessor=predecessor,
+        spool_dir=spool_dir,
+        requested_k=requested_k,
+        realized_k=requested_k,
+        disposition="iterating",
+    )
+    member = FamilyMember.create(
+        family_id=config.family_id,
+        build_id=config.release_id,
+    )
+    record_family_member(member, spool_dir=spool_dir, post_remote=False)
+    reconcile_logbook_spool(spool_dir)
 
     publish_argv = [
         "tools/publish_release.sh",
@@ -499,6 +752,12 @@ def launch(
     result: dict[str, object] = {
         **build,
         "k": k,
+        "family_id": config.family_id,
+        "requested_k": requested_k,
+        "realized_k": requested_k,
+        "record_unit": "household",
+        "rung": None,
+        "logbook_row_digest": write_result.row.row_digest,
         "seed": config.seed,
         "automatic_publish": False,
         "pointer_update": False,
@@ -518,12 +777,8 @@ def launch(
         "publish_argv": publish_argv,
         "publish_command": shlex.join(publish_argv),
     }
-    resolved_out.mkdir(parents=True, exist_ok=True)
     package_result = resolved_out / "package_result.json"
-    package_result.write_text(
-        json.dumps(result, indent=2, sort_keys=True, allow_nan=False) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(package_result, result)
     print(json.dumps(result, indent=2, sort_keys=True, allow_nan=False))
     return result
 
@@ -561,6 +816,17 @@ def _sha256_value(value: object, *, label: str) -> str:
     if _LOWERCASE_SHA256.fullmatch(parsed) is None:
         raise ValueError(f"{label} must be a 64-character lowercase SHA-256.")
     return parsed
+
+
+def _uuid_value(value: object, *, label: str) -> str:
+    parsed = _nonempty_string(value, label=label)
+    try:
+        normalized = str(uuid.UUID(parsed))
+    except ValueError as exc:
+        raise ValueError(f"{label} must be a canonical UUID.") from exc
+    if parsed != normalized:
+        raise ValueError(f"{label} must use canonical lowercase UUID text.")
+    return normalized
 
 
 def _nonnegative_int(value: object, *, label: str) -> int:
@@ -619,6 +885,7 @@ def main(argv: Sequence[str] | None = None) -> dict[str, object]:
         pool_manifest=args.pool_manifest,
         config_path=args.config,
         out=args.out,
+        logbook_prev_row_digest=args.logbook_prev_row_digest,
     )
 
 
