@@ -4,13 +4,15 @@
 
 ### State
 
-Local verification complete; final report and journal closure pending. The
-supplied traceback maps to the historical globally attached QRF audit-evidence
-path at `33bf52fe`. The current tree already contains the assigned-only
-executable correction and the exact synthetic plus real ordinary/banked
-regressions, so no duplicate runtime or test edit was warranted. Focused,
-directly affected, repository-wide, static, and Git-object checks are green.
-No restricted host-certification claim is inherited or made.
+Complete as of `2026-08-21 11:44:09Z`. The supplied traceback maps to the
+historical globally attached QRF audit-evidence path at `33bf52fe`. The current
+tree already contains the assigned-only executable correction and the exact
+synthetic plus real ordinary/banked regressions, so no duplicate runtime or
+test edit was warranted. Focused, directly affected, repository-wide, static,
+and Git-object checks are green. `FINAL_REPORT.md` contains the current result
+and is committed at `811277bb`. The live restricted-host retry has passed the
+reported taxable-interest boundary but remains nonterminal, so host
+certification is not claimed.
 
 ### Done
 
@@ -52,9 +54,8 @@ No restricted host-certification claim is inherited or made.
   forgery coverage. Together they capture both non-leakage and fail-closed
   binding without weakening the invariant.
 - Reconciled independent read-only invariant and test/log audits; both reached
-  the same root cause and found no residual canonical scope leak. The mutable
-  external host `build.log` is currently empty and has no terminal artifacts,
-  so it supplies no new certification result.
+  the same root cause and found no residual canonical scope leak. The initial
+  external snapshot was empty and nonterminal; a later retry became active.
 - Ran the exact taxable-interest binding regression, both real wide-family
   ordinary/banked cases, all 12 rehashed strict-binding mutations, and the
   mixed-family draw-preservation regression under the 12 GiB guard. All 16
@@ -80,13 +81,22 @@ No restricted host-certification claim is inherited or made.
   current build-tests tree is `0c5d7816`, identical to `ad2a44c1`; relative to
   `d29a8705`, its only test change is the strengthened ordinary/banked terminal
   validator regression. Everything after `ad2a44c1` is journal-only.
+- Took the final read-only host snapshot at `2026-08-21 11:42:58Z`. The retry
+  had written taxable interest as target 22/47 with physical family
+  `puf_tax_itemization__batch_1` and progressed through target 39/47 without a
+  traceback, `ValueError`, or binding failure. It still had no runner exit
+  marker or final pool, manifest, and gates artifacts, and its mutable log did
+  not bind the launch to a recoverable Microcosm SHA.
+- Refreshed and committed the required `FINAL_REPORT.md` at `811277bb` with the
+  current diagnosis, assigned-only fences, exact regression evidence, fresh
+  6,609-item suite, static/object checks, and nonterminal host boundary.
 
 ### Next
 
-Refresh `FINAL_REPORT.md` with the current diagnosis, assigned-only fences,
-exact regressions, fresh 6,609-item suite result, static/object evidence, and
-explicit nonterminal restricted-host boundary. Then close this journal in a
-final committed checkpoint.
+Obtain a durable, terminal, revision-bound restricted 1% host result with
+passing final `pool.h5`, `pool.manifest.json`, and `pool.gates.json`. Do not
+publish or mutate the release chain as a side effect of that external
+verification.
 
 ## Owner continuation revalidation — 2026-08-21 09:47Z
 
