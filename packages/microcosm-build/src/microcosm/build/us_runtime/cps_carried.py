@@ -419,7 +419,9 @@ def _fill_health_coverage_inputs(person: pd.DataFrame) -> None:
     )
     source_columns: Mapping[str, str] = {
         "has_non_marketplace_direct_purchase_health_coverage_at_interview": "NOW_NONM",
-        "has_medicaid_health_coverage_at_interview": "NOW_MCAID",
+        # NOW_MCAID also includes CHIP and other means-tested coverage; this
+        # PolicyEngine leaf represents the narrower current Medicaid concept.
+        "has_medicaid_health_coverage_at_interview": "NOW_CAID",
         "has_esi": "NOW_GRP",
         "has_champva_health_coverage_at_interview": "NOW_CHAMPVA",
         "has_tricare_health_coverage_at_interview": "NOW_MIL",

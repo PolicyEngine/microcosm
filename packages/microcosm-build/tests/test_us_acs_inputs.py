@@ -5,6 +5,9 @@ import pandas as pd
 import pytest
 
 from microcosm.build.us_runtime.acs_inputs import map_acs_native_inputs
+from microcosm.build.us_runtime.operator_boundary import (
+    assert_operator_free_source_frame,
+)
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -27,6 +30,13 @@ def _acs_frame() -> Frame:
             "SSIP": [200.0, np.nan],
             "RETP": [300.0, np.nan],
             "INTP": [-100.0, np.nan],
+            "HINS1": [1, 2],
+            "HINS2": [1, 2],
+            "HIMRKS": [1, 2],
+            "HINS4": [1, 2],
+            "HINS5": [1, 2],
+            "HINS6": [1, 2],
+            "HINS7": [2, 1],
         }
     )
     tables = {
@@ -65,6 +75,101 @@ def test_acs_demographic_and_relationship_mapping_is_native() -> None:
     assert person["is_household_head"].tolist() == [True, False]
     assert result.native_inputs["age"]["source_columns"] == ["AGEP"]
     assert result.native_inputs["is_household_head"]["source_columns"] == ["RELSHIPP"]
+
+
+def test_acs_exact_health_indicators_map_as_native_yes_no_values() -> None:
+    result = map_acs_native_inputs(_acs_frame())
+    person = result.frame.table("person")
+
+    assert person["has_esi"].tolist() == [True, False]
+    assert person["has_esi"].dtype == bool
+    assert person[
+        "has_indian_health_service_coverage_at_interview"
+    ].tolist() == [False, True]
+    assert person["has_indian_health_service_coverage_at_interview"].dtype == bool
+    assert result.native_inputs["has_esi"] == {
+        "entity": "person",
+        "source_columns": ["HINS1"],
+        "transformation": "HINS1 == 1",
+        "provenance": "acs_2024_1yr_native",
+        "observed_rows": 2,
+        "missing_rows": 0,
+    }
+    assert result.native_inputs[
+        "has_indian_health_service_coverage_at_interview"
+    ]["source_columns"] == ["HINS7"]
+
+
+def test_acs_broader_health_concepts_remain_unmapped() -> None:
+    result = map_acs_native_inputs(_acs_frame())
+    person_columns = frozenset(result.frame.table("person").columns)
+
+    assert person_columns.isdisjoint(
+        {
+            "has_champva_health_coverage_at_interview",
+            "has_marketplace_health_coverage_at_interview",
+            "has_medicaid_health_coverage_at_interview",
+            "has_non_marketplace_direct_purchase_health_coverage_at_interview",
+            "has_other_means_tested_health_coverage_at_interview",
+            "has_tricare_health_coverage_at_interview",
+            "has_va_health_coverage_at_interview",
+        }
+    )
+
+
+@pytest.mark.parametrize("source", ["HINS1", "HINS7"])
+@pytest.mark.parametrize(
+    ("invalid", "message"),
+    [(3.0, "unsupported code"), (np.nan, "must not be blank")],
+)
+def test_acs_health_indicators_require_strict_yes_no_codes(
+    source: str,
+    invalid: float,
+    message: str,
+) -> None:
+    frame = _acs_frame()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"][source] = tables["person"][source].astype(float)
+    tables["person"].loc[0, source] = invalid
+    malformed = Frame(
+        tables,
+        frame.schema,
+        {"household": frame.weights_for("household")},
+        frame.strata,
+    )
+
+    with pytest.raises(ValueError, match=rf"{source}.*{message}"):
+        map_acs_native_inputs(malformed)
+
+
+def test_acs_health_receipts_are_required_at_operator_boundary() -> None:
+    result = map_acs_native_inputs(_acs_frame())
+
+    assert_operator_free_source_frame(
+        result.frame,
+        label="mapped ACS fixture",
+        native_inputs=result.native_inputs,
+    )
+
+    missing_health_receipt = dict(result.native_inputs)
+    missing_health_receipt.pop("has_esi")
+    with pytest.raises(ValueError, match="has_esi"):
+        assert_operator_free_source_frame(
+            result.frame,
+            label="unreceipted ACS health fixture",
+            native_inputs=missing_health_receipt,
+        )
+
+    forged_health_receipt = {
+        output: dict(receipt) for output, receipt in result.native_inputs.items()
+    }
+    forged_health_receipt["has_esi"]["transformation"] = "HINS1 != 2"
+    with pytest.raises(ValueError, match=r"has_esi.*transformation"):
+        assert_operator_free_source_frame(
+            result.frame,
+            label="forged ACS health fixture",
+            native_inputs=forged_health_receipt,
+        )
 
 
 def test_acs_income_mapping_adjusts_native_dollars_without_splitting_aggregates() -> (

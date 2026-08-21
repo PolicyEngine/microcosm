@@ -112,6 +112,22 @@ def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
             register=native,
         )
 
+    # HINS1 and HINS7 are exact ACS yes/no questions for these two labels.
+    # Other health-label candidates in this lane have different concept scopes
+    # and deliberately are not native-mapped.
+    _map_required_yes_no(
+        person,
+        source="HINS1",
+        output="has_esi",
+        register=native,
+    )
+    _map_required_yes_no(
+        person,
+        source="HINS7",
+        output="has_indian_health_service_coverage_at_interview",
+        register=native,
+    )
+
     _map_adjusted_person_amount(
         person,
         source="WAGP",
@@ -172,6 +188,35 @@ def map_acs_native_inputs(frame: Frame) -> AcsNativeInputResult:
         metadata=frame.metadata,
     )
     return AcsNativeInputResult(mapped, native)
+
+
+def _map_required_yes_no(
+    person: pd.DataFrame,
+    *,
+    source: str,
+    output: str,
+    register: dict[str, Mapping[str, Any]],
+) -> None:
+    if source not in person:
+        return
+    codes = pd.to_numeric(person[source], errors="coerce")
+    bad = codes.notna() & ~codes.isin([1, 2])
+    if bad.any():
+        raise ValueError(
+            f"ACS {source} contains unsupported code(s): "
+            f"{sorted(codes.loc[bad].unique().tolist())}."
+        )
+    if codes.isna().any():
+        raise ValueError(f"ACS required {source} values must not be blank.")
+    _add_native(
+        person,
+        output,
+        (codes == 1).to_numpy(dtype=bool),
+        entity="person",
+        source_columns=(source,),
+        transformation=f"{source} == 1",
+        register=register,
+    )
 
 
 def _map_adjusted_person_amount(

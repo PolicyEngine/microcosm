@@ -84,6 +84,8 @@ _PERSON_REQUIRED = (
     "RETP",
     "INTP",
     "PWGTP",
+    "HINS1",
+    "HINS7",
 )
 _PERSON_OPTIONAL: tuple[str, ...] = ()
 

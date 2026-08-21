@@ -14,6 +14,12 @@
 - The required pre-commit Ruff gate and all five package test shards are green:
   build 5,996; calibrate 201; data 275; fit 93; frame 294 (the data and frame
   shards include 1 and 36 skips, respectively).
+- Three generating defects are repaired in the worktree: ACS `HINS1` now
+  produces native ESI, ACS `HINS7` now produces native IHS, and the ASEC
+  Medicaid leaf now uses narrow `NOW_CAID` instead of composite `NOW_MCAID`.
+- The provenance matrix classifies seven detailed labels as concept mismatches:
+  Marketplace, non-Marketplace direct purchase, Medicaid, other means-tested,
+  TRICARE, CHAMPVA, and VA. No exclusion or comparator rule has been added.
 - Source-of-truth adjudication identifies three health-label blocker checks:
   CHAMPVA, Indian Health Service, and other means-tested coverage. CHAMPVA is
   one leg of the label audit, not its goal.
@@ -25,16 +31,21 @@
 - Enumerated all nine registered health-coverage labels and began their
   ASEC/ACS/clone-0 provenance audit.
 - Established a green pre-change baseline for Ruff and every package shard.
+- Added label-specific loader, mapping, strict-code, receipt, transfer-preservation,
+  target-bank-hole, and Medicaid no-cross-talk regressions; focused tests pass.
+- Drafted `experiments/health_labels/PROVENANCE.md` with all nine source paths
+  and the exact owner-adjudication equations.
+- The combined pre-commit gate is green: Ruff; build 5,973 passed/39 skipped;
+  calibrate 201 passed; data 275 passed/1 skipped; fit 93 passed; frame 294
+  passed/36 skipped. Peak observed build-shard RSS was about 11.6 GiB.
 - Confirmed that process enumeration is denied by the managed sandbox. No data
   build will start until the required host-queue check can be satisfied.
 
 ## Next
 
-- Commit this initial journal.
-- Finish the provenance classification and commit its evidence table under
-  `experiments/health_labels/`.
-- Fix derivation defects with regression tests, then run an off-chain 1% build
-  only when the host build queue and memory rules permit.
+- Commit the mechanisms, regressions, provenance table, and updated journal.
+- Run an off-chain 1% build only when the host build queue and memory rules
+  permit.
 - Record evidence, failure-line diffs, and the final report.
 
 ## Historical handoff carried from `origin/main`

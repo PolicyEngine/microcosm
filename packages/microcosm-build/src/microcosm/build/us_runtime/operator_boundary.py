@@ -131,6 +131,12 @@ _ACS_NATIVE_INPUT_CONTRACTS: Mapping[
     "age": ("person", ("AGEP",), "identity"),
     "is_female": ("person", ("SEX",), "SEX == 2"),
     "is_household_head": ("person", ("RELSHIPP",), "RELSHIPP == 20"),
+    "has_esi": ("person", ("HINS1",), "HINS1 == 1"),
+    "has_indian_health_service_coverage_at_interview": (
+        "person",
+        ("HINS7",),
+        "HINS7 == 1",
+    ),
     "employment_income_before_lsr": (
         "person",
         ("WAGP", "ADJINC"),

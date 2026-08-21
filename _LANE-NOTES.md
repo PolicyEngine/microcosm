@@ -73,3 +73,76 @@
 - `packages/microcosm-frame/tests`: 294 passed, 36 skipped (1 warning).
 - The heavy shard peaked at approximately 10.6 GiB RSS, below the binding
   15 GiB ceiling.
+
+## 2026-08-21 — provenance classification and mechanism repair
+
+### Classification
+
+- Exact ACS source counterparts: ESI (`HINS1`) and IHS (`HINS7`). Their prior
+  QRF generation was a derivation defect, not a survey-concept mismatch.
+- ASEC Medicaid was also a derivation defect: the narrow PolicyEngine leaf used
+  composite `NOW_MCAID` rather than `NOW_CAID`.
+- Seven cross-survey detailed labels remain concept mismatches: Marketplace,
+  non-Marketplace direct purchase, Medicaid, other means-tested, TRICARE,
+  CHAMPVA, and VA. The complete source matrix and owner-only declared-absence,
+  aggregate, and common-universe equations are in
+  `experiments/health_labels/PROVENANCE.md`.
+- No register, absence rule, gate, band, ceiling, fold, or seed changed.
+
+### Generating-mechanism changes
+
+- The ACS person reader requires only `HINS1` and `HINS7` as new fields and
+  fails closed if either is absent
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_pums.py:72-90`,
+  `packages/microcosm-build/src/microcosm/build/us_runtime/acs_pums.py:351-359`).
+- Native mapping validates nonblank `{1, 2}` codes and emits `HINS1 == 1` as
+  `has_esi` and `HINS7 == 1` as the IHS leaf
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_inputs.py:115-128`,
+  `packages/microcosm-build/src/microcosm/build/us_runtime/acs_inputs.py:193-219`).
+- Exact boundary contracts bind both output names to their source columns and
+  transformations
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/operator_boundary.py:127-139`).
+- The ASEC Medicaid mapping now selects `NOW_CAID`; the other eight ASEC health
+  mappings are unchanged
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:413-433`).
+- Complete native targets are omitted from active QRF families while missing
+  peers retain their requested target-bank positions
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:967-1029`,
+  `packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:2383-2420`).
+
+### Focused regression receipt
+
+- ACS PUMS loader: 19 passed.
+- ACS native inputs: 17 passed.
+- Operator-boundary selection: 3 passed, 273 deselected.
+- ASEC Medicaid focused pair: 2 passed, 57 deselected.
+- Native-health transfer preservation and bank-hole cold/warm resumption: 2
+  passed (one joblib core-count warning).
+- Touched-file Ruff checks and `git diff --check`: pass.
+
+### GitNexus fallback
+
+The requested debugging workflow could parse a local index but could not write
+`/Users/maxghenis/.gitnexus/registry.json` under the managed sandbox, so graph
+selection was unavailable. The partial untracked 103 MiB index was moved,
+recoverably, to
+`/private/tmp/microcosm-health-coverage-labels-gitnexus-failed-20260821` and the
+impact trace used direct source call sites and focused regressions.
+
+### Next
+
+- Run the complete pre-commit Ruff/package-shard gate and commit this coherent
+  mechanism/provenance step.
+- Obtain the mandatory host-queue confirmation immediately before the off-chain
+  1% verification build.
+
+### Combined pre-commit quality receipt
+
+- `uv run --no-sync ruff check .`: pass.
+- `packages/microcosm-build/tests`: 5,973 passed, 39 skipped, 1,887 warnings in
+  9,251.38 seconds; peak observed lane RSS approximately 11.6 GiB.
+- `packages/microcosm-calibrate/tests`: 201 passed, 2 warnings.
+- `packages/microcosm-data/tests`: 275 passed, 1 skipped.
+- `packages/microcosm-fit/tests`: 93 passed, 1 warning.
+- `packages/microcosm-frame/tests`: 294 passed, 36 skipped, 1 warning.
+- The unified command exited 0; `git diff --check` passed.

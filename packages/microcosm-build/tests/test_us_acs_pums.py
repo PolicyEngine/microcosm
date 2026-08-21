@@ -66,6 +66,8 @@ def _person(
         "RETP": 0,
         "INTP": 0,
         "PWGTP": 10,
+        "HINS1": 2,
+        "HINS7": 2,
     }
     row.update(overrides)
     return row
@@ -94,13 +96,21 @@ def _source(tmp_path: Path) -> AcsPumsSource:
         person_zip,
         {
             "psam_pusa.csv": [
-                _person("2024HU0000002", 1, 20, MAR=4, WAGP=30_000),
+                _person(
+                    "2024HU0000002",
+                    1,
+                    20,
+                    MAR=4,
+                    WAGP=30_000,
+                    HINS1=1,
+                ),
                 _person(
                     "2024HU0000001",
                     1,
                     20,
                     AGEP=42,
                     WAGP=60_000,
+                    HINS7=1,
                 ),
             ],
             "psam_pusb.csv": [
@@ -196,6 +206,27 @@ def test_load_acs_pums_tables_streams_all_csv_members_and_keeps_native_blanks(
     assert metadata["vacant_household_rows_dropped"] == 1
     assert metadata["household_csv_members"] == ["psam_husa.csv", "psam_husb.csv"]
     assert metadata["person_csv_members"] == ["psam_pusa.csv", "psam_pusb.csv"]
+
+
+def test_load_acs_pums_tables_retains_native_health_coverage_codes(
+    tmp_path: Path,
+) -> None:
+    tables, _metadata = load_acs_pums_tables(_source(tmp_path), chunksize=1)
+
+    person = tables["person"]
+    assert person["HINS1"].tolist() == [2, 2, 2, 1]
+    assert person["HINS7"].tolist() == [1, 2, 2, 2]
+
+
+def test_build_acs_pums_unit_frame_retains_native_health_coverage_codes(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
+    frame, _metadata = build_acs_pums_unit_frame(_source(tmp_path), chunksize=1)
+
+    person = frame.table("person")
+    assert person["HINS1"].tolist() == [2, 2, 2, 1]
+    assert person["HINS7"].tolist() == [1, 2, 2, 2]
 
 
 def test_build_acs_pums_unit_frame_preserves_lineage_geography_and_weights(
@@ -365,6 +396,20 @@ def test_load_acs_pums_tables_requires_native_structure_columns(
     )
 
     with pytest.raises(ValueError, match="RELSHIPP"):
+        load_acs_pums_tables(source)
+
+
+@pytest.mark.parametrize("missing_column", ["HINS1", "HINS7"])
+def test_load_acs_pums_tables_requires_native_health_coverage_columns(
+    tmp_path: Path,
+    missing_column: str,
+) -> None:
+    source = _source(tmp_path)
+    person = _person("2024HU0000001", 1, 20)
+    del person[missing_column]
+    _write_csv_zip(source.person_zip, {"psam_pusa.csv": [person]})
+
+    with pytest.raises(ValueError, match=missing_column):
         load_acs_pums_tables(source)
 
 

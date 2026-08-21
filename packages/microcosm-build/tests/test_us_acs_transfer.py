@@ -742,6 +742,154 @@ def test_declared_families_are_independent_of_release_coverage_surface() -> None
     assert "receives_wic" in production_declared["person"]["model_required_boolean"]
 
 
+def _health_native_gap_frames() -> tuple[Frame, Frame, dict[str, pd.Series]]:
+    native_esi = pd.Series(
+        [True, False, True, False, True, False],
+        index=_recipient_frame().person.index,
+        name="has_esi",
+    )
+    native_ihs = pd.Series(
+        [False, False, True, False, False, True],
+        index=_recipient_frame().person.index,
+        name="has_indian_health_service_coverage_at_interview",
+    )
+    recipient = _with_columns(
+        _recipient_frame(),
+        "person",
+        {
+            native_esi.name: native_esi,
+            native_ihs.name: native_ihs,
+        },
+    )
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {
+            "has_esi": [True, False, True, False, True, False, True, False],
+            "has_indian_health_service_coverage_at_interview": [
+                False,
+                True,
+                False,
+                False,
+                False,
+                True,
+                False,
+                False,
+            ],
+            "has_champva_health_coverage_at_interview": [
+                False,
+                False,
+                True,
+                False,
+                False,
+                False,
+                True,
+                False,
+            ],
+            "has_va_health_coverage_at_interview": [
+                False,
+                True,
+                False,
+                False,
+                True,
+                False,
+                False,
+                False,
+            ],
+        },
+    )
+    return recipient, donor, {native_esi.name: native_esi, native_ihs.name: native_ihs}
+
+
+def test_complete_native_health_labels_are_not_refit_with_missing_family_peer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """HINS-backed leaves stay native while an unavailable peer is transferred."""
+
+    recipient, donor, native = _health_native_gap_frames()
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    _MeanQRF.calls = []
+
+    result = transfer_acs_inputs(
+        recipient,
+        donor,
+        target_families={
+            "person": {
+                "model_required_boolean": (
+                    "has_champva_health_coverage_at_interview",
+                    "has_esi",
+                    "has_indian_health_service_coverage_at_interview",
+                ),
+            }
+        },
+        seed=4,
+        n_estimators=1,
+    )
+
+    assert _MeanQRF.calls
+    assert {
+        tuple(call["targets"].columns) for call in _MeanQRF.calls
+    } == {("has_champva_health_coverage_at_interview",)}
+    assert {item.column for item in result.imputed_inputs} == {
+        "has_champva_health_coverage_at_interview"
+    }
+    for target, before in native.items():
+        pd.testing.assert_series_equal(result.frame.person[target], before)
+
+
+def test_banked_health_family_keeps_requested_indexes_across_native_holes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Native middle targets cannot renumber the durable health target bank."""
+
+    _lock_bank_fixture_threads(monkeypatch)
+    recipient, donor, native = _health_native_gap_frames()
+    targets = (
+        "has_champva_health_coverage_at_interview",
+        "has_esi",
+        "has_indian_health_service_coverage_at_interview",
+        "has_va_health_coverage_at_interview",
+    )
+    families = {"person": {"model_required_boolean": targets}}
+
+    def run(
+        bank: AcsTransferTargetBankStore | None = None,
+    ) -> AcsTransferResult:
+        return transfer_acs_inputs(
+            recipient,
+            donor,
+            target_families=families,
+            seed=4,
+            n_estimators=1,
+            target_bank=bank,
+        )
+
+    monolithic = run()
+    bank_root = tmp_path / "health-native-holes-bank"
+    cold = run(_bank_store(bank_root))
+    warm_bank = _bank_store(bank_root)
+    warm = run(warm_bank)
+
+    _assert_transfer_results_exact(cold, monolithic)
+    _assert_transfer_results_exact(warm, monolithic)
+    assert set(warm_bank.receipt()["targets"]) == {"0", "3"}
+    assert {
+        record["descriptor"]["model_target"]
+        for record in warm_bank.receipt()["targets"].values()
+    } == {
+        "has_champva_health_coverage_at_interview",
+        "has_va_health_coverage_at_interview",
+    }
+    assert all(
+        record["source"] == "checkpoint"
+        for record in warm_bank.receipt()["targets"].values()
+    )
+    for result in (monolithic, cold, warm):
+        for target, before in native.items():
+            pd.testing.assert_series_equal(result.frame.person[target], before)
+
+
 def test_declared_plan_carries_the_23_stage_base_surface() -> None:
     """The M/N/O donor repairs must reach the ACS spine through the plan."""
 

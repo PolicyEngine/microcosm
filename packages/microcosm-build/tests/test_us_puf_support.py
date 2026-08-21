@@ -183,7 +183,12 @@ def _raw_asec_predictor_frame() -> Frame:
                 "DST_VAL1": [500.0, 200.0, 0.0],
                 "NOW_MRK": [1, 2, 1],
                 "NOW_NONM": [2, 1, 2],
-                "NOW_MCAID": [1, 2, 2],
+                # Person 1 has CHIP but not Medicaid; person 2 has Medicaid
+                # and other means-tested coverage. The broad means-tested
+                # recode is true for both, while the Medicaid leaf is not.
+                "NOW_CAID": [2, 1, 2],
+                "NOW_PCHIP": [1, 2, 2],
+                "NOW_MCAID": [1, 1, 2],
                 "NOW_GRP": [2, 1, 1],
                 "NOW_CHAMPVA": [2, 2, 1],
                 "NOW_MIL": [1, 2, 2],
@@ -1094,8 +1099,8 @@ def test_cps_carried_derivations_create_leaf_inputs_not_aggregates() -> None:
         False,
     ]
     assert person["has_medicaid_health_coverage_at_interview"].tolist() == [
-        True,
         False,
+        True,
         False,
     ]
     assert person["has_esi"].tolist() == [False, True, True]
@@ -1127,6 +1132,36 @@ def test_cps_carried_derivations_create_leaf_inputs_not_aggregates() -> None:
     assert "receives_wic" in CPS_CARRIED_PERSON_INPUTS
     assert person["receives_wic"].tolist() == [False, True, False]
     assert pd.api.types.is_bool_dtype(person["receives_wic"])
+
+
+def test_cps_carried_medicaid_uses_narrow_current_leaf_without_cross_talk() -> None:
+    frame = _raw_asec_predictor_frame()
+    raw_person = frame.table("person")
+
+    # The fixture deliberately makes the composite and Medicaid-only sources
+    # disagree, so this assertion catches a regression back to NOW_MCAID.
+    assert (raw_person["NOW_CAID"] == 1).tolist() == [False, True, False]
+    assert (raw_person["NOW_MCAID"] == 1).tolist() == [True, True, False]
+
+    person = derive_us_cps_carried_inputs(frame).table("person")
+    expected_health_leaves = {
+        "has_marketplace_health_coverage_at_interview": [True, False, True],
+        "has_non_marketplace_direct_purchase_health_coverage_at_interview": [
+            False,
+            True,
+            False,
+        ],
+        "has_medicaid_health_coverage_at_interview": [False, True, False],
+        "has_esi": [False, True, True],
+        "has_champva_health_coverage_at_interview": [False, False, True],
+        "has_tricare_health_coverage_at_interview": [True, False, False],
+        "has_va_health_coverage_at_interview": [False, True, False],
+        "has_other_means_tested_health_coverage_at_interview": [False, True, False],
+        "has_indian_health_service_coverage_at_interview": [True, False, False],
+    }
+    assert {
+        column: person[column].tolist() for column in expected_health_leaves
+    } == expected_health_leaves
 
 
 def test_cps_carried_derives_reported_enrollment_by_spm_unit() -> None:
