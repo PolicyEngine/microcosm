@@ -45,12 +45,22 @@ completed journal entry or the still-running host snapshot as current truth.
   still live with no traceback or binding error, had passed taxable interest
   and completed late-producer batch 4, but had no terminal exit marker or final
   pool/manifest/gates artifacts. Host certification therefore remains open.
+- Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
+  changed since `33bf52fe^`, committed-range whitespace checks, and worktree
+  whitespace checks; all passed.
+- Confirmed the current production source, tools, specs, project, and lock
+  objects exactly match complete-suite checkpoint `d29a8705`, while the current
+  production and test objects exactly match reviewed regression checkpoint
+  `ad2a44c1`. No executable or regression edit is warranted in this recheck.
+- Rechecked the host at `2026-08-21 09:12:27Z`. The retry was still live and
+  had completed late-producer batch 5 target 4/5 without any traceback,
+  `ValueError`, or binding text; the final boundary remained unreached.
 
 ### Next
 
-Run static checks against the current committed tree, refresh the host snapshot
-without mutating it, and update the required final report with the precise
-local-pass/external-nonterminal boundary.
+Refresh the required `FINAL_REPORT.md`, take one final read-only host snapshot,
+then close the journal with the precise local-pass/external-nonterminal
+boundary unless terminal artifacts have appeared.
 
 ## Owner continuation audit — 2026-08-21 08:35Z
 
