@@ -4,9 +4,13 @@
 
 ### State
 
-In progress. Revalidating the supplied host traceback from the invariant raise
-site against the current executable tree; no current completion or host
-certification claim is being inherited from earlier journal entries.
+Diagnosis complete; verification in progress. The supplied traceback maps to
+the historical globally attached QRF audit-evidence path at `33bf52fe`. The
+current tree already contains the assigned-only executable correction and the
+exact synthetic plus real ordinary/banked regressions, so a duplicate runtime
+or test edit is not warranted unless fresh verification exposes a gap. No
+current completion or host-certification claim is inherited from earlier
+journal entries.
 
 ### Done
 
@@ -19,13 +23,45 @@ certification claim is being inherited from earlier journal entries.
 - Confirmed the repository is not registered in the normal GitNexus CLI index;
   direct raise-site and Git-history tracing will remain the fallback unless a
   usable preserved index is found.
+- Followed the debugging skill's unindexed-repository instruction and attempted
+  a local GitNexus analysis. Source parsing completed far enough to create a
+  100 MiB partial index, but registry registration was blocked by the sandbox
+  at `/Users/maxghenis/.gitnexus/registry.json`; moved the generated index out
+  of the worktree to a recoverable `/private/tmp` location.
+- Reconstructed the historical failure at exact source lines. The public
+  15-target `puf_tax_itemization` family was split at width eight, so taxable
+  interest legitimately carried physical family
+  `puf_tax_itemization__batch_1`. Old receipt production attached QRF evidence
+  to every imputed target, and old validation entered strict public-family
+  binding before checking assignment, producing the supplied line-4512 to
+  line-4310 error.
+- Confirmed the correct repair is assignment scoping, not accepting batch
+  aliases. Current strict entity/family/target/count binding remains unchanged
+  for declared targets. Unassigned targets must retain the four legacy counts
+  but are rejected if QRF or calibration evidence is attached.
+- Traced the current four matching fences: the transfer API defaults its audit
+  selection to empty; both ordinary and banked fits detect, verify, and retain
+  regime provenance only for selected targets; the stacked owner and receipt
+  producer derive the same selection from the immutable calibration registry;
+  and terminal validation enters QRF binding only for a declared spec.
+- Enumerated the immutable surface: two early and seven late model-required,
+  source-operator, and adult-care targets. `taxable_interest_income` is absent.
+- Re-read the exact synthetic taxable-interest `__batch_1` regression, the
+  real 15-target ordinary/banked producer-to-validator regression, mixed-family
+  draw-preservation coverage, legacy-count checks, and strict rehashed family
+  forgery coverage. Together they capture both non-leakage and fail-closed
+  binding without weakening the invariant.
+- Reconciled independent read-only invariant and test/log audits; both reached
+  the same root cause and found no residual canonical scope leak. The mutable
+  external host `build.log` is currently empty and has no terminal artifacts,
+  so it supplies no new certification result.
 
 ### Next
 
-Reconstruct the failing data path, prove the current calibration/evidence
-surface is restricted to assigned targets, strengthen code or regression
-coverage if any gap remains, run the prescribed verification, and refresh
-`FINAL_REPORT.md` with revision-bound results.
+Run the focused binding and mixed-family matrix, then the directly affected
+files and repository-wide checks. If all pass, refresh `FINAL_REPORT.md` with
+revision-bound results and close this continuation without claiming restricted
+host certification.
 
 ## Owner continuation revalidation — 2026-08-21 09:47Z
 
