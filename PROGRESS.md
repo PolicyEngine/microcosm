@@ -8,7 +8,8 @@ In progress. The supplied traceback is independently bound to the historical
 globally enabled QRF-audit evidence path at `33bf52fe`. The current tree's
 assigned-only correction, exact synthetic failure, real ordinary/banked
 producer boundary, strict binding variants, and all 530 directly affected
-tests are green. Static, object, host-boundary, and final-report checks remain.
+tests are green. Static and exact-object checks are also green; only the final
+read-only host snapshot and required report refresh remain.
 
 ### Done
 
@@ -65,11 +66,20 @@ tests are green. Static, object, host-boundary, and final-report checks remain.
   was 64 ordinary-transfer, five multispine, 259 stacked-spine, 164 pool-tool,
   and 38 H5 receipt-I/O tests. All 530 passed with exit zero and 1.602 GiB
   maximum observed per-process RSS.
+- Ran repository-wide `ruff check .`, `ruff format --check` on all 15 Python
+  files changed since `33bf52fe^`, `git diff --check 33bf52fe^..HEAD`, and
+  worktree whitespace checks. All passed.
+- Bound the current Git objects to prior verification checkpoints. The current
+  `microcosm-build/src` tree is `7234ac19`, identical to both reviewed
+  regression checkpoint `ad2a44c1` and complete-suite checkpoint `d29a8705`;
+  current build source/tests are byte-identical to `ad2a44c1`, and current
+  production source, tools, specs, project, and lock objects are byte-identical
+  to `d29a8705`.
 
 ### Next
 
-Complete static and exact-object checks, take a final read-only host snapshot,
-then refresh the required final report with a revision-bound result.
+Take a final read-only host snapshot, then refresh the required final report
+with a revision-bound result.
 
 ## Owner continuation verification — 2026-08-21 09:17Z
 
