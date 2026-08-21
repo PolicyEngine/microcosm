@@ -4,8 +4,7 @@
 
 ### State
 
-Diagnosis and all local verification complete; final reporting pending. The
-supplied traceback
+Complete. The supplied traceback
 fingerprints commit `33bf52fe`: it attached QRF regime evidence to every
 imputed target and validated exact record binding before checking calibration
 assignment. The current tree already contains the complete scoped correction
@@ -59,11 +58,21 @@ warranted.
   and executable-tree comparisons against `a5be536f`; all passed. The current
   `microcosm-build/src`, `tools`, and `specs` tree objects exactly match that
   all-build-suite checkpoint.
+- Refreshed `FINAL_REPORT.md` with the current diagnosis, three independent
+  audit verdicts, guarded 14-case and 529-test results, static verification,
+  continuation commits, and the explicit non-claim of a terminal host
+  certification result.
+- Performed a final read-only host check at 01:37Z. The mutable retry had
+  completed the exact bounded taxable-interest target, all early survey and
+  housing targets, and entered the late-producer DAG without the supplied
+  traceback, but it still had no runner exit, final pool, manifest, gates
+  artifact, or Microcosm revision binding.
 
 ### Next
 
-Refresh `FINAL_REPORT.md` with the current diagnosis, guarded test results,
-static verification, continuation commits, and exact remaining host boundary.
+Run or identify a revision-bound restricted host 1% retry that reaches a
+terminal runner verdict and emits the expected pool, manifest, and gates
+artifacts; this remains external to the completed local correction.
 
 The completion snapshots below are historical.
 
