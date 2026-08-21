@@ -459,3 +459,51 @@ GiB RSS plus host margin and must not overlap another build. No pool build,
 performed. The five untracked owner charter copies were preserved unmodified;
 no stash was used. The independent verification journal is committed at
 `8a5878c2`.
+
+### F1 continuation r6 final B/C audit report (2026-08-21)
+
+Deliverables B and C are complete. The already-landed runner at
+`tools/f1_certification_run.py` was audited rather than recreated. Its `run`
+command exclusively claims an absent root, launches one constants or bundle
+build, forces `--resume-policy forbid`, binds the requested sample fraction and
+seed to typed production evidence, validates the current sealed `plan_lock`,
+and writes the raw-byte normative artifact digest receipt. Its `compare`
+command requires four distinct constants A/B and bundle A/B receipts from one
+request and plan, checks vector coverage, cold-build evidence, within-mode
+determinism, and cross-mode equality, then exclusively emits
+`us-f1-certification.json` and `us-f1-certification.md`. The `resume-gate`
+subcommand remains documentation-only.
+
+The host handoff in `_F1-LANE-NOTES.md` contains the exact strict sequence:
+documentation gate, constants A, constants B, bundle A, bundle B, then the
+four-receipt comparator. Every cold run uses a fresh root, 1% sampling, and seed
+578. Historic primary-QRF peaks are 78.91, 84.15, 96.28, and 96.95 GiB RSS;
+they are not role-mapped, so every build must be provisioned above 96.95 GiB
+plus host margin and the four builds must never overlap.
+
+Three independent reviews found no concrete B/C source, test, or handoff gap.
+The exact B/C contract batch passes 72/72 tests, including all 35 dedicated
+synthetic runner/comparator cases. An independent receipt
+collection/comparison batch passes 81/81. Repository-wide Ruff, relevant byte
+compilation, all runner CLI help paths, whitespace, generated US bundle, and
+generated coverage checks pass. The US spec remains
+`05edd87390d841c5b444267cd674d8bb15ed518b12577268d2e2c2de82976079`;
+coverage remains 41,911/41,911 fields and 40/40 inventory checks.
+
+The implementation remains intentionally fail-closed at the production
+evidence boundary: runtime node-reuse closure, exact final-H5 member closure,
+and calibration scope are incomplete. The current host comparator is therefore
+expected to write both verdict files, return status 1, and report a
+well-formed **FAIL** even if every collected raw-byte digest matches. It must
+not be described as a certification PASS. The separately committed
+deliverable-A brokered-QRF suite failure remains outside this B/C-only order;
+no wiring or masking test edit was made, so the requested B/C suite is green
+but no unqualified repository-wide green claim is made.
+
+Opening dirt consisted only of five untracked owner instruction snapshots.
+They were inspected, judged non-product/superseded rather than verifiable B/C
+or wiring work, removed file-by-file without stash, and journaled. The audit
+checkpoint commits are `1da12621` and `c9e71af4`; the landed runner commits are
+`aefa83b8` and `efcf8aa7`, and the exact host handoff is `424c4998`. No pool or
+sample build, host comparator, kill/resume exercise, publication, push, or
+process above the fixture-scale lane ceiling occurred in this continuation.

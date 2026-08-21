@@ -33,13 +33,14 @@
 - Preserved the already-documented broader-suite boundary without changing
   deliverable-A wiring: the B/C suite is green, while no unqualified
   repository-wide green claim is made for the separate brokered-QRF failure.
+- Recorded the final audit in `_F1-LANE-NOTES.md` and appended the requested
+  closeout report to `FINAL_REPORT.md`.
 
 ## Next
 
-1. Append and commit the requested final report to `FINAL_REPORT.md`.
-2. Stop without running a pool/sample build, host comparator, kill/resume
+1. Stop without running a pool/sample build, host comparator, kill/resume
    exercise, publication, or push.
-3. The high-memory host follows the exact sequential handoff and the owner
+2. The high-memory host follows the exact sequential handoff and the owner
    adjudicates the expected fail-closed verdict.
 
 ---
