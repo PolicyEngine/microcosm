@@ -4,10 +4,14 @@
 
 ### State
 
-In progress. Revalidate the current committed assigned-only correction against
-the supplied taxable-interest ACS QRF binding failure, then refresh the required
-final report with any new terminal host evidence. Do not treat the preceding
-completed journal entry or the still-running host snapshot as current truth.
+Complete as of `2026-08-21 09:16:03Z`. The current committed assigned-only
+correction and regressions withstand an independent source/history audit, the
+focused cases, all 530 directly affected tests, static checks, and exact
+production-object comparison. No duplicate executable or test edit was
+warranted. The required final report is refreshed with the latest evidence.
+The restricted host retry remains live and has not recurred at the reported
+failure, but it has not reached terminal stacked validation or emitted final
+artifacts, so host certification is not claimed.
 
 ### Done
 
@@ -55,12 +59,20 @@ completed journal entry or the still-running host snapshot as current truth.
 - Rechecked the host at `2026-08-21 09:12:27Z`. The retry was still live and
   had completed late-producer batch 5 target 4/5 without any traceback,
   `ValueError`, or binding text; the final boundary remained unreached.
+- Took the final read-only host snapshot at `2026-08-21 09:15:36Z`. Taxable
+  interest remained successfully checkpointed, the retry had entered the next
+  late-producer DAG, and live writers and guard heartbeats remained present.
+  There was still no traceback, `ValueError`, binding text, exit marker,
+  transferred/simulated checkpoint, or final pool/manifest/gates artifact.
+- Refreshed the required `FINAL_REPORT.md` with the current focused and
+  affected-suite results, static/object checks, independent audit verdicts,
+  and precise provisional host boundary.
 
 ### Next
 
-Refresh the required `FINAL_REPORT.md`, take one final read-only host snapshot,
-then close the journal with the precise local-pass/external-nonterminal
-boundary unless terminal artifacts have appeared.
+Obtain a durable, terminal, revision-bound restricted 1% host result with
+passing final `pool.h5`, `pool.manifest.json`, and `pool.gates.json`. Do not
+publish or mutate the release chain as a side effect of that external check.
 
 ## Owner continuation audit — 2026-08-21 08:35Z
 

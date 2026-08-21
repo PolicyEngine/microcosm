@@ -186,16 +186,19 @@ build-tool object, and `stacked_spine.py` object are identical at both commits
 and at current `HEAD`. Its editable environment and worker metadata bind it to
 this worktree path, but its artifacts likewise embed no Microcosm revision.
 
-At the final read-only snapshot, `2026-08-21 09:12:27Z`, the retry remained
+At the final read-only snapshot, `2026-08-21 09:15:36Z`, the retry remained
 live and nonterminal. It had rebuilt taxable interest, completed all eight late
-`puf_tax_itemization__batch_1` targets, and reached late-producer batch 5 target
-4/5 without recurrence of the historical exception. However, final stacked
-gap-fill validation had not observably returned, so fit completion is not
-claimed as passage of the supplied receipt invariant. Python writers still
-held `build.log` open and the resource guard still emitted heartbeats. No
-terminal exit marker, final `pool.h5`, `pool.manifest.json`, or
-`pool.gates.json` existed. This is progress only, not a terminal pass or
-certification verdict.
+`puf_tax_itemization__batch_1` targets, and entered the next late-producer DAG,
+reaching `tax_unit/puf_tax_itemization` target 1/6
+`domestic_production_ald`, without recurrence of the historical exception.
+The sole taxable-interest log entry recorded successful checkpoint creation.
+However, final stacked gap-fill validation had not observably returned, so fit
+completion is not claimed as passage of the supplied receipt invariant. Python
+writers still held `build.log` open and the resource guard still emitted
+heartbeats. There was no traceback, `ValueError`, binding text, terminal exit
+marker, transferred or simulated checkpoint, final `pool.h5`,
+`pool.manifest.json`, or `pool.gates.json`. This is progress only, not a
+terminal pass or certification verdict.
 
 Completion of the external boundary requires a durable, terminal,
 revision-bound 1% result with passing final pool, manifest, and gates artifacts.
@@ -231,4 +234,6 @@ This continuation is recorded by:
   recheck and record the focused matrix, independent audits, 530-test affected
   matrix, static checks, production-object comparison, and current host
   boundary; and
-- this commit — refresh the required final report.
+- `77581afb` — refresh the required final report with the current local
+  verification; and
+- this commit — record the final host snapshot and close the owner recheck.
