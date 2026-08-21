@@ -16,9 +16,11 @@ no QRF evidence; and validators reject forged unassigned evidence before
 retaining exact binding for assigned targets. The exact synthetic failure,
 real banked wide-family producer, and all 12 rehashed structure mutations pass
 (14 cases, 0.569 GiB peak under the 12 GiB guard). No duplicate runtime or
-test edit is warranted. Affected-suite and static verification are next. The
-owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain
-untracked and untouched, and no terminal host result is claimed.
+test edit is warranted. The five-file affected suite is also green: all 529
+tests passed together with a 1.472 GiB peak under the same guard. Static
+verification and final reporting are next. The owner-provided
+`_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain untracked and
+untouched, and no terminal host result is claimed.
 
 The immediately preceding completion snapshot follows and is historical.
 
@@ -284,6 +286,11 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Re-ran all 529 tests in the five directly affected ordinary-transfer,
+  multispine-serialization, stacked-spine, pool-tool, and H5 files together
+  under the owner 12 GiB/20 ms guard. The run exited zero with a 1.472 GiB
+  maximum observed per-process RSS; a collection-only pass bound the current
+  file totals to 64, 5, 258, 164, and 38 respectively.
 - Opened and committed this continuation journal before diagnostic work.
 - Followed the GitNexus debugging workflow. The CLI generated a local graph,
   but registration/query was blocked by the sandboxed user-wide registry; its
@@ -826,9 +833,9 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run the five directly affected test files, repository lint, scoped format,
-   committed-range whitespace, and executable-tree drift checks; then refresh
-   and commit `FINAL_REPORT.md` and this journal.
+1. Run repository lint, scoped format, committed-range whitespace, and
+   executable-tree drift checks; then refresh and commit `FINAL_REPORT.md` and
+   this journal.
 2. Run or identify a revision-bound off-chain 1% retry that reaches a terminal
    runner verdict and emits the expected final pool, manifest, and gates
    artifacts. Do not claim an after artifact without that terminal proof, and
