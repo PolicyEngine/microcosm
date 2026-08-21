@@ -4,11 +4,14 @@
 
 ### State
 
-Ready to commit. The generating repair, no-build checkpoint replay, focused
-matrix, all five package test roots, repository-wide Ruff, touched-file format,
-and whitespace checks are green. The preserved late-transfer checkpoint now
-validates with the exact receipt comparator unchanged. The serial host queue
-remains the only owner of the next 1% build.
+In progress again after the required cross-target checkpoint audit. Commit
+`d7b12bab` correctly binds each candidate endpoint to its selection prefix and
+makes the weeks receipt valid, but both preserved child-support targets expose
+a second independent-reduction defect: separately accumulated positive and
+zero-candidate partition endpoints sum above the independently reduced whole
+recipient total. The validator remains correct and unchanged. The final report
+draft is withheld until whole-capacity accounting is repaired and every suite
+is rerun. The serial host queue remains the only owner of the next 1% build.
 
 ### Done
 
@@ -47,8 +50,9 @@ remains the only owner of the next 1% build.
   (`weeks_unemployed.py:791-800,911-983,1218-1222`;
   `post_transfer_calibration.py:588-626,702-705`).
 - Added `tools/reproduce_us_post_transfer_weeks_checkpoint.py`, which validates
-  all three file/identity/raw-draw digests, restores only the native clone-0
-  calibration vectors, and reports the exact error and failed predicate
+  all three file digests plus both target-checkpoint identity/raw-draw digests,
+  restores only the native clone-0 calibration vectors, and reports the exact
+  error and failed predicate
   without executing a fit or build (`tools/reproduce_us_post_transfer_weeks_checkpoint.py:1-6,74-112,115-250`).
 - Ran that harness against the read-only SHA-addressed host tree with
   `--expect invalid`; it exited zero in 7.4 seconds and reported only
@@ -85,12 +89,30 @@ remains the only owner of the next 1% build.
   exited zero; only the established skips and warnings appeared.
 - Ran repository-wide `ruff check .`, touched-file `ruff format --check`, and
   `git diff --check`; all passed.
+- Committed the shared ordered-prefix generating repair, strict regressions,
+  complete late-target audit, and green verification record at `d7b12bab`.
+- Replayed both preserved child-support target checkpoints against
+  `d7b12bab`. Each now has a valid candidate/prefix relationship but fails the
+  distinct exact `maximum_attainable_mass <= recipient_total` relationship.
+  Recipient total is `79,926,522.10879111`; both partition-composed maxima are
+  `79,926,522.10879174`, an excess of `6.258487701416016e-07`.
+- Isolated the two child-support partitions. Expense has allowed-positive mass
+  `71,696.09739141785` and addition mass `79,854,826.01140033`; received has
+  allowed-positive mass `180,209.75664861224` and addition mass
+  `79,746,312.35214312`. Both sum to the same invalid maximum. This is the same
+  generating class at the whole-capacity partition level, not evidence for a
+  looser validator (`post_transfer_calibration.py:824-875,1456-1466`).
 
 ### Next
 
-1. Commit the executable repair, regressions, and audit journal.
-2. Refresh and commit `FINAL_REPORT.md`; leave restricted host certification
-   and publication to the serial host owner.
+1. Extend the read-only checkpoint audit to bind both child-support cases and
+   add a compact regression for the partition/whole-total relationship.
+2. Generate maximum attainable mass from semantically unified capacity rows,
+   while retaining the exact ordered candidate endpoints and validator.
+3. Rerun the checkpoint audit, focused matrix, all five package roots, Ruff,
+   and whitespace checks; then commit the complete repair and final report.
+4. Leave restricted host certification, publication, and release-chain
+   mutation to their existing owners.
 
 ## Owner continuation revalidation — 2026-08-21 11:45Z
 

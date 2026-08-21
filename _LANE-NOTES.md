@@ -66,13 +66,13 @@ builds in this lane are off-chain at `--sample-fraction 0.01` and
   nondecreasing vector for its lower-mass tie break and `searchsorted`
   (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:487-515`).
 
-### Implemented generating repair
+### First generating repair and audit escalation
 
 - `_PrefixSchedule` binds one immutable ordered-position vector to one
   float64 cumulative-mass vector. `_nearest_prefix` consumes that schedule and
   reports its terminal element as candidate mass
   (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:282-287,445-515`).
-- The kernel constructs the declared amount-descending/ID removal schedule and
+- Commit `d7b12bab` constructs the declared amount-descending/ID removal schedule and
   ID-ordered addition schedule once. Their terminal cumulative values generate
   the capacity receipt, and those same objects generate the selected-prefix
   evidence (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:839-922`).
@@ -80,12 +80,28 @@ builds in this lane are off-chain at `--sample-fraction 0.01` and
   relationship remains unchanged; no tolerance, threshold, band, gate, or
   target exception was altered
   (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:1471-1520`).
-- The SHA-pinned checkpoint replay now reports candidate capacity and upper
+- The SHA-pinned weeks checkpoint replay now reports candidate capacity and upper
   prefix both equal to `85,676.23791782456`, a zero delta, unchanged row
   selection, and a valid strict receipt. The production-weight regression
   exercises all six late `match_reference` declarations, and a second
   non-associative fixture covers the removal schedule
   (`packages/microcosm-build/tests/test_us_post_transfer_calibration.py:537-694`).
+- The required cross-target replay then found that `d7b12bab` is incomplete.
+  For both actual child-support targets, ordered positive and zero-candidate
+  endpoints sum to maximum mass `79,926,522.10879174`, while the whole
+  recipient mask reduces to `79,926,522.10879111`. The exact
+  `maximum_attainable_mass <= recipient_total` proof fails by
+  `6.258487701416016e-07`; `upper_prefix_mass <= candidate_mass` now passes.
+  Expense partitions are `71,696.09739141785` and `79,854,826.01140033`;
+  received partitions are `180,209.75664861224` and
+  `79,746,312.35214312`.
+- This is the same mechanism defect one level higher: maximum capacity is
+  composed from independently rounded disjoint partition endpoints, while the
+  containing recipient set is independently reduced
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:824-875,1456-1466`).
+  The complete repair must generate the whole attainable capacity from its
+  union of rows; it must not clamp the result, add tolerance, or loosen
+  validation.
 
 ### Complete late-transfer target audit
 
@@ -96,13 +112,13 @@ recipient carriers
 
 | Late target | Source semantics / observed 1% shape | Carrier verdict |
 | --- | --- | --- |
-| `pre_subsidy_care_expenses` | Nonnegative annual paid-care expense, assigned to at most one qualifying person per unit (`adult_care.py:461-517,599-603`); host had not reached it. | `match_reference`; not a count. The old independent-reduction defect applied, and the shared removal/addition schedules now cover it. |
-| `child_support_expense` | Exact nonnegative annual `CHSP_VAL` carry (`child_support.py:166-201`); QRF reported six distinct donor values. | `match_reference`; near-discrete in this sample but not a count. Same old reducer hazard, covered by the shared schedules. |
-| `child_support_received` | Exact nonnegative annual `CSP_VAL` carry (`child_support.py:166-201`); QRF reported 15 distinct donor values. | `match_reference`; near-discrete in this sample but not a count. Same old reducer hazard, covered by the shared schedules. |
+| `pre_subsidy_care_expenses` | Nonnegative annual paid-care expense, assigned to at most one qualifying person per unit (`adult_care.py:461-517,599-603`); host had not reached it. | `match_reference`; not a count. Candidate endpoints are fixed, but whole-capacity union accounting still requires the complete repair. |
+| `child_support_expense` | Exact nonnegative annual `CHSP_VAL` carry (`child_support.py:166-201`); QRF reported six distinct donor values. | `match_reference`; near-discrete in this sample but not a count. Actual replay proves the partial repair fails whole-recipient capacity accounting. |
+| `child_support_received` | Exact nonnegative annual `CSP_VAL` carry (`child_support.py:166-201`); QRF reported 15 distinct donor values. | `match_reference`; near-discrete in this sample but not a count. Actual replay proves the partial repair fails whole-recipient capacity accounting. |
 | `disability_benefits` | Nonnegative annual two-slot sum excluding workers' compensation (`disability_benefits.py:184-220,558-560`); QRF reported ten distinct donor values. | `preserve_recipient`; near-discrete in this sample, but it never creates capacity/prefix evidence, so the defect is inapplicable. |
 | `weeks_unemployed` | Integer `-1` or `0..52`, with `-1` mapped to zero (`weeks_unemployed.py:791-800,1218-1222`); QRF reported 12 distinct donor values. | `match_reference`; the only semantic count target. Positive carrier semantics remain valid, and the exact checkpoint proves its failure was reducer order, not count support. |
-| `workers_compensation` | Exact nonnegative annual `WC_VAL` carry (`workers_compensation.py:170-184,520-522`); host had not reached it. | `match_reference`; not a count. Same old reducer hazard, covered by the shared schedules. |
-| `spm_unit_energy_subsidy` | Measured nonnegative annual `SPM_ENGVAL`, consistent within and reduced to SPM unit (`energy_subsidy.py:169-233,537-557`); host had not reached it. | `match_reference`; not a count. Same old reducer hazard, covered by the shared schedules. |
+| `workers_compensation` | Exact nonnegative annual `WC_VAL` carry (`workers_compensation.py:170-184,520-522`); host had not reached it. | `match_reference`; not a count. Candidate endpoints are fixed, but whole-capacity union accounting still requires the complete repair. |
+| `spm_unit_energy_subsidy` | Measured nonnegative annual `SPM_ENGVAL`, consistent within and reduced to SPM unit (`energy_subsidy.py:169-233,537-557`); host had not reached it. | `match_reference`; not a count. Candidate endpoints are fixed, but whole-capacity union accounting still requires the complete repair. |
 
 The host log's near-discrete evidence appears at `build.log:1252-1266,1404-1408`.
 Weeks does not rely on ACS's explicit discrete-numeric set, which contains only
@@ -122,8 +138,10 @@ post-transfer calibration before returning
 (`us_late_producer_registry.py:1338-1396,2013-2019`;
 `stacked_spine.py:10054-10095,10927-10931`). Thus the failed host run had
 crossed child support and disability but had not exercised workers'
-compensation, energy subsidy, or adult care; the parameterized shared-kernel
-regression covers all six matching specs before the owner reruns it.
+compensation, energy subsidy, or adult care. Replaying child support after the
+first repair proves that spec parameterization alone is insufficient: the
+regression must also cover the whole-recipient capacity partition before the
+owner reruns the host build.
 
 ## Source-cited mechanism record
 
