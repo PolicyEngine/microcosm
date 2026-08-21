@@ -170,9 +170,7 @@ def test_missing_materialization_inputs_are_reported_as_skips():
         country="uk",
     )
     contract = {
-        "missing": {
-            "bindings": {"policyengine": {"value_variable": "not_present"}}
-        }
+        "missing": {"bindings": {"policyengine": {"value_variable": "not_present"}}}
     }
 
     result = materialize_target_bindings(StubAdapter(), registry, contract, period=2025)
@@ -180,3 +178,45 @@ def test_missing_materialization_inputs_are_reported_as_skips():
     assert len(result.skipped) == 1
     assert result.skipped[0].name == "missing"
     assert result.report()["skipped_count"] == 1
+
+
+def test_count_aliases_and_in_predicates_materialize_prepared_columns():
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="affected_households",
+                entity="household",
+                measure="affected_households_measure",
+                value=2.0,
+                source="test",
+                metadata={"contract_target_id": "affected_households"},
+            )
+        ],
+        country="uk",
+    )
+    contract = {
+        "affected_households": {
+            "bindings": {
+                "policyengine": {
+                    "value_variable": "household_count",
+                    "filters": [
+                        {
+                            "variable": "children",
+                            "operator": "in",
+                            "value": [3.0, 4.0],
+                        }
+                    ],
+                }
+            }
+        }
+    }
+    adapter = StubAdapter()
+
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    assert result.skipped == ()
+    assert adapter.tables["household"]["affected_households_measure"].tolist() == [
+        1.0,
+        0.0,
+        1.0,
+    ]

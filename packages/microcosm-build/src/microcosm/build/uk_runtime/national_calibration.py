@@ -2,20 +2,35 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
-from importlib import resources
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
-from microcosm.build.ledger_targets import compile_ledger_target_references
 from microcosm.build.plan import Stage
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
-from microcosm.calibrate import calibrate, effective_sample_size
-from microcosm.frame import Frame
+from microcosm.build.uk_runtime.ledger_targets import (
+    UKLedgerTargetCompilation,
+    materialize_uk_ledger_targets,
+)
+from microcosm.build.uk_runtime.national_doctrine import (
+    UK_NATIONAL_SOLVE_DOCTRINE,
+    UKNationalSolveDoctrine,
+)
+from microcosm.calibrate import (
+    CalibrationResult,
+    TargetRegistry,
+    calibrate,
+    effective_sample_size,
+)
+from microcosm.frame import Frame, WeightKind, Weights
 
-__all__ = ["UKNationalCalibrationStage", "uk_national_calibration_stage"]
+__all__ = [
+    "UKNationalCalibrationStage",
+    "national_calibration_mass_reason",
+    "uk_national_calibration_stage",
+]
 
 
 class UKNationalCalibrationStage:
@@ -23,50 +38,69 @@ class UKNationalCalibrationStage:
 
     def __init__(
         self,
-        facts: Sequence[Mapping[str, Any]],
+        registry: UKLedgerTargetCompilation | TargetRegistry,
         *,
-        references: Sequence[object] | None = None,
-        epochs: int = 256,
-        learning_rate: float = 0.02,
-        max_weight_ratio: float = 10.0,
-        seed: int = 0,
+        period: int,
+        doctrine: UKNationalSolveDoctrine = UK_NATIONAL_SOLVE_DOCTRINE,
     ) -> None:
-        from microcosm.build.country_spec import load_country_spec
-
-        self.facts = tuple(facts)
-        self.references = tuple(
-            load_country_spec("uk").target_references
-            if references is None
-            else references
+        self.compilation = (
+            registry
+            if isinstance(registry, UKLedgerTargetCompilation)
+            else UKLedgerTargetCompilation(registry=registry, unsupported=())
         )
-        self.epochs = epochs
-        self.learning_rate = learning_rate
-        self.max_weight_ratio = max_weight_ratio
-        self.seed = seed
+        self.registry = self.compilation.registry
+        # The materialization period is the declared calibration year the
+        # registry was compiled at — never the input frame's base-year
+        # time_period, which lags it (survey 2024, calibration 2025).
+        if not isinstance(period, int) or isinstance(period, bool) or period <= 0:
+            raise ValueError(
+                f"period must be the declared calibration year, got {period!r}."
+            )
+        self.period = period
+        self.doctrine = doctrine
         self.manifest: dict[str, object] | None = None
         self.diagnostics: tuple[dict[str, object], ...] = ()
+        self.solve_result: CalibrationResult | None = None
         self.output_content_identity: str | None = None
 
     def __call__(self, frame: Frame) -> Frame:
-        registry = compile_ledger_target_references(
-            self.facts, self.references, country="uk"
-        )
-        declared = len(self.references)
-        resolved = len(registry.specs)
-        if resolved != declared:
+        declared = len(self.registry.specs) + len(self.compilation.unsupported)
+        resolved = len(self.registry.specs)
+        if self.compilation.unsupported:
             raise RuntimeError(
                 "UK national calibration resolved "
-                f"{resolved} of {declared} activated target references."
+                f"{resolved} of {declared} activated target references; "
+                f"unsupported={self.compilation.unsupported!r}."
             )
-        prepared = _prepare_target_columns(frame, registry.specs)
+        adapter = _FrameTargetAdapter(frame)
+        materialized = materialize_uk_ledger_targets(
+            adapter,
+            self.registry,
+            period=self.period,
+        )
+        if materialized.skipped:
+            skipped = [skip.__dict__ for skip in materialized.skipped]
+            raise RuntimeError(
+                "UK national calibration could not materialize every activated "
+                f"target reference: skipped={skipped}."
+            )
+        prepared = adapter.frame()
+        mass_reason = national_calibration_mass_reason(
+            spec.family for spec in self.registry.specs
+        )
+        mass_log_records_before_calibration = len(frame.mass_log)
         result = calibrate(
             prepared,
-            registry.to_target_set(),
+            self.registry.to_target_set(),
             weight_entity="household",
-            epochs=self.epochs,
-            learning_rate=self.learning_rate,
-            max_weight_ratio=self.max_weight_ratio,
-            seed=self.seed,
+            epochs=self.doctrine.epochs,
+            learning_rate=self.doctrine.learning_rate,
+            mass=self.doctrine.mass_rule,
+            mass_reason=mass_reason,
+            max_weight_ratio=self.doctrine.max_weight_ratio,
+            seed=self.doctrine.seed,
+            l0_lambda=self.doctrine.l0_lambda,
+            target_loss_cap=self.doctrine.target_loss_cap,
         )
         if result.skipped or len(result.problem.names) != declared:
             skipped = [item.name for item in result.skipped]
@@ -75,6 +109,13 @@ class UKNationalCalibrationStage:
                 f"reference: declared={declared}, rows={len(result.problem.names)}, "
                 f"skipped={skipped}."
             )
+        clean_frame = adapter.restore(result.frame)
+        self.solve_result = result
+        calibration_record = _post_solve_calibration_record(
+            frame,
+            clean_frame,
+            before_count=mass_log_records_before_calibration,
+        )
         self.diagnostics = tuple(
             {
                 "name": row.name,
@@ -85,6 +126,10 @@ class UKNationalCalibrationStage:
             for row in result.diagnostics
         )
         ratios = result.weights / result.initial_weights
+        old_total = float(calibration_record.old_total)
+        new_total = float(calibration_record.new_total)
+        before_kind = frame.weights_for("household").kind
+        after_kind = clean_frame.weights_for("household").kind
         self.manifest = {
             "activated_reference_count": declared,
             "resolved_reference_count": resolved,
@@ -92,10 +137,38 @@ class UKNationalCalibrationStage:
             "loss": result.final_loss,
             "effective_sample_size": effective_sample_size(result.weights),
             "max_weight_ratio": float(ratios.max()),
-            "max_weight_ratio_bound": self.max_weight_ratio,
+            "max_weight_ratio_bound": self.doctrine.max_weight_ratio,
+            "target_materialization": materialized.report(),
+            "weights": {
+                "household_weight_kind": after_kind.value,
+                "household_weight_kind_chain": [
+                    {"stage": "staging", "kind": before_kind.value},
+                    {"stage": "national_calibration", "kind": after_kind.value},
+                ],
+                "mass_log_records_before_calibration": (
+                    mass_log_records_before_calibration
+                ),
+                "mass_log_records": len(clean_frame.mass_log),
+                "calibration_mass_change": {
+                    "entity": str(calibration_record.entity),
+                    "old_total": old_total,
+                    "new_total": new_total,
+                    "relative_shift": (new_total - old_total) / old_total,
+                    "declared_factor": calibration_record.declared_factor,
+                    "reason": str(calibration_record.reason),
+                },
+            },
+            "solve": {
+                "n_targets": len(result.problem.names),
+                "n_households": len(clean_frame.table("household")),
+                "initial_loss": float(result.initial_loss),
+                "final_loss": float(result.final_loss),
+                "n_nonzero": int(np.count_nonzero(result.weights)),
+            },
+            "parameters": {"doctrine": _doctrine_bounds(self.doctrine)},
         }
-        self.output_content_identity = uk_frame_content_identity(result.frame)
-        return result.frame
+        self.output_content_identity = uk_frame_content_identity(clean_frame)
+        return clean_frame
 
     def checkpoint_metadata(self) -> Mapping[str, object]:
         if self.manifest is None:
@@ -147,102 +220,166 @@ class UKNationalCalibrationStage:
 
 
 def uk_national_calibration_stage(
-    facts: Sequence[Mapping[str, Any]], **kwargs: Any
+    registry: UKLedgerTargetCompilation, **kwargs: Any
 ) -> Stage:
     """Return the named ordered-stage entry for national calibration."""
 
-    transform = UKNationalCalibrationStage(facts, **kwargs)
+    transform = UKNationalCalibrationStage(registry, **kwargs)
     return Stage(name="national_calibration", transform=transform)
 
 
-def _contract_targets() -> dict[str, Mapping[str, Any]]:
-    payload = json.loads(
-        resources.files("microcosm.build.uk")
-        .joinpath("uk_national_targets.json")
-        .read_text()
-    )
-    return {row["target_id"]: row for row in payload["targets"]}
+def national_calibration_mass_reason(bound_families: Sequence[str]) -> str:
+    """The mass-record reason a national doctrine calibration declares."""
 
-
-def _prepare_target_columns(frame: Frame, specs: Sequence[object]) -> Frame:
-    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    tables.update({name: frame.link(name).copy() for name in frame.links})
-    contracts = _contract_targets()
-    for spec in specs:
-        target_id = spec.metadata["contract_target_id"]
-        binding = contracts[target_id]["bindings"]["policyengine"]
-        entity = spec.entity
-        table = tables[entity]
-        if spec.measure in table:
-            continue
-        value_name = binding["value_variable"]
-        if value_name in {"person_count", "household_count", "benunit_count"}:
-            values = pd.Series(1.0, index=table.index)
-        else:
-            if value_name not in table:
-                raise ValueError(
-                    f"Activated UK target {target_id!r} requires missing "
-                    f"{entity} column {value_name!r}."
-                )
-            values = table[value_name].astype(float)
-        mask = pd.Series(True, index=table.index)
-        for condition in binding.get("filters", ()):
-            variable = condition["variable"]
-            if variable not in table:
-                raise ValueError(
-                    f"Activated UK target {target_id!r} requires missing "
-                    f"{entity} filter column {variable!r}."
-                )
-            mask &= _compare(table[variable], condition)
-        if binding.get("household_conditions"):
-            if entity != "household":
-                raise ValueError(
-                    f"Activated UK target {target_id!r} declares household "
-                    f"conditions on entity {entity!r}."
-                )
-            for condition in binding["household_conditions"]:
-                mask &= _household_condition(tables, condition, table)
-        table[spec.measure] = values.where(mask, 0.0)
-    weights = {entity: frame.weights_for(entity) for entity in frame.weighted_entities}
-    return Frame(
-        tables,
-        frame.schema,
-        weights,
-        frame.strata,
-        mass_log=frame.mass_log,
-        metadata=frame.metadata,
+    families = sorted({str(name) for name in bound_families})
+    if not families or any(not name.strip() for name in families):
+        raise ValueError("bound_families must name at least one target family.")
+    return (
+        "National doctrine calibration to bound target family(ies) "
+        f"{', '.join(families)}; total household mass moved with the targets."
     )
 
 
-def _compare(values: pd.Series, condition: Mapping[str, Any]) -> pd.Series:
-    operator = condition.get("operator")
-    if operator is None:
-        operator, expected = "==", condition["equals"]
-    else:
-        expected = condition["value"]
-    operations = {
-        "==": values.eq,
-        ">": values.gt,
-        ">=": values.ge,
-        "<": values.lt,
-        "<=": values.le,
+def _post_solve_calibration_record(
+    before: Frame,
+    after: Frame,
+    *,
+    before_count: int,
+):
+    if after.weights_for("household").kind is not WeightKind.CALIBRATED:
+        raise RuntimeError(
+            "UK national calibration returned household weights whose kind is "
+            f"{after.weights_for('household').kind.value!r}, not 'calibrated'."
+        )
+    if len(after.mass_log) != before_count + 1:
+        raise RuntimeError(
+            "UK national calibration must append exactly one mass record; "
+            f"before={before_count}, after={len(after.mass_log)}."
+        )
+    if before.mass_log != after.mass_log[:before_count]:
+        raise RuntimeError(
+            "UK national calibration changed pre-existing mass-log records."
+        )
+    record = after.mass_log[-1]
+    if record.entity != "household" or "calibration" not in record.reason:
+        raise RuntimeError(
+            "UK national calibration latest mass record is not the calibration "
+            f"record: entity={record.entity!r}, reason={record.reason!r}."
+        )
+    return record
+
+
+def _doctrine_bounds(doctrine: UKNationalSolveDoctrine) -> dict[str, object]:
+    return {
+        "epochs": doctrine.epochs,
+        "learning_rate": doctrine.learning_rate,
+        "max_weight_ratio": doctrine.max_weight_ratio,
+        "seed": doctrine.seed,
+        "target_loss_cap": doctrine.target_loss_cap,
+        "scale_rule": doctrine.scale_rule,
+        "target_weight_rule": doctrine.target_weight_rule,
+        "mass_rule": doctrine.mass_rule,
+        "l0_lambda": doctrine.l0_lambda,
     }
-    if operator not in operations:
-        raise ValueError(f"Unsupported UK target condition operator {operator!r}.")
-    return operations[operator](expected)
 
 
-def _household_condition(
-    tables: Mapping[str, pd.DataFrame],
-    condition: Mapping[str, Any],
-    households: pd.DataFrame,
-) -> pd.Series:
-    entity = condition["entity"]
-    source = tables[entity]
-    if entity == "household":
-        household_ids = source["household_id"]
-    else:
-        people = tables["person"]
+class _FrameTargetAdapter:
+    def __init__(self, frame: Frame) -> None:
+        self._frame = frame
+        self.tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+        self.tables.update({name: frame.link(name).copy() for name in frame.links})
+        self._original_tables = {
+            name: table.copy() for name, table in self.tables.items()
+        }
+        self._scratch_columns: dict[str, set[str]] = {
+            name: set() for name in self.tables
+        }
+
+    def entity_length(self, entity: str) -> int:
+        return len(self.tables[entity])
+
+    def column(self, entity: str, variable: str) -> np.ndarray:
+        if variable not in self.tables[entity]:
+            raise KeyError(variable)
+        return np.asarray(self.tables[entity][variable])
+
+    def set_column(self, entity: str, variable: str, values: object) -> None:
+        table = self.tables[entity]
+        if variable not in self._original_tables[entity]:
+            self._scratch_columns[entity].add(variable)
+        table[variable] = np.asarray(values, dtype=float)
+
+    def parameter(self, parameter: str, period: int | str) -> float:
+        from microcosm.build.uk_runtime.ledger_targets import UKPolicyEngineAdapter
+
+        return UKPolicyEngineAdapter(None).parameter(parameter, period)
+
+    def household_condition_mask(
+        self,
+        target_entity: str,
+        condition: Mapping[str, Any],
+    ) -> np.ndarray:
+        if target_entity != "household":
+            raise ValueError(
+                "household_conditions can only gate household-grain targets, "
+                f"got {target_entity!r}."
+            )
+        entity = str(condition.get("entity") or "household")
+        source = self.tables[entity]
+        if entity == "household":
+            household_ids = source["household_id"]
+        else:
+            household_ids = self._group_household_ids(entity)
+        reduce = str(condition.get("reduce") or "any")
+        if reduce in {"any", "any_child_under"}:
+            matched = _compare_series(source[str(condition["variable"])], condition)
+            aggregate = matched.groupby(household_ids).any().astype(float)
+            comparison = {"operator": "==", "value": True}
+        elif reduce == "sum":
+            aggregate = source[str(condition["variable"])].groupby(household_ids).sum()
+            comparison = condition
+        elif reduce == "count":
+            aggregate = (
+                source[str(condition["variable"])].groupby(household_ids).count()
+            )
+            comparison = condition
+        else:
+            raise ValueError(f"Unsupported UK household reduction {reduce!r}.")
+        values = self.tables["household"]["household_id"].map(aggregate).fillna(0.0)
+        return np.asarray(_compare_series(values, comparison), dtype=bool)
+
+    def frame(self) -> Frame:
+        return Frame(
+            self.tables,
+            self._frame.schema,
+            {
+                entity: self._frame.weights_for(entity)
+                for entity in self._frame.weighted_entities
+            },
+            self._frame.strata,
+            mass_log=self._frame.mass_log,
+            metadata=self._frame.metadata,
+        )
+
+    def restore(self, calibrated: Frame) -> Frame:
+        tables = {name: table.copy() for name, table in self._original_tables.items()}
+        return Frame(
+            tables,
+            calibrated.schema,
+            {
+                entity: Weights(
+                    calibrated.weights_for(entity).values,
+                    calibrated.weights_for(entity).kind,
+                )
+                for entity in calibrated.weighted_entities
+            },
+            calibrated.strata,
+            mass_log=calibrated.mass_log,
+            metadata=calibrated.metadata,
+        )
+
+    def _group_household_ids(self, entity: str) -> pd.Series:
+        people = self.tables["person"]
         entity_membership = f"person_{entity}_id"
         if entity_membership not in people:
             raise ValueError(f"UK person table is missing {entity_membership!r}.")
@@ -253,21 +390,27 @@ def _household_condition(
         )
         if group_to_household.index.has_duplicates:
             raise ValueError(f"UK {entity} groups span multiple households.")
-        household_ids = source[f"{entity}_id"].map(group_to_household)
-    reduce = condition["reduce"]
-    if reduce == "any":
-        matched = _compare(source[condition["variable"]], condition)
-        aggregate = matched.groupby(household_ids).any().astype(float)
-        expected_condition = {"operator": "==", "value": True}
-    elif reduce == "sum":
-        aggregate = source[condition["variable"]].groupby(household_ids).sum()
-        expected_condition = condition
-    elif reduce == "count":
-        aggregate = source[condition["variable"]].groupby(household_ids).count()
-        expected_condition = condition
+        return self.tables[entity][f"{entity}_id"].map(group_to_household)
+
+
+def _compare_series(values: pd.Series, condition: Mapping[str, Any]) -> pd.Series:
+    operator = condition.get("operator")
+    if operator is None:
+        operator, expected = "==", condition["equals"]
     else:
-        raise ValueError(f"Unsupported UK household reduction {reduce!r}.")
-    ids = households["household_id"]
-    return _compare(ids.map(aggregate).fillna(0.0), expected_condition).set_axis(
-        households.index
-    )
+        expected = condition["value"]
+    if operator == "==":
+        return values.eq(expected)
+    if operator == "!=":
+        return values.ne(expected)
+    if operator == "in":
+        return values.isin(expected)
+    operations = {
+        ">": values.gt,
+        ">=": values.ge,
+        "<": values.lt,
+        "<=": values.le,
+    }
+    if operator not in operations:
+        raise ValueError(f"Unsupported UK target condition operator {operator!r}.")
+    return operations[operator](expected)

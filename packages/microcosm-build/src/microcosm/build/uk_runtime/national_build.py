@@ -24,6 +24,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pandas as pd
@@ -57,6 +58,7 @@ from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_SEED_DEFAULT,
     sample_uk_national_frame,
 )
+from microcosm.build.uk_runtime.parity_reference import EfrsParityReference
 from microcosm.build.uk_runtime.release_input_coverage import (
     PolicyEngineUKCoverageEngine,
 )
@@ -360,6 +362,7 @@ def build_uk_national_dataset(
     now: date | None = None,
     gate_registry: Mapping[str, GateBinding] | None = None,
     ledger_target_registry: Mapping[int | str, TargetRegistry] | None = None,
+    parity_reference: EfrsParityReference | None = None,
 ) -> UKNationalBuildResult:
     """Run ordered national stages, hard-gate the result, and stage an H5.
 
@@ -552,6 +555,13 @@ def build_uk_national_dataset(
     calibration_evidence = _stage_calibration_evidence(materialized_stages)
     if calibration_evidence is not None:
         artifacts["national_calibration"] = calibration_evidence
+        parity_evidence = _stage_parity_evidence(
+            materialized_stages,
+            frame=frame,
+            parity_reference=parity_reference,
+        )
+        if parity_evidence is not None:
+            artifacts["parity_evidence"] = parity_evidence
     if input_mass_reference is not None:
         artifacts["input_mass_reference"] = input_mass_reference
     if reviewed_input_mass_exclusions is not None:
@@ -825,7 +835,67 @@ def _stage_calibration_evidence(
     for stage in stages:
         if stage.name == "national_calibration":
             manifest = getattr(stage.transform, "manifest", None)
-            return dict(manifest) if isinstance(manifest, Mapping) else {}
+            if not isinstance(manifest, Mapping):
+                raise RuntimeError(
+                    "national_calibration stage did not produce a manifest; "
+                    "refusing to build calibration gate evidence."
+                )
+            return dict(manifest)
+    return None
+
+
+def _stage_parity_evidence(
+    stages: tuple[PlanStage, ...],
+    *,
+    frame: Frame,
+    parity_reference: EfrsParityReference | None,
+) -> object | None:
+    """Build the parity-trio evidence from independently sourced sides.
+
+    The candidate side comes from the staged frame and the solve diagnostics;
+    the reference side comes from the frozen parity instrument and the
+    declared registry. The two sides must never alias each other — a copied
+    reference would make the trio pass by construction.
+    """
+
+    for stage in stages:
+        if stage.name != "national_calibration":
+            continue
+        if parity_reference is None:
+            return None
+        diagnostics = getattr(stage.transform, "diagnostics", None)
+        if not isinstance(diagnostics, tuple):
+            raise RuntimeError(
+                "national_calibration stage did not produce target diagnostics; "
+                "refusing to build parity evidence."
+            )
+        registry = getattr(stage.transform, "registry", None)
+        specs = getattr(registry, "specs", None)
+        if specs is None:
+            raise RuntimeError(
+                "national_calibration stage carries no compiled registry; "
+                "refusing to build parity evidence."
+            )
+        target_relative_errors = {
+            str(row["name"]): float(row["relative_error"]) for row in diagnostics
+        }
+        return SimpleNamespace(
+            candidate_columns={
+                f"{entity}.{column}"
+                for entity in frame.entities
+                for column in frame.table(entity).columns
+            },
+            reference_columns={
+                f"{entity}.{name}"
+                for name, entity in parity_reference.input_entities.items()
+            },
+            candidate_targets=set(target_relative_errors),
+            # Solver diagnostics label rows as ``name@period``; the declared
+            # side is compared at the same labeled grain so a target bound at
+            # the wrong period cannot satisfy the surface.
+            reference_targets={f"{spec.name}@{spec.period}" for spec in specs},
+            target_relative_errors=target_relative_errors,
+        )
     return None
 
 

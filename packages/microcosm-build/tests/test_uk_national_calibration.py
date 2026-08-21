@@ -10,10 +10,26 @@ import pandas as pd
 import pytest
 
 from microcosm.build.ledger_targets import LedgerTargetReference
+from microcosm.build.uk_runtime import (
+    UK_NATIONAL_L0_LAMBDA,
+    UK_NATIONAL_LEARNING_RATE,
+    UK_NATIONAL_MASS_RULE,
+    UK_NATIONAL_MAX_WEIGHT_RATIO,
+    UK_NATIONAL_SEED,
+    UK_NATIONAL_SOLVE_DOCTRINE,
+    UK_NATIONAL_SOLVE_EPOCHS,
+    UK_NATIONAL_TARGET_LOSS_CAP,
+    UKNationalSolveDoctrine,
+)
+from microcosm.build.uk_runtime.ledger_targets import UKLedgerTargetCompilation
+from microcosm.build.uk_runtime.national_build import write_uk_national_frame
 from microcosm.build.uk_runtime.national_calibration import (
     UKNationalCalibrationStage,
+    _post_solve_calibration_record,
+    national_calibration_mass_reason,
 )
 from microcosm.build.uk_runtime.national_frame import validate_uk_national_frame
+from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
 ACTIVE_REFERENCE_COUNT = 387
@@ -59,6 +75,23 @@ def _fact(
     }
 
 
+def _registry(*, value: float = 30.0) -> TargetRegistry:
+    return TargetRegistry(
+        [
+            TargetSpec(
+                name="dwp.uc.households",
+                entity="benunit",
+                measure="dwp/uc/households",
+                value=value,
+                source="test",
+                family="dwp_universal_credit",
+                metadata={"contract_target_id": "dwp.uc.households"},
+            )
+        ],
+        country="uk",
+    )
+
+
 def _frame() -> Frame:
     ids = np.arange(4, dtype="int64")
     return Frame(
@@ -97,9 +130,7 @@ def _nested_frame() -> Frame:
                     "universal_credit": [1.0, 0.0, 1.0, 1.0],
                 }
             ),
-            "household": pd.DataFrame(
-                {"household_id": np.arange(3, dtype="int64")}
-            ),
+            "household": pd.DataFrame({"household_id": np.arange(3, dtype="int64")}),
         },
         EntitySchema(group_entities=("benunit", "household")),
         {"household": Weights(np.array([10.0, 20.0, 30.0]), WeightKind.DESIGN)},
@@ -110,7 +141,9 @@ def _nested_frame() -> Frame:
 def test_uc_calibration_compiles_and_moves_weighted_count_towards_fact() -> None:
     frame = _frame()
     stage = UKNationalCalibrationStage(
-        [_fact()], references=[_uc_reference()], epochs=200, learning_rate=0.05
+        _registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=200, learning_rate=0.05),
     )
 
     result = stage(frame)
@@ -122,12 +155,27 @@ def test_uc_calibration_compiles_and_moves_weighted_count_towards_fact() -> None
     assert stage.manifest["resolved_reference_count"] == 1
     assert stage.manifest["matrix_target_count"] == 1
     assert stage.diagnostics[0]["target"] == 30.0
+    assert result.weights_for("household").kind is WeightKind.CALIBRATED
+    assert len(result.mass_log) == 1
+    mass_change = stage.manifest["weights"]["calibration_mass_change"]
+    assert mass_change["entity"] == "household"
+    assert "National doctrine calibration" in mass_change["reason"]
+    assert stage.manifest["weights"]["household_weight_kind_chain"] == [
+        {"stage": "staging", "kind": "design"},
+        {"stage": "national_calibration", "kind": "calibrated"},
+    ]
+    assert stage.manifest["weights"]["mass_log_records_before_calibration"] == 0
+    assert stage.manifest["weights"]["mass_log_records"] == 1
+    assert stage.manifest["solve"]["n_targets"] == 1
+    assert stage.manifest["solve"]["n_households"] == 4
 
 
 def test_uc_calibration_stage_accepts_benunit_grain_reference_on_nested_frame() -> None:
     frame = _nested_frame()
     stage = UKNationalCalibrationStage(
-        [_fact(value=60.0)], references=[_uc_reference()], epochs=5
+        _registry(value=60.0),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=5),
     )
 
     result = stage(frame)
@@ -140,12 +188,23 @@ def test_uc_calibration_stage_accepts_benunit_grain_reference_on_nested_frame() 
     validate_uk_national_frame(result)
 
 
-def test_activated_unresolvable_reference_aborts_loudly() -> None:
+def test_activated_unresolvable_compiled_reference_aborts_loudly() -> None:
     stage = UKNationalCalibrationStage(
-        [_fact(concept="different")], references=[_uc_reference()], epochs=1
+        UKLedgerTargetCompilation(
+            registry=TargetRegistry([], country="uk"),
+            unsupported=(
+                {
+                    "name": "dwp.uc.households",
+                    "period": "2025",
+                    "reason": "did not match a Ledger fact selector",
+                },
+            ),
+        ),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=1),
     )
 
-    with pytest.raises(ValueError, match="did not match a Ledger fact selector"):
+    with pytest.raises(RuntimeError, match="did not match a Ledger fact selector"):
         stage(_frame())
 
 
@@ -191,7 +250,9 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
 def test_calibration_preserves_entity_ids_and_national_integrity() -> None:
     frame = _frame()
     stage = UKNationalCalibrationStage(
-        [_fact()], references=[_uc_reference()], epochs=5
+        _registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=5),
     )
 
     result = stage(frame)
@@ -205,14 +266,18 @@ def test_calibration_preserves_entity_ids_and_national_integrity() -> None:
 def test_checkpoint_metadata_round_trips_calibration_evidence() -> None:
     frame = _frame()
     stage = UKNationalCalibrationStage(
-        [_fact()], references=[_uc_reference()], epochs=5
+        _registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=5),
     )
 
     staged = stage(frame)
     metadata = json.loads(json.dumps(stage.checkpoint_metadata()))
 
     resumed = UKNationalCalibrationStage(
-        [_fact()], references=[_uc_reference()], epochs=5
+        _registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=5),
     )
     resumed.resume_from_checkpoint(metadata, staged)
 
@@ -221,13 +286,17 @@ def test_checkpoint_metadata_round_trips_calibration_evidence() -> None:
     assert resumed.output_content_identity == metadata["output_content_identity"]
 
     drifted = UKNationalCalibrationStage(
-        [_fact()], references=[_uc_reference()], epochs=5
+        _registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=5),
     )
     with pytest.raises(RuntimeError, match="drifted record"):
         drifted.resume_from_checkpoint(metadata, frame)
 
     empty = UKNationalCalibrationStage(
-        [_fact()], references=[_uc_reference()], epochs=5
+        _registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=5),
     )
     with pytest.raises(RuntimeError, match="calibration counts"):
         empty.resume_from_checkpoint({}, staged)
@@ -242,7 +311,98 @@ def test_checkpoint_metadata_round_trips_calibration_evidence() -> None:
         empty.resume_from_checkpoint(missing_count, staged)
 
     unrun = UKNationalCalibrationStage(
-        [_fact()], references=[_uc_reference()], epochs=5
+        _registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=5),
     )
     with pytest.raises(RuntimeError, match="has not run"):
         unrun.checkpoint_metadata()
+
+
+def test_prepared_slash_columns_are_not_returned_to_the_writer(tmp_path) -> None:
+    pytest.importorskip("tables")
+    stage = UKNationalCalibrationStage(
+        _registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=5),
+    )
+
+    result = stage(_frame())
+
+    assert "dwp/uc/households" not in result.table("benunit")
+    write_uk_national_frame(result, tmp_path / "staging.h5")
+
+
+def test_national_calibration_mass_reason_is_canonical() -> None:
+    assert national_calibration_mass_reason(
+        ["dwp_universal_credit", "hmrc", "dwp_universal_credit"]
+    ) == (
+        "National doctrine calibration to bound target family(ies) "
+        "dwp_universal_credit, hmrc; total household mass moved with the targets."
+    )
+    with pytest.raises(ValueError, match="bound_families"):
+        national_calibration_mass_reason([])
+
+
+def test_post_solve_fence_requires_calibrated_kind_and_mass_record() -> None:
+    before = _frame()
+    uncalibrated = Frame(
+        {entity: before.table(entity) for entity in before.entities},
+        before.schema,
+        {"household": Weights(np.full(4, 10.0), WeightKind.DESIGN)},
+        before.strata,
+        mass_log=before.mass_log,
+        metadata=before.metadata,
+    )
+
+    with pytest.raises(RuntimeError, match="not 'calibrated'"):
+        _post_solve_calibration_record(before, uncalibrated, before_count=0)
+
+    calibrated_without_record = Frame(
+        {entity: before.table(entity) for entity in before.entities},
+        before.schema,
+        {"household": Weights(np.full(4, 10.0), WeightKind.CALIBRATED)},
+        before.strata,
+        mass_log=before.mass_log,
+        metadata=before.metadata,
+    )
+    with pytest.raises(RuntimeError, match="exactly one mass record"):
+        _post_solve_calibration_record(
+            before,
+            calibrated_without_record,
+            before_count=0,
+        )
+
+
+def test_national_doctrine_constants_are_the_declared_contract() -> None:
+    assert UK_NATIONAL_SOLVE_EPOCHS == 256
+    assert UK_NATIONAL_LEARNING_RATE == 0.02
+    assert UK_NATIONAL_MAX_WEIGHT_RATIO == 10.0
+    assert UK_NATIONAL_SEED == 0
+    assert UK_NATIONAL_TARGET_LOSS_CAP == 10.0
+    assert UK_NATIONAL_L0_LAMBDA == 0.0
+    assert UK_NATIONAL_MASS_RULE == "free"
+    assert UK_NATIONAL_SOLVE_DOCTRINE == UKNationalSolveDoctrine()
+    assert UK_NATIONAL_SOLVE_DOCTRINE.scale_rule == "default_target_loss_scales"
+    assert UK_NATIONAL_SOLVE_DOCTRINE.target_weight_rule == "uniform"
+
+
+def test_national_doctrine_rejects_tampered_bounds() -> None:
+    with pytest.raises(ValueError, match="epochs"):
+        UKNationalSolveDoctrine(epochs=0)
+    with pytest.raises(ValueError, match="learning_rate"):
+        UKNationalSolveDoctrine(learning_rate=0.0)
+    with pytest.raises(ValueError, match="max_weight_ratio"):
+        UKNationalSolveDoctrine(max_weight_ratio=1.0)
+    with pytest.raises(ValueError, match="seed"):
+        UKNationalSolveDoctrine(seed=-1)
+    with pytest.raises(ValueError, match="target_loss_cap"):
+        UKNationalSolveDoctrine(target_loss_cap=float("nan"))
+    with pytest.raises(ValueError, match="scale_rule"):
+        UKNationalSolveDoctrine(scale_rule="bespoke")
+    with pytest.raises(ValueError, match="target_weight_rule"):
+        UKNationalSolveDoctrine(target_weight_rule="per_target")
+    with pytest.raises(ValueError, match="mass_rule"):
+        UKNationalSolveDoctrine(mass_rule="conserve")
+    with pytest.raises(ValueError, match="l0_lambda"):
+        UKNationalSolveDoctrine(l0_lambda=-0.1)

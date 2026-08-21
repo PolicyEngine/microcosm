@@ -10,6 +10,7 @@ import sys
 import time
 import uuid
 from datetime import UTC, datetime
+from importlib import resources as importlib_resources
 from itertools import combinations
 from pathlib import Path
 
@@ -38,6 +39,7 @@ from microcosm.build.plan import Stage as PlanStage
 from microcosm.build.uk_runtime.cgt_imputation import (
     uk_capital_gains_imputation_stage,
 )
+from microcosm.build.uk_runtime.diagnostics import write_uk_calibration_diagnostics
 from microcosm.build.uk_runtime.frs_hmrc_leaves import (
     UKFRSHMRCRetainedLeavesStageTransform,
 )
@@ -46,6 +48,7 @@ from microcosm.build.uk_runtime.hmrc_replay import write_hmrc_replay_report
 from microcosm.build.uk_runtime.hmrc_restoration import (
     UKHMRCIncomeStageTransform,
     verify_certified_uk_candidate,
+    verify_staging_candidate_uk_input,
 )
 from microcosm.build.uk_runtime.ledger_targets import compile_uk_target_registry
 from microcosm.build.uk_runtime.national_build import build_uk_national_dataset
@@ -59,6 +62,9 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_RUNG_TOKENS,
     UK_SAMPLE_SEED_DEFAULT,
+)
+from microcosm.build.uk_runtime.parity_reference import (
+    load_efrs_parity_reference,
 )
 from microcosm.build.uk_runtime.release_identity import UK_RELEASE_TIERS
 from microcosm.build.uk_runtime.source_runtime import uk_stage_implementations
@@ -130,6 +136,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         required=True,
         help="Compact UK single-year H5 supplying the national base tables.",
+    )
+    parser.add_argument(
+        "--staging-candidate-input-sha256",
+        type=sha256_argument,
+        help=(
+            "Declare --input-h5 as a non-certified staging-candidate spine and "
+            "bind it to this SHA-256. Refused with --release-candidate."
+        ),
     )
     parser.add_argument(
         "--staging-h5",
@@ -335,6 +349,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "schema-1 alias is last-written over the report path and a "
             "candidate must keep its signed schema-4 report."
         )
+    if args.release_candidate and args.staging_candidate_input_sha256 is not None:
+        parser.error(
+            "--release-candidate requires the certified input posture; "
+            "--staging-candidate-input-sha256 declares a non-certified spine."
+        )
     if args.sample_seed < 0:
         parser.error("sample seed must be a non-negative integer.")
     if args.sample_fraction != 1.0 and (
@@ -432,6 +451,18 @@ def _source_pins(
     if ledger_artifact is not None:
         pins["ledger_facts"] = dict(ledger_artifact.provenance())
     return pins
+
+
+def _input_posture(candidate: object) -> dict[str, object]:
+    tier = str(getattr(candidate, "tier", "frs"))
+    return {
+        "posture": "staging_candidate" if tier == "staging_candidate" else "certified",
+        "filename": str(getattr(candidate, "filename", "")),
+        "tier": tier,
+        "revision": str(getattr(candidate, "revision", "")),
+        "sha256": str(candidate.sha256),
+        "size_bytes": int(candidate.size_bytes),
+    }
 
 
 def _gate_verdicts_from_report(
@@ -786,7 +817,13 @@ def _main_recording(
             for period in (2023, 2025)
         }
     )
-    candidate = verify_certified_uk_candidate(args.input_h5)
+    if args.staging_candidate_input_sha256 is None:
+        candidate = verify_certified_uk_candidate(args.input_h5)
+    else:
+        candidate = verify_staging_candidate_uk_input(
+            args.input_h5,
+            expected_sha256=args.staging_candidate_input_sha256,
+        )
     evidence_path.unlink(missing_ok=True)
     replay_path.unlink(missing_ok=True)
     build_record_path.unlink(missing_ok=True)
@@ -836,11 +873,12 @@ def _main_recording(
     append_phase(state, "configured")
     append_phase(state, "candidate_verified")
     append_phase(state, "inputs_pinned")
-    # This staging path performs no calibration and therefore has no real
-    # target-surface or target-fit evidence; the schema-4 battery records
-    # the missing evidence explicitly. Input-mass evidence joins only when
-    # the caller supplies the licensed frozen reference sidecar; QRF-tail is
-    # spec-armed and runs whenever the frame evidence is present.
+    # Without Ledger facts, this staging path has no real target-surface or
+    # target-fit evidence; the schema-4 battery records the missing evidence
+    # explicitly. Armed calibration builds add target evidence from the solve.
+    # Input-mass evidence joins only when the caller supplies the licensed
+    # frozen reference sidecar; QRF-tail is spec-armed and runs whenever the
+    # frame evidence is present.
     gate_path_argument = (
         {"input_coverage_path": legacy_input_coverage_path}
         if legacy_input_coverage_path is not None
@@ -865,7 +903,12 @@ def _main_recording(
     calibration_stages: tuple[PlanStage, ...] = ()
     if args.ledger_facts is not None:
         assert ledger_artifact is not None  # resolved and pin-checked above
-        calibration_transform = UKNationalCalibrationStage(ledger_artifact.facts)
+        assert ledger_compilations is not None
+        calibration_year = load_uk_frs_release().calibration_year
+        calibration_transform = UKNationalCalibrationStage(
+            ledger_compilations[calibration_year],
+            period=calibration_year,
+        )
         calibration_stages = (
             PlanStage(
                 name="national_calibration",
@@ -910,14 +953,35 @@ def _main_recording(
                 for period, compilation in ledger_compilations.items()
             }
         ),
+        # The frozen instrument supplies the parity trio's reference side;
+        # the candidate side comes from the staged frame and the solve.
+        parity_reference=(
+            load_efrs_parity_reference() if calibration_transform is not None else None
+        ),
     )
     if calibration_transform is not None:
-        _write_json(
+        if calibration_transform.solve_result is None:
+            raise RuntimeError(
+                "national calibration diagnostics require the intact solve "
+                "result; checkpoint-resumed runs must rerun calibration before "
+                "writing calibration_diagnostics.json."
+            )
+        assert ledger_artifact is not None
+        write_uk_calibration_diagnostics(
+            calibration_transform.solve_result,
             args.national_calibration_diagnostics_json,
-            {
-                "schema_version": 1,
-                "targets": list(calibration_transform.diagnostics),
-                "calibration": calibration_transform.manifest,
+            result.frame,
+            target_geography_levels=_uk_target_geography_levels(
+                calibration_transform.registry
+            ),
+            target_registry=calibration_transform.registry,
+            build={
+                "build_id": state.build_id,
+                "ledger_facts": ledger_artifact.provenance(),
+                "code_pin": attempt_context["code_pin"],
+                "source_pins": source_pins,
+                "input_posture": _input_posture(candidate),
+                "score_vs_enhanced_frs": None,
             },
         )
     append_phase(state, "build_completed")
@@ -959,6 +1023,7 @@ def _main_recording(
         ledger_artifact_provenance=(
             None if ledger_artifact is None else ledger_artifact.provenance()
         ),
+        input_posture=_input_posture(candidate),
     )
     _write_json(build_record_path, build_record)
     append_phase(state, "build_record_written")
@@ -1053,6 +1118,7 @@ def _staging_run_config(
             "rung_token": UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
         },
         "certified_candidate": dict(pins["certified_candidate"]),
+        "input_posture": _input_posture(candidate),
         "sources": {
             "adult_tab": dict(pins["adult_tab"]),
             "benefits_tab": dict(pins["benefits_tab"]),
@@ -1100,6 +1166,7 @@ def _aggregate_build_record(
     sample_seed: int = UK_SAMPLE_SEED_DEFAULT,
     degenerate_exclusions_override: bool = False,
     ledger_artifact_provenance: dict[str, object] | None = None,
+    input_posture: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Return commit-safe aggregate evidence for one successful staging build."""
 
@@ -1157,6 +1224,7 @@ def _aggregate_build_record(
             # honestly disagree, which is why they carry distinct names.
             "degenerate_exclusions_override_supplied": (degenerate_exclusions_override),
         },
+        "input_posture": dict(input_posture or {}),
         "sampling": (
             None if result.sampling_receipt is None else dict(result.sampling_receipt)
         ),
@@ -1346,6 +1414,31 @@ def _validate_distinct_paths(
             "UK national build input, staging, and sidecar paths must be "
             f"pairwise distinct: {details}."
         )
+
+
+def _uk_target_geography_levels(registry) -> dict[str, str]:
+    payload = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("uk_national_targets.json")
+        .read_text(encoding="utf-8")
+    )
+    targets = {row["target_id"]: row for row in payload["targets"]}
+    levels: dict[str, str] = {}
+    for spec in registry.specs:
+        target_id = spec.metadata.get("contract_target_id")
+        target = targets.get(str(target_id))
+        if target is None:
+            raise ValueError(
+                f"UK calibration target {spec.name!r} references unknown "
+                f"contract target {target_id!r}."
+            )
+        geography_levels = tuple(target.get("geography_levels") or ())
+        if not geography_levels:
+            raise ValueError(
+                f"UK calibration target {spec.name!r} has no geography level."
+            )
+        levels[spec.to_target().row_name] = str(geography_levels[0])
+    return levels
 
 
 def _paths_alias(left: Path, right: Path) -> bool:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -927,6 +928,40 @@ def test_national_driver_accepts_legacy_input_coverage_path_alias(
     assert args.logbook_prev_row_digest == "d" * 64
 
 
+def test_national_driver_accepts_staging_candidate_input_sha(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    declared_sha = "a" * 64
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
+            "--input-h5",
+            "base.h5",
+            "--staging-h5",
+            "staging.h5",
+            "--staging-candidate-input-sha256",
+            declared_sha,
+            "--frs-raw-dir",
+            "frs_2023_24",
+            "--spi-tab",
+            "put2223uk.tab",
+            "--hmrc-ods",
+            "hmrc.ods",
+            "--cgt-ods",
+            "cgt.ods",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.staging_candidate_input_sha256 == declared_sha
+
+
 def test_national_driver_forwards_legacy_output_to_compatibility_serializer(
     monkeypatch,
     tmp_path,
@@ -1281,6 +1316,60 @@ def test_national_driver_refuses_release_candidate_with_the_legacy_alias(
     with pytest.raises(SystemExit):
         builder._parse_args()
     assert "signed schema-4 report" in capsys.readouterr().err
+
+
+def test_national_driver_refuses_release_candidate_with_staging_candidate_input(
+    monkeypatch,
+    capsys,
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_uk_national_dataset.py",
+            *_IDENTITY_CLI_ARGUMENTS,
+            "--input-h5",
+            "base.h5",
+            "--staging-h5",
+            "staging.h5",
+            "--staging-candidate-input-sha256",
+            "a" * 64,
+            "--frs-raw-dir",
+            "frs_2023_24",
+            "--spi-tab",
+            "put2223uk.tab",
+            "--hmrc-ods",
+            "hmrc.ods",
+            "--cgt-ods",
+            "cgt.ods",
+            "--release-candidate",
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        builder._parse_args()
+    assert "non-certified spine" in capsys.readouterr().err
+
+
+def test_staging_candidate_input_verifier_requires_declared_sha(tmp_path) -> None:
+    builder = _load_builder_module()
+    source = tmp_path / "synthetic-spine.h5"
+    source.write_bytes(b"synthetic")
+    digest = hashlib.sha256(b"synthetic").hexdigest()
+
+    identity = builder.verify_staging_candidate_uk_input(
+        source,
+        expected_sha256=digest,
+    )
+
+    assert identity.tier == "staging_candidate"
+    assert identity.sha256 == digest
+    with pytest.raises(ValueError, match="does not match declared"):
+        builder.verify_staging_candidate_uk_input(
+            source,
+            expected_sha256="0" * 64,
+        )
 
 
 def test_staging_run_config_pins_the_sampling_identity(monkeypatch, tmp_path) -> None:

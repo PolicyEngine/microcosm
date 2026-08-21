@@ -74,6 +74,12 @@ def materialize_target_bindings(
                 values = provider(adapter, binding, period)
             else:
                 values = _prepared_column_values(adapter, spec.entity, binding)
+            values = _apply_household_conditions(
+                adapter,
+                spec.entity,
+                values,
+                binding.get("household_conditions", ()),
+            )
             adapter.set_column(spec.entity, spec.measure, values)
         except (KeyError, TypeError, ValueError) as error:
             skipped.append(
@@ -153,6 +159,7 @@ def _prepared_column_values(
     entity: str,
     binding: Mapping[str, Any],
 ) -> np.ndarray:
+    entity = str(binding.get("from_entity") or entity)
     if "value_expression" in binding:
         values = _expression(adapter, entity, str(binding["value_expression"]))
     else:
@@ -162,6 +169,25 @@ def _prepared_column_values(
         mask &= _predicate_mask(adapter, entity, predicate)
     for predicate in binding.get("household_conditions", ()):
         mask &= _predicate_mask(adapter, entity, predicate)
+    return np.where(mask, values, 0.0)
+
+
+def _apply_household_conditions(
+    adapter: Any,
+    entity: str,
+    values: np.ndarray,
+    predicates: object,
+) -> np.ndarray:
+    conditions = tuple(predicates or ())
+    if not conditions:
+        return values
+    mask = np.ones_like(values, dtype=bool)
+    for predicate in conditions:
+        if hasattr(adapter, "household_condition_mask"):
+            condition_mask = adapter.household_condition_mask(entity, predicate)
+        else:
+            condition_mask = _predicate_mask(adapter, entity, predicate)
+        mask &= np.asarray(condition_mask, dtype=bool)
     return np.where(mask, values, 0.0)
 
 
@@ -181,6 +207,8 @@ def _compare(values: np.ndarray, operator: str, expected: object) -> np.ndarray:
         return values == expected
     if operator == "!=":
         return values != expected
+    if operator == "in":
+        return np.isin(values, list(expected))
     numeric = values.astype(float)
     threshold = float(expected)
     if operator == ">":
@@ -208,7 +236,21 @@ def _expression(adapter: Any, entity: str, expression: str) -> np.ndarray:
 
 
 def _column(adapter: Any, entity: str, variable: object) -> np.ndarray:
+    if str(variable) in {"person_count", "household_count", "benunit_count"}:
+        return np.ones(_entity_length(adapter, entity), dtype=float)
     if hasattr(adapter, "column"):
         return np.asarray(adapter.column(entity, str(variable)), dtype=float)
     table = adapter.tables[entity]
     return np.asarray(table[str(variable)], dtype=float)
+
+
+def _entity_length(adapter: Any, entity: str) -> int:
+    if hasattr(adapter, "entity_length"):
+        return int(adapter.entity_length(entity))
+    table = adapter.tables[entity]
+    if isinstance(table, Mapping):
+        first = next(iter(table.values()))
+        return len(first)
+    if hasattr(table, "__len__"):
+        return len(table)
+    raise TypeError(f"cannot determine row count for entity {entity!r}")
