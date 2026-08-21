@@ -1,5 +1,38 @@
 # Battery package 3 progress
 
+## Owner continuation revalidation — 2026-08-21 11:45Z
+
+### State
+
+In progress. The supplied host traceback is the active boundary. The branch
+already records a scoped executable correction and regression lineage, but this
+continuation is independently checking the current raise-site flow, exact
+assigned-target selection, regression strength, and current verification state
+before accepting that prior result. The untracked owner memory guard and host
+failure transcript are preserved unchanged.
+
+### Done
+
+- Re-read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
+- Confirmed `FINAL_REPORT.md` is the required output file and inspected the
+  existing correction/report lineage at starting revision `14666f6b`.
+- Confirmed normal GitNexus graph-query tools are unavailable in this session;
+  direct source, call-site, history, and regression tracing is the documented
+  fallback.
+- Reopened this committed progress journal before making any implementation or
+  test change.
+
+### Next
+
+1. Trace the current and historical invariant paths and enumerate the exact
+   production target-selection boundary.
+2. Audit the existing regression against the supplied physical
+   `puf_tax_itemization__batch_1/taxable_interest_income` record.
+3. Make only a warranted scoped fix or test strengthening, then run focused,
+   affected, and repository-prescribed verification.
+4. Refresh and commit `FINAL_REPORT.md`; leave restricted host certification
+   and publication outside this local correction.
+
 ## Owner continuation audit — 2026-08-21 10:17Z
 
 ### State
