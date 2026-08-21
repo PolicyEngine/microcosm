@@ -28,7 +28,7 @@ snapshot is nonterminal, so restricted-build certification is not claimed.
 - Reconstructed the failure at `33bf52fe`: the public 15-target
   `puf_tax_itemization` family was split at width eight, taxable interest's
   legitimate physical record was `puf_tax_itemization__batch_1`, the producer
-  attached QRF regimes/evidence to every target, and old line 4512 invoked
+  attached QRF audit regimes/evidence to every target, and old line 4512 invoked
   strict binding before assignment lookup. Old line 4310 therefore compared
   the physical batch with the public family and raised the supplied error.
 - Confirmed that accepting a batch alias would weaken the invariant without
@@ -38,9 +38,10 @@ snapshot is nonterminal, so restricted-build certification is not claimed.
 - Traced the current selection through `transfer_acs_inputs`, ordinary and
   banked fits, per-target provenance, both receipt producers, both canonical
   stacked callers, both terminal validators, and calibration application.
-  Generic callers default to no regime work; only the two stacked owners select
-  immutable registry specs; unselected targets keep ordinary draws and empty
-  regimes and receive neither evidence nor calibration writes.
+  Generic callers default to no calibration-audit regime work; only the two
+  stacked owners select immutable registry specs; unselected targets keep
+  ordinary draws and empty audit regimes and receive neither evidence nor
+  calibration writes.
 - Enumerated the immutable policy: two early and seven late model-required,
   source-operator, and adult-care targets. `taxable_interest_income` is absent.
 - Re-read the exact synthetic regression, the real 15-target ordinary/banked
