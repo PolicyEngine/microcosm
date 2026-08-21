@@ -1,5 +1,30 @@
 # Battery package 3 progress
 
+## Owner continuation recheck — 2026-08-21 08:58Z
+
+### State
+
+In progress. Revalidate the current committed assigned-only correction against
+the supplied taxable-interest ACS QRF binding failure, then refresh the required
+final report with any new terminal host evidence. Do not treat the preceding
+completed journal entry or the still-running host snapshot as current truth.
+
+### Done
+
+- Re-read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
+- Confirmed `PROGRESS.md` and the required `FINAL_REPORT.md` are tracked and
+  preserved the two pre-existing untracked diagnostic artifacts.
+- Inspected branch status, recent commit lineage, and the prior report without
+  assuming their completion verdict remains current.
+- Confirmed the GitNexus MCP query/context tools are unavailable in this
+  session; direct raise-site, caller, history, and focused-test tracing is the
+  documented fallback.
+
+### Next
+
+Inspect the current source/test diff and the latest restricted-host state,
+reproduce the narrow regression locally, and make only evidence-backed changes.
+
 ## Owner continuation audit — 2026-08-21 08:35Z
 
 ### State
