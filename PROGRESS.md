@@ -19,11 +19,21 @@ completed journal entry or the still-running host snapshot as current truth.
 - Confirmed the GitNexus MCP query/context tools are unavailable in this
   session; direct raise-site, caller, history, and focused-test tracing is the
   documented fallback.
+- Re-read the current transfer selection, per-target provenance stripping,
+  early validator fence, and both taxable-interest regressions at their exact
+  source locations. The validator checks legacy counts for every target but
+  rejects QRF/calibration evidence before strict record binding when the target
+  is outside the immutable early calibration registry.
+- Ran the exact unassigned taxable-interest binding regression and both real
+  15-target producer cases (ordinary and banked) under the owner 12 GiB guard.
+  All three passed with exit zero and 0.566 GiB maximum observed per-process
+  RSS; output was limited to the known joblib physical-core fallback warning.
 
 ### Next
 
-Inspect the current source/test diff and the latest restricted-host state,
-reproduce the narrow regression locally, and make only evidence-backed changes.
+Reconcile the independent source, regression, and restricted-host audits, then
+run the directly affected test matrix and static checks against the current
+committed tree.
 
 ## Owner continuation audit — 2026-08-21 08:35Z
 
