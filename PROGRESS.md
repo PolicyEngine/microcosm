@@ -1,3 +1,47 @@
+# F1 residual brokered-QRF repair — 2026-08-21
+
+## State
+
+- Work is local on `spec-engine-f1` at opening HEAD `4e3b6e35ee0a`; nothing
+  has been pushed, no build has run, and `logbook-pending-chain.txt` remains
+  untouched.
+- This continuation is limited to the inherited deliverable-A brokered-QRF
+  suite failure recorded by the r6 close. Landed executor, broker, 72-site
+  ledger, frame-restoration, certification-runner, comparator, and host-handoff
+  work will not be redone.
+- The tracked worktree opened clean. The required `_F1-CHARTER-R6.md` snapshot
+  is no longer present: the preceding r6 close records that it was an untracked
+  owner instruction copy removed after its operative orders were journaled.
+- The exact failing test ids and assertions still need a fresh reproduction at
+  this HEAD. The inherited record names the primary-QRF Joblib ambient clock
+  refusal and the single-worker cgroup-probe refusal; neither is yet treated as
+  the diagnosed root cause in this continuation.
+
+## Done
+
+- Read `CLAUDE.md`, the approved `_F1-CHARTER.md`, all of
+  `_F1-LANE-NOTES.md`, `PROGRESS.md`, and `FINAL_REPORT.md`, then inspected
+  `git log --oneline -30` as ordered.
+- Read the GitNexus debugging workflow. The required live R6 snapshot was
+  searched for under the available worktrees and confirmed absent.
+- Ran the required dependency sync. The direct command was blocked only by
+  the managed user-cache permission; the established writable cache overlay
+  completed `uv sync --all-packages --extra us` with 100 packages checked.
+- Confirmed the branch and tracked worktree are clean before this journal edit.
+
+## Next
+
+1. Reproduce the brokered-QRF residual exactly and record every failing test id,
+   exception, and assertion without changing worker counts or broker policy.
+2. Trace the physical QRF draw path against the 72-site seed ledger and broker
+   contracts, then decide whether the fix is unambiguous or needs an owner
+   ruling.
+3. Add a regression, implement only the honest contract-preserving repair, and
+   run focused plus full memory-safe suite and Ruff gates before the next code
+   commit.
+
+---
+
 # F1 r6 B/C final audit continuation — 2026-08-21
 
 ## State

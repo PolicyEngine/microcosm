@@ -2924,3 +2924,38 @@ head. A well-formed FAIL still writes
   unqualified repository-wide green claim is made.
 - Append the final report, commit it, and stop. The high-memory host runs the
   documented sequence; the owner adjudicates its evidence.
+
+## F1 residual brokered-QRF repair kickoff (2026-08-21)
+
+### State
+
+- This continuation reopens only the deliverable-A suite residual named by the
+  r6 close. It does not reopen or recreate the landed executor, broker,
+  72-site ledger, frame-restoration, runner, comparator, or host-handoff work.
+- Opening HEAD is `4e3b6e35ee0a` on local branch `spec-engine-f1`; the tracked
+  worktree was clean. Nothing has been pushed, no build has run, and the
+  pending Logbook chain remains untouched.
+- `_F1-CHARTER-R6.md` is absent because the preceding close classified and
+  removed that untracked owner snapshot. Its active instructions and exact
+  brokered-QRF boundary remain preserved in this committed journal,
+  `PROGRESS.md`, and `FINAL_REPORT.md`.
+
+### Done
+
+- Read the required repository guide, approved charter, complete lane journal,
+  progress journal, final report, and the last 30 commits before task work.
+- Loaded the GitNexus debugging workflow for execution-flow tracing.
+- The direct US-extra sync hit the managed user-cache permission boundary; the
+  established writable overlay then completed the same locked sync with 100
+  packages checked.
+
+### Next
+
+1. Reproduce and cite every exact failing test id and assertion at current
+   HEAD.
+2. Trace Joblib/QRF dependency access and broker token consumption against the
+   72-site ledger. Do not relax byte identity, seed ownership, ambient-effect
+   enforcement, or comparator fail-closed behavior.
+3. If the legacy draw contract is unambiguous, repair it and pin the complete
+   brokered draw path with a regression. If a legacy seed/draw site is truly
+   ambiguous, stop here with a costed owner decision memo instead.
