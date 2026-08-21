@@ -1091,6 +1091,8 @@ def test_national_build_real_terminal_batch_blocks_incomplete_qrf_before_staging
     assert statuses == {
         "uk_release_input_coverage_manifest_current": "passed",
         "uk_release_family_build_stages": "passed",
+        "uk_ledger_compile_parity_production_2023": "evidence_absent",
+        "uk_ledger_compile_parity_incumbent_2025": "evidence_absent",
         "uk_release_input_coverage": "passed",
         "uk_degenerate_release_surface": "passed",
         "uk_zero_weight_strata": "passed",
@@ -1796,8 +1798,8 @@ def test_release_candidate_blocks_on_named_evidence_gaps(tmp_path) -> None:
             gate_registry=registry,
             release_candidate=True,
         )
-    assert error.value.phase == "terminal"
-    assert "[uk_weight_ratio]" in str(error.value)
+    assert error.value.phase == "preflight"
+    assert "[uk_ledger_compile_parity_production_2023]" in str(error.value)
     assert not (tmp_path / "candidate.h5").exists()
 
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from importlib import resources as importlib_resources
 
 import numpy as np
 import pandas as pd
@@ -14,6 +15,8 @@ from microcosm.build.uk_runtime.national_calibration import (
 )
 from microcosm.build.uk_runtime.national_frame import validate_uk_national_frame
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+
+ACTIVE_REFERENCE_COUNT = 387
 
 
 def _uc_reference(**overrides) -> LedgerTargetReference:
@@ -78,6 +81,32 @@ def _frame() -> Frame:
     )
 
 
+def _nested_frame() -> Frame:
+    return Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.arange(6, dtype="int64"),
+                    "person_benunit_id": [0, 0, 1, 2, 3, 3],
+                    "person_household_id": [0, 0, 0, 1, 2, 2],
+                }
+            ),
+            "benunit": pd.DataFrame(
+                {
+                    "benunit_id": np.arange(4, dtype="int64"),
+                    "universal_credit": [1.0, 0.0, 1.0, 1.0],
+                }
+            ),
+            "household": pd.DataFrame(
+                {"household_id": np.arange(3, dtype="int64")}
+            ),
+        },
+        EntitySchema(group_entities=("benunit", "household")),
+        {"household": Weights(np.array([10.0, 20.0, 30.0]), WeightKind.DESIGN)},
+        metadata={"time_period": "2023"},
+    )
+
+
 def test_uc_calibration_compiles_and_moves_weighted_count_towards_fact() -> None:
     frame = _frame()
     stage = UKNationalCalibrationStage(
@@ -95,6 +124,22 @@ def test_uc_calibration_compiles_and_moves_weighted_count_towards_fact() -> None
     assert stage.diagnostics[0]["target"] == 30.0
 
 
+def test_uc_calibration_stage_accepts_benunit_grain_reference_on_nested_frame() -> None:
+    frame = _nested_frame()
+    stage = UKNationalCalibrationStage(
+        [_fact(value=60.0)], references=[_uc_reference()], epochs=5
+    )
+
+    result = stage(frame)
+
+    assert stage.manifest["activated_reference_count"] == 1
+    assert stage.manifest["resolved_reference_count"] == 1
+    assert stage.manifest["matrix_target_count"] == 1
+    assert stage.diagnostics[0]["target"] == 60.0
+    assert stage.diagnostics[0]["estimate"] == pytest.approx(60.0)
+    validate_uk_national_frame(result)
+
+
 def test_activated_unresolvable_reference_aborts_loudly() -> None:
     stage = UKNationalCalibrationStage(
         [_fact(concept="different")], references=[_uc_reference()], epochs=1
@@ -108,14 +153,28 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
     from microcosm.build.country_spec import load_country_spec
     from microcosm.build.ledger_targets import compile_ledger_target_references
 
+    spec = load_country_spec("uk")
+    assert len(spec.target_references) == ACTIVE_REFERENCE_COUNT
+    reference_names = {reference.name for reference in spec.target_references}
+    assert "obr.universal_credit_in_cap" in reference_names
+    assert "dwp.uc.households" not in reference_names
+
+    membership = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("target_reference_membership.json")
+        .read_text()
+    )
+    assert membership["targets"]["dwp.uc.households"]["status"] == (
+        "no_fact_at_or_before_period"
+    )
+
     references = tuple(
         reference
-        for reference in load_country_spec("uk").target_references
-        if reference.name in {"dwp.uc.households", "obr.universal_credit_in_cap"}
+        for reference in spec.target_references
+        if reference.name == "obr.universal_credit_in_cap"
     )
     registry = compile_ledger_target_references(
         [
-            _fact(),
             _fact(
                 concept="obr.universal_credit_in_cap",
                 source_name="obr",
@@ -126,10 +185,7 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
         country="uk",
     )
 
-    assert {spec.name for spec in registry.specs} == {
-        "dwp.uc.households",
-        "obr.universal_credit_in_cap",
-    }
+    assert {spec.name for spec in registry.specs} == {"obr.universal_credit_in_cap"}
 
 
 def test_calibration_preserves_entity_ids_and_national_integrity() -> None:

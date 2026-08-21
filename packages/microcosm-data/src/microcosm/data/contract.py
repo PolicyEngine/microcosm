@@ -344,13 +344,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "728a5fe2f543f59e2797e4227269fe4516508a274b4fa5fe49559387d6b9d686"
+    "47d41dc3643818e049034b4333392aeb352bed5f76fc4556c1da5ba2fe8fb86d"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "f01e5459debc6f3ebfa097591749377b640a5d633e3df3825575b4ec15eeacb2"
+    "687bb4ae4b085ac9abf2e77a7a0c8bcf11204eb9b00fdac1fd7232e16f81161f"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "f358121fefc6e0e2371956dc0628c1d997ee3735e558ca3dd4526326a6add78b"
+    "e54e2f5880f2380854d9764dcd5482aaa51e37ca0915a3ffaa0c9897626ba656"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -383,6 +383,14 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "preflight",
     ),
     "uk_release_family_build_stages": ("source_coverage", "preflight"),
+    "uk_ledger_compile_parity_production_2023": (
+        "ledger_compile_parity",
+        "preflight",
+    ),
+    "uk_ledger_compile_parity_incumbent_2025": (
+        "ledger_compile_parity",
+        "preflight",
+    ),
     "uk_release_input_coverage": ("release_input_coverage", "terminal"),
     "uk_degenerate_release_surface": ("degenerate_release_surface", "terminal"),
     "uk_zero_weight_strata": ("zero_weight_strata", "terminal"),
@@ -411,6 +419,8 @@ _UK_GATE_BATTERY_ENTRY_IDS = frozenset(_UK_GATE_BATTERY_ENTRY_GATES)
 _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
     {
         "uk_release_family_build_stages",
+        "uk_ledger_compile_parity_production_2023",
+        "uk_ledger_compile_parity_incumbent_2025",
         "uk_degenerate_release_surface",
         "uk_input_mass_parity",
     }
