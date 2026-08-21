@@ -11,12 +11,12 @@ microcosm #368. The five acceptance cases the brief pins:
 5. a bound reform scoring ~$0 fails the reform-coverage smoke.
 
 The frame is a real :class:`~microcosm.frame.Frame`; most tests use an engine stub
-exposing only ``default_values`` (the surface the gate uses), and the simulation is
-injected (with ``_build_reform`` monkeypatched). One optional regression reproduces
-the nullable-boolean failure against the real PolicyEngine-US defaults and full US
-entity schema. Separate tests assert the shipped manifest keeps the #368
-red-by-design guarantee: the SSI countable-resource assets stay hard requirements
-with no exclusion, and demoting one is rejected.
+exposing ``default_values`` and the locked ``variables`` registry, and the
+simulation is injected (with ``_build_reform`` monkeypatched). One optional
+regression reproduces the nullable-boolean failure against the real PolicyEngine-US
+defaults and full US entity schema. Separate tests assert the shipped manifest
+keeps the #368 red-by-design guarantee: the SSI countable-resource assets stay hard
+requirements with no exclusion, and demoting one is rejected.
 """
 
 from __future__ import annotations
@@ -135,13 +135,21 @@ def _household_weight_frame(
 
 
 class _StubEngine:
-    """Only ``default_values(names)`` — the single engine surface the gate uses."""
+    """The default-value and locked-variable surfaces used by the gate."""
 
-    def __init__(self, defaults: dict[str, object]) -> None:
+    def __init__(
+        self,
+        defaults: dict[str, object],
+        variables: set[str] | None = None,
+    ) -> None:
         self._defaults = dict(defaults)
+        self._variables = set(defaults) if variables is None else set(variables)
 
     def default_values(self, names) -> dict[str, object]:
         return {name: self._defaults[name] for name in names if name in self._defaults}
+
+    def variables(self) -> list[str]:
+        return sorted(self._variables)
 
 
 def _manifest(
@@ -203,7 +211,7 @@ class TestReleaseInputCoverageGate:
             for failure in result.failures
         )
 
-    def test_degenerate_required_column_without_exclusion_fails(self) -> None:
+    def test_required_all_zero_column_fails_when_registry_contains_it(self) -> None:
         # Case 3: stock_assets is present but every value is the engine default,
         # so the export writer's default-broadcast makes it indistinguishable
         # from absence — and there is no reviewed exclusion to accept it.
@@ -217,11 +225,34 @@ class TestReleaseInputCoverageGate:
             frame, _StubEngine(_DEFAULTS), manifest=_CONTRACT
         )
         assert not result.passed
+        assert result.details["required_missing_from_engine_registry"] == []
         assert "stock_assets" in result.details["degenerate_required"]
         assert any(
             "stock_assets" in failure and "default" in failure
             for failure in result.failures
         )
+
+    def test_required_column_absent_from_locked_registry_fails_even_with_signal(
+        self,
+    ) -> None:
+        name = "future_engine_input"
+        manifest = _manifest((ReleaseInputColumn(name, "required"),))
+        frame = _person_frame({name: np.asarray([0.0, 125.0])})
+
+        result = us_release_input_coverage_gate(
+            frame,
+            _StubEngine({name: 0.0}, variables=set()),
+            manifest=manifest,
+        )
+
+        assert not result.passed
+        assert result.details["missing"] == []
+        assert result.details["degenerate_required"] == []
+        assert result.details["locked_engine_version"] == "1.764.6"
+        assert result.details["required_missing_from_engine_registry"] == [name]
+        assert len(result.failures) == 1
+        assert name in result.failures[0]
+        assert "locked PolicyEngine-US 1.764.6 variable registry" in result.failures[0]
 
     def test_all_nonfinite_required_asset_columns_fail(self) -> None:
         assets = tuple(sorted(SSI_COUNTABLE_RESOURCE_ASSETS))
@@ -732,7 +763,9 @@ class TestShippedManifest:
         # SSI assets must stay hard requirements.
         assert_release_input_coverage_manifest_current()
 
-    def test_provisional_passive_input_may_precede_engine_registry(self) -> None:
+    def test_manifest_declaration_may_precede_engine_registry(self) -> None:
+        # This is only the manifest-authoring exception. The runtime release
+        # gate independently fails required names absent from the locked graph.
         manifest = load_release_input_coverage_manifest()
         for engine_has_passive_input in (False, True):
             variables = set(manifest.declared_columns)

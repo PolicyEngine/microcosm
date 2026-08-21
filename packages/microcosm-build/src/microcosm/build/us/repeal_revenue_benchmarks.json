@@ -36,7 +36,7 @@
       },
       "provisional": true,
       "diagnostics_only": true,
-      "description": "Line 4c combines rental real estate, royalties, partnerships, S corporations, trusts, and other trade-or-business flow-through amounts after the non-section-1411 adjustment. It does not identify the passive partnership/S-corporation component. The diagnostic uses the 2023 policy period on the release artifact's 2024-shaped population without a population-vintage backcast. The lower bound assumes all line 4c income is rental or royalty income; the upper bound assumes all of it is passive pass-through income. Rental income already enters the engine NIIT base in full, so overlap remains an explicit open question and no rental treatment changes here."
+      "description": "Line 4c combines rental real estate, royalties, partnerships, S corporations, trusts, and other trade-or-business flow-through amounts after the non-section-1411 adjustment. It does not identify the passive partnership/S-corporation component. The diagnostic uses the 2023 policy period on the release artifact's 2024-shaped population without a population-vintage backcast. The lower bound assumes all line 4c income is rental or royalty income; the upper bound assumes all of it is passive pass-through income. Rental income already enters the engine NIIT base in full, so overlap remains an explicit open question and no rental treatment changes here. The passive column remains engine-inert under the locked PolicyEngine-US 1.764.6 registry; the hard release gate stays red until the pin advances past 1.764.6 to a release containing PolicyEngine-US #9306."
     }
   ]
 }

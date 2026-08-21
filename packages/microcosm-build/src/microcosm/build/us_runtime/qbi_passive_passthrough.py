@@ -710,6 +710,10 @@ def build_qbi_passive_passthrough_assumptions_payload(
             "decompose passive pass-through income from rental and royalty income.",
             "Rental income remains unchanged: the current engine includes it "
             "fully in NIIT, and this stage assigns only the pass-through leaf.",
+            "The output remains engine-inert under locked PolicyEngine-US "
+            "1.764.6 because that registry does not expose the variable; the "
+            "hard release gate stays red until the engine pin advances past "
+            "1.764.6 to a release containing PolicyEngine-US #9306.",
             "The runtime does not read the restricted replay artifact or solve "
             "the calibration shift.",
             "The sibling stage neither invokes nor advances any archived QBI "

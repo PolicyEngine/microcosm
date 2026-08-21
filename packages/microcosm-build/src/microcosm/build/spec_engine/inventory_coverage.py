@@ -333,7 +333,7 @@ EXPECTED_HASHES = {
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
     "authority": "f0b676f6508dbf6bb2b787c42e6b85331bacc57c6649ac7ad15fdaa5884a1b2d",
     "early_families": "e26a90e2b5c16e23e7c17424d1c2e4ab18ed66b1d0e129248e87c0bab9b3fd5d",
-    "full_checkpoint": "e94262a879001082093c20af72a04bc7458149c1b751855f6826b9767a502eb3",
+    "full_checkpoint": "8048a795463ea1e5f0d2c113b6eb3d65c112ce08ab526ba96d29ecf7718b7b49",
     "gap_fill_schedule": "96aefe2853de91ae95f50bc2ccc2c1dd94802c27f21c643981152bbcb13c4e10",
     "graph_nodes": "a83363de26cad0144b5a98b36b4bca49542e37a7b9fee3d7e541f692deeff864",
     "late_families": "a160432fc12a85df20ba7fd6687673b3c31786df7a983e2477604ab923b26d18",

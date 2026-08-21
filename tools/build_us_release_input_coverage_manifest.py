@@ -91,7 +91,10 @@ POST_REFERENCE_COLUMN_NOTES = {
         "Section 469 passive subset of partnership and S-corporation income, "
         "assigned by the provisional SCF-shaped sibling stage for the NIIT "
         "base. Required with no reviewed exclusion so release publication "
-        "cannot silently drop the new engine input."
+        "cannot silently drop the new engine input. The locked PolicyEngine-US "
+        "1.764.6 registry does not expose this variable, so the column remains "
+        "engine-inert and the release gate stays red until the engine pin "
+        "advances past 1.764.6 to a release containing PolicyEngine-US #9306."
     ),
     "schedule_d_capital_gain_distributions": (
         "Schedule D line 13 route leg of the #282 capital-gain-distributions "

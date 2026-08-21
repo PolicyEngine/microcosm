@@ -7,8 +7,9 @@ Dual-review remediation is in progress on `passive-pass-through-722` as of
 committed as `d9f19c66`, with the supervisor-approved resolutions reproduced
 exactly. The post-merge resource closure and first-class typed passive contract
 are regenerated and their fail-closed coverage ledger is verified. The
-non-vacuous QBI preservation regression is also complete. Work remains offline:
-no fetch, push, PR mutation, publication, or promotion is in scope.
+non-vacuous QBI preservation regression and locked-registry release gate are
+also complete. Work remains offline: no fetch, push, PR mutation, publication,
+or promotion is in scope.
 
 ## Done
 
@@ -61,6 +62,24 @@ no fetch, push, PR mutation, publication, or promotion is in scope.
   byte-identical to the no-passive current-main pipeline. The independent
   full-length RNG-family array test remains in place; all three focused tests
   pass and targeted Ruff is clean.
+- Made `us_release_input_coverage_gate` require every hard-required manifest
+  column to exist in `engine.variables()`, independently of frame presence and
+  signal. Failures name the version read from `engine_abi.lock.json` and report
+  `required_missing_from_engine_registry` in gate details.
+- Added the two explicit failure-mode regressions
+  `test_required_all_zero_column_fails_when_registry_contains_it` and
+  `test_required_column_absent_from_locked_registry_fails_even_with_signal`.
+  The former proves default-only data stays red even with registry presence;
+  the latter proves nonzero data stays red when the locked variable is absent.
+- Documented in the generated release manifest, passive assumptions, repeal
+  benchmark resource, and US fact-to-target guide that the passive column is
+  engine-inert under PolicyEngine-US 1.764.6 and the hard release gate remains
+  red until the pin advances past 1.764.6 to a release containing #9306.
+- Regenerated the manifest and restricted assumptions, then propagated their
+  identity through the US bundle (spec SHA-256
+  `00b4c73b0ff2e29abf00b9f6f8112c9b87e937d323fb5c973bb5cd0652a95931`)
+  and F0 report. The targeted gate/resource/inventory/adapter suite passes 153
+  tests in 8m34s; the generator check and targeted Ruff are clean.
 - The implementation and verification bullets below describe the historical
   pre-review checkpoint at `a4d93f78`; the verdict supersedes its former
   completion claim.
@@ -117,9 +136,6 @@ no fetch, push, PR mutation, publication, or promotion is in scope.
 
 ## Next
 
-- Fail the release-input gate when a required manifest variable is absent from
-  the locked engine registry; cover both absent-variable and all-zero-required
-  failure modes and document the 1.764.6/#9306 engine-inert boundary honestly.
 - Make restricted certification independently re-solve and compare the
   calibration shift.
 - Run targeted and full workspace tests with the prescribed restricted-data

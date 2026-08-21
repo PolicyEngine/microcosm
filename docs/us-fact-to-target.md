@@ -125,6 +125,13 @@ Probes are **generated data**: author them in
 manifest with that tool — never hand-edit the JSON (a byte-sync test
 enforces this). Probe discipline:
 
+Persisting a required source column does not prove that the locked engine can
+consume it. The release-input gate also requires every required name to exist
+in the locked engine registry. In particular,
+`passive_partnership_s_corp_income` remains engine-inert under
+PolicyEngine-US 1.764.6, and the gate must remain red until the pin advances
+past 1.764.6 to a release containing PolicyEngine-US #9306.
+
 - **Measure the effect first** on the certified artifact; set
   `min_abs_effect` well under it (~25%). Never guess floors.
 - **Probe the law year where the channel exists.** Attribution-only columns
