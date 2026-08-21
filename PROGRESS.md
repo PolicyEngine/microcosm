@@ -7,9 +7,9 @@
 In progress. The supplied line numbers fingerprint historical commit
 `33bf52fe`; the current tree already contains the complete scoped correction
 and failing-first regression coverage. Three independent audits and 14 guarded
-focused cases find no remaining leak or material coverage gap. A duplicate
-executable edit is not warranted; affected-suite and static verification are
-next.
+focused cases find no remaining leak or material coverage gap. All 529 tests
+in the five directly affected files also pass under the owner guard. A
+duplicate executable edit is not warranted; static verification is next.
 
 ### Done
 
@@ -54,15 +54,19 @@ next.
   12 rehashed QRF structure mutations under the owner 12 GiB/20 ms guard. All
   14 cases passed; maximum observed per-process RSS was 0.567 GiB. The only
   warning was joblib's logical-core fallback.
+- Ran all 529 cases in the five directly affected ordinary-transfer,
+  multispine-serialization, stacked-spine, pool-tool, and H5 files together
+  under the same guard. Pytest reached 100% with exit zero; maximum observed
+  per-process RSS was 1.657 GiB. A separate collection pass confirmed file
+  counts of 64, 5, 258, 164, and 38.
 - Confirmed the complete current `microcosm-build/src`, `tools`, and `specs`
   Git trees exactly match all-suite checkpoint `a5be536f`; the only affected
   test difference is the three-line strict assigned-family forgery case.
 
 ### Next
 
-Run the five-file affected suite under the owner guard, then repository lint,
-touched-file format, whitespace, and executable-drift checks. Refresh the final
-report only after those pass.
+Run repository lint, touched-file format, whitespace, and executable-drift
+checks. Refresh the final report only after those pass.
 
 ## Current continuation — 2026-08-20
 
