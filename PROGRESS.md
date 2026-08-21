@@ -9,7 +9,9 @@ In progress. The supplied line numbers fingerprint historical commit
 and failing-first regression coverage. Three independent audits and 14 guarded
 focused cases find no remaining leak or material coverage gap. All 529 tests
 in the five directly affected files also pass under the owner guard. A
-duplicate executable edit is not warranted; static verification is next.
+duplicate executable edit is not warranted. Lint, format, whitespace, and
+executable-drift checks pass; only final-report refresh and journal closure
+remain.
 
 ### Done
 
@@ -62,11 +64,15 @@ duplicate executable edit is not warranted; static verification is next.
 - Confirmed the complete current `microcosm-build/src`, `tools`, and `specs`
   Git trees exactly match all-suite checkpoint `a5be536f`; the only affected
   test difference is the three-line strict assigned-family forgery case.
+- Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
+  changed since `33bf52fe^`, committed-range and worktree whitespace checks,
+  and exact executable-tree comparisons against `a5be536f`; all passed.
 
 ### Next
 
-Run repository lint, touched-file format, whitespace, and executable-drift
-checks. Refresh the final report only after those pass.
+Refresh and commit `FINAL_REPORT.md` with the current diagnosis, demonstrated
+red/green regression, guarded verification, static checks, and explicit host
+boundary; then close and commit this journal.
 
 ## Current continuation — 2026-08-20
 
