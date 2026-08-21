@@ -4,11 +4,11 @@
 
 ### State
 
-Diagnosis, focused verification, affected-suite verification, and static
-verification are complete; final reporting is in progress. The supplied line
-numbers fingerprint historical commit `33bf52fe`, while the current tree
-already contains the scoped runtime correction and exact regression coverage.
-No duplicate executable edit is warranted.
+Complete. The supplied line numbers fingerprint historical commit `33bf52fe`,
+while the current tree already contains the scoped runtime correction and exact
+regression coverage. Independent source, history, regression, guarded test,
+and static audits found no remaining leak and no reason for a duplicate
+executable edit.
 
 ### Done
 
@@ -37,8 +37,9 @@ No duplicate executable edit is warranted.
   interest receipt, the real banked wide-family producer, and the fully rehashed
   assigned `__batch_1` forgery jointly cover the failure and prohibit a
   permissive family-alias workaround.
-- Reconciled independent invariant and regression-seam audits; both found the
-  correction complete and no remaining executable or coverage gap.
+- Reconciled three independent invariant, history, and regression-seam audits;
+  all found the correction complete and no remaining executable or coverage
+  gap.
 - Ran the exact synthetic taxable-interest boundary, the real banked 15-target
   producer, and all 12 rehashed QRF structure mutations under the owner 12 GiB
   guard. All 14 cases passed; maximum observed per-process RSS was 0.571 GiB.
@@ -53,11 +54,21 @@ No duplicate executable edit is warranted.
   under the owner guard. The run reached 100% with exit zero and no failures;
   maximum observed per-process RSS was 1.206 GiB. A separate collection pass
   confirmed the 529-case bound.
+- Took a final read-only host snapshot at 02:39Z. The mutable retry had rebuilt
+  survey target 26/47; bounded taxable interest completed at target 22/47
+  without the supplied failure. The guard still reported a resource wait, and
+  no runner exit, final pool, manifest, or gates artifact existed. The mutable
+  files do not bind a Microcosm revision and are not accepted as terminal
+  certification evidence.
+- Refreshed `FINAL_REPORT.md` with the current diagnosis, audit verdicts,
+  guarded 14-case and 529-test results, static verification, current commits,
+  and explicit remaining host boundary.
 
 ### Next
 
-Inspect the host retry state without claiming mutable evidence as revision-
-bound, then refresh and commit `FINAL_REPORT.md` and this journal.
+Run or identify a revision-bound restricted host 1% retry that reaches a
+terminal runner verdict and emits the expected pool, manifest, and gates
+artifacts; this remains external to the completed local correction.
 
 ## Current continuation — 2026-08-21 01:39Z
 

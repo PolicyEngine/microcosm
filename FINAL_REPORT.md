@@ -12,26 +12,26 @@ history, and regression audits confirmed that the complete correction and its
 failing-target coverage were already committed on the branch.
 
 No after artifact is claimed or accepted, and this continuation did not replay
-the restricted host 1% build. A read-only check at 01:45Z saw the externally
-owned mutable retry progress into late `puf_tax_itemization__batch_3` after the
-bounded taxable-interest target had already completed without the supplied
-traceback. By the final 02:10Z check, however, `build.log` had been truncated to
-zero bytes, `guard.log` still reported a resource wait with one other matching
+the restricted host 1% build. At the final 02:39Z read-only snapshot, the
+externally owned mutable retry had rebuilt survey target 26/47. Its bounded
+`puf_tax_itemization__batch_1/taxable_interest_income` target completed at
+22/47 without the supplied traceback, and five later targets also completed.
+The latest guard row still reported a resource wait with one other matching
 process, and there was no runner exit marker, `pool.h5`, pool manifest, or
 gates artifact. These host files do not bind a Microcosm revision, so terminal
 stacked receipt validation and frozen-battery success are not claimed. The
 frozen sample/clone seed remains 578, and no battery band, threshold,
 comparator, fold, publication boundary, or pending-chain state was changed.
 
-The 2026-08-21 02:10Z owner continuation independently re-traced the old raise
+The 2026-08-21 02:39Z owner continuation independently re-traced the old raise
 site, current producer/receipt/validator selectors, failing-to-fixed history,
 and exact regression surface. It found no remaining canonical path that can
 opt `taxable_interest_income` into QRF regime work or evidence. The final test
 tree also rejects a fully rehashed, plausible in-range `__batch_1` alias on an
 assigned target, preventing the unsafe permissive workaround briefly present
 in the first correction. All 14 decisive focused cases and all 529 tests in
-the five directly affected files pass in this continuation, peaking at 0.572
-GiB and 1.858 GiB respectively under the owner guard. Independent runtime,
+the five directly affected files pass in this continuation, peaking at 0.571
+GiB and 1.206 GiB respectively under the owner guard. Independent runtime,
 history, and regression audits agree on the scoped-fix verdict.
 
 ## Root cause and correction
@@ -120,10 +120,10 @@ directly so verification did not require network or user-wide cache access.
   lockfile changed between that commit and the final audit tree.
 - The five directly affected transfer, multispine, stacked, pool-tool, and H5
   files were rerun together on the final tree: all 529 passed. The run used the
-  owner-provided 12 GiB/20 ms guard and peaked at 1.858 GiB observed
+  owner-provided 12 GiB/20 ms guard and peaked at 1.206 GiB observed
   per-process RSS. The exact synthetic host-target test, real banked
   wide-family test, and all 12 QRF structure mutations also passed
-  independently (14 cases total), peaking at 0.572 GiB. Warning summaries were
+  independently (14 cases total), peaking at 0.571 GiB. Warning summaries were
   disabled for the 529-test run; the focused run emitted only joblib's
   logical-core fallback.
 - `ruff check .`: passed on the final audit tree.
@@ -143,13 +143,12 @@ verdict.
 
 The originally cited `battery-verify/pkg3/build.log` was overwritten by later
 retries. The owner-preserved `_BUILD-FAILURE-1PCT.txt` retains the old
-traceback. At 01:45Z the mutable replacement log was 80,080 bytes and showed
-the late producer rebuilding target 4/8 of
-`person/puf_tax_itemization__batch_3`; earlier lines had already shown the
-bounded taxable-interest record complete without the supplied failure. At the
-final 02:10Z read-only snapshot, that log had been truncated to zero bytes and
-the latest 02:08Z guard entry still reported a resource wait with one other
-matching process. The output root had no runner exit marker, `pool.h5`, pool
+traceback. At the final 02:39Z read-only snapshot, the mutable replacement log
+was 39,249 bytes and showed survey target 26/47 complete in
+`puf_tax_itemization__batch_1`. Taxable interest completed at target 22/47
+without the supplied failure. The latest 02:38Z guard entry still reported a
+resource wait with one other matching process. The output root contained the
+intermediate checkpoint tree but no runner exit marker, `pool.h5`, pool
 manifest, or gates artifact, and the mutable run did not bind a Microcosm Git
 SHA. This host passage is progress evidence only; it is not revision-bound or
 a terminal certification result.
@@ -228,6 +227,10 @@ skipped.
 - `6aeb7720` — record the current 14-case focused regression run.
 - `a2762dd2` — record the current guarded 529-test affected suite.
 - `22106582` — record current lint, format, whitespace, and drift checks.
+- `3662263b` — reopen the current ACS binding continuation audit.
+- `e24aef85` — confirm the current scoped ACS binding diagnosis.
+- `92e0e2d9` — record current lint, format, whitespace, and drift checks.
+- `5b336c21` — record the current guarded 529-test affected suite.
 
 ## Remaining host step
 
