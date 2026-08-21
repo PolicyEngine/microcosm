@@ -4,12 +4,14 @@
 
 ### State
 
-In progress. The owner-reported ACS QRF record-binding failure is the active
-boundary. The branch already carries an assigned-only correction and focused
-regressions from earlier continuations; this pass will independently bind the
-historical failure to the current call path, verify that no unassigned target
-can enter calibration-specific regime or receipt work, rerun the relevant
-regression and suite surfaces, and refresh the required `FINAL_REPORT.md`.
+Diagnosis complete; verification is in progress. The owner traceback binds
+exactly to the historical globally enabled QRF-evidence path at `33bf52fe`.
+The current tree already contains the narrow assigned-only correction and the
+exact synthetic plus real ordinary/banked regressions. Three independent
+read-only audits found no remaining canonical path by which taxable interest
+can receive regime evidence, a QRF receipt, or a calibration write, so no
+duplicate runtime or test edit is warranted. The fresh affected-suite and
+static checks remain to be recorded before the required report is refreshed.
 
 ### Done
 
@@ -21,17 +23,61 @@ regression and suite surfaces, and refresh the required `FINAL_REPORT.md`.
 - Confirmed GitNexus graph query/context tools are unavailable in this session;
   the required workflow will use its CLI/index route where possible and direct
   source/history tracing as the documented fallback.
+- Used the preserved GitNexus graph indexed at `42819d53` through its read-only
+  local backend. Error-text query found the stacked regression surface; context
+  resolved the exact synthetic regression, while custom Cypher confirmed the
+  oversized production module was omitted from the graph. Direct source and
+  Git-object tracing therefore supplied the missing production call path.
+- Reconstructed the historical failure at `33bf52fe`. The 15-target public
+  `puf_tax_itemization` family was physically split at width eight, so taxable
+  interest carried `puf_tax_itemization__batch_1`. The old producer attached
+  QRF evidence to every imputed target and old line 4512 invoked strict record
+  binding before consulting assignment; old line 4310 compared the physical
+  batch name with the public family and raised the supplied error.
+- Confirmed the current correction keeps ordinary QRF imputation intact while
+  scoping only calibration-specific work. `transfer_acs_inputs` defaults its
+  regime selection to empty; the two canonical stacked callers derive exact
+  selections from the immutable registry; ordinary and banked fits detect and
+  verify only selected regimes; unselected records carry empty regimes; and
+  receipt producers attach evidence only to the same selected set.
+- Enumerated the live policy and selectors: exactly two early and seven late
+  model-required, source-operator, and adult-care specs are selected.
+  `taxable_interest_income` is absent. Both terminal validators validate the
+  four legacy counts for every target, reject QRF/calibration evidence on an
+  undeclared target, and run unchanged exact entity/family/target binding only
+  after a declared spec is found.
+- Audited all four production `transfer_acs_inputs` callers. Generic
+  multispine and pool-tool paths retain the empty default; only canonical early
+  and late stacked owners opt into the registry-derived selection. A generic
+  library caller may intentionally request regime metadata for any target on
+  its own transfer surface, but no production caller exposes that choice and
+  canonical validators reject undeclared evidence.
+- Reconciled independent runtime, history, and regression audits. They found no
+  remaining canonical scope leak. The exact synthetic regression rejects
+  undeclared taxable-interest evidence then accepts its evidence-free
+  four-count receipt; the real 15-target ordinary/banked regression preserves
+  the `__batch_1` record, strips its regimes/evidence, retains selected
+  unemployment evidence, and sends the generated taxable receipt through the
+  terminal validator. Rehashed mutations separately prove strict assigned
+  record binding remains fail-closed.
+- Confirmed the historical regression commit `22b2c6bc` retained the exact
+  `33bf52fe` runtime objects, while the current production source tree is
+  byte-identical to the complete-suite checkpoint `d29a8705` and the current
+  production/test trees are byte-identical to reviewed checkpoint `ad2a44c1`.
+- An independent focused run passed the synthetic plus real ordinary/banked
+  cases (3 passed), and a separate strict-binding mutation run passed all 12
+  parameter variants. These used the project environment without the owner
+  memory guard; guarded affected-suite verification is next.
 
 ### Next
 
-1. Trace the supplied raise site through current producers, selectors, receipt
-   builders, and validators; compare the historical failing objects.
-2. Audit the exact assigned target surface and focused regressions, making a
-   runtime or test change only if the current branch leaves a real gap.
-3. Run focused, directly affected, and static verification; commit each
-   coherent journal/code/test step.
-4. Refresh and commit `FINAL_REPORT.md` with the evidence and any remaining
-   host-only boundary.
+1. Run all five directly affected test files together under the owner memory
+   guard, then run repository lint, touched-file formatting, and whitespace
+   checks.
+2. Reconcile the current read-only host retry status without controlling or
+   certifying the external build.
+3. Refresh and commit `FINAL_REPORT.md`, close this journal section, and report
+   any remaining host-only boundary.
 
 ## Owner continuation recheck — 2026-08-21 08:58Z
 
