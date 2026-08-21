@@ -1,16 +1,58 @@
-# Progress
+# Health-coverage label lane progress
 
 ## State
 
-Microcosm #516 whole-row donor outlier screen is complete on
-`mortgage-donor-outlier-screen` (rebased onto `origin/main` after the #515
-interim carve merged as #525). The `puf_tax_detail` donor now drops tax units
-whose grouped raw mortgage interest reaches $10M before the #515 carve
-(pinned-artifact effect: 3,066 rows, weight 3,684 of ~161M, removing $2.947T
-of phantom mortgage-interest mass), with the checkpoint schema bumped to v3
-so post-carve pre-screen checkpoints rebuild.
+- Started 2026-08-21 on `battery-health-coverage-labels`.
+- Repository instructions loaded.
+- Required `uv sync --all-packages --extra us` was attempted twice. The global
+  cache is sandbox-inaccessible; with a worktree-local `UV_CACHE_DIR`, uv built
+  every local shard but could not download locked `huggingface-hub==1.18.0`
+  because this environment has no DNS/network access. The pre-existing virtual
+  environment is therefore being borrowed from the exact-lock
+  `microcosm-f1` worktree with `uv run --no-sync` and this worktree's source on
+  `PYTHONPATH`.
+- The required pre-commit Ruff gate and all five package test shards are green:
+  build 5,996; calibrate 201; data 275; fit 93; frame 294 (the data and frame
+  shards include 1 and 36 skips, respectively).
+- Source-of-truth adjudication identifies three health-label blocker checks:
+  CHAMPVA, Indian Health Service, and other means-tested coverage. CHAMPVA is
+  one leg of the label audit, not its goal.
 
 ## Done
+
+- Read `CLAUDE.md`, the GitNexus debugging workflow, the arm-split
+  adjudication, and the four-way synthesis.
+- Enumerated all nine registered health-coverage labels and began their
+  ASEC/ACS/clone-0 provenance audit.
+- Established a green pre-change baseline for Ruff and every package shard.
+- Confirmed that process enumeration is denied by the managed sandbox. No data
+  build will start until the required host-queue check can be satisfied.
+
+## Next
+
+- Commit this initial journal.
+- Finish the provenance classification and commit its evidence table under
+  `experiments/health_labels/`.
+- Fix derivation defects with regression tests, then run an off-chain 1% build
+  only when the host build queue and memory rules permit.
+- Record evidence, failure-line diffs, and the final report.
+
+## Historical handoff carried from `origin/main`
+
+The following mortgage-lane handoff was current when written and is retained
+as history only; it is not the state or next action of this branch.
+
+### Historical state
+
+Microcosm #516 whole-row donor outlier screen was complete on
+`mortgage-donor-outlier-screen` (rebased onto `origin/main` after the #515
+interim carve merged as #525). The `puf_tax_detail` donor dropped tax units
+whose grouped raw mortgage interest reached $10M before the #515 carve
+(pinned-artifact effect: 3,066 rows, weight 3,684 of ~161M, removing $2.947T
+of phantom mortgage-interest mass), with the checkpoint schema bumped to v3
+so post-carve pre-screen checkpoints rebuilt.
+
+### Historical done
 
 - Confirmed a clean starting worktree at `aef1c56`.
 - Read the repository guidance and established the #515 donor carve as the
@@ -19,30 +61,30 @@ so post-carve pre-screen checkpoints rebuild.
   validation, row-count pins, and existing donor-fact summaries.
 - Attempted the requested GitNexus impact workflow; the managed filesystem
   denied its global registry write. Its local index also exposed a broad
-  `build/` ignore mismatch, so the completed impact audit uses direct source
+  `build/` ignore mismatch, so the completed impact audit used direct source
   call sites and tests.
 - Added `US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING = 10_000_000.0` with the
   structural rationale and pinned-artifact receipts.
 - Added a whole-row screen on grouped raw person `home_mortgage_interest`
   after tax-unit assembly, before the #515 carve, with retained-index reset.
-- Confirmed no downstream consumer pairs donor rows to the original HDF arrays
-  or carries a stale donor-length vector; values and weights always originate
-  from the same screened frame.
+- Confirmed no downstream consumer paired donor rows to the original HDF
+  arrays or carried a stale donor-length vector; values and weights always
+  originated from the same screened frame.
 - Bumped the primary QRF checkpoint schema from v2 to v3 and made the stale
   checkpoint regression track the live constant while retaining literal-v1
   corruptions.
 - Added regression coverage for the exact grouped boundary, whole-row removal,
   retained/carved $5M row, raw-$10.5M pre-carve ordering, and constant.
-- Requested suites pass: PUF support/QRF 53; plan/gates 195; fiscal targets
+- Requested suites passed: PUF support/QRF 53; plan/gates 195; fiscal targets
   139; microcosm-data 138 with 1 skip. The directly affected tail-bound suite
-  adds 12 passes. Ruff format/check and `git diff --check` are clean.
+  added 12 passes. Ruff format/check and `git diff --check` were clean.
 - Wrote `SOL_516_REPORT.md` with the exact seam, consumer-by-consumer file:line
   audit, expected 208,611-row real-artifact effect, verification results, count
   sweep, and deliberately untouched surfaces.
 
-## Next
+### Historical next
 
 - PR #527 review cycle, then merge. After both #525 and #527: rebuild the
-  base/release; the mortgage critical-fit ratchet (0.20 -> 0.15) waits on a
-  run that holds per `us_critical_targets.py`.
-- Root record-level ETL carve stays open on microcosm#515.
+  base/release; the mortgage critical-fit ratchet (0.20 -> 0.15) waited on a
+  run that held per `us_critical_targets.py`.
+- Root record-level ETL carve remained open on microcosm#515.
