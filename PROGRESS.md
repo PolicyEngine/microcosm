@@ -4,12 +4,13 @@
 
 ### State
 
-Diagnosis and focused red/green verification are complete; affected-suite and
-static verification are in progress. The supplied line numbers resolve to
-historical commit `33bf52fe`, where QRF evidence was validated for every target
-before assignment lookup. The present branch already contains a scoped
-correction and the exact regression, so no duplicate executable edit will be
-made unless the remaining checks expose a current gap.
+Diagnosis, focused red/green proof, and the directly affected suite are
+complete and green; static verification is in progress. The supplied line
+numbers resolve to historical commit `33bf52fe`, where QRF evidence was
+validated for every target before assignment lookup. The present branch
+already contains the complete scoped correction and exact regression; three
+independent audits found no current gap that warrants duplicate executable or
+test edits.
 
 ### Done
 
@@ -52,11 +53,20 @@ made unless the remaining checks expose a current gap.
   matches `33bf52fe`. It followed lines 4512 and 4310 and failed with the same
   taxable-interest record-binding error at 0.439 GiB peak RSS; the temporary
   worktree was then removed.
+- Reconciled three independent read-only history, runtime/reachability, and
+  regression/host audits. They found no alternate canonical selection,
+  producer, ordinary/banked fit, warm-bank, serializer, receipt, validator, or
+  calibration-write path that broadens the nine-target registry. No material
+  regression gap remains for the reported early gap-fill failure.
+- Ran all 529 tests across ordinary ACS transfer, multispine serialization,
+  stacked spine, multispine pool tooling, and H5 receipt I/O together under the
+  owner guard. All passed in 12:12 with 1.643 GiB maximum observed per-process
+  RSS.
 
 ### Next
 
-Reconcile independent audits, run the directly affected suite and static
-checks, then close the journal and final report.
+Run static and executable-drift checks, take a final read-only host snapshot,
+then close the journal and final report.
 
 ## Reopened owner continuation — 2026-08-21
 
