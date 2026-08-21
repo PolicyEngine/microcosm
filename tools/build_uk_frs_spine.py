@@ -868,8 +868,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Wrote FRS spine H5: {output}", file=sys.stderr)
         print(f"Wrote Logbook row: {spool_path}", file=sys.stderr)
         return 0
-    except ValueError as error:
-        if args.sample_fraction != 1.0 and _RUNG_NAMED_EDGE_SIGNATURE in str(error):
+    except Exception as error:
+        if (
+            isinstance(error, ValueError)
+            and args.sample_fraction != 1.0
+            and _RUNG_NAMED_EDGE_SIGNATURE in str(error)
+        ):
             rung_abort_path = args.spine_h5.with_suffix(".rung_abort.json")
             receipt = _rung_abort_receipt(args, error=error)
             atomic_write_json(rung_abort_path, receipt)
@@ -895,32 +899,6 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(json.dumps(receipt, indent=2, sort_keys=True))
             return _RUNG_ABORT_EXIT_CODE
-        try:
-            receipt_path = write_error_receipt(
-                error_receipt_path(args.spine_h5.parent, build_id=state.build_id),
-                state=state,
-                pipeline=_PIPELINE,
-                error=error,
-            )
-            apply_error_verdict(
-                state,
-                local_artifact_reference(receipt_path, repository_hint=_REPOSITORY),
-            )
-            _record_attempt(
-                state=state,
-                started_at=started_at,
-                started_ts=started_ts,
-                code_pin=code_pin,
-                disposition="failed",
-                predecessor=predecessor,
-                rung=rung,
-                spool_dir=spool_dir,
-            )
-        except Exception:
-            pass
-        print(f"UK FRS spine build failed: {error}", file=sys.stderr)
-        return 1
-    except Exception as error:
         try:
             receipt_path = write_error_receipt(
                 error_receipt_path(args.spine_h5.parent, build_id=state.build_id),
