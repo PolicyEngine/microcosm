@@ -2512,3 +2512,45 @@ head; it still writes `us-f1-certification.json` and
    comparator against the current committed plan.
 2. Append a current exact four-build host handoff that supersedes stale status
    language without rewriting the historical r5 receipt.
+
+## F1 continuation r6 wiring-attestation refresh (2026-08-20)
+
+### State
+
+- Deliverable B was already committed and was not part of the discarded WIP.
+  This continuation changed neither the certification runner nor production
+  execution logic.
+- The landed executor/RNG/restoration/boolean-kind wiring changed deterministic
+  compiler, graph, schedule, seed, authority, and country-spec identities, but
+  the generated coverage receipt and several golden tests still pinned the
+  earlier values.
+- The source-input entrypoint intentionally carries two identical operator
+  maps: a typed-authority map and its legacy fallback. Its structural audit
+  recognized only the annotated assignment and therefore misclassified the
+  fallback map's wrapper calls as orchestration.
+
+### Done
+
+- Regenerated `docs/evidence/spec-engine/us-f0-coverage.json` with the repository
+  generator and refreshed only the corresponding deterministic golden pins.
+  The US spec is now
+  `05edd87390d841c5b444267cd674d8bb15ed518b12577268d2e2c2de82976079`;
+  the coverage check passes at 41,911/41,911 fields and 40/40 inventory checks.
+- Strengthened the operator-map audit to collect both annotated and ordinary
+  assignments, require exactly two identical maps for the dual-path source
+  entrypoint and exactly one for the other entrypoints, and distinguish wrapped
+  operator calls from true orchestration calls.
+- The affected identity/structural batch is decomposed green: 108 unaffected
+  tests passed in the correction run, and the three corrected failures then
+  passed in isolation. The generated bundle check, generated coverage check,
+  targeted Ruff lint, byte compilation, and `git diff --check` pass.
+- Revalidated the unchanged B implementation: all 35 dedicated runner tests
+  pass, and the runner/comparator plus artifact comparison and coverage modules
+  pass all 72 tests. No sample build ran.
+
+### Next
+
+1. Run the repository test inventory in memory-isolated fresh processes under
+   the unchanged 20 GiB per-process ceiling.
+2. Append the exact sequential four-build and comparator commands for the host;
+   do not execute those high-memory builds in this continuation.

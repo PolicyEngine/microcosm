@@ -680,7 +680,7 @@ def _fixture_registry() -> tuple[SpineAgreementSpec, ...]:
 
 def _operator_mapping_structure(
     entrypoint: Callable[..., object],
-) -> tuple[tuple[str, ...], set[str]]:
+) -> tuple[tuple[tuple[str, ...], ...], set[str]]:
     tree = ast.parse(textwrap.dedent(inspect.getsource(entrypoint)))
     function = next(node for node in tree.body if isinstance(node, ast.FunctionDef))
     mappings: list[ast.Dict] = []
@@ -689,6 +689,14 @@ def _operator_mapping_structure(
             isinstance(node, ast.AnnAssign)
             and isinstance(node.target, ast.Name)
             and node.target.id == "operators"
+            and isinstance(node.value, ast.Dict)
+        ):
+            mappings.append(node.value)
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "operators"
             and isinstance(node.value, ast.Dict)
         ):
             mappings.append(node.value)
@@ -702,7 +710,7 @@ def _operator_mapping_structure(
                 for keyword in node.keywords
                 if keyword.arg == "operators" and isinstance(keyword.value, ast.Dict)
             )
-    assert len(mappings) == 1
+    assert mappings
 
     def call_name(call: ast.Call) -> str:
         if isinstance(call.func, ast.Name):
@@ -711,32 +719,38 @@ def _operator_mapping_structure(
             return call.func.attr
         raise AssertionError(f"Unclassifiable pool call: {ast.dump(call.func)}")
 
-    operator_names: list[str] = []
+    operator_variants: list[tuple[str, ...]] = []
     mapped_calls: set[int] = set()
-    mapping = mappings[0]
-    for key, value in zip(mapping.keys, mapping.values, strict=True):
-        assert isinstance(key, ast.Constant) and isinstance(key.value, str)
-        operator_name = key.value
-        operator_names.append(operator_name)
-        calls = [node for node in ast.walk(value) if isinstance(node, ast.Call)]
-        if isinstance(value, ast.Name):
-            expected_kernel = _EXPECTED_SOURCE_OPERATOR_WRAPPERS.get(
-                operator_name,
-                operator_name,
-            )
-            assert value.id == expected_kernel
-            assert not calls
-        else:
-            assert isinstance(value, ast.Lambda)
-            assert [call_name(call) for call in calls] == [operator_name]
-        mapped_calls.update(id(call) for call in calls)
+    for mapping in mappings:
+        operator_names: list[str] = []
+        for key, value in zip(mapping.keys, mapping.values, strict=True):
+            assert isinstance(key, ast.Constant) and isinstance(key.value, str)
+            operator_name = key.value
+            operator_names.append(operator_name)
+            calls = [node for node in ast.walk(value) if isinstance(node, ast.Call)]
+            if isinstance(value, ast.Name):
+                expected_kernel = _EXPECTED_SOURCE_OPERATOR_WRAPPERS.get(
+                    operator_name,
+                    operator_name,
+                )
+                assert value.id == expected_kernel
+                assert not calls
+            else:
+                assert isinstance(value, ast.Lambda)
+                expected_kernel = _EXPECTED_SOURCE_OPERATOR_WRAPPERS.get(
+                    operator_name,
+                    operator_name,
+                )
+                assert [call_name(call) for call in calls] == [expected_kernel]
+            mapped_calls.update(id(call) for call in calls)
+        operator_variants.append(tuple(operator_names))
 
     orchestration_calls = {
         call_name(node)
         for node in ast.walk(function)
         if isinstance(node, ast.Call) and id(node) not in mapped_calls
     }
-    return tuple(operator_names), orchestration_calls
+    return tuple(operator_variants), orchestration_calls
 
 
 def test_full_operator_path_is_ordered_and_keeps_simulation_out_of_pool() -> None:
@@ -2937,21 +2951,35 @@ def test_production_operator_invocations_are_total_and_guarded(
         (
             multispine_pool_module.prepare_multispine_puf_predictors,
             ("derive_us_cps_carried_inputs",),
+            1,
             {"_run_source_operator_chain"},
         ),
         (
             multispine_pool_module.prepare_multispine_source_inputs_for_clone,
             POOL_PRE_CLONE_SOURCE_OPERATOR_ORDER,
-            {"_run_source_operator_chain"},
+            2,
+            {
+                "TypeError",
+                "ValueError",
+                "_run_source_operator_chain",
+                "all",
+                "any",
+                "isinstance",
+                "len",
+                "set",
+                "tuple",
+            },
         ),
         (
             multispine_pool_module._post_clone_source_operators,
             POOL_POST_CLONE_SOURCE_OPERATOR_ORDER,
+            1,
             set(),
         ),
         (
             multispine_pool_module.derive_multispine_pool_inputs,
             POOL_DERIVE_OPERATOR_ORDER,
+            1,
             {
                 "PoolStageOutput",
                 "_run_source_operator_chain",
@@ -2969,10 +2997,11 @@ def test_production_operator_invocations_are_total_and_guarded(
     for (
         entrypoint,
         expected_operators,
+        expected_mapping_count,
         expected_orchestration,
     ) in structural_expectations:
-        operators, orchestration = _operator_mapping_structure(entrypoint)
-        assert operators == expected_operators
+        operator_variants, orchestration = _operator_mapping_structure(entrypoint)
+        assert operator_variants == (expected_operators,) * expected_mapping_count
         assert orchestration == expected_orchestration
 
     observed: list[tuple[str, tuple[str, ...]]] = []

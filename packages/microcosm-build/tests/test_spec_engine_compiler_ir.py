@@ -30,7 +30,7 @@ from microcosm.build.spec_engine.model import (
 from microcosm.build.spec_engine.resolver import F0_CONTRACT_ONLY_KERNEL_IDS
 from microcosm.build.spec_engine.schemas import load_schema_registry
 
-US_SCHEDULE_SHA256 = "b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5"
+US_SCHEDULE_SHA256 = "604db0d1f7591696bb4fb5163412536b577f9e0ee844febee8c9d4af640738b8"
 
 
 @pytest.fixture(scope="module")

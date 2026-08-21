@@ -3306,7 +3306,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "44893ea9631bca8bea53692abfc8f51eabb8dd04f3bcf5874a65459253a285b8",
+            "spec_sha256": "05edd87390d841c5b444267cd674d8bb15ed518b12577268d2e2c2de82976079",
         },
     }
 
@@ -3516,7 +3516,7 @@ def test_constants_adapter_fixture_checkpoints_are_byte_identical_and_only_recei
         "country": "us",
         "schema_id": "country_spec",
         "schema_version": 1,
-        "spec_sha256": "44893ea9631bca8bea53692abfc8f51eabb8dd04f3bcf5874a65459253a285b8",
+        "spec_sha256": "05edd87390d841c5b444267cd674d8bb15ed518b12577268d2e2c2de82976079",
     }
 
     def run_fixture(root: Path, *, config_authority: str) -> dict[str, object]:

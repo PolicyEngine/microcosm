@@ -7,8 +7,11 @@
 - The requested scope is deliverables B and C only: revalidate or complete the
   single-build certification runner and four-receipt comparator, then append
   the exact high-memory-host handoff.
-- Current HEAD is `9047610b`. The tracked worktree is clean after the audited,
-  incomplete post-HEAD wiring WIP was reverted file-by-file without stash.
+- Current committed HEAD is `3c76dace`. The audited, incomplete post-HEAD
+  wiring WIP was reverted file-by-file without stash. A deliberate mechanical
+  attestation patch is now pending: it refreshes identities derived from the
+  already-landed wiring and corrects one structural test to inspect both the
+  typed and legacy operator maps.
 - `_F1-CHARTER-R2.md` through `_F1-CHARTER-R6.md` are untracked owner-provided
   instruction copies. They are being read as authority but are not product
   deliverables and will not be staged without explicit reason.
@@ -31,14 +34,28 @@
   Python files were not Ruff-formatted.
 - Reverted those 22 exact tracked paths with `git checkout --`. The five
   untracked owner charter copies were preserved unmodified and uncommitted.
+- Revalidated the committed certification runner without changing it. Its 35
+  dedicated tests pass; the runner/comparator plus artifact-comparison and
+  artifact-coverage batch passes all 72 tests. Focused Ruff, byte-compilation,
+  CLI-help, generated-bundle, and generated-coverage checks also pass.
+- Confirmed that the committed receipt remains fail-closed and honest at this
+  production state: node-reuse evidence is empty/incomplete, final-H5 selector
+  inventory is unsupported, and calibration inventory is incomplete. A host
+  comparator may therefore emit a well-formed FAIL; B does not imply that the
+  separate deliverable-A evidence is complete.
+- Refreshed the generated identity attestations that the landed wiring had
+  moved without re-pinning. The US bundle is now
+  `05edd87390d841c5b444267cd674d8bb15ed518b12577268d2e2c2de82976079`;
+  coverage reports 41,911/41,911 fields and 40/40 inventory checks. The
+  affected 111-test identity/structural batch is decomposed green (108 passing
+  unchanged tests, then the three corrected failures passing in isolation).
 
 ## Next
 
-1. Commit the dirty-work disposition in this progress journal and the lane
-   notes.
-2. Reconcile `tools/f1_certification_run.py` and its synthetic comparator tests
-   with the latest sealed plan-lock and production evidence surfaces; run only
-   unit/fixture-scale verification under 20 GiB.
+1. Commit the generated-identity and structural-audit refresh as one coherent
+   wiring-attestation step.
+2. Run the full repository test inventory in fresh-process shards so every
+   process remains below 20 GiB.
 3. Append the exact sequential four-build/comparator host handoff to
    `_F1-LANE-NOTES.md`, update this journal and `FINAL_REPORT.md`, and commit
    each coherent step. Do not run the four host builds or push.

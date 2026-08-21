@@ -389,11 +389,11 @@ def test_compiler_domain_counts_and_derived_surfaces_are_complete(
     assert len(compiled_schedule["waves"]) == 6
     assert (
         compiled_schedule["schedule_sha256"]
-        == "b1d00afea69b2009d862ca73fff1b63ce56628a8a0790be49918e4bbbecc9fc5"
+        == "604db0d1f7591696bb4fb5163412536b577f9e0ee844febee8c9d4af640738b8"
     )
     assert (
         compiled_schedule["payload_sha256"]
-        == "7766f2e94476cceb93d9730a74afb2ca6fed836068053f96fa4141bcc2f6154e"
+        == "1808bb8672c8b5c38c320622a0725fd5dc0b2e02809b65e7bd292a602f922d7b"
     )
 
     assert len(take_up["programs"]) == 13
