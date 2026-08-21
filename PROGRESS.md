@@ -1,5 +1,32 @@
 # Battery package 3 progress
 
+## Owner continuation audit — 2026-08-21 10:17Z
+
+### State
+
+In progress. Revalidating the supplied host traceback from the invariant raise
+site against the current executable tree; no current completion or host
+certification claim is being inherited from earlier journal entries.
+
+### Done
+
+- Re-read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
+- Confirmed the branch, recent correction lineage, required output file, and
+  pre-existing untracked memory-guard and host-failure diagnostics.
+- Reopened this committed progress journal before changing runtime or tests.
+- Started independent read-only audits of the invariant, calibration diff, and
+  regression surface.
+- Confirmed the repository is not registered in the normal GitNexus CLI index;
+  direct raise-site and Git-history tracing will remain the fallback unless a
+  usable preserved index is found.
+
+### Next
+
+Reconstruct the failing data path, prove the current calibration/evidence
+surface is restricted to assigned targets, strengthen code or regression
+coverage if any gap remains, run the prescribed verification, and refresh
+`FINAL_REPORT.md` with revision-bound results.
+
 ## Owner continuation revalidation — 2026-08-21 09:47Z
 
 ### State
