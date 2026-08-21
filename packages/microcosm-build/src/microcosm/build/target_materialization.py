@@ -53,6 +53,10 @@ def materialize_target_bindings(
     provider_registry = {**default_provider_registry(), **(providers or {})}
     skipped: list[MaterializationSkip] = []
     for spec in registry.specs:
+        if hasattr(adapter, "has_column") and adapter.has_column(
+            spec.entity, spec.measure
+        ):
+            continue
         contract_target_id = spec.metadata.get("contract_target_id")
         target = contract_targets.get(str(contract_target_id))
         if target is None:
@@ -111,7 +115,15 @@ def parameter_gated_threshold(
     mask = _compare(gated, comparison, gate)
     value_variable = binding.get("value_variable")
     if value_variable and value_variable != "person_count":
-        return np.where(mask, _column(adapter, "person", str(value_variable)), 0.0)
+        return np.where(
+            mask,
+            _column(
+                adapter,
+                str(binding.get("from_entity") or "person"),
+                str(value_variable),
+            ),
+            0.0,
+        )
     return mask.astype(float)
 
 
@@ -133,7 +145,12 @@ def baseline_flag_crosstab(
         values = _column(adapter, entity, count_of)
     else:
         values = np.ones_like(flag, dtype=float)
-    return np.where(flag, values, 0.0)
+    mask = flag
+    for predicate in binding.get("filters", ()):
+        mask &= _predicate_mask(adapter, entity, predicate)
+    for predicate in binding.get("household_conditions", ()):
+        mask &= _predicate_mask(adapter, entity, predicate)
+    return np.where(mask, values, 0.0)
 
 
 def input_substitution_counterfactual(
@@ -153,6 +170,7 @@ def _prepared_column_values(
     entity: str,
     binding: Mapping[str, Any],
 ) -> np.ndarray:
+    entity = str(binding.get("from_entity") or entity)
     if "value_expression" in binding:
         values = _expression(adapter, entity, str(binding["value_expression"]))
     else:
@@ -170,10 +188,16 @@ def _predicate_mask(
     default_entity: str,
     predicate: Mapping[str, Any],
 ) -> np.ndarray:
+    if "reduce" in predicate and hasattr(adapter, "household_condition"):
+        return np.asarray(adapter.household_condition(predicate), dtype=bool)
     entity = str(predicate.get("entity") or default_entity)
     variable = str(predicate.get("variable") or predicate.get("concept"))
     values = _column(adapter, entity, variable)
-    return _compare(values, str(predicate["operator"]), predicate["value"])
+    if "operator" in predicate:
+        operator, expected = str(predicate["operator"]), predicate["value"]
+    else:
+        operator, expected = "==", predicate["equals"]
+    return _compare(values, operator, expected)
 
 
 def _compare(values: np.ndarray, operator: str, expected: object) -> np.ndarray:
@@ -181,6 +205,8 @@ def _compare(values: np.ndarray, operator: str, expected: object) -> np.ndarray:
         return values == expected
     if operator == "!=":
         return values != expected
+    if operator == "in":
+        return np.isin(values, expected)
     numeric = values.astype(float)
     threshold = float(expected)
     if operator == ">":
@@ -209,6 +235,6 @@ def _expression(adapter: Any, entity: str, expression: str) -> np.ndarray:
 
 def _column(adapter: Any, entity: str, variable: object) -> np.ndarray:
     if hasattr(adapter, "column"):
-        return np.asarray(adapter.column(entity, str(variable)), dtype=float)
+        return np.asarray(adapter.column(entity, str(variable)))
     table = adapter.tables[entity]
-    return np.asarray(table[str(variable)], dtype=float)
+    return np.asarray(table[str(variable)])

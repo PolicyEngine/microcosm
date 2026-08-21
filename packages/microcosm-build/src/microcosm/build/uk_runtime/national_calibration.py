@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
-from importlib import resources
 from typing import Any
-
-import pandas as pd
 
 from microcosm.build.ledger_targets import compile_ledger_target_references
 from microcosm.build.plan import Stage
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+from microcosm.build.uk_runtime.ledger_targets import (
+    UKFrameTargetAdapter,
+    materialize_uk_ledger_targets,
+)
 from microcosm.calibrate import calibrate, effective_sample_size
 from microcosm.frame import Frame
 
@@ -58,7 +58,25 @@ class UKNationalCalibrationStage:
                 "UK national calibration resolved "
                 f"{resolved} of {declared} activated target references."
             )
-        prepared = _prepare_target_columns(frame, registry.specs)
+        materialized = materialize_uk_ledger_targets(
+            UKFrameTargetAdapter(frame),
+            registry,
+            period=_registry_materialization_period(registry.specs),
+        )
+        if materialized.skipped:
+            skipped = [
+                {
+                    "name": item.name,
+                    "measure": item.measure,
+                    "reason": item.reason,
+                }
+                for item in materialized.skipped
+            ]
+            raise RuntimeError(
+                "UK national calibration could not materialize every "
+                f"activated reference measure: {skipped}."
+            )
+        prepared = materialized.adapter.to_frame()
         result = calibrate(
             prepared,
             registry.to_target_set(),
@@ -155,119 +173,13 @@ def uk_national_calibration_stage(
     return Stage(name="national_calibration", transform=transform)
 
 
-def _contract_targets() -> dict[str, Mapping[str, Any]]:
-    payload = json.loads(
-        resources.files("microcosm.build.uk")
-        .joinpath("uk_national_targets.json")
-        .read_text()
-    )
-    return {row["target_id"]: row for row in payload["targets"]}
-
-
-def _prepare_target_columns(frame: Frame, specs: Sequence[object]) -> Frame:
-    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-    tables.update({name: frame.link(name).copy() for name in frame.links})
-    contracts = _contract_targets()
-    for spec in specs:
-        target_id = spec.metadata["contract_target_id"]
-        binding = contracts[target_id]["bindings"]["policyengine"]
-        entity = spec.entity
-        table = tables[entity]
-        if spec.measure in table:
-            continue
-        value_name = binding["value_variable"]
-        if value_name in {"person_count", "household_count", "benunit_count"}:
-            values = pd.Series(1.0, index=table.index)
-        else:
-            if value_name not in table:
-                raise ValueError(
-                    f"Activated UK target {target_id!r} requires missing "
-                    f"{entity} column {value_name!r}."
-                )
-            values = table[value_name].astype(float)
-        mask = pd.Series(True, index=table.index)
-        for condition in binding.get("filters", ()):
-            variable = condition["variable"]
-            if variable not in table:
-                raise ValueError(
-                    f"Activated UK target {target_id!r} requires missing "
-                    f"{entity} filter column {variable!r}."
-                )
-            mask &= _compare(table[variable], condition)
-        if binding.get("household_conditions"):
-            if entity != "household":
-                raise ValueError(
-                    f"Activated UK target {target_id!r} declares household "
-                    f"conditions on entity {entity!r}."
-                )
-            for condition in binding["household_conditions"]:
-                mask &= _household_condition(tables, condition, table)
-        table[spec.measure] = values.where(mask, 0.0)
-    weights = {entity: frame.weights_for(entity) for entity in frame.weighted_entities}
-    return Frame(
-        tables,
-        frame.schema,
-        weights,
-        frame.strata,
-        mass_log=frame.mass_log,
-        metadata=frame.metadata,
-    )
-
-
-def _compare(values: pd.Series, condition: Mapping[str, Any]) -> pd.Series:
-    operator = condition.get("operator")
-    if operator is None:
-        operator, expected = "==", condition["equals"]
-    else:
-        expected = condition["value"]
-    operations = {
-        "==": values.eq,
-        ">": values.gt,
-        ">=": values.ge,
-        "<": values.lt,
-        "<=": values.le,
-    }
-    if operator not in operations:
-        raise ValueError(f"Unsupported UK target condition operator {operator!r}.")
-    return operations[operator](expected)
-
-
-def _household_condition(
-    tables: Mapping[str, pd.DataFrame],
-    condition: Mapping[str, Any],
-    households: pd.DataFrame,
-) -> pd.Series:
-    entity = condition["entity"]
-    source = tables[entity]
-    if entity == "household":
-        household_ids = source["household_id"]
-    else:
-        people = tables["person"]
-        entity_membership = f"person_{entity}_id"
-        if entity_membership not in people:
-            raise ValueError(f"UK person table is missing {entity_membership!r}.")
-        group_to_household = (
-            people[[entity_membership, "person_household_id"]]
-            .drop_duplicates()
-            .set_index(entity_membership)["person_household_id"]
+def _registry_materialization_period(specs: Sequence[object]) -> int | str:
+    periods = {spec.period for spec in specs}
+    if not periods:
+        raise RuntimeError("UK national calibration has no target specs to materialize.")
+    if len(periods) != 1:
+        raise RuntimeError(
+            "UK national calibration cannot materialize mixed-period target "
+            f"specs: {sorted(str(period) for period in periods)}."
         )
-        if group_to_household.index.has_duplicates:
-            raise ValueError(f"UK {entity} groups span multiple households.")
-        household_ids = source[f"{entity}_id"].map(group_to_household)
-    reduce = condition["reduce"]
-    if reduce == "any":
-        matched = _compare(source[condition["variable"]], condition)
-        aggregate = matched.groupby(household_ids).any().astype(float)
-        expected_condition = {"operator": "==", "value": True}
-    elif reduce == "sum":
-        aggregate = source[condition["variable"]].groupby(household_ids).sum()
-        expected_condition = condition
-    elif reduce == "count":
-        aggregate = source[condition["variable"]].groupby(household_ids).count()
-        expected_condition = condition
-    else:
-        raise ValueError(f"Unsupported UK household reduction {reduce!r}.")
-    ids = households["household_id"]
-    return _compare(ids.map(aggregate).fillna(0.0), expected_condition).set_axis(
-        households.index
-    )
+    return next(iter(periods))

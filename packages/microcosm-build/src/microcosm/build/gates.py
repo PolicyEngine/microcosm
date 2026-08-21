@@ -186,6 +186,7 @@ def ledger_compile_parity_gate(
     fixture: TargetRegistry | Mapping[str, object],
     *,
     signed_differences: Iterable[Mapping[str, object]] = (),
+    signed_difference_tolerance: float = 1e-9,
     name: str = "ledger_compile_parity",
 ) -> GateResult:
     """Compare a Ledger-compiled target registry against a signed fixture.
@@ -196,16 +197,27 @@ def ledger_compile_parity_gate(
     comparator.
     """
 
-    actual = _coerce_target_registry(compiled_registry, fallback_country="uk")
-    expected = _coerce_target_registry(fixture, fallback_country=actual.country)
-    signed_keys = _signed_difference_keys(signed_differences)
+    actual = _ledger_compile_value_registry(
+        _coerce_target_registry(compiled_registry, fallback_country="uk")
+    )
+    expected = _ledger_compile_value_registry(
+        _coerce_target_registry(fixture, fallback_country=actual.country)
+    )
+    signed_rows = tuple(signed_differences)
+    signed_keys = _signed_difference_keys(signed_rows)
+    live_signed_report = ledger_compile_parity_signed_differences(actual, expected)
+    signed_failures, checked_signed = _signed_difference_check_failures(
+        signed_rows,
+        live_signed_report["differences"],
+        tolerance=signed_difference_tolerance,
+    )
     if signed_keys:
         actual = _drop_registry_keys(actual, signed_keys)
         expected = _drop_registry_keys(expected, signed_keys)
-    actual = _ledger_compile_value_registry(actual)
-    expected = _ledger_compile_value_registry(expected)
     report = ledger_target_registry_parity_report(expected, actual)
-    failures = _calibration_effective_parity_failures(report.failures)
+    failures = (
+        signed_failures + _calibration_effective_parity_failures(report.failures)
+    )
     return GateResult(
         name=name,
         passed=not failures,
@@ -218,14 +230,8 @@ def ledger_compile_parity_gate(
                 else "target_registry"
             ),
             "signed_difference_count": len(signed_keys),
-            "signed_differences": [
-                {
-                    "name": str(row.get("name")),
-                    "period": row.get("period"),
-                    "reason": str(row.get("reason", "")),
-                }
-                for row in signed_differences
-            ],
+            "signed_difference_tolerance": signed_difference_tolerance,
+            "signed_differences": checked_signed,
         },
     )
 
@@ -424,6 +430,112 @@ def _signed_difference_keys(
             )
         keys.add((str(row["name"]), period))
     return keys
+
+
+def _signed_difference_check_failures(
+    signed_differences: Iterable[Mapping[str, object]],
+    live_differences: object,
+    *,
+    tolerance: float,
+) -> tuple[tuple[str, ...], list[dict[str, object]]]:
+    if tolerance < 0:
+        raise ValueError("signed_difference_tolerance must be non-negative.")
+    if not isinstance(live_differences, Iterable) or isinstance(
+        live_differences, (str, bytes)
+    ):
+        raise TypeError("Live Ledger parity differences must be iterable rows.")
+    live_by_key = {
+        (str(row["name"]), row.get("period")): row
+        for row in live_differences
+        if isinstance(row, Mapping) and "name" in row
+    }
+    failures: list[str] = []
+    checked: list[dict[str, object]] = []
+    for signed in signed_differences:
+        key = (str(signed["name"]), signed["period"])
+        live = live_by_key.get(key)
+        evidence = {
+            "name": key[0],
+            "period": key[1],
+            "reason": str(signed.get("reason", "")),
+            "signed_kind": signed.get("kind"),
+            "signed_ledger_value": signed.get("ledger_value"),
+            "signed_fixture_value": signed.get("fixture_value"),
+            "live_kind": live.get("kind") if live is not None else None,
+            "live_ledger_value": live.get("ledger_value") if live is not None else None,
+            "live_fixture_value": (
+                live.get("fixture_value") if live is not None else None
+            ),
+        }
+        checked.append(evidence)
+        label = f"{key[0]}[{key[1]}]"
+        if live is None:
+            failures.append(
+                f"signed ledger parity difference {label} is stale: no live "
+                "difference remains."
+            )
+            continue
+        signed_kind = signed.get("kind")
+        live_kind = live.get("kind")
+        if not signed_kind:
+            failures.append(
+                f"signed ledger parity difference {label} is missing kind."
+            )
+            continue
+        if signed_kind != live_kind:
+            failures.append(
+                f"signed ledger parity difference {label} changed kind: "
+                f"signed={signed_kind!r}, live={live_kind!r}."
+            )
+            continue
+        for value_field in _signed_difference_required_value_fields(str(signed_kind)):
+            if value_field not in signed:
+                failures.append(
+                    "signed ledger parity difference "
+                    f"{label} is missing {value_field}."
+                )
+                continue
+            if not _signed_difference_value_matches(
+                signed.get(value_field),
+                live.get(value_field),
+                tolerance=tolerance,
+            ):
+                failures.append(
+                    "signed ledger parity difference "
+                    f"{label} changed {value_field}: "
+                    f"signed={signed.get(value_field)!r}, "
+                    f"live={live.get(value_field)!r}."
+                )
+    return tuple(failures), checked
+
+
+def _signed_difference_required_value_fields(kind: str) -> tuple[str, ...]:
+    if kind == "calibration_drift":
+        return ("ledger_value", "fixture_value")
+    if kind == "ledger_only":
+        return ("ledger_value",)
+    if kind in {"fixture_only", "ledger_absent"}:
+        return ("fixture_value",)
+    return ("ledger_value", "fixture_value")
+
+
+def _signed_difference_value_matches(
+    signed_value: object,
+    live_value: object,
+    *,
+    tolerance: float,
+) -> bool:
+    if signed_value is None or live_value is None:
+        return signed_value is live_value
+    try:
+        return math.isclose(
+            float(signed_value),
+            float(live_value),
+            rel_tol=0.0,
+            abs_tol=tolerance,
+        )
+    except (TypeError, ValueError):
+        return signed_value == live_value
 
 
 def _drop_registry_keys(

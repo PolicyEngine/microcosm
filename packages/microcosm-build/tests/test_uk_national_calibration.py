@@ -107,6 +107,81 @@ def _nested_frame() -> Frame:
     )
 
 
+def _reference_by_name(name: str) -> LedgerTargetReference:
+    from microcosm.build.country_spec import load_country_spec
+
+    return next(
+        reference
+        for reference in load_country_spec("uk").target_references
+        if reference.name == name
+    )
+
+
+def _fact_for_reference(
+    reference: LedgerTargetReference,
+    value: float,
+) -> dict:
+    selector = dict(reference.ledger_selector)
+    dimensions = dict(selector.get("dimension_values", {}))
+    return {
+        "aggregate_fact_key": f"ledger.aggregate_fact.v2:{reference.name}",
+        "aggregation": {"method": "sum"},
+        "assertion": "observation",
+        "dimensions": dimensions,
+        "geography": {
+            "level": selector.get("geography_level", "country"),
+            "id": selector.get("geography_id", "K02000001"),
+        },
+        "observed_measure": {
+            "source_name": selector["source_name"],
+            "source_concept": selector["source_concept"],
+            "source_measure_id": "value",
+            "unit": "gbp",
+        },
+        "period": {"type": "month", "value": f"{reference.period}-12"},
+        "value": value,
+    }
+
+
+def _materialization_binding_frame(
+    *,
+    include_counterfactual_delta: bool = True,
+) -> Frame:
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(3, dtype="int64"),
+            "esa_income": [10.0, 20.0, 0.0],
+            "esa_contrib": [1.0, 2.0, 0.0],
+            "uc_is_child_limit_affected": [1.0, 0.0, 1.0],
+            "children_count": [2.0, 1.0, 3.0],
+        }
+    )
+    salary_sacrifice_metric = "hmrc/salary_sacrifice_it_relief_basic_rate"
+    person_columns = {
+        "person_id": np.arange(4, dtype="int64"),
+        "person_benunit_id": [0, 0, 1, 2],
+        "person_household_id": [0, 0, 1, 2],
+        "capital_gains": [0.0, 7_000.0, 12_000.0, 500.0],
+    }
+    if include_counterfactual_delta:
+        person_columns[salary_sacrifice_metric] = [1.0, 2.0, 0.0, 0.0]
+    return Frame(
+        {
+            "person": pd.DataFrame(person_columns),
+            "benunit": pd.DataFrame(
+                {
+                    "benunit_id": np.arange(3, dtype="int64"),
+                    "universal_credit": [1.0, 0.0, 1.0],
+                }
+            ),
+            "household": household,
+        },
+        EntitySchema(group_entities=("benunit", "household")),
+        {"household": Weights(np.full(3, 10.0), WeightKind.DESIGN)},
+        metadata={"time_period": "2025"},
+    )
+
+
 def test_uc_calibration_compiles_and_moves_weighted_count_towards_fact() -> None:
     frame = _frame()
     stage = UKNationalCalibrationStage(
@@ -190,6 +265,63 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
     )
 
     assert {spec.name for spec in registry.specs} == {"obr.universal_credit_in_cap"}
+
+
+def test_packaged_binding_classes_materialize_through_national_stage() -> None:
+    selected_names = (
+        "dwp.uc.households",
+        "obr.esa",
+        "hmrc.cgt.taxpayers_total",
+        "dwp.uc.two_child_limit.children_affected",
+        "hmrc.salary_sacrifice.it_relief_basic_rate",
+    )
+    references = tuple(_reference_by_name(name) for name in selected_names)
+    facts = [
+        _fact_for_reference(reference, value)
+        for reference, value in zip(
+            references,
+            (20.0, 33.0, 2.0, 5.0, 3.0),
+            strict=True,
+        )
+    ]
+    stage = UKNationalCalibrationStage(
+        facts,
+        references=references,
+        epochs=1,
+        learning_rate=0.01,
+    )
+
+    result = stage(_materialization_binding_frame())
+
+    assert stage.manifest["activated_reference_count"] == len(selected_names)
+    assert stage.manifest["resolved_reference_count"] == len(selected_names)
+    assert stage.manifest["matrix_target_count"] == len(selected_names)
+    materialized = {
+        ("benunit", "dwp/uc/households"): [1.0, 0.0, 1.0],
+        ("household", "obr/esa"): [11.0, 22.0, 0.0],
+        ("person", "hmrc/cgt_taxpayers"): [0.0, 1.0, 1.0, 0.0],
+        ("household", "dwp/uc/two_child_limit/children_affected"): [2.0, 0.0, 3.0],
+        ("person", "hmrc/salary_sacrifice_it_relief_basic_rate"): [
+            1.0,
+            2.0,
+            0.0,
+            0.0,
+        ],
+    }
+    for (entity, measure), expected in materialized.items():
+        assert result.table(entity)[measure].tolist() == expected
+
+
+def test_packaged_materialization_skip_aborts_national_stage() -> None:
+    reference = _reference_by_name("hmrc.salary_sacrifice.it_relief_basic_rate")
+    stage = UKNationalCalibrationStage(
+        [_fact_for_reference(reference, 3.0)],
+        references=[reference],
+        epochs=1,
+    )
+
+    with pytest.raises(RuntimeError, match="could not materialize every"):
+        stage(_materialization_binding_frame(include_counterfactual_delta=False))
 
 
 def test_calibration_preserves_entity_ids_and_national_integrity() -> None:

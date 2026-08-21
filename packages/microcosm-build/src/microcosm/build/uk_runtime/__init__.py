@@ -249,6 +249,7 @@ from microcosm.build.uk_runtime.ladder_targets import (
     local_authority_household_targets,
 )
 from microcosm.build.uk_runtime.ledger_targets import (
+    UKFrameTargetAdapter,
     UKLedgerTargetCompilation,
     UKPolicyEngineAdapter,
     compile_uk_target_registry,
@@ -496,6 +497,7 @@ __all__ = [
     "UK_CGT_TARGET_SPECS",
     "UK_DIAGNOSTICS_SCHEMA_VERSION",
     "UK_FISCAL_TARGET_REGISTRY",
+    "UKFrameTargetAdapter",
     "UKLedgerTargetCompilation",
     "UKPolicyEngineAdapter",
     "compile_uk_target_registry",
