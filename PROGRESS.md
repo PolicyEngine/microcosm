@@ -4,20 +4,18 @@
 
 ### State
 
-Complete. The supplied traceback is reproduced exactly
-on the historical leaking runtime, and the current source is scoped to the
-immutable nine-target calibration registry at producer, evidence-attachment,
-and validator boundaries. The exact failing target is unassigned. The existing
-regression is demonstrably failing-first; all 14 decisive and all 529 directly
-affected current cases pass under the owner guard. The current 6,608-item
-collection and package/config Git objects exactly match the prior complete
-green sharded-suite checkpoint. Static checks pass. The live host retry remains
-unterminated and revision-unbound, so host certification is not claimed.
-`FINAL_REPORT.md` contains the committed continuation report. No duplicate
-executable or regression edit was warranted.
+In progress as of 2026-08-21 06:24:50Z. The owner continuation has been
+reopened from the supplied host traceback even though the branch contains a
+prior scoped correction and regression. Re-establish the raise-site call path,
+prove that only the immutable nine-target calibration registry can enable QRF
+regime work or evidence, rerun the exact outside-target regression and affected
+suite, and refresh `FINAL_REPORT.md` from current evidence before declaring
+completion. The owner-provided host artifacts remain untouched and untracked.
 
 ### Done
 
+- Reopened the committed journal before taking implementation action in this
+  continuation and recorded the current verification boundary.
 - Read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
 - Confirmed `FINAL_REPORT.md` is the existing required output file.
 - Preserved the owner-provided untracked `_BUILD-FAILURE-1PCT.txt` and
@@ -1561,7 +1559,10 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run or identify a revision-bound off-chain 1% retry that reaches a terminal
-   runner verdict and emits the expected final pool, manifest, and gates
-   artifacts. Do not claim an after artifact without that terminal proof, and
-   do not publish or mutate the pending logbook chain as a side effect.
+1. Query the current GitNexus graph for the invariant and inspect the exact
+   raise-site, producer, attachment, and validation paths in source and history.
+2. Run the exact outside-target regression and the directly affected suite;
+   make and commit any warranted scoped implementation or test correction.
+3. Refresh `FINAL_REPORT.md` with current evidence. Host certification remains
+   outside local PR-CI evidence; do not publish or mutate the pending logbook
+   chain as a side effect.
