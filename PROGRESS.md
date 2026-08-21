@@ -4,10 +4,11 @@
 
 ### State
 
-Local diagnosis and verification are complete; final reporting is in progress.
-The supplied traceback exactly fingerprints bad commit `33bf52fe`, while
-current source already contains the complete scoped correction and regression
-coverage. No duplicate runtime or test edit is warranted.
+Complete. The supplied traceback exactly fingerprints bad commit `33bf52fe`,
+while current source already contains the complete scoped correction and
+regression coverage. Fresh source, history, regression, guarded test, and
+static audits found no remaining leak and no reason for a duplicate executable
+edit.
 
 ### Done
 
@@ -56,11 +57,21 @@ coverage. No duplicate runtime or test edit is warranted.
   `microcosm-build/src`, `tools`, `specs`, project, and lockfile content is
   unchanged from that all-suite checkpoint. Its only affected-test difference
   is the committed three-line in-range-family forgery regression.
+- Took a final read-only host snapshot at 02:10Z. The mutable retry had shown
+  progress into late `puf_tax_itemization__batch_3` at 01:45Z, but its
+  `build.log` was later truncated to zero bytes; the guard still reported a
+  resource wait, and no runner exit, final pool, manifest, or gates artifact
+  existed. The run does not bind a Microcosm revision, so it is not accepted as
+  terminal certification evidence.
+- Refreshed `FINAL_REPORT.md` with the current diagnosis, independent audit
+  verdicts, guarded 14-case and 529-test results, static verification, current
+  continuation commits, and explicit remaining host boundary.
 
 ### Next
 
-Inspect the latest read-only host retry state without claiming it as
-revision-bound, then refresh and commit `FINAL_REPORT.md` and this journal.
+Run or identify a revision-bound restricted host 1% retry that reaches a
+terminal runner verdict and emits the expected pool, manifest, and gates
+artifacts; this remains external to the completed local correction.
 
 ## Current continuation — 2026-08-21 01:11Z
 
