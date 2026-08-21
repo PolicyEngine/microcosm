@@ -4,11 +4,11 @@
 
 ### State
 
-Diagnosis and decisive focused verification complete; affected-suite
-verification in progress. The supplied traceback exactly fingerprints bad
-commit `33bf52fe`, while current source already contains the complete scoped
-correction and regression coverage. No duplicate runtime or test edit is
-warranted unless the remaining verification exposes a gap.
+Diagnosis, decisive focused verification, and affected-suite verification are
+complete; static verification is in progress. The supplied traceback exactly
+fingerprints bad commit `33bf52fe`, while current source already contains the
+complete scoped correction and regression coverage. No duplicate runtime or
+test edit is warranted unless the remaining verification exposes a gap.
 
 ### Done
 
@@ -47,12 +47,16 @@ warranted unless the remaining verification exposes a gap.
   producer, and all 12 fully rehashed QRF structure mutations under the owner
   12 GiB/20 ms guard. All 14 cases passed; maximum observed per-process RSS was
   0.572 GiB. The only warning was joblib's logical-core fallback.
+- Ran all 529 tests in the five directly affected ordinary-transfer,
+  multispine-serialization, stacked-spine, pool-tool, and H5 files together
+  under the owner guard. The run reached 100% with exit zero and no failures;
+  maximum observed per-process RSS was 1.858 GiB.
 
 ### Next
 
-Run the five directly affected test files under the owner memory guard, then
-run lint, formatting, whitespace, and executable-tree drift checks before
-refreshing the final report.
+Run lint, formatting, whitespace, and executable-tree drift checks, inspect the
+latest read-only host retry state without claiming it as revision-bound, then
+refresh the final report.
 
 ## Current continuation — 2026-08-21 01:11Z
 
