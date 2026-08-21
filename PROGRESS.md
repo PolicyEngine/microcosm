@@ -1,5 +1,32 @@
 # Battery package 3 progress
 
+## Owner-reported host failure continuation — 2026-08-21 07:59Z
+
+### State
+
+In progress. The owner reports that the two-part calibration still fails the
+host 1% verification at the ACS QRF pattern-record binding for unassigned
+`person/puf_tax_itemization/taxable_interest_income`. The prior local closure
+is historical, not a verdict for this newly reported run. Re-establish the
+exact executable/revision and receipt path behind the supplied traceback,
+identify any remaining shared-path leak, make the smallest assigned-only fix,
+add a regression that binds the invariant, and run the required verification.
+
+### Done
+
+- Re-read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
+- Confirmed the GitNexus query/context tools are unavailable in this session;
+  direct raise-site, caller, Git-object, host-log, and focused-test tracing is
+  the documented fallback.
+- Preserved the owner-provided untracked failure and memory-guard artifacts.
+- Reopened the committed root journal before making executable or test edits.
+
+### Next
+
+Bind the reported failure to the exact host log and current source, trace the
+receipt producer and validator selection end to end, and establish a
+failing-first regression before changing behavior.
+
 ## Reopened owner verification — 2026-08-21
 
 ### State
