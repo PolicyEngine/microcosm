@@ -62,6 +62,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_GAIN_BAND_LOWER_BOUNDS,
     HMRC_CGT_INCOME_BAND_LOWER_BOUNDS,
@@ -88,6 +89,7 @@ __all__ = [
     "impute_uk_capital_gains",
     "summarize_uk_cgt_imputation",
     "uk_capital_gains_imputation_stage",
+    "uk_cgt_spine_stage_transform",
     "uk_cgt_policy_parameters",
     "uk_cgt_taxable_income_proxy",
 ]
@@ -634,3 +636,68 @@ def uk_capital_gains_imputation_stage(
         return impute_uk_capital_gains(frame, distribution, resolved, seed=seed)
 
     return UKNationalStage(name=UK_CGT_IMPUTATION_STAGE_NAME, transform=transform)
+
+
+def uk_cgt_spine_stage_transform(
+    stage: SourceStageSpec,
+    ods_path: str | Path,
+):
+    """Bind the spine manifest, then reuse the reviewed merged CGT runtime.
+
+    The certified-H5 wrapper and its candidate verification remain untouched;
+    this source-plan seam deliberately delegates only the amounts transform.
+    """
+
+    _assert_cgt_spine_stage_parameters(stage)
+    return uk_capital_gains_imputation_stage(ods_path).transform
+
+
+def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
+    """Arm 1 of the #730/#684 two-arm rule for the spine projection."""
+
+    expected_kinds = (
+        "verify_pinned_cgt_ods",
+        "taxable_income_proxy",
+        "rank_preserving_allocation",
+        "within_band_draws",
+        "sub_aea_remainder",
+        "record_mass_conservation_receipt",
+        "classify_cgt_band_facts_with_reviewed_fence",
+    )
+    kinds = tuple(operation.kind for operation in stage.operations)
+    if kinds != expected_kinds:
+        raise ValueError(
+            f"CGT spine operation order drifted: expected {expected_kinds}, got {kinds}."
+        )
+    operations = {
+        operation.kind: operation.parameters for operation in stage.operations
+    }
+    expected = {
+        ("verify_pinned_cgt_ods", "artifact_role"): "cgt_published_fact_surface",
+        ("verify_pinned_cgt_ods", "require_before_source_read"): True,
+        ("verify_pinned_cgt_ods", "runtime_sha256_required"): True,
+        ("verify_pinned_cgt_ods", "fail_on_mismatch"): True,
+        ("taxable_income_proxy", "components"): list(
+            UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS
+        ),
+        ("taxable_income_proxy", "fail_on_missing_component"): True,
+        ("rank_preserving_allocation", "minimum_allocation_people"): 1,
+        ("within_band_draws", "seed_base"): UK_CGT_IMPUTATION_SEED,
+        ("within_band_draws", "mean_repair_margin"): _MEAN_MARGIN,
+        ("within_band_draws", "deterministic"): True,
+        ("record_mass_conservation_receipt", "reason"): (
+            UK_CGT_MASS_CONSERVATION_REASON
+        ),
+        ("record_mass_conservation_receipt", "declared_factor"): 1.0,
+        ("classify_cgt_band_facts_with_reviewed_fence", "calibration_permitted"): (
+            False
+        ),
+        ("classify_cgt_band_facts_with_reviewed_fence", "fenced_fact_count"): 76,
+    }
+    for (kind, parameter), value in expected.items():
+        actual = operations[kind].get(parameter)
+        if actual != value:
+            raise ValueError(
+                f"CGT spine {kind} parameter {parameter!r} drifted: expected "
+                f"{value!r}, got {actual!r}."
+            )

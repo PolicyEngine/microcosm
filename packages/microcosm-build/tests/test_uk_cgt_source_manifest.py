@@ -11,6 +11,10 @@ from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_MASS_CONSERVATION_REASON,
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
 )
+from microcosm.build.uk_runtime.cgt_structure import (
+    CGT_CLONE_MASS_CHANGE_REASON,
+    CGT_DONOR_MASS_CHANGE_REASON,
+)
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_JOINT_ODS_SHA256,
     HMRC_CGT_JOINT_ODS_SIZE_BYTES,
@@ -129,6 +133,20 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
                 new_total=100.0,
                 declared_factor=1.0,
                 reason=spi_reason,
+            ),
+            MassChangeRecord(
+                entity="household",
+                old_total=100.0,
+                new_total=100.0,
+                declared_factor=1.0,
+                reason=CGT_CLONE_MASS_CHANGE_REASON,
+            ),
+            MassChangeRecord(
+                entity="household",
+                old_total=100.0,
+                new_total=110.0,
+                declared_factor=None,
+                reason=CGT_DONOR_MASS_CHANGE_REASON,
             ),
             MassChangeRecord(
                 entity="household",

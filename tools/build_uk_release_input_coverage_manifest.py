@@ -790,6 +790,25 @@ def build_manifest(
         },
         "effective_mass_coverage": EFFECTIVE_MASS_COVERAGE,
         "family_coverage": {
+            "cgt_incidence_clone": _source_stage_family_coverage_contract(
+                stage_name="cgt_incidence_clone",
+                candidate_source=candidate_source,
+            ),
+            "cgt_band_donors": _source_stage_family_coverage_contract(
+                stage_name="cgt_band_donors",
+                candidate_source=candidate_source,
+            ),
+            "hmrc_cgt_gains_spine": _cgt_spine_family_coverage_contract(
+                candidate_source=candidate_source,
+            ),
+            "salary_sacrifice": _source_stage_family_coverage_contract(
+                stage_name="salary_sacrifice",
+                candidate_source=candidate_source,
+            ),
+            "student_loans": _source_stage_family_coverage_contract(
+                stage_name="student_loans",
+                candidate_source=candidate_source,
+            ),
             "hmrc_cgt_gains": _cgt_family_coverage_contract(
                 candidate_source=candidate_source,
             ),
@@ -959,6 +978,32 @@ def _source_stage_family_coverage_contract(
             f"{SOURCE_STAGES_PATH}: expected exactly one {stage_name!r} stage."
         )
     stage = matches[0]
+    operations = [
+        operation
+        for operation in stage.get("operations", [])
+        if isinstance(operation, dict)
+    ]
+    declared_reasons = [
+        str(operation["reason"])
+        for operation in operations
+        if isinstance(operation.get("reason"), str) and operation.get("reason")
+    ]
+    required_mass_change_reason = (
+        declared_reasons[-1]
+        if declared_reasons
+        else (
+            "E5 source-stage transform preserves household rows and typed "
+            "household weights; total household mass is conserved."
+        )
+    )
+    mass_change_semantics = (
+        "mass_increasing_support"
+        if any(
+            operation.get("kind") == "stack_band_donor_households"
+            for operation in operations
+        )
+        else "mass_conserving"
+    )
     return {
         "status": "required_at_build",
         "stage": stage_name,
@@ -971,10 +1016,91 @@ def _source_stage_family_coverage_contract(
             "source": str(stage.get("source", "")),
         },
         "output_weight_kind": "importance",
-        "required_mass_change_reason": (
-            "E5 source-stage transform preserves household rows and typed "
-            "household weights; total household mass is conserved."
+        "required_mass_change_reason": required_mass_change_reason,
+        "mass_change_semantics": mass_change_semantics,
+        "outputs": list(stage.get("outputs", [])),
+        "rewrites": list(stage.get("rewrites", [])),
+        "effective_mass_requirements": {},
+    }
+
+
+def _cgt_spine_family_coverage_contract(
+    *,
+    candidate_source: dict[str, Any],
+) -> dict[str, Any]:
+    """Emit the canonical spine-side CGT family without touching the frozen path."""
+
+    payload = _load(SOURCE_STAGES_PATH)
+    stages = payload.get("stages")
+    if not isinstance(stages, list):
+        raise ValueError(f"{SOURCE_STAGES_PATH}: expected source stages list.")
+    matches = [
+        stage
+        for stage in stages
+        if isinstance(stage, dict) and stage.get("stage") == "hmrc_cgt_gains_spine"
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"{SOURCE_STAGES_PATH}: expected exactly one hmrc_cgt_gains_spine stage."
+        )
+    stage = matches[0]
+    artifacts = {
+        artifact["role"]: artifact
+        for artifact in stage.get("artifacts", [])
+        if isinstance(artifact, dict) and isinstance(artifact.get("role"), str)
+    }
+    operations = {
+        operation["kind"]: operation
+        for operation in stage.get("operations", [])
+        if isinstance(operation, dict) and isinstance(operation.get("kind"), str)
+    }
+    required_artifacts = {"cgt_published_fact_surface", "policy_parameters"}
+    required_operations = {
+        "verify_pinned_cgt_ods",
+        "taxable_income_proxy",
+        "rank_preserving_allocation",
+        "within_band_draws",
+        "sub_aea_remainder",
+        "record_mass_conservation_receipt",
+        "classify_cgt_band_facts_with_reviewed_fence",
+    }
+    missing_artifacts = sorted(required_artifacts - set(artifacts))
+    missing_operations = sorted(required_operations - set(operations))
+    if missing_artifacts or missing_operations:
+        raise ValueError(
+            f"{SOURCE_STAGES_PATH}: incomplete spine CGT family contract; "
+            f"missing_artifacts={missing_artifacts}, "
+            f"missing_operations={missing_operations}."
+        )
+    surface = artifacts["cgt_published_fact_surface"]
+    verify = operations["verify_pinned_cgt_ods"]
+    fence = operations["classify_cgt_band_facts_with_reviewed_fence"]
+    if verify.get("artifact_role") != "cgt_published_fact_surface":
+        raise ValueError("Spine CGT verification must bind its distinct ODS role.")
+    if not bool(verify.get("require_before_source_read")):
+        raise ValueError("Spine CGT ODS must be verified before source read.")
+    if bool(fence.get("calibration_permitted", True)):
+        raise ValueError("Spine CGT band facts must remain fenced from calibration.")
+    if str(surface.get("sha256", "")) == "" or int(surface.get("size_bytes", 0)) <= 0:
+        raise ValueError("Spine CGT surface must pin sha256 and size_bytes.")
+    return {
+        "status": "required_at_build",
+        "stage": "hmrc_cgt_gains_spine",
+        "source_manifest": SOURCE_STAGES_PATH.name,
+        "source_manifest_sha256": _sha256(SOURCE_STAGES_PATH),
+        "base_candidate_sha256": str(candidate_source["sha256"]),
+        "base_candidate_tier": validate_uk_release_tier(candidate_source["tier"]),
+        "source_vintages": {
+            "hmrc_surface": str(surface["vintage"]),
+            "mapped_build_period": str(surface["mapped_build_period"]),
+        },
+        "output_weight_kind": "importance",
+        "required_mass_change_reason": str(
+            operations["record_mass_conservation_receipt"]["reason"]
         ),
+        "calibration_permitted": bool(fence["calibration_permitted"]),
+        "fact_fence_id": str(fence["fact_fence_id"]),
+        "fenced_fact_count": int(fence["fenced_fact_count"]),
         "outputs": list(stage.get("outputs", [])),
         "rewrites": list(stage.get("rewrites", [])),
         "effective_mass_requirements": {},

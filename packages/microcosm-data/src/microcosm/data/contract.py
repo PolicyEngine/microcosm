@@ -368,6 +368,7 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_export_surface": "export_surface",
     "uk_take_up_signal": "take_up_signal",
     "uk_brma_enum_domain": "enum_domain",
+    "uk_student_loan_plan_enum_domain": "enum_domain",
     "uk_target_surface": "target_surface",
     "uk_target_fit": "target_fit",
     "uk_input_mass_parity": "input_mass_parity",
@@ -403,6 +404,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_export_surface": ("export_surface", "terminal"),
     "uk_take_up_signal": ("take_up_signal", "terminal"),
     "uk_brma_enum_domain": ("enum_domain", "terminal"),
+    "uk_student_loan_plan_enum_domain": ("enum_domain", "terminal"),
     "uk_calibration_reference_coverage": (
         "calibration_reference_coverage",
         "terminal",

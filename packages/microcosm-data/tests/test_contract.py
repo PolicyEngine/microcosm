@@ -201,6 +201,11 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_export_surface": ("export_surface", "terminal", "export_surface"),
     "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
     "uk_brma_enum_domain": ("enum_domain", "terminal", "enum_domain"),
+    "uk_student_loan_plan_enum_domain": (
+        "enum_domain",
+        "terminal",
+        "enum_domain",
+    ),
     "uk_calibration_reference_coverage": (
         "calibration_reference_coverage",
         "terminal",

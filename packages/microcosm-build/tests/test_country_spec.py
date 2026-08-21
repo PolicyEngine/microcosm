@@ -284,6 +284,11 @@ class TestUKCountryPackage:
             "frs_release.json",
             "gates.json",
             "brma_rent_counts.json",
+            "hmrc_cgt_size_bands.json",
+            "advani_summers_capital_gains_distribution.json",
+            "salary_sacrifice_anchor.json",
+            "slc_liable_stocks.json",
+            "cgt_band_donor_support_bounds.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
@@ -313,11 +318,11 @@ class TestUKCountryPackage:
             "target_reference_membership.json",
         )
 
-    def test_uk_source_manifest_loads_twenty_one_stages(self) -> None:
+    def test_uk_source_manifest_loads_twenty_six_stages(self) -> None:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
-        assert len(spec.sources.stages) == 21
+        assert len(spec.sources.stages) == 26
 
 
 class TestExistingPackagesGeneralize:
@@ -350,6 +355,11 @@ class TestExistingPackagesGeneralize:
             "frs_release.json",
             "gates.json",
             "brma_rent_counts.json",
+            "hmrc_cgt_size_bands.json",
+            "advani_summers_capital_gains_distribution.json",
+            "salary_sacrifice_anchor.json",
+            "slc_liable_stocks.json",
+            "cgt_band_donor_support_bounds.json",
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
@@ -620,6 +630,7 @@ class TestUKGatesManifest:
             "uk_export_surface",
             "uk_take_up_signal",
             "uk_brma_enum_domain",
+            "uk_student_loan_plan_enum_domain",
             "uk_calibration_reference_coverage",
             "uk_target_surface",
             "uk_target_fit",
