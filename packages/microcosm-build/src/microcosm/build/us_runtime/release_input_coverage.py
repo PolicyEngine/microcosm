@@ -148,6 +148,13 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         "pre_subsidy_care_expenses",
         "is_incapable_of_self_care",
         "health_insurance_premiums",
+        # PolicyEngine/microcosm#719: the work-experience stage's measured
+        # person attributes (industry of longest job, worked-last-year).
+        # The reference artifact predates the stage; the committed person
+        # schema carries them on every release, so absence is a red gate.
+        "detailed_industry_recode",
+        "major_industry_recode",
+        "worked_last_year",
         "is_self_employed",
     }
 )

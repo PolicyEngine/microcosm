@@ -47,11 +47,11 @@ from microcosm.build.us_runtime import (
     ASEC_2023_WEEKS_UNEMPLOYED_ZIP_URL,
     ASEC_EDUCATION_ASSISTANCE_ARCHIVES,
     ASEC_RAW_STAGE_ARTIFACT_KIND,
-    ASEC_WORK_EXPERIENCE_ARCHIVES,
     ASEC_RAW_STAGE_CHECKPOINT_FILENAME,
     ASEC_RAW_STAGE_OPERATOR_STATUS,
     ASEC_RAW_STAGE_SCHEMA_VERSION,
     ASEC_RAW_STAGE_STAGE,
+    ASEC_WORK_EXPERIENCE_ARCHIVES,
     BASE_ASEC_SUPPORT_CHANNEL,
     CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
     CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
@@ -85,8 +85,8 @@ from microcosm.build.us_runtime import (
     load_asec_2023_weeks_unemployed_source,
     load_asec_education_assistance_sources,
     load_asec_public_assistance_type_sources,
-    load_asec_work_experience_sources,
     load_asec_raw_stage_checkpoint,
+    load_asec_work_experience_sources,
     load_congressional_district_vintage_crosswalk,
     load_us_block_ladder,
     puf_tax_unit_donor_from_arrays,
@@ -908,6 +908,10 @@ def _run_all(
         income_years=_pooled_income_years(args),
     )
     public_assistance_type_source = load_asec_public_assistance_type_sources(
+        _asec_education_source_paths(args),
+        income_years=_pooled_income_years(args),
+    )
+    work_experience_source = load_asec_work_experience_sources(
         _asec_education_source_paths(args),
         income_years=_pooled_income_years(args),
     )

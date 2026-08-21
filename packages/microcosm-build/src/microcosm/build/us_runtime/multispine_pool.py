@@ -43,9 +43,6 @@ from microcosm.build.us_runtime.disability_benefits import (
     with_us_disability_benefits,
 )
 from microcosm.build.us_runtime.education_inputs import with_us_education_inputs
-from microcosm.build.us_runtime.work_experience_inputs import (
-    with_us_work_experience_inputs,
-)
 from microcosm.build.us_runtime.eligibility_inputs import (
     with_us_eligibility_inputs,
 )
@@ -121,6 +118,9 @@ from microcosm.build.us_runtime.us_late_overlap_ownership import (
 )
 from microcosm.build.us_runtime.weeks_unemployed import with_us_weeks_unemployed
 from microcosm.build.us_runtime.wic_claim import with_us_wic_claim_input
+from microcosm.build.us_runtime.work_experience_inputs import (
+    with_us_work_experience_inputs,
+)
 from microcosm.build.us_runtime.workers_compensation import (
     with_us_workers_compensation,
 )

@@ -992,6 +992,22 @@ _source_input_inventories = {
         _single("person_id", "person", "person_id"),
         _single("resolved_person_weight", "person", "@resolved_weight"),
     ),
+    "with_us_work_experience_inputs": _inventory(
+        "with_us_work_experience_inputs",
+        _requirement(
+            "industry_source",
+            (
+                _column("person", "WEIND", value_kind="finite_numeric"),
+                _column("person", "WEMIND", value_kind="finite_numeric"),
+            ),
+        ),
+        _requirement(
+            "weeks_source",
+            (_column("person", "WKSWORK", value_kind="finite_numeric"),),
+        ),
+        _single("person_id", "person", "person_id"),
+        _single("resolved_person_weight", "person", "@resolved_weight"),
+    ),
 }
 
 _source_input_inventories = {

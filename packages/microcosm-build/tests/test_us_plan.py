@@ -1249,8 +1249,10 @@ class TestBaseStageSourceClosure:
 
     #: Raw columns restored from pinned official sidecars because the frozen
     #: census_cps inputs never carried them (LKWEEKS only for income year
-    #: 2022; ED_VAL and PAW_TYP for every pooled year).
-    SIDECAR_RESTORED_COLUMNS = frozenset({"LKWEEKS", "ED_VAL", "PAW_TYP"})
+    #: 2022; ED_VAL, PAW_TYP, WEIND, and WEMIND for every pooled year).
+    SIDECAR_RESTORED_COLUMNS = frozenset(
+        {"LKWEEKS", "ED_VAL", "PAW_TYP", "WEIND", "WEMIND"}
+    )
 
     #: Release-time stage constants whose inputs are produced inside the
     #: fiscal-refresh release tool, not the base builder (org_wages consumes

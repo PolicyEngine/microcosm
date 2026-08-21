@@ -2919,6 +2919,11 @@ _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
                 "source_operator_wic_claim",
                 "would_claim_wic",
             ),
+            (
+                "person",
+                "source_operator_work_experience_inputs",
+                "worked_last_year",
+            ),
             ("person", "take_up", "takes_up_basic_health_program_if_eligible"),
             ("person", "take_up", "takes_up_chip_if_eligible"),
             ("person", "take_up", "takes_up_early_head_start_if_eligible"),
@@ -2951,6 +2956,16 @@ _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
                 "immigration_status_str",
             ),
             ("person", "source_operator_immigration", "ssn_card_type"),
+            (
+                "person",
+                "source_operator_work_experience_inputs",
+                "detailed_industry_recode",
+            ),
+            (
+                "person",
+                "source_operator_work_experience_inputs",
+                "major_industry_recode",
+            ),
             (
                 "tax_unit",
                 "puf_tax_itemization",
@@ -5014,6 +5029,7 @@ _SOURCE_MANIFEST_STAGE_BY_OPERATOR: Mapping[str, str] = MappingProxyType(
         "with_us_retirement_distribution_inputs": "retirement_distributions",
         "with_us_immigration_inputs": "immigration_status",
         "with_us_education_inputs": "education_inputs",
+        "with_us_work_experience_inputs": "work_experience_inputs",
     }
 )
 _SOURCE_STAGE_SPEC_RESOLVER_BY_OPERATOR: Mapping[str, tuple[str, str]] = (
@@ -5079,13 +5095,17 @@ _SOURCE_STAGE_SPEC_RESOLVER_BY_OPERATOR: Mapping[str, tuple[str, str]] = (
                 "microcosm.build.us_runtime.education_inputs",
                 "us_education_inputs_stage_spec",
             ),
+            "with_us_work_experience_inputs": (
+                "microcosm.build.us_runtime.work_experience_inputs",
+                "us_work_experience_stage_spec",
+            ),
         }
     )
 )
 _DIRECT_HOUSING_ASSISTANCE_SOURCE_OPERATOR = (
     "impute_us_housing_assistance_to_puf_support"
 )
-if len(_SOURCE_MANIFEST_STAGE_BY_OPERATOR) != 15 or set(
+if len(_SOURCE_MANIFEST_STAGE_BY_OPERATOR) != 16 or set(
     _SOURCE_MANIFEST_STAGE_BY_OPERATOR
 ) | {_DIRECT_HOUSING_ASSISTANCE_SOURCE_OPERATOR} != set(
     POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
@@ -5274,6 +5294,8 @@ def _late_source_execution_config_binding(
             if operator == "with_us_weeks_unemployed"
             else {"asec_education_source": {"mode": "not_supplied"}}
             if operator == "with_us_education_inputs"
+            else {"asec_work_experience_source": {"mode": "not_supplied"}}
+            if operator == "with_us_work_experience_inputs"
             else {}
         ),
         "source_stage_spec": _late_source_stage_spec_binding(operator),
