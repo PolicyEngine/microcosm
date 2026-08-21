@@ -19,7 +19,7 @@ from microcosm.build.ledger_targets import compile_ledger_target_references
 from microcosm.calibrate.matrix import build_constraint_matrix
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
-ACTIVE_REFERENCE_COUNT = 13
+ACTIVE_REFERENCE_COUNT = 15
 
 FIXTURE_FEED_ROWS = (
     Path(__file__).parent / "fixtures" / "uk_target_reference_feed_rows.jsonl"
@@ -71,7 +71,16 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         assert reference["entity"] == _expected_reference_entity(target)
         assert reference["measure"] == binding["metric_name"]
         assert reference["family"] == target["family"]
-        assert reference["period"] == 2023
+        expected_period = (
+            2025
+            if contract_target_id
+            in {
+                "dwp.uc.households",
+                "obr.universal_credit_in_cap",
+            }
+            else 2023
+        )
+        assert reference["period"] == expected_period
         assert reference["metadata"] == {
             "contract_target_id": contract_target_id,
             "measure_kind": "prepared_column",
@@ -124,8 +133,7 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
     assert savings_interest.measure == "ons/savings_interest_income"
     assert savings_interest.family == "ons_national_accounts"
     assert (
-        savings_interest.metadata["contract_target_id"]
-        == "ons.savings_interest_income"
+        savings_interest.metadata["contract_target_id"] == "ons.savings_interest_income"
     )
     assert (
         savings_interest.metadata["ledger_aggregate_fact_key"]
@@ -145,7 +153,9 @@ def test_uk_target_references_constrain_a_frame_with_prepared_columns() -> None:
     """
 
     spec = load_country_spec("uk")
-    references = spec.target_references
+    references = tuple(
+        reference for reference in spec.target_references if reference.period == 2023
+    )
     feed_rows = [
         json.loads(line)
         for line in FIXTURE_FEED_ROWS.read_text().splitlines()
@@ -153,7 +163,7 @@ def test_uk_target_references_constrain_a_frame_with_prepared_columns() -> None:
     ]
 
     registry = compile_ledger_target_references(feed_rows, references, country="uk")
-    assert len(registry.specs) == ACTIVE_REFERENCE_COUNT
+    assert len(registry.specs) == 13
 
     n_households = 3
     weights = np.array([10.0, 20.0, 30.0])
@@ -162,9 +172,7 @@ def test_uk_target_references_constrain_a_frame_with_prepared_columns() -> None:
     expected_aggregates: dict[str, float] = {}
     for index, compiled in enumerate(registry.specs):
         column = np.array([index + 1.0, 2.0 * (index + 1.0), 0.0])
-        columns = (
-            person_columns if compiled.entity == "person" else household_columns
-        )
+        columns = person_columns if compiled.entity == "person" else household_columns
         columns[compiled.measure] = column
         expected_aggregates[f"{compiled.name}@{compiled.period}"] = float(
             (column * weights).sum()
@@ -191,7 +199,7 @@ def test_uk_target_references_constrain_a_frame_with_prepared_columns() -> None:
     problem = build_constraint_matrix(frame, registry.to_target_set())
 
     assert problem.skipped == ()
-    assert len(problem.names) == ACTIVE_REFERENCE_COUNT
+    assert len(problem.names) == 13
     achieved = problem.matrix @ problem.initial_weights.values
     for name, estimate in zip(problem.names, achieved, strict=True):
         assert estimate == expected_aggregates[name], name
@@ -199,9 +207,7 @@ def test_uk_target_references_constrain_a_frame_with_prepared_columns() -> None:
         f"{compiled.name}@{compiled.period}": compiled.value
         for compiled in registry.specs
     }
-    for name, target_value in zip(
-        problem.names, problem.target_vector, strict=True
-    ):
+    for name, target_value in zip(problem.names, problem.target_vector, strict=True):
         assert target_value == fact_values_by_name[name], name
 
 

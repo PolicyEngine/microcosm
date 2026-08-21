@@ -544,6 +544,9 @@ def build_uk_national_dataset(
     fit_weight_records = _stage_fit_weight_records(materialized_stages)
     if fit_weight_records is not None:
         artifacts["fit_weight_records"] = fit_weight_records
+    calibration_evidence = _stage_calibration_evidence(materialized_stages)
+    if calibration_evidence is not None:
+        artifacts["national_calibration"] = calibration_evidence
     if input_mass_reference is not None:
         artifacts["input_mass_reference"] = input_mass_reference
     if reviewed_input_mass_exclusions is not None:
@@ -809,6 +812,16 @@ def _stage_fit_weight_records(
             return ()
         collected.extend(records)
     return tuple(collected)
+
+
+def _stage_calibration_evidence(
+    stages: tuple[PlanStage, ...],
+) -> Mapping[str, object] | None:
+    for stage in stages:
+        if stage.name == "national_calibration":
+            manifest = getattr(stage.transform, "manifest", None)
+            return dict(manifest) if isinstance(manifest, Mapping) else {}
+    return None
 
 
 def _brma_enum_domain(engine: object) -> tuple[str, ...] | None:

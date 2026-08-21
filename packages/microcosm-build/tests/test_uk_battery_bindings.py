@@ -503,6 +503,7 @@ class TestUnevidencedArms:
         assert set(absent) == {
             "uk_weights_audit",
             "uk_export_surface",
+            "uk_calibration_reference_coverage",
             "uk_target_surface",
             "uk_target_fit",
             "uk_input_mass_parity",

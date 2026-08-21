@@ -209,6 +209,28 @@ def _evaluate_source_coverage(
     )
 
 
+def _evaluate_calibration_reference_coverage(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    if parameters:
+        raise ValueError("calibration_reference_coverage takes no parameters.")
+    evidence = context.artifacts["national_calibration"]
+    declared = int(evidence["activated_reference_count"])
+    resolved = int(evidence["resolved_reference_count"])
+    matrix = int(evidence["matrix_target_count"])
+    passed = declared == resolved == matrix
+    return GateResult(
+        name="calibration_reference_coverage",
+        passed=passed,
+        failures=()
+        if passed
+        else (
+            f"Activated/resolved/matrix target counts differ: {declared}/{resolved}/{matrix}.",
+        ),
+        details={"activated": declared, "resolved": resolved, "matrix": matrix},
+    )
+
+
 def _evaluate_nonnegative_columns(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -728,6 +750,12 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         artifact_keys=frozenset({"build_stage_names"}),
         needs_frame=False,
         evidence=_stage_names_evidence,
+    ),
+    "calibration_reference_coverage": UKGateBinding(
+        name="calibration_reference_coverage",
+        evaluator=_evaluate_calibration_reference_coverage,
+        artifact_keys=frozenset({"national_calibration"}),
+        needs_frame=False,
     ),
     "nonnegative_columns": UKGateBinding(
         name="nonnegative_columns",
