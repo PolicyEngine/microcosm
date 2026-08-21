@@ -4,8 +4,8 @@
 
 ### State
 
-Diagnosis, focused verification, and affected-suite verification complete;
-static verification pending. The supplied traceback
+Diagnosis and all local verification complete; final reporting pending. The
+supplied traceback
 fingerprints commit `33bf52fe`: it attached QRF regime evidence to every
 imputed target and validated exact record binding before checking calibration
 assignment. The current tree already contains the complete scoped correction
@@ -54,11 +54,16 @@ warranted.
   multispine-serialization, stacked-spine, pool-tool, and H5 files together
   under the owner guard. The run reached 100% with exit zero and no failures;
   maximum observed per-process RSS was 1.688 GiB.
+- Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
+  changed since `33bf52fe^`, committed-range and worktree whitespace checks,
+  and executable-tree comparisons against `a5be536f`; all passed. The current
+  `microcosm-build/src`, `tools`, and `specs` tree objects exactly match that
+  all-build-suite checkpoint.
 
 ### Next
 
-Run repository lint, scoped formatting and whitespace checks, and final tree
-drift/status checks before refreshing the final report.
+Refresh `FINAL_REPORT.md` with the current diagnosis, guarded test results,
+static verification, continuation commits, and exact remaining host boundary.
 
 The completion snapshots below are historical.
 
