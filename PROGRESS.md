@@ -4,8 +4,8 @@
 
 ### State
 
-Diagnosis and focused verification complete; affected-suite verification
-pending. The supplied traceback
+Diagnosis, focused verification, and affected-suite verification complete;
+static verification pending. The supplied traceback
 fingerprints commit `33bf52fe`: it attached QRF regime evidence to every
 imputed target and validated exact record binding before checking calibration
 assignment. The current tree already contains the complete scoped correction
@@ -50,11 +50,15 @@ warranted.
   producer, and all 12 fully rehashed QRF structure mutations under the owner
   12 GiB/20 ms guard. All 14 cases passed; maximum observed per-process RSS was
   0.560 GiB. The only warning was joblib's logical-core fallback.
+- Ran all 529 tests in the five directly affected ordinary-transfer,
+  multispine-serialization, stacked-spine, pool-tool, and H5 files together
+  under the owner guard. The run reached 100% with exit zero and no failures;
+  maximum observed per-process RSS was 1.688 GiB.
 
 ### Next
 
-Run the five directly affected files under the owner memory guard, then
-complete static checks and refresh the final report.
+Run repository lint, scoped formatting and whitespace checks, and final tree
+drift/status checks before refreshing the final report.
 
 The completion snapshots below are historical.
 
