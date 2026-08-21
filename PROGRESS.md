@@ -4,11 +4,11 @@
 
 ### State
 
-In progress. The owner has resubmitted the host 1% ACS QRF record-binding
-failure at unassigned target
-`person/puf_tax_itemization/taxable_interest_income`. Earlier completion
-claims are historical until the current source, failing-build evidence, and
-regression boundary are independently revalidated.
+Diagnosis and decisive focused verification are complete; affected-suite
+verification is in progress. The supplied line numbers fingerprint historical
+commit `33bf52fe`, while the current tree already contains the scoped runtime
+correction and exact regression coverage. No duplicate executable edit is
+warranted unless the remaining verification exposes a gap.
 
 ### Done
 
@@ -19,13 +19,36 @@ regression boundary are independently revalidated.
 - Preserved the owner-provided untracked `_BUILD-FAILURE-1PCT.txt` and
   `.codex-memory-guard.py` artifacts untouched.
 - Confirmed `FINAL_REPORT.md` is the existing charter output file.
-- Started independent invariant, branch-diff, and regression-seam audits.
+- Reconstructed the failure at `33bf52fe`: the validator called strict QRF
+  record binding for every target before consulting the calibration registry.
+  The real 15-target `puf_tax_itemization` transfer placed unassigned taxable
+  interest in `puf_tax_itemization__batch_1`, while validation expected the
+  unsplit public family and raised at the supplied line 4310.
+- Confirmed taxable interest is absent from the immutable nine-target registry,
+  which contains exactly two early and seven late model-required,
+  source-operator, and adult-care targets.
+- Traced the current correction through both ordinary and banked transfers,
+  both canonical owners, both receipt builders, and both validators. Regime
+  work defaults off; canonical callers select only immutable specs; unassigned
+  records and receipts carry no QRF evidence; validators reject forged
+  unassigned evidence before retaining exact record-family binding for assigned
+  targets; and all targets retain the mandatory transfer-count block.
+- Audited the committed regression boundary: the exact synthetic taxable-
+  interest receipt, the real banked wide-family producer, and the fully rehashed
+  assigned `__batch_1` forgery jointly cover the failure and prohibit a
+  permissive family-alias workaround.
+- Reconciled independent invariant and regression-seam audits; both found the
+  correction complete and no remaining executable or coverage gap.
+- Ran the exact synthetic taxable-interest boundary, the real banked 15-target
+  producer, and all 12 rehashed QRF structure mutations under the owner 12 GiB
+  guard. All 14 cases passed; maximum observed per-process RSS was 0.571 GiB.
+  The only warning was joblib's logical-core fallback.
 
 ### Next
 
-Reproduce and trace the exact binding mismatch, verify whether the committed
-scoping correction is sufficient on the current tree, make any missing
-runtime/test change, and run the affected suite plus static checks.
+Run the five directly affected test files under the owner memory guard, then
+run lint, formatting, whitespace, and executable-tree drift checks before
+refreshing the final report.
 
 ## Current continuation — 2026-08-21 01:39Z
 
