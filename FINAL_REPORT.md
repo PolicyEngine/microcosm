@@ -12,11 +12,12 @@ evidence.
 
 The supplied traceback fingerprints historical commit `33bf52fe`. The current
 branch already contained the scoped implementation and exact failing-first
-regression, so this continuation did not add duplicate executable or test code.
-It independently reconstructed the failure and correction, reconciled three
-read-only audits of every canonical producer/consumer path, reran the decisive
-regression matrix and all 529 directly affected tests, and reran static and
-executable-drift checks. Every completed local verdict is green.
+regression, so this continuation did not duplicate the executable repair. It
+independently reconstructed the failure and correction, reconciled three
+read-only audits of every canonical producer/consumer path, extended the real
+wide-family regression across both ordinary and banked execution, ran all 530
+directly affected tests, and reran static and executable-drift checks. Every
+completed local verdict is green.
 
 ## Root cause
 
@@ -59,6 +60,8 @@ The correction is carried by these committed steps:
 - `94b7aecb` requires the complete count block, pins the canonical fit width,
   and proves mixed selected/unselected families preserve the unassigned draw.
 - `21a48ba5` rejects a fully rehashed, plausible in-range `__batch_1` forgery.
+- `f3246728` strengthens the real 15-target regression so the same exact
+  assigned/unassigned boundary runs through ordinary and banked transfer.
 
 The current canonical reachability audit confirms:
 
@@ -91,8 +94,8 @@ unchanged four-count legacy receipt validates.
 
 Complementary coverage proves:
 
-- a real banked 15-target PUF itemization run gives taxable interest the
-  physical `__batch_1` record but empty regimes and no QRF receipt evidence;
+- real ordinary and banked 15-target PUF itemization runs give taxable interest
+  the physical `__batch_1` record but empty regimes and no QRF receipt evidence;
 - selected unemployment compensation in the same run retains regimes and
   evidence;
 - selecting a sibling for evidence does not change an unselected target's draw;
@@ -110,52 +113,58 @@ undeclared-evidence boundary.
 Fresh focused verification ran under the owner-provided 12 GiB/20 ms guard:
 
 - exact taxable-interest validator regression;
-- real banked 15-target integration regression; and
-- all 12 rehashed QRF structure mutations.
+- real ordinary 15-target integration regression; and
+- real banked 15-target integration regression.
 
-Result: 14 passed in 15.47 seconds, exit zero, maximum observed per-process RSS
-0.568 GiB. The only warning was joblib falling back to logical-core detection.
+Result: all 3 passed with exit zero and maximum observed per-process RSS of
+0.584 GiB. The only warning was joblib falling back to logical-core detection.
 
 All five directly affected files then ran together under the same guard:
 
 - ordinary ACS transfer: 64 tests;
 - multispine serialization: 5 tests;
-- stacked spine: 258 tests;
+- stacked spine: 259 tests;
 - multispine pool tool: 164 tests; and
 - multispine H5 I/O: 38 tests.
 
-Result: all 529 tests passed in 12:12 with exit zero; maximum observed
-per-process RSS was 1.643 GiB.
+Result: all 530 tests passed with exit zero; maximum observed per-process RSS
+was 1.643 GiB. The only output beyond progress was the known joblib fallback
+plus 2,313 pandas fixture-fragmentation warnings.
 
-The complete `packages`, `tools`, `specs`, `pyproject.toml`, and `uv.lock` Git
-objects are identical to checkpoint `d29a8705`. At that checkpoint, guarded
+Every production source, tool, spec, project, and lock Git object is identical
+to complete-suite checkpoint `d29a8705`. At that checkpoint, guarded
 fresh-process package/file shards covered all 6,608 collected repository items
-without a failed shard. Later commits changed only root journals. Static
-verification on the current tree also passes:
+without a failed shard. The only non-journal delta since that checkpoint is the
+ordinary/banked parametrization in the stacked-spine test file, whose complete
+259-test file passed in the affected run. Static verification on the current
+tree also passes:
 
 - repository-wide `ruff check .`;
 - `ruff format --check` on all 15 Python files changed since `33bf52fe^`;
 - `git diff --check 33bf52fe^..HEAD`; and
 - worktree whitespace checks.
 
-The GitNexus debugging workflow was selected. Its graph query/context tools
-were unavailable in this session. Direct raise-site, Git-history, caller,
-producer, serializer, validator, warm-bank, and regression tracing provided the
-prescribed fallback and was reconciled by three independent read-only audits.
+The GitNexus debugging workflow was selected. A current 563-file graph was
+generated, but its final user-wide registry write was sandbox-blocked, so
+query/context could not consume it; the generated local cache was removed.
+Direct raise-site, Git-history, caller, producer, serializer, validator,
+warm-bank, and regression tracing provided the prescribed fallback and was
+reconciled by three independent read-only audits.
 
 ## Host verification boundary
 
 Host certification is not claimed. At the final read-only snapshot taken
-2026-08-21 07:08:01Z, the external 1% retry had rebuilt the assembled checkpoint
-plus targets 1 through 34 of 47. It rebuilt the exact
+2026-08-21 07:32:33Z, the external 1% retry had rebuilt all 47 survey targets
+plus the 1/1 housing target. It rebuilt the exact
 `puf_tax_itemization__batch_1/taxable_interest_income` target as 22/47 and
-continued without the old traceback, but had not reached terminal stacked
-receipt validation or a runner verdict.
+continued through every remaining target without the old traceback, but had
+not produced a terminal runner verdict.
 
 The host directory contained `build.log`, `guard.log`, and a checkpoint tree.
 It did not contain final `pool.h5`, manifest, gates, or terminal-exit artifacts,
-and the mutable log did not bind the run to a Microcosm Git revision. Progress
-through target 13 is therefore neither a pass nor a certification result.
+and the mutable log did not bind the run to a Microcosm Git revision. Complete
+target-checkpoint generation is therefore encouraging progress, not a pass or
+certification result.
 
 Completion of the external boundary requires a revision-bound off-chain 1%
 retry with a durable terminal exit and passing final pool, manifest, and gates
@@ -163,10 +172,11 @@ artifacts. Publication and pending-logbook mutation remain outside this task.
 
 ## Continuation commits
 
-- `bb47e5a3` — reopen this owner continuation in `PROGRESS.md`;
-- `4f65ba59` — record the independently reconstructed diagnosis;
-- `423e6906` — record the fresh failing-first and current-green proof;
-- `f4926ea3` — record the green 529-test directly affected suite;
-- `15e3881d` — record static checks, complete-suite object binding, and the
-  final host snapshot; and
+- `7668825b` — reopen this owner continuation in `PROGRESS.md`;
+- `f1df007c` — record the independently reconstructed diagnosis, exact
+  failing-first proof, reachability audits, and initial host snapshot;
+- `f3246728` — add ordinary-path parity to the real wide-family regression;
+- `b2d8adcf` — record the green 530-test directly affected suite;
+- `72df3dc3` — record static checks, complete-suite object binding, and the
+  final read-only host snapshot; and
 - this report commit — refresh the required output file from current evidence.
