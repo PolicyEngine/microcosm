@@ -1,5 +1,60 @@
 # Battery package 3 progress
 
+## Post-transfer receipt validation — 2026-08-21 14:48Z
+
+### State
+
+In progress. The prior assigned-only ACS QRF correction has crossed every QRF
+stage on the restricted 1% host rerun. The active boundary is now the
+`late_transfer` post-transfer receipt validator for
+`person/source_operator_weeks_unemployed/weeks_unemployed`. This lane will
+replay the preserved checkpoint without a build, identify the exact invalid
+capacity relationship, fix its generating mechanism without changing any
+threshold, band, comparator, or gate, and audit every other late-transfer
+target for the same semantic assumption. The serial host queue remains the
+only owner of 1% builds.
+
+### Done
+
+- Re-read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
+- Confirmed `FINAL_REPORT.md` is the required output file and preserved the
+  owner-provided untracked memory guard and host-failure transcript unchanged.
+- Confirmed the normal GitNexus query/context interface is unavailable in this
+  session; direct checkpoint, source, call-site, and history tracing is the
+  documented fallback.
+- Started independent read-only checkpoint-reproduction, mechanism/audit, and
+  regression/history investigations. None may edit or commit.
+- Reopened and updated this committed state/done/next journal before any
+  executable or test change.
+- Ran `uv run pytest` separately for all five package test roots
+  (`microcosm-frame`, `microcosm-fit`, `microcosm-calibrate`,
+  `microcosm-data`, and `microcosm-build`) under the owner-provided 12 GiB
+  guard; every command exited zero with only expected skips/warnings.
+- Ran repository-wide `ruff check .` and `git diff --check`; both passed.
+- Replayed the preserved assembled, unemployment-compensation, and
+  weeks-unemployed checkpoints without invoking any build. The replay reaches
+  the exact supplied validator error with 4,311 ASEC reference rows, 34,293
+  ACS recipient/mutable rows, and 32 positive-UC addition candidates.
+- Isolated the only false receipt relationship: the ID-ordered prefix reports
+  `85,676.23791782456`, while the separately masked candidate-capacity sum is
+  `85,676.23791782455`. The exact `upper_prefix_mass <=
+  addition_candidate_mass` proof therefore fails by one float64 ULP
+  (`1.4551915228366852e-11`); every other relationship passes.
+- Confirmed this is not a count-target exception. Weeks are constrained to
+  integer donor support and the carrier event remains `weeks > 0`; the defect
+  is two reductions for one declared ordered capacity. A single shared prefix
+  schedule is the generating-mechanism repair, with the exact validator left
+  unchanged.
+
+### Next
+
+1. Commit this green journal-only starting checkpoint.
+2. Add and execute the SHA-pinned no-build checkpoint harness plus an exact
+   synthetic expected-failure regression, then commit the reproduction.
+3. Replace the dual candidate/prefix reductions with one ordered prefix
+   schedule, flip the regression to strict validation, complete the
+   late-target audit, and rerun all required package shards plus Ruff.
+
 ## Owner continuation revalidation — 2026-08-21 11:45Z
 
 ### State
