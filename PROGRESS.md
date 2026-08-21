@@ -4,15 +4,16 @@
 
 ### State
 
-Diagnosis, focused regression, and affected-suite verification complete;
-static verification is in progress. The supplied traceback
+Diagnosis, focused regression, affected-suite, and static verification are
+complete; repository-suite verification is in progress. The supplied traceback
 fingerprints historical commit `33bf52fe`, while the current tree already
 contains the narrow assigned-target correction and exact taxable-interest
 regression. Current source, history, runtime enumeration, and two independent
 audits find no remaining scope leak or reason for a duplicate executable edit.
 The regression is demonstrably failing-first, all 14 decisive cases pass, and
 all 529 tests in the five directly affected files pass on the current tree.
-Prior static and completion claims below remain historical until this
+Repository lint, formatting, whitespace, and executable-drift checks also
+pass. Prior full-suite and completion claims below remain historical until this
 continuation reruns them.
 
 ### Done
@@ -77,11 +78,18 @@ continuation reruns them.
 - Ran all 529 affected tests together under the owner guard with warning
   summaries disabled. Pytest reached 100% with exit zero and no failures; peak
   observed per-process RSS was 1.658 GiB.
+- Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
+  changed since `33bf52fe^`, and committed-range plus worktree whitespace
+  checks; all passed.
+- Compared exact Git objects for `microcosm-build/src`, `tools`, `specs`,
+  `pyproject.toml`, and `uv.lock` against all-build-suite checkpoint
+  `a5be536f`; every pair matched. Only committed regression hardening and
+  journals differ after that checkpoint.
 
 ### Next
 
-Complete repository lint, scoped format, whitespace, executable-drift, final
-host-artifact, and worktree-cleanliness checks.
+Run the full repository test suite under the owner guard, then complete final
+host-artifact and worktree-cleanliness checks and refresh `FINAL_REPORT.md`.
 
 ## Current continuation — 2026-08-21 03:29Z
 
