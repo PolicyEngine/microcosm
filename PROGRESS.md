@@ -4,9 +4,10 @@
 
 ### State
 
-In progress. Reproducing and tracing the owner-reported host 1% failure from
-the exact stacked-gap-fill raise site, then revalidating the current runtime
-and regression tree instead of relying on historical journal claims.
+In progress. The supplied traceback is reproduced in source history and the
+current scoped correction passes the exact 14-case binding boundary. The
+independent audits and five-file affected suite remain to be reconciled on this
+continuation before the final report is refreshed.
 
 ### Done
 
@@ -20,6 +21,18 @@ and regression tree instead of relying on historical journal claims.
 - Reopened the committed journal for the supplied continuation. The branch
   carries earlier scoped-fix and regression commits, but their claims remain
   untrusted until revalidated against the supplied host log and current tree.
+- Matched traceback lines 4310 and 4512 exactly to commit `33bf52fe`. That
+  revision validated QRF evidence for every early target before consulting the
+  calibration registry; the current source checks assignment first and rejects
+  evidence on unassigned targets without entering record binding.
+- Enumerated the current immutable selector at runtime: exactly two early and
+  seven late model-required, source-operator, and adult-care targets.
+  `person/puf_tax_itemization/taxable_interest_income` is not selected.
+- Re-ran the exact synthetic taxable-interest receipt, the real banked
+  15-target producer, and all 12 strict rehashed QRF structure mutations under
+  the owner 12 GiB/20 ms guard. All 14 cases passed; maximum observed
+  per-process RSS was 0.568 GiB. The only warning was joblib's logical-core
+  fallback.
 - Reconstructed the old failure at the cited lines. The 15-target
   `puf_tax_itemization` family was split at the certified width of eight, so
   `taxable_interest_income` recorded family `puf_tax_itemization__batch_1`.
@@ -70,9 +83,9 @@ and regression tree instead of relying on historical journal claims.
 
 ### Next
 
-Inspect the full host log and cited validation path, identify the executing
-revision if possible, reconstruct the selection and record-family data flow,
-then add or strengthen the failing regression before any runtime correction.
+Reconcile the independent host-log, runtime, and regression-history audits;
+then run the 529-test five-file affected suite and static checks on the current
+tree. Make an executable edit only if those checks expose a real remaining gap.
 
 ## Current continuation — 2026-08-21 02:14Z
 
