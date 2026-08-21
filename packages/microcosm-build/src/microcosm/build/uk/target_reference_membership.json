@@ -3,11 +3,11 @@
   "target_period": 2025,
   "candidate_count": 417,
   "contract_target_count": 189,
-  "active_reference_count": 387,
+  "active_reference_count": 388,
   "status_counts": {
-    "active": 387,
+    "active": 388,
     "multi_fact": 1,
-    "no_fact_at_or_before_period": 28,
+    "no_fact_at_or_before_period": 27,
     "signed_excluded": 1
   },
   "geography_pins": {
@@ -2570,6 +2570,11 @@
     {
       "name": "slc.repayments.england_plan_5",
       "from": "2024",
+      "to": "2025"
+    },
+    {
+      "name": "dwp.uc.households",
+      "from": "2025-04",
       "to": "2025"
     }
   ],
@@ -6911,7 +6916,7 @@
           "resolved_period": 2025,
           "resolved_value": 4316000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b9e5e398b210a3ea68426ecf"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c9c67fe2978eaa513a44a926"
         }
       ]
     },
@@ -6926,7 +6931,7 @@
           "resolved_period": 2025,
           "resolved_value": 4254000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_64eb1c1c056801b5d35b4d54"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e6c50ddf29ed1ab77864b6a2"
         }
       ]
     },
@@ -6941,7 +6946,7 @@
           "resolved_period": 2025,
           "resolved_value": 813000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_b376430d8bd3c235b6700e8e"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_3ec0cf9defbe2ab83ab41571"
         }
       ]
     },
@@ -6956,7 +6961,7 @@
           "resolved_period": 2025,
           "resolved_value": 8119000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_6b742175372b64a00bc0f099"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b11f5e90017de17e52604807"
         }
       ]
     },
@@ -6971,7 +6976,7 @@
           "resolved_period": 2025,
           "resolved_value": 5439000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_076e38042145c010a7559f88"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_12ff8cdd70354a89e79666d2"
         }
       ]
     },
@@ -6986,7 +6991,7 @@
           "resolved_period": 2025,
           "resolved_value": 931000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e8702e666eefe9371822496a"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b7f864011603a30bf3d9a36d"
         }
       ]
     },
@@ -7001,7 +7006,7 @@
           "resolved_period": 2025,
           "resolved_value": 1848000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_f8816414af21bafd4920fe77"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a14d855449d9c8dc5e885d7e"
         }
       ]
     },
@@ -7016,7 +7021,7 @@
           "resolved_period": 2025,
           "resolved_value": 1835000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_c4cbf7c83596d1e7fdb04d9f"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e71a9da14a3e6459fb4280b3"
         }
       ]
     },
@@ -7031,7 +7036,7 @@
           "resolved_period": 2025,
           "resolved_value": 1204000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_207a9bb610afeb3f75f58baa"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_5dabc71ee334f3c3246258bf"
         }
       ]
     },
@@ -7046,7 +7051,7 @@
           "resolved_period": 2025,
           "resolved_value": 244000.0,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_59100f5ffbe83b5a59271e60"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b4156d9db1a22d31bfaa20ff"
         }
       ]
     },
@@ -7588,14 +7593,17 @@
       ]
     },
     "dwp.uc.households": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "dwp.uc.households",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 11,
+          "matched_fact_count_at_or_before_period": 9,
+          "resolved_period": 2025,
+          "resolved_value": 6758888.888888889,
+          "resolved_fact_period": "2025-04",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2aa7149107cd8906fe8fed57"
         }
       ]
     }

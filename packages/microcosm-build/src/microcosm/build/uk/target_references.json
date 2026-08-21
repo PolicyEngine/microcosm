@@ -9356,6 +9356,26 @@
       "value_operation": "sum",
       "uprating_from_period": "2024",
       "uprating_to_period": 2025
+    },
+    {
+      "name": "dwp.uc.households",
+      "ledger_selector": {
+        "source_name": "dwp",
+        "source_concept": "dwp.uc_benefit_units",
+        "geography_level": "country",
+        "geography_id": "K03000001"
+      },
+      "entity": "benunit",
+      "measure": "dwp/uc/households",
+      "family": "dwp_universal_credit",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "dwp.uc.households",
+        "measure_kind": "prepared_column"
+      },
+      "value_operation": "calendar_year_average",
+      "uprating_from_period": "2025-04",
+      "uprating_to_period": 2025
     }
   ]
 }

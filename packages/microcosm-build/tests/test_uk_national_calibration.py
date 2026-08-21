@@ -16,7 +16,7 @@ from microcosm.build.uk_runtime.national_calibration import (
 from microcosm.build.uk_runtime.national_frame import validate_uk_national_frame
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
-ACTIVE_REFERENCE_COUNT = 387
+ACTIVE_REFERENCE_COUNT = 388
 
 
 def _uc_reference(**overrides) -> LedgerTargetReference:
@@ -157,16 +157,20 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
     assert len(spec.target_references) == ACTIVE_REFERENCE_COUNT
     reference_names = {reference.name for reference in spec.target_references}
     assert "obr.universal_credit_in_cap" in reference_names
-    assert "dwp.uc.households" not in reference_names
+    assert "dwp.uc.households" in reference_names
 
     membership = json.loads(
         importlib_resources.files("microcosm.build.uk")
         .joinpath("target_reference_membership.json")
         .read_text()
     )
-    assert membership["targets"]["dwp.uc.households"]["status"] == (
-        "no_fact_at_or_before_period"
+    assert membership["targets"]["dwp.uc.households"]["status"] == "active"
+    uc_reference = next(
+        reference
+        for reference in spec.target_references
+        if reference.name == "dwp.uc.households"
     )
+    assert uc_reference.value_operation == "calendar_year_average"
 
     references = tuple(
         reference
