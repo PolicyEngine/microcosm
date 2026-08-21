@@ -13,10 +13,10 @@ evidence.
 The supplied traceback fingerprints historical commit `33bf52fe`. The current
 branch already contained the scoped implementation and exact failing-first
 regression, so this continuation did not add duplicate executable or test code.
-It independently reconstructed the failure and correction, re-audited every
-canonical producer/consumer path, reran the decisive regression matrix and all
-529 directly affected tests, and reran static checks. Every completed local
-verdict is green.
+It independently reconstructed the failure and correction, reconciled three
+read-only audits of every canonical producer/consumer path, reran the decisive
+regression matrix and all 529 directly affected tests, and reran static and
+executable-drift checks. Every completed local verdict is green.
 
 ## Root cause
 
@@ -107,14 +107,14 @@ undeclared-evidence boundary.
 
 ## Verification
 
-Current focused verification ran under the owner-provided 12 GiB/20 ms guard:
+Fresh focused verification ran under the owner-provided 12 GiB/20 ms guard:
 
 - exact taxable-interest validator regression;
 - real banked 15-target integration regression; and
 - all 12 rehashed QRF structure mutations.
 
-Result: 14 passed, exit zero, maximum observed per-process RSS 0.572 GiB. The
-only warning was joblib falling back to logical-core detection.
+Result: 14 passed in 15.47 seconds, exit zero, maximum observed per-process RSS
+0.568 GiB. The only warning was joblib falling back to logical-core detection.
 
 All five directly affected files then ran together under the same guard:
 
@@ -124,36 +124,33 @@ All five directly affected files then ran together under the same guard:
 - multispine pool tool: 164 tests; and
 - multispine H5 I/O: 38 tests.
 
-Result: all 529 tests reached 100% with exit zero and no failures; maximum
-observed per-process RSS was 1.665 GiB.
+Result: all 529 tests passed in 12:12 with exit zero; maximum observed
+per-process RSS was 1.643 GiB.
 
-The complete package/config tree is Git-identical to checkpoint `d29a8705`,
-where fresh-process shards covered all 6,608 collected repository items without
-a failure. Later commits change only the root journals. Static verification on
-the current tree also passes:
+The complete `packages`, `tools`, `specs`, `pyproject.toml`, and `uv.lock` Git
+objects are identical to checkpoint `d29a8705`. At that checkpoint, guarded
+fresh-process package/file shards covered all 6,608 collected repository items
+without a failed shard. Later commits changed only root journals. Static
+verification on the current tree also passes:
 
 - repository-wide `ruff check .`;
 - `ruff format --check` on all 15 Python files changed since `33bf52fe^`;
 - `git diff --check 33bf52fe^..HEAD`; and
 - worktree whitespace checks.
 
-The first attempted focused invocation did not start because `uv` tried to
-initialize its cache outside the writable sandbox. The successful runs used the
-already-synced worktree virtual environment and current worktree sources.
-
-The GitNexus debugging workflow was selected. Its CLI could not resolve this
-worktree because the global registry contains only unrelated repositories and
-the sandbox cannot register a Microcosm index. Direct raise-site, Git-history,
-caller, producer, serializer, validator, warm-bank, and regression tracing
-provided the fallback and was reconciled by three independent read-only audits.
+The GitNexus debugging workflow was selected. Its graph query/context tools
+were unavailable in this session. Direct raise-site, Git-history, caller,
+producer, serializer, validator, warm-bank, and regression tracing provided the
+prescribed fallback and was reconciled by three independent read-only audits.
 
 ## Host verification boundary
 
-Host certification is not claimed. At the read-only snapshot taken
-2026-08-21 06:44:27Z, the external 1% retry was active and had rebuilt the
-assembled checkpoint plus targets 1 through 13 of 47. Its current log contained
-no traceback, but it had not yet reached taxable interest, terminal stacked
-receipt validation, or a runner verdict.
+Host certification is not claimed. At the final read-only snapshot taken
+2026-08-21 07:08:01Z, the external 1% retry had rebuilt the assembled checkpoint
+plus targets 1 through 34 of 47. It rebuilt the exact
+`puf_tax_itemization__batch_1/taxable_interest_income` target as 22/47 and
+continued without the old traceback, but had not reached terminal stacked
+receipt validation or a runner verdict.
 
 The host directory contained `build.log`, `guard.log`, and a checkpoint tree.
 It did not contain final `pool.h5`, manifest, gates, or terminal-exit artifacts,
@@ -166,7 +163,10 @@ artifacts. Publication and pending-logbook mutation remain outside this task.
 
 ## Continuation commits
 
-- `8920193e` — reopen the current owner continuation in `PROGRESS.md`;
-- `36e08f26` — record the current diagnosis, audits, guarded tests, and static
-  verification; and
+- `bb47e5a3` — reopen this owner continuation in `PROGRESS.md`;
+- `4f65ba59` — record the independently reconstructed diagnosis;
+- `423e6906` — record the fresh failing-first and current-green proof;
+- `f4926ea3` — record the green 529-test directly affected suite;
+- `15e3881d` — record static checks, complete-suite object binding, and the
+  final host snapshot; and
 - this report commit — refresh the required output file from current evidence.
