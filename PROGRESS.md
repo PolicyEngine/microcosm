@@ -4,13 +4,14 @@
 
 ### State
 
-Diagnosis, focused red/green proof, and the directly affected suite are
-complete and green; static verification is in progress. The supplied line
-numbers resolve to historical commit `33bf52fe`, where QRF evidence was
-validated for every target before assignment lookup. The present branch
-already contains the complete scoped correction and exact regression; three
-independent audits found no current gap that warrants duplicate executable or
-test edits.
+Local diagnosis and verification are complete. The supplied line numbers
+resolve to historical commit `33bf52fe`, where QRF evidence was validated for
+every target before assignment lookup. The present branch already contains the
+complete scoped correction and exact failing-first regression; three
+independent audits, 14 decisive cases, all 529 directly affected tests, static
+checks, and exact complete-suite object binding found no current gap that
+warrants duplicate executable or test edits. The final report is being
+refreshed; restricted host certification remains external and incomplete.
 
 ### Done
 
@@ -62,11 +63,24 @@ test edits.
   stacked spine, multispine pool tooling, and H5 receipt I/O together under the
   owner guard. All passed in 12:12 with 1.643 GiB maximum observed per-process
   RSS.
+- Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
+  changed since `33bf52fe^`, committed-range whitespace checks, and worktree
+  whitespace checks; all passed.
+- Compared exact Git objects for all `packages`, `tools`, `specs`,
+  `pyproject.toml`, and `uv.lock` against complete-suite checkpoint `d29a8705`;
+  every object matches. That committed checkpoint collected all 6,608 current
+  repository items and ran them in guarded fresh-process package/file shards
+  with no failed shard.
+- Took a final read-only host snapshot at 2026-08-21 07:08:01Z. The mutable log
+  had rebuilt the exact taxable-interest target and continued through target
+  34/47 without the old error, but no final pool, manifest, gates, terminal
+  exit, or explicit Microcosm revision binding exists. This remains progress,
+  not certification.
 
 ### Next
 
-Run static and executable-drift checks, take a final read-only host snapshot,
-then close the journal and final report.
+Refresh and commit `FINAL_REPORT.md`, then mark this journal complete in a
+final committed handoff step.
 
 ## Reopened owner continuation — 2026-08-21
 
