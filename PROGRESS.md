@@ -7,9 +7,9 @@
 In progress. The supplied line-4512-to-line-4310 traceback is now bound exactly
 to historical runtime `33bf52fe`, while the current tree contains the
 assigned-only correction. The focused validator and real ordinary/banked
-wide-family regressions are green. Independent reachability, regression, and
-host-log audits are still being reconciled before the affected suite runs and
-`FINAL_REPORT.md` is refreshed.
+wide-family regressions and all 530 directly affected tests are green. Three
+independent audits found no remaining canonical production leak. Static and
+exact-tree checks remain before `FINAL_REPORT.md` is refreshed.
 
 ### Done
 
@@ -38,12 +38,35 @@ host-log audits are still being reconciled before the affected suite runs and
   passed, with 0.572 GiB maximum observed per-process RSS. Taxable interest
   retained physical family `puf_tax_itemization__batch_1`, empty regimes, and
   no QRF receipt evidence in both execution modes.
+- Reconciled independent runtime, regression, and host/history audits. They
+  traced all four production `transfer_acs_inputs` caller classes and found no
+  alternate producer, ordinary/banked fit, serializer, receipt, validator, or
+  calibration-write route that broadens the registry-derived selection.
+- Confirmed the exact validator regression is genuinely failing-first: commit
+  `22b2c6bc` contains the test while its runtime is byte-identical to failing
+  `33bf52fe`, so the old runtime reaches the supplied lines 4512 and 4310 rather
+  than the corrected undeclared-evidence boundary.
+- Recorded the low-level API qualification: an explicit noncanonical library
+  caller may request regime provenance for any target on its requested surface.
+  No production caller exposes this choice; generic production callers use the
+  empty default, and canonical stacked validators reject unassigned evidence.
+- Read the reused host directory without modifying it. The original failed log
+  and checkpoints were overwritten by the retry script, so the traceback now
+  survives only in the owner artifact and committed journals. The active retry
+  began under launch-window journal commit `8920193e`, completed the 47/47
+  survey, 1/1 housing, and 10/10 primary-QRF checkpoints without the old error,
+  but remained active and lacked final pool, manifest, gates, exit marker, and
+  a Microcosm revision binding. It is not a certification verdict.
+- Ran all 530 tests across ordinary ACS transfer, multispine serialization,
+  stacked spine, multispine pool tooling, and H5 receipt I/O together under the
+  owner guard. All passed with exit zero and 1.658 GiB maximum observed
+  per-process RSS. Output was limited to the known joblib physical-core fallback
+  plus 2,313 pandas fixture-fragmentation warnings.
 
 ### Next
 
-Reconcile the independent audits and current host terminal state, then run the
-complete directly affected suite and static checks before refreshing the
-required final report.
+Run repository-wide lint, formatting, whitespace, and exact executable-tree
+checks, then refresh and commit the required final report.
 
 ## Active owner continuation — 2026-08-21 07:11Z
 
