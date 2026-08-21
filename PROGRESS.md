@@ -1,5 +1,32 @@
 # Battery package 3 progress
 
+## Current continuation — 2026-08-21 01:39Z
+
+### State
+
+In progress. Re-auditing the supplied host 1% ACS QRF record-binding failure
+from the cited validator raise site against current `HEAD` (`267697e2`). Prior
+completion entries below are historical and will not be accepted without
+fresh source, history, regression, and verification evidence.
+
+### Done
+
+- Read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
+- Confirmed GitNexus query/context tools are not exposed in this session, so
+  the fallback is direct raise-site, caller, producer, validator, test, and
+  Git-history tracing.
+- Preserved the owner-provided untracked `_BUILD-FAILURE-1PCT.txt` and
+  `.codex-memory-guard.py` artifacts untouched.
+- Identified `FINAL_REPORT.md` as the existing charter output file.
+
+### Next
+
+Independently reconstruct the leak at the historical failing revision, compare
+it with the current implementation, verify that only the assigned
+source-operator, adult-care, and model-required targets opt into QRF behavior,
+and inspect the exact binding regression before deciding whether another code
+or test change is required.
+
 ## Current continuation — 2026-08-21 01:11Z
 
 ### State
