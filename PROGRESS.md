@@ -4,16 +4,52 @@
 
 ### State
 
-In progress as of 2026-08-21 06:24:50Z. The owner continuation has been
-reopened from the supplied host traceback even though the branch contains a
-prior scoped correction and regression. Re-establish the raise-site call path,
-prove that only the immutable nine-target calibration registry can enable QRF
-regime work or evidence, rerun the exact outside-target regression and affected
-suite, and refresh `FINAL_REPORT.md` from current evidence before declaring
-completion. The owner-provided host artifacts remain untouched and untracked.
+Local verification complete as of 2026-08-21 06:43:44Z; final report refresh
+pending. The supplied traceback exactly fingerprints the historical global-QRF
+leak, while current production selection, evidence attachment, serialization,
+and validation are confined to the immutable nine-target registry. The exact
+14-case boundary matrix and all 529 directly affected tests pass under the
+owner guard, and static checks pass. No duplicate executable or regression edit
+is warranted. The owner-provided host artifacts remain untouched and untracked.
 
 ### Done
 
+- Re-ran the GitNexus error query. The CLI could not resolve this worktree
+  because its global registry contains only unrelated repositories and the
+  sandbox cannot register a Microcosm index; completed the skill workflow by
+  direct raise-site, history, caller, producer, serializer, and validator
+  tracing.
+- Independently confirmed the supplied line 4512-to-4310 traceback at
+  `33bf52fe`: the old validator bound every target's physical record family to
+  the canonical public family before checking assignment. The 15-target PUF
+  itemization family split at width eight, so taxable interest carried
+  `puf_tax_itemization__batch_1` and failed the global binding check.
+- Confirmed the correction lineage is already committed: `22b2c6bc` added the
+  failing-first exact regression; `176c60fc` added explicit selected-target
+  regime work/evidence and assignment-first validation; `0b4339d1`,
+  `887df056`, `94b7aecb`, and `21a48ba5` restored strict counts/family binding
+  and covered real banked, mixed-family, and rehashed-forgery cases.
+- Re-audited ordinary, banked, warm-resume, early, late, serializer, and generic
+  caller paths. Only the two stacked owners opt in, both from the exact two
+  early/seven late registry; unassigned records have empty regimes, emit no QRF
+  evidence, and retain the four legacy transfer counts. No indirect unassigned
+  draw or write path was found.
+- Ran the exact taxable-interest validator regression, the real banked
+  15-target producer, and all 12 rehashed QRF structure mutations using the
+  worktree virtual environment under the 12 GiB/20 ms guard: 14 passed, with a
+  0.572 GiB maximum observed per-process RSS. An initial `uv run` attempt did
+  not launch because the default cache is outside the writable sandbox.
+- Ran all 529 tests in the five directly affected ordinary-transfer,
+  multispine-serialization, stacked-spine, pool-tool, and H5 files in one
+  guarded process. Pytest reached 100% with exit zero and no failures; maximum
+  observed per-process RSS was 1.665 GiB.
+- Ran repository-wide `ruff check .`, Ruff format checks on all 15 Python files
+  changed since `33bf52fe^`, committed-range and worktree whitespace checks;
+  all pass. Current executable source, tools, specs, lock, and root project
+  configuration are Git-identical to scoped-fix checkpoint `94b7aecb`.
+- Reconciled three independent read-only audits. They found no current canonical
+  leakage path or material missing regression; no duplicate runtime or test
+  edit is warranted.
 - Reopened the committed journal before taking implementation action in this
   continuation and recorded the current verification boundary.
 - Read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
@@ -1559,10 +1595,8 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Query the current GitNexus graph for the invariant and inspect the exact
-   raise-site, producer, attachment, and validation paths in source and history.
-2. Run the exact outside-target regression and the directly affected suite;
-   make and commit any warranted scoped implementation or test correction.
-3. Refresh `FINAL_REPORT.md` with current evidence. Host certification remains
-   outside local PR-CI evidence; do not publish or mutate the pending logbook
-   chain as a side effect.
+1. Refresh and commit `FINAL_REPORT.md` with the current diagnosis, correction
+   lineage, regression evidence, affected-suite result, and static verdict.
+2. Host certification still requires a revision-bound off-chain 1% retry with
+   a terminal verdict and final pool/manifest/gates artifacts. Do not publish or
+   mutate the pending logbook chain as a side effect.
