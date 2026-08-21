@@ -4,11 +4,15 @@
 
 ### State
 
-In progress. The current tip already contains an assigned-only ACS QRF
-evidence correction, an exact taxable-interest regression, and a strengthened
-real wide-family producer-to-validator regression. This continuation is
-independently reconciling that committed result with the supplied host
-traceback before deciding whether any further executable change is warranted.
+Complete as of `2026-08-21 08:56:50Z`. The supplied traceback is bound to the
+historical globally enabled QRF evidence path, while the current tip contains
+the narrow assigned-only correction, the exact taxable-interest regression,
+and the real ordinary/banked producer-to-validator regression. Independent
+source, history, and test audits found no remaining canonical leak, so this
+continuation made no duplicate runtime or test edit. The focused matrix, all
+530 directly affected tests, static checks, and production-object comparison
+are green. The required final report is committed at `dc4055c5`; restricted
+host verification remains live and nonterminal.
 
 ### Done
 
@@ -65,11 +69,20 @@ traceback before deciding whether any further executable change is warranted.
   but it had not yet reached the final stacked gap-fill receipt validator. No
   terminal exit marker, final pool H5, manifest, or gates artifact existed, so
   neither passage of the supplied invariant nor host certification is claimed.
+- Rechecked the host at `2026-08-21 08:53:11Z`. All eight late
+  `puf_tax_itemization__batch_1` targets had finished without the historical
+  exception, but `transferred.checkpoint.h5` was still absent and final stacked
+  validation had not observably returned. Writers and the guard remained live;
+  terminal pool, manifest, gates, logbook, and exit artifacts remained absent.
+- Updated and committed the required `FINAL_REPORT.md` at `dc4055c5` with the
+  current diagnosis, exact assigned surface, regression evidence, fresh
+  530-test/static verdict, and corrected nonterminal host boundary.
 
 ### Next
 
-1. Update `FINAL_REPORT.md` and close this journal without claiming restricted
-   host certification unless terminal revision-bound artifacts exist.
+Obtain a durable, terminal, revision-bound restricted 1% host result with
+passing `pool.h5`, `pool.manifest.json`, and `pool.gates.json`. Do not publish or
+mutate the release chain as a side effect of that external verification.
 
 ## Owner-reported host failure continuation — 2026-08-21 07:59Z
 
