@@ -4,16 +4,20 @@
 
 ### State
 
-Local verification complete as of 2026-08-21 06:43:44Z; final report refresh
-pending. The supplied traceback exactly fingerprints the historical global-QRF
-leak, while current production selection, evidence attachment, serialization,
-and validation are confined to the immutable nine-target registry. The exact
-14-case boundary matrix and all 529 directly affected tests pass under the
-owner guard, and static checks pass. No duplicate executable or regression edit
-is warranted. The owner-provided host artifacts remain untouched and untracked.
+Complete as of 2026-08-21 06:46:04Z. The supplied traceback exactly
+fingerprints the historical global-QRF leak, while current production
+selection, evidence attachment, serialization, and validation are confined to
+the immutable nine-target registry. The exact 14-case boundary matrix and all
+529 directly affected tests pass under the owner guard, and static checks pass.
+No duplicate executable or regression edit is warranted. `FINAL_REPORT.md` is
+committed with the current evidence. The owner-provided host artifacts remain
+untouched and untracked; the active host retry is not claimed certified.
 
 ### Done
 
+- Replaced the stale required output with the current diagnosis, correction
+  lineage, regression evidence, guarded verification, static verdict, and
+  timestamped host boundary; committed it as `7180f6ef`.
 - Re-ran the GitNexus error query. The CLI could not resolve this worktree
   because its global registry contains only unrelated repositories and the
   sandbox cannot register a Microcosm index; completed the skill workflow by
@@ -1595,8 +1599,6 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Refresh and commit `FINAL_REPORT.md` with the current diagnosis, correction
-   lineage, regression evidence, affected-suite result, and static verdict.
-2. Host certification still requires a revision-bound off-chain 1% retry with
+1. Host certification still requires a revision-bound off-chain 1% retry with
    a terminal verdict and final pool/manifest/gates artifacts. Do not publish or
    mutate the pending logbook chain as a side effect.
