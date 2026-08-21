@@ -92,11 +92,18 @@ claims below remain historical until this continuation completes them.
   12.170 GiB observed RSS (exit 99). This is recorded as a resource-bound
   non-verdict, not a green suite result; it indicates cumulative single-process
   memory and will be replaced by fresh-process package/file shards.
+- Collected 6,608 repository tests: 5,708 build, 201 calibrate, 276 data, 93
+  fit, and 330 frame.
+- Ran the four smaller packages in fresh guarded processes. Fit passed 93 tests
+  at 0.724 GiB peak; calibrate passed 201 at 0.436 GiB; data passed 275 with one
+  skip at 11.049 GiB; and frame passed 294 with 36 skips at 6.488 GiB. These
+  account for all 900 non-build cases.
 
 ### Next
 
-Complete the repository suite in fresh guarded shards, then perform final
-host-artifact and worktree-cleanliness checks and refresh `FINAL_REPORT.md`.
+Complete all 5,708 `microcosm-build` cases in three fresh guarded shards, then
+perform final host-artifact and worktree-cleanliness checks and refresh
+`FINAL_REPORT.md`.
 
 ## Current continuation — 2026-08-21 03:29Z
 
