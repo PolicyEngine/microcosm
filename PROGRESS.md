@@ -4,9 +4,12 @@
 
 ### State
 
-In progress. Revalidating the supplied ACS QRF record-binding failure from the
-raise site against the current branch before deciding whether any further
-runtime or regression edit is warranted.
+In progress. The supplied line numbers fingerprint historical commit
+`33bf52fe`; the current tree already contains the complete scoped correction
+and failing-first regression coverage. Three independent audits and 14 guarded
+focused cases find no remaining leak or material coverage gap. A duplicate
+executable edit is not warranted; affected-suite and static verification are
+next.
 
 ### Done
 
@@ -20,13 +23,46 @@ runtime or regression edit is warranted.
 - Reopened this committed journal. Earlier scoped-fix and regression commits
   exist on the branch, but their completion claims remain untrusted pending a
   fresh current-tree diagnosis and verification.
+- Reconstructed the exact historical failure. The canonical 15-target
+  `puf_tax_itemization` family is bounded at eight targets, placing taxable
+  interest in `puf_tax_itemization__batch_1`. At `33bf52fe`, QRF evidence was
+  attached to every imputed record and validated against the unsplit public
+  family before assignment was checked, producing the supplied line
+  4512-to-4310 traceback.
+- Enumerated the live immutable registry: exactly two early and seven late
+  model-required, source-operator, and adult-care targets. Taxable interest is
+  absent.
+- Traced ordinary and banked transfers, both canonical owners, both receipt
+  builders, and both validators. Regime work defaults off; owners select only
+  immutable specs; unassigned provenance and receipts omit regimes and QRF
+  evidence; validators reject forged unassigned evidence before retaining
+  exact record-family binding for assigned targets; all targets retain strict
+  four-count transfer accounting.
+- Reconciled independent runtime, history, and regression audits. All found the
+  correction complete and no canonical alternate path, warm-bank path, or
+  serializer that broadens the assigned selection.
+- Confirmed the correction chain: `22b2c6bc` added the exact unassigned batched
+  regression; `176c60fc` supplied the primary opt-in runtime fix; `887df056`
+  restored strict exact-family binding and independent legacy counts;
+  `94b7aecb` pinned the canonical width and closed mixed-family/count gaps; and
+  `21a48ba5` rejects a fully rehashed plausible assigned `__batch_1` alias.
+- Proved the primary regression is failing-first. Against the unchanged
+  `33bf52fe` source it fails at the supplied lines with the same taxable-interest
+  record-binding error; it passes against first fix `176c60fc` and current
+  `HEAD`.
+- Ran the exact synthetic target, the real banked 15-target producer, and all
+  12 rehashed QRF structure mutations under the owner 12 GiB/20 ms guard. All
+  14 cases passed; maximum observed per-process RSS was 0.567 GiB. The only
+  warning was joblib's logical-core fallback.
+- Confirmed the complete current `microcosm-build/src`, `tools`, and `specs`
+  Git trees exactly match all-suite checkpoint `a5be536f`; the only affected
+  test difference is the three-line strict assigned-family forgery case.
 
 ### Next
 
-Trace the failing validator through its receipt producers and immutable target
-selection, audit the existing regression against the supplied target, and make
-the smallest warranted executable change before running the affected suite and
-static checks.
+Run the five-file affected suite under the owner guard, then repository lint,
+touched-file format, whitespace, and executable-drift checks. Refresh the final
+report only after those pass.
 
 ## Current continuation — 2026-08-20
 
