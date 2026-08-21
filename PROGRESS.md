@@ -4,8 +4,11 @@
 
 ### State
 
-Diagnosis, regression strengthening, affected-suite verification, and static
-verification are complete. The required final report remains to refresh.
+Complete as of 2026-08-21 07:34:35Z. The historical failure is diagnosed, the
+assigned-only implementation is intact, the exact binding regression now
+covers ordinary and banked wide-family execution, all 530 affected tests and
+static checks are green, and `FINAL_REPORT.md` is committed at `96be5daf`.
+Restricted host certification remains external and has no terminal verdict.
 The supplied traceback fingerprints historical commit `33bf52fe`. The current
 implementation contains the assigned-only repair and the exact failing-first
 regression passes. Independent call-path and test audits found no remaining
@@ -92,11 +95,16 @@ ordinary-path parity case is now green; the affected suite remains to rerun.
   directory still had only `build.log` and `guard.log`: no terminal exit,
   `pool.h5`, manifest, gates, or Git-revision binding. This remains progress,
   not certification.
+- Refreshed and committed the required `FINAL_REPORT.md` at `96be5daf` with the
+  current root cause, correction lineage, ordinary/banked regression evidence,
+  guarded 530-test verdict, static checks, complete-suite object binding,
+  continuation commits, and precise host boundary.
 
 ### Next
 
-1. Update `FINAL_REPORT.md` with current evidence and commit it.
-2. Mark this journal complete with the final report commit and handoff boundary.
+Obtain a durable, terminal, revision-bound restricted host result with passing
+`pool.h5`, `pool.manifest.json`, and `pool.gates.json`. Do not publish or mutate
+the release chain as a side effect of that external verification.
 
 ## Active owner continuation — 2026-08-21 06:49Z
 
