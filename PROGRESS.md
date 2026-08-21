@@ -4,12 +4,13 @@
 
 ### State
 
-In progress. The owner has supplied the 1% host traceback again and requires
-an exact assigned-only repair at the stacked ACS QRF binding boundary. The
-current branch contains a previously reported correction; this continuation
-will independently bind the traceback to current source and tests, verify the
-assigned-target scope, and make any additional executable or regression change
-that the evidence requires.
+Diagnosis complete; regression strengthening and verification are in progress.
+The supplied traceback fingerprints historical commit `33bf52fe`. The current
+implementation contains the assigned-only repair and the exact failing-first
+regression passes. Independent call-path and test audits found no remaining
+canonical behavior leak, but identified one useful coverage asymmetry: the real
+15-target taxable-interest transfer is exercised only with a target bank. This
+continuation will add ordinary-path parity before rerunning the affected suite.
 
 ### Done
 
@@ -22,15 +23,53 @@ that the evidence requires.
 - Confirmed `FINAL_REPORT.md` is the existing required output file.
 - Inspected the committed historical journal and correction ledger without
   treating their prior completion claim as current verification.
+- Generated a current GitNexus graph as required by the debugging workflow.
+  Analysis completed through a 563-file, 11,597-node, 31,245-edge graph, but
+  its final registry write was sandbox-blocked at
+  `~/.gitnexus/registry.json`, so query/context could not consume it. Removed
+  the generated 100 MiB local cache and used direct source/history tracing.
+- Bound the supplied traceback exactly to `33bf52fe`: line 4512 validated QRF
+  evidence for every target before looking up the target in the early
+  calibration registry, and line 4310 required the canonical unsplit family.
+  The actual taxable-interest provenance used the bounded physical family
+  `puf_tax_itemization__batch_1`, causing the reported mismatch.
+- Confirmed the historical transfer runtime also detected, verified, and
+  attached regimes globally. The value-calibration write path was already
+  registry-filtered; the leak was shared diagnostic/receipt behavior.
+- Enumerated the live immutable registry: exactly two early and seven late
+  targets across the assigned model-required, source-operator, and adult-care
+  families. `taxable_interest_income` is absent.
+- Traced every current production caller. Only the early and late stacked
+  owners pass `regime_evidence_targets`, both derive it from that registry,
+  ordinary and banked fits compute/verify regimes only for the selection,
+  unassigned target records have empty regimes, and receipt builders attach
+  evidence only for the same selection. Generic multispine and pool-tool
+  callers retain the empty default.
+- Confirmed both terminal validators validate the four legacy transfer counts
+  for every target, then reject undeclared QRF/calibration evidence before
+  invoking strict QRF record binding only for a declared calibration target.
+- Ran the exact taxable-interest validator regression and the real banked
+  15-target integration regression on current `7668825b`: 2 passed, with
+  0.573 GiB maximum observed per-process RSS.
+- Ran the exact regression against detached test-only commit `22b2c6bc`, whose
+  runtime object is the failing `33bf52fe` version. It failed at the supplied
+  `stacked_spine.py:4512` caller and `:4310` raise with the same taxable-interest
+  record-binding error, at 0.454 GiB peak RSS.
+- Reconciled independent call-path, regression-surface, and read-only host
+  audits. None found a current alternate canonical producer, fit, serializer,
+  validator, or calibration-write path that broadens the nine-target policy.
+- Read the live host retry without changing it. At 2026-08-21 07:16:16Z it had
+  rebuilt taxable interest as target 22/47 and continued through target 39/47
+  without the old traceback. It remained active, had no terminal exit or final
+  pool/manifest/gates artifacts, and recorded no Git revision, so this is not a
+  certification verdict.
 
 ### Next
 
-1. Trace the reported raise site through current producers, serializers, and
-   early/late validators; compare it with the historical failing revision.
-2. Prove that regime work, evidence, and calibration writes are selected only
-   for the assigned model-required, source-operator, and adult-care targets.
-3. Add or strengthen the exact binding regression if a gap remains, run the
-   affected suite and static checks, then update `FINAL_REPORT.md`.
+1. Parameterize the real wide-family taxable-interest regression over ordinary
+   and banked execution, preserving the exact assigned/unassigned assertions.
+2. Run the focused red-green matrix, directly affected suite, and static
+   checks, then update `FINAL_REPORT.md` with current evidence.
 
 ## Active owner continuation — 2026-08-21 06:49Z
 
