@@ -66,11 +66,19 @@ failure transcript are preserved unchanged.
   multispine-serialization, 259 stacked-spine, 164 pool-tool, and 38 H5-I/O
   tests: all 530 passed in one process with exit zero. Maximum observed
   per-process RSS was 1.550 GiB.
+- Ran repository-wide `ruff check .`, formatting checks on all 15 Python files
+  changed since `33bf52fe^`, and committed/current `git diff --check`; all
+  passed.
+- Started the complete repository suite in one guarded process. Pytest reached
+  83% with no test failure, then the memory guard terminated the process when
+  one process reached 13.225 GiB against the 12 GiB ceiling. This is a resource
+  termination, not a green full-suite result, and is retained explicitly. The
+  repository suite must be rerun in fresh bounded shards.
 
 ### Next
 
-1. Run repository-prescribed static and full-suite verification on the
-   unchanged executable tree.
+1. Run every repository test in fresh bounded shards on the unchanged
+   executable tree, preserving the 12 GiB ceiling.
 2. Refresh and commit `FINAL_REPORT.md`; leave restricted host certification
    and publication outside this local correction.
 
