@@ -42,11 +42,34 @@ pipeline_contract:
   - with_us_education_inputs
   derive_operator_order:
   - _complete_schedule_d_input
+  - with_us_qbi_passive_passthrough_assignment
   - with_us_qbi_input_reconciliation
   auxiliary_operations:
   - assign_us_puma_ladder
   - calibrate
   - select_exact_k
+  qbi_passive_passthrough:
+    version: 1
+    assignment_stage_version: 1
+    output_column: passive_partnership_s_corp_income
+    person_input_columns:
+    - partnership_income
+    - s_corp_income
+    - rental_income
+    - estate_income
+    evidence_resource: qbi_passive_passthrough_v1.json
+    evidence_sha256: 32fac446d5f208a9c3f73c8234184144dd0c1f322ccdf186e5fb94dd774d61a7
+    assumptions_resource: qbi_passive_passthrough_assumptions_v1.json
+    assumptions_sha256: 0283a0afc9efc28bcdda6ad4f21bb29501c156640a4deebedecb1e3da128b358
+    log_odds_shift: -1.157105426398319
+    random_streams:
+      bit_generator: PCG64
+      draw_policy: full_length_before_support_masks
+      family_entropy: 4722
+      presence_family: 0
+      root_seed_default: 0
+      share_family: 1
+    sha256: cf3686966f12700ce1314e0e5afde5ff208d84c0e5e605c8ab84fc8cd0000aab
   qbi_reconciliation:
     version: 2
     operation: shared_all_or_nothing_identity_reconciliation

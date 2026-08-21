@@ -1095,6 +1095,16 @@ def project_stacked_checkpoint_base_identity(
             "acs_pums_earnings_universe_contract": _acs_earnings_contract(
                 domains["imputation"]
             ),
+            "us_qbi_passive_passthrough_contract": deepcopy(
+                dict(
+                    _mapping(
+                        pipeline.get("qbi_passive_passthrough"),
+                        location=(
+                            "spine/pipeline_contract/qbi_passive_passthrough"
+                        ),
+                    )
+                )
+            ),
             "us_qbi_reconciliation_contract": deepcopy(
                 dict(
                     _mapping(

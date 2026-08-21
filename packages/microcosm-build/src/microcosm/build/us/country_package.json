@@ -1,181 +1,181 @@
 {
- "schema_version": 1,
- "country": "us",
- "resources": [
-  {
-   "path": "spec/battery.yaml",
-   "kind": "battery",
-   "schema_id": "battery.schema.json"
-  },
-  {
-   "path": "spec/bundle.yaml",
-   "kind": "bundle",
-   "schema_id": "bundle.schema.json"
-  },
-  {
-   "path": "spec/calibration.yaml",
-   "kind": "calibration",
-   "schema_id": "calibration.schema.json"
-  },
-  {
-   "path": "spec/catalogs.yaml",
-   "kind": "catalogs",
-   "schema_id": "catalogs.schema.json"
-  },
-  {
-   "path": "spec/geography.yaml",
-   "kind": "geography",
-   "schema_id": "geography.schema.json"
-  },
-  {
-   "path": "spec/imputation.yaml",
-   "kind": "imputation",
-   "schema_id": "imputation.schema.json"
-  },
-  {
-   "path": "spec/publication.yaml",
-   "kind": "publication",
-   "schema_id": "publication.schema.json"
-  },
-  {
-   "path": "spec/selection.yaml",
-   "kind": "selection",
-   "schema_id": "selection.schema.json"
-  },
-  {
-   "path": "spec/sources.yaml",
-   "kind": "sources",
-   "schema_id": "sources.schema.json"
-  },
-  {
-   "path": "spec/spine.yaml",
-   "kind": "spine",
-   "schema_id": "spine.schema.json"
-  },
-  {
-   "path": "spec/take_up.yaml",
-   "kind": "take_up",
-   "schema_id": "take_up.schema.json"
-  },
-  {
-   "path": "spec/vintages.yaml",
-   "kind": "vintages",
-   "schema_id": "vintages.schema.json"
-  },
-  {
-   "path": "ecps_parity_known_gaps.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "ecps_parity_reference.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "federal_eitc_by_state.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "fiscal_target_references.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "obbba_reforms.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "puf_aggregate_record_disaggregation.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "release_input_coverage_manifest.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "soca_capital_gain_distribution_shares.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "soi_baseline_levels.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "soi_table_2_1_interest_components_ty2015.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "source_stages.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "state_program_levels.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "state_program_reforms.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "state_reforms.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "state_spm_poverty_levels.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "support_spine.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "take_up_contract.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "target_parity_feed_families.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "target_parity_manifest.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "tax_expenditure_reforms.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "qbi_passive_passthrough_assumptions_v1.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "qbi_passive_passthrough_v1.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  },
-  {
-   "path": "repeal_revenue_benchmarks.json",
-   "kind": "legacy_json",
-   "schema_id": "legacy_json"
-  }
- ]
+  "schema_version": 1,
+  "country": "us",
+  "resources": [
+    {
+      "path": "spec/battery.yaml",
+      "kind": "battery",
+      "schema_id": "battery.schema.json"
+    },
+    {
+      "path": "spec/bundle.yaml",
+      "kind": "bundle",
+      "schema_id": "bundle.schema.json"
+    },
+    {
+      "path": "spec/calibration.yaml",
+      "kind": "calibration",
+      "schema_id": "calibration.schema.json"
+    },
+    {
+      "path": "spec/catalogs.yaml",
+      "kind": "catalogs",
+      "schema_id": "catalogs.schema.json"
+    },
+    {
+      "path": "spec/geography.yaml",
+      "kind": "geography",
+      "schema_id": "geography.schema.json"
+    },
+    {
+      "path": "spec/imputation.yaml",
+      "kind": "imputation",
+      "schema_id": "imputation.schema.json"
+    },
+    {
+      "path": "spec/publication.yaml",
+      "kind": "publication",
+      "schema_id": "publication.schema.json"
+    },
+    {
+      "path": "spec/selection.yaml",
+      "kind": "selection",
+      "schema_id": "selection.schema.json"
+    },
+    {
+      "path": "spec/sources.yaml",
+      "kind": "sources",
+      "schema_id": "sources.schema.json"
+    },
+    {
+      "path": "spec/spine.yaml",
+      "kind": "spine",
+      "schema_id": "spine.schema.json"
+    },
+    {
+      "path": "spec/take_up.yaml",
+      "kind": "take_up",
+      "schema_id": "take_up.schema.json"
+    },
+    {
+      "path": "spec/vintages.yaml",
+      "kind": "vintages",
+      "schema_id": "vintages.schema.json"
+    },
+    {
+      "path": "ecps_parity_known_gaps.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "ecps_parity_reference.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "federal_eitc_by_state.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "fiscal_target_references.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "obbba_reforms.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "puf_aggregate_record_disaggregation.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "qbi_passive_passthrough_assumptions_v1.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "qbi_passive_passthrough_v1.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "release_input_coverage_manifest.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "repeal_revenue_benchmarks.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "soca_capital_gain_distribution_shares.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "soi_baseline_levels.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "soi_table_2_1_interest_components_ty2015.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "source_stages.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "state_program_levels.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "state_program_reforms.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "state_reforms.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "state_spm_poverty_levels.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "support_spine.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "take_up_contract.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "target_parity_feed_families.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "target_parity_manifest.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "tax_expenditure_reforms.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    }
+  ]
 }

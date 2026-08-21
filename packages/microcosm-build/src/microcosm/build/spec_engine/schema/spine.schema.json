@@ -270,6 +270,7 @@
     "post_clone_source_operator_order",
     "derive_operator_order",
     "auxiliary_operations",
+    "qbi_passive_passthrough",
     "qbi_reconciliation",
     "simulation_household_batch_size"
    ],
@@ -303,6 +304,9 @@
      "x-canonical-order": "set",
      "items": {"$ref": "#/$defs/operator_id"}
     },
+    "qbi_passive_passthrough": {
+     "$ref": "#/$defs/qbi_passive_passthrough_contract"
+    },
     "qbi_reconciliation": {"$ref": "#/$defs/qbi_reconciliation_contract"},
     "simulation_household_batch_size": {
      "type": "object",
@@ -333,6 +337,66 @@
   "operator_id": {
    "type": "string",
    "pattern": "^_?[a-z][a-z0-9_]*$"
+  },
+  "qbi_passive_passthrough_contract": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "version",
+    "assignment_stage_version",
+    "output_column",
+    "person_input_columns",
+    "evidence_resource",
+    "evidence_sha256",
+    "assumptions_resource",
+    "assumptions_sha256",
+    "log_odds_shift",
+    "random_streams",
+    "sha256"
+   ],
+   "properties": {
+    "version": {"const": 1},
+    "assignment_stage_version": {"const": 1},
+    "output_column": {"const": "passive_partnership_s_corp_income"},
+    "person_input_columns": {
+     "type": "array",
+     "prefixItems": [
+      {"const": "partnership_income"},
+      {"const": "s_corp_income"},
+      {"const": "rental_income"},
+      {"const": "estate_income"}
+     ],
+     "items": false
+    },
+    "evidence_resource": {"const": "qbi_passive_passthrough_v1.json"},
+    "evidence_sha256": {"$ref": "defs.schema.json#/$defs/sha256"},
+    "assumptions_resource": {
+     "const": "qbi_passive_passthrough_assumptions_v1.json"
+    },
+    "assumptions_sha256": {"$ref": "defs.schema.json#/$defs/sha256"},
+    "log_odds_shift": {"type": "number"},
+    "random_streams": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "bit_generator",
+      "draw_policy",
+      "family_entropy",
+      "presence_family",
+      "root_seed_default",
+      "share_family"
+     ],
+     "properties": {
+      "bit_generator": {"const": "PCG64"},
+      "draw_policy": {"const": "full_length_before_support_masks"},
+      "family_entropy": {"const": 4722},
+      "presence_family": {"const": 0},
+      "root_seed_default": {"const": 0},
+      "share_family": {"const": 1}
+     }
+    },
+    "sha256": {"$ref": "defs.schema.json#/$defs/sha256"}
+   }
   },
   "qbi_reconciliation_contract": {
    "type": "object",

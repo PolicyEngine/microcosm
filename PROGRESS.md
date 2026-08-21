@@ -4,13 +4,11 @@
 
 Dual-review remediation is in progress on `passive-pass-through-722` as of
 2026-08-21. The real merge of already-fetched `origin/main` at `2c7a7218` is
-resolved and ready to commit, with the supervisor-approved resolutions from
-the detached `61869aa5` merge reproduced exactly. Work remains offline: no
-fetch, push, PR mutation, publication, or promotion is in scope.
-
-An unstaged `uv.lock` refresh pre-dated this remediation pass. It is preserved
-for reconciliation with the post-merge `uv sync` result rather than discarded
-or folded into an unrelated commit.
+committed as `d9f19c66`, with the supervisor-approved resolutions reproduced
+exactly. The post-merge resource closure and first-class typed passive contract
+are regenerated and their fail-closed coverage ledger is verified. Work
+remains offline: no fetch, push, PR mutation, publication, or promotion is in
+scope.
 
 ## Done
 
@@ -35,6 +33,24 @@ or folded into an unrelated commit.
   `tools/generate_us_bundle_from_constants.py::LEGACY_RESOURCE_PATHS`; the
   loader's `_assert_file_closure` compares that emitted manifest with package
   files.
+- Committed the real merge of current `origin/main` as `d9f19c66`; its second
+  parent is `2c7a7218` and it is not a rebase or squash.
+- Declared the three passive/repeal JSON resources on
+  `LEGACY_RESOURCE_PATHS`, completed the full generator run, and ran the exact
+  offline `uv sync --all-packages --all-extras` equivalent against the locked
+  environment.
+- Traced the remaining constants-adapter failure to the passive contract being
+  present only as generated pool code. Added it to the typed pipeline schema,
+  compiler identity contract, and stacked-authority projection, then regenerated
+  the bundle at spec SHA-256
+  `11b5f830141d007b53131f6c863d15a6be10787fc6d88aeb147317d2c1f593e0`.
+- Independently reviewed the changed field-usage claims: 62 new pointers total
+  (29 authored, 33 resolved), all accounted for by the three typed manifest
+  rows and the typed passive pipeline/pool-code contract.
+- Regenerated the F0 evidence report with exact 41,442/41,442 field coverage
+  and 40/40 inventory checks. The targeted adapter, schema/identity,
+  field-ledger, inventory, and coverage suite passes 45 tests; the US generator
+  check and targeted Ruff checks are also clean.
 - The implementation and verification bullets below describe the historical
   pre-review checkpoint at `a4d93f78`; the verdict supersedes its former
   completion claim.
@@ -91,9 +107,6 @@ or folded into an unrelated commit.
 
 ## Next
 
-- Commit the resolved real merge of current `origin/main`.
-- Declare the three legacy JSON resources on main's typed file-closure surface,
-  regenerate the US bundle and engine lock, and sync all packages/extras.
 - Replace the vacuous preservation proxy with a nonzero-realization regression
   that executes the current-main QBI pipeline and byte-compares every incumbent
   QBI column before and after the passive stage.
