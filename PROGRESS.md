@@ -4,13 +4,14 @@
 
 ### State
 
-In progress. The supplied traceback is independently bound to the historical
-globally enabled QRF-audit evidence path at `33bf52fe`. The current tree's
-assigned-only correction, exact synthetic failure, real ordinary/banked
-producer boundary, strict binding variants, and all 530 directly affected
-tests are green. Static and exact-object checks are also green; only the final
-required report refresh remains. The final read-only host snapshot is
-nonterminal and cannot certify the restricted build.
+Complete as of `2026-08-21 10:14:50Z`. The supplied traceback is independently
+bound to the historical globally enabled QRF-audit evidence path at
+`33bf52fe`. The current tree already contains the narrow assigned-only repair
+and exact regression coverage, so no duplicate executable or test edit was
+warranted. The decisive cases, all 530 directly affected tests, static checks,
+and exact prior-suite object bindings are green. `FINAL_REPORT.md` contains the
+revision-bound result and is committed at `0ed1053d`. The final read-only host
+snapshot is nonterminal, so restricted-build certification is not claimed.
 
 ### Done
 
@@ -83,11 +84,16 @@ nonterminal and cannot certify the restricted build.
   traceback to inspect, but also no runner exit marker, transferred/simulated
   checkpoint, `pool.h5`, `pool.manifest.json`, or `pool.gates.json`. This is no
   terminal host verdict and does not alter the local result.
+- Refreshed and committed the required `FINAL_REPORT.md` at `0ed1053d` with the
+  corrected operational-versus-audit regime distinction, root cause,
+  assigned-only fences, regression evidence, fresh guarded verification,
+  static/object checks, and explicit nonterminal host boundary.
 
 ### Next
 
-Refresh the required final report with the revision-bound local result and the
-explicitly nonterminal host boundary, then close this journal.
+Obtain a durable, terminal, revision-bound restricted 1% host result with
+passing `pool.h5`, `pool.manifest.json`, and `pool.gates.json`. Do not publish or
+mutate the release chain as a side effect of that external verification.
 
 ## Owner continuation verification — 2026-08-21 09:17Z
 
