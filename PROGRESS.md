@@ -4,13 +4,13 @@
 
 ### State
 
-Diagnosis complete; regression strengthening and verification are in progress.
+Diagnosis and regression strengthening are complete; verification is in progress.
 The supplied traceback fingerprints historical commit `33bf52fe`. The current
 implementation contains the assigned-only repair and the exact failing-first
 regression passes. Independent call-path and test audits found no remaining
 canonical behavior leak, but identified one useful coverage asymmetry: the real
-15-target taxable-interest transfer is exercised only with a target bank. This
-continuation will add ordinary-path parity before rerunning the affected suite.
+15-target taxable-interest transfer was exercised only with a target bank. The
+ordinary-path parity case is now green; the affected suite remains to rerun.
 
 ### Done
 
@@ -63,13 +63,19 @@ continuation will add ordinary-path parity before rerunning the affected suite.
   without the old traceback. It remained active, had no terminal exit or final
   pool/manifest/gates artifacts, and recorded no Git revision, so this is not a
   certification verdict.
+- Parameterized the real 15-target `puf_tax_itemization` integration regression
+  over ordinary and banked execution. Both paths now prove the physical
+  taxable-interest record remains `puf_tax_itemization__batch_1` with empty
+  regimes and no QRF receipt, while selected unemployment retains regimes and
+  evidence.
+- Ran the strengthened three-case focused matrix (exact validator plus ordinary
+  and banked real transfers): 3 passed, with 0.584 GiB maximum observed
+  per-process RSS.
 
 ### Next
 
-1. Parameterize the real wide-family taxable-interest regression over ordinary
-   and banked execution, preserving the exact assigned/unassigned assertions.
-2. Run the focused red-green matrix, directly affected suite, and static
-   checks, then update `FINAL_REPORT.md` with current evidence.
+1. Run the directly affected suite and static checks.
+2. Update `FINAL_REPORT.md` with current evidence and close this continuation.
 
 ## Active owner continuation — 2026-08-21 06:49Z
 

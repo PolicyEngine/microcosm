@@ -6571,8 +6571,14 @@ def test_gap_fill_banks_per_target_via_608_store(tmp_path) -> None:
     assert survey_receipt["targets"]
 
 
-def test_banked_gap_fill_scopes_qrf_evidence_off_wide_unassigned_family(
+@pytest.mark.parametrize(
+    "use_target_bank",
+    [False, True],
+    ids=("ordinary", "banked"),
+)
+def test_gap_fill_scopes_qrf_evidence_off_wide_unassigned_family(
     tmp_path: Path,
+    use_target_bank: bool,
 ) -> None:
     stacked = _stacked_gap_fixture()
     canonical_direction = next(
@@ -6609,9 +6615,15 @@ def test_banked_gap_fill_scopes_qrf_evidence_off_wide_unassigned_family(
             }
         },
     )
-    bank = AcsTransferTargetBankStore(
-        tmp_path / "survey",
-        identity={"regression": "scoped-wide-gap-fill"},
+    target_banks = (
+        {
+            direction.name: AcsTransferTargetBankStore(
+                tmp_path / "survey",
+                identity={"regression": "scoped-wide-gap-fill"},
+            )
+        }
+        if use_target_bank
+        else None
     )
 
     result = _gap_fill_with_test_authority(
@@ -6619,7 +6631,7 @@ def test_banked_gap_fill_scopes_qrf_evidence_off_wide_unassigned_family(
         plan=(direction,),
         seed=578,
         n_estimators=1,
-        target_banks={direction.name: bank},
+        target_banks=target_banks,
     )
 
     records = {
