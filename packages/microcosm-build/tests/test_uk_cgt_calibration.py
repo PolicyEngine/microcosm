@@ -18,7 +18,32 @@ from microcosm.build.uk_runtime.cgt_calibration import (
     uk_cgt_annual_exempt_amount,
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
+from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import WeightKind
+
+CGT_REGISTRY = TargetRegistry(
+    [
+        TargetSpec(
+            name="hmrc.cgt.gains_total",
+            entity="person",
+            measure="hmrc/capital_gains_total",
+            value=65_937_000_000.0,
+            period=2025,
+            source="test",
+            family="hmrc_cgt",
+        ),
+        TargetSpec(
+            name="hmrc.cgt.taxpayers_total",
+            entity="person",
+            measure="hmrc/cgt_taxpayers",
+            value=378_000.0,
+            period=2025,
+            source="test",
+            family="hmrc_cgt",
+        ),
+    ],
+    country="uk",
+)
 
 
 def _dataset(gains, *, time_period="2023", drop_gains=False, weights=None):
@@ -69,13 +94,13 @@ def test_default_threshold_comes_from_the_dataset_period():
     gains = [0.0, 8_000.0, 100_000.0]
     assert (
         materialize_uk_cgt_calibration_frame(
-            _dataset(gains, time_period="2023")
+            _dataset(gains, time_period="2023"), registry=CGT_REGISTRY
         ).taxpayer_rows
         == 2
     )
     assert (
         materialize_uk_cgt_calibration_frame(
-            _dataset(gains, time_period="2022")
+            _dataset(gains, time_period="2022"), registry=CGT_REGISTRY
         ).taxpayer_rows
         == 1
     )
@@ -84,11 +109,18 @@ def test_default_threshold_comes_from_the_dataset_period():
 def test_measure_columns_are_indicator_and_gated_amount():
     """Counts are 0/1; amounts are zeroed off-support, not merely copied."""
     result = materialize_uk_cgt_calibration_frame(
-        _dataset([0.0, 5_000.0, 20_000.0, 100_000.0])
+        _dataset([0.0, 5_000.0, 20_000.0, 100_000.0]), registry=CGT_REGISTRY
     )
     person = result.frame.table("person")
     assert person[UK_CGT_TAXPAYER_COUNT_COLUMN].tolist() == [0.0, 0.0, 1.0, 1.0]
     assert person[UK_CGT_GAINS_AMOUNT_COLUMN].tolist() == [
+        0.0,
+        0.0,
+        20_000.0,
+        100_000.0,
+    ]
+    assert person["hmrc/cgt_taxpayers"].tolist() == [0.0, 0.0, 1.0, 1.0]
+    assert person["hmrc/capital_gains_total"].tolist() == [
         0.0,
         0.0,
         20_000.0,
@@ -101,7 +133,9 @@ def test_measure_columns_are_indicator_and_gated_amount():
 
 def test_explicit_threshold_overrides_the_period_default():
     result = materialize_uk_cgt_calibration_frame(
-        _dataset([0.0, 5_000.0, 20_000.0]), annual_exempt_amount=10_000.0
+        _dataset([0.0, 5_000.0, 20_000.0]),
+        registry=CGT_REGISTRY,
+        annual_exempt_amount=10_000.0,
     )
     assert result.annual_exempt_amount == 10_000.0
     assert result.taxpayer_rows == 1
@@ -110,7 +144,7 @@ def test_explicit_threshold_overrides_the_period_default():
 def test_frame_carries_person_rows_and_household_weights():
     """Constraint rows are person-grain; the calibrated mass stays household."""
     result = materialize_uk_cgt_calibration_frame(
-        _dataset([0.0, 20_000.0], weights=[3.0, 5.0])
+        _dataset([0.0, 20_000.0], weights=[3.0, 5.0]), registry=CGT_REGISTRY
     )
     assert set(result.frame.entities) == {"person", "household"}
     weights = result.frame.resolve_weights("household")
@@ -119,20 +153,26 @@ def test_frame_carries_person_rows_and_household_weights():
 
 
 def test_registry_contains_exactly_the_two_declared_facts():
-    result = materialize_uk_cgt_calibration_frame(_dataset([0.0, 20_000.0]))
+    result = materialize_uk_cgt_calibration_frame(
+        _dataset([0.0, 20_000.0]), registry=CGT_REGISTRY
+    )
     assert result.registry.country == "uk"
     assert {spec.name for spec in result.registry} == {
-        "hmrc/capital_gains_total",
-        "hmrc/cgt_taxpayers",
+        "hmrc.cgt.gains_total",
+        "hmrc.cgt.taxpayers_total",
     }
 
 
 def test_missing_capital_gains_column_fails_loudly():
     with pytest.raises(ValueError, match="capital_gains"):
-        materialize_uk_cgt_calibration_frame(_dataset([0.0, 1.0], drop_gains=True))
+        materialize_uk_cgt_calibration_frame(
+            _dataset([0.0, 1.0], drop_gains=True), registry=CGT_REGISTRY
+        )
 
 
 def test_zero_support_refuses_to_calibrate_a_positive_fact():
     """Every person below the AEA means the £65.9bn fact has no support."""
     with pytest.raises(ValueError, match="no strictly positive-mass support"):
-        materialize_uk_cgt_calibration_frame(_dataset([0.0, 100.0, 5_999.0]))
+        materialize_uk_cgt_calibration_frame(
+            _dataset([0.0, 100.0, 5_999.0]), registry=CGT_REGISTRY
+        )
