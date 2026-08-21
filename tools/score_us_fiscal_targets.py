@@ -81,11 +81,6 @@ def _parse_args() -> argparse.Namespace:
         help="Disable the scorer target-materialization cache.",
     )
     parser.add_argument(
-        "--diagnostic-skip-tax-expenditure-targets",
-        action="store_true",
-        help="Diagnostic only: drop JCT reform targets to avoid reform simulations.",
-    )
-    parser.add_argument(
         "--allow-legacy-formula-owned-inputs",
         action="store_true",
         help=(
@@ -106,21 +101,14 @@ def _parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--include-congressional-district-targets",
-        action="store_true",
-        help=(
-            "Opt into SOI congressional-district target rows. Requires the "
-            "scored H5 to contain household congressional_district_geoid."
-        ),
-    )
-    parser.add_argument(
         "--congressional-district-vintage-crosswalk",
         type=Path,
         help=(
-            "Optional source-to-current congressional-district crosswalk "
+            "Source-to-current congressional-district crosswalk "
             "artifact with source_geography_id, target_geography_id, and "
             "weight columns. Used to score old-vintage SOI CD targets on the "
-            "current regional surface."
+            "current regional surface; defaults to the packaged Census-built "
+            "crosswalk."
         ),
     )
     parser.add_argument(
@@ -400,22 +388,20 @@ def score_frame(
     allow_unaged_dollar_targets: bool = True,
     maximum_microsim_batch_size: int
     | None = release.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
-    diagnostic_skip_tax_expenditure_targets: bool = False,
     allow_legacy_formula_owned_inputs: bool = False,
     allow_legacy_cd_provenance: bool = False,
-    include_congressional_district_targets: bool = False,
     congressional_district_vintage_crosswalk: Path | None = None,
     target_materialization_cache_dir: Path | None = None,
     legacy_pe_flat_h5: bool = False,
 ) -> tuple[CalibrationResult, object, dict[str, object], dict[str, object]]:
-    congressional_district_vintage_crosswalk_metadata = (
-        {
-            "path": str(congressional_district_vintage_crosswalk.resolve()),
-            "sha256": release._sha256(congressional_district_vintage_crosswalk),
-        }
-        if congressional_district_vintage_crosswalk is not None
-        else None
-    )
+    if congressional_district_vintage_crosswalk is None:
+        congressional_district_vintage_crosswalk = (
+            release.default_congressional_district_vintage_crosswalk_path()
+        )
+    congressional_district_vintage_crosswalk_metadata = {
+        "path": str(congressional_district_vintage_crosswalk.resolve()),
+        "sha256": release._sha256(congressional_district_vintage_crosswalk),
+    }
     _assert_legacy_cd_provenance_options(
         allow_legacy_cd_provenance=allow_legacy_cd_provenance,
         congressional_district_vintage_crosswalk_metadata=(
@@ -431,26 +417,13 @@ def score_frame(
         target_period=release.PERIOD,
         age_targets=age_targets,
         allow_unaged_dollar_targets=allow_unaged_dollar_targets,
-        include_congressional_district_targets=include_congressional_district_targets,
         congressional_district_vintage_crosswalk=(
             release.load_congressional_district_vintage_crosswalk(
                 congressional_district_vintage_crosswalk
             )
-            if congressional_district_vintage_crosswalk is not None
-            else None
         ),
     )
     target_specs = target_registry.specs
-    if diagnostic_skip_tax_expenditure_targets:
-        tax_expenditure_measures = {
-            reform_spec.measure
-            for reform_spec in release.US_JCT_TAX_EXPENDITURE_REFORMS
-        }
-        target_specs = tuple(
-            spec
-            for spec in target_specs
-            if spec.measure not in tax_expenditure_measures
-        )
 
     target_profile_gate = release.target_profile_coverage_gate(
         target_specs,
@@ -461,11 +434,6 @@ def score_frame(
         base_frame, legacy_h5_layout = _load_legacy_pe_flat_frame(h5)
     else:
         base_frame = release._load_frame(h5)
-    if (
-        allow_legacy_cd_provenance
-        and congressional_district_vintage_crosswalk_metadata is not None
-    ):
-        release._strict_area_artifact_specs(base_frame)
     legacy_formula_owned_inputs: dict[str, list[str]] = {}
     if allow_legacy_formula_owned_inputs:
         base_frame, legacy_formula_owned_inputs = _drop_legacy_formula_owned_inputs(
@@ -603,6 +571,10 @@ def _summary_payload(
 
 def main() -> None:
     args = _parse_args()
+    if args.congressional_district_vintage_crosswalk is None:
+        args.congressional_district_vintage_crosswalk = (
+            release.default_congressional_district_vintage_crosswalk_path()
+        )
     h5 = args.h5 or release._download_base_h5()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -612,10 +584,8 @@ def main() -> None:
         age_targets=args.age_targets,
         allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
-        diagnostic_skip_tax_expenditure_targets=args.diagnostic_skip_tax_expenditure_targets,
         allow_legacy_formula_owned_inputs=args.allow_legacy_formula_owned_inputs,
         allow_legacy_cd_provenance=args.allow_legacy_cd_provenance,
-        include_congressional_district_targets=args.include_congressional_district_targets,
         congressional_district_vintage_crosswalk=(
             args.congressional_district_vintage_crosswalk
         ),

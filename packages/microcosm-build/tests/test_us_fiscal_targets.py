@@ -1,3 +1,4 @@
+import inspect
 import json
 import re
 from hashlib import sha256
@@ -174,7 +175,7 @@ def test_us_fiscal_reference_selectors_are_unique_on_synthetic_fact_surface() ->
     compile_us_fiscal_target_registry(facts, allow_unaged_dollar_targets=True)
 
 
-def test_soi_congressional_district_targets_are_opt_in() -> None:
+def test_soi_congressional_district_targets_are_always_compiled() -> None:
     facts = [
         *packaged_reference_facts(),
         _soi_congressional_district_fact(
@@ -273,36 +274,25 @@ def test_soi_congressional_district_targets_are_opt_in() -> None:
         ),
     ]
 
-    default_registry = compile_us_fiscal_target_registry(
-        facts, allow_unaged_dollar_targets=True
-    )
-    cd_registry = compile_us_fiscal_target_registry(
+    registry = compile_us_fiscal_target_registry(
         facts,
-        include_congressional_district_targets=True,
         allow_unaged_dollar_targets=True,
     )
 
-    default_source_ids = {
-        spec.metadata["ledger_source_record_id"] for spec in default_registry.specs
-    }
-    cd_source_ids = {
-        spec.metadata["ledger_source_record_id"] for spec in cd_registry.specs
-    }
+    source_ids = {spec.metadata["ledger_source_record_id"] for spec in registry.specs}
     cd_specs = [
         spec
-        for spec in cd_registry.specs
+        for spec in registry.specs
         if spec.metadata.get("ledger_geography_level") == "congressional_district"
     ]
-    assert not any("hi_01" in source_id for source_id in default_source_ids)
-    assert not any("hi_total" in source_id for source_id in default_source_ids)
     assert not any(
         source_id.endswith("premium_tax_credit_amount")
         and ".congressional_district_2022." in source_id
-        for source_id in cd_source_ids
+        for source_id in source_ids
     )
-    assert any("hi_total.return_count" in source_id for source_id in cd_source_ids)
+    assert any("hi_total.return_count" in source_id for source_id in source_ids)
     assert any(
-        "hi_total.adjusted_gross_income" in source_id for source_id in cd_source_ids
+        "hi_total.adjusted_gross_income" in source_id for source_id in source_ids
     )
     assert len(cd_specs) == 11
     by_measure = {
@@ -405,7 +395,6 @@ def test_soi_congressional_district_targets_reconcile_to_state_parent() -> None:
 
     registry = compile_us_fiscal_target_registry(
         facts,
-        include_congressional_district_targets=True,
         allow_unaged_dollar_targets=True,
     )
 
@@ -434,7 +423,9 @@ def test_soi_congressional_district_targets_reconcile_to_state_parent() -> None:
 
 def test_soi_congressional_district_hierarchy_uses_current_vintage_counts() -> None:
     payload = json.loads(
-        files("microcosm.build.us").joinpath("fiscal_target_references.json").read_text()
+        files("microcosm.build.us")
+        .joinpath("fiscal_target_references.json")
+        .read_text()
     )
     counts = payload["target_profile"]["hierarchy_reconciliations"][0][
         "child_completeness"
@@ -482,7 +473,6 @@ def test_soi_congressional_district_reconciliation_requires_complete_children() 
     try:
         compile_us_fiscal_target_registry(
             facts,
-            include_congressional_district_targets=True,
             allow_unaged_dollar_targets=True,
         )
     except ValueError as exc:
@@ -491,7 +481,7 @@ def test_soi_congressional_district_reconciliation_requires_complete_children() 
         raise AssertionError("Expected incomplete CD hierarchy to fail.")
 
 
-def test_acs_congressional_district_age_targets_are_opt_in() -> None:
+def test_acs_congressional_district_age_targets_are_always_compiled() -> None:
     facts = [
         *packaged_reference_facts(),
         _census_acs_population_age_fact(
@@ -512,35 +502,23 @@ def test_acs_congressional_district_age_targets_are_opt_in() -> None:
         _census_acs_congressional_district_age_fact(),
     ]
 
-    default_registry = compile_us_fiscal_target_registry(
-        facts, allow_unaged_dollar_targets=True
-    )
-    cd_registry = compile_us_fiscal_target_registry(
+    registry = compile_us_fiscal_target_registry(
         facts,
-        include_congressional_district_targets=True,
         allow_unaged_dollar_targets=True,
     )
 
-    default_source_ids = {
-        spec.metadata["ledger_source_record_id"] for spec in default_registry.specs
-    }
+    source_ids = {spec.metadata["ledger_source_record_id"] for spec in registry.specs}
     cd_specs = [
         spec
-        for spec in cd_registry.specs
+        for spec in registry.specs
         if spec.metadata.get("ledger_geography_level") == "congressional_district"
     ]
-    assert not any(
-        "s0101.congressional_district_age" in source_id
-        for source_id in default_source_ids
-    )
-    assert not any(
-        "s0101.national_age" in source_id for source_id in default_source_ids
-    )
-    assert not any("s0101.state_age" in source_id for source_id in default_source_ids)
+    assert not any("s0101.national_age" in source_id for source_id in source_ids)
+    assert not any("s0101.state_age" in source_id for source_id in source_ids)
     assert not any(
         "s0101.national_age" in spec.metadata["ledger_source_record_id"]
         or "s0101.state_age" in spec.metadata["ledger_source_record_id"]
-        for spec in cd_registry.specs
+        for spec in registry.specs
     )
     assert len(cd_specs) == 1
     target = cd_specs[0]
@@ -663,107 +641,51 @@ def test_reviewed_zero_support_facts_are_not_active_targets() -> None:
     assert control.value == 456_000_000
 
 
-def test_extra_support_exclusions_drop_per_run_without_touching_registry() -> None:
-    # microcosm#299 Build G: a sparse artifact declares per-run, per-artifact
-    # support-expressibility exclusions that augment — but never mutate — the
-    # standing global registry. A cell NOT in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
-    # (California TANF here) is dropped only when passed via
-    # extra_support_exclusions; a sibling control cell survives.
-    excluded_source_record_id = (
-        "hhs_acf_tanf.fy2024.cash_assistance.ca."
-        "basic_assistance_excluding_relative_foster_care_and_adoption_guardianship."
-        "all_funds"
-    )
-    control_source_record_id = (
-        "hhs_acf_tanf.fy2024.cash_assistance.wa."
-        "basic_assistance_excluding_relative_foster_care_and_adoption_guardianship."
-        "all_funds"
-    )
-    # Neither is in the standing global registry.
-    assert excluded_source_record_id not in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
-    assert control_source_record_id not in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
-
+def test_target_registry_is_identical_across_artifact_record_counts() -> None:
     facts = [
         *packaged_reference_facts(),
-        _dynamic_ledger_fact(
-            source_record_id=excluded_source_record_id,
-            source_name="hhs_acf_tanf",
-            measure_id="all_funds",
-            value=456_000_000,
-            geography_level="state",
-            geography_id="0400000US06",
-            groupby_value_id="ca",
+        _soi_congressional_district_fact(
+            "return_count",
+            100_000,
+            groupby_value_id="hi_01",
+            geography_id="5001700US1501",
         ),
-        _dynamic_ledger_fact(
-            source_record_id=control_source_record_id,
-            source_name="hhs_acf_tanf",
-            measure_id="all_funds",
-            value=222_000_000,
+        _soi_congressional_district_fact(
+            "return_count",
+            215_360,
+            groupby_value_id="hi_02",
+            geography_id="5001700US1502",
+        ),
+        _soi_congressional_district_fact(
+            "return_count",
+            315_360,
+            groupby_value_id="hi_total",
             geography_level="state",
-            geography_id="0400000US53",
-            groupby_value_id="wa",
+            geography_id="0400000US15",
         ),
     ]
+    artifact_record_counts = {"sparse": 57_240, "dense": 337_704}
 
-    baseline = compile_us_fiscal_target_registry(
-        facts, allow_unaged_dollar_targets=True
-    )
-    baseline_ids = {spec.metadata["ledger_source_record_id"] for spec in baseline.specs}
-    # Without the per-run exclusion, California IS an active target.
-    assert excluded_source_record_id in baseline_ids
-
-    registry = compile_us_fiscal_target_registry(
-        facts,
-        allow_unaged_dollar_targets=True,
-        extra_support_exclusions={
-            excluded_source_record_id: (
-                "Sparse frozen support has zero California TANF support; the "
-                "dense parent expresses it (microcosm#299 Build G)."
-            )
-        },
-    )
-    by_source_record_id = {
-        spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs
+    registries = {
+        artifact_scale: compile_us_fiscal_target_registry(
+            facts, allow_unaged_dollar_targets=True
+        )
+        for artifact_scale, _record_count in artifact_record_counts.items()
     }
-    assert excluded_source_record_id not in by_source_record_id
-    assert control_source_record_id in by_source_record_id
-    # The module constant is untouched by the per-run augmentation.
-    assert excluded_source_record_id not in US_FISCAL_TARGET_SUPPORT_EXCLUSIONS
 
-
-def test_extra_support_exclusions_reject_empty_reason() -> None:
-    # The release tool's loader requires a non-empty reason for every per-run
-    # exclusion so the register cannot rot (microcosm#299 Build G).
-    import importlib.util
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[3]
-    path = root / "tools" / "build_us_fiscal_refresh_release.py"
-    spec = importlib.util.spec_from_file_location(
-        "build_us_fiscal_refresh_release", path
+    assert registries["sparse"].specs == registries["dense"].specs
+    assert registries["sparse"].version == registries["dense"].version
+    assert any(
+        spec.metadata.get("ledger_geography_level") == "congressional_district"
+        for spec in registries["sparse"].specs
     )
-    builder = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    spec.loader.exec_module(builder)
-
-    import json as _json
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as tmp:
-        good = Path(tmp) / "good.json"
-        good.write_text(_json.dumps({"some.record.id": "a real reason"}))
-        loaded = builder._load_zero_support_exclusions(good)
-        assert loaded == {"some.record.id": "a real reason"}
-
-        assert builder._load_zero_support_exclusions(None) == {}
-
-        bad = Path(tmp) / "bad.json"
-        bad.write_text(_json.dumps({"some.record.id": "   "}))
-        try:
-            builder._load_zero_support_exclusions(bad)
-            raise AssertionError("expected ValueError on empty reason")
-        except ValueError:
-            pass
+    assert set(inspect.signature(compile_us_fiscal_target_registry).parameters) == {
+        "facts",
+        "target_period",
+        "congressional_district_vintage_crosswalk",
+        "age_targets",
+        "allow_unaged_dollar_targets",
+    }
 
 
 def test_state_level_snap_benefits_fact_compiles_to_state_hard_target() -> None:
@@ -2603,6 +2525,7 @@ def test_stale_soi_taxable_interest_never_uses_congressional_district_controls()
         allow_unaged_dollar_targets=True,
     )
     specs = {spec.name: spec for spec in registry.specs}
+    assert cd_fact["lineage"]["source_record_id"] in specs
     us_bin = specs[
         "irs_soi.ty2022.historic_table_2.us.200k_to_500k.taxable_interest_amount"
     ]

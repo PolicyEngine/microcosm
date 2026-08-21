@@ -1,4 +1,5 @@
 import importlib.util
+import inspect
 import sys
 from pathlib import Path
 
@@ -20,6 +21,21 @@ def _load_state_scorer_module():
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+def test_state_scorer_signature_has_no_target_membership_switches() -> None:
+    scorer = _load_state_scorer_module()
+
+    assert set(inspect.signature(scorer.score_state_files).parameters) == {
+        "state_h5_dir",
+        "ledger_facts",
+        "age_targets",
+        "allow_unaged_dollar_targets",
+        "maximum_microsim_batch_size",
+        "allow_legacy_formula_owned_inputs",
+        "legacy_pe_flat_h5",
+        "target_materialization_cache_dir",
+    }
 
 
 def test__given_partial_state_directory__then_inventory_reports_missing_files(

@@ -142,11 +142,6 @@ def _parse_args() -> argparse.Namespace:
         help="Disable the scorer target-materialization cache.",
     )
     parser.add_argument(
-        "--diagnostic-skip-tax-expenditure-targets",
-        action="store_true",
-        help="Diagnostic only: drop JCT reform targets to avoid reform simulations.",
-    )
-    parser.add_argument(
         "--allow-legacy-formula-owned-inputs",
         action="store_true",
         help=(
@@ -322,7 +317,6 @@ def score_state_files(
     age_targets: bool = False,
     allow_unaged_dollar_targets: bool = True,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
-    diagnostic_skip_tax_expenditure_targets: bool = False,
     allow_legacy_formula_owned_inputs: bool = False,
     legacy_pe_flat_h5: bool = False,
     target_materialization_cache_dir: Path | None = None,
@@ -342,20 +336,13 @@ def score_state_files(
         target_period=release.PERIOD,
         age_targets=age_targets,
         allow_unaged_dollar_targets=allow_unaged_dollar_targets,
-        include_congressional_district_targets=False,
-        congressional_district_vintage_crosswalk=None,
+        congressional_district_vintage_crosswalk=(
+            release.load_congressional_district_vintage_crosswalk(
+                release.default_congressional_district_vintage_crosswalk_path()
+            )
+        ),
     )
     target_specs = target_registry.specs
-    if diagnostic_skip_tax_expenditure_targets:
-        tax_expenditure_measures = {
-            reform_spec.measure
-            for reform_spec in release.US_JCT_TAX_EXPENDITURE_REFORMS
-        }
-        target_specs = tuple(
-            spec
-            for spec in target_specs
-            if spec.measure not in tax_expenditure_measures
-        )
 
     target_profile_gate = release.target_profile_coverage_gate(
         target_specs,
@@ -496,9 +483,6 @@ def main() -> None:
         age_targets=args.age_targets,
         allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
-        diagnostic_skip_tax_expenditure_targets=(
-            args.diagnostic_skip_tax_expenditure_targets
-        ),
         allow_legacy_formula_owned_inputs=args.allow_legacy_formula_owned_inputs,
         legacy_pe_flat_h5=args.legacy_pe_flat_h5,
         target_materialization_cache_dir=(
