@@ -4,10 +4,10 @@
 
 ### State
 
-In progress. The supplied traceback is reproduced in source history and the
-current scoped correction passes the exact 14-case binding boundary. The
-independent audits and five-file affected suite remain to be reconciled on this
-continuation before the final report is refreshed.
+In progress. The supplied traceback is reproduced in source history, three
+independent audits find the current scoped correction complete, and both the
+14-case binding boundary and all 529 directly affected tests pass. Static
+checks and final-report refresh remain for this continuation.
 
 ### Done
 
@@ -33,6 +33,25 @@ continuation before the final report is refreshed.
   the owner 12 GiB/20 ms guard. All 14 cases passed; maximum observed
   per-process RSS was 0.568 GiB. The only warning was joblib's logical-core
   fallback.
+- Reconciled independent host-log, runtime, and regression-history audits.
+  Each found the correction complete and no alternative canonical path that
+  broadens evidence beyond the immutable nine-target selection.
+- Demonstrated the existing regression is genuinely failing-first rather than
+  retrospective-only: `test_gap_fill_qrf_binding_excludes_unassigned_batched_targets`
+  fails against the unchanged `33bf52fe` runtime with the exact supplied
+  lines and message, then passes at first fix `176c60fc` and current `HEAD`.
+  The real banked producer and strict plausible-`__batch_1` forgery tests close
+  the remaining producer and permissive-validator seams, so a duplicate test
+  or executable edit is not warranted.
+- Ran all 529 tests in the five directly affected ordinary-transfer,
+  multispine-serialization, stacked-spine, pool-tool, and H5 files together
+  under the owner guard. Pytest reached 100% with exit zero; maximum observed
+  per-process RSS was 1.531 GiB.
+- Confirmed the cited host log was overwritten by a mutable retry. That retry
+  rebuilt the bounded taxable-interest target and all 47 survey plus one
+  housing target without the old traceback, but it records no Git SHA and has
+  no terminal exit, pool, manifest, or gates artifact; it is progress evidence,
+  not revision-bound certification.
 - Reconstructed the old failure at the cited lines. The 15-target
   `puf_tax_itemization` family was split at the certified width of eight, so
   `taxable_interest_income` recorded family `puf_tax_itemization__batch_1`.
@@ -83,9 +102,9 @@ continuation before the final report is refreshed.
 
 ### Next
 
-Reconcile the independent host-log, runtime, and regression-history audits;
-then run the 529-test five-file affected suite and static checks on the current
-tree. Make an executable edit only if those checks expose a real remaining gap.
+Run repository lint, correction-range formatting and whitespace checks, and
+source-tree drift comparison against the all-build-suite checkpoint. Refresh
+`FINAL_REPORT.md`, close the journal, and commit each coherent step.
 
 ## Current continuation — 2026-08-21 02:14Z
 
