@@ -9,7 +9,8 @@ to historical runtime `33bf52fe`, while the current tree contains the
 assigned-only correction. The focused validator and real ordinary/banked
 wide-family regressions and all 530 directly affected tests are green. Three
 independent audits found no remaining canonical production leak. Static and
-exact-tree checks remain before `FINAL_REPORT.md` is refreshed.
+exact-tree checks are green; only the final host snapshot and required
+`FINAL_REPORT.md` refresh remain.
 
 ### Done
 
@@ -62,11 +63,20 @@ exact-tree checks remain before `FINAL_REPORT.md` is refreshed.
   owner guard. All passed with exit zero and 1.658 GiB maximum observed
   per-process RSS. Output was limited to the known joblib physical-core fallback
   plus 2,313 pandas fixture-fragmentation warnings.
+- Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
+  changed since `33bf52fe^`, committed-range whitespace checks, and worktree
+  whitespace checks; all passed.
+- Compared the current executable tree with complete-suite checkpoint
+  `d29a8705`. Every production source, tool, spec, project, and lock object is
+  identical. The sole package difference is the ordinary/banked parametrization
+  in `test_us_stacked_spine.py`, whose entire 259-test file passed inside the
+  affected run. At `d29a8705`, guarded fresh-process shards covered all 6,608
+  collected repository items without a failed shard.
 
 ### Next
 
-Run repository-wide lint, formatting, whitespace, and exact executable-tree
-checks, then refresh and commit the required final report.
+Take a final read-only host snapshot, then refresh and commit the required final
+report and close this continuation in the journal.
 
 ## Active owner continuation — 2026-08-21 07:11Z
 
