@@ -13,13 +13,15 @@ four legacy transfer counts and no QRF pattern evidence, and it receives no
 post-transfer calibration write.
 
 The supplied traceback fingerprints historical executable commit `33bf52fe`.
-The current branch already contained the assigned-only repair and the exact
-failing-first regression when this continuation began, so no duplicate
-executable edit was made. This continuation independently reconstructed the
-failure, traced every canonical caller and consumer, reran the exact validator
-and real ordinary/banked regressions, passed all 530 directly affected tests,
-passed static checks, and confirmed exact production-tree identity with the
-branch's complete-suite checkpoint.
+The current branch already contained the assigned-only executable repair and
+the exact synthetic binding regression when this continuation began, so no
+duplicate runtime edit was made. This continuation independently reconstructed
+the failure, traced every canonical caller and consumer, and strengthened the
+real ordinary/banked 15-target regression so its generated taxable-interest
+receipt is passed into the canonical terminal validator. Both strengthened
+cases fail at the supplied invariant on the historical runtime and pass on the
+current runtime. All 530 directly affected tests, the complete changed
+259-test file, static checks, and exact production-tree binding are green.
 
 ## Root cause
 
@@ -103,20 +105,30 @@ committed journal reproduced the exact taxable-interest failure.
 real 15-target family through both ordinary and banked transfer. Both cases
 prove that taxable interest retains the physical `__batch_1` record with empty
 regimes and no QRF receipt, while selected unemployment compensation in the
-same transfer retains regimes and evidence. The producer cases use test
-authority and the exact validator case separately uses canonical receipt
-authority; together they cover both sides of the boundary without forging a
-production authority.
+same transfer retains regimes and evidence. Commit `ad2a44c1` then closes the
+target-receipt-to-validator gap: each case copies the actual generated taxable
+receipt into a canonical receipt and calls `validate_stacked_gap_fill_receipt`.
+The splice is deliberately limited to that target because test-authority
+execution does not create the unrelated canonical calibration-owner receipts.
+
+The bridge is demonstrated failing-first, not inferred. In an isolated
+temporary worktree, replacing only `acs_multispine.py`, `acs_transfer.py`, and
+`stacked_spine.py` with their exact `33bf52fe` objects made both ordinary and
+banked cases fail at lines 4512 and 4310 with the supplied taxable-interest
+record-binding error. Restoring the current three objects made the identical
+two cases pass. The temporary worktree was removed without changing the shared
+tree.
 
 ## Verification
 
-Fresh focused verification ran under the owner-provided 12 GiB/20 ms guard:
+Fresh strengthened verification ran under the owner-provided 12 GiB/20 ms
+guard:
 
 - exact taxable-interest validator regression;
 - real ordinary 15-target transfer; and
 - real banked 15-target transfer.
 
-All 3 passed with exit zero and maximum observed per-process RSS of 0.572 GiB.
+All 3 passed with exit zero and maximum observed per-process RSS of 0.585 GiB.
 
 All five directly affected files then ran together under the same guard:
 
@@ -126,9 +138,13 @@ All five directly affected files then ran together under the same guard:
 - multispine pool tooling: 164 tests; and
 - H5 receipt I/O: 38 tests.
 
-All 530 passed with exit zero and maximum observed per-process RSS of 1.658 GiB.
-The only output beyond test progress was the known joblib physical-core fallback
-and 2,313 pandas fixture-fragmentation warnings.
+All 530 passed with exit zero and maximum observed per-process RSS of 1.534 GiB
+immediately before the test-only bridge was added. After that commit, the
+strengthened three-case matrix passed as reported above and the complete
+changed `test_us_stacked_spine.py` file passed all 259 tests with a 1.021 GiB
+maximum. The other 271 affected tests and all executable objects were
+unchanged. Output was limited to the known joblib physical-core fallback and
+2,313 pandas fixture-fragmentation warnings.
 
 Static verification also passed:
 
@@ -140,9 +156,9 @@ Static verification also passed:
 Every current production source, tool, spec, project, and lock Git object is
 identical to complete-suite checkpoint `d29a8705`. At that checkpoint, guarded
 fresh-process shards covered all 6,608 collected repository items without a
-failed shard. The only current package difference is the ordinary/banked
-parametrization in `test_us_stacked_spine.py`; the complete 259-test file passed
-inside the affected run above.
+failed shard. The only current package difference is the strengthened
+ordinary/banked regression in `test_us_stacked_spine.py`; its complete 259-test
+file passed after the change.
 
 The GitNexus debugging workflow guided the raise-site, history, caller, and
 consumer trace. Indexed query/context tools were unavailable in this session,
@@ -152,26 +168,30 @@ host/history binding agreed with the result.
 
 ## Host verification boundary
 
-Host certification is not claimed. The original failed `build.log` and
-checkpoints were overwritten by the retry script; the traceback survives in
-the owner-provided `_BUILD-FAILURE-1PCT.txt` and committed journals. Timestamp
-evidence strongly binds the original executable to `33bf52fe` (with a likely
-journal-only child as run HEAD), but the old artifacts did not embed a Git SHA.
+Host certification is not claimed. The retry script explicitly deleted the
+original checkpoints and truncated the existing `build.log`; the traceback now
+survives only in the owner-provided `_BUILD-FAILURE-1PCT.txt` and committed
+journals. Timestamp and reflog evidence places the original run at journal-only
+commit `f7ecac75`, whose complete `microcosm-build/src` tree and
+`stacked_spine.py` object are identical to `33bf52fe`. The deleted artifacts did
+not embed a Microcosm SHA, so this is a strong Git-object inference rather than
+an artifact-contained revision receipt.
 
-At the final read-only snapshot, `2026-08-21 07:57:18Z`, the newer retry had
-completed all 47 survey targets, the one housing target, and all 10 primary-QRF
-target checkpoints without the old taxable-interest traceback. In particular,
-it rebuilt `puf_tax_itemization__batch_1/taxable_interest_income` as target
-22/47 and continued through the remaining early targets.
+The active retry began at launch-window commit `3194df71`, correcting an
+earlier journal inference of `8920193e`. Its complete production source tree,
+build-tool object, and `stacked_spine.py` object are identical at both commits
+and at current `HEAD`. Its editable environment and worker metadata bind it to
+this worktree path, but its artifacts likewise embed no Microcosm revision.
 
-The retry was still active: `guard.log` reported an active peer at
-`2026-08-21 07:54:05Z`. The top-level host directory contained only
-`build.log`, `guard.log`, and `pool.checkpoints`; it had no final `pool.h5`,
-`pool.manifest.json`, `pool.gates.json`, terminal exit marker, or logbook
-receipt. The run began during launch-window commit `8920193e`, whose production
-`stacked_spine.py` object is identical to the current one, but neither logs nor
-checkpoint metadata embed a Microcosm revision binding. This is encouraging
-progress, not a terminal pass or certification verdict.
+At the final read-only snapshot, `2026-08-21 08:28:13Z`, PID 28857 remained
+active. The retry had rebuilt all 47 survey targets and the one housing target,
+including physical target 22/47
+`puf_tax_itemization__batch_1/taxable_interest_income`, without the historical
+exception. It had also completed 60 primary-QRF stages with 60 successes and
+zero failures, including the later primary taxable-interest stage.
+`pool.h5`, `pool.manifest.json`, `pool.gates.json`, and a terminal exit marker
+were still absent. This is live progress beyond the old boundary, not a
+terminal pass or certification verdict.
 
 Completion of the external boundary requires a durable, terminal,
 revision-bound 1% result with passing final pool, manifest, and gates artifacts.
@@ -186,14 +206,17 @@ The executable/regression correction is carried by:
   registry-derived selection;
 - `0b4339d1`, `887df056`, `94b7aecb`, and `21a48ba5` — harden legacy counts,
   exact family/width binding, mixed-family behavior, and rehashed forgery
-  rejection; and
+  rejection;
 - `f3246728` — exercise the real wide-family boundary through ordinary and
-  banked transfer.
+  banked transfer; and
+- `ad2a44c1` — pass the real generated taxable-interest receipts through the
+  canonical terminal validator in both modes.
 
 This continuation is recorded by:
 
-- `60026619` — reopen the required progress journal;
-- `b8d223dd` — record the independent diagnosis and focused green matrix;
-- `798c0189` — record the reconciled audits and green 530-test affected suite;
-- `39b8425e` — record static and exact-tree verification; and
+- `d9355679` — reopen the required progress journal;
+- `00eb041d` — record the raise-site, caller, and regression diagnosis;
+- `ad2a44c1` — commit the strengthened producer/validator regression;
+- `2a80261e` — record red/green, affected-suite, static, object, and host
+  verification; and
 - this commit — refresh the required final report.
