@@ -2,8 +2,8 @@
 
 ## State
 
-The 2026-08-20 23:54Z owner continuation has completed its independent
-raise-site, producer, validator, history, and regression diagnosis. The
+The 2026-08-21 00:20Z owner continuation is complete. Its independent
+raise-site, producer, validator, history, and regression diagnosis found the
 reported failure fingerprints `33bf52fe`: every imputed target carried QRF
 regime evidence and validation performed exact record binding before checking
 the nine-target calibration registry. The real 15-target transfer therefore
@@ -22,9 +22,11 @@ verification also passes: repository lint, formatting of all 15 correction-
 range Python files, committed-range whitespace, and exact `src`, `us_runtime`,
 `tools`, and `specs` tree comparisons with all-build-suite checkpoint
 `a5be536f`. Only the strict three-line assigned-family forgery regression and
-journals differ after that checkpoint. Final reporting is next. The
-owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain
-untracked and untouched, and no terminal host result is claimed.
+journals differ after that checkpoint. `FINAL_REPORT.md` contains the current
+revision-bound report at `b523e70c`; no local implementation, regression,
+verification, or reporting work remains. The owner-provided
+`_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain untracked and
+untouched, and no terminal host result is claimed.
 
 The immediately preceding completion snapshot follows and is historical.
 
@@ -290,6 +292,9 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Refreshed and committed `FINAL_REPORT.md` with this continuation's exact
+  diagnosis, focused and affected-suite results, static/tree verification, and
+  the final non-terminal host snapshot.
 - Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
   changed since `33bf52fe^`, and `git diff --check 33bf52fe^..HEAD`; all pass.
   Exact Git tree objects for all `microcosm-build/src`, its `us_runtime`
@@ -843,9 +848,7 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Refresh and commit `FINAL_REPORT.md` and this journal with the current
-   revision-bound diagnosis and verification.
-2. Run or identify a revision-bound off-chain 1% retry that reaches a terminal
+1. Run or identify a revision-bound off-chain 1% retry that reaches a terminal
    runner verdict and emits the expected final pool, manifest, and gates
    artifacts. Do not claim an after artifact without that terminal proof, and
    do not publish or mutate the pending logbook chain as a side effect.
