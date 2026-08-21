@@ -55,14 +55,23 @@ failure transcript are preserved unchanged.
   survey target 47/47 plus housing 1/1 without the reported error, and remained
   active in the primary-QRF stage. No final pool, manifest, gates, or terminal
   revision-bound status existed, so this is progress evidence only.
+- Reconciled independent runtime-scope and regression audits. Neither found a
+  residual canonical leak or a missing boundary case. The only intentionally
+  generic seam is that a direct noncanonical library caller may explicitly
+  request regime diagnostics for a target on its own transfer surface; no
+  production caller or canonical receipt validator promotes that diagnostic to
+  calibration evidence. No duplicate test or runtime edit is warranted.
+- Ran all five directly affected files together under the owner-provided
+  12 GiB/20 ms guard. Fresh collection was 64 ordinary-transfer, five
+  multispine-serialization, 259 stacked-spine, 164 pool-tool, and 38 H5-I/O
+  tests: all 530 passed in one process with exit zero. Maximum observed
+  per-process RSS was 1.550 GiB.
 
 ### Next
 
-1. Reconcile the independent runtime and regression audits and make any
-   warranted test-only strengthening.
-2. Run the directly affected files and repository-prescribed static/full-suite
-   verification on the unchanged executable tree.
-3. Refresh and commit `FINAL_REPORT.md`; leave restricted host certification
+1. Run repository-prescribed static and full-suite verification on the
+   unchanged executable tree.
+2. Refresh and commit `FINAL_REPORT.md`; leave restricted host certification
    and publication outside this local correction.
 
 ## Owner continuation audit — 2026-08-21 10:17Z
