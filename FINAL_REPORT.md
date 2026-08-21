@@ -17,10 +17,11 @@ The current branch already contained the assigned-only executable repair, the
 exact synthetic binding regression, and the strengthened real ordinary/banked
 producer-to-validator regression when the latest continuation audit began, so
 no duplicate runtime or test edit was made. The latest audit independently
-reconstructed the failure and traced every canonical caller and consumer. Both
+reconstructed the failure, traced every canonical caller and consumer, and
+rechecked the focused and directly affected matrices at the current tip. Both
 wide-family cases are proven red at the supplied invariant on the historical
 runtime and green on the current runtime. All 530 directly affected tests,
-static checks, and exact production-tree binding are green at the current tip.
+static checks, and exact production-tree binding are green.
 
 ## Root cause
 
@@ -127,8 +128,9 @@ owner-provided 12 GiB/20 ms guard:
 - real ordinary 15-target transfer; and
 - real banked 15-target transfer.
 
-All three passed with exit zero. The focused run emitted only the known joblib
-physical-core fallback warning.
+All three passed with exit zero and maximum observed per-process RSS of 0.566
+GiB. The focused run emitted only the known joblib physical-core fallback
+warning.
 
 All five directly affected files then ran together under the same guard:
 
@@ -139,10 +141,10 @@ All five directly affected files then ran together under the same guard:
 - H5 receipt I/O: 38 tests.
 
 All 530 passed together at the current executable/test tree with exit zero and
-maximum observed per-process RSS of 1.659 GiB. This current run supersedes the
-earlier pre-bridge affected-file result. Warning display was disabled for the
-broad matrix; the focused cases emitted only the known joblib warning noted
-above.
+maximum observed per-process RSS of 1.633 GiB. This latest run supersedes both
+the earlier pre-bridge result and the preceding 1.659 GiB continuation run.
+Warning display was disabled for the broad matrix; the focused cases emitted
+only the known joblib warning noted above.
 
 Static verification also passed:
 
@@ -154,9 +156,10 @@ Static verification also passed:
 Every current production source, tool, spec, project, and lock Git object is
 identical to complete-suite checkpoint `d29a8705`. At that checkpoint, guarded
 fresh-process shards covered all 6,608 collected repository items without a
-failed shard. The only current package difference is the strengthened
-ordinary/banked regression in `test_us_stacked_spine.py`; its complete 259-test
-file passed after the change.
+failed shard. Current production and test objects are also exact matches to
+reviewed regression checkpoint `ad2a44c1`; relative to the complete-suite
+checkpoint, the only package difference is the strengthened ordinary/banked
+regression in `test_us_stacked_spine.py`, whose complete 259-test file passed.
 
 The GitNexus debugging workflow guided the raise-site, history, caller, and
 consumer trace. A fresh local graph indexed current commit `42819d5`, but the
@@ -183,15 +186,15 @@ build-tool object, and `stacked_spine.py` object are identical at both commits
 and at current `HEAD`. Its editable environment and worker metadata bind it to
 this worktree path, but its artifacts likewise embed no Microcosm revision.
 
-At the final read-only snapshot, `2026-08-21 08:53:11Z`, the retry remained
-live and nonterminal. It had rebuilt the taxable-interest fit and all eight
-late `puf_tax_itemization__batch_1` targets without recurrence of the
-historical exception. However, final stacked gap-fill validation had not
-observably returned: `transferred.checkpoint.h5` was absent, so fit completion
-is not claimed as passage of the supplied receipt invariant. Python writers
-still held `build.log` open and the resource guard still emitted heartbeats.
-No terminal exit marker, `pool.h5`, `pool.manifest.json`, `pool.gates.json`, or
-logbook artifact existed. This is progress only, not a terminal pass or
+At the final read-only snapshot, `2026-08-21 09:12:27Z`, the retry remained
+live and nonterminal. It had rebuilt taxable interest, completed all eight late
+`puf_tax_itemization__batch_1` targets, and reached late-producer batch 5 target
+4/5 without recurrence of the historical exception. However, final stacked
+gap-fill validation had not observably returned, so fit completion is not
+claimed as passage of the supplied receipt invariant. Python writers still
+held `build.log` open and the resource guard still emitted heartbeats. No
+terminal exit marker, final `pool.h5`, `pool.manifest.json`, or
+`pool.gates.json` existed. This is progress only, not a terminal pass or
 certification verdict.
 
 Completion of the external boundary requires a durable, terminal,
@@ -223,5 +226,9 @@ This continuation is recorded by:
 - `42819d53`, `a3f30485`, `d67df37c`, and `13db9a36` — reopen the latest audit
   and record its independent diagnosis, focused tests, 530-test affected
   matrix, static checks, production-object comparison, and corrected host
+  boundary; and
+- `2d330316`, `405b7ee1`, `90fa567f`, and `7a070439` — reopen this owner
+  recheck and record the focused matrix, independent audits, 530-test affected
+  matrix, static checks, production-object comparison, and current host
   boundary; and
 - this commit — refresh the required final report.
