@@ -4,8 +4,9 @@
 
 ### State
 
-Diagnosis, focused regression, affected-suite, and static verification are
-complete; sharded repository-suite verification is in progress. The supplied traceback
+Diagnosis, focused regression, affected-suite, static, and sharded
+repository-suite verification are complete; final artifact and report checks
+are in progress. The supplied traceback
 fingerprints historical commit `33bf52fe`, while the current tree already
 contains the narrow assigned-target correction and exact taxable-interest
 regression. Current source, history, runtime enumeration, and two independent
@@ -15,8 +16,9 @@ all 529 tests in the five directly affected files pass on the current tree.
 Repository lint, formatting, whitespace, and executable-drift checks also
 pass. A monolithic repository run reached 83% without test failures before the
 owner guard stopped cumulative process RSS, so it is not counted as a suite
-verdict; fresh-process shards remain to be run. Prior full-suite and completion
-claims below remain historical until this continuation completes them.
+verdict. Fresh-process shards subsequently covered the exact full collection
+without failures. Prior completion claims below remain historical until this
+continuation completes the final artifact/report checks.
 
 ### Done
 
@@ -102,12 +104,18 @@ claims below remain historical until this continuation completes them.
   skipped in 7:44, with 4.182 GiB peak observed per-process RSS.
 - Ran the 81-file build US a-r shard in a fresh guarded process: 2,406 passed
   and three skipped in 23:29, with 8.844 GiB peak observed per-process RSS.
+- Ran the 36-file build US s-z shard in a fresh guarded process: 1,411 passed
+  and one skipped in 26:20, with 10.579 GiB peak observed per-process RSS.
+- Reconciled the shard collections. Their union exactly equals all 5,708
+  collected build items and, with the four sibling packages, all 6,608
+  repository items. No shard failed. The core+UK outcome summary includes two
+  additional passing subtest outcomes beyond its 1,887 collected items, which
+  explains why naively adding its pass/skip summary yields two extra outcomes.
 
 ### Next
 
-Complete the US s-z `microcosm-build` shard in a fresh guarded process, then
-perform final host-artifact and worktree-cleanliness checks and refresh
-`FINAL_REPORT.md`.
+Perform final host-artifact, static, and worktree-cleanliness checks, then
+refresh and commit `FINAL_REPORT.md` and close this journal.
 
 ## Current continuation — 2026-08-21 03:29Z
 
