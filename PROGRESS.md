@@ -4,10 +4,11 @@
 
 ### State
 
-In progress. The supplied traceback is reproduced in source history, three
-independent audits find the current scoped correction complete, and focused,
-affected-suite, lint, format, whitespace, and runtime-drift checks all pass.
-Only final-report refresh and journal closure remain for this continuation.
+Complete. The supplied traceback is reproduced in source history, the existing
+regression is proven red on the bad runtime and green on the correction, three
+independent audits find no remaining leak, and focused, affected-suite, lint,
+format, whitespace, and runtime-drift checks all pass. `FINAL_REPORT.md`
+contains the final continuation report.
 
 ### Done
 
@@ -61,6 +62,10 @@ Only final-report refresh and journal closure remain for this continuation.
   checkpoint. Its only affected-test difference is the committed three-line
   strict assigned-family `__batch_1` forgery case, included in the current
   529-test pass.
+- Refreshed and committed `FINAL_REPORT.md` at `1462c09d` with the current
+  diagnosis, demonstrated failing-first regression, guarded 14-case and
+  529-test results, static verification, continuation commits, and explicit
+  remaining host boundary.
 - Reconstructed the old failure at the cited lines. The 15-target
   `puf_tax_itemization` family was split at the certified width of eight, so
   `taxable_interest_income` recorded family `puf_tax_itemization__batch_1`.
@@ -111,9 +116,9 @@ Only final-report refresh and journal closure remain for this continuation.
 
 ### Next
 
-Refresh and commit `FINAL_REPORT.md` with the current diagnosis, demonstrated
-red/green regression, guarded verification, static checks, and explicit
-non-terminal host boundary; then close and commit this journal.
+Run or identify a revision-bound restricted host 1% retry that reaches a
+terminal runner verdict and emits the expected pool, manifest, and gates
+artifacts; this remains external to the completed local correction.
 
 ## Current continuation — 2026-08-21 02:14Z
 
