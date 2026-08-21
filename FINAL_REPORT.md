@@ -2,181 +2,198 @@
 
 ## Outcome
 
-The package 3 shared-path leak is fixed and locally verified. Only the nine
-assigned model-required, source-operator, and adult-care targets opt into QRF
-regime detection, regime verification, pattern evidence, and two-part
-post-transfer calibration. The unassigned
+The shared stacked gap-fill leak is fixed and locally verified. Canonical
+production now limits QRF regime detection, verification, receipt evidence,
+and two-part post-transfer calibration to the nine assigned model-required,
+source-operator, and adult-care targets. The unassigned
 `person/puf_tax_itemization/taxable_interest_income` target retains ordinary
-transfer behavior, the four legacy transfer counts, and no QRF pattern
-evidence.
+transfer behavior: its physical fit record remains
+`puf_tax_itemization__batch_1`, its audit regimes are empty, its receipt has the
+four legacy transfer counts and no QRF pattern evidence, and it receives no
+post-transfer calibration write.
 
-The supplied traceback fingerprints historical commit `33bf52fe`. The current
-branch already contained the scoped implementation and exact failing-first
-regression, so this continuation did not duplicate the executable repair. It
-independently reconstructed the failure and correction, reconciled three
-read-only audits of every canonical producer/consumer path, extended the real
-wide-family regression across both ordinary and banked execution, ran all 530
-directly affected tests, and reran static and executable-drift checks. Every
-completed local verdict is green.
+The supplied traceback fingerprints historical executable commit `33bf52fe`.
+The current branch already contained the assigned-only repair and the exact
+failing-first regression when this continuation began, so no duplicate
+executable edit was made. This continuation independently reconstructed the
+failure, traced every canonical caller and consumer, reran the exact validator
+and real ordinary/banked regressions, passed all 530 directly affected tests,
+passed static checks, and confirmed exact production-tree identity with the
+branch's complete-suite checkpoint.
 
 ## Root cause
 
-At `33bf52fe`, `validate_stacked_gap_fill_receipt` called
+At `33bf52fe`, `validate_stacked_gap_fill_receipt` invoked
 `_validate_acs_imputed_pattern_evidence` for every transferred target before it
-looked up the target in the assigned calibration registry. The transfer runtime
-also detected and attached QRF regime evidence globally.
+looked up the target in the early calibration registry. The transfer runtime
+also detected, verified, retained, and attached QRF regime evidence globally.
 
-The canonical `puf_tax_itemization` family has 15 targets and is split at the
-certified maximum of eight targets per fit. Taxable interest therefore had the
-physical record family `puf_tax_itemization__batch_1`, while the old validator
-required the public family `puf_tax_itemization`. That mismatch produced the
-exact historical traceback:
+The canonical `puf_tax_itemization` family has 15 targets and is physically
+split at the certified maximum of eight targets per fit. Taxable interest
+therefore carried a record whose physical family was
+`puf_tax_itemization__batch_1`, while the old validator compared it with the
+public family `puf_tax_itemization`. The supplied traceback maps exactly to the
+old runtime:
 
-- `stacked_spine.py:4512` at `33bf52fe`: unconditional evidence validation;
-- `stacked_spine.py:4310` at `33bf52fe`: pattern-record binding failure; and
-- `ValueError: ... taxable_interest_income: ACS QRF pattern record binding is invalid.`
+- `stacked_spine.py:4512` at `33bf52fe`: unconditional evidence validation for
+  every target; and
+- `stacked_spine.py:4310` at `33bf52fe`: strict record-family binding failure.
 
-Permitting a batch alias would not be a sound repair. It would next expose an
-eight-recorded-regimes versus fifteen-expected-targets mismatch and would leave
-unassigned targets doing calibration-specific runtime work. Value calibration
-itself was already registry-filtered; the leak was in regime detection and
-verification, provenance, receipt attachment, and terminal validation.
+Accepting a batch alias would not have repaired the leak. Unassigned targets
+would still have performed calibration-specific regime work and emitted
+calibration-specific provenance, and the evidence's regime-target surface
+would still have been overbroad. The correct boundary is assignment scoping,
+not weakened record binding.
 
-## Correction
+## Correction and assigned surface
 
-The correction is carried by these committed steps:
+The committed correction has four matching fences:
 
-- `22b2c6bc` adds the failing-first regression for the exact taxable-interest
-  boundary.
-- `176c60fc` introduces default-empty `regime_evidence_targets`, scopes ordinary
-  and banked regime work and provenance to that explicit selection, makes both
-  stacked owners derive the selection from the calibration registry, attaches
-  evidence only for selected targets, and performs assignment lookup before
-  strict record validation.
-- `0b4339d1` covers unassigned legacy transfer-count tampering.
-- `887df056` restores strict exact family binding, validates the four legacy
-  counts independently for assigned and unassigned targets, and adds a real
-  banked wide-family integration regression.
-- `94b7aecb` requires the complete count block, pins the canonical fit width,
-  and proves mixed selected/unselected families preserve the unassigned draw.
-- `21a48ba5` rejects a fully rehashed, plausible in-range `__batch_1` forgery.
-- `f3246728` strengthens the real 15-target regression so the same exact
-  assigned/unassigned boundary runs through ordinary and banked transfer.
+1. `transfer_acs_inputs` defaults `regime_evidence_targets` to empty. The two
+   stacked owners explicitly derive their selections from the immutable
+   post-transfer calibration registry.
+2. Ordinary and banked fits detect and verify regimes only for the selected
+   model targets. Per-target provenance strips regimes from unselected sibling
+   records.
+3. Early and late receipt builders attach QRF evidence only to the same
+   registry-derived selection, and calibration application writes only the
+   selected target column and selected rows.
+4. Both terminal validators first validate the four legacy row counts for
+   every target. For an unassigned target they reject any QRF or calibration
+   evidence and continue; strict QRF record binding remains exact and runs only
+   for a declared target.
 
-The current canonical reachability audit confirms:
+The immutable policy contains exactly two early and seven late targets:
 
-- the immutable policy contains exactly two early and seven late assigned
-  targets;
-- only the early and late stacked owners opt into regime evidence, and both use
-  that registry-derived selection;
-- ordinary and banked fits compute and verify regimes only for selected model
-  targets, while unselected target records receive empty regime tuples;
-- warm target banks persist raw draws and chain state, not stale regime
-  evidence;
-- receipt builders omit QRF evidence for unassigned targets;
-- early and late validators reject forged unassigned evidence before invoking
-  strict pattern-record binding;
-- generic multispine and pool-tool callers retain the empty default; and
-- calibration writes only the selected target column and selected rows.
+- early: `unemployment_compensation` and
+  `self_employment_income_last_year`;
+- late adult care: `pre_subsidy_care_expenses`;
+- late child support: `child_support_expense` and
+  `child_support_received`;
+- late source operators: `disability_benefits`, `weeks_unemployed`,
+  `workers_compensation`, and `spm_unit_energy_subsidy`.
 
-No alternate unassigned draw or write path was found. A noncanonical library
-caller may explicitly request regime evidence for any target on its requested
-surface; no production caller opts taxable interest into that API.
+Taxable interest is absent. All four production `transfer_acs_inputs` caller
+classes were traced. Only the early and late stacked owners opt into regime
+evidence; generic multispine and pool-tool callers retain the empty default.
+No alternate canonical producer, ordinary/banked fit, target-bank resume,
+serializer, receipt builder, terminal validator, or calibration-write path
+broadens the nine-target policy.
+
+One API qualification is intentional: a noncanonical library caller may
+explicitly request regime provenance for any target already on its requested
+transfer surface. No production caller exposes that choice, and canonical
+stacked validators reject evidence on unassigned targets.
 
 ## Regression evidence
 
-The principal regression is
-`test_gap_fill_qrf_binding_excludes_unassigned_batched_targets`. It constructs
-the exact `person/puf_tax_itemization/taxable_interest_income` receipt with
-realistic `puf_tax_itemization__batch_1` evidence, requires the canonical
-validator to reject the evidence as undeclared, then removes it and proves the
+`test_gap_fill_qrf_binding_excludes_unassigned_batched_targets` constructs the
+exact unassigned taxable-interest receipt with realistic
+`puf_tax_itemization__batch_1` evidence. It requires the canonical validator to
+reject that evidence as undeclared, then removes it and proves that the
 unchanged four-count legacy receipt validates.
 
-Complementary coverage proves:
+The test is genuinely failing-first. Commit `22b2c6bc` contains the regression
+while its runtime object is byte-identical to failing `33bf52fe`; that runtime
+reaches the supplied line-4512-to-line-4310 error instead of the corrected
+undeclared-evidence boundary. A prior detached execution recorded in the
+committed journal reproduced the exact taxable-interest failure.
 
-- real ordinary and banked 15-target PUF itemization runs give taxable interest
-  the physical `__batch_1` record but empty regimes and no QRF receipt evidence;
-- selected unemployment compensation in the same run retains regimes and
-  evidence;
-- selecting a sibling for evidence does not change an unselected target's draw;
-- default wide-family transfer behavior has no regimes; and
-- all fully rehashed structure mutations, including an in-range family alias,
-  fail strict assigned-target binding.
-
-The exact regression is demonstrably failing-first: at test-only commit
-`22b2c6bc`, whose runtime matches `33bf52fe`, it reaches the supplied
-line-4512-to-line-4310 record-binding error rather than the corrected
-undeclared-evidence boundary.
+`test_gap_fill_scopes_qrf_evidence_off_wide_unassigned_family` exercises the
+real 15-target family through both ordinary and banked transfer. Both cases
+prove that taxable interest retains the physical `__batch_1` record with empty
+regimes and no QRF receipt, while selected unemployment compensation in the
+same transfer retains regimes and evidence. The producer cases use test
+authority and the exact validator case separately uses canonical receipt
+authority; together they cover both sides of the boundary without forging a
+production authority.
 
 ## Verification
 
 Fresh focused verification ran under the owner-provided 12 GiB/20 ms guard:
 
 - exact taxable-interest validator regression;
-- real ordinary 15-target integration regression; and
-- real banked 15-target integration regression.
+- real ordinary 15-target transfer; and
+- real banked 15-target transfer.
 
-Result: all 3 passed with exit zero and maximum observed per-process RSS of
-0.584 GiB. The only warning was joblib falling back to logical-core detection.
+All 3 passed with exit zero and maximum observed per-process RSS of 0.572 GiB.
 
 All five directly affected files then ran together under the same guard:
 
 - ordinary ACS transfer: 64 tests;
 - multispine serialization: 5 tests;
 - stacked spine: 259 tests;
-- multispine pool tool: 164 tests; and
-- multispine H5 I/O: 38 tests.
+- multispine pool tooling: 164 tests; and
+- H5 receipt I/O: 38 tests.
 
-Result: all 530 tests passed with exit zero; maximum observed per-process RSS
-was 1.643 GiB. The only output beyond progress was the known joblib fallback
-plus 2,313 pandas fixture-fragmentation warnings.
+All 530 passed with exit zero and maximum observed per-process RSS of 1.658 GiB.
+The only output beyond test progress was the known joblib physical-core fallback
+and 2,313 pandas fixture-fragmentation warnings.
 
-Every production source, tool, spec, project, and lock Git object is identical
-to complete-suite checkpoint `d29a8705`. At that checkpoint, guarded
-fresh-process package/file shards covered all 6,608 collected repository items
-without a failed shard. The only non-journal delta since that checkpoint is the
-ordinary/banked parametrization in the stacked-spine test file, whose complete
-259-test file passed in the affected run. Static verification on the current
-tree also passes:
+Static verification also passed:
 
 - repository-wide `ruff check .`;
 - `ruff format --check` on all 15 Python files changed since `33bf52fe^`;
 - `git diff --check 33bf52fe^..HEAD`; and
 - worktree whitespace checks.
 
-The GitNexus debugging workflow was selected. A current 563-file graph was
-generated, but its final user-wide registry write was sandbox-blocked, so
-query/context could not consume it; the generated local cache was removed.
-Direct raise-site, Git-history, caller, producer, serializer, validator,
-warm-bank, and regression tracing provided the prescribed fallback and was
-reconciled by three independent read-only audits.
+Every current production source, tool, spec, project, and lock Git object is
+identical to complete-suite checkpoint `d29a8705`. At that checkpoint, guarded
+fresh-process shards covered all 6,608 collected repository items without a
+failed shard. The only current package difference is the ordinary/banked
+parametrization in `test_us_stacked_spine.py`; the complete 259-test file passed
+inside the affected run above.
+
+The GitNexus debugging workflow guided the raise-site, history, caller, and
+consumer trace. Indexed query/context tools were unavailable in this session,
+so direct source and Git-object tracing supplied the documented fallback. Three
+independent read-only audits of runtime reachability, regression coverage, and
+host/history binding agreed with the result.
 
 ## Host verification boundary
 
-Host certification is not claimed. At the final read-only snapshot taken
-2026-08-21 07:32:33Z, the external 1% retry had rebuilt all 47 survey targets
-plus the 1/1 housing target. It rebuilt the exact
-`puf_tax_itemization__batch_1/taxable_interest_income` target as 22/47 and
-continued through every remaining target without the old traceback, but had
-not produced a terminal runner verdict.
+Host certification is not claimed. The original failed `build.log` and
+checkpoints were overwritten by the retry script; the traceback survives in
+the owner-provided `_BUILD-FAILURE-1PCT.txt` and committed journals. Timestamp
+evidence strongly binds the original executable to `33bf52fe` (with a likely
+journal-only child as run HEAD), but the old artifacts did not embed a Git SHA.
 
-The host directory contained `build.log`, `guard.log`, and a checkpoint tree.
-It did not contain final `pool.h5`, manifest, gates, or terminal-exit artifacts,
-and the mutable log did not bind the run to a Microcosm Git revision. Complete
-target-checkpoint generation is therefore encouraging progress, not a pass or
-certification result.
+At the final read-only snapshot, `2026-08-21 07:57:18Z`, the newer retry had
+completed all 47 survey targets, the one housing target, and all 10 primary-QRF
+target checkpoints without the old taxable-interest traceback. In particular,
+it rebuilt `puf_tax_itemization__batch_1/taxable_interest_income` as target
+22/47 and continued through the remaining early targets.
 
-Completion of the external boundary requires a revision-bound off-chain 1%
-retry with a durable terminal exit and passing final pool, manifest, and gates
-artifacts. Publication and pending-logbook mutation remain outside this task.
+The retry was still active: `guard.log` reported an active peer at
+`2026-08-21 07:54:05Z`. The top-level host directory contained only
+`build.log`, `guard.log`, and `pool.checkpoints`; it had no final `pool.h5`,
+`pool.manifest.json`, `pool.gates.json`, terminal exit marker, or logbook
+receipt. The run began during launch-window commit `8920193e`, whose production
+`stacked_spine.py` object is identical to the current one, but neither logs nor
+checkpoint metadata embed a Microcosm revision binding. This is encouraging
+progress, not a terminal pass or certification verdict.
 
-## Continuation commits
+Completion of the external boundary requires a durable, terminal,
+revision-bound 1% result with passing final pool, manifest, and gates artifacts.
+Publication and release-chain mutation remain outside this task.
 
-- `7668825b` — reopen this owner continuation in `PROGRESS.md`;
-- `f1df007c` — record the independently reconstructed diagnosis, exact
-  failing-first proof, reachability audits, and initial host snapshot;
-- `f3246728` — add ordinary-path parity to the real wide-family regression;
-- `b2d8adcf` — record the green 530-test directly affected suite;
-- `72df3dc3` — record static checks, complete-suite object binding, and the
-  final read-only host snapshot; and
-- this report commit — refresh the required output file from current evidence.
+## Commit lineage
+
+The executable/regression correction is carried by:
+
+- `22b2c6bc` — add the failing-first scoped-binding regression;
+- `176c60fc` — scope regime work, provenance, receipts, and validation to the
+  registry-derived selection;
+- `0b4339d1`, `887df056`, `94b7aecb`, and `21a48ba5` — harden legacy counts,
+  exact family/width binding, mixed-family behavior, and rehashed forgery
+  rejection; and
+- `f3246728` — exercise the real wide-family boundary through ordinary and
+  banked transfer.
+
+This continuation is recorded by:
+
+- `60026619` — reopen the required progress journal;
+- `b8d223dd` — record the independent diagnosis and focused green matrix;
+- `798c0189` — record the reconciled audits and green 530-test affected suite;
+- `39b8425e` — record static and exact-tree verification; and
+- this commit — refresh the required final report.
