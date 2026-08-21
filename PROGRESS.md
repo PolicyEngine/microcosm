@@ -4,8 +4,8 @@
 
 ### State
 
-Diagnosis and focused verification complete; affected-suite verification
-pending. The traceback line numbers exactly
+Diagnosis, focused verification, and affected-suite verification complete;
+static verification pending. The traceback line numbers exactly
 identify bad commit `33bf52fe`, where every imputed target carried QRF regime
 evidence and the canonical validator performed exact record binding before
 checking calibration assignment. The current branch already contains the
@@ -51,11 +51,16 @@ runtime or test edit is warranted.
   producer, and all 12 fully rehashed QRF structure mutations under the owner
   12 GiB/20 ms guard. All 14 cases passed; maximum observed per-process RSS was
   0.557 GiB. The only warning was joblib's logical-core fallback.
+- Ran all 529 tests in the five directly affected ordinary-transfer,
+  multispine-serialization, stacked-spine, pool-tool, and H5 files together
+  under the owner guard. The run reached 100% with exit zero and no failures;
+  maximum observed per-process RSS was 1.283 GiB. A separate collection pass
+  confirmed file totals of 64, 5, 258, 164, and 38 tests.
 
 ### Next
 
-Run the five-file affected suite under the owner memory guard, commit its
-result, then run static checks before updating the final report.
+Run repository lint, scoped formatting and whitespace checks, and final tree
+drift/status checks before updating the final report.
 
 The completion snapshots below are historical until this continuation closes.
 
