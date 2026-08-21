@@ -5,9 +5,9 @@
 ### State
 
 In progress. The supplied traceback is reproduced in source history, three
-independent audits find the current scoped correction complete, and both the
-14-case binding boundary and all 529 directly affected tests pass. Static
-checks and final-report refresh remain for this continuation.
+independent audits find the current scoped correction complete, and focused,
+affected-suite, lint, format, whitespace, and runtime-drift checks all pass.
+Only final-report refresh and journal closure remain for this continuation.
 
 ### Done
 
@@ -52,6 +52,15 @@ checks and final-report refresh remain for this continuation.
   housing target without the old traceback, but it records no Git SHA and has
   no terminal exit, pool, manifest, or gates artifact; it is progress evidence,
   not revision-bound certification.
+- Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
+  changed since `33bf52fe^`, and committed-range plus worktree whitespace
+  checks; all passed.
+- Compared the exact current `microcosm-build/src` and `us_runtime` Git tree
+  objects with all-build-suite checkpoint `a5be536f`; both match. The current
+  `tools`, `specs`, project metadata, and lockfile also have no drift from that
+  checkpoint. Its only affected-test difference is the committed three-line
+  strict assigned-family `__batch_1` forgery case, included in the current
+  529-test pass.
 - Reconstructed the old failure at the cited lines. The 15-target
   `puf_tax_itemization` family was split at the certified width of eight, so
   `taxable_interest_income` recorded family `puf_tax_itemization__batch_1`.
@@ -102,9 +111,9 @@ checks and final-report refresh remain for this continuation.
 
 ### Next
 
-Run repository lint, correction-range formatting and whitespace checks, and
-source-tree drift comparison against the all-build-suite checkpoint. Refresh
-`FINAL_REPORT.md`, close the journal, and commit each coherent step.
+Refresh and commit `FINAL_REPORT.md` with the current diagnosis, demonstrated
+red/green regression, guarded verification, static checks, and explicit
+non-terminal host boundary; then close and commit this journal.
 
 ## Current continuation — 2026-08-21 02:14Z
 
