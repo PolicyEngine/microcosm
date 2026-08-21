@@ -5,8 +5,28 @@ import importlib
 import json
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
+
+import microcosm.build.logbook as logbook_module
+import microcosm.build.logbook_family as family_module
+from microcosm.build.logbook import load_spool_rows
+from microcosm.build.logbook_family import (
+    LogbookFamily,
+    load_family_spool,
+    record_family,
+)
+
+FAMILY_ID = "12345678-1234-4234-9234-123456789abc"
+
+
+@pytest.fixture(autouse=True)
+def _isolated_logbook_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("POPULACE_LEDGER_URL", raising=False)
+    monkeypatch.delenv("POPULACE_LEDGER_KEY", raising=False)
+    monkeypatch.delenv("POPULACE_LEDGER_API_KEY", raising=False)
+    monkeypatch.delenv("POPULACE_LOGBOOK_PREV_ROW_DIGEST", raising=False)
 
 
 def _launcher_module():
@@ -27,7 +47,8 @@ def _config_payload(
     release_id: str = "populace-us-2024-k8-fixture",
 ) -> dict[str, object]:
     return {
-        "schema_version": 1,
+        "schema_version": 2,
+        "family": {"id": FAMILY_ID},
         "pool": {
             "release_id": "fixture-publication",
             "manifest_sha256": pool_manifest_sha256,
@@ -80,6 +101,12 @@ def test_config_requires_explicit_seed_and_ratified_k(tmp_path: Path) -> None:
     unpinned_retry["targets"]["ssi_take_up_prior_weight_basis"] = "ssi.json"
     path = _write_config(tmp_path, unpinned_retry)
     with pytest.raises(ValueError, match="and its SHA-256 pin"):
+        launcher._read_config(path)
+
+    invalid_family = _config_payload()
+    invalid_family["family"]["id"] = "not-a-uuid"
+    path = _write_config(tmp_path, invalid_family)
+    with pytest.raises(ValueError, match="family.id must be a canonical UUID"):
         launcher._read_config(path)
 
 
@@ -298,9 +325,271 @@ def test_launcher_delegates_to_house_builder_and_never_publishes(
     ]
     assert "--artifact-root" in result["publish_argv"]
     assert "--repo-id policyengine/populace-us" in result["publish_command"]
+    assert result["family_id"] == FAMILY_ID
+    assert result["requested_k"] == 8
+    assert result["realized_k"] == 8
+    assert result["record_unit"] == "household"
+    assert result["rung"] is None
     assert json.loads((tmp_path / "out" / "package_result.json").read_text()) == (
         result
     )
+
+    rows = load_spool_rows(tmp_path / "out" / "logbook-spool")
+    assert len(rows) == 1
+    assert rows[0].rung is None
+    assert rows[0].requested_k == 8
+    assert rows[0].realized_k == 8
+    assert rows[0].record_unit == "household"
+    assert rows[0].disposition == "iterating"
+    family_records = load_family_spool(tmp_path / "out" / "logbook-spool")
+    assert family_records.families == (
+        LogbookFamily.create(
+            family_id=FAMILY_ID,
+            chain_scope="us",
+            source_pool_sha256=_sha256(manifest),
+        ),
+    )
+    assert [member.build_id for member in family_records.family_members] == [
+        "populace-us-2024-k8-fixture"
+    ]
+
+
+def test_reduced_build_records_numeric_cardinality(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = _launcher_module()
+    manifest = tmp_path / "pool.manifest.json"
+    manifest.write_text("fixture", encoding="utf-8")
+    config_path = _write_config(
+        tmp_path,
+        _config_payload(
+            pool_manifest_sha256=_sha256(manifest),
+            requested_k=20_000,
+            release_id="populace-us-2024-k20000-fixture",
+        ),
+    )
+    monkeypatch.setattr(
+        launcher,
+        "_validate_pins_and_resolve_k",
+        lambda **_: (20_000, {}),
+    )
+
+    result = launcher.launch(
+        pool_manifest=manifest,
+        config_path=config_path,
+        out=tmp_path / "out",
+        release_builder=lambda _argv: None,
+    )
+
+    row = load_spool_rows(tmp_path / "out" / "logbook-spool")[0]
+    assert (result["requested_k"], result["realized_k"]) == (20_000, 20_000)
+    assert (row.requested_k, row.realized_k, row.rung) == (20_000, 20_000, None)
+
+
+def test_failure_before_n_resolution_records_null_cardinality(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = _launcher_module()
+    manifest = tmp_path / "pool.manifest.json"
+    manifest.write_text("fixture", encoding="utf-8")
+    config_path = _write_config(
+        tmp_path,
+        _config_payload(pool_manifest_sha256=_sha256(manifest)),
+    )
+
+    def fail_validation(**_kwargs):
+        raise ValueError("fixture manifest failure")
+
+    monkeypatch.setattr(launcher, "_validate_pins_and_resolve_k", fail_validation)
+
+    with pytest.raises(ValueError, match="fixture manifest failure"):
+        launcher.launch(
+            pool_manifest=manifest,
+            config_path=config_path,
+            out=tmp_path / "out",
+            release_builder=lambda _argv: pytest.fail("builder must not run"),
+        )
+
+    row = load_spool_rows(tmp_path / "out" / "logbook-spool")[0]
+    assert (row.rung, row.requested_k, row.realized_k, row.record_unit) == (
+        None,
+        None,
+        None,
+        None,
+    )
+    assert row.disposition == "failed"
+    family_records = load_family_spool(tmp_path / "out" / "logbook-spool")
+    assert family_records.families == ()
+    assert family_records.family_members == ()
+
+
+def test_failure_after_numeric_resolution_retains_request_without_membership(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = _launcher_module()
+    manifest = tmp_path / "pool.manifest.json"
+    manifest.write_text("fixture", encoding="utf-8")
+    config_path = _write_config(
+        tmp_path,
+        _config_payload(
+            pool_manifest_sha256=_sha256(manifest),
+            requested_k=20_000,
+            release_id="populace-us-2024-k20000-fixture",
+        ),
+    )
+    monkeypatch.setattr(
+        launcher,
+        "_validate_pins_and_resolve_k",
+        lambda **_: (20_000, {}),
+    )
+
+    def fail_builder(_argv):
+        raise RuntimeError("fixture build failure")
+
+    with pytest.raises(RuntimeError, match="fixture build failure"):
+        launcher.launch(
+            pool_manifest=manifest,
+            config_path=config_path,
+            out=tmp_path / "out",
+            release_builder=fail_builder,
+        )
+
+    row = load_spool_rows(tmp_path / "out" / "logbook-spool")[0]
+    assert (row.rung, row.requested_k, row.realized_k, row.record_unit) == (
+        None,
+        20_000,
+        None,
+        "household",
+    )
+    family_records = load_family_spool(tmp_path / "out" / "logbook-spool")
+    assert len(family_records.families) == 1
+    assert family_records.family_members == ()
+
+
+def test_matching_family_retry_is_accepted_and_mismatched_source_is_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = _launcher_module()
+    manifest = tmp_path / "pool.manifest.json"
+    manifest.write_text("fixture", encoding="utf-8")
+    source_sha256 = _sha256(manifest)
+    config_path = _write_config(
+        tmp_path,
+        _config_payload(pool_manifest_sha256=source_sha256),
+    )
+    monkeypatch.setattr(
+        launcher,
+        "_validate_pins_and_resolve_k",
+        lambda **_: (8, {}),
+    )
+    matching_out = tmp_path / "matching"
+    record_family(
+        LogbookFamily.create(
+            family_id=FAMILY_ID,
+            chain_scope="us",
+            source_pool_sha256=source_sha256,
+        ),
+        spool_dir=matching_out / "logbook-spool",
+        post_remote=False,
+    )
+
+    launcher.launch(
+        pool_manifest=manifest,
+        config_path=config_path,
+        out=matching_out,
+        release_builder=lambda _argv: None,
+    )
+    assert len(load_family_spool(matching_out / "logbook-spool").families) == 1
+
+    mismatched_out = tmp_path / "mismatched"
+    record_family(
+        LogbookFamily.create(
+            family_id=FAMILY_ID,
+            chain_scope="us",
+            source_pool_sha256="f" * 64,
+        ),
+        spool_dir=mismatched_out / "logbook-spool",
+        post_remote=False,
+    )
+    builder_called = False
+
+    def unexpected_builder(_argv):
+        nonlocal builder_called
+        builder_called = True
+
+    with pytest.raises(ValueError, match="divergent retry"):
+        launcher.launch(
+            pool_manifest=manifest,
+            config_path=config_path,
+            out=mismatched_out,
+            release_builder=unexpected_builder,
+        )
+
+    assert builder_called is False
+    mismatched_records = load_family_spool(mismatched_out / "logbook-spool")
+    assert mismatched_records.families[0].source_pool_sha256 == "f" * 64
+    assert mismatched_records.family_members == ()
+
+
+def test_exact_k_spools_all_records_before_dependency_ordered_remote_delivery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = _launcher_module()
+    manifest = tmp_path / "pool.manifest.json"
+    manifest.write_text("fixture", encoding="utf-8")
+    config_path = _write_config(
+        tmp_path,
+        _config_payload(pool_manifest_sha256=_sha256(manifest)),
+    )
+    monkeypatch.setattr(
+        launcher,
+        "_validate_pins_and_resolve_k",
+        lambda **_: (8, {}),
+    )
+    monkeypatch.setenv("POPULACE_LEDGER_URL", "https://fixture.supabase.co")
+    monkeypatch.setenv("POPULACE_LEDGER_KEY", "writer-jwt")
+    spool = tmp_path / "out" / "logbook-spool"
+    posted_paths: list[str] = []
+
+    class Response:
+        status = 201
+
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    def fake_urlopen(request: object, *, timeout: float) -> Response:
+        assert timeout == 10.0
+        if not posted_paths:
+            assert len(list(spool.glob("*.json"))) == 1
+            assert len(list((spool / "families").glob("*.json"))) == 1
+            assert len(list((spool / "family_members").glob("*.json"))) == 1
+        posted_paths.append(urlparse(request.full_url).path)
+        return Response()
+
+    monkeypatch.setattr(logbook_module, "urlopen", fake_urlopen)
+    monkeypatch.setattr(family_module, "urlopen", fake_urlopen)
+
+    launcher.launch(
+        pool_manifest=manifest,
+        config_path=config_path,
+        out=tmp_path / "out",
+        release_builder=lambda _argv: None,
+    )
+
+    assert posted_paths == [
+        "/rest/v1/builds",
+        "/rest/v1/families",
+        "/rest/v1/family_members",
+    ]
+    assert list(spool.rglob("*.json")) == []
 
 
 def test_pool_release_id_must_match_authenticated_manifest_identity(

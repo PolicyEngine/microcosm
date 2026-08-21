@@ -58,8 +58,13 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 __all__ = [
     "BUILD_DISPOSITIONS",
+    "DECLARED_LOGBOOK_SCOPES",
+    "LEGACY_LOGBOOK_ROW_FIELDS",
+    "LEGACY_US_PIPELINES",
     "LOGBOOK_ROW_FIELDS",
     "LOGBOOK_RUNGS",
+    "REMOTE_LOGBOOK_ROW_FIELDS",
+    "VERSION_2_LOGBOOK_ROW_FIELDS",
     "LogbookExportResult",
     "LogbookRow",
     "LogbookWriteResult",
@@ -71,9 +76,11 @@ __all__ = [
     "load_spool_rows",
     "load_logbook_row",
     "order_rows_by_chain",
+    "logbook_chain_scope",
     "reconcile_spool",
     "record_build_attempt",
     "render_markdown",
+    "spool_build_rows",
 ]
 
 
@@ -90,9 +97,18 @@ BUILD_DISPOSITIONS = frozenset(
 )
 _DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _BUILD_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,254}$")
+_PIPELINE_SCOPE_PATTERN = re.compile(
+    r"^(?P<country>[a-z]{2})-(?P<line>[a-z0-9_]+)(?:-[a-z0-9_-]+)?$"
+)
 LOGBOOK_RUNGS = frozenset({"f001", "f004", "f010", "f025", "f100"})
+LEGACY_US_PIPELINES = (
+    "us-2024-release",
+    "us-pool-inc2",
+    "us-stacked-pool",
+)
+DECLARED_LOGBOOK_SCOPES = frozenset({"us", "uk/frs"})
 LEDGER_API_KEY_ENV = "POPULACE_LEDGER_API_KEY"
-LOGBOOK_ROW_FIELDS = frozenset(
+LEGACY_LOGBOOK_ROW_FIELDS = frozenset(
     {
         "build_id",
         "ts",
@@ -113,7 +129,21 @@ LOGBOOK_ROW_FIELDS = frozenset(
         "row_digest",
     }
 )
+_VERSION_2_EXTENSION_FIELDS = frozenset(
+    {
+        "row_format_version",
+        "requested_k",
+        "realized_k",
+        "record_unit",
+    }
+)
+VERSION_2_LOGBOOK_ROW_FIELDS = LEGACY_LOGBOOK_ROW_FIELDS | _VERSION_2_EXTENSION_FIELDS
+REMOTE_LOGBOOK_ROW_FIELDS = VERSION_2_LOGBOOK_ROW_FIELDS
+# Current writers emit version 2. Keep the established public name as the
+# current writer field set while exposing the legacy set explicitly.
+LOGBOOK_ROW_FIELDS = VERSION_2_LOGBOOK_ROW_FIELDS
 _HASH_EXCLUDED_FIELDS = frozenset({"prev_row_digest", "row_digest"})
+_RECORD_UNIT_PATTERN = re.compile(r"^[a-z][a-z0-9_]*$")
 _ARCHIVE_THREAD_LOCKS: dict[Path, threading.Lock] = {}
 _ARCHIVE_THREAD_LOCKS_GUARD = threading.Lock()
 
@@ -125,7 +155,7 @@ class LogbookRow:
     build_id: str
     ts: str
     pipeline: str
-    rung: str
+    rung: str | None
     seed: int | None
     code_pin: str
     input_pins_digest: str
@@ -137,6 +167,10 @@ class LogbookRow:
     artifact_location: str | None
     disposition: str
     prediction_id: str | None
+    row_format_version: int | None
+    requested_k: int | None
+    realized_k: int | None
+    record_unit: str | None
     prev_row_digest: str | None
     row_digest: str
 
@@ -147,7 +181,7 @@ class LogbookRow:
         build_id: str,
         ts: str | datetime,
         pipeline: str,
-        rung: str,
+        rung: str | None,
         seed: int | None,
         code_pin: str,
         input_pins_digest: str,
@@ -160,6 +194,10 @@ class LogbookRow:
         disposition: str,
         prediction_id: str | None,
         prev_row_digest: str | None,
+        row_format_version: int | None = None,
+        requested_k: int | None = None,
+        realized_k: int | None = None,
+        record_unit: str | None = None,
         row_digest: str | None = None,
     ) -> LogbookRow:
         """Validate, normalize, and hash a complete attempt receipt."""
@@ -170,7 +208,6 @@ class LogbookRow:
                 "build_id must use only letters, digits, '.', '_', ':', or '-'."
             )
         normalized_pipeline = _nonempty_text(pipeline, "pipeline")
-        normalized_rung = _validate_rung(rung)
         normalized_seed = _validate_seed(seed)
         normalized_code_pin = _nonempty_text(code_pin, "code_pin")
         normalized_input_digest = _validate_digest(
@@ -198,6 +235,22 @@ class LogbookRow:
                 f"artifact_location is required for disposition {disposition!r}."
             )
         normalized_prediction = _optional_text(prediction_id, "prediction_id")
+        (
+            normalized_version,
+            normalized_requested,
+            normalized_realized,
+            normalized_record_unit,
+        ) = _validate_row_cardinality(
+            row_format_version=row_format_version,
+            requested_k=requested_k,
+            realized_k=realized_k,
+            record_unit=record_unit,
+            disposition=disposition,
+        )
+        normalized_rung = _validate_rung(
+            rung,
+            row_format_version=normalized_version,
+        )
         normalized_prev = _validate_digest(
             prev_row_digest,
             "prev_row_digest",
@@ -222,6 +275,15 @@ class LogbookRow:
             "prediction_id": normalized_prediction,
             "prev_row_digest": normalized_prev,
         }
+        if normalized_version == 2:
+            values.update(
+                {
+                    "row_format_version": normalized_version,
+                    "requested_k": normalized_requested,
+                    "realized_k": normalized_realized,
+                    "record_unit": normalized_record_unit,
+                }
+            )
         calculated = compute_row_digest(values)
         if row_digest is not None:
             supplied = _validate_digest(row_digest, "row_digest", nullable=False)
@@ -247,6 +309,10 @@ class LogbookRow:
             artifact_location=normalized_artifact,
             disposition=disposition,
             prediction_id=normalized_prediction,
+            row_format_version=normalized_version,
+            requested_k=normalized_requested,
+            realized_k=normalized_realized,
+            record_unit=normalized_record_unit,
             prev_row_digest=normalized_prev,
             row_digest=calculated,
         )
@@ -260,13 +326,60 @@ class LogbookRow:
                 f"Logbook row must be an object, got {type(value).__name__}."
             )
         keys = frozenset(value)
-        if keys != LOGBOOK_ROW_FIELDS:
-            missing = sorted(LOGBOOK_ROW_FIELDS - keys)
-            extra = sorted(keys - LOGBOOK_ROW_FIELDS)
+        if keys == LEGACY_LOGBOOK_ROW_FIELDS:
+            expected = LEGACY_LOGBOOK_ROW_FIELDS
+        elif keys == VERSION_2_LOGBOOK_ROW_FIELDS:
+            expected = VERSION_2_LOGBOOK_ROW_FIELDS
+        else:
+            expected = (
+                VERSION_2_LOGBOOK_ROW_FIELDS
+                if keys & _VERSION_2_EXTENSION_FIELDS
+                else LEGACY_LOGBOOK_ROW_FIELDS
+            )
+            missing = sorted(expected - keys)
+            extra = sorted(keys - expected)
             raise ValueError(
                 f"Logbook row schema mismatch; missing={missing}, extra={extra}."
             )
         return cls.create(**dict(value))
+
+    @classmethod
+    def from_database_mapping(cls, value: Mapping[str, Any]) -> LogbookRow:
+        """Normalize a PostgREST build row into its archived representation."""
+
+        if not isinstance(value, Mapping):
+            raise ValueError(
+                f"Logbook database row must be an object, got {type(value).__name__}."
+            )
+        keys = frozenset(value)
+        if keys == LEGACY_LOGBOOK_ROW_FIELDS:
+            return cls.from_mapping(value)
+        if keys != REMOTE_LOGBOOK_ROW_FIELDS:
+            missing = sorted(REMOTE_LOGBOOK_ROW_FIELDS - keys)
+            extra = sorted(keys - REMOTE_LOGBOOK_ROW_FIELDS)
+            raise ValueError(
+                "Logbook database row schema mismatch; "
+                f"missing={missing}, extra={extra}."
+            )
+        normalized = dict(value)
+        if normalized["row_format_version"] is None:
+            populated = {
+                field: normalized[field]
+                for field in (
+                    "requested_k",
+                    "realized_k",
+                    "record_unit",
+                )
+                if normalized[field] is not None
+            }
+            if populated:
+                raise ValueError(
+                    "Legacy Logbook database row has version-2 cardinality "
+                    f"values: {sorted(populated)}."
+                )
+            for field in _VERSION_2_EXTENSION_FIELDS:
+                normalized.pop(field)
+        return cls.from_mapping(normalized)
 
     def to_mapping(self) -> dict[str, Any]:
         """Return the normalized JSON row in #628 database-column order."""
@@ -290,6 +403,15 @@ class LogbookRow:
             "prev_row_digest": self.prev_row_digest,
             "row_digest": self.row_digest,
         }
+        if self.row_format_version == 2:
+            mapping.update(
+                {
+                    "row_format_version": self.row_format_version,
+                    "requested_k": self.requested_k,
+                    "realized_k": self.realized_k,
+                    "record_unit": self.record_unit,
+                }
+            )
         # ``frozen=True`` prevents attribute replacement but a caller can
         # still mutate nested JSON containers.  Re-authenticate immediately
         # before every serialization boundary so neither such a mutation nor
@@ -355,19 +477,43 @@ def canonical_json_bytes(value: Any) -> bytes:
         raise ValueError(f"Value is not canonical JSON: {exc}.") from exc
 
 
+def logbook_chain_scope(pipeline: str) -> str | None:
+    """Return the database sequence scope derived from a pipeline name."""
+
+    normalized = _nonempty_text(pipeline, "pipeline")
+    if normalized in LEGACY_US_PIPELINES:
+        return "us"
+    match = _PIPELINE_SCOPE_PATTERN.fullmatch(normalized)
+    if match is None:
+        return None
+    return f"{match.group('country')}/{match.group('line')}"
+
+
 def compute_row_digest(value: Mapping[str, Any]) -> str:
     """Compute SHA-256(canonical non-chain fields || predecessor)."""
 
-    missing = (LOGBOOK_ROW_FIELDS - {"row_digest"}) - frozenset(value)
-    if missing:
-        raise ValueError(f"Cannot hash Logbook row; missing fields: {sorted(missing)}.")
+    fields = (
+        VERSION_2_LOGBOOK_ROW_FIELDS
+        if "row_format_version" in value
+        else LEGACY_LOGBOOK_ROW_FIELDS
+    )
+    keys = frozenset(value)
+    missing = (fields - {"row_digest"}) - keys
+    extra = keys - fields
+    if missing or extra:
+        raise ValueError(
+            "Cannot hash Logbook row; "
+            f"missing={sorted(missing)}, extra={sorted(extra)}."
+        )
     predecessor = _validate_digest(
         value.get("prev_row_digest"),
         "prev_row_digest",
         nullable=True,
     )
     payload = {
-        key: value[key] for key in sorted(value) if key not in _HASH_EXCLUDED_FIELDS
+        key: value[key]
+        for key in sorted(fields)
+        if key in value and key not in _HASH_EXCLUDED_FIELDS
     }
     material = canonical_json_bytes(payload) + (predecessor or "").encode("ascii")
     return hashlib.sha256(material).hexdigest()
@@ -378,7 +524,7 @@ def record_build_attempt(
     build_id: str,
     ts: str | datetime,
     pipeline: str,
-    rung: str,
+    rung: str | None,
     seed: int | None,
     code_pin: str,
     input_pins_digest: str,
@@ -391,9 +537,14 @@ def record_build_attempt(
     disposition: str,
     prediction_id: str | None,
     prev_row_digest: str | None,
+    row_format_version: int = 2,
+    requested_k: int | None = None,
+    realized_k: int | None = None,
+    record_unit: str | None = None,
     row_digest: str | None = None,
     spool_dir: str | Path = "logbook-spool",
     timeout: float = 10.0,
+    post_remote: bool = True,
 ) -> LogbookWriteResult:
     """Validate, durably spool, then best-effort insert one terminal attempt.
 
@@ -420,12 +571,16 @@ def record_build_attempt(
         disposition=disposition,
         prediction_id=prediction_id,
         prev_row_digest=prev_row_digest,
+        row_format_version=row_format_version,
+        requested_k=requested_k,
+        realized_k=realized_k,
+        record_unit=record_unit,
         row_digest=row_digest,
     )
     spool_path = Path(spool_dir) / f"{row.row_digest}.json"
     _atomic_write_row(spool_path, row)
     config = _remote_config()
-    if config is None:
+    if config is None or not post_remote:
         return LogbookWriteResult(row=row, spool_path=spool_path)
     posted, error = _post_build_row(
         row,
@@ -469,6 +624,22 @@ def load_spool_rows(spool_dir: str | Path) -> tuple[LogbookRow, ...]:
         raise ValueError(f"Logbook spool path is not a directory: {directory}.")
     rows = tuple(load_logbook_row(path) for path in sorted(directory.glob("*.json")))
     return order_rows_by_chain(rows)
+
+
+def spool_build_rows(
+    rows: Sequence[LogbookRow],
+    *,
+    spool_dir: str | Path = "logbook-spool",
+) -> tuple[Path, ...]:
+    """Copy authenticated build rows into a durable reconciliation spool."""
+
+    ordered = order_rows_by_chain(rows)
+    paths: list[Path] = []
+    for row in ordered:
+        path = Path(spool_dir) / f"{row.row_digest}.json"
+        _atomic_write_row(path, row)
+        paths.append(path)
+    return tuple(paths)
 
 
 def order_rows_by_chain(
@@ -695,7 +866,7 @@ def render_markdown(
             row.ts,
             row.build_id,
             row.pipeline,
-            row.rung,
+            row.rung or "—",
             row.disposition,
             public_artifact or "—",
         )
@@ -961,7 +1132,15 @@ def _normalize_timestamp(value: str | datetime, field: str) -> str:
     return parsed.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
-def _validate_rung(value: str) -> str:
+def _validate_rung(
+    value: str | None,
+    *,
+    row_format_version: int | None = None,
+) -> str | None:
+    if value is None:
+        if row_format_version == 2:
+            return None
+        raise ValueError("rung may be null only for a version-2 Logbook row.")
     if not isinstance(value, str) or value not in LOGBOOK_RUNGS:
         raise ValueError(
             "rung must be a #624 fraction token: 'f001', 'f004', 'f010', 'f025', or 'f100'."
@@ -1038,6 +1217,85 @@ def _validate_nonnegative_number(
     if not math.isfinite(value) or value < 0:
         raise ValueError(f"{field} must be finite and non-negative, got {value!r}.")
     return value
+
+
+def _validate_row_cardinality(
+    *,
+    row_format_version: int | None,
+    requested_k: int | None,
+    realized_k: int | None,
+    record_unit: str | None,
+    disposition: str,
+) -> tuple[int | None, int | None, int | None, str | None]:
+    if row_format_version is None:
+        populated = {
+            name: value
+            for name, value in (
+                ("requested_k", requested_k),
+                ("realized_k", realized_k),
+                ("record_unit", record_unit),
+            )
+            if value is not None
+        }
+        if populated:
+            raise ValueError(
+                "Legacy Logbook rows cannot contain version-2 cardinality "
+                f"values: {sorted(populated)}."
+            )
+        return None, None, None, None
+    if isinstance(row_format_version, bool) or row_format_version != 2:
+        raise ValueError(
+            "row_format_version must be 2 for current rows or null for "
+            f"legacy rows, got {row_format_version!r}."
+        )
+
+    normalized_values: list[int | None] = []
+    for field, value in (
+        ("requested_k", requested_k),
+        ("realized_k", realized_k),
+    ):
+        if value is None:
+            normalized_values.append(None)
+            continue
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value <= 0
+            or value > 2**63 - 1
+        ):
+            raise ValueError(
+                f"{field} must be a positive signed 64-bit integer or null, "
+                f"got {value!r}."
+            )
+        normalized_values.append(value)
+
+    requested, realized = normalized_values
+    if requested is None and realized is None:
+        if record_unit is not None:
+            raise ValueError(
+                "record_unit must be null when requested_k and realized_k "
+                "are both null."
+            )
+        normalized_unit = None
+    else:
+        normalized_unit = _nonempty_text(record_unit, "record_unit")
+        if (
+            normalized_unit != normalized_unit.lower()
+            or not _RECORD_UNIT_PATTERN.fullmatch(normalized_unit)
+        ):
+            raise ValueError(
+                "record_unit must be a normalized lowercase identifier "
+                "using letters, digits, or underscores."
+            )
+
+    if disposition in {"published", "certified"} and requested is not None:
+        if realized != requested:
+            raise ValueError(
+                f"{disposition} exact-k build requires realized_k to equal "
+                f"requested_k; got requested_k={requested!r}, "
+                f"realized_k={realized!r}."
+            )
+    return 2, requested, realized, normalized_unit
 
 
 def _validate_digest(
