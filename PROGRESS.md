@@ -4,10 +4,10 @@
 
 ### State
 
-In progress. Re-auditing the supplied host 1% ACS QRF record-binding failure
-from the cited validator raise site against current `HEAD` (`267697e2`). Prior
-completion entries below are historical and will not be accepted without
-fresh source, history, regression, and verification evidence.
+Diagnosis complete; verification in progress. The supplied traceback exactly
+fingerprints bad commit `33bf52fe`, while current source already contains the
+complete scoped correction and regression coverage. No duplicate runtime or
+test edit is warranted unless the fresh verification below exposes a gap.
 
 ### Done
 
@@ -18,14 +18,36 @@ fresh source, history, regression, and verification evidence.
 - Preserved the owner-provided untracked `_BUILD-FAILURE-1PCT.txt` and
   `.codex-memory-guard.py` artifacts untouched.
 - Identified `FINAL_REPORT.md` as the existing charter output file.
+- Reconstructed the historical failure at the cited lines: validation called
+  `_validate_acs_imputed_pattern_evidence` for every target before consulting
+  the calibration registry. The real 15-target `puf_tax_itemization` transfer
+  recorded `taxable_interest_income` under its bounded `__batch_1` family,
+  while validation expected the unsplit public family.
+- Enumerated the immutable live selection: two early and seven late targets,
+  comprising one model-required, seven source-operator, and one adult-care
+  target. `taxable_interest_income` is absent.
+- Independently traced both canonical producers, both receipt builders, and
+  both validators. Canonical callers derive the opt-in only from the immutable
+  specs; unassigned records carry empty regimes; unassigned receipts omit QRF
+  evidence; validators reject forged unassigned evidence before retaining
+  strict exact-family binding for assigned targets; and all targets retain the
+  mandatory four-count transfer block.
+- Audited correction history. `22b2c6bc` added the failing-first exact-target
+  regression; `176c60fc`, `887df056`, and `94b7aecb` supplied and hardened the
+  runtime correction; `21a48ba5` protects exact binding from a fully rehashed,
+  plausible `__batch_1` alias. No source commit follows `94b7aecb`.
+- Confirmed the current `microcosm-build/src`, `tools`, and `specs` trees are
+  unchanged from the all-build-suite checkpoint `a5be536f`; only the strict
+  assigned-family forgery regression differs in the affected test tree.
+- Reconciled three independent read-only audits. Runtime, history, and
+  regression reviewers all found the correction complete and no material
+  coverage gap. Their focused selections passed 4 and 24 cases respectively.
 
 ### Next
 
-Independently reconstruct the leak at the historical failing revision, compare
-it with the current implementation, verify that only the assigned
-source-operator, adult-care, and model-required targets opt into QRF behavior,
-and inspect the exact binding regression before deciding whether another code
-or test change is required.
+Run the decisive 14-case regression selection and the five directly affected
+test files under the owner memory guard, then run lint, formatting, whitespace,
+and executable-tree drift checks before refreshing the final report.
 
 ## Current continuation — 2026-08-21 01:11Z
 
