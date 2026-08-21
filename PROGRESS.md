@@ -4,7 +4,7 @@
 
 ### State
 
-Local verification is complete. The supplied traceback is reproduced exactly
+Complete. The supplied traceback is reproduced exactly
 on the historical leaking runtime, and the current source is scoped to the
 immutable nine-target calibration registry at producer, evidence-attachment,
 and validator boundaries. The exact failing target is unassigned. The existing
@@ -13,6 +13,8 @@ affected current cases pass under the owner guard. The current 6,608-item
 collection and package/config Git objects exactly match the prior complete
 green sharded-suite checkpoint. Static checks pass. The live host retry remains
 unterminated and revision-unbound, so host certification is not claimed.
+`FINAL_REPORT.md` contains the committed continuation report. No duplicate
+executable or regression edit was warranted.
 
 ### Done
 
@@ -83,12 +85,20 @@ unterminated and revision-unbound, so host certification is not claimed.
   pool, manifest, gates, spool, or receipt artifact existed, and no artifact
   binds a Microcosm Git SHA. The supplied binding traceback is absent from the
   live log and survives only in the owner note; the host is not certified.
+- Took the final read-only snapshot at 02:21:24 EDT. PID 28857 still held the
+  zero-byte `build.log` open; the latest guard heartbeat was 02:19 EDT; and no
+  checkpoint, pool, manifest, gates, spool, receipt, exit, or revision-binding
+  artifact existed.
+- Rewrote and committed `FINAL_REPORT.md` at `69637168` with the root cause,
+  exact assigned surface, correction chain, failing-first proof, guarded
+  focused and affected results, complete-suite object binding, static checks,
+  continuation commits, and remaining host boundary.
 
 ### Next
 
-Take a final host/worktree snapshot, refresh and commit `FINAL_REPORT.md`, then
-close this journal with the exact continuation commits and remaining external
-certification boundary.
+Obtain a durable, terminal, revision-bound restricted host result with passing
+`pool.h5`, `pool.manifest.json`, and `pool.gates.json`. Do not publish or mutate
+the release chain as a side effect of that external verification.
 
 ## Current continuation — 2026-08-21
 
