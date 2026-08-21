@@ -4,8 +4,8 @@
 
 ### State
 
-Diagnosis, focused verification, and affected-suite verification complete;
-static verification pending. The traceback line numbers exactly
+Diagnosis and verification complete; final reporting pending. The traceback
+line numbers exactly
 identify bad commit `33bf52fe`, where every imputed target carried QRF regime
 evidence and the canonical validator performed exact record binding before
 checking calibration assignment. The current branch already contains the
@@ -56,11 +56,15 @@ runtime or test edit is warranted.
   under the owner guard. The run reached 100% with exit zero and no failures;
   maximum observed per-process RSS was 1.283 GiB. A separate collection pass
   confirmed file totals of 64, 5, 258, 164, and 38 tests.
+- Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
+  changed since `33bf52fe^`, committed-range and worktree whitespace checks,
+  and an executable-tree comparison against `a5be536f`; all passed. No source,
+  tool, spec, project, or lockfile differs from that all-build-suite checkpoint.
 
 ### Next
 
-Run repository lint, scoped formatting and whitespace checks, and final tree
-drift/status checks before updating the final report.
+Update `FINAL_REPORT.md`, close this continuation snapshot, and commit the
+final report without claiming a new restricted host certification run.
 
 The completion snapshots below are historical until this continuation closes.
 
