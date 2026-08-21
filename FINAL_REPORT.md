@@ -13,15 +13,14 @@ four legacy transfer counts and no QRF pattern evidence, and it receives no
 post-transfer calibration write.
 
 The supplied traceback fingerprints historical executable commit `33bf52fe`.
-The current branch already contained the assigned-only executable repair and
-the exact synthetic binding regression when this continuation began, so no
-duplicate runtime edit was made. This continuation independently reconstructed
-the failure, traced every canonical caller and consumer, and strengthened the
-real ordinary/banked 15-target regression so its generated taxable-interest
-receipt is passed into the canonical terminal validator. Both strengthened
-cases fail at the supplied invariant on the historical runtime and pass on the
-current runtime. All 530 directly affected tests, the complete changed
-259-test file, static checks, and exact production-tree binding are green.
+The current branch already contained the assigned-only executable repair, the
+exact synthetic binding regression, and the strengthened real ordinary/banked
+producer-to-validator regression when the latest continuation audit began, so
+no duplicate runtime or test edit was made. The latest audit independently
+reconstructed the failure and traced every canonical caller and consumer. Both
+wide-family cases are proven red at the supplied invariant on the historical
+runtime and green on the current runtime. All 530 directly affected tests,
+static checks, and exact production-tree binding are green at the current tip.
 
 ## Root cause
 
@@ -121,14 +120,15 @@ tree.
 
 ## Verification
 
-Fresh strengthened verification ran under the owner-provided 12 GiB/20 ms
-guard:
+The latest continuation reran the strengthened focused matrix under the
+owner-provided 12 GiB/20 ms guard:
 
 - exact taxable-interest validator regression;
 - real ordinary 15-target transfer; and
 - real banked 15-target transfer.
 
-All 3 passed with exit zero and maximum observed per-process RSS of 0.585 GiB.
+All three passed with exit zero. The focused run emitted only the known joblib
+physical-core fallback warning.
 
 All five directly affected files then ran together under the same guard:
 
@@ -138,13 +138,11 @@ All five directly affected files then ran together under the same guard:
 - multispine pool tooling: 164 tests; and
 - H5 receipt I/O: 38 tests.
 
-All 530 passed with exit zero and maximum observed per-process RSS of 1.534 GiB
-immediately before the test-only bridge was added. After that commit, the
-strengthened three-case matrix passed as reported above and the complete
-changed `test_us_stacked_spine.py` file passed all 259 tests with a 1.021 GiB
-maximum. The other 271 affected tests and all executable objects were
-unchanged. Output was limited to the known joblib physical-core fallback and
-2,313 pandas fixture-fragmentation warnings.
+All 530 passed together at the current executable/test tree with exit zero and
+maximum observed per-process RSS of 1.659 GiB. This current run supersedes the
+earlier pre-bridge affected-file result. Warning display was disabled for the
+broad matrix; the focused cases emitted only the known joblib warning noted
+above.
 
 Static verification also passed:
 
@@ -161,10 +159,12 @@ ordinary/banked regression in `test_us_stacked_spine.py`; its complete 259-test
 file passed after the change.
 
 The GitNexus debugging workflow guided the raise-site, history, caller, and
-consumer trace. Indexed query/context tools were unavailable in this session,
-so direct source and Git-object tracing supplied the documented fallback. Three
-independent read-only audits of runtime reachability, regression coverage, and
-host/history binding agreed with the result.
+consumer trace. A fresh local graph indexed current commit `42819d5`, but the
+sandbox denied registration in `~/.gitnexus/registry.json`, so CLI
+query/context could not consume it. Direct source and Git-object tracing
+supplied the documented fallback. Three independent read-only audits of
+runtime reachability, regression coverage, and branch scope agreed with the
+result.
 
 ## Host verification boundary
 
@@ -183,15 +183,16 @@ build-tool object, and `stacked_spine.py` object are identical at both commits
 and at current `HEAD`. Its editable environment and worker metadata bind it to
 this worktree path, but its artifacts likewise embed no Microcosm revision.
 
-At the final read-only snapshot, `2026-08-21 08:28:13Z`, PID 28857 remained
-active. The retry had rebuilt all 47 survey targets and the one housing target,
-including physical target 22/47
-`puf_tax_itemization__batch_1/taxable_interest_income`, without the historical
-exception. It had also completed 60 primary-QRF stages with 60 successes and
-zero failures, including the later primary taxable-interest stage.
-`pool.h5`, `pool.manifest.json`, `pool.gates.json`, and a terminal exit marker
-were still absent. This is live progress beyond the old boundary, not a
-terminal pass or certification verdict.
+At the final read-only snapshot, `2026-08-21 08:53:11Z`, the retry remained
+live and nonterminal. It had rebuilt the taxable-interest fit and all eight
+late `puf_tax_itemization__batch_1` targets without recurrence of the
+historical exception. However, final stacked gap-fill validation had not
+observably returned: `transferred.checkpoint.h5` was absent, so fit completion
+is not claimed as passage of the supplied receipt invariant. Python writers
+still held `build.log` open and the resource guard still emitted heartbeats.
+No terminal exit marker, `pool.h5`, `pool.manifest.json`, `pool.gates.json`, or
+logbook artifact existed. This is progress only, not a terminal pass or
+certification verdict.
 
 Completion of the external boundary requires a durable, terminal,
 revision-bound 1% result with passing final pool, manifest, and gates artifacts.
@@ -219,4 +220,8 @@ This continuation is recorded by:
 - `ad2a44c1` — commit the strengthened producer/validator regression;
 - `2a80261e` — record red/green, affected-suite, static, object, and host
   verification; and
+- `42819d53`, `a3f30485`, `d67df37c`, and `13db9a36` — reopen the latest audit
+  and record its independent diagnosis, focused tests, 530-test affected
+  matrix, static checks, production-object comparison, and corrected host
+  boundary; and
 - this commit — refresh the required final report.
