@@ -4,9 +4,9 @@
 
 - Work is local on `spec-engine-f1`; nothing has been pushed, and no pool or
   sample build has run in this continuation.
-- Scope remains exactly deliverables B and C: audit the already-landed
-  single-mode cold-build runner, four-receipt comparator, and host handoff;
-  change them only if a concrete contract gap is reproduced.
+- Deliverables B and C remain complete. Three independent audits found no
+  concrete runner, typed-receipt, comparator, synthetic-test, or host-handoff
+  gap, so the already-landed implementation was not rewritten.
 - Five untracked owner instruction snapshots were the only opening dirt. They
   were read, classified as non-product inputs rather than runner/wiring work,
   and removed file-by-file without stash. Their disposition is journaled in
@@ -20,17 +20,27 @@
 - Inspected status and recent history. The B/C implementation and earlier
   verification are committed; no landed executor, broker, restoration, or
   value-kind work will be redone.
-- Started three independent read-only audits of the runner/typed receipt,
-  synthetic comparator coverage, focused tests, and exact host commands.
+- Completed three independent read-only audits of the runner/typed receipt,
+  synthetic comparator coverage, focused tests, and exact host commands; all
+  agree the r5 B/C contract is satisfied.
+- Replayed the exact B/C contract batch: 72/72 runner, comparator,
+  artifact-comparison, and pool-artifact-coverage tests pass. An independent
+  81-test receipt collection/comparison batch also passes.
+- Repository-wide Ruff, relevant byte compilation, every runner CLI help path,
+  generated US bundle, generated coverage, and whitespace checks pass. The US
+  spec remains `05edd87390d841c5b444267cd674d8bb15ed518b12577268d2e2c2de82976079`;
+  coverage remains 41,911/41,911 fields and 40/40 inventory checks.
+- Preserved the already-documented broader-suite boundary without changing
+  deliverable-A wiring: the B/C suite is green, while no unqualified
+  repository-wide green claim is made for the separate brokered-QRF failure.
 
 ## Next
 
-1. Reconcile the independent audits against the implementation and sealed
-   `plan_lock` contract.
-2. Run the complete B/C test and static gate at fixture/unit scale only.
-3. Commit any necessary B/C correction as its own coherent step, then update
-   this journal and append the final report before stopping without a build or
-   push.
+1. Append and commit the requested final report to `FINAL_REPORT.md`.
+2. Stop without running a pool/sample build, host comparator, kill/resume
+   exercise, publication, or push.
+3. The high-memory host follows the exact sequential handoff and the owner
+   adjudicates the expected fail-closed verdict.
 
 ---
 

@@ -2883,3 +2883,44 @@ head. A well-formed FAIL still writes
 1. Stop after the committed B/C report closeout; do not push or run a build.
 2. The high-memory host follows the exact sequence above and the owner
    adjudicates the emitted, currently expected well-formed FAIL.
+
+## F1 continuation r6 final B/C audit reprise (2026-08-21)
+
+### State
+
+- The committed single-mode cold runner, typed digest receipt, four-receipt
+  comparator, and exact host sequence were re-audited against the r5 B/C text
+  and the sealed D4 two-tier ruling. Three independent reviews found no
+  concrete B/C gap, so no landed source or host command was rewritten.
+- The five opening untracked charter snapshots were disposed as recorded in
+  the opening section above. The tracked worktree was otherwise unchanged.
+- No pool build, sample rung, comparator host run, kill/resume exercise,
+  publication, or push occurred.
+
+### Verification
+
+- The exact runner/comparator, artifact-comparison, and pool-artifact-coverage
+  batch passes 72/72 tests, including all 35 dedicated synthetic
+  runner/comparator cases. A separate independent receipt
+  collection/comparison batch passes 81/81 tests.
+- Repository-wide Ruff, relevant byte compilation, the top-level and all three
+  subcommand help paths, `git diff --check`, generated US bundle, and generated
+  coverage checks pass. The US spec remains
+  `05edd87390d841c5b444267cd674d8bb15ed518b12577268d2e2c2de82976079`;
+  coverage remains 41,911/41,911 fields and 40/40 inventory checks.
+- The C handoff still supplies the four distinct 1%/seed-578 cold commands in
+  constants A, constants B, bundle A, bundle B order, followed by the exact
+  comparator. It provisions every non-overlapping build above the worst
+  observed 96.95 GiB RSS plus host margin and preserves failed roots.
+
+### Boundary and next
+
+- Production coverage remains deliberately fail-closed for runtime node reuse,
+  exact final-H5 member closure, and calibration scope. The host comparator is
+  therefore expected to write both verdict files and return status 1 rather
+  than claim certification at this head.
+- The separately committed deliverable-A brokered-QRF suite failure remains
+  outside this B/C-only order. No wiring or masking test edit was made, and no
+  unqualified repository-wide green claim is made.
+- Append the final report, commit it, and stop. The high-memory host runs the
+  documented sequence; the owner adjudicates its evidence.
