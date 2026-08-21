@@ -1,5 +1,33 @@
 # Battery package 3 progress
 
+## Reopened owner verification — 2026-08-21
+
+### State
+
+In progress. The owner has reissued the host 1% ACS QRF binding failure at
+`person/puf_tax_itemization/taxable_interest_income`. I am treating the prior
+journal entries as historical, independently binding the traceback to the
+current tree and host log, auditing the assigned-only boundary, and rerunning
+the regression and prescribed verification before refreshing `FINAL_REPORT.md`.
+
+### Done
+
+- Read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
+- Confirmed the GitNexus query/context tools are unavailable in this session;
+  direct raise-site, caller, history, and focused-test tracing is the documented
+  fallback.
+- Confirmed `PROGRESS.md` and the required `FINAL_REPORT.md` already exist and
+  preserved the owner-provided untracked failure and memory-guard artifacts.
+- Inspected the prior completion ledger without assuming its verdict remains
+  current for this continuation.
+
+### Next
+
+Reconcile the supplied traceback and full host log with the current runtime,
+then prove the assigned-only producer/receipt/validator boundary and run the
+focused failing-first regression before deciding whether further code is
+needed.
+
 ## Active owner continuation — 2026-08-21 07:11Z
 
 ### State
