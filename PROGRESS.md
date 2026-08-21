@@ -4,12 +4,12 @@
 
 ### State
 
-Diagnosis complete; current-tree verification is in progress. The supplied
-line numbers resolve to historical commit `33bf52fe`, where QRF evidence was
-validated for every target before assignment lookup. The present branch
-already contains a scoped correction and the exact regression, so no duplicate
-executable edit will be made unless fresh tests or independent audits expose a
-remaining current gap.
+Diagnosis and focused red/green verification are complete; affected-suite and
+static verification are in progress. The supplied line numbers resolve to
+historical commit `33bf52fe`, where QRF evidence was validated for every target
+before assignment lookup. The present branch already contains a scoped
+correction and the exact regression, so no duplicate executable edit will be
+made unless the remaining checks expose a current gap.
 
 ### Done
 
@@ -43,12 +43,20 @@ remaining current gap.
   taxable interest successfully as target 22/47 and continued through 23/47,
   but has no terminal exit, final pool, manifest, gates, or explicit Microcosm
   revision binding, so it is not a certification verdict.
+- Ran the exact taxable-interest boundary regression, the real banked
+  15-target producer regression, and all 12 fully rehashed QRF-structure
+  mutations under the owner-provided 12 GiB/20 ms guard. All 14 passed in
+  15.47 seconds with 0.568 GiB maximum observed per-process RSS.
+- Demonstrated the exact regression is failing-first in a detached temporary
+  worktree at `22b2c6bc`, where the regression exists but the runtime still
+  matches `33bf52fe`. It followed lines 4512 and 4310 and failed with the same
+  taxable-interest record-binding error at 0.439 GiB peak RSS; the temporary
+  worktree was then removed.
 
 ### Next
 
-Run the exact failing-target, real banked wide-family, and forged-binding
-regressions; reconcile independent audits; then run the directly affected suite
-and static checks before closing the journal and final report.
+Reconcile independent audits, run the directly affected suite and static
+checks, then close the journal and final report.
 
 ## Reopened owner continuation — 2026-08-21
 
