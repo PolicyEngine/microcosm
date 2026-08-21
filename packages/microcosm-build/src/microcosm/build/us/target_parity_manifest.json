@@ -523,7 +523,7 @@
   },
   "irs_soi.congressional_district_2022": {
    "status": "compiled",
-   "note": "One US target surface: national, state, and congressional-district facts compile for every calibrated artifact. Geography is a constraint; artifact record count changes only L0, never target membership. Congressional-district rows inform shape while national and state actuals retain control ownership."
+   "note": "One US target surface: national, state, and congressional-district facts compile for every calibrated artifact. Geography is a constraint; artifact record count changes only L0, never target membership. There is no local-versus-national surface. Congressional-district rows inform shape while national and state actuals retain control ownership."
   },
   "irs_soi.filing_season_week47": {
    "status": "compiled"

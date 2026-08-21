@@ -85,3 +85,23 @@
 - Validation: the affected 10-file suite completed to 100% with exit 0 after
   the change; Ruff, Python byte compilation, and `git diff --check` pass. No
   build, push, chain operation, or pending-chain edit occurred.
+
+## 2026-08-21 — parity doctrine and row-level invariant
+
+- `irs_soi.congressional_district_2022` is a red-line compiled family, so the
+  anti-rot validator refuses any future downgrade to a reviewed exclusion
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/release_target_parity.py:88-123,579-586`).
+- The shipped manifest entry is `compiled`, has no exclusion classification,
+  reason, evidence, or fence, and states that there is no local-versus-national
+  surface. Its header counts are pinned to the parsed 32 compiled and 52
+  reviewed families
+  (`packages/microcosm-build/src/microcosm/build/us/target_parity_manifest.json:3-12,524-527`;
+  `packages/microcosm-build/tests/test_release_target_parity.py:290-317`).
+- The always-compiled SOI test exercises CD, state, and national rows
+  (`packages/microcosm-build/tests/test_us_fiscal_targets.py:177-356`). The
+  taxable-interest doctrine test additionally asserts that the CD aggregate is
+  present in the registry, then proves it never supplies the rebase control
+  metadata when a true Pub 1304 national control exists
+  (`packages/microcosm-build/tests/test_us_fiscal_targets.py:2539-2625`).
+- Validation: the standard 10-file affected suite completed to 100% with exit
+  0; Ruff and `git diff --check` pass.

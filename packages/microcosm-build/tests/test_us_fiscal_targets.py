@@ -2580,6 +2580,7 @@ def test_stale_soi_taxable_interest_never_uses_congressional_district_controls()
         allow_unaged_dollar_targets=True,
     )
     specs = {spec.name: spec for spec in registry.specs}
+    assert cd_fact["lineage"]["source_record_id"] in specs
     us_bin = specs[
         "irs_soi.ty2022.historic_table_2.us.200k_to_500k.taxable_interest_amount"
     ]

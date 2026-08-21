@@ -536,6 +536,7 @@ _COMPILED_FAMILY_NOTES = {
         "One US target surface: national, state, and congressional-district "
         "facts compile for every calibrated artifact. Geography is a constraint; "
         "artifact record count changes only L0, never target membership. "
+        "There is no local-versus-national surface. "
         "Congressional-district rows inform shape while national and state "
         "actuals retain control ownership."
     ),

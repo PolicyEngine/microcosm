@@ -5,7 +5,8 @@
 Runtime unification is complete on `one-target-surface`: every US entrypoint
 now compiles one national + state + congressional-district target registry,
 and the CLI/config switches that could delete CD or JCT target rows are gone.
-Sparse and dense artifacts may differ in record count, never target membership.
+Parity doctrine now protects that family as a red-line compile. Sparse and dense
+artifacts may differ in record count, never target membership.
 
 ## Done
 
@@ -41,11 +42,16 @@ Sparse and dense artifacts may differ in record count, never target membership.
   contract declares all three geography layers and has no default-layer split.
 - The 10-file affected suite reaches 100% with exit 0 after the runtime change;
   Ruff, byte compilation, and `git diff --check` pass.
+- Promoted the CD family into the parity anti-rot red-line set, pinned the
+  manifest's 32/52 header counts to parsed family counts, and asserted that its
+  compiled entry carries no exclusion fields or fence.
+- Strengthened the fiscal invariant: the CD aggregate is present in the
+  compiled registry while the taxable-interest rebase still refuses it as a
+  national control. The standard 10-file affected suite reaches 100% with exit
+  0 after the parity-doctrine change.
 
 ## Next
 
-- Strengthen parity anti-rot and the explicit always-compiled / never-control
-  invariant.
 - Remove the artifact-specific support-exclusion path, prove target-registry
   identity across artifact scale, quantify the target-row delta and existing
   25% timing evidence, then write `FINAL_REPORT.md`.
