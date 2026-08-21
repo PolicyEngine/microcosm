@@ -4,15 +4,16 @@
 
 ### State
 
-Diagnosis and focused regression verification complete; affected-suite
-verification in progress. The supplied traceback
+Diagnosis, focused regression, and affected-suite verification complete;
+static verification is in progress. The supplied traceback
 fingerprints historical commit `33bf52fe`, while the current tree already
 contains the narrow assigned-target correction and exact taxable-interest
 regression. Current source, history, runtime enumeration, and two independent
 audits find no remaining scope leak or reason for a duplicate executable edit.
-The regression is demonstrably failing-first and all 14 decisive cases pass on
-the current tree. Prior broader-suite and completion claims below remain
-historical until this continuation reruns them.
+The regression is demonstrably failing-first, all 14 decisive cases pass, and
+all 529 tests in the five directly affected files pass on the current tree.
+Prior static and completion claims below remain historical until this
+continuation reruns them.
 
 ### Done
 
@@ -70,11 +71,17 @@ historical until this continuation reruns them.
   under the owner 12 GiB/20 ms guard. All 14 cases passed with 0.564 GiB peak
   observed per-process RSS. The only warning was joblib's logical-core
   fallback.
+- Collected the five directly affected ordinary-transfer,
+  multispine-serialization, stacked-spine, pool-tool, and H5 files at 64, 5,
+  258, 164, and 38 tests respectively: 529 total.
+- Ran all 529 affected tests together under the owner guard with warning
+  summaries disabled. Pytest reached 100% with exit zero and no failures; peak
+  observed per-process RSS was 1.658 GiB.
 
 ### Next
 
-Run the five-file affected suite under the owner guard, then complete lint,
-format, whitespace, and executable-drift checks.
+Complete repository lint, scoped format, whitespace, executable-drift, final
+host-artifact, and worktree-cleanliness checks.
 
 ## Current continuation — 2026-08-21 03:29Z
 
