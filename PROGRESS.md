@@ -1,5 +1,32 @@
 # Battery package 3 progress
 
+## Current continuation — 2026-08-20
+
+### State
+
+In progress. Independently verifying the reported ACS QRF record-binding
+failure against the current branch before deciding whether any further runtime
+or regression change is warranted.
+
+### Done
+
+- Read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
+- Confirmed GitNexus query/context resources are unavailable in this session;
+  using direct raise-site, call-chain, source, test, and history tracing as the
+  prescribed fallback.
+- Confirmed `FINAL_REPORT.md` is the existing charter output file.
+- Preserved the owner-provided untracked `_BUILD-FAILURE-1PCT.txt` and
+  `.codex-memory-guard.py` artifacts untouched.
+- Established that the branch already carries earlier scoped-fix and regression
+  commits; their claims will be revalidated rather than treated as current
+  state.
+
+### Next
+
+Trace the current and historical validator/producer paths, enumerate the exact
+assigned target set, and run the narrow binding regressions before making any
+executable change.
+
 ## Current continuation — 2026-08-21 02:14Z
 
 ### State
