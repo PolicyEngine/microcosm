@@ -20,12 +20,35 @@ traceback before deciding whether any further executable change is warranted.
   notes, current report, and prior verification record.
 - Started independent read-only audits of the invariant path, branch charter,
   and regression surface.
+- Reconstructed the supplied failure at `33bf52fe`: the 15-target
+  `puf_tax_itemization` family produced the legitimate bounded physical family
+  `puf_tax_itemization__batch_1`, but QRF evidence was attached to unassigned
+  taxable interest and terminal validation invoked strict binding before the
+  assignment lookup. The unsplit-family comparison therefore raised at the
+  cited historical lines 4512 and 4310.
+- Confirmed accepting a batch alias would be unsafe and incomplete: the next
+  historical check expected all 15 public-family targets while the physical
+  record contained only its bounded batch. The correct fix is to prevent
+  calibration-specific regime work and evidence outside the assigned surface.
+- Traced the current assigned-only fences through ordinary and banked fitting,
+  per-record provenance, early and late receipt construction, and both
+  terminal validators. Unassigned targets retain the required four legacy
+  transfer counts, reject forged QRF/calibration evidence, and bypass strict
+  calibration record binding; selected targets retain exact binding.
+- Reconciled three independent read-only audits. All identified taxable
+  interest as out of scope and found the current correction and regression
+  coverage appropriately narrow.
+- Attempted the GitNexus query/context workflow. A fresh local graph indexed
+  current commit `42819d5`, but sandbox denial of
+  `~/.gitnexus/registry.json` prevented CLI query registration. The generated
+  index was moved intact to
+  `/private/tmp/microcosm-pkg3-two-part-gitnexus-42819d53`; direct source and
+  Git-object tracing supplied the fallback evidence.
 
 ### Next
 
-1. Reconstruct the failing and corrected call paths from source and Git objects.
-2. Verify the narrow regression and affected suite against the current tip.
-3. Update `FINAL_REPORT.md` and close this journal without claiming restricted
+1. Verify the narrow regression and affected suite against the current tip.
+2. Update `FINAL_REPORT.md` and close this journal without claiming restricted
    host certification unless terminal revision-bound artifacts exist.
 
 ## Owner-reported host failure continuation — 2026-08-21 07:59Z
