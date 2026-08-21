@@ -55,13 +55,20 @@ journal entries.
   the same root cause and found no residual canonical scope leak. The mutable
   external host `build.log` is currently empty and has no terminal artifacts,
   so it supplies no new certification result.
+- Ran the exact taxable-interest binding regression, both real wide-family
+  ordinary/banked cases, all 12 rehashed strict-binding mutations, and the
+  mixed-family draw-preservation regression under the 12 GiB guard. All 16
+  checks passed; the only warning was joblib's physical-core fallback. The
+  first launcher attempt never reached collection because `uv` could not write
+  its default user cache, so the successful run used a task-local cache under
+  `/private/tmp`.
 
 ### Next
 
-Run the focused binding and mixed-family matrix, then the directly affected
-files and repository-wide checks. If all pass, refresh `FINAL_REPORT.md` with
-revision-bound results and close this continuation without claiming restricted
-host certification.
+Run the five directly affected files together, then repository-wide tests and
+static checks. If all pass, refresh `FINAL_REPORT.md` with revision-bound
+results and close this continuation without claiming restricted host
+certification.
 
 ## Owner continuation revalidation — 2026-08-21 09:47Z
 
