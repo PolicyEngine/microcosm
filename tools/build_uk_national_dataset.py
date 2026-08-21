@@ -15,7 +15,10 @@ from pathlib import Path
 
 from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.gate_battery import GateBatteryBlockedError
-from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+from microcosm.build.ledger_artifact import (
+    add_ledger_artifact_args,
+    resolve_ledger_artifact,
+)
 from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.logbook_adoption import (
     AttemptState,
@@ -43,6 +46,7 @@ from microcosm.build.uk_runtime.hmrc_restoration import (
     UKHMRCIncomeStageTransform,
     verify_certified_uk_candidate,
 )
+from microcosm.build.uk_runtime.ledger_targets import compile_uk_target_registry
 from microcosm.build.uk_runtime.national_build import build_uk_national_dataset
 from microcosm.build.uk_runtime.national_calibration import (
     UKNationalCalibrationStage,
@@ -144,11 +148,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Lowercase SHA-256 of the exact calibration_diagnostics.json bytes "
             "that will ship with this release."
         ),
-    )
-    parser.add_argument(
-        "--ledger-facts",
-        type=Path,
-        help="Pinned Chronicle consumer artifact used to resolve UK targets.",
     )
     parser.add_argument(
         "--national-calibration-diagnostics-json",
@@ -322,6 +321,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "POPULACE_LOGBOOK_PREV_ROW_DIGEST is used, then genesis null."
         ),
     )
+    add_ledger_artifact_args(parser)
     args = parser.parse_args(argv)
     if args.release_candidate and args.sample_fraction != 1.0:
         parser.error(
@@ -415,9 +415,9 @@ def _source_pins(
     retained_leaves_transform: UKFRSHMRCRetainedLeavesStageTransform,
     hmrc_transform: UKHMRCIncomeStageTransform,
     cgt_ods_path: Path,
+    ledger_artifact: object | None = None,
 ) -> dict[str, dict[str, object]]:
-    # ``ledger_facts`` joins this pin surface when #622/#623 land.
-    return {
+    pins = {
         "certified_candidate": {
             "sha256": str(candidate.sha256),
             "size_bytes": int(candidate.size_bytes),
@@ -428,6 +428,9 @@ def _source_pins(
         "hmrc_ods": _artifact_pin(hmrc_transform.hmrc_ods_path),
         "cgt_ods": _artifact_pin(cgt_ods_path),
     }
+    if ledger_artifact is not None:
+        pins["ledger_facts"] = dict(ledger_artifact.provenance())
+    return pins
 
 
 def _gate_verdicts_from_report(
@@ -771,6 +774,17 @@ def _main_recording(
             args.degenerate_exclusions,
             resource=UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
         )
+    ledger_artifact = resolve_ledger_artifact(args)
+    ledger_compilations = (
+        None
+        if ledger_artifact is None
+        else {
+            period: compile_uk_target_registry(
+                ledger_artifact.facts, target_period=period
+            )
+            for period in (2023, 2025)
+        }
+    )
     candidate = verify_certified_uk_candidate(args.input_h5)
     evidence_path.unlink(missing_ok=True)
     replay_path.unlink(missing_ok=True)
@@ -800,6 +814,7 @@ def _main_recording(
         retained_leaves_transform=retained_leaves_transform,
         hmrc_transform=hmrc_transform,
         cgt_ods_path=args.cgt_ods,
+        ledger_artifact=ledger_artifact,
     )
     run_config = _staging_run_config(
         args,
@@ -848,7 +863,7 @@ def _main_recording(
     calibration_transform = None
     calibration_stages: tuple[PlanStage, ...] = ()
     if args.ledger_facts is not None:
-        ledger_artifact = load_ledger_consumer_artifact(args.ledger_facts)
+        assert ledger_artifact is not None  # resolved and pin-checked above
         calibration_transform = UKNationalCalibrationStage(ledger_artifact.facts)
         calibration_stages = (
             PlanStage(
@@ -886,6 +901,14 @@ def _main_recording(
         sample_fraction=args.sample_fraction,
         sample_seed=args.sample_seed,
         release_candidate=args.release_candidate,
+        ledger_target_registry=(
+            None
+            if ledger_compilations is None
+            else {
+                period: compilation.registry
+                for period, compilation in ledger_compilations.items()
+            }
+        ),
     )
     if calibration_transform is not None:
         _write_json(
@@ -932,6 +955,9 @@ def _main_recording(
         sample_fraction=args.sample_fraction,
         sample_seed=args.sample_seed,
         degenerate_exclusions_override=args.degenerate_exclusions is not None,
+        ledger_artifact_provenance=(
+            None if ledger_artifact is None else ledger_artifact.provenance()
+        ),
     )
     _write_json(build_record_path, build_record)
     append_phase(state, "build_record_written")
@@ -1072,6 +1098,7 @@ def _aggregate_build_record(
     sample_fraction: float = 1.0,
     sample_seed: int = UK_SAMPLE_SEED_DEFAULT,
     degenerate_exclusions_override: bool = False,
+    ledger_artifact_provenance: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Return commit-safe aggregate evidence for one successful staging build."""
 
@@ -1084,6 +1111,8 @@ def _aggregate_build_record(
         for role, info in artifacts.items()
     }
     safe_artifacts["staging_h5"]["retention"] = "local_untracked"
+    if ledger_artifact_provenance is not None:
+        safe_artifacts["ledger_facts"] = ledger_artifact_provenance
     retained_sources = dict(retained_evidence.get("sources", {}))
     family_sources = dict(family_evidence.get("sources", {}))
     mass_changes = [
@@ -1101,6 +1130,9 @@ def _aggregate_build_record(
         for record in result.frame.mass_log
     ]
     release_evidence = dict(result.gate_report["release_evidence"])
+    source_vintages = dict(family_evidence.get("source_vintages", {}))
+    if ledger_artifact_provenance is not None:
+        source_vintages["ledger_facts"] = ledger_artifact_provenance
     return {
         "schema_version": 3,
         "build_kind": "uk_national_staging_dataset",
@@ -1148,7 +1180,7 @@ def _aggregate_build_record(
                 dict(family_sources.get("spi_donor", {})).get("rows_used", 0)
             ),
         },
-        "source_vintages": dict(family_evidence.get("source_vintages", {})),
+        "source_vintages": source_vintages,
         "terminal_gates": dict(result.gate_report),
         "input_coverage": {
             "passed": bool(result.input_coverage.passed),

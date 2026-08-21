@@ -86,9 +86,10 @@ Three digests pin the declaration, all carried in every report:
   editing rationale does not move gate policy.
 - `gates_manifest_sha256` — over the full manifest including `notes` and
   the phase order.
-- `spec_fingerprint` — the composition fingerprint of the whole country
-  package. Adding or editing `gates.json` moves `CountrySpec.fingerprint`;
-  anything pinning it must be regenerated in the same change.
+- `spec_fingerprint` — the composition fingerprint of `gates.json` only.
+  Adding or editing a gate entry moves this value; unrelated country-package
+  resources do not. Anything pinning it must be regenerated in the same
+  change.
 
 ## Supplying evidence: `EvidenceContext` and bindings
 

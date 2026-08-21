@@ -26,6 +26,30 @@
       "notes": "Frameless preflight over the materialized stage names: every family the coverage manifest marks required_at_build must have its build stage scheduled before any stage runs."
     },
     {
+      "id": "uk_ledger_compile_parity_production_2023",
+      "gate": "ledger_compile_parity",
+      "phase": "preflight",
+      "criticality": "release_blocking",
+      "parameters": {
+        "fixture_resource": "parity_fixture_production_2023.json",
+        "signed_differences_resource": "ledger_compile_parity_production_2023_signed_differences.json",
+        "target_period": 2023
+      },
+      "notes": "Ledger-compiled UK targets at period 2023 compared with the certified production 2023 calibration surface fixture. Signed differences are committed for adjudication rather than hidden."
+    },
+    {
+      "id": "uk_ledger_compile_parity_incumbent_2025",
+      "gate": "ledger_compile_parity",
+      "phase": "preflight",
+      "criticality": "release_blocking",
+      "parameters": {
+        "fixture_resource": "registry_parity_fixture_2025.json",
+        "signed_differences_resource": "ledger_compile_parity_incumbent_2025_signed_differences.json",
+        "target_period": 2025
+      },
+      "notes": "Ledger-compiled UK targets at the 2025 calibration period compared with the frozen incumbent registry surface. The signed list enumerates TCL additions, exclusions, unsupported rows, and vintage drift for review."
+    },
+    {
       "id": "uk_release_input_coverage",
       "gate": "release_input_coverage",
       "phase": "terminal",
