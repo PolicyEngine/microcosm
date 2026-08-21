@@ -1,5 +1,32 @@
 # Battery package 3 progress
 
+## Current continuation — 2026-08-21 02:14Z
+
+### State
+
+In progress. The owner has resubmitted the host 1% ACS QRF record-binding
+failure at unassigned target
+`person/puf_tax_itemization/taxable_interest_income`. Earlier completion
+claims are historical until the current source, failing-build evidence, and
+regression boundary are independently revalidated.
+
+### Done
+
+- Read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
+- Confirmed GitNexus query/context tools are unavailable in this session and
+  selected direct raise-site, call-chain, source, test, and history tracing as
+  the fallback.
+- Preserved the owner-provided untracked `_BUILD-FAILURE-1PCT.txt` and
+  `.codex-memory-guard.py` artifacts untouched.
+- Confirmed `FINAL_REPORT.md` is the existing charter output file.
+- Started independent invariant, branch-diff, and regression-seam audits.
+
+### Next
+
+Reproduce and trace the exact binding mismatch, verify whether the committed
+scoping correction is sufficient on the current tree, make any missing
+runtime/test change, and run the affected suite plus static checks.
+
 ## Current continuation — 2026-08-21 01:39Z
 
 ### State
