@@ -7,11 +7,12 @@
 In progress. The supplied traceback is now proven to come from historical
 runtime `33bf52fe`, not the current executable: its exact line 4512 validates
 every target and line 4310 raises the reported strict family-binding error.
-The current assigned-only runtime correction is intact, the fresh three-case
-boundary matrix is green, and independent call-path and test audits found no
-remaining canonical leak. One regression gap remains: bridge the real ordinary
-and banked wide-family receipts into the canonical terminal validator so one
-test spans the exact producer-to-invariant boundary.
+The current assigned-only runtime correction is intact, independent call-path
+and test audits found no remaining canonical leak, and the strengthened
+ordinary/banked regression now sends the real generated taxable-interest
+receipt through the canonical terminal validator. The focused three-case
+matrix and all 530 directly affected tests are green. Changed-file and static
+verification remain.
 
 ### Done
 
@@ -49,12 +50,26 @@ test spans the exact producer-to-invariant boundary.
   taxable-interest receipt is not currently passed into the canonical
   validator because test-authority execution deliberately skips production
   validation.
+- Ran all 530 directly affected tests across ordinary ACS transfer, multispine
+  serialization, stacked spine, multispine pool tooling, and H5 receipt I/O
+  together under the owner guard. All passed with exit zero and 1.534 GiB
+  maximum observed per-process RSS. Output was limited to the known joblib
+  physical-core fallback and pandas fixture-fragmentation warnings.
+- Strengthened the real 15-target ordinary/banked regression by grafting its
+  generated taxable-interest receipt into a canonical gap-fill receipt and
+  invoking `validate_stacked_gap_fill_receipt`. This closes the only identified
+  producer-to-terminal-validator coverage gap without changing executable
+  behavior or weakening exact record-family binding.
+- Ran the strengthened ordinary and banked cases plus the exact forged-evidence
+  validator regression under the guard. All 3 passed with exit zero and 0.585
+  GiB maximum observed per-process RSS; Ruff lint and formatting checks on the
+  edited test file also pass.
 
 ### Next
 
-Add the producer-to-validator regression bridge for ordinary and banked wide
-families, prove it fails at the supplied invariant on the historical runtime,
-then complete affected-suite and static verification.
+Run the complete changed stacked-spine test file, repository-wide static
+checks, and final Git-object/host snapshots; then refresh the required final
+report and close this continuation.
 
 ## Reopened owner verification — 2026-08-21
 

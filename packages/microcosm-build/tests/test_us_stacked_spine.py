@@ -6634,6 +6634,19 @@ def test_gap_fill_scopes_qrf_evidence_off_wide_unassigned_family(
         target_banks=target_banks,
     )
 
+    receipts = result.receipt["directions"][direction.name]["targets"]
+    taxable_key = "person/puf_tax_itemization/taxable_interest_income"
+    canonical_receipt = _canonical_gap_fill_calibration_receipt()
+    canonical_targets = canonical_receipt["directions"][direction.name]["targets"]
+    canonical_targets[taxable_key] = deepcopy(receipts[taxable_key])
+    stacked_spine_module.validate_stacked_gap_fill_receipt(
+        canonical_receipt,
+        boundary=(
+            f"{'banked' if use_target_bank else 'ordinary'} generated "
+            "wide-family receipt"
+        ),
+    )
+
     records = {
         record.column: record
         for record in result.transfer_results[direction.name].imputed_inputs
@@ -6647,11 +6660,7 @@ def test_gap_fill_scopes_qrf_evidence_off_wide_unassigned_family(
         == ("unemployment_compensation",)
         for pattern in unemployment.patterns
     )
-    receipts = result.receipt["directions"][direction.name]["targets"]
-    assert (
-        "qrf_pattern_evidence"
-        not in receipts["person/puf_tax_itemization/taxable_interest_income"]
-    )
+    assert "qrf_pattern_evidence" not in receipts[taxable_key]
     assert (
         "qrf_pattern_evidence"
         in receipts["person/model_required_numeric/unemployment_compensation"]
