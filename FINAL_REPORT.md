@@ -3,9 +3,11 @@
 ## Outcome
 
 The shared stacked gap-fill leak is fixed and locally verified. Canonical
-production now limits QRF regime detection, verification, receipt evidence,
-and two-part post-transfer calibration to the nine assigned model-required,
-source-operator, and adult-care targets. The unassigned
+production now limits the added calibration-audit regime detection and
+verification, per-target regime provenance, QRF receipt evidence, and two-part
+post-transfer calibration to the nine assigned model-required,
+source-operator, and adult-care targets. The QRF's ordinary operational regime
+logic remains unchanged for every fitted target. The unassigned
 `person/puf_tax_itemization/taxable_interest_income` target retains ordinary
 transfer behavior: its physical fit record remains
 `puf_tax_itemization__batch_1`, its audit regimes are empty, its receipt has the
@@ -21,14 +23,17 @@ failure, traced every canonical caller and consumer, reconciled three
 independent audits, and reran the focused and directly affected surfaces at the
 current tip. Both wide-family cases are proven red at the supplied invariant on
 the historical runtime and green on the current runtime. All 530 directly
-affected tests, static checks, and exact production-tree binding are green.
+affected tests, static checks, and exact production/test-tree bindings are
+green at the current tip.
 
 ## Root cause
 
 At `33bf52fe`, `validate_stacked_gap_fill_receipt` invoked
 `_validate_acs_imputed_pattern_evidence` for every transferred target before it
 looked up the target in the early calibration registry. The transfer runtime
-also detected, verified, retained, and attached QRF regime evidence globally.
+also performed the newly added calibration-audit regime detection and
+verification, retained its provenance, and attached QRF regime evidence
+globally. The target's ordinary QRF fitting was not itself the leak.
 
 The canonical `puf_tax_itemization` family has 15 targets and is physically
 split at the certified maximum of eight targets per fit. Taxable interest
@@ -54,9 +59,10 @@ The committed correction has four matching fences:
 1. `transfer_acs_inputs` defaults `regime_evidence_targets` to empty. The two
    stacked owners explicitly derive their selections from the immutable
    post-transfer calibration registry.
-2. Ordinary and banked fits detect and verify regimes only for the selected
-   model targets. Per-target provenance strips regimes from unselected sibling
-   records.
+2. Ordinary and banked fits perform the additional audit detection and
+   verification only for selected model targets. Per-target provenance strips
+   audit regimes from unselected sibling records without changing their
+   ordinary QRF draws.
 3. Early and late receipt builders attach QRF evidence only to the same
    registry-derived selection, and calibration application writes only the
    selected target column and selected rows.
@@ -137,10 +143,11 @@ An independent focused audit reran the strengthened boundary matrix:
 - real ordinary 15-target transfer; and
 - real banked 15-target transfer.
 
-All three passed with exit zero; the ordinary case emitted only the known
-joblib physical-core fallback warning. A separate run exercised all 12
-fully-rehashed strict-binding mutation variants; all passed. These independent
-focused runs used the project environment without a memory guard.
+All three passed under the owner-provided 12 GiB/20 ms guard with exit zero and
+0.571 GiB maximum observed per-process RSS; the ordinary case emitted only the
+known joblib physical-core fallback warning. A separate guarded run exercised
+all 12 fully-rehashed strict-binding mutation variants; all passed with 0.389
+GiB maximum observed per-process RSS.
 
 All five directly affected files then ran together under the owner-provided
 12 GiB/20 ms guard:
@@ -152,7 +159,7 @@ All five directly affected files then ran together under the owner-provided
 - H5 receipt I/O: 38 tests.
 
 All 530 passed together at the current executable/test tree with exit zero and
-maximum observed per-process RSS of 1.596 GiB. This latest run supersedes the
+maximum observed per-process RSS of 1.602 GiB. This latest run supersedes the
 earlier affected-matrix results. Warning display was disabled for the broad
 matrix.
 
@@ -183,34 +190,22 @@ regression coverage, and branch scope agreed with the result.
 
 ## Host verification boundary
 
-Host certification is not claimed. The retry script explicitly deleted the
-original checkpoints and truncated the existing `build.log`; the traceback now
-survives only in the owner-provided `_BUILD-FAILURE-1PCT.txt` and committed
-journals. Timestamp and reflog evidence places the original run at journal-only
-commit `f7ecac75`, whose complete `microcosm-build/src` tree and
-`stacked_spine.py` object are identical to `33bf52fe`. The deleted artifacts did
-not embed a Microcosm SHA, so this is a strong Git-object inference rather than
-an artifact-contained revision receipt.
+Host certification is not claimed. The retry workflow deleted the original
+checkpoints and repeatedly truncated the mutable `build.log`; the supplied
+traceback now survives only in the owner-provided `_BUILD-FAILURE-1PCT.txt` and
+committed journals. The offending executable blob is unambiguously the one
+introduced by `33bf52fe` and retained through `22b2c6bc`, but the deleted
+artifacts did not embed a Microcosm SHA. The exact process-launch journal commit
+therefore cannot be recovered from the host log.
 
-The active retry began at launch-window commit `3194df71`, correcting an
-earlier journal inference of `8920193e`. Its complete production source tree,
-build-tool object, and `stacked_spine.py` object are identical at both commits
-and at current `HEAD`. Its editable environment and worker metadata bind it to
-this worktree path, but its artifacts likewise embed no Microcosm revision.
-
-At the final read-only snapshot, `2026-08-21 09:44:11Z`, the retry remained
-live and nonterminal. It had rebuilt taxable interest, completed all eight late
-`puf_tax_itemization__batch_1` targets, passed several later bounded families,
-and reached target 3/8 `farm_income` in
-`person/puf_tax_itemization__batch_3`, without recurrence of the historical
-exception. The sole taxable-interest log entry recorded successful checkpoint
-creation. However, final stacked gap-fill validation had not observably
-returned, so fit completion is not claimed as passage of the supplied receipt
-invariant. `build.log` changed at `09:43:45Z` and the external guard emitted a
-fresh wait heartbeat at `09:44:09Z`. There was no traceback, `ValueError`,
-binding text, terminal exit marker, transferred or simulated checkpoint, final
-`pool.h5`, `pool.manifest.json`, or `pool.gates.json`. This is progress only,
-not a terminal pass or certification verdict.
+At the final read-only snapshot, `2026-08-21 10:13:00Z`, the external directory
+contained only `build.log` and `guard.log`. `build.log` had been truncated to
+zero bytes at `10:07:12Z`; the latest guard heartbeat at `10:09:11Z` still
+reported a resource wait behind one other job. There was no traceback left to
+inspect, but also no runner exit marker, transferred or simulated checkpoint,
+final `pool.h5`, `pool.manifest.json`, or `pool.gates.json`. An empty mutable log
+is not a passing result, so no terminal host or certification verdict is
+inferred.
 
 Completion of the external boundary requires a durable, terminal,
 revision-bound 1% result with passing final pool, manifest, and gates artifacts.
@@ -231,27 +226,12 @@ The executable/regression correction is carried by:
 - `ad2a44c1` — pass the real generated taxable-interest receipts through the
   canonical terminal validator in both modes.
 
-This continuation is recorded by:
+This final revalidation is recorded by:
 
-- `d9355679` — reopen the required progress journal;
-- `00eb041d` — record the raise-site, caller, and regression diagnosis;
-- `ad2a44c1` — commit the strengthened producer/validator regression;
-- `2a80261e` — record red/green, affected-suite, static, object, and host
-  verification; and
-- `42819d53`, `a3f30485`, `d67df37c`, and `13db9a36` — reopen the latest audit
-  and record its independent diagnosis, focused tests, 530-test affected
-  matrix, static checks, production-object comparison, and corrected host
-  boundary; and
-- `2d330316`, `405b7ee1`, `90fa567f`, and `7a070439` — reopen this owner
-  recheck and record the focused matrix, independent audits, 530-test affected
-  matrix, static checks, production-object comparison, and current host
-  boundary; and
-- `77581afb` — refresh the required final report with the current local
-  verification; and
-- `2d5e4540` — reopen the current required progress journal;
-- `c2448d7f` — record the independent raise-site, caller, history, and
+- `6962c949` — reopen the required progress journal;
+- `e414bb71` — record the independent raise-site, caller, history, and
   regression diagnosis;
-- `e2e0d5d5` — record the fresh guarded 530-test matrix, static checks, and
-  exact object bindings; and
-- this commit — refresh the required report with the current verification and
-  nonterminal host boundary.
+- `83bae655` — record the fresh focused and guarded 530-test verification;
+- `30db846e` — record static checks and exact prior-suite object bindings;
+- `1776c443` — record the final nonterminal host snapshot; and
+- this commit — refresh the required report with the current result.
