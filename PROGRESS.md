@@ -4,10 +4,11 @@
 
 ### State
 
-In progress. The supplied traceback is now independently bound to the
-historical globally enabled QRF-evidence path at `33bf52fe`. The current tree
-contains an assigned-only correction with exact binding retained; fresh
-focused and affected verification is still pending.
+In progress. The supplied traceback is independently bound to the historical
+globally enabled QRF-audit evidence path at `33bf52fe`. The current tree's
+assigned-only correction, exact synthetic failure, real ordinary/banked
+producer boundary, strict binding variants, and all 530 directly affected
+tests are green. Static, object, host-boundary, and final-report checks remain.
 
 ### Done
 
@@ -44,12 +45,31 @@ focused and affected verification is still pending.
   legacy four-count checks, and the fully rehashed strict-family forgery case.
   The requested executable and regression changes are already committed, so a
   duplicate source or test edit is not warranted.
+- Reconciled three independent read-only audits of runtime reachability,
+  regression strength, and correction history. They agree that no canonical
+  scope leak remains and that exact assigned-target family binding is still
+  fail-closed. The history audit bound the bad executable blob to `33bf52fe`
+  but correctly notes that the overwritten external log cannot prove its
+  process-launch journal SHA.
+- Recorded the important scope precision: every fitted target still uses the
+  QRF's unchanged operational regime logic. What is selected-only is the
+  additional calibration audit detection and verification, per-target regime
+  provenance, QRF receipt evidence, and post-transfer calibration writes.
+- Ran the exact synthetic taxable-interest validator case plus the real
+  ordinary and banked 15-target producer-to-validator cases under the owner's
+  12 GiB/20 ms guard. All three passed; peak observed per-process RSS was
+  0.571 GiB and the only warning was joblib's physical-core fallback.
+- Ran all 12 fully rehashed QRF structure mutations separately. All passed
+  under the same guard with 0.389 GiB maximum observed per-process RSS.
+- Ran the five directly affected files together under the guard. Collection
+  was 64 ordinary-transfer, five multispine, 259 stacked-spine, 164 pool-tool,
+  and 38 H5 receipt-I/O tests. All 530 passed with exit zero and 1.602 GiB
+  maximum observed per-process RSS.
 
 ### Next
 
-Reconcile the independent audits, run the exact focused regression matrix and
-the proportionate affected suite, complete static/object checks, then refresh
-the required final report with a revision-bound result.
+Complete static and exact-object checks, take a final read-only host snapshot,
+then refresh the required final report with a revision-bound result.
 
 ## Owner continuation verification — 2026-08-21 09:17Z
 
