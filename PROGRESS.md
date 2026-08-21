@@ -1,5 +1,33 @@
 # Battery package 3 progress
 
+## Owner continuation audit — 2026-08-21 08:35Z
+
+### State
+
+In progress. The current tip already contains an assigned-only ACS QRF
+evidence correction, an exact taxable-interest regression, and a strengthened
+real wide-family producer-to-validator regression. This continuation is
+independently reconciling that committed result with the supplied host
+traceback before deciding whether any further executable change is warranted.
+
+### Done
+
+- Re-read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
+- Preserved the untracked owner-provided failure and memory-guard artifacts.
+- Confirmed `FINAL_REPORT.md` is the required output file and that the existing
+  progress and report journals are committed at the start of this continuation.
+- Inspected the current branch status, recent correction lineage, assigned lane
+  notes, current report, and prior verification record.
+- Started independent read-only audits of the invariant path, branch charter,
+  and regression surface.
+
+### Next
+
+1. Reconstruct the failing and corrected call paths from source and Git objects.
+2. Verify the narrow regression and affected suite against the current tip.
+3. Update `FINAL_REPORT.md` and close this journal without claiming restricted
+   host certification unless terminal revision-bound artifacts exist.
+
 ## Owner-reported host failure continuation — 2026-08-21 07:59Z
 
 ### State
