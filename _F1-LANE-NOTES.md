@@ -2555,6 +2555,22 @@ head; it still writes `us-f1-certification.json` and
 2. Append the exact sequential four-build and comparator commands for the host;
    do not execute those high-memory builds in this continuation.
 
+## F1 continuation r6 final-audit opening disposition (2026-08-21)
+
+- Opening status contained no tracked modifications. The only dirt was five
+  untracked owner instruction snapshots: `_F1-CHARTER-R2.md` through
+  `_F1-CHARTER-R6.md`.
+- All five were inspected. R5 and R6 restated the active continuation orders;
+  R2 through R4 were superseded historical instruction copies. None changed
+  the committed runner, typed receipt, comparator, host handoff, or landed
+  wiring, so none verifiably advanced this narrow charter.
+- The five exact untracked files were removed file-by-file without stash. The
+  approved `_F1-CHARTER.md` and committed lane journal remain the repository
+  authorities. No tracked implementation file was reverted or changed during
+  this disposition.
+- The already-committed B/C implementation is being audited rather than
+  recreated. No pool or sample build has run.
+
 ## F1 continuation r6 host handoff (2026-08-20)
 
 ### State

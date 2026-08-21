@@ -1,3 +1,39 @@
+# F1 r6 B/C final audit continuation — 2026-08-21
+
+## State
+
+- Work is local on `spec-engine-f1`; nothing has been pushed, and no pool or
+  sample build has run in this continuation.
+- Scope remains exactly deliverables B and C: audit the already-landed
+  single-mode cold-build runner, four-receipt comparator, and host handoff;
+  change them only if a concrete contract gap is reproduced.
+- Five untracked owner instruction snapshots were the only opening dirt. They
+  were read, classified as non-product inputs rather than runner/wiring work,
+  and removed file-by-file without stash. Their disposition is journaled in
+  `_F1-LANE-NOTES.md`.
+
+## Done
+
+- Read `CLAUDE.md`, `_F1-CHARTER-R5.md`, `_F1-CHARTER-R6.md`, the approved
+  `_F1-CHARTER.md` including the D4 two-tier ruling, and the current r6 state
+  and handoff in `_F1-LANE-NOTES.md`.
+- Inspected status and recent history. The B/C implementation and earlier
+  verification are committed; no landed executor, broker, restoration, or
+  value-kind work will be redone.
+- Started three independent read-only audits of the runner/typed receipt,
+  synthetic comparator coverage, focused tests, and exact host commands.
+
+## Next
+
+1. Reconcile the independent audits against the implementation and sealed
+   `plan_lock` contract.
+2. Run the complete B/C test and static gate at fixture/unit scale only.
+3. Commit any necessary B/C correction as its own coherent step, then update
+   this journal and append the final report before stopping without a build or
+   push.
+
+---
+
 # F1 continuation r6 certification-runner progress — 2026-08-20
 
 ## State
