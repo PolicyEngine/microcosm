@@ -4,12 +4,12 @@
 
 ### State
 
-In progress. The owner has resupplied the host 1% taxable-interest ACS QRF
-record-binding failure and requested an independently verified scoped fix. The
-branch carries an earlier correction, regression, and green-suite claims, but
-those claims are not accepted until the current source, failing boundary, live
-host evidence, and regression behavior have been audited again. No executable
-change has been made in this continuation.
+In progress. The supplied traceback is reproduced exactly on the historical
+leaking runtime, and the current source is scoped to the immutable nine-target
+calibration registry at producer, evidence-attachment, and validator
+boundaries. The exact failing target is unassigned. The existing regression is
+demonstrably failing-first, and all 14 decisive current cases pass under the
+owner guard. Broader affected-suite, static, and live-host checks remain.
 
 ### Done
 
@@ -18,12 +18,44 @@ change has been made in this continuation.
 - Preserved the owner-provided untracked `_BUILD-FAILURE-1PCT.txt` and
   `.codex-memory-guard.py` files untouched.
 - Inspected the clean tracked worktree and prior continuation history.
+- Confirmed the GitNexus query/context tools and graph resources are unavailable
+  in this session; used direct raise-site, caller, producer, validator, test,
+  runtime-enumeration, and Git-history tracing as the documented fallback.
+- Matched the supplied lines 4310 and 4512 exactly to `33bf52fe`. That source
+  validates QRF evidence on every target before consulting the assigned
+  calibration registry, so the unassigned taxable-interest target reaches the
+  strict public-family predicate with a bounded `puf_tax_itemization__batch_1`
+  record and raises the reported error.
+- Enumerated the live immutable registry: two early and seven late targets,
+  covering only declared model-required, source-operator, and adult-care rows.
+  `person/puf_tax_itemization/taxable_interest_income` is absent.
+- Traced both owner calls into `transfer_acs_inputs`, the ordinary and banked
+  fitting paths, both receipt builders, and both terminal validators. Regime
+  evidence defaults empty; owners pass only registry-selected targets;
+  unassigned records carry empty regimes; builders omit their QRF evidence;
+  validators reject any forged unassigned evidence before strict assigned
+  record-family binding. Legacy four-count accounting remains required for all
+  targets.
+- Confirmed the canonical 15-target PUF tax-itemization family is pinned to the
+  certified width eight and splits into `__batch_1` and `__batch_2`; taxable
+  interest is in `__batch_1` but is not selected for calibration or evidence.
+- Confirmed current executable Git trees under `microcosm-build/src`, `tools`,
+  and `specs` exactly match the prior complete-suite checkpoint `a5be536f`.
+- Demonstrated the exact regression is failing-first in a detached temporary
+  worktree at `22b2c6bc`, whose runtime is byte-identical to `33bf52fe`. It
+  failed through lines 4512 and 4310 with the supplied taxable-interest
+  record-binding error (0.452 GiB peak); the worktree was then removed.
+- Ran the exact taxable-interest validator regression, the real banked
+  wide-family producer, and all 12 rehashed QRF structure mutations on current
+  `HEAD` under the owner 12 GiB/20 ms guard. All 14 passed with a 0.570 GiB
+  maximum observed per-process RSS; the only warning was joblib's logical-core
+  fallback.
 
 ### Next
 
-Trace the current and historical raise sites, inspect the caller/producer
-selection path and live host log, then prove whether the existing regression
-fails on the leaking runtime and passes only with target-scoped behavior.
+Run all directly affected test files under the owner guard, reconcile the
+independent audits and live host state, then rerun lint, format, whitespace,
+and executable-drift checks before refreshing `FINAL_REPORT.md`.
 
 ## Current continuation — 2026-08-21
 
