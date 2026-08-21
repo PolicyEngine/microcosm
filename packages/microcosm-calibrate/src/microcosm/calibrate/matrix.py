@@ -177,7 +177,10 @@ def _nested_positions(
                 f"weight entity {weight_entity!r}."
             )
         return frame._group_positions(weight_entity)
-    if entity not in schema.group_entities or weight_entity not in schema.group_entities:
+    if (
+        entity not in schema.group_entities
+        or weight_entity not in schema.group_entities
+    ):
         raise ValueError(
             f"Cannot collapse target entity {entity!r} to weight entity "
             f"{weight_entity!r}; schema declares person entity "
@@ -207,26 +210,32 @@ def _nested_positions(
         )
 
     source_ids = frame.table(entity)[schema.id_column(entity)].to_numpy()
-    missing = [source_id for source_id in source_ids if source_id not in source_to_weight]
+    missing = [
+        source_id for source_id in source_ids if source_id not in source_to_weight
+    ]
     if missing:
         raise ValueError(
             f"Cannot collapse target entity {entity!r} to weight entity "
             f"{weight_entity!r}: {entity} id(s) have no person membership, "
             f"including {missing[:5]}."
         )
-    destination_ids = np.asarray([source_to_weight[source_id] for source_id in source_ids])
+    destination_ids = np.asarray(
+        [source_to_weight[source_id] for source_id in source_ids]
+    )
     weight_ids = frame.table(weight_entity)[schema.id_column(weight_entity)].to_numpy()
-    positions = np.searchsorted(weight_ids, destination_ids)
-    valid = positions < len(weight_ids)
-    valid[valid] = weight_ids[positions[valid]] == destination_ids[valid]
-    if not bool(valid.all()):  # pragma: no cover - frame validation guards this
+    order = np.argsort(weight_ids)
+    sorted_weight_ids = weight_ids[order]
+    sorted_positions = np.searchsorted(sorted_weight_ids, destination_ids)
+    valid = sorted_positions < len(sorted_weight_ids)
+    valid[valid] = sorted_weight_ids[sorted_positions[valid]] == destination_ids[valid]
+    if not bool(valid.all()):
         bad = destination_ids[~valid][:5].tolist()
         raise ValueError(
             f"Cannot collapse target entity {entity!r} to weight entity "
             f"{weight_entity!r}: mapped {weight_entity} id(s) are absent from "
             f"the weight table, including {bad}."
         )
-    return positions
+    return order[sorted_positions]
 
 
 def build_constraint_matrix(

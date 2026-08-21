@@ -2574,7 +2574,7 @@
     },
     {
       "name": "dwp.uc.households",
-      "from": "2025-04",
+      "from": "2025-12",
       "to": "2025"
     }
   ],
@@ -6169,7 +6169,7 @@
           "resolved_period": 2025,
           "resolved_value": 7553013.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0e19ecf4b9c7d7a9900bffdf"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b94a17afcae0f28216f5c756"
         }
       ]
     },
@@ -6184,7 +6184,7 @@
           "resolved_period": 2025,
           "resolved_value": 8331437.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_056705672c64e72f531c221b"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ec5be4478e3e8a5ed9186e22"
         }
       ]
     },
@@ -6199,7 +6199,7 @@
           "resolved_period": 2025,
           "resolved_value": 8715225.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_042a0452abe737cbcc2d7826"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ed0cabd54beb345a04d236b1"
         }
       ]
     },
@@ -6214,7 +6214,7 @@
           "resolved_period": 2025,
           "resolved_value": 9572397.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_2734cfcd60cab009d837006f"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f3cd6e4fd7249a0ef2be0ffb"
         }
       ]
     },
@@ -6229,7 +6229,7 @@
           "resolved_period": 2025,
           "resolved_value": 8622506.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1940860d399a82f4953535b7"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f618aa084dbd211cdca7c544"
         }
       ]
     },
@@ -6244,7 +6244,7 @@
           "resolved_period": 2025,
           "resolved_value": 9036816.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_13df792a886048bb2e017b3e"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f8fb3f14e335149ae47e882a"
         }
       ]
     },
@@ -6259,7 +6259,7 @@
           "resolved_period": 2025,
           "resolved_value": 7861034.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1b10577c910ab5947a3a3bd6"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fc9476cc3d2ecd4fb1fd9403"
         }
       ]
     },
@@ -6274,7 +6274,7 @@
           "resolved_period": 2025,
           "resolved_value": 5998605.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_00e6f6b5b503ef40b6cbf115"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ffd4d3a0d7b8b5e4667d53d8"
         }
       ]
     },
@@ -6289,7 +6289,7 @@
           "resolved_period": 2025,
           "resolved_value": 2965168.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_276abb5d5c7c00362cf78f33"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f2dffa4221fe14e9138365b0"
         }
       ]
     },
@@ -6304,7 +6304,7 @@
           "resolved_period": 2025,
           "resolved_value": 1744355.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_14a33ace3e56eb04af5d87e2"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fb55d5f20f74ee39a1e8fcb4"
         }
       ]
     },
@@ -6319,7 +6319,7 @@
           "resolved_period": 2025,
           "resolved_value": 2052052.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_69562b00dd7ef3ef3809099d"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f9a457edc9491e5810c39f5f"
         }
       ]
     },
@@ -6334,7 +6334,7 @@
           "resolved_period": 2025,
           "resolved_value": 2002835.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_39672ee0d1ba0e02ee364c96"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f0e2139b52c615925c9075dd"
         }
       ]
     },
@@ -6349,7 +6349,7 @@
           "resolved_period": 2025,
           "resolved_value": 2034609.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0d03f42e5a79ed4d112f75ec"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b4e36c0dc0a924667be47bbc"
         }
       ]
     },
@@ -6364,7 +6364,7 @@
           "resolved_period": 2025,
           "resolved_value": 2291610.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_338ba5d59faea729e03e51b2"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d9d6a711d0cbc4919a8643c0"
         }
       ]
     },
@@ -6379,7 +6379,7 @@
           "resolved_period": 2025,
           "resolved_value": 2463301.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_336866742a8407c730f81183"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f5b1d6c400b912b05c79c477"
         }
       ]
     },
@@ -6394,7 +6394,7 @@
           "resolved_period": 2025,
           "resolved_value": 2472291.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_4f49ba3ae81ec559c7398ffc"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f927cc9b3eab0494caf1479f"
         }
       ]
     },
@@ -6409,7 +6409,7 @@
           "resolved_period": 2025,
           "resolved_value": 2333109.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_7859c22fe4165e9485429122"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d9cdf746ffe5df2fd3d85279"
         }
       ]
     },
@@ -6424,7 +6424,7 @@
           "resolved_period": 2025,
           "resolved_value": 2088285.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1c2c4f630fa703234d347657"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b679e4770750b86af6b1756b"
         }
       ]
     },
@@ -6439,7 +6439,7 @@
           "resolved_period": 2025,
           "resolved_value": 2255231.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_46413aa8f6dcd7af317652d0"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_65b8a4cc92c4565b00007877"
         }
       ]
     },
@@ -6454,7 +6454,7 @@
           "resolved_period": 2025,
           "resolved_value": 2360202.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_461f5d83eddd94c18f5012bd"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ba87a7d66cb9f8694b952159"
         }
       ]
     },
@@ -6469,7 +6469,7 @@
           "resolved_period": 2025,
           "resolved_value": 1941658.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1d7696486b18cf31492cf093"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_bca9c38347810a944bbd08b3"
         }
       ]
     },
@@ -6484,7 +6484,7 @@
           "resolved_period": 2025,
           "resolved_value": 2193915.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_2363408a28ac0f04f37a7abb"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f3b1f78e4b752640465521f0"
         }
       ]
     },
@@ -6499,7 +6499,7 @@
           "resolved_period": 2025,
           "resolved_value": 1838574.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_5639c42596c626737c3d636b"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_dbeb583b16bcb530ee1296e1"
         }
       ]
     },
@@ -6514,7 +6514,7 @@
           "resolved_period": 2025,
           "resolved_value": 1622996.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0b9535bcf00bdc5d3799040b"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b962c8b6d3d68808831aad6a"
         }
       ]
     },
@@ -6529,7 +6529,7 @@
           "resolved_period": 2025,
           "resolved_value": 1551183.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_21695e80cb8e5cc51ca40d00"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_aa0a8a7ab2d3894db7a7d7aa"
         }
       ]
     },
@@ -6544,7 +6544,7 @@
           "resolved_period": 2025,
           "resolved_value": 1024480.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_29dc57985627ae76af0982b8"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fcdc2e2f119de0b65769ef90"
         }
       ]
     },
@@ -6559,7 +6559,7 @@
           "resolved_period": 2025,
           "resolved_value": 665267.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_062c21fd48c78155323c1909"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c76df00751abbf64b5ab056b"
         }
       ]
     },
@@ -6589,7 +6589,7 @@
           "resolved_period": 2025,
           "resolved_value": 1829801.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_09e0a2d15c8f38d824915eb8"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ccdfe5dde7b46840510e21d2"
         }
       ]
     },
@@ -6604,7 +6604,7 @@
           "resolved_period": 2025,
           "resolved_value": 2152800.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_224df58ddebb1d0487ed7392"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_86d603b352e77fd0c03ddaa8"
         }
       ]
     },
@@ -6619,7 +6619,7 @@
           "resolved_period": 2025,
           "resolved_value": 2123750.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1b9d5e734a49a6e40c2372f5"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ecf390d4b25b71d12aae6bc7"
         }
       ]
     },
@@ -6634,7 +6634,7 @@
           "resolved_period": 2025,
           "resolved_value": 2131646.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_57f4c483dce77b29592b4a5a"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_edb961b3528b22769eece352"
         }
       ]
     },
@@ -6649,7 +6649,7 @@
           "resolved_period": 2025,
           "resolved_value": 2257360.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_25a1eab35b7fc183d3840893"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fd52338de8e1557cdd024c36"
         }
       ]
     },
@@ -6664,7 +6664,7 @@
           "resolved_period": 2025,
           "resolved_value": 2333326.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_49f185aef55e9fe5d593a3ec"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b81f56fab808ad1d38d70f3d"
         }
       ]
     },
@@ -6679,7 +6679,7 @@
           "resolved_period": 2025,
           "resolved_value": 2303479.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_75f8a8ec8fee89fe6fc9c442"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_be9bedc792e0d419ebaf5316"
         }
       ]
     },
@@ -6694,7 +6694,7 @@
           "resolved_period": 2025,
           "resolved_value": 2196013.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_260f74dc33a844072323920a"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d41ff91bfe885debcc12d759"
         }
       ]
     },
@@ -6709,7 +6709,7 @@
           "resolved_period": 2025,
           "resolved_value": 2005099.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1b027f41f03030f8efe0d79b"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_fafcbae6e55f9ae20bc0050d"
         }
       ]
     },
@@ -6724,7 +6724,7 @@
           "resolved_period": 2025,
           "resolved_value": 2164862.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_40adbc7adb975592e807d0ae"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b8fe92cfb43b9a95f8a9f7ef"
         }
       ]
     },
@@ -6739,7 +6739,7 @@
           "resolved_period": 2025,
           "resolved_value": 2256521.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0e114e47a57d10fc54609670"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_86b57e4ed1e5186f23dc4021"
         }
       ]
     },
@@ -6754,7 +6754,7 @@
           "resolved_period": 2025,
           "resolved_value": 2037199.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_404750682cef86219e756295"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e272f955c58535b8b9304759"
         }
       ]
     },
@@ -6769,7 +6769,7 @@
           "resolved_period": 2025,
           "resolved_value": 2094462.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_1f9b2912ecff29a76b1c72b8"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e60d33e33dcbc1ba2292edf5"
         }
       ]
     },
@@ -6784,7 +6784,7 @@
           "resolved_period": 2025,
           "resolved_value": 1734083.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_25d519d64483ae31cf018715"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_a4878efd0023575bded6b67a"
         }
       ]
     },
@@ -6799,7 +6799,7 @@
           "resolved_period": 2025,
           "resolved_value": 1473758.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0d81360984ebade7169a9ae0"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d34aca91f9d1621ea96e72bc"
         }
       ]
     },
@@ -6814,7 +6814,7 @@
           "resolved_period": 2025,
           "resolved_value": 1350668.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_14458a77bb7a0723408b86f2"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f74158203e735d37a67c5409"
         }
       ]
     },
@@ -6829,7 +6829,7 @@
           "resolved_period": 2025,
           "resolved_value": 815910.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_042ccd2b5c0becef2c35911d"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_60aa57af44ada9286df3d649"
         }
       ]
     },
@@ -6844,7 +6844,7 @@
           "resolved_period": 2025,
           "resolved_value": 459511.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_092abe3c418343972da4d863"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_bbfd4e781a7d1151855e4edb"
         }
       ]
     },
@@ -6874,7 +6874,7 @@
           "resolved_period": 2025,
           "resolved_value": 896833.0,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_001f7a945bd3844e6fcc5b0e"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f9862176e9cdec891820dfa2"
         }
       ]
     },
@@ -7438,7 +7438,7 @@
           "resolved_period": 2025,
           "resolved_value": 2778253361.64,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_5c8d18b2366a234482594297"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_882329821c90dc683aa778d8"
         }
       ]
     },
@@ -7453,7 +7453,7 @@
           "resolved_period": 2025,
           "resolved_value": 346409713.95000005,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0d0ef6ca9882046f4b79b739"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ac1b07c69f1e1baa2a0fb787"
         }
       ]
     },
@@ -7468,7 +7468,7 @@
           "resolved_period": 2025,
           "resolved_value": 40869580.81,
           "resolved_fact_period": "2024",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_0a43ec6d32083e092bcee693"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_496af6b8fe31c71c43f1d292"
         }
       ]
     },
@@ -7602,8 +7602,8 @@
           "matched_fact_count_at_or_before_period": 9,
           "resolved_period": 2025,
           "resolved_value": 6758888.888888889,
-          "resolved_fact_period": "2025-04",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_2aa7149107cd8906fe8fed57"
+          "resolved_fact_period": "2025-12",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_f1f95c868e686f543d161ff0"
         }
       ]
     }

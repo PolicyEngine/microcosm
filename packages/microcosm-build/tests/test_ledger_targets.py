@@ -1226,6 +1226,12 @@ def test__given_sum_reference_matches_same_vintage_facts__then_values_sum() -> N
     spec = registry.specs[0]
     assert spec.value == 350.0
     assert spec.metadata["ledger_member_fact_count"] == "2"
+    assert json.loads(spec.metadata["ledger_member_fact_keys"]) == [
+        "ledger.aggregate_fact.v2:first",
+        "ledger.aggregate_fact.v2:second",
+    ]
+    assert spec.metadata["ledger_fact_key"] == "ledger.aggregate_fact.v2:second"
+    assert spec.metadata["ledger_fact_period"] == "2023"
     assert spec.metadata["ledger_value_operation"] == "sum"
 
 
@@ -1313,6 +1319,13 @@ def test__given_calendar_year_average_reference__then_monthly_mean_compiles() ->
         (6_380_000.0 + 4 * 6_600_000.0 + 3 * 6_960_000.0 + 7_170_000.0) / 9
     )
     assert spec.metadata["ledger_member_fact_count"] == "9"
+    assert json.loads(spec.metadata["ledger_member_fact_keys"])[-1] == (
+        "ledger.aggregate_fact.v2:medicaid-2025_12"
+    )
+    assert spec.metadata["ledger_fact_key"] == (
+        "ledger.aggregate_fact.v2:medicaid-2025_12"
+    )
+    assert spec.metadata["ledger_fact_period"] == "2025-12"
     assert spec.metadata["ledger_value_operation"] == "calendar_year_average"
 
 
@@ -1352,6 +1365,15 @@ def test__given_latest_plateau_reference__then_latest_equal_month_run_wins() -> 
     spec = registry.specs[0]
     assert spec.value == 7_170_000.0
     assert spec.metadata["ledger_member_fact_count"] == "3"
+    assert json.loads(spec.metadata["ledger_member_fact_keys"]) == [
+        "ledger.aggregate_fact.v2:medicaid-2025_12",
+        "ledger.aggregate_fact.v2:medicaid-2026_01",
+        "ledger.aggregate_fact.v2:medicaid-2026_02",
+    ]
+    assert spec.metadata["ledger_fact_key"] == (
+        "ledger.aggregate_fact.v2:medicaid-2026_02"
+    )
+    assert spec.metadata["ledger_fact_period"] == "2026-02"
     assert spec.metadata["ledger_value_operation"] == "latest_plateau"
 
 
@@ -1972,7 +1994,7 @@ def test_ledger_metadata_records_assertion_and_fact_period():
     assert projection.metadata["ledger_assertion"] == "source_projection"
 
 
-def test_ledger_reference_selector_rejects_assertion_selector_key():
+def test_ledger_reference_selector_matches_assertion_key():
     reference = LedgerTargetReference(
         name="cbo_projected_agi",
         ledger_selector={
@@ -1982,14 +2004,42 @@ def test_ledger_reference_selector_rejects_assertion_selector_key():
         entity="household",
         measure="adjusted_gross_income",
         family="cbo",
+        assertion_policy="allow_source_projection",
     )
 
-    with pytest.raises(ValueError, match="Unsupported Ledger fact selector field"):
-        compile_ledger_target_references(
-            [_consumer_fact_row(assertion="source_projection")],
-            [reference],
-            country="us",
-        )
+    registry = compile_ledger_target_references(
+        [_consumer_fact_row(assertion="source_projection")],
+        [reference],
+        country="us",
+    )
+
+    (spec,) = registry.specs
+    assert spec.metadata["ledger_resolved_assertion"] == "source_projection"
+
+
+def test_ledger_reference_selector_treats_absent_assertion_as_observation():
+    reference = LedgerTargetReference(
+        name="observed_agi",
+        ledger_selector={
+            "source_measure_id": "adjusted_gross_income",
+            "assertion": "observation",
+        },
+        entity="household",
+        measure="adjusted_gross_income",
+        family="irs_soi",
+        period=2024,
+    )
+
+    registry = compile_ledger_target_references(
+        [_consumer_fact_row(value=15_000_000_000_000)],
+        [reference],
+        country="us",
+    )
+
+    (spec,) = registry.specs
+    assert spec.value == 15_000_000_000_000
+    assert "ledger_assertion" not in spec.metadata
+    assert spec.metadata["ledger_resolved_assertion"] == "observation"
 
 
 def test_ledger_reference_projection_fact_excluded_by_default():

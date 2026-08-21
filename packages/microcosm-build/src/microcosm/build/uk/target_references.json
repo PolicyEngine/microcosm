@@ -9374,7 +9374,7 @@
         "measure_kind": "prepared_column"
       },
       "value_operation": "calendar_year_average",
-      "uprating_from_period": "2025-04",
+      "uprating_from_period": "2025-12",
       "uprating_to_period": 2025
     }
   ]

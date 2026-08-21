@@ -153,6 +153,40 @@ class TestLedgerCompileParityGate:
             }
         ]
 
+    def test_signed_difference_generator_matches_list_behavior(self) -> None:
+        signed_rows = [
+            {
+                "fixture_value": 10.0,
+                "kind": "calibration_drift",
+                "ledger_value": 11.0,
+                "name": "hmrc.tax",
+                "period": 2025,
+                "reason": "reviewed fixture-vintage drift",
+            }
+        ]
+
+        list_result = ledger_compile_parity_gate(
+            self._registry(11.0),
+            self._registry(10.0),
+            signed_differences=signed_rows,
+        )
+        generator_result = ledger_compile_parity_gate(
+            self._registry(11.0),
+            self._registry(10.0),
+            signed_differences=(row for row in signed_rows),
+        )
+
+        assert generator_result.passed == list_result.passed
+        assert generator_result.failures == list_result.failures
+        assert (
+            generator_result.details["signed_difference_count"]
+            == (list_result.details["signed_difference_count"])
+        )
+        assert (
+            generator_result.details["signed_differences"]
+            == (list_result.details["signed_differences"])
+        )
+
     def test_signed_difference_new_value_at_signed_key_fails(self) -> None:
         result = ledger_compile_parity_gate(
             self._registry(99.0),
