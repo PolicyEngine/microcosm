@@ -1,5 +1,30 @@
 # Battery package 3 progress
 
+## Reopened owner continuation — 2026-08-21
+
+### State
+
+In progress. The owner has resupplied the host 1% taxable-interest ACS QRF
+record-binding failure and requested an independently verified scoped fix. The
+branch carries an earlier correction, regression, and green-suite claims, but
+those claims are not accepted until the current source, failing boundary, live
+host evidence, and regression behavior have been audited again. No executable
+change has been made in this continuation.
+
+### Done
+
+- Read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
+- Confirmed `FINAL_REPORT.md` is the existing required output file.
+- Preserved the owner-provided untracked `_BUILD-FAILURE-1PCT.txt` and
+  `.codex-memory-guard.py` files untouched.
+- Inspected the clean tracked worktree and prior continuation history.
+
+### Next
+
+Trace the current and historical raise sites, inspect the caller/producer
+selection path and live host log, then prove whether the existing regression
+fails on the leaking runtime and passes only with target-scoped behavior.
+
 ## Current continuation — 2026-08-21
 
 ### State
