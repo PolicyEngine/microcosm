@@ -100,12 +100,14 @@ claims below remain historical until this continuation completes them.
   account for all 900 non-build cases.
 - Ran the build core+UK shard in a fresh guarded process: 1,856 passed and 33
   skipped in 7:44, with 4.182 GiB peak observed per-process RSS.
+- Ran the 81-file build US a-r shard in a fresh guarded process: 2,406 passed
+  and three skipped in 23:29, with 8.844 GiB peak observed per-process RSS.
 
 ### Next
 
-Complete the US a-r and s-z `microcosm-build` shards in fresh guarded
-processes, then perform final host-artifact and worktree-cleanliness checks and
-refresh `FINAL_REPORT.md`.
+Complete the US s-z `microcosm-build` shard in a fresh guarded process, then
+perform final host-artifact and worktree-cleanliness checks and refresh
+`FINAL_REPORT.md`.
 
 ## Current continuation — 2026-08-21 03:29Z
 
