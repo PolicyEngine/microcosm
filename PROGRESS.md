@@ -13,7 +13,8 @@
   its structural operator-map audit are now refreshed at `7265a88a`.
 - An independent verification reprise at `b26c79d6` found no B/C source change
   to make: the committed runner, comparator, typed receipt, and host handoff
-  satisfy the narrow r6 contract. Only journal/report closeout remains.
+  satisfy the narrow r6 contract. The verification journal is committed at
+  `8a5878c2`, and the required final report is recorded in `FINAL_REPORT.md`.
 - `_F1-CHARTER-R2.md` through `_F1-CHARTER-R6.md` are untracked owner-provided
   instruction copies. They are being read as authority but are not product
   deliverables and will not be staged without explicit reason.
@@ -69,6 +70,8 @@
   brokered primary-QRF test fails after Joblib calls `time.sleep(0.01)` inside
   an ambient-clock-denied producer session. No deliverable-A wiring or masking
   test edit was made under this B/C-only order.
+- Committed the independent audit/verification journal at `8a5878c2` and
+  appended the final closeout report to `FINAL_REPORT.md`.
 - Attempted the complete 301-module repository inventory in fresh serial
   processes. The first 26 modules passed 609 tests with one expected skip and
   a 2.016 GiB maximum RSS. Module 27 exposed a committed deliverable-A broker

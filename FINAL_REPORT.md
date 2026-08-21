@@ -415,3 +415,47 @@ untracked owner charter copies were preserved byte-untouched. No pool build,
 1% run, comparator host run, kill/resume exercise, push, or publication was
 performed. The host now runs the exact four commands, and the owner adjudicates
 the emitted verdict.
+
+### F1 continuation r6 independent verification closeout (2026-08-20)
+
+Deliverables B and C remain complete without source changes. A fresh,
+independent audit found that the committed single-build runner exclusively
+claims an absent root, launches exactly one constants or bundle pool child,
+forces `--resume-policy forbid`, binds the requested rung and seed to typed
+production evidence, and seals the raw-byte plan artifact digest vector plus
+plan-governed provenance. The comparator requires four distinct constants A/B
+and bundle A/B receipts from one request and current plan, evaluates vector
+coverage, cold-build audits, within-mode determinism, and cross-mode equality,
+then exclusively emits `us-f1-certification.json` and
+`us-f1-certification.md`. No concrete B/C implementation defect was found.
+
+The dedicated synthetic runner/comparator module passes 35/35 tests, and the
+combined runner/comparator, artifact-comparison, and artifact-coverage gate
+passes 72/72. Repository-wide Ruff, relevant byte compilation, runner CLI
+help, whitespace, generated US bundle, and generated coverage checks pass. The
+US spec remains
+`05edd87390d841c5b444267cd674d8bb15ed518b12577268d2e2c2de82976079`;
+coverage remains 41,911/41,911 fields and 40/40 inventory checks. The sandbox
+refused the external user-level `uv` cache before collection, so the same
+workspace tests ran through the already-synced `.venv` without a dependency
+or source change.
+
+The unqualified repository-wide suite-green acceptance remains unmet for the
+separate, committed deliverable-A boundary. The exact brokered primary-QRF
+fixture again fails when Joblib calls ambient `time.sleep(0.01)` inside the
+producer session. R6 explicitly limits this continuation to B/C and forbids
+redoing landed wiring, so no wiring or masking test edit was made and no
+repository-wide green claim is offered. Production coverage also intentionally
+remains incomplete for node reuse, final-H5 member closure, and calibration;
+the current host comparator is therefore expected to write a structurally
+valid FAIL and return status 1, not certify the artifacts.
+
+The exact host sequence remains the handoff committed at `424c4998`: write the
+documentation-only resume predicate, run constants A, constants B, bundle A,
+and bundle B strictly sequentially at 1% with seed 578 and fresh roots, then
+compare the four receipts. Each build needs more than the worst observed 96.95
+GiB RSS plus host margin and must not overlap another build. No pool build,
+1% run, comparator host run, kill/resume exercise, push, or publication was
+performed. The five untracked owner charter copies were preserved unmodified;
+no stash was used. The independent verification journal is committed at
+`8a5878c2`.
