@@ -10,9 +10,11 @@ every target and line 4310 raises the reported strict family-binding error.
 The current assigned-only runtime correction is intact, independent call-path
 and test audits found no remaining canonical leak, and the strengthened
 ordinary/banked regression now sends the real generated taxable-interest
-receipt through the canonical terminal validator. The focused three-case
-matrix and all 530 directly affected tests are green. Changed-file and static
-verification remain.
+receipt through the canonical terminal validator. The regression is proven
+red on the historical runtime and green on the current runtime; the focused
+matrix, all 530 directly affected tests, the complete changed 259-test file,
+and static/object checks are green. Only the required final report and journal
+closure remain.
 
 ### Done
 
@@ -58,18 +60,51 @@ verification remain.
 - Strengthened the real 15-target ordinary/banked regression by grafting its
   generated taxable-interest receipt into a canonical gap-fill receipt and
   invoking `validate_stacked_gap_fill_receipt`. This closes the only identified
-  producer-to-terminal-validator coverage gap without changing executable
+  target-receipt-to-terminal-validator coverage gap without changing executable
   behavior or weakening exact record-family binding.
 - Ran the strengthened ordinary and banked cases plus the exact forged-evidence
   validator regression under the guard. All 3 passed with exit zero and 0.585
   GiB maximum observed per-process RSS; Ruff lint and formatting checks on the
   edited test file also pass.
+- Proved the strengthened regression failing-first in an isolated temporary
+  worktree. With only `acs_multispine.py`, `acs_transfer.py`, and
+  `stacked_spine.py` replaced by their exact `33bf52fe` objects, both ordinary
+  and banked cases failed at historical lines 4512 and 4310 with the supplied
+  taxable-interest record-binding error. Restoring the current three objects
+  made the identical two cases pass. The temporary worktree and registration
+  were removed, and the shared worktree remained unchanged.
+- Received an independent approval of `ad2a44c1`. The review confirmed the
+  bridge exercises both fit implementations, cannot pass vacuously because
+  selected unemployment must retain evidence, and is appropriately scoped to
+  the reported target. No further executable or test change was recommended.
+- Ran the complete changed `test_us_stacked_spine.py`: all 259 tests passed
+  with exit zero and 1.021 GiB maximum observed per-process RSS. Output was
+  limited to the known joblib fallback and pandas fixture-fragmentation
+  warnings.
+- Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
+  changed since `33bf52fe^`, committed-range whitespace checks, and worktree
+  whitespace checks; all passed.
+- Compared the current tree with complete-suite checkpoint `d29a8705`.
+  `packages/microcosm-build/src`, `tools`, `specs`, `pyproject.toml`, and
+  `uv.lock` are exact Git-object matches. The only package difference is the
+  strengthened stacked-spine test file, whose full 259-test suite is green.
+- Corrected the earlier host launch inference. The active retry began at
+  launch-window commit `3194df71`, not `8920193e`; the production source tree,
+  build tool, and `stacked_spine.py` objects are identical at both commits and
+  at current `HEAD`. The original failed run began under journal-only
+  `f7ecac75`, whose complete build source and stacked-spine object match
+  `33bf52fe` exactly. Neither run embeds a Microcosm revision in its artifacts.
+- Took a read-only host snapshot at `2026-08-21 08:28:13Z`. PID 28857 remained
+  active, the retry had 60 successful and zero failed primary-QRF stages, and
+  it had already passed the old taxable-interest boundary. Final `pool.h5`,
+  manifest, gates, and a terminal exit marker were still absent, so no host
+  certification is claimed.
 
 ### Next
 
-Run the complete changed stacked-spine test file, repository-wide static
-checks, and final Git-object/host snapshots; then refresh the required final
-report and close this continuation.
+Refresh and commit the required `FINAL_REPORT.md`, then mark this continuation
+complete in the journal without claiming the still-active host retry as a
+terminal certification result.
 
 ## Reopened owner verification — 2026-08-21
 
