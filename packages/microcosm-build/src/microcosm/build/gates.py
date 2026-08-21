@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import math
 import pickle
+from collections import Counter
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -47,7 +48,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 
-from microcosm.calibrate.registry import TargetSpec
+from microcosm.build.ledger_targets import ledger_target_registry_parity_report
+from microcosm.calibrate.registry import TargetRegistry, TargetSpec
 from microcosm.calibrate.solve import relative_error_loss
 from microcosm.frame import WeightKind
 
@@ -62,6 +64,8 @@ __all__ = [
     "exported_nonzero_gate",
     "input_column_coverage_gate",
     "input_mass_parity_gate",
+    "ledger_compile_parity_gate",
+    "ledger_compile_parity_signed_differences",
     "macro_realism_gate",
     "nonconstant_columns_gate",
     "nonnegative_columns_gate",
@@ -175,6 +179,281 @@ def _sealed_stacked_gate_result(
     )
     object.__setattr__(result, "_stacked_authority_seal", seal)
     return result
+
+
+def ledger_compile_parity_gate(
+    compiled_registry: TargetRegistry | Mapping[str, object],
+    fixture: TargetRegistry | Mapping[str, object],
+    *,
+    signed_differences: Iterable[Mapping[str, object]] = (),
+    name: str = "ledger_compile_parity",
+) -> GateResult:
+    """Compare a Ledger-compiled target registry against a signed fixture.
+
+    ``signed_differences`` names reviewed ``(name, period)`` rows that may be
+    absent or calibration-different on either side. Every unsigned row gap or
+    target-value difference is still reported by the shared registry parity
+    comparator.
+    """
+
+    actual = _coerce_target_registry(compiled_registry, fallback_country="uk")
+    expected = _coerce_target_registry(fixture, fallback_country=actual.country)
+    signed_keys = _signed_difference_keys(signed_differences)
+    if signed_keys:
+        actual = _drop_registry_keys(actual, signed_keys)
+        expected = _drop_registry_keys(expected, signed_keys)
+    actual = _ledger_compile_value_registry(actual)
+    expected = _ledger_compile_value_registry(expected)
+    report = ledger_target_registry_parity_report(expected, actual)
+    failures = _calibration_effective_parity_failures(report.failures)
+    return GateResult(
+        name=name,
+        passed=not failures,
+        failures=failures,
+        details={
+            **dict(report.details),
+            "fixture": (
+                fixture.get("fixture")
+                if isinstance(fixture, Mapping)
+                else "target_registry"
+            ),
+            "signed_difference_count": len(signed_keys),
+            "signed_differences": [
+                {
+                    "name": str(row.get("name")),
+                    "period": row.get("period"),
+                    "reason": str(row.get("reason", "")),
+                }
+                for row in signed_differences
+            ],
+        },
+    )
+
+
+def ledger_compile_parity_signed_differences(
+    compiled_registry: TargetRegistry | Mapping[str, object],
+    fixture: TargetRegistry | Mapping[str, object],
+    *,
+    unsupported: Iterable[Mapping[str, object]] = (),
+) -> dict[str, object]:
+    """Classify reviewed Ledger parity differences by ``(name, period, value)``.
+
+    The compile-parity fixtures intentionally live in different namespaces from
+    the compiled Ledger target registry. For these signed-difference resources,
+    row equality is therefore only the calibration fact identity: same name,
+    same period, and exactly equal float value.
+    """
+
+    actual = _coerce_target_registry(compiled_registry, fallback_country="uk")
+    expected = _coerce_target_registry(fixture, fallback_country=actual.country)
+    actual_by_key = {spec.key: spec for spec in actual}
+    expected_by_key = {spec.key: spec for spec in expected}
+    unsupported_by_key = {
+        (str(row["name"]), row.get("period", 0)): row
+        for row in unsupported
+        if "name" in row
+    }
+
+    differences: list[dict[str, object]] = []
+    for key in sorted(
+        set(unsupported_by_key) & set(expected_by_key) - set(actual_by_key),
+        key=_sort_key,
+    ):
+        name, period = key
+        fixture_spec = expected_by_key.get(key)
+        row = {
+            "kind": "ledger_absent",
+            "name": name,
+            "period": period,
+            "reason": "Packaged Ledger reference did not resolve for this comparison period.",
+        }
+        if fixture_spec is not None:
+            row["fixture_value"] = fixture_spec.value
+        differences.append(row)
+
+    for key in sorted(set(expected_by_key) - set(actual_by_key), key=_sort_key):
+        if key in unsupported_by_key:
+            continue
+        spec = expected_by_key[key]
+        differences.append(
+            {
+                "fixture_value": spec.value,
+                "kind": "fixture_only",
+                "name": spec.name,
+                "period": spec.period,
+                "reason": (
+                    "Fixture row has no Ledger-compiled counterpart at this "
+                    "comparison period."
+                ),
+            }
+        )
+
+    for key in sorted(set(actual_by_key) - set(expected_by_key), key=_sort_key):
+        spec = actual_by_key[key]
+        differences.append(
+            {
+                "kind": "ledger_only",
+                "ledger_value": spec.value,
+                "name": spec.name,
+                "period": spec.period,
+                "reason": (
+                    "Ledger-compiled row has no fixture counterpart at this "
+                    "comparison period."
+                ),
+            }
+        )
+
+    for key in sorted(set(actual_by_key) & set(expected_by_key), key=_sort_key):
+        actual_spec = actual_by_key[key]
+        expected_spec = expected_by_key[key]
+        if actual_spec.value == expected_spec.value:
+            continue
+        differences.append(
+            {
+                "fixture_value": expected_spec.value,
+                "kind": "calibration_drift",
+                "ledger_value": actual_spec.value,
+                "name": actual_spec.name,
+                "period": actual_spec.period,
+                "reason": (
+                    "Ledger-compiled value differs from the fixture value at "
+                    "this comparison period."
+                ),
+            }
+        )
+
+    counts = Counter(str(row["kind"]) for row in differences)
+    return {
+        "compiled_count": len(actual),
+        "counts_by_kind": dict(sorted(counts.items())),
+        "difference_count": len(differences),
+        "differences": differences,
+        "fixture_count": len(expected),
+    }
+
+
+def _sort_key(key: tuple[str, int | str]) -> tuple[str, str]:
+    return (key[0], str(key[1]))
+
+
+def _calibration_effective_parity_failures(
+    failures: tuple[str, ...],
+) -> tuple[str, ...]:
+    calibration_failed = any(
+        failure.startswith("calibration-effective target digest differs")
+        for failure in failures
+    )
+    kept: list[str] = []
+    for failure in failures:
+        if failure.startswith("full target registry digest differs"):
+            continue
+        if failure.startswith("target ") and not calibration_failed:
+            continue
+        kept.append(failure)
+    return tuple(kept)
+
+
+def _coerce_target_registry(
+    value: TargetRegistry | Mapping[str, object],
+    *,
+    fallback_country: str,
+) -> TargetRegistry:
+    if isinstance(value, TargetRegistry):
+        return value
+    rows = value.get("rows")
+    if not isinstance(rows, Iterable) or isinstance(rows, (str, bytes)):
+        raise TypeError("Ledger compile parity fixture must carry iterable rows.")
+    materialized_rows = tuple(rows)
+    mapped_names = [
+        str(row["contract_target_id"])
+        for row in materialized_rows
+        if isinstance(row, Mapping) and row.get("contract_target_id")
+    ]
+    duplicate_mapped_names = {
+        name for name in mapped_names if mapped_names.count(name) > 1
+    }
+    specs = []
+    for row in materialized_rows:
+        if not isinstance(row, Mapping):
+            raise TypeError("Ledger compile parity fixture rows must be mappings.")
+        mapped_name = row.get("contract_target_id")
+        name = (
+            mapped_name
+            if mapped_name and str(mapped_name) not in duplicate_mapped_names
+            else row["name"]
+        )
+        specs.append(
+            TargetSpec(
+                name=str(name),
+                entity=str(row.get("entity", "household")),
+                measure=str(row.get("measure", name)),
+                value=float(row["value"]),
+                period=row.get("period", 0),
+                source=str(row.get("source", value.get("fixture", "fixture"))),
+                family=str(row.get("family", row.get("source", "fixture"))),
+                signed=bool(row.get("signed", False)),
+                tolerance=(
+                    float(row["tolerance"])
+                    if row.get("tolerance") is not None
+                    else None
+                ),
+                metadata={
+                    str(key): str(child)
+                    for key, child in (
+                        row.get("metadata", {})
+                        if isinstance(row.get("metadata", {}), Mapping)
+                        else {}
+                    ).items()
+                },
+            )
+        )
+    return TargetRegistry(specs, country=str(value.get("country", fallback_country)))
+
+
+def _signed_difference_keys(
+    signed_differences: Iterable[Mapping[str, object]],
+) -> set[tuple[str, int | str]]:
+    keys: set[tuple[str, int | str]] = set()
+    for row in signed_differences:
+        if "name" not in row or "period" not in row:
+            raise ValueError("Signed ledger parity differences need name and period.")
+        period = row["period"]
+        if not isinstance(period, (int, str)):
+            raise ValueError(
+                "Signed ledger parity difference period must be int or str."
+            )
+        keys.add((str(row["name"]), period))
+    return keys
+
+
+def _drop_registry_keys(
+    registry: TargetRegistry,
+    keys: set[tuple[str, int | str]],
+) -> TargetRegistry:
+    return TargetRegistry(
+        (spec for spec in registry if spec.key not in keys),
+        country=registry.country,
+    )
+
+
+def _ledger_compile_value_registry(registry: TargetRegistry) -> TargetRegistry:
+    """Project compile-parity rows to the reviewed ``(name, period, value)`` key."""
+
+    return TargetRegistry(
+        (
+            TargetSpec(
+                name=spec.name,
+                entity="target",
+                measure=spec.name,
+                value=spec.value,
+                period=spec.period,
+                source="ledger_compile_parity",
+                family="ledger_compile_parity",
+            )
+            for spec in sorted(registry, key=lambda item: (item.name, str(item.period)))
+        ),
+        country=registry.country,
+    )
 
 
 @dataclass(frozen=True)

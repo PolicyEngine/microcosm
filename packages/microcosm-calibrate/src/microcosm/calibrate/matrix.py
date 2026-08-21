@@ -141,21 +141,92 @@ def _entity_row(
         The constraint row aligned to ``weight_entity``'s records.
 
     Raises:
-        ValueError: If the target's entity is neither the calibrated entity nor
-            a person entity nested under it (the only collapse supported here).
+        ValueError: If the target's entity is not nested under the calibrated
+            entity through the frame schema's declared person memberships.
         KeyError: If a measure/filter column is missing.
     """
     if target.entity == weight_entity:
         return target.constraint_row(frame)
 
-    # Supported cross-entity case: target measured on persons, weights on a
-    # group the persons belong to. Build the per-person row, then collapse to
-    # one value per group by summation (members share the group weight).
-    person_row = target.constraint_row(frame)
-    positions = frame._group_positions(weight_entity)
+    row = target.constraint_row(frame)
+    positions = _nested_positions(target.entity, frame, weight_entity)
     collapsed = np.zeros(frame.n(weight_entity), dtype=np.float64)
-    np.add.at(collapsed, positions, person_row)
+    np.add.at(collapsed, positions, row)
     return collapsed
+
+
+def _nested_positions(
+    entity: str,
+    frame: Frame,
+    weight_entity: str,
+) -> np.ndarray:
+    """Position of each ``entity`` row within ``weight_entity``'s table.
+
+    The frame schema declares group relationships as person membership columns.
+    A person-level target collapses directly through ``person_<group>_id``.
+    A group-level target collapses to another group only when every source
+    group id appears with exactly one destination group id in the person table.
+    """
+
+    schema = frame.schema
+    person_entity = schema.person_entity
+    if entity == person_entity:
+        if weight_entity not in schema.group_entities:
+            raise ValueError(
+                f"Cannot collapse target entity {entity!r} to non-group "
+                f"weight entity {weight_entity!r}."
+            )
+        return frame._group_positions(weight_entity)
+    if entity not in schema.group_entities or weight_entity not in schema.group_entities:
+        raise ValueError(
+            f"Cannot collapse target entity {entity!r} to weight entity "
+            f"{weight_entity!r}; schema declares person entity "
+            f"{person_entity!r} and groups {list(schema.group_entities)}."
+        )
+
+    person = frame.person
+    source_column = schema.membership_column(entity)
+    weight_column = schema.membership_column(weight_entity)
+    source_to_weight: dict[object, object] = {}
+    split_source_ids: list[object] = []
+    for source_id, destination_id in (
+        person[[source_column, weight_column]]
+        .drop_duplicates()
+        .itertuples(index=False, name=None)
+    ):
+        existing = source_to_weight.get(source_id)
+        if existing is not None and existing != destination_id:
+            split_source_ids.append(source_id)
+            continue
+        source_to_weight[source_id] = destination_id
+    if split_source_ids:
+        raise ValueError(
+            f"Cannot collapse target entity {entity!r} to weight entity "
+            f"{weight_entity!r}: {entity} id(s) span multiple {weight_entity} "
+            f"ids, including {split_source_ids[:5]}."
+        )
+
+    source_ids = frame.table(entity)[schema.id_column(entity)].to_numpy()
+    missing = [source_id for source_id in source_ids if source_id not in source_to_weight]
+    if missing:
+        raise ValueError(
+            f"Cannot collapse target entity {entity!r} to weight entity "
+            f"{weight_entity!r}: {entity} id(s) have no person membership, "
+            f"including {missing[:5]}."
+        )
+    destination_ids = np.asarray([source_to_weight[source_id] for source_id in source_ids])
+    weight_ids = frame.table(weight_entity)[schema.id_column(weight_entity)].to_numpy()
+    positions = np.searchsorted(weight_ids, destination_ids)
+    valid = positions < len(weight_ids)
+    valid[valid] = weight_ids[positions[valid]] == destination_ids[valid]
+    if not bool(valid.all()):  # pragma: no cover - frame validation guards this
+        bad = destination_ids[~valid][:5].tolist()
+        raise ValueError(
+            f"Cannot collapse target entity {entity!r} to weight entity "
+            f"{weight_entity!r}: mapped {weight_entity} id(s) are absent from "
+            f"the weight table, including {bad}."
+        )
+    return positions
 
 
 def build_constraint_matrix(
