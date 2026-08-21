@@ -4,11 +4,11 @@
 
 ### State
 
-Diagnosis and decisive focused verification are complete; affected-suite
-verification is in progress. The supplied line numbers fingerprint historical
-commit `33bf52fe`, while the current tree already contains the scoped runtime
-correction and exact regression coverage. No duplicate executable edit is
-warranted unless the remaining verification exposes a gap.
+Diagnosis, focused verification, affected-suite verification, and static
+verification are complete; final reporting is in progress. The supplied line
+numbers fingerprint historical commit `33bf52fe`, while the current tree
+already contains the scoped runtime correction and exact regression coverage.
+No duplicate executable edit is warranted.
 
 ### Done
 
@@ -48,12 +48,16 @@ warranted unless the remaining verification exposes a gap.
   and exact executable-tree comparisons against all-suite checkpoint
   `a5be536f`; all passed. The current `microcosm-build/src`, `tools`, `specs`,
   project, and lockfile content is unchanged from that checkpoint.
+- Ran all 529 tests in the five directly affected ordinary-transfer,
+  multispine-serialization, stacked-spine, pool-tool, and H5 files together
+  under the owner guard. The run reached 100% with exit zero and no failures;
+  maximum observed per-process RSS was 1.206 GiB. A separate collection pass
+  confirmed the 529-case bound.
 
 ### Next
 
-Finish the running five-file affected suite under the owner memory guard,
-inspect the host retry state without claiming mutable evidence as revision-
-bound, then refresh the final report.
+Inspect the host retry state without claiming mutable evidence as revision-
+bound, then refresh and commit `FINAL_REPORT.md` and this journal.
 
 ## Current continuation — 2026-08-21 01:39Z
 
