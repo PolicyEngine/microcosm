@@ -1097,6 +1097,13 @@ def _hmrc_family_coverage_contract(
         "stage": "hmrc_spi_income",
         "source_manifest": HMRC_SOURCE_STAGES_PATH.name,
         "source_manifest_sha256": _sha256(HMRC_SOURCE_STAGES_PATH),
+        # The two re-mapped period fields below come from the CANONICAL
+        # manifest (the #723 signed re-map lives there; the frozen mirror
+        # keeps its June bytes), so the bytes they derive from are pinned
+        # separately - evidence fields and their hash must name the same
+        # source (adversarial-review finding, 2026-08-20).
+        "canonical_source_manifest": SOURCE_STAGES_PATH.name,
+        "canonical_source_manifest_sha256": _sha256(SOURCE_STAGES_PATH),
         "base_candidate_sha256": str(base_candidate["sha256"]),
         "base_candidate_tier": base_candidate_tier,
         "source_vintages": {
