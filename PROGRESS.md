@@ -1,5 +1,37 @@
 # Battery package 3 progress
 
+## Active owner continuation — 2026-08-21 07:11Z
+
+### State
+
+In progress. The owner has supplied the 1% host traceback again and requires
+an exact assigned-only repair at the stacked ACS QRF binding boundary. The
+current branch contains a previously reported correction; this continuation
+will independently bind the traceback to current source and tests, verify the
+assigned-target scope, and make any additional executable or regression change
+that the evidence requires.
+
+### Done
+
+- Read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
+- Confirmed the GitNexus MCP query/context tools are unavailable while the
+  local CLI is installed; local graph/CLI and direct source tracing are the
+  prescribed fallback.
+- Preserved the owner-provided untracked `_BUILD-FAILURE-1PCT.txt` and
+  `.codex-memory-guard.py` artifacts untouched.
+- Confirmed `FINAL_REPORT.md` is the existing required output file.
+- Inspected the committed historical journal and correction ledger without
+  treating their prior completion claim as current verification.
+
+### Next
+
+1. Trace the reported raise site through current producers, serializers, and
+   early/late validators; compare it with the historical failing revision.
+2. Prove that regime work, evidence, and calibration writes are selected only
+   for the assigned model-required, source-operator, and adult-care targets.
+3. Add or strengthen the exact binding regression if a gap remains, run the
+   affected suite and static checks, then update `FINAL_REPORT.md`.
+
 ## Active owner continuation — 2026-08-21 06:49Z
 
 ### State
