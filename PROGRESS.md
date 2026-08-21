@@ -9,7 +9,8 @@ globally enabled QRF-audit evidence path at `33bf52fe`. The current tree's
 assigned-only correction, exact synthetic failure, real ordinary/banked
 producer boundary, strict binding variants, and all 530 directly affected
 tests are green. Static and exact-object checks are also green; only the final
-read-only host snapshot and required report refresh remain.
+required report refresh remains. The final read-only host snapshot is
+nonterminal and cannot certify the restricted build.
 
 ### Done
 
@@ -75,11 +76,18 @@ read-only host snapshot and required report refresh remain.
   current build source/tests are byte-identical to `ad2a44c1`, and current
   production source, tools, specs, project, and lock objects are byte-identical
   to `d29a8705`.
+- Took the final read-only host snapshot at `2026-08-21 10:13:00Z`. The external
+  directory contained only `build.log` and `guard.log`; `build.log` had been
+  truncated to zero bytes at `10:07:12Z`, while the latest guard heartbeat at
+  `10:09:11Z` still reported a resource wait behind one other job. There was no
+  traceback to inspect, but also no runner exit marker, transferred/simulated
+  checkpoint, `pool.h5`, `pool.manifest.json`, or `pool.gates.json`. This is no
+  terminal host verdict and does not alter the local result.
 
 ### Next
 
-Take a final read-only host snapshot, then refresh the required final report
-with a revision-bound result.
+Refresh the required final report with the revision-bound local result and the
+explicitly nonterminal host boundary, then close this journal.
 
 ## Owner continuation verification — 2026-08-21 09:17Z
 
