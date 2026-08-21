@@ -4,16 +4,16 @@
 
 ### State
 
-Local verification complete; final reporting is in progress. The owner
-traceback binds exactly to the historical globally enabled QRF-evidence path at
-`33bf52fe`.
+Complete as of `2026-08-21 09:45:41Z`. The owner traceback binds exactly to the
+historical globally enabled QRF-evidence path at `33bf52fe`.
 The current tree already contains the narrow assigned-only correction and the
 exact synthetic plus real ordinary/banked regressions. Three independent
 read-only audits found no remaining canonical path by which taxable interest
 can receive regime evidence, a QRF receipt, or a calibration write, so no
 duplicate runtime or test edit is warranted. All 530 directly affected tests,
-static checks, and exact prior-suite object bindings are green. A final
-read-only host snapshot and refresh of `FINAL_REPORT.md` remain.
+static checks, and exact prior-suite object bindings are green. The required
+`FINAL_REPORT.md` is refreshed and committed. The externally owned host retry
+remains live and nonterminal, so host certification is not claimed.
 
 ### Done
 
@@ -91,13 +91,22 @@ read-only host snapshot and refresh of `FINAL_REPORT.md` remain.
   in `_LANE-NOTES.md` as independently locked-fact-tested memory mitigations,
   so this continuation preserves them rather than expanding into an unrelated
   parser revert.
+- Refreshed and committed the required `FINAL_REPORT.md` at `99d1279b` with the
+  current diagnosis, assigned-only correction, regression evidence, fresh
+  guarded matrix, static/object checks, branch-scope qualifications, and exact
+  remaining host boundary.
+- Took the final read-only host snapshot at `2026-08-21 09:45:41Z`. The retry
+  had rebuilt taxable interest and progressed into
+  `person/puf_tax_itemization__batch_3` without the reported exception. The log
+  remained active, but the directory still contained only `build.log` and
+  `guard.log`; there was no traceback, binding error, terminal marker,
+  transferred/simulated checkpoint, or final pool/manifest/gates artifact.
 
 ### Next
 
-1. Reconcile the current read-only host retry status without controlling or
-   certifying the external build.
-2. Refresh and commit `FINAL_REPORT.md`, close this journal section, and report
-   any remaining host-only boundary.
+Obtain a durable, terminal, revision-bound restricted 1% host result with
+passing `pool.h5`, `pool.manifest.json`, and `pool.gates.json`. Do not publish or
+mutate the release chain as a side effect of that external verification.
 
 ## Owner continuation recheck — 2026-08-21 08:58Z
 
