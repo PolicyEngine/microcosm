@@ -4,11 +4,11 @@
 
 ### State
 
-Local correction and verification complete; final reporting is in progress.
-The reported traceback exactly identifies historical commit `33bf52fe`; the
-current branch contains the complete scoped runtime correction and direct
-regression coverage. Three independent audits and fresh guarded tests found no
-remaining canonical leak and no warranted duplicate executable edit.
+Complete. The reported traceback exactly identifies historical commit
+`33bf52fe`; the current branch contains the complete scoped runtime correction
+and direct regression coverage. Three independent audits, fresh guarded tests,
+and static checks found no remaining canonical leak and no warranted duplicate
+executable edit. `FINAL_REPORT.md` contains the final continuation report.
 
 ### Done
 
@@ -59,11 +59,22 @@ remaining canonical leak and no warranted duplicate executable edit.
   `a5be536f`; all passed. Runtime source, tools, specs, project metadata, and
   the lockfile have no drift from that checkpoint. Its only affected-test
   difference is the committed three-line strict assigned-family regression.
+- Took a final 03:02Z read-only host snapshot. The externally owned mutable
+  retry had rebuilt all 47 survey targets and the one housing target; bounded
+  taxable interest completed at target 22/47 without the supplied traceback.
+  The latest guard row still reported a resource wait, and no runner exit,
+  final pool, manifest, or gates artifact existed. The mutable host files do
+  not bind a Microcosm revision and are not accepted as terminal certification
+  evidence.
+- Refreshed and committed `FINAL_REPORT.md` at `f1b6232d` with the current
+  diagnosis, 14-case and 529-test guarded results, static verification,
+  continuation commits, and explicit remaining host boundary.
 
 ### Next
 
-Take a final read-only host snapshot, refresh `FINAL_REPORT.md` with the current
-revision-bound diagnosis and verification results, then close this journal.
+Run or identify a revision-bound restricted host 1% retry that reaches a
+terminal runner verdict and emits the expected pool, manifest, and gates
+artifacts; this remains external to the completed local correction.
 
 ## Current continuation — 2026-08-21 02:14Z
 
