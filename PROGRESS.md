@@ -4,7 +4,8 @@
 
 ### State
 
-Diagnosis complete; current-tree verification pending. The supplied traceback
+Diagnosis and focused verification complete; affected-suite verification
+pending. The supplied traceback
 fingerprints commit `33bf52fe`: it attached QRF regime evidence to every
 imputed target and validated exact record binding before checking calibration
 assignment. The current tree already contains the complete scoped correction
@@ -45,12 +46,15 @@ warranted.
 - Confirmed the current `microcosm-build/src`, `tools`, and `specs` Git trees
   exactly match all-build-suite checkpoint `a5be536f`. Only the committed
   three-line strict-binding regression differs in the affected test tree.
+- Ran the exact synthetic taxable-interest boundary, real banked 15-target
+  producer, and all 12 fully rehashed QRF structure mutations under the owner
+  12 GiB/20 ms guard. All 14 cases passed; maximum observed per-process RSS was
+  0.560 GiB. The only warning was joblib's logical-core fallback.
 
 ### Next
 
-Run the exact host-target/banked-producer/strict-binding regressions and the
-five directly affected files under the owner memory guard, then complete
-static checks and refresh the final report.
+Run the five directly affected files under the owner memory guard, then
+complete static checks and refresh the final report.
 
 The completion snapshots below are historical.
 
