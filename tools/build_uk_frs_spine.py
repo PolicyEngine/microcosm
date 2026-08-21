@@ -884,6 +884,23 @@ def main(argv: list[str] | None = None) -> int:
             frs_vintage=frs_release.vintage,
             sampling=sampling,
         )
+        # E8 executed-effect receipts (#730/#684 two-arm rule, arm 2): the
+        # clone/donor/salsac/student-loan transforms record their receipts on
+        # last_result; persist them beside the declared seeds so the sidecar
+        # carries evidence that every declared parameter shaped the output.
+        e8_stage_evidence: dict[str, object] = {}
+        for e8_stage_name in (
+            "cgt_incidence_clone",
+            "cgt_band_donors",
+            "salary_sacrifice",
+            "student_loans",
+        ):
+            e8_implementation = implementations.get(e8_stage_name)
+            e8_last_result = getattr(e8_implementation, "last_result", None)
+            if e8_last_result is not None:
+                e8_stage_evidence[e8_stage_name] = e8_last_result.evidence()
+        if e8_stage_evidence:
+            sidecar["stage_evidence"] = e8_stage_evidence
         atomic_write_json(sidecar_path, sidecar)
         append_phase(state, "build_sidecar_written")
         if args.emit_nonzero_shares is not None:
