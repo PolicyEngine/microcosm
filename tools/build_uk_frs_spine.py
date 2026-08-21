@@ -12,6 +12,10 @@ from importlib import metadata
 from pathlib import Path
 
 from microcosm.build.country_spec import country_stage_plan, load_country_spec
+from microcosm.build.frame_sampling import (
+    normalize_sampled_household_mass,
+    sample_frame_households,
+)
 from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.logbook_adoption import (
     AttemptState,
@@ -46,6 +50,7 @@ from microcosm.build.uk_runtime.frs_legacy_proxies import (
     UKFRSLegacyProxiesStageTransform,
 )
 from microcosm.build.uk_runtime.frs_person_draws import UKFRSPersonDrawsStageTransform
+from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.frs_spine import (
     UKFRSSpineStageTransform,
     uk_frs_spine_seed_frame,
@@ -57,6 +62,10 @@ from microcosm.build.uk_runtime.lcfs_consumption import (
 )
 from microcosm.build.uk_runtime.national_build import write_uk_national_frame
 from microcosm.build.uk_runtime.national_frame import uk_household_weight_kind
+from microcosm.build.uk_runtime.national_sampling import (
+    UK_SAMPLE_RUNG_TOKENS,
+    UK_SAMPLE_SEED_DEFAULT,
+)
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
@@ -70,8 +79,9 @@ from microcosm.build.uk_runtime.was_wealth import UKWASWealthStageTransform
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
 
 _PIPELINE = "uk-frs-spine"
-_RUNG = "f100"
 _REPOSITORY = Path(__file__).resolve().parents[1]
+_RUNG_NAMED_EDGE_SIGNATURE = "The least populated classes in y have only 1 member"
+_RUNG_ABORT_EXIT_CODE = 3
 _STAGE_NAMES = (
     "frs_spine",
     "frs_employment",
@@ -95,6 +105,22 @@ _STAGE_NAMES = (
 )
 
 
+def _rung_sample_fraction(value: str) -> float:
+    """CLI rung policy (#624) over the permissive library validator."""
+
+    try:
+        fraction = float(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(
+            f"sample fraction must be a number; got {value!r}."
+        ) from error
+    if fraction not in UK_SAMPLE_RUNG_TOKENS:
+        raise argparse.ArgumentTypeError(
+            "sample fraction must be one of 0.01, 0.10, or 1.0 (the #624 rungs)."
+        )
+    return fraction
+
+
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -107,7 +133,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--frs-raw-dir",
         type=Path,
         required=True,
-        help="Directory containing the 14 licensed FRS 2023-24 tab files.",
+        help="Directory containing the 14 licensed FRS 2024-25 tab files.",
     )
     parser.add_argument(
         "--spine-h5",
@@ -131,6 +157,22 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--checkpoint-dir",
         type=Path,
         help="Optional directory for a copy of the completed spine checkpoint.",
+    )
+    parser.add_argument(
+        "--sample-fraction",
+        type=_rung_sample_fraction,
+        default=1.0,
+        help=(
+            "Scale-ladder rung (#624): 0.01 smoke, 0.10 dev, or 1.0 full. "
+            "Below 1.0 the raw FRS spine is sampled immediately after ingest, "
+            "renormalized to full household mass, and treated as a receipt."
+        ),
+    )
+    parser.add_argument(
+        "--sample-seed",
+        type=int,
+        default=UK_SAMPLE_SEED_DEFAULT,
+        help=f"Raw FRS spine sampling seed (default: {UK_SAMPLE_SEED_DEFAULT}).",
     )
     parser.add_argument(
         "--was-tab",
@@ -162,7 +204,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=sha256_argument,
         help="Optional current Logbook chain head.",
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.sample_seed < 0:
+        parser.error("sample seed must be a non-negative integer.")
+    if args.sample_fraction != 1.0 and args.checkpoint_dir is not None:
+        parser.error(
+            "sampled spine rungs refuse --checkpoint-dir; rung artifacts are "
+            "receipts, never releases."
+        )
+    return args
 
 
 def _validate_args(args: argparse.Namespace) -> None:
@@ -370,6 +420,8 @@ def _build_sidecar(
     input_artifact_pins: dict[str, dict[str, object]],
     hmrc_replay: dict[str, object],
     stochastic_contract_sha256: str,
+    frs_vintage: str,
+    sampling: dict[str, object] | None,
 ) -> dict[str, object]:
     household_weight = frame.weights_for("household")
     return {
@@ -401,6 +453,8 @@ def _build_sidecar(
             for stage in stages
         },
         "declared_seeds": _declared_seeds(stages),
+        "source_vintages": {"frs": frs_vintage},
+        "sampling": sampling,
         "stochastic_contract_sha256": stochastic_contract_sha256,
         "rules_engine": _rules_engine_provenance(),
     }
@@ -434,6 +488,7 @@ def _record_attempt(
     code_pin: str,
     disposition: str,
     predecessor: str | None,
+    rung: str,
     spool_dir: Path,
 ) -> Path:
     return record_terminal_attempt(
@@ -441,7 +496,7 @@ def _record_attempt(
         started_at=started_at,
         started_ts=started_ts,
         pipeline=_PIPELINE,
-        rung=_RUNG,
+        rung=rung,
         seed=None,
         code_pin=code_pin,
         disposition=disposition,
@@ -450,8 +505,92 @@ def _record_attempt(
     )
 
 
+def _sample_spine_frame(
+    frame,
+    *,
+    fraction: float,
+    seed: int,
+) -> tuple[object, dict[str, object] | None]:
+    if fraction == 1.0:
+        return frame, None
+    household_weight = frame.weights_for("household")
+    pre_households = int(len(frame.table("household")))
+    sampled, receipt = sample_frame_households(
+        frame,
+        fraction=fraction,
+        seed=seed,
+        source_name="UK FRS spine",
+    )
+    normalized, factor = normalize_sampled_household_mass(
+        sampled,
+        target_mass=float(household_weight.total),
+        source_name="UK FRS spine",
+    )
+    return normalized, {
+        "fraction": float(fraction),
+        "seed": int(seed),
+        "rung_token": UK_SAMPLE_RUNG_TOKENS[fraction],
+        "pre_household_count": pre_households,
+        "post_household_count": int(len(normalized.table("household"))),
+        "normalization_factor": float(factor),
+        "receipt": dict(receipt),
+    }
+
+
+def _run_plan_with_spine_sampling(
+    plan,
+    *,
+    sample_fraction: float,
+    sample_seed: int,
+) -> tuple[object, tuple[object, ...], dict[str, object] | None]:
+    if not plan.stages or plan.stages[0].name != "frs_spine":
+        frame, records = plan.run(uk_frs_spine_seed_frame())
+        return frame, records, None
+
+    from microcosm.build.plan import StagePlan
+
+    spine_frame, spine_records = StagePlan(plan.stages[:1]).run(
+        uk_frs_spine_seed_frame()
+    )
+    spine_frame, sampling = _sample_spine_frame(
+        spine_frame,
+        fraction=sample_fraction,
+        seed=sample_seed,
+    )
+    if len(plan.stages) == 1:
+        return spine_frame, spine_records, sampling
+    frame, tail_records = StagePlan(plan.stages[1:]).run(spine_frame)
+    return frame, (*spine_records, *tail_records), sampling
+
+
+def _rung_abort_receipt(
+    args: argparse.Namespace,
+    *,
+    error: BaseException,
+) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "artifact_kind": "uk_frs_spine_rung_abort_receipt",
+        "build_kind": "uk_frs_spine",
+        "sampling": {
+            "sample_fraction": float(args.sample_fraction),
+            "sample_seed": int(args.sample_seed),
+            "rung_token": UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
+        },
+        "named_edge": "spine_split_singleton_class",
+        "stage": "frs_spine",
+        "error": str(error),
+        "disposition": "aborted_with_receipt",
+        "remedy": (
+            "Re-roll --sample-seed; accepted dev-scale statistical edge. "
+            "The computation is never altered to avoid it."
+        ),
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+    rung = UK_SAMPLE_RUNG_TOKENS[args.sample_fraction]
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
     predecessor = resolve_predecessor(args.logbook_prev_row_digest)
@@ -481,6 +620,7 @@ def main(argv: list[str] | None = None) -> int:
             args.spine_h5,
             args.spine_h5.with_suffix(".build.json"),
             args.spine_h5.with_suffix(".hmrc_replay.json"),
+            args.spine_h5.with_suffix(".rung_abort.json"),
         ]
         if args.emit_nonzero_shares is not None:
             stale_outputs.append(args.emit_nonzero_shares)
@@ -543,10 +683,12 @@ def main(argv: list[str] | None = None) -> int:
         append_phase(state, "inputs_pinned")
         engine = _rules_engine()
         stochastic_contract = load_uk_take_up_contract()
+        frs_release = load_uk_frs_release()
         hmrc_spine_transform = UKSPIIncomeSpineStageTransform(
             args.spi_tab,
             args.hmrc_ods,
             stage=stages_by_name["hmrc_spi_income_spine"],
+            sampled_rung=args.sample_fraction != 1.0,
         )
         implementations = {
             "frs_spine": UKFRSSpineStageTransform(
@@ -631,9 +773,11 @@ def main(argv: list[str] | None = None) -> int:
         implementations["frs_hmrc_spine_leaves"] = UKFRSHMRCSpineLeavesStageTransform(
             args.frs_raw_dir,
             stage=stages_by_name["frs_hmrc_spine_leaves"],
+            sampled_rung=args.sample_fraction != 1.0,
         )
         implementations["spi_support_channel"] = UKSPISupportChannelStageTransform(
             stage=stages_by_name["spi_support_channel"],
+            sample_fraction=args.sample_fraction,
         )
         implementations["hmrc_spi_income_spine"] = hmrc_spine_transform
         plan = country_stage_plan(
@@ -641,7 +785,11 @@ def main(argv: list[str] | None = None) -> int:
             implementations,
             stage_names=stage_names,
         )
-        frame, records = plan.run(uk_frs_spine_seed_frame())
+        frame, records, sampling = _run_plan_with_spine_sampling(
+            plan,
+            sample_fraction=args.sample_fraction,
+            sample_seed=args.sample_seed,
+        )
         append_phase(state, "spine_built")
         output = write_uk_national_frame(frame, args.spine_h5)
         append_phase(state, "spine_written")
@@ -673,6 +821,8 @@ def main(argv: list[str] | None = None) -> int:
             input_artifact_pins=input_artifact_pins,
             hmrc_replay=replay_binding,
             stochastic_contract_sha256=stochastic_contract.resource_sha256,
+            frs_vintage=frs_release.vintage,
+            sampling=sampling,
         )
         atomic_write_json(sidecar_path, sidecar)
         append_phase(state, "build_sidecar_written")
@@ -712,11 +862,64 @@ def main(argv: list[str] | None = None) -> int:
             code_pin=code_pin,
             disposition="iterating",
             predecessor=predecessor,
+            rung=rung,
             spool_dir=spool_dir,
         )
         print(f"Wrote FRS spine H5: {output}", file=sys.stderr)
         print(f"Wrote Logbook row: {spool_path}", file=sys.stderr)
         return 0
+    except ValueError as error:
+        if args.sample_fraction != 1.0 and _RUNG_NAMED_EDGE_SIGNATURE in str(error):
+            rung_abort_path = args.spine_h5.with_suffix(".rung_abort.json")
+            receipt = _rung_abort_receipt(args, error=error)
+            atomic_write_json(rung_abort_path, receipt)
+            state.gate_verdicts = {
+                "uk_frs_spine_rung_abort": {
+                    "verdict": "aborted",
+                    "receipt": (
+                        f"{local_artifact_reference(rung_abort_path, repository_hint=_REPOSITORY)}"
+                        "#/named_edge"
+                    ),
+                }
+            }
+            append_phase(state, "rung_aborted")
+            _record_attempt(
+                state=state,
+                started_at=started_at,
+                started_ts=started_ts,
+                code_pin=code_pin,
+                disposition="discarded",
+                predecessor=predecessor,
+                rung=rung,
+                spool_dir=spool_dir,
+            )
+            print(json.dumps(receipt, indent=2, sort_keys=True))
+            return _RUNG_ABORT_EXIT_CODE
+        try:
+            receipt_path = write_error_receipt(
+                error_receipt_path(args.spine_h5.parent, build_id=state.build_id),
+                state=state,
+                pipeline=_PIPELINE,
+                error=error,
+            )
+            apply_error_verdict(
+                state,
+                local_artifact_reference(receipt_path, repository_hint=_REPOSITORY),
+            )
+            _record_attempt(
+                state=state,
+                started_at=started_at,
+                started_ts=started_ts,
+                code_pin=code_pin,
+                disposition="failed",
+                predecessor=predecessor,
+                rung=rung,
+                spool_dir=spool_dir,
+            )
+        except Exception:
+            pass
+        print(f"UK FRS spine build failed: {error}", file=sys.stderr)
+        return 1
     except Exception as error:
         try:
             receipt_path = write_error_receipt(
@@ -736,6 +939,7 @@ def main(argv: list[str] | None = None) -> int:
                 code_pin=code_pin,
                 disposition="failed",
                 predecessor=predecessor,
+                rung=rung,
                 spool_dir=spool_dir,
             )
         except Exception:

@@ -118,8 +118,7 @@ def test_country_kernel_contract_ids_are_closed_in_the_compiler_registry() -> No
     assert country_contract_ids <= F0_KERNEL_REGISTRY.ids
     assert all(F0_KERNEL_REGISTRY.contains(value) for value in country_contract_ids)
     assert not any(
-        F0_KERNEL_REGISTRY.has_implementation(value)
-        for value in country_contract_ids
+        F0_KERNEL_REGISTRY.has_implementation(value) for value in country_contract_ids
     )
 
 

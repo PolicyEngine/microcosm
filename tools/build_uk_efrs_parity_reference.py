@@ -17,7 +17,7 @@ the UK loader's broader override semantics:
 Run with a licensed local artifact (the source SHA is always verified):
 
     python tools/build_uk_efrs_parity_reference.py \
-      --input-h5 /path/to/enhanced_frs_2023_24.h5
+      --input-h5 /path/to/enhanced_frs_2024_25.h5
 
 Without ``--input-h5``, the tool first resolves the exact immutable revision
 from the Hugging Face cache and then downloads it if necessary.  It accepts the
@@ -47,12 +47,12 @@ REFERENCE_PATH = UK_PACKAGE_DIR / "efrs_parity_reference.json"
 # adjudication inputs.  The licensed data lives in a private HF *model* repo.
 SOURCE_REPO_ID = "policyengine/policyengine-uk-data-private"
 SOURCE_REPO_TYPE = "model"
-SOURCE_FILENAME = "enhanced_frs_2023_24.h5"
-SOURCE_REVISION = "655dd07e4bb9c777b00dac044949611f1feb824f"
-SOURCE_SHA256 = "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d"
-SOURCE_SIZE_BYTES = 125_434_652
-SOURCE_VINTAGE = "2023_24"
-SOURCE_PERIOD = "2023"
+SOURCE_FILENAME = "enhanced_frs_2024_25.h5"
+SOURCE_REVISION = "a2039519d3b92aecc06c66dfd175cb46ac24cada"
+SOURCE_SHA256 = "97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e"
+SOURCE_SIZE_BYTES = 126_579_434
+SOURCE_VINTAGE = "2024_25"
+SOURCE_PERIOD = "2024"
 SOURCE_URL = (
     f"https://huggingface.co/{SOURCE_REPO_ID}/resolve/"
     f"{SOURCE_REVISION}/{SOURCE_FILENAME}"
@@ -85,7 +85,7 @@ def _parse_args() -> argparse.Namespace:
         "--input-h5",
         type=Path,
         help=(
-            "Licensed enhanced_frs_2023_24.h5. If omitted, resolve the exact "
+            "Licensed enhanced_frs_2024_25.h5. If omitted, resolve the exact "
             "pinned revision from the HF cache/download API."
         ),
     )

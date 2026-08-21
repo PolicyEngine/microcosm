@@ -55,7 +55,7 @@ FRS_SPINE_TABLES = (
 )
 
 WEEKS_IN_YEAR = 365.25 / 7
-TIME_PERIOD = "2023"
+TIME_PERIOD = "2024"
 
 # FRS GVTREGNO uses skip-3 coding: code 3 (the retired Merseyside code) is
 # absent from the domain, so the real codes are [1, 2, 4..13] with

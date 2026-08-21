@@ -983,6 +983,7 @@ class TestUsSources:
             # name only the immutable, sha-verified enhanced-FRS reference and
             # never import or execute the retired data package.
             "packages/microcosm-build/src/microcosm/build/uk/efrs_parity_reference.json",
+            "packages/microcosm-build/src/microcosm/build/uk/frs_release.json",
             "packages/microcosm-build/src/microcosm/build/uk/hmrc_income_source_stages.json",
             # The UK national contract's registry-parity accounting names the
             # retired data package by necessity: 651 rows at pinned ref ebf733c

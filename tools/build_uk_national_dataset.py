@@ -41,6 +41,7 @@ from microcosm.build.uk_runtime.cgt_imputation import (
 from microcosm.build.uk_runtime.frs_hmrc_leaves import (
     UKFRSHMRCRetainedLeavesStageTransform,
 )
+from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.hmrc_replay import write_hmrc_replay_report
 from microcosm.build.uk_runtime.hmrc_restoration import (
     UKHMRCIncomeStageTransform,
@@ -159,7 +160,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=Path,
         required=True,
         help=(
-            "Raw FRS 2023-24 directory containing adult.tab and benefits.tab "
+            "Raw FRS 2024-25 directory containing adult.tab and benefits.tab "
             "for source-faithful retained HMRC leaves."
         ),
     )
@@ -1131,6 +1132,7 @@ def _aggregate_build_record(
     ]
     release_evidence = dict(result.gate_report["release_evidence"])
     source_vintages = dict(family_evidence.get("source_vintages", {}))
+    source_vintages["frs"] = load_uk_frs_release().vintage
     if ledger_artifact_provenance is not None:
         source_vintages["ledger_facts"] = ledger_artifact_provenance
     return {

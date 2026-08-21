@@ -64,19 +64,20 @@ UK_EVIDENCE_GATE_NAMES = {
     "qrf_tail_concentration": ("qrf_tail_concentration",),
 }
 UK_INPUT_MASS_REFERENCE_IDENTITY = {
-    "filename": "enhanced_frs_2023_24.h5",
-    "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
-    "sha256": "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
-    "vintage": "2023_24",
+    "filename": "enhanced_frs_2024_25.h5",
+    "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
+    "sha256": "97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e",
+    "vintage": "2024_25",
 }
 UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
-    "c36c015a60f796ad9199a4a5652706f5310909cb572b1c90092ef9df1fa7187e"
+    "e70a45387c6adc13df5d7eb7da3c2cada7972a2f293a9238c8c29c9e885e4659"
 )
 UK_INPUT_MASS_ACTIVE_REFERENCE = "efrs-post-calibration"
 UK_INPUT_MASS_REFERENCE_SCOPE_NOTE = (
-    "Post-calibration eFRS production incumbent; structurally lacks the SPI "
-    "clone channel, so SPI-channel-exclusive columns are comparable only "
-    "through per-reference reviewed exclusions."
+    "Channel-blind post-calibration enhanced-FRS production incumbent, pinned "
+    "to the 2024-25 line; structurally lacks the SPI clone channel, so "
+    "SPI-channel-exclusive columns are comparable only through per-reference "
+    "reviewed exclusions."
 )
 UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
     "charitable_investment_gifts": {
@@ -90,8 +91,8 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
         ),
         "approved_by": "juaristi22",
         "adjudication": "microcosm#630",
-        "approved_on": "2026-08-17",
-        "expires_on": "2027-02-17",
+        "approved_on": "2026-08-20",
+        "expires_on": "2027-02-20",
     },
     "owned_land": {
         "reason": (
@@ -111,8 +112,8 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
         ),
         "approved_by": "juaristi22",
         "adjudication": "microcosm#714",
-        "approved_on": "2026-08-19",
-        "expires_on": "2026-09-19",
+        "approved_on": "2026-08-20",
+        "expires_on": "2026-09-20",
     },
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
@@ -156,7 +157,7 @@ UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "df74556909990345bc9032f6f5db7f817d9c273f75522a85ab6e332dd8dc7355"
+    "806f46de90a0bf08c70c977ab63dad1ed644088c89e40df1869ce07b97f63c0c"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {
