@@ -4,8 +4,7 @@
 
 ### State
 
-Diagnosis and verification complete; final reporting pending. The traceback
-line numbers exactly
+Complete. The traceback line numbers exactly
 identify bad commit `33bf52fe`, where every imputed target carried QRF regime
 evidence and the canonical validator performed exact record binding before
 checking calibration assignment. The current branch already contains the
@@ -60,13 +59,18 @@ runtime or test edit is warranted.
   changed since `33bf52fe^`, committed-range and worktree whitespace checks,
   and an executable-tree comparison against `a5be536f`; all passed. No source,
   tool, spec, project, or lockfile differs from that all-build-suite checkpoint.
+- Refreshed `FINAL_REPORT.md` with the current diagnosis, three independent
+  audit verdicts, guarded 14-case and 529-test results, static verification,
+  continuation commits, and the explicit non-claim of a new host certification
+  run.
 
 ### Next
 
-Update `FINAL_REPORT.md`, close this continuation snapshot, and commit the
-final report without claiming a new restricted host certification run.
+Run or identify a revision-bound restricted host 1% retry that reaches a
+terminal runner verdict and emits the expected pool, manifest, and gates
+artifacts; this remains external to the completed local correction.
 
-The completion snapshots below are historical until this continuation closes.
+The completion snapshots below are historical.
 
 ## State
 

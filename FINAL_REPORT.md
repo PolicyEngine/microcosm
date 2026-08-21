@@ -11,7 +11,8 @@ tree. This continuation made no duplicate executable edit: independent source,
 history, and regression audits confirmed that the complete correction and its
 failing-target coverage were already committed on the branch.
 
-No after artifact is claimed or accepted. At the final 2026-08-21 00:18Z
+No after artifact is claimed or accepted, and this continuation did not replay
+the restricted host 1% build. At the latest historical 2026-08-21 00:18Z
 read-only check, the externally owned retry had a 53,814-byte `build.log`
 through all 47 survey targets and the one housing target—including the real
 bounded taxable-interest record at target 22/47—without the supplied
@@ -24,15 +25,15 @@ and frozen-battery success are not claimed. The frozen sample/clone seed
 remains 578, and no battery band, threshold, comparator, fold, publication
 boundary, or pending-chain state was changed.
 
-The current owner continuation independently re-traced the old raise site,
+The 2026-08-21 01:07Z owner continuation independently re-traced the old raise site,
 current producer/receipt/validator selectors, failing-to-fixed history, and
 exact regression surface. It found no remaining canonical path that can opt
 `taxable_interest_income` into QRF regime work or evidence. The final test tree
 also rejects a fully rehashed, plausible in-range `__batch_1` alias on an
 assigned target, preventing the unsafe permissive workaround briefly present
 in the first correction. All 14 decisive focused cases and all 529 tests in
-the five directly affected files pass in this continuation, peaking at 0.569
-GiB and 1.472 GiB respectively under the owner guard. Independent runtime,
+the five directly affected files pass in this continuation, peaking at 0.557
+GiB and 1.283 GiB respectively under the owner guard. Independent runtime,
 history, and regression audits agree on the scoped-fix verdict.
 
 ## Root cause and correction
@@ -113,19 +114,18 @@ confirmed that the exact host family selects no regime-evidence targets.
 
 Verification used the already-synced worktree `.venv`; imports resolved to this
 worktree's package sources. No dependency or lockfile changed during the
-continuation. The exact `uv run --no-sync` lint invocation was sandbox-blocked
-before execution by the user-wide uv cache; invoking the same installed Ruff
-binary directly from `.venv` passed.
+continuation. The installed worktree Ruff and pytest binaries were invoked
+directly so verification did not require network or user-wide cache access.
 
 - All 225 `packages/microcosm-build/tests/test_*.py` files passed across fresh
   pytest processes at `a5be536f`. No runtime source, tool, spec, project, or
   lockfile changed between that commit and the final audit tree.
 - The five directly affected transfer, multispine, stacked, pool-tool, and H5
   files were rerun together on the final tree: all 529 passed. The run used the
-  owner-provided 12 GiB/20 ms guard and peaked at 1.472 GiB observed
+  owner-provided 12 GiB/20 ms guard and peaked at 1.283 GiB observed
   per-process RSS. The exact synthetic host-target test, real banked
   wide-family test, and all 12 QRF structure mutations also passed
-  independently (14 cases total), peaking at 0.569 GiB. Warning summaries were
+  independently (14 cases total), peaking at 0.557 GiB. Warning summaries were
   disabled for the 529-test run; the focused run emitted only joblib's
   logical-core fallback.
 - `ruff check .`: passed on the final audit tree.
@@ -138,15 +138,14 @@ binary directly from `.venv` passed.
   in-range-family regression in `test_us_stacked_spine.py`.
 
 The GitNexus debugging workflow was selected, but graph query/context tools
-were not exposed in this session. The CLI generated a local graph, then the
-sandbox denied its user-wide registry write. `gitnexus clean` removed the
-112 MiB repo-local cache before encountering the same registry restriction;
-no index residue remains. Direct raise-site, caller, producer, validator, and
-commit tracing independently established the exact path.
+were not exposed in this session. Direct raise-site, caller, producer,
+validator, and commit tracing independently established the exact path; three
+separate read-only runtime, history, and regression audits reached the same
+verdict.
 
 The originally cited `battery-verify/pkg3/build.log` was overwritten by later
 retries. The owner-preserved `_BUILD-FAILURE-1PCT.txt` retains the old
-traceback. At the final 2026-08-21 00:18Z read-only check, the current log was
+traceback. At the latest historical 2026-08-21 00:18Z read-only check, the log was
 53,814 bytes and had reached survey target 47/47 plus housing target 1/1; the
 bounded taxable-interest record completed at target 22/47 without the supplied
 traceback. The latest guard entry still reported a resource wait with one
@@ -215,6 +214,11 @@ skipped.
 - `9d01da73` — confirm the current scoped ACS binding diagnosis.
 - `59dbb7d1` — record the current guarded 529-test affected suite.
 - `555379f4` — record current lint, format, whitespace, and drift checks.
+- `a1a0daf3` — reopen this owner continuation audit.
+- `571bca21` — confirm the current scoped ACS binding diagnosis.
+- `285df4dc` — record the current 14-case focused regression run.
+- `2fe76c85` — record the current guarded 529-test affected suite.
+- `1f6e5dcb` — record current lint, format, whitespace, and drift checks.
 
 ## Remaining host step
 
