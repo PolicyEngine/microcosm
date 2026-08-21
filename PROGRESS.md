@@ -21,16 +21,48 @@ failure transcript are preserved unchanged.
   fallback.
 - Reopened this committed progress journal before making any implementation or
   test change.
+- Reconstructed the historical failure from `33bf52fe`: receipt production
+  attached calibration-audit QRF evidence to every imputed target, and
+  `validate_stacked_gap_fill_receipt` called the strict evidence validator
+  before testing whether a target had an assigned calibration spec. The
+  physical `puf_tax_itemization__batch_1` record therefore failed binding to
+  the public `puf_tax_itemization` family at the exact supplied raise site.
+- Confirmed the current correction uses four matching assignment fences:
+  `transfer_acs_inputs` defaults the evidence selection to empty; the ordinary
+  and banked fits retain regimes only for selected targets; both stacked
+  producers derive selection from the immutable nine-target registry; and both
+  terminal validators reject evidence on unassigned targets before entering
+  strict record binding. Taxable interest is absent from the registry.
+- Traced every production `transfer_acs_inputs` caller. Only the canonical
+  early and late stacked owners pass `regime_evidence_targets`; generic
+  multispine and pool-tool callers use the empty default.
+- Created a detached temporary worktree at failing-first commit `22b2c6bc`,
+  whose runtime blobs still equal `33bf52fe`, and ran the exact synthetic
+  taxable-interest regression there. It failed at historical lines 4512 and
+  4310 with `ACS QRF pattern record binding is invalid`, matching the supplied
+  traceback. Removed the temporary worktree afterward.
+- Collected and ran the current 16-case boundary matrix: the exact synthetic
+  regression, ordinary and banked real 15-target transfers, all 12 fully
+  rehashed strict-binding mutations, and mixed selected/unselected draw
+  preservation. All 16 passed; the only warning was joblib's physical-core
+  fallback.
+- Reconciled the correction lineage and Git objects. Runtime repair starts at
+  `176c60fc`, with strict binding/count hardening in `887df056` and `94b7aecb`;
+  real producer-to-validator coverage closes at `ad2a44c1`. Current build
+  source and tests are byte-identical to that reviewed checkpoint.
+- Read the external host retry without controlling it. At the
+  `2026-08-21T11:48:32Z` snapshot it had crossed taxable interest, completed
+  survey target 47/47 plus housing 1/1 without the reported error, and remained
+  active in the primary-QRF stage. No final pool, manifest, gates, or terminal
+  revision-bound status existed, so this is progress evidence only.
 
 ### Next
 
-1. Trace the current and historical invariant paths and enumerate the exact
-   production target-selection boundary.
-2. Audit the existing regression against the supplied physical
-   `puf_tax_itemization__batch_1/taxable_interest_income` record.
-3. Make only a warranted scoped fix or test strengthening, then run focused,
-   affected, and repository-prescribed verification.
-4. Refresh and commit `FINAL_REPORT.md`; leave restricted host certification
+1. Reconcile the independent runtime and regression audits and make any
+   warranted test-only strengthening.
+2. Run the directly affected files and repository-prescribed static/full-suite
+   verification on the unchanged executable tree.
+3. Refresh and commit `FINAL_REPORT.md`; leave restricted host certification
    and publication outside this local correction.
 
 ## Owner continuation audit — 2026-08-21 10:17Z
