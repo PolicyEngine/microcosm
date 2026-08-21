@@ -2780,3 +2780,54 @@ head. A well-formed FAIL still writes
   of the host commands and created no certification verdict.
 - The host may execute the commands in the exact order above. The owner—not
   this lane—adjudicates the emitted verdict.
+
+## F1 continuation r6 final B/C verification (2026-08-20)
+
+### State
+
+- Deliverables B and C are complete. No pool build, 1% rung, comparator host
+  run, kill/resume exercise, push, or publication occurred in this lane.
+- The runner remains deliberately fail-closed at the committed production
+  evidence boundary. The expected host result is status 1 with a structurally
+  valid FAIL, not a certification claim.
+
+### Done
+
+- The final B/C batch passes all 72 runner, comparator, artifact-comparison,
+  and artifact-coverage tests in 30.82 seconds. All 35 dedicated synthetic
+  runner/comparator tests are included in that count.
+- Repository-wide Ruff passes. Runner/comparison/coverage byte compilation,
+  runner CLI help, `git diff --check`, generated US bundle check, and generated
+  coverage check pass. The current US spec is
+  `05edd87390d841c5b444267cd674d8bb15ed518b12577268d2e2c2de82976079`;
+  coverage is 41,911/41,911 fields and 40/40 inventory checks.
+- A memory-isolated repository inventory attempt ran one test module per fresh
+  process. The first 26/301 modules passed 609 tests with one expected skip;
+  maximum observed child RSS was 2.016 GiB.
+
+### Separate suite boundary
+
+- Module 27, `test_puf_qrf_chain.py`, did not pass. An exact direct
+  reproduction of
+  `test_brokered_in_process_chain_is_checkpoint_byte_exact` fails when Joblib
+  calls `time.sleep(0.01)` while waiting for its parallel forest workers; the
+  physical broker refuses that ambient clock access.
+- With the repository-supported `LOKY_MAX_CPU_COUNT=1` cap, the clock call is
+  avoided, but the session still aborts after 16 refused `os.stat` probes. The
+  two hashed resources were independently resolved to
+  `/sys/fs/cgroup/cpu.max` and
+  `/sys/fs/cgroup/cpu/cpu.cfs_quota_us`; neither path is within the fixture's
+  declared sink grant.
+- This is a committed deliverable-A broker/physical-execution regression. The
+  r6 order is explicitly B/C only and says not to redo landed wiring, so no
+  production or masking test change was made. The B/C suite is green; the
+  broader repository suite is not claimed green and requires separately
+  authorized A work.
+
+### Next
+
+1. Stop this continuation after committing the final report.
+2. Run the exact host sequence above on a machine provisioned beyond 96.95 GiB
+   plus margin, never overlapping builds.
+3. Address the brokered-QRF clock/cgroup boundary only in a continuation that
+   explicitly reopens deliverable A.

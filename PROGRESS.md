@@ -7,11 +7,10 @@
 - The requested scope is deliverables B and C only: revalidate or complete the
   single-build certification runner and four-receipt comparator, then append
   the exact high-memory-host handoff.
-- Current committed HEAD is `3c76dace`. The audited, incomplete post-HEAD
-  wiring WIP was reverted file-by-file without stash. A deliberate mechanical
-  attestation patch is now pending: it refreshes identities derived from the
-  already-landed wiring and corrects one structural test to inspect both the
-  typed and legacy operator maps.
+- The B/C implementation and handoff are committed through `424c4998`. The
+  audited, incomplete post-HEAD wiring WIP was reverted file-by-file without
+  stash; the deterministic identities moved by the already-landed wiring and
+  its structural operator-map audit are now refreshed at `7265a88a`.
 - `_F1-CHARTER-R2.md` through `_F1-CHARTER-R6.md` are untracked owner-provided
   instruction copies. They are being read as authority but are not product
   deliverables and will not be staged without explicit reason.
@@ -49,16 +48,34 @@
   coverage reports 41,911/41,911 fields and 40/40 inventory checks. The
   affected 111-test identity/structural batch is decomposed green (108 passing
   unchanged tests, then the three corrected failures passing in isolation).
+- Appended the exact high-memory-host sequence at `424c4998`: documentation-only
+  resume gate, constants A/B, bundle A/B, and the four-receipt comparator,
+  including six authenticated source pins, strict fresh roots, pipeline exit
+  handling, recovery rules, and the 78.91--96.95 GiB historical RSS envelope.
+- Final B/C verification is green: 72/72 runner/comparator/artifact tests pass;
+  repository-wide Ruff, runner/library byte compilation, CLI help, US bundle
+  generation, coverage generation, and whitespace checks pass.
+- Attempted the complete 301-module repository inventory in fresh serial
+  processes. The first 26 modules passed 609 tests with one expected skip and
+  a 2.016 GiB maximum RSS. Module 27 exposed a committed deliverable-A broker
+  failure in `test_brokered_in_process_chain_is_checkpoint_byte_exact`:
+  Joblib's parallel wait calls `time.sleep(0.01)`, which the physical broker
+  correctly rejects as ambient clock access. Constraining Loky to one worker
+  avoids that call but exposes 16 refused `os.stat` probes of
+  `/sys/fs/cgroup/cpu.max` and
+  `/sys/fs/cgroup/cpu/cpu.cfs_quota_us`, both outside the declared sink. This
+  continuation did not change that out-of-scope landed wiring and makes no
+  repository-wide green claim.
 
 ## Next
 
-1. Commit the generated-identity and structural-audit refresh as one coherent
-   wiring-attestation step.
-2. Run the full repository test inventory in fresh-process shards so every
-   process remains below 20 GiB.
-3. Append the exact sequential four-build/comparator host handoff to
-   `_F1-LANE-NOTES.md`, update this journal and `FINAL_REPORT.md`, and commit
-   each coherent step. Do not run the four host builds or push.
+1. Stop after this B/C closeout as ordered; do not run the four host builds or
+   push.
+2. The high-memory host runs the four commands strictly sequentially and the
+   owner adjudicates the expected well-formed FAIL receipt.
+3. Any repair of the separate brokered-QRF deliverable-A regression requires a
+   continuation that authorizes wiring changes; it is outside this B/C-only
+   charter.
 
 ---
 

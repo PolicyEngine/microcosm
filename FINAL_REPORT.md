@@ -361,3 +361,57 @@ shard was not rerun because its prior authenticated 28.82-GiB peak exceeds this
 lane's 20-GiB process limit, so no repository-wide green claim is made. There
 was no push, stash, or `PROGRESS.md` operation. This lane stops after the host
 handoff as ordered.
+
+### F1 continuation r6 final report (2026-08-20)
+
+Deliverables B and C are complete. The already-committed
+`tools/f1_certification_run.py` was revalidated rather than rewritten: it runs
+one cold constants or bundle build into an absent root, enforces forbid-resume
+semantics, authenticates all six source path/digest pairs, and writes a typed
+receipt whose normative artifact vector hashes raw bytes while provenance is
+sealed under the plan-lock vector. Its comparator accepts exactly constants
+A/B and bundle A/B, checks within-mode determinism, cross-mode equality, and
+vector coverage, then exclusively writes `us-f1-certification.json` and
+`us-f1-certification.md`. The documentation-only resume gate starts no build.
+
+The current production evidence remains intentionally incomplete: node-reuse
+inventory is empty/incomplete, exact final-H5 selector inventory is unsupported,
+and calibration inventory is incomplete. The high-memory comparator is
+therefore expected to return status 1 and emit a structurally valid **FAIL**,
+even if all collected raw-byte digests match. Status 0 means PASS and status 2
+means malformed input or execution error. No verdict was fabricated here.
+
+The exact host handoff is appended to `_F1-LANE-NOTES.md` and committed at
+`424c4998`. It gives the six source variables and SHA-256 pins, documentation
+gate, four cold 1% commands in constants A, constants B, bundle A, bundle B
+order, comparator command, exit semantics, and recovery constraints. Historic
+primary-QRF peaks are 84,729,479,168, 90,351,255,552, 103,374,684,160, and
+104,102,936,576 bytes (78.91, 84.15, 96.28, and 96.95 GiB). They are not
+role-mapped, so every build needs more than 96.95 GiB plus margin and the four
+processes must never overlap.
+
+The final B/C verification batch passes 72/72 tests in 30.82 seconds, including
+all 35 synthetic runner/comparator tests. Repository-wide Ruff, byte
+compilation, runner CLI help, whitespace, generated bundle, and coverage checks
+pass. The regenerated US spec is
+`05edd87390d841c5b444267cd674d8bb15ed518b12577268d2e2c2de82976079`,
+with 41,911/41,911 fields and 40/40 inventory checks. The coherent r6 commits
+before this report are `9047610b`, `3c76dace`, `7265a88a`, and `424c4998`.
+
+One separate boundary prevents a repository-wide green claim. A 301-module,
+fresh-process suite attempt passed its first 26 modules (609 tests, one expected
+skip, 2.016 GiB maximum RSS), then the committed brokered primary-QRF fixture
+failed. Joblib's parallel path calls `time.sleep(0.01)`, which the physical
+broker refuses as ambient clock access. Limiting Loky to one worker avoids that
+call but records 16 refused `os.stat` probes of `/sys/fs/cgroup/cpu.max` and
+`/sys/fs/cgroup/cpu/cpu.cfs_quota_us`, outside the declared sink. That is
+deliverable-A wiring, which this B/C-only order explicitly forbids changing;
+the lane preserved and documented it rather than masking it.
+
+All executed work was unit or fixture scale and stayed below 20 GiB. The
+initial 22-file uncommitted wiring attempt was audited and reverted file by
+file without stash because it was not a coherent green advance; the five
+untracked owner charter copies were preserved byte-untouched. No pool build,
+1% run, comparator host run, kill/resume exercise, push, or publication was
+performed. The host now runs the exact four commands, and the owner adjudicates
+the emitted verdict.
