@@ -4,14 +4,14 @@
 
 ### State
 
-Local diagnosis and verification are complete. The supplied line numbers
-resolve to historical commit `33bf52fe`, where QRF evidence was validated for
-every target before assignment lookup. The present branch already contains the
-complete scoped correction and exact failing-first regression; three
-independent audits, 14 decisive cases, all 529 directly affected tests, static
-checks, and exact complete-suite object binding found no current gap that
-warrants duplicate executable or test edits. The final report is being
-refreshed; restricted host certification remains external and incomplete.
+Complete as of 2026-08-21 07:09:56Z. The supplied line numbers resolve to
+historical commit `33bf52fe`, while the present branch contains the complete
+assigned-only correction and exact failing-first regression. Three independent
+audits, 14 decisive cases, all 529 directly affected tests, static checks, and
+exact complete-suite object binding found no current gap that warrants
+duplicate executable or test edits. `FINAL_REPORT.md` is committed with the
+current evidence. Restricted host certification remains external and
+incomplete.
 
 ### Done
 
@@ -76,11 +76,16 @@ refreshed; restricted host certification remains external and incomplete.
   34/47 without the old error, but no final pool, manifest, gates, terminal
   exit, or explicit Microcosm revision binding exists. This remains progress,
   not certification.
+- Refreshed and committed the required `FINAL_REPORT.md` at `54dc7fbf` with
+  the current root cause, correction lineage, assigned-only reachability audit,
+  failing-first proof, guarded verification, complete-suite binding, commit
+  ledger, and host boundary.
 
 ### Next
 
-Refresh and commit `FINAL_REPORT.md`, then mark this journal complete in a
-final committed handoff step.
+Obtain a durable, terminal, revision-bound restricted host result with passing
+`pool.h5`, `pool.manifest.json`, and `pool.gates.json`. Do not publish or mutate
+the release chain as a side effect of that external verification.
 
 ## Reopened owner continuation — 2026-08-21
 
