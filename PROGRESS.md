@@ -4,11 +4,12 @@
 
 ### State
 
-In progress. The owner has reissued the host 1% ACS QRF binding failure at
-`person/puf_tax_itemization/taxable_interest_income`. I am treating the prior
-journal entries as historical, independently binding the traceback to the
-current tree and host log, auditing the assigned-only boundary, and rerunning
-the regression and prescribed verification before refreshing `FINAL_REPORT.md`.
+In progress. The supplied line-4512-to-line-4310 traceback is now bound exactly
+to historical runtime `33bf52fe`, while the current tree contains the
+assigned-only correction. The focused validator and real ordinary/banked
+wide-family regressions are green. Independent reachability, regression, and
+host-log audits are still being reconciled before the affected suite runs and
+`FINAL_REPORT.md` is refreshed.
 
 ### Done
 
@@ -20,13 +21,29 @@ the regression and prescribed verification before refreshing `FINAL_REPORT.md`.
   preserved the owner-provided untracked failure and memory-guard artifacts.
 - Inspected the prior completion ledger without assuming its verdict remains
   current for this continuation.
+- Matched the supplied traceback exactly at `33bf52fe`: the old early validator
+  called `_validate_acs_imputed_pattern_evidence` for every target before
+  consulting the early calibration registry, so the physical
+  `puf_tax_itemization__batch_1` record for unassigned taxable interest was
+  compared with the canonical public family and failed record binding.
+- Confirmed the current early and late stacked producers pass an explicit
+  registry-derived `regime_evidence_targets` selection to ordinary or banked
+  ACS transfer; the immutable registry contains two early and seven late
+  targets and excludes taxable interest.
+- Confirmed the current early and late receipt builders attach QRF evidence
+  only to that same selection, while terminal validators reject any undeclared
+  evidence before invoking strict QRF record binding for a selected target.
+- Ran the exact taxable-interest validator regression and the real ordinary and
+  banked 15-target transfer regressions under the owner 12 GiB guard: all 3
+  passed, with 0.572 GiB maximum observed per-process RSS. Taxable interest
+  retained physical family `puf_tax_itemization__batch_1`, empty regimes, and
+  no QRF receipt evidence in both execution modes.
 
 ### Next
 
-Reconcile the supplied traceback and full host log with the current runtime,
-then prove the assigned-only producer/receipt/validator boundary and run the
-focused failing-first regression before deciding whether further code is
-needed.
+Reconcile the independent audits and current host terminal state, then run the
+complete directly affected suite and static checks before refreshing the
+required final report.
 
 ## Active owner continuation — 2026-08-21 07:11Z
 
