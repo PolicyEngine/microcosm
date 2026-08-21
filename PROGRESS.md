@@ -4,10 +4,11 @@
 
 ### State
 
-Diagnosis complete; verification in progress. The supplied traceback exactly
-fingerprints bad commit `33bf52fe`, while current source already contains the
-complete scoped correction and regression coverage. No duplicate runtime or
-test edit is warranted unless the fresh verification below exposes a gap.
+Diagnosis and decisive focused verification complete; affected-suite
+verification in progress. The supplied traceback exactly fingerprints bad
+commit `33bf52fe`, while current source already contains the complete scoped
+correction and regression coverage. No duplicate runtime or test edit is
+warranted unless the remaining verification exposes a gap.
 
 ### Done
 
@@ -42,12 +43,16 @@ test edit is warranted unless the fresh verification below exposes a gap.
 - Reconciled three independent read-only audits. Runtime, history, and
   regression reviewers all found the correction complete and no material
   coverage gap. Their focused selections passed 4 and 24 cases respectively.
+- Ran the exact synthetic taxable-interest boundary, the real banked 15-target
+  producer, and all 12 fully rehashed QRF structure mutations under the owner
+  12 GiB/20 ms guard. All 14 cases passed; maximum observed per-process RSS was
+  0.572 GiB. The only warning was joblib's logical-core fallback.
 
 ### Next
 
-Run the decisive 14-case regression selection and the five directly affected
-test files under the owner memory guard, then run lint, formatting, whitespace,
-and executable-tree drift checks before refreshing the final report.
+Run the five directly affected test files under the owner memory guard, then
+run lint, formatting, whitespace, and executable-tree drift checks before
+refreshing the final report.
 
 ## Current continuation — 2026-08-21 01:11Z
 
