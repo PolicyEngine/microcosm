@@ -4,14 +4,14 @@
 
 ### State
 
-In progress. The supplied line numbers fingerprint historical commit
+Complete. The supplied line numbers fingerprint historical commit
 `33bf52fe`; the current tree already contains the complete scoped correction
 and failing-first regression coverage. Three independent audits and 14 guarded
 focused cases find no remaining leak or material coverage gap. All 529 tests
 in the five directly affected files also pass under the owner guard. A
 duplicate executable edit is not warranted. Lint, format, whitespace, and
-executable-drift checks pass; only final-report refresh and journal closure
-remain.
+executable-drift checks pass, and `FINAL_REPORT.md` contains the final
+continuation report.
 
 ### Done
 
@@ -67,12 +67,16 @@ remain.
 - Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
   changed since `33bf52fe^`, committed-range and worktree whitespace checks,
   and exact executable-tree comparisons against `a5be536f`; all passed.
+- Refreshed and committed `FINAL_REPORT.md` at `6062fc3c` with the current
+  diagnosis, demonstrated red/green regression, guarded 14-case and 529-test
+  results, static verification, continuation commits, and explicit remaining
+  host boundary.
 
 ### Next
 
-Refresh and commit `FINAL_REPORT.md` with the current diagnosis, demonstrated
-red/green regression, guarded verification, static checks, and explicit host
-boundary; then close and commit this journal.
+Run or identify a revision-bound restricted host 1% retry that reaches a
+terminal runner verdict and emits the expected pool, manifest, and gates
+artifacts; this remains external to the completed local correction.
 
 ## Current continuation — 2026-08-20
 
