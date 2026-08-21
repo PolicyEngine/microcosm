@@ -4,10 +4,10 @@
 
 ### State
 
-In progress. The owner has renewed the ACS QRF binding continuation. Earlier
-sections and commits report an assigned-only correction, but their verdicts are
-historical until the current tree, invariant path, regression, and relevant
-verification surface are independently rechecked.
+In progress. The supplied traceback is now independently bound to the
+historical globally enabled QRF-evidence path at `33bf52fe`. The current tree
+contains an assigned-only correction with exact binding retained; fresh
+focused and affected verification is still pending.
 
 ### Done
 
@@ -16,13 +16,40 @@ verification surface are independently rechecked.
   committed at the start of this continuation.
 - Inspected branch status and the most recent continuation commit; preserved
   the pre-existing untracked memory-guard and host-failure diagnostics.
+- Confirmed the normal GitNexus query/context tools are not exposed, then used
+  the preserved graph indexed at `42819d53` through GitNexus's read-only local
+  backend. Error-text query and context found the exact synthetic regression;
+  custom Cypher proved the oversized production module was omitted, so direct
+  source and Git-object tracing supplied the production path.
+- Reconstructed the failure at `33bf52fe`: the public 15-target
+  `puf_tax_itemization` family was split at width eight, taxable interest's
+  legitimate physical record was `puf_tax_itemization__batch_1`, the producer
+  attached QRF regimes/evidence to every target, and old line 4512 invoked
+  strict binding before assignment lookup. Old line 4310 therefore compared
+  the physical batch with the public family and raised the supplied error.
+- Confirmed that accepting a batch alias would weaken the invariant without
+  fixing the leak. Current validators retain exact entity/family/target binding
+  for declared targets, but reject QRF or calibration evidence on an undeclared
+  target before entering that binding path.
+- Traced the current selection through `transfer_acs_inputs`, ordinary and
+  banked fits, per-target provenance, both receipt producers, both canonical
+  stacked callers, both terminal validators, and calibration application.
+  Generic callers default to no regime work; only the two stacked owners select
+  immutable registry specs; unselected targets keep ordinary draws and empty
+  regimes and receive neither evidence nor calibration writes.
+- Enumerated the immutable policy: two early and seven late model-required,
+  source-operator, and adult-care targets. `taxable_interest_income` is absent.
+- Re-read the exact synthetic regression, the real 15-target ordinary/banked
+  producer-to-validator regression, mixed-family draw-preservation coverage,
+  legacy four-count checks, and the fully rehashed strict-family forgery case.
+  The requested executable and regression changes are already committed, so a
+  duplicate source or test edit is not warranted.
 
 ### Next
 
-Trace the supplied error through GitNexus where available and direct source and
-history, audit the assigned-surface fences and regression coverage, run the
-focused and proportionate affected verification, then refresh the required
-final report with a revision-bound result.
+Reconcile the independent audits, run the exact focused regression matrix and
+the proportionate affected suite, complete static/object checks, then refresh
+the required final report with a revision-bound result.
 
 ## Owner continuation verification — 2026-08-21 09:17Z
 
