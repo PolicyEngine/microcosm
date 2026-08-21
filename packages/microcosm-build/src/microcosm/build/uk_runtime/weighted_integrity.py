@@ -245,9 +245,10 @@ _UK_INPUT_MASS_REFERENCE_DESCRIPTOR = UKInputMassReferenceDescriptor(
     totals_sha256=UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
     scope_note=(
         "Channel-blind post-calibration enhanced-FRS production incumbent, "
-        "pinned to the 2024-25 line; structurally lacks the SPI clone "
-        "channel, so SPI-channel-exclusive columns are comparable only "
-        "through per-reference reviewed exclusions."
+        "pinned to the 2024-25 line; its artifact carries the SPI-synthetic "
+        "rows structurally but no admin-restored mass in the "
+        "SPI-channel-exclusive columns, so those columns are comparable "
+        "only through per-reference reviewed exclusions."
     ),
 )
 
