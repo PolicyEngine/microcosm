@@ -44,10 +44,15 @@ traceback before deciding whether any further executable change is warranted.
   index was moved intact to
   `/private/tmp/microcosm-pkg3-two-part-gitnexus-42819d53`; direct source and
   Git-object tracing supplied the fallback evidence.
+- Ran the exact unassigned taxable-interest validator regression and the real
+  ordinary/banked 15-target producer-to-validator regression under the owner
+  12 GiB/20 ms guard. All three cases passed; output was limited to the known
+  joblib physical-core fallback warning.
 
 ### Next
 
-1. Verify the narrow regression and affected suite against the current tip.
+1. Verify the complete directly affected suite and static checks against the
+   current tip.
 2. Update `FINAL_REPORT.md` and close this journal without claiming restricted
    host certification unless terminal revision-bound artifacts exist.
 
