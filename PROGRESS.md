@@ -28,12 +28,29 @@ completed journal entry or the still-running host snapshot as current truth.
   15-target producer cases (ordinary and banked) under the owner 12 GiB guard.
   All three passed with exit zero and 0.566 GiB maximum observed per-process
   RSS; output was limited to the known joblib physical-core fallback warning.
+- Reconciled independent read-only source and regression/history audits. Both
+  confirmed there is no remaining canonical leak and recommended no duplicate
+  executable or test change. The real ordinary/banked regression uses all 15
+  public-family targets, retains taxable interest's physical `__batch_1`
+  record, proves selected unemployment evidence remains non-vacuously present,
+  and sends the generated taxable receipt through the terminal validator.
+- Confirmed exact family binding remains fail-closed for assigned targets; a
+  separate fully rehashed mutation test rejects a physical batch alias rather
+  than weakening the invariant that exposed the historical leak.
+- Ran all five directly affected files together under the owner guard: 64
+  ordinary-transfer tests, five multispine-serialization tests, 259
+  stacked-spine tests, 164 pool-tool tests, and 38 H5 receipt-I/O tests. All
+  530 passed with exit zero and 1.633 GiB maximum observed per-process RSS.
+- Received a read-only host snapshot at `2026-08-21 09:00:39Z`. The retry was
+  still live with no traceback or binding error, had passed taxable interest
+  and completed late-producer batch 4, but had no terminal exit marker or final
+  pool/manifest/gates artifacts. Host certification therefore remains open.
 
 ### Next
 
-Reconcile the independent source, regression, and restricted-host audits, then
-run the directly affected test matrix and static checks against the current
-committed tree.
+Run static checks against the current committed tree, refresh the host snapshot
+without mutating it, and update the required final report with the precise
+local-pass/external-nonterminal boundary.
 
 ## Owner continuation audit — 2026-08-21 08:35Z
 
