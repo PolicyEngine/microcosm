@@ -2831,3 +2831,39 @@ head. A well-formed FAIL still writes
    plus margin, never overlapping builds.
 3. Address the brokered-QRF clock/cgroup boundary only in a continuation that
    explicitly reopens deliverable A.
+
+## F1 continuation r6 independent B/C verification reprise (2026-08-20)
+
+### State
+
+- The committed runner/comparator and host handoff were audited against the r5
+  deliverable-B/C text and the sealed D4 two-tier ruling. No B/C implementation
+  defect or missing host command was found, so landed work was not rewritten.
+- The only uncommitted paths remain `_F1-CHARTER-R2.md` through
+  `_F1-CHARTER-R6.md`. They are owner-provided instruction copies, not product
+  WIP; they were preserved byte-untouched and uncommitted. No stash was used.
+
+### Verification
+
+- The dedicated synthetic runner/comparator module passes all 35 tests.
+- The runner/comparator, artifact-comparison, and pool-artifact-coverage batch
+  passes all 72 tests.
+- Repository-wide Ruff, runner/comparison/coverage byte compilation, runner
+  CLI help, `git diff --check`, generated US bundle, and generated coverage
+  checks pass. The US spec remains
+  `05edd87390d841c5b444267cd674d8bb15ed518b12577268d2e2c2de82976079`;
+  coverage remains 41,911/41,911 fields and 40/40 inventory checks.
+- The managed sandbox refused the external user-level `uv` cache before test
+  collection. The already-synced `.venv` ran the same workspace tests without
+  network access or dependency changes.
+- The exact broader-suite failure was reproduced unchanged at fixture scale:
+  `test_brokered_in_process_chain_is_checkpoint_byte_exact` reaches Joblib's
+  parallel wait and the physical broker refuses its ambient
+  `time.sleep(0.01)`. This is the previously recorded deliverable-A boundary;
+  r6 authorizes B/C only, so no wiring or masking test change was made.
+
+### Next
+
+1. Stop after the committed B/C report closeout; do not push or run a build.
+2. The high-memory host follows the exact sequence above and the owner
+   adjudicates the emitted, currently expected well-formed FAIL.

@@ -11,6 +11,9 @@
   audited, incomplete post-HEAD wiring WIP was reverted file-by-file without
   stash; the deterministic identities moved by the already-landed wiring and
   its structural operator-map audit are now refreshed at `7265a88a`.
+- An independent verification reprise at `b26c79d6` found no B/C source change
+  to make: the committed runner, comparator, typed receipt, and host handoff
+  satisfy the narrow r6 contract. Only journal/report closeout remains.
 - `_F1-CHARTER-R2.md` through `_F1-CHARTER-R6.md` are untracked owner-provided
   instruction copies. They are being read as authority but are not product
   deliverables and will not be staged without explicit reason.
@@ -55,6 +58,17 @@
 - Final B/C verification is green: 72/72 runner/comparator/artifact tests pass;
   repository-wide Ruff, runner/library byte compilation, CLI help, US bundle
   generation, coverage generation, and whitespace checks pass.
+- Repeated that complete B/C gate independently at `b26c79d6`: the 35-test
+  synthetic runner/comparator module and the combined 72-test contract batch
+  pass unchanged. Repository-wide Ruff, byte compilation, CLI help, generated
+  US bundle, generated coverage, and `git diff --check` also pass. The normal
+  `uv run` entry point could not initialize its external user cache under the
+  managed sandbox, so tests ran through the already-synced `.venv` without
+  dependency or source changes.
+- Reproduced the already-journaled broader-suite boundary unchanged: the exact
+  brokered primary-QRF test fails after Joblib calls `time.sleep(0.01)` inside
+  an ambient-clock-denied producer session. No deliverable-A wiring or masking
+  test edit was made under this B/C-only order.
 - Attempted the complete 301-module repository inventory in fresh serial
   processes. The first 26 modules passed 609 tests with one expected skip and
   a 2.016 GiB maximum RSS. Module 27 exposed a committed deliverable-A broker
