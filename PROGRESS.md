@@ -18,9 +18,13 @@ real banked wide-family producer, and all 12 rehashed structure mutations pass
 (14 cases, 0.569 GiB peak under the 12 GiB guard). No duplicate runtime or
 test edit is warranted. The five-file affected suite is also green: all 529
 tests passed together with a 1.472 GiB peak under the same guard. Static
-verification and final reporting are next. The owner-provided
-`_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain untracked and
-untouched, and no terminal host result is claimed.
+verification also passes: repository lint, formatting of all 15 correction-
+range Python files, committed-range whitespace, and exact `src`, `us_runtime`,
+`tools`, and `specs` tree comparisons with all-build-suite checkpoint
+`a5be536f`. Only the strict three-line assigned-family forgery regression and
+journals differ after that checkpoint. Final reporting is next. The
+owner-provided `_BUILD-FAILURE-1PCT.txt` and `.codex-memory-guard.py` remain
+untracked and untouched, and no terminal host result is claimed.
 
 The immediately preceding completion snapshot follows and is historical.
 
@@ -286,6 +290,12 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Done
 
+- Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
+  changed since `33bf52fe^`, and `git diff --check 33bf52fe^..HEAD`; all pass.
+  Exact Git tree objects for all `microcosm-build/src`, its `us_runtime`
+  subtree, `tools`, and `specs` match checkpoint `a5be536f`. Since that full-
+  build-suite checkpoint, only the already-passed three-line binding
+  regression and journals changed.
 - Re-ran all 529 tests in the five directly affected ordinary-transfer,
   multispine-serialization, stacked-spine, pool-tool, and H5 files together
   under the owner 12 GiB/20 ms guard. The run exited zero with a 1.472 GiB
@@ -833,9 +843,8 @@ but DNS is unavailable. Verification therefore uses the already-synced
 
 ## Next
 
-1. Run repository lint, scoped format, committed-range whitespace, and
-   executable-tree drift checks; then refresh and commit `FINAL_REPORT.md` and
-   this journal.
+1. Refresh and commit `FINAL_REPORT.md` and this journal with the current
+   revision-bound diagnosis and verification.
 2. Run or identify a revision-bound off-chain 1% retry that reaches a terminal
    runner verdict and emits the expected final pool, manifest, and gates
    artifacts. Do not claim an after artifact without that terminal proof, and
