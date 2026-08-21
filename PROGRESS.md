@@ -4,13 +4,15 @@
 
 ### State
 
-In progress. The supplied traceback is reproduced exactly on the historical
-leaking runtime, and the current source is scoped to the immutable nine-target
-calibration registry at producer, evidence-attachment, and validator
-boundaries. The exact failing target is unassigned. The existing regression is
-demonstrably failing-first, and all 14 decisive current cases pass under the
-owner guard. All 529 directly affected cases also pass in one guarded process.
-Static and final live-host reconciliation remain.
+Local verification is complete. The supplied traceback is reproduced exactly
+on the historical leaking runtime, and the current source is scoped to the
+immutable nine-target calibration registry at producer, evidence-attachment,
+and validator boundaries. The exact failing target is unassigned. The existing
+regression is demonstrably failing-first; all 14 decisive and all 529 directly
+affected current cases pass under the owner guard. The current 6,608-item
+collection and package/config Git objects exactly match the prior complete
+green sharded-suite checkpoint. Static checks pass. The live host retry remains
+unterminated and revision-unbound, so host certification is not claimed.
 
 ### Done
 
@@ -57,11 +59,36 @@ Static and final live-host reconciliation remain.
 - Ran all 529 affected tests together under the owner guard with warning
   summaries disabled. Pytest reached 100% with exit zero and no failures;
   maximum observed per-process RSS was 1.589 GiB.
+- Reconciled three independent read-only source, history, regression, warm-bank,
+  and host audits. All found the current canonical path assigned-only, no
+  alternate leakage path, and no material missing regression for the supplied
+  failure. Selection does not change unassigned draws, calibration writes only
+  selected target columns, and warm banks persist raw draws/state while regime
+  evidence is recomputed from the current selection.
+- Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
+  changed since `33bf52fe^`, and committed-range plus worktree whitespace
+  checks; all passed. The first format invocation passed its newline-separated
+  list as one zsh argument and exited before checking files; the null-delimited
+  rerun checked all 15 successfully and made no changes.
+- Collected the current repository under the owner guard: exactly 6,608 items
+  across 260 files, with a 1.163 GiB maximum observed per-process RSS.
+- Confirmed `packages`, `tools`, `specs`, `pyproject.toml`, and `uv.lock` are
+  byte-for-byte Git-identical to complete-suite checkpoint `d29a8705`. That
+  checkpoint's fresh-process shards cover the same exact 6,608 items without
+  failures; only `PROGRESS.md` and `FINAL_REPORT.md` differ on current `HEAD`.
+- Took a read-only host snapshot at 2026-08-21 02:04:45 EDT. The current retry
+  PID was alive, `build.log` had been truncated at 02:00:52 and remained zero
+  bytes, and `guard.log` had a fresh resource-wait heartbeat. A prior retry
+  rolled over without a gates artifact. No terminal exit, checkpoint tree,
+  pool, manifest, gates, spool, or receipt artifact existed, and no artifact
+  binds a Microcosm Git SHA. The supplied binding traceback is absent from the
+  live log and survives only in the owner note; the host is not certified.
 
 ### Next
 
-Reconcile the independent audits and live host state, then rerun lint, format,
-whitespace, and executable-drift checks before refreshing `FINAL_REPORT.md`.
+Take a final host/worktree snapshot, refresh and commit `FINAL_REPORT.md`, then
+close this journal with the exact continuation commits and remaining external
+certification boundary.
 
 ## Current continuation — 2026-08-21
 
