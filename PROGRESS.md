@@ -4,12 +4,13 @@
 
 ### State
 
-Diagnosis complete; verification pending. The traceback line numbers exactly
+Diagnosis and focused verification complete; affected-suite verification
+pending. The traceback line numbers exactly
 identify bad commit `33bf52fe`, where every imputed target carried QRF regime
 evidence and the canonical validator performed exact record binding before
 checking calibration assignment. The current branch already contains the
 complete scoped correction and exact regression coverage, so no duplicate
-runtime or test edit is warranted unless fresh verification exposes a gap.
+runtime or test edit is warranted.
 
 ### Done
 
@@ -43,12 +44,18 @@ runtime or test edit is warranted unless fresh verification exposes a gap.
 - Reconciled independent history and regression audits. Both found the scoped
   correction complete with no later executable regression or material test
   gap; the regression audit also ran its broader 17-case selection green.
+- Reconciled the independent runtime audit. It traced both canonical producer,
+  receipt, and validator paths and found no remaining selector or binding leak;
+  its three-case focused runtime selection also passed.
+- Ran the exact synthetic taxable-interest boundary, real banked 15-target
+  producer, and all 12 fully rehashed QRF structure mutations under the owner
+  12 GiB/20 ms guard. All 14 cases passed; maximum observed per-process RSS was
+  0.557 GiB. The only warning was joblib's logical-core fallback.
 
 ### Next
 
-Run the 14 decisive focused cases under the owner memory guard, commit their
-result, then run the five-file affected suite and static checks before updating
-the final report.
+Run the five-file affected suite under the owner memory guard, commit its
+result, then run static checks before updating the final report.
 
 The completion snapshots below are historical until this continuation closes.
 
