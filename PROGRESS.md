@@ -4,13 +4,14 @@
 
 ### State
 
-In progress. The supplied line-4512-to-line-4310 traceback is now bound exactly
-to historical runtime `33bf52fe`, while the current tree contains the
-assigned-only correction. The focused validator and real ordinary/banked
-wide-family regressions and all 530 directly affected tests are green. Three
-independent audits found no remaining canonical production leak. Static and
-exact-tree checks are green; only the final host snapshot and required
-`FINAL_REPORT.md` refresh remain.
+Complete as of 2026-08-21 07:58:40Z. The supplied line-4512-to-line-4310
+traceback is bound exactly to historical runtime `33bf52fe`, while the current
+tree contains the assigned-only correction. The focused validator and real
+ordinary/banked wide-family regressions, all 530 directly affected tests,
+static checks, and exact executable-tree checks are green. Three independent
+audits found no remaining canonical production leak. The required final report
+is committed at `17b3c06d`. Restricted host certification remains external and
+nonterminal.
 
 ### Done
 
@@ -72,11 +73,20 @@ exact-tree checks are green; only the final host snapshot and required
   in `test_us_stacked_spine.py`, whose entire 259-test file passed inside the
   affected run. At `d29a8705`, guarded fresh-process shards covered all 6,608
   collected repository items without a failed shard.
+- Took the final read-only host snapshot at `2026-08-21 07:57:18Z`. The retry
+  remained active after passing the old failure point and completing its early
+  and primary-QRF checkpoints, but still had no final pool, manifest, gates,
+  exit marker, or Microcosm revision binding. No certification is claimed.
+- Refreshed and committed `FINAL_REPORT.md` at `17b3c06d` with the root cause,
+  correction lineage, assigned-only reachability audit, failing-first
+  regression evidence, focused and affected-suite results, static/tree checks,
+  and precise host boundary.
 
 ### Next
 
-Take a final read-only host snapshot, then refresh and commit the required final
-report and close this continuation in the journal.
+Obtain a durable, terminal, revision-bound restricted 1% host result with
+passing `pool.h5`, `pool.manifest.json`, and `pool.gates.json`. Do not publish or
+mutate the release chain as a side effect of that external verification.
 
 ## Active owner continuation — 2026-08-21 07:11Z
 
