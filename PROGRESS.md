@@ -2,13 +2,32 @@
 
 ## State
 
-Implementation and offline verification are complete on
-`passive-pass-through-722`, based on `origin/main` at `9c20c1d2`. The
-verified #530 QBI branch chain was inspected and was not used as a base because
-its tip still has the retired pre-rename namespace and package layout. Only the
-required QBI v3 concepts were ported into the current `microcosm.*` tree.
+Dual-review remediation is in progress on `passive-pass-through-722` as of
+2026-08-21. The branch starts this pass at `a4d93f78`; the already-fetched
+`origin/main` is `2c7a7218`. The supervisor-approved detached conflict
+resolution worktree merged the immediately preceding main commit `61869aa5`,
+so its three approved resolutions will be carried into the real merge of the
+current `origin/main`. Work remains offline: no fetch, push, PR mutation,
+publication, or promotion is in scope.
+
+An unstaged `uv.lock` refresh pre-dated this remediation pass. It is preserved
+for reconciliation with the post-merge `uv sync` result rather than discarded
+or folded into an unrelated commit.
 
 ## Done
+
+- Read the binding adversarial verdict before inspecting or changing the
+  branch.
+- Re-read `CLAUDE.md` and confirmed the PR-CI/certification and root-journal
+  contracts for this remediation pass.
+- Attempted the GitNexus debugging workflow; no GitNexus query/context tools
+  are configured in this session, so direct source and call-path analysis is
+  the documented fallback.
+- Confirmed the branch, detached pre-approved merge worktree, merge base, and
+  current `origin/main` identities without network access.
+- The implementation and verification bullets below describe the historical
+  pre-review checkpoint at `a4d93f78`; the verdict supersedes its former
+  completion claim.
 
 - Read `CLAUDE.md` and established the PR-CI/certification and journal
   contracts.
@@ -62,9 +81,19 @@ required QBI v3 concepts were ported into the current `microcosm.*` tree.
 
 ## Next
 
-- No in-scope work remains for #722.
-- After PolicyEngine-US #9306 is present in the locked engine, remove the exact
-  temporary registry exception and rerun the live NIIT diagnostics.
-- Resolve the Form 8960 line 4c rental/royalty versus passive pass-through
-  decomposition before replacing the provisional midpoint with a promoted
-  administrative target.
+- Commit this remediation baseline journal.
+- Merge the current `origin/main` as a real merge commit, adopt the approved
+  conflict resolutions, and measure the single post-merge runtime graph count.
+- Declare the three legacy JSON resources on main's typed file-closure surface,
+  regenerate the US bundle and engine lock, and sync all packages/extras.
+- Replace the vacuous preservation proxy with a nonzero-realization regression
+  that executes the current-main QBI pipeline and byte-compares every incumbent
+  QBI column before and after the passive stage.
+- Fail the release-input gate when a required manifest variable is absent from
+  the locked engine registry; cover both absent-variable and all-zero-required
+  failure modes and document the 1.764.6/#9306 engine-inert boundary honestly.
+- Make restricted certification independently re-solve and compare the
+  calibration shift.
+- Run targeted and full workspace tests with the prescribed restricted-data
+  environment, run Ruff, commit regenerated artifacts, and write the final
+  report to `FINAL_REPORT.md`.
