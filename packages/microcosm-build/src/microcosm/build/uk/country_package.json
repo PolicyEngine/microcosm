@@ -138,7 +138,22 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "ledger_compile_parity_incumbent_2025_signed_differences.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "ledger_compile_parity_production_2023_signed_differences.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "national_staging_build_record.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "parity_fixture_production_2023.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -149,6 +164,11 @@
     },
     {
       "path": "release_input_coverage_manifest.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "registry_parity_fixture_2025.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -169,6 +189,11 @@
     },
     {
       "path": "target_references.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "target_reference_membership.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     }

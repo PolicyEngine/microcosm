@@ -387,7 +387,7 @@
       "ons/female_70_74": "ons.population.female_70_74",
       "ons/female_75_79": "ons.population.female_75_79",
       "ons/female_80_84": "ons.population.female_80_84",
-      "ons/female_85_90": "ons.population.female_85_90",
+      "ons/female_85_90": "ons.population.female_85_89",
       "ons/household_land_value": "ons.land.household_land_value",
       "ons/land_value": "ons.land.land_value",
       "ons/london_age_0_9": "ons.population.age_0_9_by_region",
@@ -420,7 +420,7 @@
       "ons/male_70_74": "ons.population.male_70_74",
       "ons/male_75_79": "ons.population.male_75_79",
       "ons/male_80_84": "ons.population.male_80_84",
-      "ons/male_85_90": "ons.population.male_85_90",
+      "ons/male_85_90": "ons.population.male_85_89",
       "ons/multi_family_households": "ons.household_composition.multi_family_households",
       "ons/north_east_age_0_9": "ons.population.age_0_9_by_region",
       "ons/north_east_age_10_19": "ons.population.age_10_19_by_region",
@@ -674,15 +674,41 @@
       "ons/tenure_england_total": "England tenure counts come from an LA-grain workbook uk-data code-sums; ruled non-portable as national facts on chronicle#133 - moved to the wave-3 LA package (chronicle#134)."
     },
     "unmapped_declarations": {
-      "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is 410-Gone at ebf733c and its rows were silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
-      "hmrc.salary_sacrifice.it_relief_higher_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is 410-Gone at ebf733c and its rows were silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
-      "hmrc.salary_sacrifice.it_relief_additional_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is 410-Gone at ebf733c and its rows were silently suppressed by the bare-except drop in build_loss_matrix.py:376-394."
+      "hmrc.salary_sacrifice.it_relief_basic_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
+      "hmrc.salary_sacrifice.it_relief_higher_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
+      "hmrc.salary_sacrifice.it_relief_additional_rate": "New declaration backed by chronicle#139 salary-sacrifice facts; the incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394.",
+      "ons.population.female_90_plus": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference.",
+      "ons.population.male_90_plus": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference."
+    },
+    "suppressed_ancestors": {
+      "hmrc/salary_sacrifice_it_relief_basic_rate": {
+        "contract_target_id": "hmrc.salary_sacrifice.it_relief_basic_rate",
+        "rationale": "The incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394."
+      },
+      "hmrc/salary_sacrifice_it_relief_higher_rate": {
+        "contract_target_id": "hmrc.salary_sacrifice.it_relief_higher_rate",
+        "rationale": "The incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394."
+      },
+      "hmrc/salary_sacrifice_it_relief_additional_rate": {
+        "contract_target_id": "hmrc.salary_sacrifice.it_relief_additional_rate",
+        "rationale": "The incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394."
+      },
+      "hmrc/salary_sacrifice_employee_nics_relief": {
+        "contract_target_id": "hmrc.salary_sacrifice.nics_relief_employee",
+        "rationale": "The incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394."
+      },
+      "hmrc/salary_sacrifice_employer_nics_relief": {
+        "contract_target_id": "hmrc.salary_sacrifice.nics_relief_employer",
+        "rationale": "The incumbent source CSV is still 410-Gone at 12a1e028 and its rows are silently suppressed by the bare-except drop in build_loss_matrix.py:376-394."
+      }
     },
     "accounting_notes": {
       "v1_56_16_refresh": "Compared with ebf733c, the governed registry surface adds dwp/uc/households. The four deleted universal-credit jobseeker dispatch names were not registry rows in the carried contract, so there were no parity entries to remove; obr/jobseekers_allowance remains a distinct published JSA expenditure target.",
       "cross_level_duplicate_names": "Name-only identity flattens two-level emissions for ons/uk_population, ons/scotland_children_under_16, and ons/scotland_babies_under_1.",
-      "two_child_limit_year_surface": "The 15 dwp/uc/two_child_limit/* rows are 2026-only; the incumbent effective surface is 636 at calibration year 2025 and 651 at 2026. This is microcosm#622 Fixture-B input because the incumbent cannot self-report the year-specific surface.",
-      "geography_level_order_canonicalization": "The 9 voa.council_tax_stock.* rows use country, region order to match the rest of the contract; consumers use membership only."
+      "salary_sacrifice_obr_near_equivalents": "The contract separately maps OBR near-equivalents obr/salary_sacrifice_employee_ni_relief and obr/salary_sacrifice_employer_ni_relief onto hmrc.salary_sacrifice.nics_relief_employee and hmrc.salary_sacrifice.nics_relief_employer.",
+      "two_child_limit_year_surface": "Chronicle's 15 dwp/uc/two_child_limit/* facts are the April-2025 publication (period month 2025-04) and are the only TCL facts; there are no 2026 Ledger facts. At 12a1e028, the incumbent pins the same published numbers at {2026}, so at calibration year 2025 Ledger activates all 15 TCL targets while the incumbent drops them from the 652-row union to the 637-row effective surface; the 2026 effective surface remains 652. The same 12a1e028 refresh adds the new incumbent dwp/uc/households row. Fixture B treats the 15 TCL rows as enumerated ledger-side additions.",
+      "geography_level_order_canonicalization": "The 9 voa.council_tax_stock.* rows use country, region order to match the rest of the contract; consumers use membership only.",
+      "ons_terminal_sex_band_split": "María ruling 2026-08-21: split the incumbent terminal sex bands into uniform five-year 85_89 bands plus 90_plus tails. The incumbent six-year 85_90 terminal rows leave ages 91+ unconstrained; Microcosm keeps the uniform five-year bands and constrains the tail. The 85_89-vs-85_90 value gap is the single-age-90 share and is a signed semantic difference."
     }
   },
   "targets": [
@@ -6090,7 +6116,7 @@
       }
     },
     {
-      "target_id": "ons.population.female_85_90",
+      "target_id": "ons.population.female_85_89",
       "family": "ons_population",
       "geography_levels": [
         "country"
@@ -6112,13 +6138,13 @@
           {
             "concept": "uk.demographics.age",
             "operator": "<=",
-            "value": 90
+            "value": 89
           }
         ]
       },
       "bindings": {
         "policyengine": {
-          "metric_name": "ons/female_85_90",
+          "metric_name": "ons/female_85_89",
           "filters": [
             {
               "variable": "gender",
@@ -6132,7 +6158,7 @@
             {
               "variable": "age",
               "operator": "<=",
-              "value": 90
+              "value": 89
             }
           ],
           "value_variable": "person_count",
@@ -6140,7 +6166,7 @@
           "map_to": "household"
         },
         "axiom": {
-          "metric_name": "ons/female_85_90",
+          "metric_name": "ons/female_85_89",
           "status": "pending",
           "value_rule": "uk.person.count"
         }
@@ -6156,7 +6182,64 @@
             86,
             87,
             88,
-            89,
+            89
+          ]
+        }
+      }
+    },
+    {
+      "target_id": "ons.population.female_90_plus",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "female"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 90
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/female_90_plus",
+          "filters": [
+            {
+              "variable": "gender",
+              "equals": "FEMALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 90
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/female_90_plus",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "groupby_dimension": "age",
+        "dimension_values": {
+          "sex": "female",
+          "age": [
             "90_plus"
           ]
         }
@@ -7387,7 +7470,7 @@
       }
     },
     {
-      "target_id": "ons.population.male_85_90",
+      "target_id": "ons.population.male_85_89",
       "family": "ons_population",
       "geography_levels": [
         "country"
@@ -7409,13 +7492,13 @@
           {
             "concept": "uk.demographics.age",
             "operator": "<=",
-            "value": 90
+            "value": 89
           }
         ]
       },
       "bindings": {
         "policyengine": {
-          "metric_name": "ons/male_85_90",
+          "metric_name": "ons/male_85_89",
           "filters": [
             {
               "variable": "gender",
@@ -7429,7 +7512,7 @@
             {
               "variable": "age",
               "operator": "<=",
-              "value": 90
+              "value": 89
             }
           ],
           "value_variable": "person_count",
@@ -7437,7 +7520,7 @@
           "map_to": "household"
         },
         "axiom": {
-          "metric_name": "ons/male_85_90",
+          "metric_name": "ons/male_85_89",
           "status": "pending",
           "value_rule": "uk.person.count"
         }
@@ -7453,7 +7536,64 @@
             86,
             87,
             88,
-            89,
+            89
+          ]
+        }
+      }
+    },
+    {
+      "target_id": "ons.population.male_90_plus",
+      "family": "ons_population",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "filters": [
+          {
+            "concept": "uk.demographics.gender",
+            "equals": "male"
+          },
+          {
+            "concept": "uk.demographics.age",
+            "operator": ">=",
+            "value": 90
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "ons/male_90_plus",
+          "filters": [
+            {
+              "variable": "gender",
+              "equals": "MALE"
+            },
+            {
+              "variable": "age",
+              "operator": ">=",
+              "value": 90
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "ons/male_90_plus",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "groupby_dimension": "age",
+        "dimension_values": {
+          "sex": "male",
+          "age": [
             "90_plus"
           ]
         }

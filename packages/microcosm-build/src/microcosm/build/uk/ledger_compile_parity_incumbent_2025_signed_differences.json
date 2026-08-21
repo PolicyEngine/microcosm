@@ -1,0 +1,3590 @@
+{
+ "compiled_count": 387,
+ "counts_by_kind": {
+  "calibration_drift": 162,
+  "fixture_only": 288,
+  "ledger_only": 38
+ },
+ "difference_count": 488,
+ "differences": [
+  {
+   "fixture_value": 1608000.0,
+   "kind": "fixture_only",
+   "name": "dwp.pip.daily_living_enhanced_claimants",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1283000.0,
+   "kind": "fixture_only",
+   "name": "dwp.pip.daily_living_standard_claimants",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 6700000.0,
+   "kind": "fixture_only",
+   "name": "dwp.uc.households",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 320866000.0,
+   "kind": "fixture_only",
+   "name": "dwp/benefit_cap_total_reduction",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1424.0,
+   "kind": "fixture_only",
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_nan_to_nan",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 61727.0,
+   "kind": "fixture_only",
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_nan_to_nan",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 82905.0,
+   "kind": "fixture_only",
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_nan_to_nan",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 3518.0,
+   "kind": "fixture_only",
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_nan_to_nan",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 5805652941.176472,
+   "kind": "fixture_only",
+   "name": "hmrc/capital_gains_band_100000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 6567201680.67227,
+   "kind": "fixture_only",
+   "name": "hmrc/capital_gains_band_1000000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1457322689.0756304,
+   "kind": "fixture_only",
+   "name": "hmrc/capital_gains_band_12300",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 9443821008.403362,
+   "kind": "fixture_only",
+   "name": "hmrc/capital_gains_band_2000000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 2718348739.4957986,
+   "kind": "fixture_only",
+   "name": "hmrc/capital_gains_band_25000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 4898166386.554623,
+   "kind": "fixture_only",
+   "name": "hmrc/capital_gains_band_250000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 3834464705.8823533,
+   "kind": "fixture_only",
+   "name": "hmrc/capital_gains_band_50000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 5863205882.3529415,
+   "kind": "fixture_only",
+   "name": "hmrc/capital_gains_band_500000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 23343884033.61345,
+   "kind": "fixture_only",
+   "name": "hmrc/capital_gains_band_5000000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 37000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/cgt_taxpayers_band_100000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 5000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/cgt_taxpayers_band_1000000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 79000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/cgt_taxpayers_band_12300",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 3000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/cgt_taxpayers_band_2000000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 74000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/cgt_taxpayers_band_25000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 14000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/cgt_taxpayers_band_250000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 53000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/cgt_taxpayers_band_50000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 8000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/cgt_taxpayers_band_500000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 2000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/cgt_taxpayers_band_5000000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 4845000000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/property_income_income_band_100_000_to_150_000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1273000000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/property_income_income_band_12_570_to_15_000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 2185000000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/property_income_income_band_150_000_to_200_000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 3211000000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/property_income_income_band_15_000_to_20_000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 834100000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/property_income_income_band_1_000_000_to_inf",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1995000000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/property_income_income_band_200_000_to_300_000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 7258000000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/property_income_income_band_20_000_to_30_000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1453500000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/property_income_income_band_300_000_to_500_000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 7220000000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/property_income_income_band_30_000_to_40_000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 7182000000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/property_income_income_band_40_000_to_50_000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 900600000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/property_income_income_band_500_000_to_1_000_000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 10260000000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/property_income_income_band_50_000_to_70_000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 7163000000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/property_income_income_band_70_000_to_100_000",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 24720000000.0,
+   "kind": "fixture_only",
+   "name": "hmrc/salary_sacrifice_contributions",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 89035200000.0,
+   "kind": "fixture_only",
+   "name": "housing/rent_private",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 30680000000.0,
+   "kind": "fixture_only",
+   "name": "housing/rent_social",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 99000000000.0,
+   "kind": "fixture_only",
+   "name": "housing/total_mortgage",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 6512000.0,
+   "kind": "fixture_only",
+   "name": "nts/households_no_vehicle",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 13024000.0,
+   "kind": "fixture_only",
+   "name": "nts/households_one_vehicle",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 10064000.0,
+   "kind": "fixture_only",
+   "name": "nts/households_two_plus_vehicles",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 44117237614.71528,
+   "kind": "fixture_only",
+   "name": "obr.council_tax_england",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 3051227494.93594,
+   "kind": "fixture_only",
+   "name": "obr.council_tax_scotland",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 2400769752.36827,
+   "kind": "fixture_only",
+   "name": "obr.council_tax_wales",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 494000000.0,
+   "kind": "fixture_only",
+   "name": "obr.domestic_rates",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 82000.0,
+   "kind": "fixture_only",
+   "name": "ons.population.scotland_households_3plus_children",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 726000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_age_0_9",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 741000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_age_10_19",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 749000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_age_20_29",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 890000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_age_30_39",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 851000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_age_40_49",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 867000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_age_50_59",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 746000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_age_60_69",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 643000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_age_70_79",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 379000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_age_80_89",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 532000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_midlands_age_0_9",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 585000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_midlands_age_10_19",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 632000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_midlands_age_20_29",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 669000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_midlands_age_30_39",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 621000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_midlands_age_40_49",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 681000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_midlands_age_50_59",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 592000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_midlands_age_60_69",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 500000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_midlands_age_70_79",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 273000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_midlands_age_80_89",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 304799621177.5439,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/EAST_MIDLANDS",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 542672059385.554,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/EAST_OF_ENGLAND",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1188167933642.289,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/LONDON",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 119603822538.99867,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/NORTH_EAST",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 422892569458.29254,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/NORTH_WEST",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 280395193712.8084,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/SCOTLAND",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 885848048153.7532,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/SOUTH_EAST",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 456726035827.05096,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/SOUTH_WEST",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 179320185054.4999,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/WALES",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 364340113693.65784,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/WEST_MIDLANDS",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 298105966119.05054,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/YORKSHIRE",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1042000.0,
+   "kind": "fixture_only",
+   "name": "ons/london_age_0_9",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1038000.0,
+   "kind": "fixture_only",
+   "name": "ons/london_age_10_19",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1470000.0,
+   "kind": "fixture_only",
+   "name": "ons/london_age_20_29",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1585000.0,
+   "kind": "fixture_only",
+   "name": "ons/london_age_30_39",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1314000.0,
+   "kind": "fixture_only",
+   "name": "ons/london_age_40_49",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1078000.0,
+   "kind": "fixture_only",
+   "name": "ons/london_age_50_59",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 778000.0,
+   "kind": "fixture_only",
+   "name": "ons/london_age_60_69",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 509000.0,
+   "kind": "fixture_only",
+   "name": "ons/london_age_70_79",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 304000.0,
+   "kind": "fixture_only",
+   "name": "ons/london_age_80_89",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 281000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_east_age_0_9",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 311000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_east_age_10_19",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 343000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_east_age_20_29",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 356000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_east_age_30_39",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 323000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_east_age_40_49",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 369000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_east_age_50_59",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 353000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_east_age_60_69",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 278000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_east_age_70_79",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 153000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_east_age_80_89",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 847000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_west_age_0_9",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 901000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_west_age_10_19",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 986000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_west_age_20_29",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1056000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_west_age_30_39",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 938000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_west_age_40_49",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1011000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_west_age_50_59",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 888000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_west_age_60_69",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 715000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_west_age_70_79",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 399000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_west_age_80_89",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 234000.0,
+   "kind": "fixture_only",
+   "name": "ons/northern_ireland_age_0_9",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 244000.0,
+   "kind": "fixture_only",
+   "name": "ons/northern_ireland_age_10_19",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 230000.0,
+   "kind": "fixture_only",
+   "name": "ons/northern_ireland_age_20_29",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 264000.0,
+   "kind": "fixture_only",
+   "name": "ons/northern_ireland_age_30_39",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 254000.0,
+   "kind": "fixture_only",
+   "name": "ons/northern_ireland_age_40_49",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 257000.0,
+   "kind": "fixture_only",
+   "name": "ons/northern_ireland_age_50_59",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 224000.0,
+   "kind": "fixture_only",
+   "name": "ons/northern_ireland_age_60_69",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 165000.0,
+   "kind": "fixture_only",
+   "name": "ons/northern_ireland_age_70_79",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 93000.0,
+   "kind": "fixture_only",
+   "name": "ons/northern_ireland_age_80_89",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 526000.0,
+   "kind": "fixture_only",
+   "name": "ons/scotland_age_0_9",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 597000.0,
+   "kind": "fixture_only",
+   "name": "ons/scotland_age_10_19",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 709000.0,
+   "kind": "fixture_only",
+   "name": "ons/scotland_age_20_29",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 736000.0,
+   "kind": "fixture_only",
+   "name": "ons/scotland_age_30_39",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 691000.0,
+   "kind": "fixture_only",
+   "name": "ons/scotland_age_40_49",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 788000.0,
+   "kind": "fixture_only",
+   "name": "ons/scotland_age_50_59",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 727000.0,
+   "kind": "fixture_only",
+   "name": "ons/scotland_age_60_69",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 546000.0,
+   "kind": "fixture_only",
+   "name": "ons/scotland_age_70_79",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 297000.0,
+   "kind": "fixture_only",
+   "name": "ons/scotland_age_80_89",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1039000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_east_age_0_9",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1114000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_east_age_10_19",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1093000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_east_age_20_29",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1283000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_east_age_30_39",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1273000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_east_age_40_49",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1287000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_east_age_50_59",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1089000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_east_age_60_69",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 927000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_east_age_70_79",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 559000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_east_age_80_89",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 576000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_west_age_0_9",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 646000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_west_age_10_19",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 694000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_west_age_20_29",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 743000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_west_age_30_39",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 704000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_west_age_40_49",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 794000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_west_age_50_59",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 741000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_west_age_60_69",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 662000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_west_age_70_79",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 388000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_west_age_80_89",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 8374612.0,
+   "kind": "fixture_only",
+   "name": "ons/tenure_england_owned_outright",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 7667051.0,
+   "kind": "fixture_only",
+   "name": "ons/tenure_england_owned_with_mortgage",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 5299840.0,
+   "kind": "fixture_only",
+   "name": "ons/tenure_england_rented_privately",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 4274613.0,
+   "kind": "fixture_only",
+   "name": "ons/tenure_england_social_rent",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 25616116.0,
+   "kind": "fixture_only",
+   "name": "ons/tenure_england_total",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 325000.0,
+   "kind": "fixture_only",
+   "name": "ons/wales_age_0_9",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 362000.0,
+   "kind": "fixture_only",
+   "name": "ons/wales_age_10_19",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 389000.0,
+   "kind": "fixture_only",
+   "name": "ons/wales_age_20_29",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 408000.0,
+   "kind": "fixture_only",
+   "name": "ons/wales_age_30_39",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 374000.0,
+   "kind": "fixture_only",
+   "name": "ons/wales_age_40_49",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 432000.0,
+   "kind": "fixture_only",
+   "name": "ons/wales_age_50_59",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 407000.0,
+   "kind": "fixture_only",
+   "name": "ons/wales_age_60_69",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 343000.0,
+   "kind": "fixture_only",
+   "name": "ons/wales_age_70_79",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 190000.0,
+   "kind": "fixture_only",
+   "name": "ons/wales_age_80_89",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 700000.0,
+   "kind": "fixture_only",
+   "name": "ons/west_midlands_age_0_9",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 743000.0,
+   "kind": "fixture_only",
+   "name": "ons/west_midlands_age_10_19",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 774000.0,
+   "kind": "fixture_only",
+   "name": "ons/west_midlands_age_20_29",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 834000.0,
+   "kind": "fixture_only",
+   "name": "ons/west_midlands_age_30_39",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 758000.0,
+   "kind": "fixture_only",
+   "name": "ons/west_midlands_age_40_49",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 800000.0,
+   "kind": "fixture_only",
+   "name": "ons/west_midlands_age_50_59",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 685000.0,
+   "kind": "fixture_only",
+   "name": "ons/west_midlands_age_60_69",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 570000.0,
+   "kind": "fixture_only",
+   "name": "ons/west_midlands_age_70_79",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 337000.0,
+   "kind": "fixture_only",
+   "name": "ons/west_midlands_age_80_89",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 618000.0,
+   "kind": "fixture_only",
+   "name": "ons/yorkshire_and_the_humber_age_0_9",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 666000.0,
+   "kind": "fixture_only",
+   "name": "ons/yorkshire_and_the_humber_age_10_19",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 733000.0,
+   "kind": "fixture_only",
+   "name": "ons/yorkshire_and_the_humber_age_20_29",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 764000.0,
+   "kind": "fixture_only",
+   "name": "ons/yorkshire_and_the_humber_age_30_39",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 686000.0,
+   "kind": "fixture_only",
+   "name": "ons/yorkshire_and_the_humber_age_40_49",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 745000.0,
+   "kind": "fixture_only",
+   "name": "ons/yorkshire_and_the_humber_age_50_59",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 658000.0,
+   "kind": "fixture_only",
+   "name": "ons/yorkshire_and_the_humber_age_60_69",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 536000.0,
+   "kind": "fixture_only",
+   "name": "ons/yorkshire_and_the_humber_age_70_79",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 302000.0,
+   "kind": "fixture_only",
+   "name": "ons/yorkshire_and_the_humber_age_80_89",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 498707.0,
+   "kind": "fixture_only",
+   "name": "scotgov.council_tax_stock.band_a",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 583705.0,
+   "kind": "fixture_only",
+   "name": "scotgov.council_tax_stock.band_b",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 426388.0,
+   "kind": "fixture_only",
+   "name": "scotgov.council_tax_stock.band_c",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 369621.0,
+   "kind": "fixture_only",
+   "name": "scotgov.council_tax_stock.band_d",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 366881.0,
+   "kind": "fixture_only",
+   "name": "scotgov.council_tax_stock.band_e",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 221282.0,
+   "kind": "fixture_only",
+   "name": "scotgov.council_tax_stock.band_f",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 142084.0,
+   "kind": "fixture_only",
+   "name": "scotgov.council_tax_stock.band_g",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 14481.0,
+   "kind": "fixture_only",
+   "name": "scotgov.council_tax_stock.band_h",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 2623149.0,
+   "kind": "fixture_only",
+   "name": "scotgov.council_tax_stock.total",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 471000000.0,
+   "kind": "fixture_only",
+   "name": "scotgov.scottish_child_payment_spending",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 3985000.0,
+   "kind": "fixture_only",
+   "name": "slc.borrowers.plan_2_above_threshold",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 8940000.0,
+   "kind": "fixture_only",
+   "name": "slc.borrowers.plan_2_liable",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 0.0,
+   "kind": "fixture_only",
+   "name": "slc.borrowers.plan_5_above_threshold",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 10000.0,
+   "kind": "fixture_only",
+   "name": "slc.borrowers.plan_5_liable",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 18611.0,
+   "kind": "fixture_only",
+   "name": "slc.support.adult_dependants_grant_recipients",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 55364917.0,
+   "kind": "fixture_only",
+   "name": "slc.support.adult_dependants_grant_spend",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1159761.0,
+   "kind": "fixture_only",
+   "name": "slc.support.maintenance_loan_recipients",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 8591659718.0,
+   "kind": "fixture_only",
+   "name": "slc.support.maintenance_loan_spend",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 99645.0,
+   "kind": "fixture_only",
+   "name": "slc.support.parents_learning_allowance_recipients",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 181421659.0,
+   "kind": "fixture_only",
+   "name": "slc.support.parents_learning_allowance_spend",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 181700000.0,
+   "kind": "fixture_only",
+   "name": "slc/student_loan_repayment/northern_ireland",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 203300000.0,
+   "kind": "fixture_only",
+   "name": "slc/student_loan_repayment/scotland",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 229100000.0,
+   "kind": "fixture_only",
+   "name": "slc/student_loan_repayment/wales",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 804340.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/EAST_MIDLANDS/A",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 505610.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/EAST_MIDLANDS/B",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 403840.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/EAST_MIDLANDS/C",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 247850.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/EAST_MIDLANDS/D",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 154970.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/EAST_MIDLANDS/E",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 73920.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/EAST_MIDLANDS/F",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 39400.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/EAST_MIDLANDS/G",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 3480.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/EAST_MIDLANDS/H",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 2233400.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/EAST_MIDLANDS/total",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 403180.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/EAST_OF_ENGLAND/A",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 598950.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/EAST_OF_ENGLAND/B",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 739570.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/EAST_OF_ENGLAND/C",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 506540.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/EAST_OF_ENGLAND/D",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 313840.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/EAST_OF_ENGLAND/E",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 172960.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/EAST_OF_ENGLAND/F",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 113720.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/EAST_OF_ENGLAND/G",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 14830.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/EAST_OF_ENGLAND/H",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 2863600.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/EAST_OF_ENGLAND/total",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 144550.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/LONDON/A",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 499130.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/LONDON/B",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1040280.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/LONDON/C",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 975750.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/LONDON/D",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 585130.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/LONDON/E",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 298920.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/LONDON/F",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 225170.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/LONDON/G",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 68500.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/LONDON/H",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 3837430.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/LONDON/total",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 667540.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/NORTH_EAST/A",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 206790.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/NORTH_EAST/B",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 196180.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/NORTH_EAST/C",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 113460.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/NORTH_EAST/D",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 61090.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/NORTH_EAST/E",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 26600.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/NORTH_EAST/F",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 14600.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/NORTH_EAST/G",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1570.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/NORTH_EAST/H",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1287830.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/NORTH_EAST/total",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1386260.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/NORTH_WEST/A",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 705450.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/NORTH_WEST/B",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 616070.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/NORTH_WEST/C",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 363970.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/NORTH_WEST/D",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 216990.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/NORTH_WEST/E",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 104330.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/NORTH_WEST/F",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 65750.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/NORTH_WEST/G",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 7350.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/NORTH_WEST/H",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 3466140.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/NORTH_WEST/total",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 367610.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/SOUTH_EAST/A",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 687430.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/SOUTH_EAST/B",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1075940.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/SOUTH_EAST/C",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 843560.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/SOUTH_EAST/D",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 551730.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/SOUTH_EAST/E",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 337260.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/SOUTH_EAST/F",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 265610.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/SOUTH_EAST/G",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 40390.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/SOUTH_EAST/H",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 4169520.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/SOUTH_EAST/total",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 473020.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/SOUTH_WEST/A",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 644890.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/SOUTH_WEST/B",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 624030.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/SOUTH_WEST/C",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 432070.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/SOUTH_WEST/D",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 292090.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/SOUTH_WEST/E",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 147920.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/SOUTH_WEST/F",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 81960.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/SOUTH_WEST/G",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 8430.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/SOUTH_WEST/H",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 2704390.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/SOUTH_WEST/total",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 215380.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/WALES/A",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 307070.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/WALES/B",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 323220.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/WALES/C",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 241220.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/WALES/D",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 200840.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/WALES/E",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 122650.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/WALES/F",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 55190.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/WALES/G",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 13190.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/WALES/H",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1484410.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/WALES/total",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 786010.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/WEST_MIDLANDS/A",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 654140.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/WEST_MIDLANDS/B",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 526260.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/WEST_MIDLANDS/C",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 302500.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/WEST_MIDLANDS/D",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 193700.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/WEST_MIDLANDS/E",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 105630.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/WEST_MIDLANDS/F",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 62780.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/WEST_MIDLANDS/G",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 6170.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/WEST_MIDLANDS/H",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 2637190.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/WEST_MIDLANDS/total",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1070830.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/YORKSHIRE/A",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 514190.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/YORKSHIRE/B",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 432290.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/YORKSHIRE/C",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 249530.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/YORKSHIRE/D",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 158600.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/YORKSHIRE/E",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 75690.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/YORKSHIRE/F",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 42180.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/YORKSHIRE/G",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 3770.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/YORKSHIRE/H",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 2547080.0,
+   "kind": "fixture_only",
+   "name": "voa/council_tax/YORKSHIRE/total",
+   "period": 2025,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 597920.0,
+   "name": "dwp.uc.two_child_limit.children_affected",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 235270.0,
+   "name": "dwp.uc.two_child_limit.children_claimant_pip",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 479460.0,
+   "name": "dwp.uc.two_child_limit.children_disabled_child_element",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 891930.0,
+   "name": "dwp.uc.two_child_limit.children_in_3_children_households",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 468760.0,
+   "name": "dwp.uc.two_child_limit.children_in_4_children_households",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 185120.0,
+   "name": "dwp.uc.two_child_limit.children_in_5_children_households",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 119720.0,
+   "name": "dwp.uc.two_child_limit.children_in_6_plus_children_households",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1665540.0,
+   "name": "dwp.uc.two_child_limit.children_in_affected_households",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 297310.0,
+   "name": "dwp.uc.two_child_limit.households_3_children",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 117190.0,
+   "name": "dwp.uc.two_child_limit.households_4_children",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 37020.0,
+   "name": "dwp.uc.two_child_limit.households_5_children",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 18260.0,
+   "name": "dwp.uc.two_child_limit.households_6_plus_children",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 469780.0,
+   "name": "dwp.uc.two_child_limit.households_affected",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 65280.0,
+   "name": "dwp.uc.two_child_limit.households_claimant_pip",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 129630.0,
+   "name": "dwp.uc.two_child_limit.households_disabled_child_element",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1800000000.0,
+   "name": "hmrc.salary_sacrifice.it_relief_additional_rate",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1600000000.0,
+   "name": "hmrc.salary_sacrifice.it_relief_basic_rate",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 5500000000.0,
+   "name": "hmrc.salary_sacrifice.it_relief_higher_rate",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 7553013.0,
+   "name": "ons.population.age_0_9_by_region",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8331437.0,
+   "name": "ons.population.age_10_19_by_region",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8715225.0,
+   "name": "ons.population.age_20_29_by_region",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 9572397.0,
+   "name": "ons.population.age_30_39_by_region",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8622506.0,
+   "name": "ons.population.age_40_49_by_region",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 9036816.0,
+   "name": "ons.population.age_50_59_by_region",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 7861034.0,
+   "name": "ons.population.age_60_69_by_region",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 5998605.0,
+   "name": "ons.population.age_70_79_by_region",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2965168.0,
+   "name": "ons.population.age_80_89_by_region",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 414716.0,
+   "name": "ons.population.female_90_plus",
+   "period": 2025,
+   "reason": "María ruling 2026-08-21: new female 90_plus tail constrains ages 90+; the incumbent six-year terminal band left ages 91+ unconstrained."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 210520.0,
+   "name": "ons.population.male_90_plus",
+   "period": 2025,
+   "reason": "María ruling 2026-08-21: new male 90_plus tail constrains ages 90+; the incumbent six-year terminal band left ages 91+ unconstrained."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 6103320.0,
+   "name": "voa.council_tax_stock.band_a",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 5016580.0,
+   "name": "voa.council_tax_stock.band_b",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 5654450.0,
+   "name": "voa.council_tax_stock.band_c",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 4035220.0,
+   "name": "voa.council_tax_stock.band_d",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2528140.0,
+   "name": "voa.council_tax_stock.band_e",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1343220.0,
+   "name": "voa.council_tax_stock.band_f",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 911160.0,
+   "name": "voa.council_tax_stock.band_g",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 154470.0,
+   "name": "voa.council_tax_stock.band_h",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 25746570.0,
+   "name": "voa.council_tax_stock.total",
+   "period": 2025,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 999000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1000000.0,
+   "name": "dwp.esa_claimants",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 1222944.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1269512.0,
+   "name": "dwp.uc.households_children_1",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 1058967.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1103880.0,
+   "name": "dwp.uc.households_children_2",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 473500.0,
+   "kind": "calibration_drift",
+   "ledger_value": 497665.0,
+   "name": "dwp.uc.households_children_3",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 166790.0,
+   "kind": "calibration_drift",
+   "ledger_value": 176202.0,
+   "name": "dwp.uc.households_children_4",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 75910.0,
+   "kind": "calibration_drift",
+   "ledger_value": 77894.0,
+   "name": "dwp.uc.households_children_5_or_more",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 231368.0,
+   "kind": "calibration_drift",
+   "ledger_value": 266160.0,
+   "name": "dwp.uc.households_couple_no_children",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 839379.0,
+   "kind": "calibration_drift",
+   "ledger_value": 911392.0,
+   "name": "dwp.uc.households_couple_with_children",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2868011.0,
+   "kind": "calibration_drift",
+   "ledger_value": 3191316.0,
+   "name": "dwp.uc.households_single_no_children",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2156879.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2213760.0,
+   "name": "dwp.uc.households_single_with_children",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 14000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 14412.0,
+   "name": "dwp.uc.scotland_households_child_under_1",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 7610.0,
+   "kind": "calibration_drift",
+   "ledger_value": 7553.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_0_to_1_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 12370.0,
+   "kind": "calibration_drift",
+   "ledger_value": 12318.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_10_800_to_12_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 15175.0,
+   "kind": "calibration_drift",
+   "ledger_value": 15096.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_12_000_to_13_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 12297.0,
+   "kind": "calibration_drift",
+   "ledger_value": 12422.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_13_200_to_14_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 17828.0,
+   "kind": "calibration_drift",
+   "ledger_value": 17851.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_14_400_to_15_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 14427.0,
+   "kind": "calibration_drift",
+   "ledger_value": 14493.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_15_600_to_16_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 11892.0,
+   "kind": "calibration_drift",
+   "ledger_value": 11914.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_16_800_to_18_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 9463.0,
+   "kind": "calibration_drift",
+   "ledger_value": 9478.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_18_000_to_19_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 8443.0,
+   "kind": "calibration_drift",
+   "ledger_value": 8479.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_19_200_to_20_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 8906.0,
+   "kind": "calibration_drift",
+   "ledger_value": 8732.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_1_200_to_2_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 5770.0,
+   "kind": "calibration_drift",
+   "ledger_value": 5764.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_20_400_to_21_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 3485.0,
+   "kind": "calibration_drift",
+   "ledger_value": 3525.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_21_600_to_22_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2360.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2356.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_22_800_to_24_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 1815.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1797.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_24_000_to_25_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 1186.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1214.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_25_200_to_26_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 935.0,
+   "kind": "calibration_drift",
+   "ledger_value": 958.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_26_400_to_27_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 632.0,
+   "kind": "calibration_drift",
+   "ledger_value": 654.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_27_600_to_28_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 580.0,
+   "kind": "calibration_drift",
+   "ledger_value": 578.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_28_800_to_30_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 11750.0,
+   "kind": "calibration_drift",
+   "ledger_value": 11606.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_2_400_to_3_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 10802.0,
+   "kind": "calibration_drift",
+   "ledger_value": 10672.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_3_600_to_4_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 12168.0,
+   "kind": "calibration_drift",
+   "ledger_value": 12199.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_4_800_to_6_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 12461.0,
+   "kind": "calibration_drift",
+   "ledger_value": 12405.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_6_000_to_7_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 15787.0,
+   "kind": "calibration_drift",
+   "ledger_value": 15632.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_7_200_to_8_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 14248.0,
+   "kind": "calibration_drift",
+   "ledger_value": 14298.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_8_400_to_9_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 17559.0,
+   "kind": "calibration_drift",
+   "ledger_value": 17626.0,
+   "name": "dwp/uc_payment_dist/COUPLE_NO_CHILDREN_annual_payment_9_600_to_10_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 18714.0,
+   "kind": "calibration_drift",
+   "ledger_value": 18896.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_0_to_1_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 42188.0,
+   "kind": "calibration_drift",
+   "ledger_value": 41858.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_10_800_to_12_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 41520.0,
+   "kind": "calibration_drift",
+   "ledger_value": 41349.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_12_000_to_13_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 41159.0,
+   "kind": "calibration_drift",
+   "ledger_value": 40850.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_13_200_to_14_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 42515.0,
+   "kind": "calibration_drift",
+   "ledger_value": 42101.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_14_400_to_15_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 38527.0,
+   "kind": "calibration_drift",
+   "ledger_value": 38379.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_15_600_to_16_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 38894.0,
+   "kind": "calibration_drift",
+   "ledger_value": 38725.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_16_800_to_18_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 38659.0,
+   "kind": "calibration_drift",
+   "ledger_value": 38124.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_18_000_to_19_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 34318.0,
+   "kind": "calibration_drift",
+   "ledger_value": 33871.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_19_200_to_20_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 22489.0,
+   "kind": "calibration_drift",
+   "ledger_value": 22614.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_1_200_to_2_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 30116.0,
+   "kind": "calibration_drift",
+   "ledger_value": 29950.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_20_400_to_21_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 28519.0,
+   "kind": "calibration_drift",
+   "ledger_value": 28186.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_21_600_to_22_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 26014.0,
+   "kind": "calibration_drift",
+   "ledger_value": 25960.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_22_800_to_24_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 23159.0,
+   "kind": "calibration_drift",
+   "ledger_value": 23231.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_24_000_to_25_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 20618.0,
+   "kind": "calibration_drift",
+   "ledger_value": 20598.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_25_200_to_26_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 17493.0,
+   "kind": "calibration_drift",
+   "ledger_value": 17650.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_26_400_to_27_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 15437.0,
+   "kind": "calibration_drift",
+   "ledger_value": 15499.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_27_600_to_28_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 12836.0,
+   "kind": "calibration_drift",
+   "ledger_value": 12912.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_28_800_to_30_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 26734.0,
+   "kind": "calibration_drift",
+   "ledger_value": 26768.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_2_400_to_3_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 29189.0,
+   "kind": "calibration_drift",
+   "ledger_value": 29288.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_3_600_to_4_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 33137.0,
+   "kind": "calibration_drift",
+   "ledger_value": 33072.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_4_800_to_6_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 38338.0,
+   "kind": "calibration_drift",
+   "ledger_value": 38337.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_7_200_to_8_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 40685.0,
+   "kind": "calibration_drift",
+   "ledger_value": 40556.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_8_400_to_9_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 40564.0,
+   "kind": "calibration_drift",
+   "ledger_value": 40399.0,
+   "name": "dwp/uc_payment_dist/COUPLE_WITH_CHILDREN_annual_payment_9_600_to_10_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 24639.0,
+   "kind": "calibration_drift",
+   "ledger_value": 24828.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_0_to_1_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 126949.0,
+   "kind": "calibration_drift",
+   "ledger_value": 125466.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_10_800_to_12_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 131129.0,
+   "kind": "calibration_drift",
+   "ledger_value": 129699.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_12_000_to_13_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 131289.0,
+   "kind": "calibration_drift",
+   "ledger_value": 129699.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_13_200_to_14_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 119355.0,
+   "kind": "calibration_drift",
+   "ledger_value": 117812.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_14_400_to_15_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 130802.0,
+   "kind": "calibration_drift",
+   "ledger_value": 128991.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_15_600_to_16_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 141848.0,
+   "kind": "calibration_drift",
+   "ledger_value": 139675.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_16_800_to_18_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 136835.0,
+   "kind": "calibration_drift",
+   "ledger_value": 134650.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_18_000_to_19_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 107556.0,
+   "kind": "calibration_drift",
+   "ledger_value": 106818.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_19_200_to_20_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 34670.0,
+   "kind": "calibration_drift",
+   "ledger_value": 34587.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_1_200_to_2_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 86616.0,
+   "kind": "calibration_drift",
+   "ledger_value": 86255.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_20_400_to_21_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 80294.0,
+   "kind": "calibration_drift",
+   "ledger_value": 80273.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_21_600_to_22_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 70309.0,
+   "kind": "calibration_drift",
+   "ledger_value": 70319.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_22_800_to_24_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 50510.0,
+   "kind": "calibration_drift",
+   "ledger_value": 50805.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_24_000_to_25_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 42522.0,
+   "kind": "calibration_drift",
+   "ledger_value": 43132.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_25_200_to_26_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 33508.0,
+   "kind": "calibration_drift",
+   "ledger_value": 34342.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_26_400_to_27_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 27063.0,
+   "kind": "calibration_drift",
+   "ledger_value": 27650.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_27_600_to_28_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 21663.0,
+   "kind": "calibration_drift",
+   "ledger_value": 22058.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_28_800_to_30_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 43623.0,
+   "kind": "calibration_drift",
+   "ledger_value": 43550.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_2_400_to_3_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 55622.0,
+   "kind": "calibration_drift",
+   "ledger_value": 55560.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_3_600_to_4_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 67901.0,
+   "kind": "calibration_drift",
+   "ledger_value": 68058.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_4_800_to_6_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 89314.0,
+   "kind": "calibration_drift",
+   "ledger_value": 89174.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_6_000_to_7_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 118641.0,
+   "kind": "calibration_drift",
+   "ledger_value": 117236.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_7_200_to_8_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 99069.0,
+   "kind": "calibration_drift",
+   "ledger_value": 98877.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_8_400_to_9_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 102251.0,
+   "kind": "calibration_drift",
+   "ledger_value": 102069.0,
+   "name": "dwp/uc_payment_dist/LONE_PARENT_annual_payment_9_600_to_10_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 102312.0,
+   "kind": "calibration_drift",
+   "ledger_value": 101189.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_0_to_1_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 95698.0,
+   "kind": "calibration_drift",
+   "ledger_value": 94296.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_10_800_to_12_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 106663.0,
+   "kind": "calibration_drift",
+   "ledger_value": 106102.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_12_000_to_13_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 181180.0,
+   "kind": "calibration_drift",
+   "ledger_value": 182183.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_13_200_to_14_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 189861.0,
+   "kind": "calibration_drift",
+   "ledger_value": 191730.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_14_400_to_15_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 129174.0,
+   "kind": "calibration_drift",
+   "ledger_value": 130302.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_15_600_to_16_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 84690.0,
+   "kind": "calibration_drift",
+   "ledger_value": 86110.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_16_800_to_18_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 46244.0,
+   "kind": "calibration_drift",
+   "ledger_value": 47330.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_18_000_to_19_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 26481.0,
+   "kind": "calibration_drift",
+   "ledger_value": 27065.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_19_200_to_20_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 120819.0,
+   "kind": "calibration_drift",
+   "ledger_value": 121018.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_1_200_to_2_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 18143.0,
+   "kind": "calibration_drift",
+   "ledger_value": 18536.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_20_400_to_21_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 12325.0,
+   "kind": "calibration_drift",
+   "ledger_value": 12726.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_21_600_to_22_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 9555.0,
+   "kind": "calibration_drift",
+   "ledger_value": 9793.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_22_800_to_24_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 6230.0,
+   "kind": "calibration_drift",
+   "ledger_value": 6398.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_24_000_to_25_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 5884.0,
+   "kind": "calibration_drift",
+   "ledger_value": 6020.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_25_200_to_26_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 5362.0,
+   "kind": "calibration_drift",
+   "ledger_value": 5488.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_26_400_to_27_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 1786.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1829.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_27_600_to_28_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 1491.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1543.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_28_800_to_30_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 173925.0,
+   "kind": "calibration_drift",
+   "ledger_value": 173855.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_2_400_to_3_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 375706.0,
+   "kind": "calibration_drift",
+   "ledger_value": 369404.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_3_600_to_4_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 200713.0,
+   "kind": "calibration_drift",
+   "ledger_value": 197717.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_4_800_to_6_000",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 107860.0,
+   "kind": "calibration_drift",
+   "ledger_value": 106706.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_6_000_to_7_200",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 144036.0,
+   "kind": "calibration_drift",
+   "ledger_value": 143277.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_7_200_to_8_400",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 377221.0,
+   "kind": "calibration_drift",
+   "ledger_value": 379652.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_8_400_to_9_600",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 341138.0,
+   "kind": "calibration_drift",
+   "ledger_value": 341457.0,
+   "name": "dwp/uc_payment_dist/SINGLE_annual_payment_9_600_to_10_800",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 67727478991.59665,
+   "kind": "calibration_drift",
+   "ledger_value": 65937000000.0,
+   "name": "hmrc.cgt.gains_total",
+   "period": 2025,
+   "reason": "Ledger carries the HMRC 2023-24 outturn value GBP 65,937,000,000 and holds it by identity under the current doctrine; the incumbent Fixture B row is GBP 67,727,478,991.60 at 2025 because it carries a forecast/uprated value. Signed as a doctrine consequence, not a binding error."
+  },
+  {
+   "fixture_value": 1236000000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1000000000.0,
+   "name": "hmrc.salary_sacrifice.nics_relief_employee",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2987000000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 3400000000.0,
+   "name": "hmrc.salary_sacrifice.nics_relief_employer",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 3379200.0,
+   "kind": "calibration_drift",
+   "ledger_value": 3300000.0,
+   "name": "hmrc.salary_sacrifice.users_above_cap",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 4403200.0,
+   "kind": "calibration_drift",
+   "ledger_value": 4300000.0,
+   "name": "hmrc.salary_sacrifice.users_below_cap",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 7884800.0,
+   "kind": "calibration_drift",
+   "ledger_value": 7700000.0,
+   "name": "hmrc.salary_sacrifice.users_total",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 557000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 556551.0,
+   "name": "isc.private_school_students",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2057128451236.5015,
+   "kind": "calibration_drift",
+   "ledger_value": 2103053000000.0,
+   "name": "ons.land.corporate_land_value",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 5042871548763.499,
+   "kind": "calibration_drift",
+   "ledger_value": 4559831000000.0,
+   "name": "ons.land.household_land_value",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 7100000000000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 7117771000000.0,
+   "name": "ons.land.land_value",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 1698816.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1744355.0,
+   "name": "ons.population.female_0_4",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2041879.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2052052.0,
+   "name": "ons.population.female_10_14",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2036402.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2002835.0,
+   "name": "ons.population.female_15_19",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2033478.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2034609.0,
+   "name": "ons.population.female_20_24",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2258028.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2291610.0,
+   "name": "ons.population.female_25_29",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2443559.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2463301.0,
+   "name": "ons.population.female_30_34",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2497122.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2472291.0,
+   "name": "ons.population.female_35_39",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2356214.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2333109.0,
+   "name": "ons.population.female_40_44",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2135556.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2088285.0,
+   "name": "ons.population.female_45_49",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2206473.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2255231.0,
+   "name": "ons.population.female_50_54",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2340737.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2360202.0,
+   "name": "ons.population.female_55_59",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 1918180.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1941658.0,
+   "name": "ons.population.female_5_9",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2248908.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2193915.0,
+   "name": "ons.population.female_60_64",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 1890892.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1838574.0,
+   "name": "ons.population.female_65_69",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 1619328.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1622996.0,
+   "name": "ons.population.female_70_74",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 1575830.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1551183.0,
+   "name": "ons.population.female_75_79",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 1064043.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1024480.0,
+   "name": "ons.population.female_80_84",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 766765.0,
+   "kind": "calibration_drift",
+   "ledger_value": 665267.0,
+   "name": "ons.population.female_85_89",
+   "period": 2025,
+   "reason": "María ruling 2026-08-21: incumbent ons/female_85_90 maps to the uniform female 85_89 declaration. The value gap is the single-age-90 share; ages 90+ are constrained separately."
+  },
+  {
+   "fixture_value": 1784490.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1829801.0,
+   "name": "ons.population.male_0_4",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2143309.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2152800.0,
+   "name": "ons.population.male_10_14",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2149930.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2123750.0,
+   "name": "ons.population.male_15_19",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2136737.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2131646.0,
+   "name": "ons.population.male_20_24",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2246892.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2257360.0,
+   "name": "ons.population.male_25_29",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2323977.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2333326.0,
+   "name": "ons.population.male_30_34",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2325815.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2303479.0,
+   "name": "ons.population.male_35_39",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2208064.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2196013.0,
+   "name": "ons.population.male_40_44",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2040636.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2005099.0,
+   "name": "ons.population.male_45_49",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2119462.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2164862.0,
+   "name": "ons.population.male_50_54",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2234921.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2256521.0,
+   "name": "ons.population.male_55_59",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2011903.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2037199.0,
+   "name": "ons.population.male_5_9",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 2138720.0,
+   "kind": "calibration_drift",
+   "ledger_value": 2094462.0,
+   "name": "ons.population.male_60_64",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 1785048.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1734083.0,
+   "name": "ons.population.male_65_69",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 1472190.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1473758.0,
+   "name": "ons.population.male_70_74",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 1370172.0,
+   "kind": "calibration_drift",
+   "ledger_value": 1350668.0,
+   "name": "ons.population.male_75_79",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 853423.0,
+   "kind": "calibration_drift",
+   "ledger_value": 815910.0,
+   "name": "ons.population.male_80_84",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 524918.0,
+   "kind": "calibration_drift",
+   "ledger_value": 459511.0,
+   "name": "ons.population.male_85_89",
+   "period": 2025,
+   "reason": "María ruling 2026-08-21: incumbent ons/male_85_90 maps to the uniform male 85_89 declaration. The value gap is the single-age-90 share; ages 90+ are constrained separately."
+  },
+  {
+   "fixture_value": 46000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 46776.0,
+   "name": "ons.population.scotland_babies_under_1",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 892000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 896833.0,
+   "name": "ons.population.scotland_children_under_16",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 69502341.0,
+   "kind": "calibration_drift",
+   "ledger_value": 69281437.0,
+   "name": "ons.population.uk_total",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 5940000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 6146000.0,
+   "name": "ons.public_sector_employment",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 346409713.95,
+   "kind": "calibration_drift",
+   "ledger_value": 346409713.95000005,
+   "name": "slc.repayments.england_postgraduate",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 5018231834.95,
+   "kind": "calibration_drift",
+   "ledger_value": 5018231834.949999,
+   "name": "slc.repayments.england_total_higher_education",
+   "period": 2025,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  }
+ ],
+ "fixture_count": 637
+}

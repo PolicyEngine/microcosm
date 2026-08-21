@@ -989,6 +989,7 @@ class TestUsSources:
             # = 609 mapped + 42 signed exclusions + 3 unmapped declarations.
             # A sha-locked historical reference — nothing imported or executed.
             "packages/microcosm-build/src/microcosm/build/uk/uk_national_targets.json",
+            "packages/microcosm-build/src/microcosm/build/uk/target_reference_membership.json",
             "packages/microcosm-build/src/microcosm/build/uk_runtime/parity_reference.py",
             # The HMRC source contract pins the licensed SPI/ODS input
             # identities, whose reviewed provenance names the archived data

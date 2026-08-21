@@ -113,6 +113,7 @@ ALLOWED_GATE_FUNCTIONS = frozenset(
         "exported_nonzero",
         "formula_owned_export",
         "input_mass_parity",
+        "ledger_compile_parity",
         "macro_realism",
         "nonconstant_columns",
         "nonnegative_columns",
