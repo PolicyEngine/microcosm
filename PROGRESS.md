@@ -1,5 +1,38 @@
 # Battery package 3 progress
 
+## Owner continuation verification — 2026-08-21 09:17Z
+
+### State
+
+In progress. The owner-reported ACS QRF record-binding failure is the active
+boundary. The branch already carries an assigned-only correction and focused
+regressions from earlier continuations; this pass will independently bind the
+historical failure to the current call path, verify that no unassigned target
+can enter calibration-specific regime or receipt work, rerun the relevant
+regression and suite surfaces, and refresh the required `FINAL_REPORT.md`.
+
+### Done
+
+- Re-read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
+- Confirmed `PROGRESS.md` and the required `FINAL_REPORT.md` are tracked, and
+  preserved the pre-existing untracked memory-guard and host-failure artifacts.
+- Inspected branch status, current journal/report state, and recent correction
+  lineage without treating the earlier completion verdict as current proof.
+- Confirmed GitNexus graph query/context tools are unavailable in this session;
+  the required workflow will use its CLI/index route where possible and direct
+  source/history tracing as the documented fallback.
+
+### Next
+
+1. Trace the supplied raise site through current producers, selectors, receipt
+   builders, and validators; compare the historical failing objects.
+2. Audit the exact assigned target surface and focused regressions, making a
+   runtime or test change only if the current branch leaves a real gap.
+3. Run focused, directly affected, and static verification; commit each
+   coherent journal/code/test step.
+4. Refresh and commit `FINAL_REPORT.md` with the evidence and any remaining
+   host-only boundary.
+
 ## Owner continuation recheck — 2026-08-21 08:58Z
 
 ### State
