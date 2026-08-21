@@ -4,13 +4,14 @@
 
 ### State
 
-In progress. The owner reports that the two-part calibration still fails the
-host 1% verification at the ACS QRF pattern-record binding for unassigned
-`person/puf_tax_itemization/taxable_interest_income`. The prior local closure
-is historical, not a verdict for this newly reported run. Re-establish the
-exact executable/revision and receipt path behind the supplied traceback,
-identify any remaining shared-path leak, make the smallest assigned-only fix,
-add a regression that binds the invariant, and run the required verification.
+In progress. The supplied traceback is now proven to come from historical
+runtime `33bf52fe`, not the current executable: its exact line 4512 validates
+every target and line 4310 raises the reported strict family-binding error.
+The current assigned-only runtime correction is intact, the fresh three-case
+boundary matrix is green, and independent call-path and test audits found no
+remaining canonical leak. One regression gap remains: bridge the real ordinary
+and banked wide-family receipts into the canonical terminal validator so one
+test spans the exact producer-to-invariant boundary.
 
 ### Done
 
@@ -20,12 +21,40 @@ add a regression that binds the invariant, and run the required verification.
   the documented fallback.
 - Preserved the owner-provided untracked failure and memory-guard artifacts.
 - Reopened the committed root journal before making executable or test edits.
+- Bound the traceback byte-for-byte to `33bf52fe`. At that revision the real
+  15-target `puf_tax_itemization` family was split into physical
+  `puf_tax_itemization__batch_1`; the receipt builder attached QRF evidence to
+  every imputed target, and the validator compared unassigned taxable interest
+  with the public family before consulting calibration ownership.
+- Traced the current early and late production paths. Both stacked owners
+  derive `regime_evidence_targets` from the immutable nine-target calibration
+  registry; ordinary and banked transfer retain regimes only for that
+  selection; receipt builders use the same selection; and validators reject
+  undeclared evidence before strict binding. All generic callers retain the
+  empty default. No alternate canonical producer, serializer, aggregate, or
+  calibration-write path broadens the selection.
+- Confirmed exact binding remains fail-closed: the current validator does not
+  legalize `__batch_N` aliases. The historical defect was evidence-surface
+  leakage, not a reason to weaken record binding and not a value-calibration
+  leak.
+- Confirmed the existing exact regression is genuinely failing-first: commit
+  `22b2c6bc` contains it while both relevant runtime objects are identical to
+  `33bf52fe`; the assigned-only runtime correction begins at `176c60fc` and is
+  hardened through `94b7aecb`.
+- Ran the exact validator regression and the real ordinary and banked
+  15-target producer regressions under the 12 GiB guard. All 3 passed with
+  exit zero and 0.569 GiB maximum observed per-process RSS.
+- Reconciled the regression audit. The exact canonical validator fixture and
+  real ordinary/banked producer are both covered, but the real generated
+  taxable-interest receipt is not currently passed into the canonical
+  validator because test-authority execution deliberately skips production
+  validation.
 
 ### Next
 
-Bind the reported failure to the exact host log and current source, trace the
-receipt producer and validator selection end to end, and establish a
-failing-first regression before changing behavior.
+Add the producer-to-validator regression bridge for ordinary and banked wide
+families, prove it fails at the supplied invariant on the historical runtime,
+then complete affected-suite and static verification.
 
 ## Reopened owner verification — 2026-08-21
 
