@@ -15,13 +15,13 @@ post-transfer calibration write.
 The supplied traceback fingerprints historical executable commit `33bf52fe`.
 The current branch already contained the assigned-only executable repair, the
 exact synthetic binding regression, and the strengthened real ordinary/banked
-producer-to-validator regression when the latest continuation audit began, so
-no duplicate runtime or test edit was made. The latest audit independently
-reconstructed the failure, traced every canonical caller and consumer, and
-rechecked the focused and directly affected matrices at the current tip. Both
-wide-family cases are proven red at the supplied invariant on the historical
-runtime and green on the current runtime. All 530 directly affected tests,
-static checks, and exact production-tree binding are green.
+producer-to-validator regression when this continuation began, so no duplicate
+runtime or test edit was made. This pass independently reconstructed the
+failure, traced every canonical caller and consumer, reconciled three
+independent audits, and reran the focused and directly affected surfaces at the
+current tip. Both wide-family cases are proven red at the supplied invariant on
+the historical runtime and green on the current runtime. All 530 directly
+affected tests, static checks, and exact production-tree binding are green.
 
 ## Root cause
 
@@ -87,6 +87,16 @@ explicitly request regime provenance for any target already on its requested
 transfer surface. No production caller exposes that choice, and canonical
 stacked validators reject evidence on unassigned targets.
 
+One branch-scope qualification is independent of this correction. The original
+lane also changed the two pinned SIPP vehicle and voluntary-filing readers to
+streaming type inference after a full-donor parser exceeded the memory ceiling.
+Those loaders output `household_vehicles_owned`, `household_vehicles_value`, and
+`would_file_taxes_voluntarily`; none overlaps the nine calibration targets or
+any calibration/evidence call path. `_LANE-NOTES.md` records the downstream
+coercion, locked-fact coverage, and guarded memory results. This continuation
+preserves those already verified operational mitigations; the assigned-only
+claim here is specifically about calibration, QRF audit, and receipt behavior.
+
 ## Regression evidence
 
 `test_gap_fill_qrf_binding_excludes_unassigned_batched_targets` constructs the
@@ -121,18 +131,19 @@ tree.
 
 ## Verification
 
-The latest continuation reran the strengthened focused matrix under the
-owner-provided 12 GiB/20 ms guard:
+An independent focused audit reran the strengthened boundary matrix:
 
 - exact taxable-interest validator regression;
 - real ordinary 15-target transfer; and
 - real banked 15-target transfer.
 
-All three passed with exit zero and maximum observed per-process RSS of 0.566
-GiB. The focused run emitted only the known joblib physical-core fallback
-warning.
+All three passed with exit zero; the ordinary case emitted only the known
+joblib physical-core fallback warning. A separate run exercised all 12
+fully-rehashed strict-binding mutation variants; all passed. These independent
+focused runs used the project environment without a memory guard.
 
-All five directly affected files then ran together under the same guard:
+All five directly affected files then ran together under the owner-provided
+12 GiB/20 ms guard:
 
 - ordinary ACS transfer: 64 tests;
 - multispine serialization: 5 tests;
@@ -141,10 +152,9 @@ All five directly affected files then ran together under the same guard:
 - H5 receipt I/O: 38 tests.
 
 All 530 passed together at the current executable/test tree with exit zero and
-maximum observed per-process RSS of 1.633 GiB. This latest run supersedes both
-the earlier pre-bridge result and the preceding 1.659 GiB continuation run.
-Warning display was disabled for the broad matrix; the focused cases emitted
-only the known joblib warning noted above.
+maximum observed per-process RSS of 1.596 GiB. This latest run supersedes the
+earlier affected-matrix results. Warning display was disabled for the broad
+matrix.
 
 Static verification also passed:
 
@@ -159,15 +169,17 @@ fresh-process shards covered all 6,608 collected repository items without a
 failed shard. Current production and test objects are also exact matches to
 reviewed regression checkpoint `ad2a44c1`; relative to the complete-suite
 checkpoint, the only package difference is the strengthened ordinary/banked
-regression in `test_us_stacked_spine.py`, whose complete 259-test file passed.
+regression in `test_us_stacked_spine.py`, whose complete 259-test file passed in
+the fresh matrix.
 
 The GitNexus debugging workflow guided the raise-site, history, caller, and
-consumer trace. A fresh local graph indexed current commit `42819d5`, but the
-sandbox denied registration in `~/.gitnexus/registry.json`, so CLI
-query/context could not consume it. Direct source and Git-object tracing
-supplied the documented fallback. Three independent read-only audits of
-runtime reachability, regression coverage, and branch scope agreed with the
-result.
+consumer trace. The normal registry-backed tools were unavailable, but the
+preserved graph indexed at `42819d5` was opened through GitNexus's read-only
+local backend. Error-text query and context resolved the regression surface;
+custom Cypher confirmed that the oversized production module was absent from
+the graph, so direct source and Git-object tracing supplied that portion of the
+documented fallback. Three independent read-only audits of runtime reachability,
+regression coverage, and branch scope agreed with the result.
 
 ## Host verification boundary
 
@@ -186,19 +198,19 @@ build-tool object, and `stacked_spine.py` object are identical at both commits
 and at current `HEAD`. Its editable environment and worker metadata bind it to
 this worktree path, but its artifacts likewise embed no Microcosm revision.
 
-At the final read-only snapshot, `2026-08-21 09:15:36Z`, the retry remained
+At the final read-only snapshot, `2026-08-21 09:44:11Z`, the retry remained
 live and nonterminal. It had rebuilt taxable interest, completed all eight late
-`puf_tax_itemization__batch_1` targets, and entered the next late-producer DAG,
-reaching `tax_unit/puf_tax_itemization` target 1/6
-`domestic_production_ald`, without recurrence of the historical exception.
-The sole taxable-interest log entry recorded successful checkpoint creation.
-However, final stacked gap-fill validation had not observably returned, so fit
-completion is not claimed as passage of the supplied receipt invariant. Python
-writers still held `build.log` open and the resource guard still emitted
-heartbeats. There was no traceback, `ValueError`, binding text, terminal exit
-marker, transferred or simulated checkpoint, final `pool.h5`,
-`pool.manifest.json`, or `pool.gates.json`. This is progress only, not a
-terminal pass or certification verdict.
+`puf_tax_itemization__batch_1` targets, passed several later bounded families,
+and reached target 3/8 `farm_income` in
+`person/puf_tax_itemization__batch_3`, without recurrence of the historical
+exception. The sole taxable-interest log entry recorded successful checkpoint
+creation. However, final stacked gap-fill validation had not observably
+returned, so fit completion is not claimed as passage of the supplied receipt
+invariant. `build.log` changed at `09:43:45Z` and the external guard emitted a
+fresh wait heartbeat at `09:44:09Z`. There was no traceback, `ValueError`,
+binding text, terminal exit marker, transferred or simulated checkpoint, final
+`pool.h5`, `pool.manifest.json`, or `pool.gates.json`. This is progress only,
+not a terminal pass or certification verdict.
 
 Completion of the external boundary requires a durable, terminal,
 revision-bound 1% result with passing final pool, manifest, and gates artifacts.
@@ -236,4 +248,10 @@ This continuation is recorded by:
   boundary; and
 - `77581afb` — refresh the required final report with the current local
   verification; and
-- this commit — record the final host snapshot and close the owner recheck.
+- `2d5e4540` — reopen the current required progress journal;
+- `c2448d7f` — record the independent raise-site, caller, history, and
+  regression diagnosis;
+- `e2e0d5d5` — record the fresh guarded 530-test matrix, static checks, and
+  exact object bindings; and
+- this commit — refresh the required report with the current verification and
+  nonterminal host boundary.
