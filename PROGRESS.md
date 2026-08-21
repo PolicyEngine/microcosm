@@ -6,9 +6,9 @@ Dual-review remediation is in progress on `passive-pass-through-722` as of
 2026-08-21. The real merge of already-fetched `origin/main` at `2c7a7218` is
 committed as `d9f19c66`, with the supervisor-approved resolutions reproduced
 exactly. The post-merge resource closure and first-class typed passive contract
-are regenerated and their fail-closed coverage ledger is verified. Work
-remains offline: no fetch, push, PR mutation, publication, or promotion is in
-scope.
+are regenerated and their fail-closed coverage ledger is verified. The
+non-vacuous QBI preservation regression is also complete. Work remains offline:
+no fetch, push, PR mutation, publication, or promotion is in scope.
 
 ## Done
 
@@ -51,6 +51,16 @@ scope.
   and 40/40 inventory checks. The targeted adapter, schema/identity,
   field-ledger, inventory, and coverage suite passes 45 tests; the US generator
   check and targeted Ruff checks are also clean.
+- Replaced the vacuous passive wrapper preservation proxy with current-main QBI
+  reconciliation on both the baseline and passive-staged paths. Seed 13
+  realizes exactly two nonzero rows (positions 25 and 36) while all 15 incumbent
+  QBI leaves retain identical dtype and bytes.
+- Strengthened the production multispine regression with a $2 million
+  partnership-income fixture. Production seed 0 realizes exactly one nonzero
+  row (position 5, amount `158609.82342210703`) and every incumbent QBI leaf is
+  byte-identical to the no-passive current-main pipeline. The independent
+  full-length RNG-family array test remains in place; all three focused tests
+  pass and targeted Ruff is clean.
 - The implementation and verification bullets below describe the historical
   pre-review checkpoint at `a4d93f78`; the verdict supersedes its former
   completion claim.
@@ -107,9 +117,6 @@ scope.
 
 ## Next
 
-- Replace the vacuous preservation proxy with a nonzero-realization regression
-  that executes the current-main QBI pipeline and byte-compares every incumbent
-  QBI column before and after the passive stage.
 - Fail the release-input gate when a required manifest variable is absent from
   the locked engine registry; cover both absent-variable and all-zero-required
   failure modes and document the 1.764.6/#9306 engine-inert boundary honestly.

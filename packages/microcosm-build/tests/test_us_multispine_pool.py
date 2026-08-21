@@ -3085,6 +3085,9 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
 def test_passive_assignment_preserves_archived_qbi_leaf_bytes() -> None:
     pytest.importorskip("policyengine_us")
     frame = _qbi_ready_derive_frame()
+    person = frame.table("person").copy()
+    person["partnership_income"] = 2_000_000.0
+    frame = _replace_person(frame, person)
     without_passive = with_us_qbi_input_reconciliation(
         _complete_schedule_d_input(frame).frame
     ).table("person")
@@ -3093,11 +3096,15 @@ def test_passive_assignment_preserves_archived_qbi_leaf_bytes() -> None:
         frame
     ).frame.table("person")
 
+    passive = with_passive[US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN].to_numpy()
+    assert np.flatnonzero(passive).tolist() == [5]
+    assert passive[5] == pytest.approx(158_609.82342210703)
+
     for column in US_QBI_OUTPUT_COLUMNS:
-        np.testing.assert_array_equal(
-            with_passive[column].to_numpy(),
-            without_passive[column].to_numpy(),
-        )
+        baseline = without_passive[column].to_numpy(copy=False)
+        staged = with_passive[column].to_numpy(copy=False)
+        assert staged.dtype.str == baseline.dtype.str
+        assert staged.tobytes() == baseline.tobytes()
 
 
 def _qbi_ready_derive_frame() -> Frame:

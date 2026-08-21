@@ -18,6 +18,7 @@ from microcosm.build.us_runtime import qbi_passive_passthrough as passive_module
 from microcosm.build.us_runtime.qbi_inputs import (
     US_QBI_BOOLEAN_OUTPUT_COLUMNS,
     US_QBI_OUTPUT_COLUMNS,
+    with_us_qbi_input_reconciliation,
 )
 from microcosm.build.us_runtime.qbi_passive_passthrough import (
     QBI_PASSIVE_EVIDENCE_RESOURCE,
@@ -122,6 +123,9 @@ def _qbi_frame() -> Frame:
             "s_corp_income": np.where(positions % 5 == 0, 20_000.0, 0.0),
             "rental_income": positions.astype(np.float64) * 100.0,
             "estate_income": positions.astype(np.float64) * 10.0,
+            "self_employment_income_before_lsr": (
+                positions.astype(np.float64) + 1_000.0
+            ),
         }
     )
     return _frame(pd.DataFrame(columns))
@@ -340,28 +344,26 @@ def test_assignment_uses_independent_full_length_rng_families() -> None:
     assert np.count_nonzero(form_masked[~support]) == 0
 
 
-def test_frame_wrapper_preserves_all_existing_qbi_columns_byte_for_byte() -> None:
+def test_current_qbi_pipeline_preserves_leaf_bytes_when_passive_realizes() -> None:
     frame = _qbi_frame()
-    before = frame.table("person")
+    before = with_us_qbi_input_reconciliation(frame).table("person")
     qbi_bytes = {
         name: (before[name].dtype.str, before[name].to_numpy(copy=True).tobytes())
         for name in US_QBI_OUTPUT_COLUMNS
     }
 
-    result = with_us_qbi_passive_passthrough_assignment(frame, seed=31)
-    alternate_seed = with_us_qbi_passive_passthrough_assignment(frame, seed=32)
-    after = result.table("person")
-    alternate = alternate_seed.table("person")
+    after = with_us_qbi_input_reconciliation(
+        with_us_qbi_passive_passthrough_assignment(frame, seed=13)
+    ).table("person")
 
     assert US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN not in before
     assert US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN in after
     for name, (dtype, raw) in qbi_bytes.items():
         assert after[name].dtype.str == dtype
         assert after[name].to_numpy(copy=False).tobytes() == raw
-        assert alternate[name].dtype.str == dtype
-        assert alternate[name].to_numpy(copy=False).tobytes() == raw
     passthrough = after["partnership_income"] + after["s_corp_income"]
     passive = after[US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN]
+    assert np.flatnonzero(passive.to_numpy()).tolist() == [25, 36]
     assert passive.between(0.0, passthrough.clip(lower=0.0)).all()
 
 
