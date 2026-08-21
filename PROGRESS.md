@@ -9,7 +9,8 @@ leaking runtime, and the current source is scoped to the immutable nine-target
 calibration registry at producer, evidence-attachment, and validator
 boundaries. The exact failing target is unassigned. The existing regression is
 demonstrably failing-first, and all 14 decisive current cases pass under the
-owner guard. Broader affected-suite, static, and live-host checks remain.
+owner guard. All 529 directly affected cases also pass in one guarded process.
+Static and final live-host reconciliation remain.
 
 ### Done
 
@@ -50,12 +51,17 @@ owner guard. Broader affected-suite, static, and live-host checks remain.
   `HEAD` under the owner 12 GiB/20 ms guard. All 14 passed with a 0.570 GiB
   maximum observed per-process RSS; the only warning was joblib's logical-core
   fallback.
+- Collected the five directly affected ordinary-transfer,
+  multispine-serialization, stacked-spine, pool-tool, and H5 files at 64, 5,
+  258, 164, and 38 tests respectively: 529 total.
+- Ran all 529 affected tests together under the owner guard with warning
+  summaries disabled. Pytest reached 100% with exit zero and no failures;
+  maximum observed per-process RSS was 1.589 GiB.
 
 ### Next
 
-Run all directly affected test files under the owner guard, reconcile the
-independent audits and live host state, then rerun lint, format, whitespace,
-and executable-drift checks before refreshing `FINAL_REPORT.md`.
+Reconcile the independent audits and live host state, then rerun lint, format,
+whitespace, and executable-drift checks before refreshing `FINAL_REPORT.md`.
 
 ## Current continuation — 2026-08-21
 
