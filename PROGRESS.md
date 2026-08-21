@@ -4,9 +4,12 @@
 
 ### State
 
-Active. Re-auditing the owner-reported host 1% ACS QRF record-binding failure
-from the invariant raise site against the current branch; prior journal
-completion claims are being treated as historical evidence, not current truth.
+Diagnosis complete; verification pending. The traceback line numbers exactly
+identify bad commit `33bf52fe`, where every imputed target carried QRF regime
+evidence and the canonical validator performed exact record binding before
+checking calibration assignment. The current branch already contains the
+complete scoped correction and exact regression coverage, so no duplicate
+runtime or test edit is warranted unless fresh verification exposes a gap.
 
 ### Done
 
@@ -14,12 +17,38 @@ completion claims are being treated as historical evidence, not current truth.
 - Preserved the owner-provided untracked failure and memory-guard artifacts.
 - Confirmed that GitNexus query/context tools are not exposed in this session,
   so direct source, call-site, regression, and Git-history tracing will be used.
+- Reconstructed the failure: the real 15-target `puf_tax_itemization` transfer
+  emitted family `puf_tax_itemization__batch_1` for unassigned
+  `taxable_interest_income`, while the old validator expected the unsplit
+  public family before consulting the immutable calibration registry.
+- Confirmed the current correction at `176c60fc`, `887df056`, and `94b7aecb`:
+  generic regime work defaults off; both stacked producers derive their opt-in
+  solely from the immutable calibration specs; both receipt builders omit QRF
+  evidence for unassigned targets; and both validators reject forged
+  unassigned evidence before retaining exact binding for assigned targets.
+- Enumerated the live canonical selection: exactly two early and seven late
+  specs across model-required, source-operator, and adult-care families;
+  `taxable_interest_income` is absent. The 15-target public family remains on
+  the transfer surface but has no selected target.
+- Audited the exact regressions already committed: the synthetic canonical
+  validator case rejects forged batched evidence and accepts the evidence-free
+  legacy receipt; the real banked wide-family producer proves the target's
+  record has no regimes or receipt evidence; and the assigned-target mutation
+  suite preserves strict record-family equality, including a rehashed
+  plausible `__batch_1` alias.
+- Verified that the current `microcosm-build/src`, `tools`, and `specs` Git
+  trees exactly match all-build-suite checkpoint `a5be536f`; only the already
+  committed three-line strict-binding regression differs in the affected test
+  tree.
+- Reconciled independent history and regression audits. Both found the scoped
+  correction complete with no later executable regression or material test
+  gap; the regression audit also ran its broader 17-case selection green.
 
 ### Next
 
-Trace the validator, receipt producers, immutable calibration selectors, and
-the exact taxable-interest regression; independently establish whether a code
-or test gap remains before running focused and affected-suite verification.
+Run the 14 decisive focused cases under the owner memory guard, commit their
+result, then run the five-file affected suite and static checks before updating
+the final report.
 
 The completion snapshots below are historical until this continuation closes.
 
