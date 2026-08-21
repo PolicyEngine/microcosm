@@ -1,0 +1,943 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "calibration.schema.json",
+ "title": "Calibration: full mathematical and resolved solver contract",
+ "x-spec-surface": "normative",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "contract_id",
+  "version",
+  "solver",
+  "targets",
+  "refit_contracts",
+  "release_modes",
+  "tail_contracts"
+ ],
+ "properties": {
+  "contract_id": {"const": "us_fiscal_calibration_runtime"},
+  "version": {"type": "integer", "minimum": 1},
+  "targets": {"$ref": "#/$defs/targets"},
+  "solver": {"$ref": "#/$defs/solver"},
+  "refit_contracts": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["default_sparse", "exact_k"],
+   "properties": {
+    "default_sparse": {"$ref": "#/$defs/refit_contract"},
+    "exact_k": {"$ref": "#/$defs/refit_contract"}
+   }
+  },
+  "release_modes": {"$ref": "#/$defs/release_modes"},
+  "tail_contracts": {"$ref": "#/$defs/tail_contracts"}
+ },
+ "$defs": {
+  "targets": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "source",
+    "geography_layers",
+    "cd_policy",
+    "facts_sha256",
+    "manifest_sha256",
+    "default_geography_layers",
+    "congressional_district",
+    "county",
+    "negative_target_policy",
+    "zero_target_policy",
+    "matrix"
+   ],
+   "properties": {
+    "source": {"const": "chronicle_facts"},
+    "geography_layers": {"$ref": "#/$defs/geography_layers"},
+    "cd_policy": {"const": "always_present_report_attainment"},
+    "facts_sha256": {"$ref": "#/$defs/run_request"},
+    "manifest_sha256": {"$ref": "#/$defs/run_request"},
+    "default_geography_layers": {"$ref": "#/$defs/geography_layers"},
+    "congressional_district": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "included_by_default",
+      "gate_by_default",
+      "requires_vintage_crosswalk"
+     ],
+     "properties": {
+      "included_by_default": {"type": "boolean"},
+      "gate_by_default": {"type": "boolean"},
+      "requires_vintage_crosswalk": {"type": "boolean"}
+     }
+    },
+    "county": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["included"],
+     "properties": {"included": {"type": "boolean"}}
+    },
+    "negative_target_policy": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "zero_target_policy": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "matrix": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "format",
+      "weight_entity",
+      "person_target_projection",
+      "multi_period_rule",
+      "uncompilable_target",
+      "all_targets_uncompilable"
+     ],
+     "properties": {
+      "format": {"const": "scipy_csr_array"},
+      "weight_entity": {"const": "household"},
+      "person_target_projection": {"$ref": "defs.schema.json#/$defs/identifier"},
+      "multi_period_rule": {"$ref": "defs.schema.json#/$defs/identifier"},
+      "uncompilable_target": {"$ref": "defs.schema.json#/$defs/identifier"},
+      "all_targets_uncompilable": {"const": "refuse"}
+     }
+    }
+   }
+  },
+  "geography_layers": {
+   "type": "array",
+   "minItems": 1,
+   "uniqueItems": true,
+   "items": {
+    "enum": ["national", "state", "congressional_district", "county"]
+   }
+  },
+  "run_request": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["source", "default"],
+   "properties": {
+    "source": {"const": "run_request"},
+    "default": {"type": "null"}
+   }
+  },
+  "solver": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kernel",
+    "loss",
+    "row_weighting",
+    "optimizer",
+    "l0",
+    "initialization_contract",
+    "stopping_contract",
+    "hard_constraints",
+    "infeasibility_contract",
+    "target_priority_contract",
+    "l0_contract",
+    "attainment",
+    "implicit_calibrate_parameters"
+   ],
+   "properties": {
+    "kernel": {"$ref": "defs.schema.json#/$defs/kernel_ref"},
+    "loss": {"$ref": "#/$defs/loss"},
+    "row_weighting": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "optimizer": {"$ref": "#/$defs/optimizer"},
+    "l0": {"$ref": "#/$defs/l0"},
+    "initialization_contract": {"$ref": "#/$defs/initialization_contract"},
+    "stopping_contract": {"$ref": "#/$defs/stopping_contract"},
+    "hard_constraints": {"$ref": "#/$defs/hard_constraints"},
+    "infeasibility_contract": {"$ref": "#/$defs/infeasibility_contract"},
+    "target_priority_contract": {"$ref": "#/$defs/target_priority_contract"},
+    "l0_contract": {"$ref": "#/$defs/l0_contract"},
+    "attainment": {"$ref": "#/$defs/attainment"},
+    "implicit_calibrate_parameters": {"$ref": "#/$defs/implicit_parameters"}
+   }
+  },
+  "loss": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["formula_id", "params"],
+   "properties": {
+    "formula_id": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "params": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["formula", "target_scaling", "target_loss_cap", "weighting"],
+     "properties": {
+      "formula": {"type": "string", "minLength": 1},
+      "target_scaling": {"$ref": "#/$defs/target_loss_scaling"},
+      "target_loss_cap": {"type": "number", "exclusiveMinimum": 0},
+      "weighting": {"$ref": "#/$defs/loss_weighting"}
+     }
+    }
+   }
+  },
+  "target_loss_scaling": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["kind", "formula"],
+   "properties": {
+    "kind": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "formula": {"type": "string", "minLength": 1}
+   }
+  },
+  "loss_weighting": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "target_value_basis",
+    "raw_value_weight",
+    "within_basis_normalization",
+    "concept_budget",
+    "objective_basis_budget",
+    "target_family_multipliers",
+    "final_normalization"
+   ],
+   "properties": {
+    "id": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "target_value_basis": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["count_when", "otherwise"],
+     "properties": {
+      "count_when": {
+       "type": "array",
+       "minItems": 1,
+       "items": {"type": "string", "minLength": 1}
+      },
+      "otherwise": {"$ref": "defs.schema.json#/$defs/identifier"}
+     }
+    },
+    "raw_value_weight": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["formula", "value_power"],
+     "properties": {
+      "formula": {"type": "string", "minLength": 1},
+      "value_power": {"type": "number"}
+     }
+    },
+    "within_basis_normalization": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "concept_budget": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["group_budget", "allocation", "metadata_exclusions"],
+     "properties": {
+      "group_budget": {"$ref": "defs.schema.json#/$defs/identifier"},
+      "allocation": {"$ref": "defs.schema.json#/$defs/identifier"},
+      "metadata_exclusions": {
+       "type": "array",
+       "uniqueItems": true,
+       "items": {"$ref": "defs.schema.json#/$defs/identifier"}
+      }
+     }
+    },
+    "objective_basis_budget": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["amount_share", "count_share", "implementation"],
+     "properties": {
+      "amount_share": {"type": "number", "minimum": 0, "maximum": 1},
+      "count_share": {"type": "number", "minimum": 0, "maximum": 1},
+      "implementation": {"$ref": "defs.schema.json#/$defs/identifier"}
+     }
+    },
+    "target_family_multipliers": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["default", "application_order", "post_multiplier_normalization"],
+     "properties": {
+      "default": {
+       "type": "object",
+       "propertyNames": {"$ref": "defs.schema.json#/$defs/identifier"},
+       "additionalProperties": {"type": "number", "exclusiveMinimum": 0}
+      },
+      "application_order": {"$ref": "defs.schema.json#/$defs/identifier"},
+      "post_multiplier_normalization": {"$ref": "defs.schema.json#/$defs/identifier"}
+     }
+    },
+    "final_normalization": {"$ref": "defs.schema.json#/$defs/identifier"}
+   }
+  },
+  "optimizer": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "name",
+    "dtype",
+    "kernel",
+    "parameterization",
+    "returned_weight_dtype",
+    "schedule",
+    "arguments"
+   ],
+   "properties": {
+    "name": {"const": "adam"},
+    "dtype": {"enum": ["float32", "float64"]},
+    "kernel": {"$ref": "defs.schema.json#/$defs/kernel_ref"},
+    "parameterization": {"const": "log_weights"},
+    "returned_weight_dtype": {"enum": ["float32", "float64"]},
+    "schedule": {"$ref": "#/$defs/optimizer_schedule"},
+    "arguments": {"$ref": "#/$defs/adam_arguments"}
+   }
+  },
+  "optimizer_schedule": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kind",
+    "learning_rate",
+    "optimizer_steps_per_epoch",
+    "warmup_epochs",
+    "decay"
+   ],
+   "properties": {
+    "kind": {"const": "constant_learning_rate"},
+    "learning_rate": {"type": "number", "exclusiveMinimum": 0},
+    "optimizer_steps_per_epoch": {"type": "integer", "minimum": 1},
+    "warmup_epochs": {"type": "integer", "minimum": 0},
+    "decay": {"const": "none"}
+   }
+  },
+  "adam_arguments": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "params",
+    "lr",
+    "betas",
+    "eps",
+    "weight_decay",
+    "amsgrad",
+    "foreach",
+    "maximize",
+    "capturable",
+    "differentiable",
+    "fused",
+    "decoupled_weight_decay"
+   ],
+   "properties": {
+    "params": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["source"],
+     "properties": {
+      "source": {"const": "trainable_log_weights_and_optional_l0_gates"}
+     }
+    },
+    "lr": {"type": "number", "exclusiveMinimum": 0},
+    "betas": {
+     "type": "array",
+     "minItems": 2,
+     "maxItems": 2,
+     "prefixItems": [
+      {"type": "number", "minimum": 0, "exclusiveMaximum": 1},
+      {"type": "number", "minimum": 0, "exclusiveMaximum": 1}
+     ],
+     "items": false
+    },
+    "eps": {"type": "number", "exclusiveMinimum": 0},
+    "weight_decay": {"type": "number", "minimum": 0},
+    "amsgrad": {"type": "boolean"},
+    "foreach": {"type": ["boolean", "null"]},
+    "maximize": {"type": "boolean"},
+    "capturable": {"type": "boolean"},
+    "differentiable": {"type": "boolean"},
+    "fused": {"type": ["boolean", "null"]},
+    "decoupled_weight_decay": {"type": "boolean"}
+   }
+  },
+  "stopping": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["max_epochs"],
+   "properties": {
+    "max_epochs": {"type": "integer", "minimum": 1},
+    "tolerance": {"type": "number"},
+    "patience": {"type": "integer", "minimum": 1}
+   }
+  },
+  "l0": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["mode"],
+   "properties": {
+    "mode": {"enum": ["exact_k_projection", "none"]}
+   }
+  },
+  "initialization_contract": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "policy_id",
+    "weights",
+    "warm_start_default",
+    "warm_start_source",
+    "l0_gate_init_mean",
+    "l0_gate_temperature",
+    "hard_concrete_gamma",
+    "hard_concrete_zeta",
+    "training_uniform_lower_exclusive",
+    "training_uniform_upper_exclusive",
+    "positive_gate_open_probability_threshold",
+    "rng"
+   ],
+   "properties": {
+    "policy_id": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "weights": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "warm_start_default": {"type": "null"},
+    "warm_start_source": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "l0_gate_init_mean": {
+     "type": "number",
+     "exclusiveMinimum": 0,
+     "exclusiveMaximum": 1
+    },
+    "l0_gate_temperature": {"type": "number", "exclusiveMinimum": 0},
+    "hard_concrete_gamma": {"type": "number"},
+    "hard_concrete_zeta": {"type": "number"},
+    "training_uniform_lower_exclusive": {"type": "number"},
+    "training_uniform_upper_exclusive": {"type": "number"},
+    "positive_gate_open_probability_threshold": {
+     "type": "number",
+     "minimum": 0,
+     "maximum": 1
+    },
+    "rng": {"$ref": "defs.schema.json#/$defs/kernel_ref"}
+   }
+  },
+  "stopping_contract": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kind",
+    "max_epochs",
+    "early_stopping",
+    "tolerance",
+    "patience",
+    "null_fields_reason"
+   ],
+   "properties": {
+    "kind": {"const": "fixed_epochs"},
+    "max_epochs": {"type": "integer", "minimum": 1},
+    "early_stopping": {"const": false},
+    "tolerance": {"type": "null"},
+    "patience": {"type": "null"},
+    "null_fields_reason": {"$ref": "defs.schema.json#/$defs/identifier"}
+   }
+  },
+  "hard_constraints": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "mass",
+    "mass_total",
+    "max_weight_ratio",
+    "per_step_order",
+    "closing_projection",
+    "pruned_records_may_absorb_mass"
+   ],
+   "properties": {
+    "mass": {"const": "conserve"},
+    "mass_total": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "max_weight_ratio": {"type": "number", "exclusiveMinimum": 1},
+    "per_step_order": {
+     "type": "array",
+     "minItems": 1,
+     "items": {"$ref": "defs.schema.json#/$defs/identifier"}
+    },
+    "closing_projection": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "pruned_records_may_absorb_mass": {"type": "boolean"}
+   }
+  },
+  "infeasibility_contract": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["structural_cap_mass_or_empty_support", "soft_target_miss"],
+   "properties": {
+    "structural_cap_mass_or_empty_support": {"const": "refuse"},
+    "soft_target_miss": {"const": "report_and_continue"}
+   }
+  },
+  "target_priority_contract": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["policy_id", "ordering", "priority_groups", "empty_groups_reason"],
+   "properties": {
+    "policy_id": {
+     "const": "single_weighted_objective_no_lexicographic_priority"
+    },
+    "ordering": {"const": "compiled_target_registry_order"},
+    "priority_groups": {"type": "array", "maxItems": 0},
+    "empty_groups_reason": {"$ref": "defs.schema.json#/$defs/identifier"}
+   }
+  },
+  "l0_contract": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "default_mode",
+    "l0_refit_lambda_share",
+    "l0_lambda_formula",
+    "target_records",
+    "prune_relative_atol",
+    "budget_search"
+   ],
+   "properties": {
+    "default_mode": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "l0_refit_lambda_share": {"type": "number", "minimum": 0},
+    "l0_lambda_formula": {"type": "string", "minLength": 1},
+    "target_records": {"type": "null"},
+    "prune_relative_atol": {"type": "number", "minimum": 0},
+    "budget_search": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["used_by_default", "lower", "upper", "iterations", "scale"],
+     "properties": {
+      "used_by_default": {"type": "boolean"},
+      "lower": {"type": "number", "exclusiveMinimum": 0},
+      "upper": {"type": "number", "exclusiveMinimum": 0},
+      "iterations": {"type": "integer", "minimum": 1},
+      "scale": {"$ref": "defs.schema.json#/$defs/identifier"}
+     }
+    }
+   }
+  },
+  "attainment": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "verdict_stage",
+    "solver_success_is_attainment",
+    "per_target_error",
+    "per_target_tolerance_source",
+    "missing_tolerance",
+    "dropped_or_required_skipped_target",
+    "positive_target_zero_support",
+    "critical_target_policy",
+    "nonfinite_loss",
+    "final_loss_worse_than_initial"
+   ],
+   "properties": {
+    "verdict_stage": {"const": "release_gates"},
+    "solver_success_is_attainment": {"const": false},
+    "per_target_error": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "per_target_tolerance_source": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "missing_tolerance": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "dropped_or_required_skipped_target": {"const": "fail"},
+    "positive_target_zero_support": {"const": "fail"},
+    "critical_target_policy": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "nonfinite_loss": {"const": "fail"},
+    "final_loss_worse_than_initial": {"const": "fail"}
+   }
+  },
+  "implicit_parameters": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["method", "mass_reason", "target_records", "l1_lambda", "l2_anchor_weights"],
+   "properties": {
+    "method": {"const": "adam"},
+    "mass_reason": {"type": "null"},
+    "target_records": {"type": "null"},
+    "l1_lambda": {"type": "number"},
+    "l2_anchor_weights": {"type": "null"}
+   }
+  },
+  "refit_contract": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "support",
+    "subset_source",
+    "starting_weights",
+    "l0_lambda",
+    "l2_lambda",
+    "l2_anchor",
+    "mass",
+    "max_weight_ratio",
+    "epochs",
+    "learning_rate",
+    "seed"
+   ],
+   "properties": {
+    "support": {"type": "string", "minLength": 1},
+    "subset_source": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "starting_weights": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "l0_lambda": {"type": "number", "minimum": 0},
+    "l2_lambda": {"type": "number", "minimum": 0},
+    "l2_anchor": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "mass": {"const": "conserve"},
+    "max_weight_ratio": {"type": "number", "exclusiveMinimum": 1},
+    "epochs": {"type": "integer", "minimum": 1},
+    "learning_rate": {"type": "number", "exclusiveMinimum": 0},
+    "seed": {
+     "oneOf": [
+      {"type": "integer", "minimum": 0},
+      {"$ref": "#/$defs/run_request"}
+     ]
+    }
+   }
+  },
+  "release_modes": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "default_sparse_l0_refit",
+    "dense_diagnostic",
+    "exact_k_or_full_pool_refit"
+   ],
+   "properties": {
+    "default_sparse_l0_refit": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["kernel", "solver_ref", "selection_contract_ref", "refit_contract_ref"],
+     "properties": {
+      "kernel": {"const": "kernel:calibrate_l0_refit"},
+      "solver_ref": {"const": "solver"},
+      "selection_contract_ref": {"const": "solver.l0_contract"},
+      "refit_contract_ref": {"const": "refit_contracts.default_sparse"}
+     }
+    },
+    "dense_diagnostic": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["kernel", "solver_ref", "l0_mode", "refit_contract_ref"],
+     "properties": {
+      "kernel": {"const": "kernel:calibrate"},
+      "solver_ref": {"const": "solver"},
+      "l0_mode": {"const": "none"},
+      "refit_contract_ref": {"type": "null"}
+     }
+    },
+    "exact_k_or_full_pool_refit": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["kernel", "solver_ref", "selection_contract_ref", "refit_contract_ref"],
+     "properties": {
+      "kernel": {"const": "kernel:calibrate_exact_k_ladder"},
+      "solver_ref": {"const": "solver"},
+      "selection_contract_ref": {"const": "selection.exact_k"},
+      "refit_contract_ref": {"const": "refit_contracts.exact_k"}
+     }
+    }
+   }
+  },
+  "tail_contracts": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "puf_capital_gains_tail",
+    "qrf_imputed_export_tail_concentration"
+   ],
+   "properties": {
+    "puf_capital_gains_tail": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "support_contract_ref",
+      "execution_binding_ref",
+      "post_selection_gate"
+     ],
+     "properties": {
+      "support_contract_ref": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": ["domain", "support_role", "pointer"],
+       "properties": {
+        "domain": {"const": "spine"},
+        "support_role": {"const": "puf_tax_detail"},
+        "pointer": {"const": "/tail_support/legacy_contract"}
+       }
+      },
+      "execution_binding_ref": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": ["domain", "producer", "resource", "pointer"],
+       "properties": {
+        "domain": {"const": "imputation"},
+        "producer": {"const": "primary_puf_qrf"},
+        "resource": {"const": "tax_unit.@primary_puf_execution_config"},
+        "pointer": {"const": "/binding/capital_gains_tail"}
+       }
+      },
+      "post_selection_gate": {"$ref": "defs.schema.json#/$defs/kernel_ref"}
+     }
+    },
+    "qrf_imputed_export_tail_concentration": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kernel",
+      "top_k",
+      "max_top_share",
+      "min_nonzero_records",
+      "sparse_nonzero_share_max",
+      "qrf_imputed_outputs",
+      "reviewed_exclusions_default"
+     ],
+     "properties": {
+      "kernel": {"$ref": "defs.schema.json#/$defs/kernel_ref"},
+      "top_k": {"type": "integer", "minimum": 1},
+      "max_top_share": {"type": "number", "minimum": 0, "maximum": 1},
+      "min_nonzero_records": {"type": "integer", "minimum": 1},
+      "sparse_nonzero_share_max": {"type": "number", "minimum": 0, "maximum": 1},
+      "qrf_imputed_outputs": {
+       "type": "array",
+       "uniqueItems": true,
+       "items": {"$ref": "defs.schema.json#/$defs/identifier"}
+      },
+      "reviewed_exclusions_default": {
+       "type": "object",
+       "additionalProperties": false,
+       "maxProperties": 0
+      }
+     }
+    }
+   }
+  },
+  "tail_support_contract": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "agi_band_count",
+    "agi_band_policy",
+    "candidate_universe",
+    "contract_id",
+    "filing_statuses",
+    "insufficient_support_action",
+    "partition",
+    "required_minimum",
+    "version"
+   ],
+   "properties": {
+    "agi_band_count": {"type": "integer", "minimum": 1},
+    "agi_band_policy": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "candidate_universe": {"type": "string", "minLength": 1},
+    "contract_id": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "filing_statuses": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["filing_status", "filing_status_code"],
+      "properties": {
+       "filing_status": {
+        "enum": [
+         "SINGLE",
+         "JOINT",
+         "SEPARATE",
+         "HEAD_OF_HOUSEHOLD",
+         "SURVIVING_SPOUSE"
+        ]
+       },
+       "filing_status_code": {"type": "integer", "minimum": 1}
+      }
+     }
+    },
+    "insufficient_support_action": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "partition": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "required_minimum": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "version": {"type": "integer", "minimum": 1}
+   }
+  },
+  "tail_disaggregation_spec": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "aggregate_recids",
+    "buckets",
+    "enabled",
+    "forbes_top_tail",
+    "screened_fields",
+    "source",
+    "synthetic_recid_start",
+    "synthetic_tail_support_eligible"
+   ],
+   "properties": {
+    "aggregate_recids": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "items": {"type": "integer", "minimum": 1}
+    },
+    "buckets": {
+     "type": "array",
+     "minItems": 1,
+     "items": {"$ref": "#/$defs/tail_bucket"}
+    },
+    "enabled": {"type": "boolean"},
+    "forbes_top_tail": {"type": "boolean"},
+    "screened_fields": {
+     "type": "array",
+     "uniqueItems": true,
+     "items": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_]*$"}
+    },
+    "source": {"type": "string", "minLength": 1},
+    "synthetic_recid_start": {"type": "integer", "minimum": 1},
+    "synthetic_tail_support_eligible": {"type": "boolean"}
+   }
+  },
+  "tail_bucket": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["agi_lower", "agi_upper", "description", "recid", "synthetic_agi_upper"],
+   "properties": {
+    "agi_lower": {"type": ["number", "null"]},
+    "agi_upper": {"type": ["number", "null"]},
+    "description": {"type": "string", "minLength": 1},
+    "recid": {"type": "integer", "minimum": 1},
+    "synthetic_agi_upper": {"type": ["number", "null"]}
+   }
+  },
+  "tail_concentration_controls": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "max_top_share",
+    "min_nonzero_records",
+    "ordered_joint_vector_columns",
+    "ordered_recipient_agi_proxy_columns",
+    "positive_mass_five_x_target",
+    "recipient_capital_gains_topcode",
+    "recipient_owned_candidate_overlap",
+    "reference_quantile",
+    "reviewed_exclusions",
+    "schema_version",
+    "selection_comparison",
+    "selection_quantile",
+    "top_k",
+    "worsening_share_tolerance"
+   ],
+   "properties": {
+    "max_top_share": {"type": "number", "minimum": 0, "maximum": 1},
+    "min_nonzero_records": {"type": "integer", "minimum": 1},
+    "ordered_joint_vector_columns": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "items": {"$ref": "defs.schema.json#/$defs/identifier"}
+    },
+    "ordered_recipient_agi_proxy_columns": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "items": {"$ref": "defs.schema.json#/$defs/identifier"}
+    },
+    "positive_mass_five_x_target": {"type": "number", "exclusiveMinimum": 0},
+    "recipient_capital_gains_topcode": {"type": "number", "exclusiveMinimum": 0},
+    "recipient_owned_candidate_overlap": {
+     "type": "array",
+     "uniqueItems": true,
+     "items": {"$ref": "defs.schema.json#/$defs/identifier"}
+    },
+    "reference_quantile": {"type": "number", "minimum": 0, "maximum": 1},
+    "reviewed_exclusions": {
+     "type": "object",
+     "additionalProperties": false,
+     "maxProperties": 0
+    },
+    "schema_version": {"type": "integer", "minimum": 1},
+    "selection_comparison": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "selection_quantile": {"type": "number", "minimum": 0, "maximum": 1},
+    "top_k": {"type": "integer", "minimum": 1},
+    "worsening_share_tolerance": {"type": "number", "minimum": 0}
+   }
+  },
+  "soi_e19200_agi_bands": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "agi_bands",
+    "all_returns",
+    "asset",
+    "asset_sha256",
+    "runtime_schema_version",
+    "runtime_sha256"
+   ],
+   "properties": {
+    "agi_bands": {
+     "type": "array",
+     "minItems": 1,
+     "items": {"$ref": "#/$defs/soi_agi_band"}
+    },
+    "all_returns": {"$ref": "#/$defs/soi_all_returns"},
+    "asset": {"type": "string", "minLength": 1},
+    "asset_sha256": {"$ref": "defs.schema.json#/$defs/sha256"},
+    "runtime_schema_version": {"type": "integer", "minimum": 1},
+    "runtime_sha256": {"$ref": "defs.schema.json#/$defs/sha256"}
+   }
+  },
+  "soi_source_cells": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "deductible_points_amount",
+    "home_mortgage_interest_amount",
+    "investment_interest_amount",
+    "qualified_mortgage_insurance_premiums_amount",
+    "total_interest_paid_amount"
+   ],
+   "properties": {
+    "deductible_points_amount": {"type": "string", "minLength": 1},
+    "home_mortgage_interest_amount": {"type": "string", "minLength": 1},
+    "investment_interest_amount": {"type": "string", "minLength": 1},
+    "qualified_mortgage_insurance_premiums_amount": {"type": "string", "minLength": 1},
+    "total_interest_paid_amount": {"type": "string", "minLength": 1}
+   }
+  },
+  "soi_agi_band": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "deductible_points_amount",
+    "home_mortgage_interest_amount",
+    "home_mortgage_share",
+    "investment_interest_amount",
+    "label",
+    "lower_bound",
+    "non_mortgage_interest_amount",
+    "qualified_mortgage_insurance_premiums_amount",
+    "source_cells",
+    "source_row",
+    "total_interest_paid_amount",
+    "upper_bound"
+   ],
+   "properties": {
+    "deductible_points_amount": {"type": "integer", "minimum": 0},
+    "home_mortgage_interest_amount": {"type": "integer", "minimum": 0},
+    "home_mortgage_share": {"type": "number", "minimum": 0, "maximum": 1},
+    "investment_interest_amount": {"type": "integer", "minimum": 0},
+    "label": {"type": "string", "minLength": 1},
+    "lower_bound": {"type": ["number", "null"]},
+    "non_mortgage_interest_amount": {"type": "integer", "minimum": 0},
+    "qualified_mortgage_insurance_premiums_amount": {"type": "integer", "minimum": 0},
+    "source_cells": {"$ref": "#/$defs/soi_source_cells"},
+    "source_row": {"type": "integer", "minimum": 1},
+    "total_interest_paid_amount": {"type": "integer", "minimum": 0},
+    "upper_bound": {"type": ["number", "null"]}
+   }
+  },
+  "soi_all_returns": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "deductible_points_amount",
+    "home_mortgage_interest_amount",
+    "investment_interest_amount",
+    "non_mortgage_interest_amount",
+    "qualified_mortgage_insurance_premiums_amount",
+    "source_cells",
+    "source_row",
+    "total_interest_paid_amount"
+   ],
+   "properties": {
+    "deductible_points_amount": {"type": "integer", "minimum": 0},
+    "home_mortgage_interest_amount": {"type": "integer", "minimum": 0},
+    "investment_interest_amount": {"type": "integer", "minimum": 0},
+    "non_mortgage_interest_amount": {"type": "integer", "minimum": 0},
+    "qualified_mortgage_insurance_premiums_amount": {"type": "integer", "minimum": 0},
+    "source_cells": {"$ref": "#/$defs/soi_source_cells"},
+    "source_row": {"type": "integer", "minimum": 1},
+    "total_interest_paid_amount": {"type": "integer", "minimum": 0}
+   }
+  }
+ }
+}

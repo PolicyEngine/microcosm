@@ -23,6 +23,7 @@ from typing import Any
 STAGING_SCHEMA_VERSION = 1
 LATEST_STAGING_POINTER = "latest_staging.json"
 RUNS_INDEX = "runs.json"
+DEFAULT_STAGING_PREFIX = "runs"
 
 
 def _now() -> str:
@@ -71,7 +72,7 @@ class StagingTelemetry:
     candidate_release_id: str
     run_dir: Path | str
     repo_id: str | None = None
-    path_prefix: str = "runs"
+    path_prefix: str = DEFAULT_STAGING_PREFIX
     api: Any = None
     upload_interval_seconds: float = 30.0
     started_at: str = field(default_factory=_now)
@@ -79,8 +80,16 @@ class StagingTelemetry:
     def __post_init__(self) -> None:
         self.run_dir = Path(self.run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
+        # Normalize here rather than at the caller: a blank or slash-only
+        # prefix would otherwise put run files at the repo root, where the
+        # dashboard's runs/<run_id> paths cannot find them. Covers the CLI
+        # flag, the environment, and programmatic callers in one place.
+        self.path_prefix = self.path_prefix.strip().strip("/").strip()
+        if not self.path_prefix:
+            self.path_prefix = DEFAULT_STAGING_PREFIX
         self._last_upload_at = 0.0
         self._upload_failures = 0
+        self._upload_successes = 0
         self._calibration_events: list[dict[str, Any]] = []
         self._artifacts: dict[str, dict[str, Any]] = {}
         self._progress: dict[str, Any] = {
@@ -97,8 +106,22 @@ class StagingTelemetry:
 
     @property
     def repo_run_prefix(self) -> str:
-        prefix = self.path_prefix.strip("/")
-        return f"{prefix}/{self.run_id}" if prefix else self.run_id
+        # path_prefix is normalized non-empty at construction, so there is no
+        # root-level fallback here: writing runs to the repo root is the
+        # failure this class now refuses, not an alternative layout.
+        return f"{self.path_prefix}/{self.run_id}"
+
+    @property
+    def uploads_succeeded(self) -> int:
+        """How many files actually reached the staging repo.
+
+        Zero on a run that was configured to upload but never managed to --
+        no write token, revoked access, a Hub outage. Uploads are best-effort
+        and never fail the build, so this is the only signal separating a run
+        that staged from one that merely intended to.
+        """
+
+        return self._upload_successes
 
     def _api(self):
         if self.api is not None:
@@ -125,6 +148,7 @@ class StagingTelemetry:
                 repo_type="dataset",
             )
             self._upload_failures = 0
+            self._upload_successes += 1
         except Exception as exc:
             self._upload_failures += 1
             print(

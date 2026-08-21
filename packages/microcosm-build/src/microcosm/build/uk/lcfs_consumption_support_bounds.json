@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "country": "uk",
+  "policy": "Disclosure-safe outward-rounded LCFS consumption support bounds generated from pinned licensed donor tabs. Values are rounded outward to one significant figure; exact donor min/max values are not committed.",
+  "source": {
+    "ukds_study_number": 9468,
+    "doi": "10.5255/UKDA-SN-9468-3",
+    "household_tab_sha256": "6e78f0914be38e63853165486d641cbd790753cc471086210c6f672bfa18ca72",
+    "person_tab_sha256": "f32d54d83cdecf023f0ac73530be3a99372099b596e0106a56eae42a64929e50",
+    "sdc_treatment": "Exact donor min/max values are rounded outward to one significant figure before commit."
+  },
+  "bounds": {
+    "alcohol_and_tobacco_consumption": [
+      0.0,
+      20000
+    ],
+    "bus_fare_spending": [
+      0.0,
+      9000
+    ],
+    "clothing_and_footwear_consumption": [
+      0.0,
+      40000
+    ],
+    "communication_consumption": [
+      0.0,
+      40000
+    ],
+    "diesel_spending": [
+      0.0,
+      30000
+    ],
+    "education_consumption": [
+      0.0,
+      200000
+    ],
+    "food_and_non_alcoholic_beverages_consumption": [
+      0.0,
+      20000
+    ],
+    "health_consumption": [
+      0.0,
+      100000
+    ],
+    "household_furnishings_consumption": [
+      0.0,
+      200000
+    ],
+    "housing_water_and_electricity_consumption": [
+      -20000,
+      300000
+    ],
+    "miscellaneous_consumption": [
+      0.0,
+      70000
+    ],
+    "petrol_spending": [
+      0.0,
+      20000
+    ],
+    "recreation_consumption": [
+      0.0,
+      300000
+    ],
+    "restaurants_and_hotels_consumption": [
+      0.0,
+      60000
+    ],
+    "transport_consumption": [
+      0.0,
+      200000
+    ]
+  },
+  "chronicle": [
+    "Support bounds generated for LCFS consumption from source SHA pins."
+  ]
+}

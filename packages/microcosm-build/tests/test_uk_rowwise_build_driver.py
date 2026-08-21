@@ -202,7 +202,7 @@ def test_build_uk_rowwise_dataset_writes_manifest_and_outputs(
     rows = _spool_rows(output_dir)
     assert len(rows) == 1
     first_row = rows[0]
-    assert first_row.pipeline == "uk-rowwise-geography"
+    assert first_row.pipeline == "uk-locals-rowwise"
     assert first_row.rung == "f100"
     assert first_row.seed == 42
     assert first_row.disposition == "iterating"

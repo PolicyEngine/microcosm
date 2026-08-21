@@ -1,0 +1,1 @@
+Added a fail-closed UK national calibration stage that resolves activated Chronicle-backed target references, prepares their declared measures, calibrates household weights and records target diagnostics and solve evidence.

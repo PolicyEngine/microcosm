@@ -12,11 +12,15 @@ accident.
 from __future__ import annotations
 
 import json
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
 
 from microcosm.build import (
+    CountryResourceRow,
+    CountrySpec,
+    ResolvedCountrySpec,
     country_stage_plan,
     load_country_spec,
 )
@@ -69,6 +73,12 @@ class TestBelgianPackage:
     def test_loads_with_every_declared_resource(self, spec) -> None:
         assert spec.country == "be"
         assert set(spec.resources) == {
+            "spec/bundle.yaml",
+            "spec/catalogs.yaml",
+            "spec/geography.yaml",
+            "spec/sources.yaml",
+            "spec/spine.yaml",
+            "spec/vintages.yaml",
             "source_stages.json",
             "geography_spine.json",
             "target_references.json",
@@ -263,7 +273,10 @@ class TestUKCountryPackage:
     def test_spi_spine_adds_no_country_package_resources(self) -> None:
         spec = load_country_spec("uk")
 
-        assert spec.resources == (
+        legacy_rows = tuple(
+            row.path for row in spec.resource_rows if row.kind == "legacy_json"
+        )
+        assert legacy_rows == (
             "cgt_source_stages.json",
             "degenerate_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
@@ -273,20 +286,32 @@ class TestUKCountryPackage:
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
+            "need_energy_targets.json",
+            "lcfs_consumption_anchors.json",
+            "etb_policy_anchors.json",
+            "etb_services_anchors.json",
+            "nhs_consumption_by_age_gender.json",
+            "lcfs_consumption_support_bounds.json",
+            "etb_vat_support_bounds.json",
+            "etb_services_support_bounds.json",
+            "regional_land_values.json",
             "source_stages.json",
             "take_up_contract.json",
             "input_mass_reviewed_exclusions.json",
             "national_staging_build_record.json",
             "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
+            "was_wealth_support_bounds.json",
             "uk_local_target_census.json",
+            "uk_national_targets.json",
+            "target_references.json",
         )
 
-    def test_uk_source_manifest_loads_sixteen_stages(self) -> None:
+    def test_uk_source_manifest_loads_twenty_one_stages(self) -> None:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
-        assert len(spec.sources.stages) == 16
+        assert len(spec.sources.stages) == 21
 
 
 class TestExistingPackagesGeneralize:
@@ -298,14 +323,20 @@ class TestExistingPackagesGeneralize:
         assert spec.sources is not None
         assert spec.support_spine is not None
         # US target references live in fiscal_target_references.json (an
-        # untyped resource its runtime interprets); the typed
-        # target_references.json convention starts with Belgium.
+        # untyped resource its runtime interprets); Belgium and the UK use the
+        # typed target_references.json convention.
         assert spec.target_references == ()
 
     def test_uk_package_loads(self) -> None:
         spec = load_country_spec("uk")
         assert spec.country == "uk"
         assert spec.resources == (
+            "spec/bundle.yaml",
+            "spec/catalogs.yaml",
+            "spec/geography.yaml",
+            "spec/sources.yaml",
+            "spec/spine.yaml",
+            "spec/vintages.yaml",
             "cgt_source_stages.json",
             "degenerate_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
@@ -315,14 +346,207 @@ class TestExistingPackagesGeneralize:
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
+            "need_energy_targets.json",
+            "lcfs_consumption_anchors.json",
+            "etb_policy_anchors.json",
+            "etb_services_anchors.json",
+            "nhs_consumption_by_age_gender.json",
+            "lcfs_consumption_support_bounds.json",
+            "etb_vat_support_bounds.json",
+            "etb_services_support_bounds.json",
+            "regional_land_values.json",
             "source_stages.json",
             "take_up_contract.json",
             "input_mass_reviewed_exclusions.json",
             "national_staging_build_record.json",
             "qrf_tail_reviewed_exclusions.json",
             "release_input_coverage_manifest.json",
+            "was_wealth_support_bounds.json",
             "uk_local_target_census.json",
+            "uk_national_targets.json",
+            "target_references.json",
         )
+
+
+class TestResolvedCountrySpecSeam:
+    def test_country_spec_is_the_exact_resolved_alias(self) -> None:
+        assert CountrySpec is ResolvedCountrySpec
+
+    def test_generation_one_rows_retain_explicit_legacy_evidence(self) -> None:
+        spec = load_country_spec("be")
+        assert spec.resources == tuple(row.path for row in spec.resource_rows)
+        typed = [row for row in spec.resource_rows if row.kind != "legacy_json"]
+        legacy = [row for row in spec.resource_rows if row.kind == "legacy_json"]
+        assert {row.kind for row in typed} == {
+            "bundle",
+            "catalogs",
+            "geography",
+            "sources",
+            "spine",
+            "vintages",
+        }
+        assert all(
+            row.kind == "legacy_json" and row.schema_id == "legacy_json"
+            for row in legacy
+        )
+        assert spec.resolved_spec is not None
+
+    def test_resource_rows_are_frozen(self) -> None:
+        row = CountryResourceRow(
+            path="spec/bundle.yaml",
+            kind="bundle",
+            schema_id="bundle.schema.json",
+        )
+        with pytest.raises(FrozenInstanceError):
+            row.path = "spec/changed.yaml"
+
+    def test_typed_json_and_yaml_descriptors_load_together(self, tmp_path) -> None:
+        files = _minimal_package()
+        files["country_package.json"]["resources"] = [
+            {
+                "path": "gates.json",
+                "kind": "legacy_json",
+                "schema_id": "legacy_json",
+            },
+            {
+                "path": "spec/bundle.yaml",
+                "kind": "bundle",
+                "schema_id": "bundle.schema.json",
+            },
+        ]
+        del files["country_package.json"]["policy"]
+        package_dir = _write_package(tmp_path, files)
+        spec_dir = package_dir / "spec"
+        spec_dir.mkdir()
+        (spec_dir / "bundle.yaml").write_text(
+            "country: xx\nidentity_generation: 1\nseed_protocol: legacy-v1\n",
+            encoding="utf-8",
+        )
+
+        spec = load_country_spec(package_dir)
+
+        assert spec.resources == ("gates.json", "spec/bundle.yaml")
+        assert spec.gates is not None
+        assert spec.resource_rows[1] == CountryResourceRow(
+            path="spec/bundle.yaml",
+            kind="bundle",
+            schema_id="bundle.schema.json",
+        )
+        assert set(spec.resource_hashes) == {
+            "country_package.json",
+            "gates.json",
+            "spec/bundle.yaml",
+        }
+        assert spec.resolved_spec is not None
+
+    def test_generation_one_manifest_does_not_require_legacy_policy(
+        self, tmp_path
+    ) -> None:
+        package_dir = tmp_path / "xx"
+        package_dir.mkdir()
+        (package_dir / "country_package.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "country": "xx",
+                    "resources": [
+                        {
+                            "path": "bundle.yaml",
+                            "kind": "bundle",
+                            "schema_id": "bundle.schema.json",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        (package_dir / "bundle.yaml").write_text(
+            "country: xx\nidentity_generation: 1\nseed_protocol: legacy-v1\n",
+            encoding="utf-8",
+        )
+
+        spec = load_country_spec(package_dir)
+
+        assert spec.policy == ""
+        assert spec.sources is None
+        assert spec.gates is None
+        assert spec.resolved_spec is not None
+        assert spec.resolved_spec.country == "xx"
+
+    def test_generated_locks_are_admitted_but_excluded_from_authority_hashes(
+        self, tmp_path
+    ) -> None:
+        files = _minimal_package()
+        files.update(
+            {
+                "bundle.lock.json": {},
+                "engine_abi.lock.json": {},
+                "plan.lock.json": {},
+            }
+        )
+        spec = load_country_spec(_write_package(tmp_path, files))
+
+        assert set(spec.resource_hashes) == {"country_package.json", "gates.json"}
+        assert all("lock.json" not in resource for resource in spec.resources)
+
+    @pytest.mark.parametrize(
+        ("row", "message"),
+        [
+            (
+                {
+                    "path": "../escape.yaml",
+                    "kind": "bundle",
+                    "schema_id": "bundle.schema.json",
+                },
+                "normalized local POSIX path",
+            ),
+            (
+                {
+                    "path": "bundle.yaml",
+                    "kind": "executable",
+                    "schema_id": "bundle.schema.json",
+                },
+                "unknown kind",
+            ),
+            (
+                {
+                    "path": "bundle.yaml",
+                    "kind": "bundle",
+                    "schema_id": "bundle.schema.json",
+                    "entrypoint": "microcosm.build:run",
+                },
+                "closed-world",
+            ),
+            (
+                {
+                    "path": "engine_abi.lock.json",
+                    "kind": "legacy_json",
+                    "schema_id": "legacy_json",
+                },
+                "generated locks cannot be authored",
+            ),
+        ],
+    )
+    def test_invalid_typed_resource_rows_are_refused(
+        self, tmp_path, row, message
+    ) -> None:
+        files = _minimal_package()
+        files["country_package.json"]["resources"] = [row]
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match=message):
+            load_country_spec(package_dir)
+
+    def test_duplicate_typed_paths_are_refused(self, tmp_path) -> None:
+        files = _minimal_package()
+        row = {
+            "path": "gates.json",
+            "kind": "legacy_json",
+            "schema_id": "legacy_json",
+        }
+        files["country_package.json"]["resources"] = [row, dict(row)]
+        package_dir = _write_package(tmp_path, files)
+        with pytest.raises(ValueError, match="duplicate resource path"):
+            load_country_spec(package_dir)
 
 
 class TestUKGatesManifest:
@@ -353,9 +577,12 @@ class TestUKGatesManifest:
             "uk_weight_ratio",
             "uk_weights_audit",
             "uk_nonnegative_columns",
+            "uk_support",
+            "uk_aggregate_admin",
             "uk_export_surface",
             "uk_take_up_signal",
             "uk_brma_enum_domain",
+            "uk_calibration_reference_coverage",
             "uk_target_surface",
             "uk_target_fit",
             "uk_input_mass_parity",
@@ -388,21 +615,30 @@ class TestUKGatesManifest:
             params["uk_weight_ratio"]["maximum_max_to_median_ratio"]
             == 1_151.2542195939373
         )
-        assert (
-            params["uk_input_mass_parity"]["relative_tolerance"]
-            == 4.521811483823806
-        )
+        assert params["uk_input_mass_parity"]["relative_tolerance"] == 4.521811483823806
         assert params["uk_input_mass_parity"]["minimum_reference_total"] == 0.0
         assert params["uk_qrf_tail_concentration"]["top_k"] == 100
         assert (
-            params["uk_qrf_tail_concentration"]["max_top_share"]
-            == 0.9970712395200448
+            params["uk_qrf_tail_concentration"]["max_top_share"] == 0.9970712395200448
         )
         assert params["uk_qrf_tail_concentration"]["min_nonzero_records"] == 274
         assert (
             params["uk_target_fit"]["max_abs_relative_error"]
             == terminal_gates.UK_MAX_TARGET_ABS_RELATIVE_ERROR
         )
+        assert params["uk_support"]["support_bounds_resources"] == (
+            "was_wealth_support_bounds.json",
+            "lcfs_consumption_support_bounds.json",
+            "etb_vat_support_bounds.json",
+            "etb_services_support_bounds.json",
+        )
+        aggregate = params["uk_aggregate_admin"]
+        assert aggregate["default_rtol"] == 0.15
+        assert [anchor["name"] for anchor in aggregate["anchors"]] == [
+            "need_electricity_mean_spending",
+            "need_gas_mean_spending",
+            "nhs_spending_total",
+        ]
 
     def test_zero_weight_declarations_match_the_june_strata(self, manifest) -> None:
         params = {gate.id: gate.parameters for gate in manifest.gates}

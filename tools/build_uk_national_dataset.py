@@ -15,6 +15,7 @@ from pathlib import Path
 
 from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.gate_battery import GateBatteryBlockedError
+from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
 from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.logbook_adoption import (
     AttemptState,
@@ -30,6 +31,7 @@ from microcosm.build.logbook_adoption import (
     sha256_argument,
     write_error_receipt,
 )
+from microcosm.build.plan import Stage as PlanStage
 from microcosm.build.uk_runtime.cgt_imputation import (
     uk_capital_gains_imputation_stage,
 )
@@ -42,6 +44,9 @@ from microcosm.build.uk_runtime.hmrc_restoration import (
     verify_certified_uk_candidate,
 )
 from microcosm.build.uk_runtime.national_build import build_uk_national_dataset
+from microcosm.build.uk_runtime.national_calibration import (
+    UKNationalCalibrationStage,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     uk_time_period,
@@ -93,7 +98,7 @@ _UK_JUNE_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 #: loudly, so the receipt path can never absorb a real defect.
 _RUNG_NAMED_EDGE_SIGNATURE = "The least populated classes in y have only 1 member"
 _RUNG_ABORT_EXIT_CODE = 3
-_UK_NATIONAL_PIPELINE = "uk-national-staging"
+_UK_NATIONAL_PIPELINE = "uk-frs-staging"
 _REPOSITORY = Path(__file__).resolve().parents[1]
 
 
@@ -139,6 +144,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Lowercase SHA-256 of the exact calibration_diagnostics.json bytes "
             "that will ship with this release."
         ),
+    )
+    parser.add_argument(
+        "--ledger-facts",
+        type=Path,
+        help="Pinned Chronicle consumer artifact used to resolve UK targets.",
+    )
+    parser.add_argument(
+        "--national-calibration-diagnostics-json",
+        type=Path,
+        help="Per-target diagnostics emitted by the national calibration stage.",
     )
     parser.add_argument(
         "--frs-raw-dir",
@@ -821,6 +836,26 @@ def _main_recording(
             "checkpoint_dir": args.checkpoint_dir,
             "run_config": run_config,
         }
+    if (args.ledger_facts is None) != (
+        args.national_calibration_diagnostics_json is None
+    ):
+        raise ValueError(
+            "--ledger-facts and --national-calibration-diagnostics-json must "
+            "be supplied together."
+        )
+    if args.release_candidate and args.ledger_facts is None:
+        raise ValueError("a release candidate requires the national calibration stage.")
+    calibration_transform = None
+    calibration_stages: tuple[PlanStage, ...] = ()
+    if args.ledger_facts is not None:
+        ledger_artifact = load_ledger_consumer_artifact(args.ledger_facts)
+        calibration_transform = UKNationalCalibrationStage(ledger_artifact.facts)
+        calibration_stages = (
+            PlanStage(
+                name="national_calibration",
+                transform=calibration_transform,
+            ),
+        )
     result = build_uk_national_dataset(
         input_h5=args.input_h5,
         staging_h5=args.staging_h5,
@@ -843,6 +878,7 @@ def _main_recording(
             # bespoke uk/cgt_source_stages.json; absorbing it into the
             # canonical source_stages.json is WS-E follow-up work.
             uk_capital_gains_imputation_stage(args.cgt_ods),
+            *calibration_stages,
         ),
         **gate_path_argument,
         **weighted_integrity_arguments,
@@ -851,6 +887,15 @@ def _main_recording(
         sample_seed=args.sample_seed,
         release_candidate=args.release_candidate,
     )
+    if calibration_transform is not None:
+        _write_json(
+            args.national_calibration_diagnostics_json,
+            {
+                "schema_version": 1,
+                "targets": list(calibration_transform.diagnostics),
+                "calibration": calibration_transform.manifest,
+            },
+        )
     append_phase(state, "build_completed")
     _write_stage_reports(
         evidence_path=evidence_path,

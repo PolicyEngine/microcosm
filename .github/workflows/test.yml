@@ -23,7 +23,15 @@ jobs:
         # consumer change fail here instead of being skipped until a remote build.
         run: uv sync --all-packages --extra us
       - name: Behavioral contract suite + unit tests
-        run: uv run pytest
+        # One pytest process per shard. A single process accumulates the
+        # engine plus every shard's fixtures and repeatedly OOM-killed the
+        # 7 GB runner at ~91% (the runner-shutdown signature, three runs in
+        # a row); per-shard processes bound residency and give per-shard
+        # attribution if one shard ever outgrows the runner on its own.
+        run: |
+          for shard in packages/*/; do
+            uv run pytest "${shard}tests" -p no:cacheprovider
+          done
       - name: Lint
         run: uv run ruff check .
 
@@ -51,7 +59,15 @@ jobs:
       - name: Install from wheels into a clean venv
         run: |
           uv venv /tmp/wheels-venv
-          uv pip install --python /tmp/wheels-venv/bin/python dist/*.whl pytest
+          # Constrain third-party resolution to the locked dependency set:
+          # the seed protocol's normative surface includes RNG library
+          # versions (generator behavior changes draws), so an unpinned
+          # install produces a genuinely different — unsupported — spec
+          # identity and fails the sha pins by design.
+          uv export --all-packages --no-emit-workspace --no-hashes --quiet \
+            --format requirements.txt --output-file /tmp/wheel-constraints.txt
+          uv pip install --python /tmp/wheels-venv/bin/python \
+            --constraint /tmp/wheel-constraints.txt dist/*.whl pytest
       - name: Verify clean wheel boundary and import every shard
         run: |
           env -u PYTHONPATH /tmp/wheels-venv/bin/python -I - <<'PY'
@@ -86,6 +102,8 @@ jobs:
               assert path.is_relative_to(prefix), f"source import escaped wheel venv: {path}"
               print(module.__name__, module.__version__, path)
           PY
+      - name: Spec identity section digests (cross-environment diffing aid)
+        run: env -u PYTHONPATH /tmp/wheels-venv/bin/python -I tools/spec_envelope_digests.py be uk
       - name: Run the suite against the installed wheels
         run: |
           env -u PYTHONPATH /tmp/wheels-venv/bin/python -I -m pytest \

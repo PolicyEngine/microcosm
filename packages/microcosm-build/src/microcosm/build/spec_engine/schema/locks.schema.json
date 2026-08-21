@@ -1,0 +1,1040 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "locks.schema.json",
+ "title": "EMITTED artifacts (never authored; reproducible-or-rejected)",
+ "$defs": {
+  "bundle_lock": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "grammar_receipt",
+    "files",
+    "generated_authorities",
+    "seed_protocol",
+    "seed_site_bindings",
+    "vintage_authorities",
+    "spec_sha256"
+   ],
+   "properties": {
+    "grammar_receipt": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "schema_version",
+      "canonicalizer_version",
+      "migration_chain"
+     ],
+     "properties": {
+      "schema_version": {
+       "type": "integer"
+      },
+      "canonicalizer_version": {
+       "type": "integer"
+      },
+      "migration_chain": {
+       "type": "array",
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "id",
+         "sha256"
+        ],
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "sha256": {
+          "$ref": "defs.schema.json#/$defs/sha256"
+         }
+        }
+       }
+      }
+     }
+    },
+    "files": {
+     "type": "object",
+     "additionalProperties": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "sha256",
+       "byte_size"
+      ],
+      "properties": {
+       "sha256": {
+        "$ref": "defs.schema.json#/$defs/sha256"
+       },
+      "byte_size": {
+       "type": "integer",
+       "minimum": 0
+       }
+      }
+     }
+    },
+    "generated_authorities": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "engine_abi_lock": {"$ref": "#/$defs/engine_abi_lock"}
+     }
+    },
+    "seed_protocol": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "id",
+      "implementation_id",
+      "implementation_sha256",
+      "boundary",
+      "kernels",
+      "streams",
+      "sites"
+     ],
+     "properties": {
+      "id": {"const": "legacy-v1"},
+      "implementation_id": {"type": "string", "minLength": 1},
+      "implementation_sha256": {"$ref": "defs.schema.json#/$defs/sha256"},
+      "boundary": {"const": "mirror-only-until-f1"},
+      "kernels": {
+       "type": "array",
+       "minItems": 1,
+       "uniqueItems": true,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "source_modules", "source_sha256"],
+        "properties": {
+         "id": {"$ref": "defs.schema.json#/$defs/identifier"},
+         "source_modules": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+           "type": "string",
+           "pattern": "^microcosm\\.[a-z][a-z0-9_.]*$"
+          }
+         },
+         "source_sha256": {"$ref": "defs.schema.json#/$defs/sha256"}
+        }
+       }
+      },
+      "streams": {
+       "type": "array",
+       "minItems": 1,
+       "uniqueItems": true,
+       "items": {"$ref": "defs.schema.json#/$defs/identifier"}
+      },
+      "sites": {
+       "type": "array",
+       "minItems": 1,
+       "uniqueItems": true,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "id",
+         "stream",
+         "value_source",
+         "default",
+         "rng_family",
+         "rng_version",
+         "kernel",
+         "seed_material",
+         "consumption_order",
+         "reset_boundary",
+         "draw_condition",
+         "derivation"
+        ],
+        "properties": {
+         "id": {"$ref": "defs.schema.json#/$defs/identifier"},
+         "stream": {"$ref": "defs.schema.json#/$defs/stream_ref"},
+         "value_source": {
+          "enum": [
+           "derived_acs_pattern_seed",
+           "literal",
+           "run_request.build_model_seed",
+           "run_request.clone_attachment_seed",
+           "run_request.sample_seed",
+           "run_request.selection_seed",
+           "stable_string"
+          ]
+         },
+         "default": {
+          "oneOf": [
+           {"type": "null"},
+           {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 18446744073709551615
+           }
+          ]
+         },
+         "rng_family": {"type": "string", "minLength": 1},
+         "rng_version": {"type": "string", "minLength": 1},
+         "kernel": {"$ref": "defs.schema.json#/$defs/identifier"},
+         "seed_material": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+         },
+         "consumption_order": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"type": "string", "minLength": 1}
+         },
+         "reset_boundary": {"type": "string", "minLength": 1},
+         "draw_condition": {"type": "string", "minLength": 1},
+         "derivation": {"type": "string", "minLength": 1}
+        }
+       }
+      }
+     }
+    },
+    "seed_site_bindings": {
+     "type": "array",
+     "uniqueItems": true,
+     "items": {"$ref": "#/$defs/seed_site_binding"}
+    },
+    "vintage_authorities": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "records"
+     ],
+     "properties": {
+      "engine_abi_lock_sha256": {
+       "$ref": "defs.schema.json#/$defs/sha256"
+      },
+      "records": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "authority",
+         "kind",
+         "value"
+        ],
+        "properties": {
+         "authority": {
+          "type": "string",
+          "minLength": 1
+         },
+         "authority_sha256": {
+          "$ref": "defs.schema.json#/$defs/sha256"
+         },
+         "kind": {
+          "enum": [
+           "tax_period_ref",
+           "survey_period_ref",
+           "target_period_ref",
+           "geography_vintage_ref",
+           "policy_engine_surface_ref",
+           "release_series_ref"
+          ]
+         },
+         "value": {
+          "type": [
+           "string",
+           "integer"
+          ]
+         }
+        }
+       }
+      }
+     }
+    },
+    "spec_sha256": {
+     "$ref": "defs.schema.json#/$defs/sha256"
+    }
+   }
+  },
+  "seed_site_binding": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["site", "owners"],
+   "properties": {
+    "site": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "owners": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+       "kind": {
+        "enum": ["producer_node", "source_stage", "pipeline_operation"]
+       },
+       "id": {"type": "string", "minLength": 1}
+      }
+     }
+    }
+   }
+  },
+  "plan_lock": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "compiler_ir_abi",
+    "spec_binding",
+    "surfaces",
+    "typed_inventory",
+    "authorities",
+    "stage_dag",
+    "producer_graph",
+    "seed_stream_map",
+    "nodes"
+   ],
+   "properties": {
+    "compiler_ir_abi": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "version",
+      "sha256"
+     ],
+     "properties": {
+      "version": {
+       "type": "integer"
+      },
+      "sha256": {
+       "$ref": "defs.schema.json#/$defs/sha256"
+      }
+     }
+    },
+    "spec_binding": {"$ref": "#/$defs/spec_binding"},
+    "surfaces": {"$ref": "#/$defs/compiled_surfaces"},
+    "typed_inventory": {"$ref": "#/$defs/typed_inventory"},
+    "authorities": {"$ref": "#/$defs/compiled_authorities"},
+    "stage_dag": {"$ref": "#/$defs/stage_dag"},
+    "producer_graph": {"$ref": "#/$defs/producer_graph_ir"},
+    "seed_stream_map": {"$ref": "#/$defs/seed_stream_map"},
+    "nodes": {
+     "type": "array",
+     "items": {"$ref": "#/$defs/compiled_node"}
+    }
+   }
+  },
+  "spec_binding": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "country",
+    "schema_id",
+    "schema_version",
+    "canonicalizer_version",
+    "spec_sha256",
+    "attestation"
+   ],
+   "properties": {
+    "country": {"type": "string", "minLength": 2},
+    "schema_id": {"const": "country_spec"},
+    "schema_version": {"type": "integer", "minimum": 1},
+    "canonicalizer_version": {"type": "integer", "minimum": 1},
+    "spec_sha256": {"$ref": "defs.schema.json#/$defs/sha256"},
+    "attestation": {"const": "mirror-attested"}
+   }
+  },
+  "compiled_surfaces": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "normative",
+    "run_request",
+    "execution_profile",
+    "operational",
+    "chain_state",
+    "documentation"
+   ],
+   "properties": {
+    "normative": {"$ref": "#/$defs/json_object"},
+    "run_request": {"$ref": "#/$defs/json_object"},
+    "execution_profile": {"$ref": "#/$defs/json_object"},
+    "operational": {"$ref": "#/$defs/json_object"},
+    "chain_state": {"$ref": "#/$defs/json_object"},
+    "documentation": {"$ref": "#/$defs/json_object"}
+   }
+  },
+  "json_object": {
+   "type": "object",
+   "additionalProperties": {"$ref": "#/$defs/json_value"}
+  },
+  "json_value": {
+   "oneOf": [
+    {"type": ["null", "boolean", "number", "string"]},
+    {"type": "array", "items": {"$ref": "#/$defs/json_value"}},
+    {"$ref": "#/$defs/json_object"}
+   ]
+  },
+  "compiled_authorities": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["generated", "vintages"],
+   "properties": {
+    "generated": {
+     "$ref": "#/$defs/bundle_lock/properties/generated_authorities"
+    },
+    "vintages": {
+     "$ref": "#/$defs/bundle_lock/properties/vintage_authorities"
+    }
+   }
+  },
+  "typed_inventory": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["entities", "artifacts", "scopes", "columns", "references"],
+   "properties": {
+    "entities": {
+     "type": "array",
+     "uniqueItems": true,
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {"id": {"$ref": "defs.schema.json#/$defs/entity"}}
+     }
+    },
+    "artifacts": {
+     "type": "array",
+     "items": {"$ref": "#/$defs/typed_artifact"}
+    },
+    "scopes": {
+     "type": "array",
+     "items": {"$ref": "#/$defs/typed_scope"}
+    },
+    "columns": {
+     "type": "array",
+     "items": {"$ref": "#/$defs/typed_column"}
+    },
+    "references": {
+     "type": "array",
+     "items": {"$ref": "#/$defs/typed_reference"}
+    }
+   }
+  },
+  "typed_artifact": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "kind",
+    "producing_stages",
+    "entity",
+    "key",
+    "lifetime",
+    "validation",
+    "binding"
+   ],
+   "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "kind": {"type": "string", "minLength": 1},
+    "producing_stages": {
+     "type": "array",
+     "uniqueItems": true,
+     "items": {"type": "string", "minLength": 1}
+    },
+    "entity": {
+     "oneOf": [
+      {"type": "null"},
+      {"$ref": "defs.schema.json#/$defs/entity"}
+     ]
+    },
+    "key": {"type": ["string", "null"]},
+    "lifetime": {"type": "string", "minLength": 1},
+    "validation": {"type": "string", "minLength": 1},
+    "binding": {"$ref": "#/$defs/json_object"}
+   }
+  },
+  "typed_scope": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["id", "predicate_space", "entity", "predicate", "source_path"],
+   "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "predicate_space": {"type": "string", "minLength": 1},
+    "entity": {
+     "oneOf": [
+      {"type": "null"},
+      {"$ref": "defs.schema.json#/$defs/entity"}
+     ]
+    },
+    "predicate": {"$ref": "#/$defs/json_object"},
+    "source_path": {"type": "string", "minLength": 1}
+   }
+  },
+  "typed_column": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "key",
+    "entity",
+    "dtype",
+    "unit",
+    "period",
+    "vintage",
+    "nullable",
+    "domain",
+    "public_stability",
+    "unit_waiver"
+   ],
+   "properties": {
+    "key": {"type": "string", "minLength": 1},
+    "entity": {"$ref": "defs.schema.json#/$defs/entity"},
+    "dtype": {"type": "string", "minLength": 1},
+    "unit": {"type": "string", "minLength": 1},
+    "period": {"type": "string", "minLength": 1},
+    "vintage": {"type": ["string", "null"]},
+    "nullable": {"type": "boolean"},
+    "domain": {"type": "string", "minLength": 1},
+    "public_stability": {"type": "string", "minLength": 1},
+    "unit_waiver": {"type": ["string", "null"]}
+   }
+  },
+  "typed_reference": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["namespace", "id", "source_path"],
+   "properties": {
+    "namespace": {"enum": ["kernel", "source", "stream", "vintage"]},
+    "id": {"type": "string", "minLength": 1},
+    "source_path": {"type": "string", "pattern": "^[a-z_]+/"}
+   }
+  },
+  "stage_dag": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["external_stages", "nodes", "edges", "waves", "order"],
+   "properties": {
+    "external_stages": {
+     "type": "array",
+     "uniqueItems": true,
+     "items": {"type": "string", "minLength": 1}
+    },
+    "nodes": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "kernel", "depends_on"],
+      "properties": {
+       "id": {"type": "string", "minLength": 1},
+       "kind": {"type": "string", "minLength": 1},
+       "kernel": {"$ref": "defs.schema.json#/$defs/kernel_ref"},
+       "depends_on": {
+        "type": "array",
+        "uniqueItems": true,
+        "items": {"type": "string", "minLength": 1}
+       }
+      }
+     }
+    },
+    "edges": {"$ref": "#/$defs/dag_edges"},
+    "waves": {"$ref": "#/$defs/dag_waves"},
+    "order": {"$ref": "#/$defs/dag_order"}
+   }
+  },
+  "dag_edges": {
+   "type": "array",
+   "uniqueItems": true,
+   "items": {
+    "type": "array",
+    "minItems": 2,
+    "maxItems": 2,
+    "items": {"type": "string", "minLength": 1}
+   }
+  },
+  "dag_waves": {
+   "type": "array",
+   "items": {
+    "type": "array",
+    "minItems": 1,
+    "uniqueItems": true,
+    "items": {"type": "string", "minLength": 1}
+   }
+  },
+  "dag_order": {
+   "type": "array",
+   "uniqueItems": true,
+   "items": {"type": "string", "minLength": 1}
+  },
+  "producer_graph_ir": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "present",
+      "nodes",
+      "edges",
+      "waves",
+      "order",
+      "incomparable_node_policy",
+      "schedule_sha256"
+     ],
+     "properties": {
+      "present": {"const": false},
+      "nodes": {"type": "array", "maxItems": 0},
+      "edges": {"type": "array", "maxItems": 0},
+      "waves": {"type": "array", "maxItems": 0},
+      "order": {"type": "array", "maxItems": 0},
+      "incomparable_node_policy": {
+       "$ref": "imputation.schema.json#/$defs/incomparable_node_policy"
+      },
+      "schedule_sha256": {"$ref": "defs.schema.json#/$defs/sha256"}
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "present",
+      "authored",
+      "nodes",
+      "edges",
+      "waves",
+      "order",
+      "incomparable_node_policy",
+      "schedule_sha256"
+     ],
+     "properties": {
+      "present": {"const": true},
+      "authored": {"$ref": "imputation.schema.json#/$defs/producer_graph"},
+      "nodes": {
+       "type": "array",
+       "items": {"$ref": "#/$defs/compiled_graph_node"}
+      },
+      "edges": {"$ref": "#/$defs/dag_edges"},
+      "waves": {"$ref": "#/$defs/dag_waves"},
+      "order": {"$ref": "#/$defs/dag_order"},
+      "incomparable_node_policy": {
+       "$ref": "imputation.schema.json#/$defs/incomparable_node_policy"
+      },
+      "schedule_sha256": {"$ref": "defs.schema.json#/$defs/sha256"}
+     }
+    }
+   ]
+  },
+  "compiled_graph_node": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["id", "depends_on", "compiled_outputs", "write_scopes"],
+   "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "depends_on": {
+     "type": "array",
+     "uniqueItems": true,
+     "items": {"type": "string", "minLength": 1}
+    },
+    "compiled_outputs": {
+     "type": "array",
+     "items": {
+      "$ref": "imputation.schema.json#/$defs/producer_graph/properties/nodes/items/properties/outputs/items"
+     }
+    },
+    "write_scopes": {
+     "type": "array",
+     "items": {"$ref": "imputation.schema.json#/$defs/write_scope"}
+    }
+   }
+  },
+  "seed_stream_map": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "protocol_id",
+    "implementation_id",
+    "implementation_sha256",
+    "sites",
+    "owners"
+   ],
+   "properties": {
+    "protocol_id": {"const": "legacy-v1"},
+    "implementation_id": {"type": "string", "minLength": 1},
+    "implementation_sha256": {"$ref": "defs.schema.json#/$defs/sha256"},
+    "sites": {
+     "type": "array",
+     "uniqueItems": true,
+     "items": {"$ref": "#/$defs/compiled_seed_site"}
+    },
+    "owners": {
+     "type": "array",
+     "uniqueItems": true,
+     "items": {"$ref": "#/$defs/compiled_seed_owner"}
+    }
+   }
+  },
+  "compiled_seed_site": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["id", "stream", "contract", "owners"],
+   "properties": {
+    "id": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "stream": {"$ref": "defs.schema.json#/$defs/stream_ref"},
+    "contract": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "value_source",
+      "default",
+      "rng_family",
+      "rng_version",
+      "kernel",
+      "seed_material",
+      "consumption_order",
+      "reset_boundary",
+      "draw_condition",
+      "derivation"
+     ],
+     "properties": {
+      "value_source": {"type": "string", "minLength": 1},
+      "default": {"type": ["integer", "null"], "minimum": 0},
+      "rng_family": {"type": "string", "minLength": 1},
+      "rng_version": {"type": "string", "minLength": 1},
+      "kernel": {"$ref": "defs.schema.json#/$defs/identifier"},
+      "seed_material": {
+       "type": "array",
+       "minItems": 1,
+       "items": {"type": "string", "minLength": 1}
+      },
+      "consumption_order": {
+       "type": "array",
+       "minItems": 1,
+       "items": {"type": "string", "minLength": 1}
+      },
+      "reset_boundary": {"type": "string", "minLength": 1},
+      "draw_condition": {"type": "string", "minLength": 1},
+      "derivation": {"type": "string", "minLength": 1}
+     }
+    },
+    "owners": {
+     "type": "array",
+     "uniqueItems": true,
+     "items": {"$ref": "#/$defs/seed_site_binding/properties/owners/items"}
+    }
+   }
+  },
+  "compiled_seed_owner": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["kind", "id", "sites", "streams"],
+   "properties": {
+    "kind": {"enum": ["producer_node", "source_stage", "pipeline_operation"]},
+    "id": {"type": "string", "minLength": 1},
+    "sites": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "items": {"$ref": "defs.schema.json#/$defs/identifier"}
+    },
+    "streams": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "items": {"$ref": "defs.schema.json#/$defs/stream_ref"}
+    }
+   }
+  },
+  "compiled_node": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "id",
+    "node_key",
+    "node_slice_sha256",
+    "kernel",
+    "depends_on",
+    "inputs",
+    "outputs",
+    "seed_streams",
+    "node_slice"
+   ],
+   "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "node_key": {"$ref": "defs.schema.json#/$defs/sha256"},
+    "node_slice_sha256": {"$ref": "defs.schema.json#/$defs/sha256"},
+    "kernel": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["ref", "implementation_sha256"],
+     "properties": {
+      "ref": {"$ref": "defs.schema.json#/$defs/kernel_ref"},
+      "implementation_sha256": {"$ref": "defs.schema.json#/$defs/sha256"}
+     }
+    },
+    "depends_on": {
+     "type": "array",
+     "uniqueItems": true,
+     "items": {"type": "string", "minLength": 1}
+    },
+    "inputs": {
+     "type": "array",
+     "items": {
+      "$ref": "imputation.schema.json#/$defs/producer_graph/properties/nodes/items/properties/inputs/items"
+     }
+    },
+    "outputs": {
+     "type": "array",
+     "items": {
+      "$ref": "imputation.schema.json#/$defs/producer_graph/properties/nodes/items/properties/outputs/items"
+     }
+    },
+    "seed_streams": {
+     "type": "array",
+     "uniqueItems": true,
+     "items": {"$ref": "defs.schema.json#/$defs/stream_ref"}
+    },
+    "node_slice": {"$ref": "#/$defs/node_slice"}
+   }
+  },
+  "node_slice": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["domain", "resolved_params", "transitive_nodes"],
+   "properties": {
+    "domain": {"const": "microcosm.spec-engine.node-slice.v1"},
+    "resolved_params": {
+     "type": "array",
+     "minItems": 1,
+     "items": {"$ref": "#/$defs/resolved_param"}
+    },
+    "transitive_nodes": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "local_slice_sha256"],
+      "properties": {
+       "id": {"type": "string", "minLength": 1},
+       "local_slice_sha256": {"$ref": "defs.schema.json#/$defs/sha256"}
+      }
+     }
+    }
+   }
+  },
+  "resolved_param": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["path", "value_sha256", "value"],
+   "properties": {
+    "path": {"type": "string", "pattern": "^/"},
+    "value_sha256": {"$ref": "defs.schema.json#/$defs/sha256"},
+    "value": {"$ref": "#/$defs/json_value"}
+   }
+  },
+  "engine_abi_lock": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "engine",
+    "programs",
+    "remaining_stage_input_manifest"
+   ],
+   "properties": {
+    "engine": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "package",
+      "version"
+     ],
+     "properties": {
+      "package": {
+       "type": "string"
+      },
+      "version": {
+       "type": "string"
+      }
+     }
+    },
+    "programs": {
+     "type": "object",
+     "description": "The single generated engine pin. CI compares a fresh installed-version/ABI derivation BEFORE bundle compilation; bumps fail closed. Total-and-injective program->variable mapping asserted.",
+     "additionalProperties": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "variable",
+       "entity",
+       "value_type",
+       "default",
+       "engine_class",
+       "consumers"
+      ],
+      "properties": {
+       "variable": {
+        "type": "string"
+       },
+       "entity": {
+        "$ref": "defs.schema.json#/$defs/entity"
+       },
+       "value_type": {
+        "enum": [
+         "bool",
+         "float",
+         "int"
+        ]
+       },
+       "default": {},
+       "engine_class": {
+        "type": "string"
+       },
+       "consumers": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    },
+    "remaining_stage_input_manifest": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["rows", "receipt"],
+     "properties": {
+      "rows": {
+       "type": "array",
+       "minItems": 1,
+       "uniqueItems": true,
+       "items": {"$ref": "#/$defs/remaining_stage_input_row"}
+      },
+      "receipt": {"$ref": "#/$defs/remaining_stage_input_receipt"}
+     }
+    }
+   }
+  },
+  "remaining_stage_input_row": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "stage",
+    "consumer",
+    "entity",
+    "variable",
+    "execution_scope",
+    "provision",
+    "available_by",
+    "fallback"
+   ],
+   "properties": {
+    "stage": {"enum": ["derive", "seed", "simulate"]},
+    "consumer": {"type": "string", "minLength": 1},
+    "entity": {"$ref": "defs.schema.json#/$defs/entity"},
+    "variable": {"type": "string", "minLength": 1},
+    "execution_scope": {"type": "string", "minLength": 1},
+    "provision": {"type": "string", "minLength": 1},
+    "available_by": {"type": "string", "minLength": 1},
+    "fallback": {
+     "oneOf": [
+      {"type": "null"},
+      {"type": "string", "minLength": 1}
+     ]
+    }
+   }
+  },
+  "remaining_stage_input_receipt": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "schema_version",
+    "entry_count",
+    "stage_counts",
+    "consumer_counts",
+    "ssi_dependency_contract",
+    "engine_input_projection_contract",
+    "manifest_sha256",
+    "sha256"
+   ],
+   "properties": {
+    "schema_version": {"const": 1},
+    "entry_count": {"type": "integer", "minimum": 1},
+    "stage_counts": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["derive", "seed", "simulate"],
+     "properties": {
+      "derive": {"type": "integer", "minimum": 0},
+      "seed": {"type": "integer", "minimum": 0},
+      "simulate": {"type": "integer", "minimum": 0}
+     }
+    },
+    "consumer_counts": {
+     "type": "object",
+     "minProperties": 1,
+     "propertyNames": {"type": "string", "minLength": 1},
+     "additionalProperties": {"type": "integer", "minimum": 1}
+    },
+    "ssi_dependency_contract": {
+     "$ref": "#/$defs/remaining_stage_dependency_contract"
+    },
+    "engine_input_projection_contract": {
+     "$ref": "#/$defs/remaining_stage_engine_projection_contract"
+    },
+    "manifest_sha256": {"$ref": "defs.schema.json#/$defs/sha256"},
+    "sha256": {
+     "$ref": "defs.schema.json#/$defs/sha256",
+     "description": "Compatibility SHA of the validated generation-0 receipt before engine_version literals are normalized to typed references."
+    }
+   }
+  },
+  "engine_version_ref": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["kind", "pointer"],
+   "properties": {
+    "kind": {"const": "engine_abi_lock"},
+    "pointer": {"const": "/engine/version"}
+   }
+  },
+  "remaining_stage_dependency_contract": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "engine_version_ref",
+    "root",
+    "input_leaf_count",
+    "formula_node_count",
+    "edge_count",
+    "sha256"
+   ],
+   "properties": {
+    "engine_version_ref": {"$ref": "#/$defs/engine_version_ref"},
+    "root": {"type": "string", "minLength": 1},
+    "input_leaf_count": {"type": "integer", "minimum": 1},
+    "formula_node_count": {"type": "integer", "minimum": 1},
+    "edge_count": {"type": "integer", "minimum": 1},
+    "sha256": {
+     "$ref": "defs.schema.json#/$defs/sha256",
+     "description": "Compatibility SHA of the generation-0 contract containing the resolved engine version."
+    }
+   }
+  },
+  "remaining_stage_engine_projection_contract": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "engine_version_ref",
+    "input_count",
+    "default_count",
+    "sha256",
+    "defaults_sha256"
+   ],
+   "properties": {
+    "engine_version_ref": {"$ref": "#/$defs/engine_version_ref"},
+    "input_count": {"type": "integer", "minimum": 1},
+    "default_count": {"type": "integer", "minimum": 0},
+    "sha256": {
+     "$ref": "defs.schema.json#/$defs/sha256",
+     "description": "Compatibility SHA of the generation-0 projection contract containing the resolved engine version."
+    },
+    "defaults_sha256": {
+     "$ref": "defs.schema.json#/$defs/sha256",
+     "description": "Compatibility SHA of the generation-0 engine default map."
+    }
+   }
+  }
+ }
+}

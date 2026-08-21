@@ -416,7 +416,9 @@ def impute_uk_spi_income_support(
             columns=initialize_frs_channel_columns,
         )
     base_redraw_columns = tuple(stage1_base_redraw_columns)
-    unknown_redraw = sorted(set(base_redraw_columns) - set(SPI_INCOME_QRF_OUTPUT_COLUMNS))
+    unknown_redraw = sorted(
+        set(base_redraw_columns) - set(SPI_INCOME_QRF_OUTPUT_COLUMNS)
+    )
     if unknown_redraw:
         raise ValueError(
             "SPI stage-1 base redraw columns must be stage-1 QRF outputs; "
@@ -508,6 +510,8 @@ def impute_uk_spi_income_support(
         weights=person_weights.loc[training_people].to_numpy(dtype=np.float64),
         weight_kind=WeightKind.IMPORTANCE,
     )
+    # Stage 2 deliberately derives a distinct RNG stream from the single
+    # reviewed stage seed; changing this edits the derivation convention.
     stage2 = qrf_cls(n_estimators=n_estimators, seed=seed + 1).fit(
         stage2_frame,
         list(encoded_train.columns),

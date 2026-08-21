@@ -128,3 +128,61 @@ def test_upload_failures_never_raise_and_disable_after_three(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "staging upload" in err
     assert "disabling staging uploads" in err
+    # Nothing reached the repo, and the run says so. A configured destination
+    # is not evidence of delivery.
+    assert telemetry.uploads_succeeded == 0
+
+
+def test_uploads_succeeded_counts_files_that_reached_the_repo(tmp_path):
+    api = FakeApi()
+    telemetry = StagingTelemetry(
+        run_id="run-c",
+        candidate_release_id="run-c",
+        run_dir=tmp_path / "run-c",
+        repo_id="org/staging",
+        api=api,
+        upload_interval_seconds=0.0,
+    )
+
+    telemetry.stage("target_compilation", force_upload=True)
+
+    assert telemetry.uploads_succeeded == len(api.uploads)
+    assert telemetry.uploads_succeeded > 0
+
+
+def test_blank_path_prefix_falls_back_to_the_default(tmp_path):
+    # A blank or slash-only prefix would put run files at the repo root, where
+    # the dashboard's runs/<run_id> paths cannot find them.
+    for blank in ("", "   ", "/", " / "):
+        telemetry = StagingTelemetry(
+            run_id="run-e",
+            candidate_release_id="run-e",
+            run_dir=tmp_path / "run-e",
+            path_prefix=blank,
+        )
+        assert telemetry.path_prefix == "runs"
+        assert telemetry.repo_run_prefix == "runs/run-e"
+
+
+def test_path_prefix_is_trimmed_but_otherwise_respected(tmp_path):
+    telemetry = StagingTelemetry(
+        run_id="run-f",
+        candidate_release_id="run-f",
+        run_dir=tmp_path / "run-f",
+        path_prefix="  /candidate-runs/  ",
+    )
+    assert telemetry.path_prefix == "candidate-runs"
+    assert telemetry.repo_run_prefix == "candidate-runs/run-f"
+
+
+def test_uploads_succeeded_is_zero_for_a_local_only_run(tmp_path):
+    telemetry = StagingTelemetry(
+        run_id="run-d",
+        candidate_release_id="run-d",
+        run_dir=tmp_path / "run-d",
+    )
+
+    telemetry.stage("target_compilation", force_upload=True)
+
+    assert telemetry.uploads_succeeded == 0
+    assert (tmp_path / "run-d" / "progress.json").is_file()

@@ -92,7 +92,28 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
         "adjudication": "microcosm#630",
         "approved_on": "2026-08-17",
         "expires_on": "2027-02-17",
-    }
+    },
+    "owned_land": {
+        "reason": (
+            "Sparse heavy-tailed WAS donor column (0.7 percent weighted "
+            "nonzero share) whose weighted total is dominated by a handful "
+            "of large farm/estate records: the E5 stability receipt "
+            "(data/ukds/acceptance/e5/owned_land_stability_receipt.json) "
+            "measures a 37.7 percent national and 2.41x London swing "
+            "between adjacent seeds, the same realization-variance class "
+            "the archived incumbent data repo records at uk-data#448 (4.6x "
+            "Wales swing across releases). Register parity at this grain "
+            "is not meaningful "
+            "until the whole-spine comparison; the "
+            "one-month expiry enforces the end-of-workstream revisit "
+            "registered on microcosm#145 (winsorised donor or separate "
+            "land imputation are the candidate remedies)."
+        ),
+        "approved_by": "juaristi22",
+        "adjudication": "microcosm#714",
+        "approved_on": "2026-08-19",
+        "expires_on": "2026-09-19",
+    },
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
@@ -123,19 +144,19 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "609075af473c64fe7dbcb035b9254121d6c9c000c28fc67a14417bb02657d08f"
+    "728a5fe2f543f59e2797e4227269fe4516508a274b4fa5fe49559387d6b9d686"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "610512a5bbddeba355cf57de52579eca5f36cf43788be239307cc5c025e76783"
+    "f01e5459debc6f3ebfa097591749377b640a5d633e3df3825575b4ec15eeacb2"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "cb25537c8a99aa6c44911b098df10dfb7ba143dc3210400b61f847c3d0c9b12d"
+    "f358121fefc6e0e2371956dc0628c1d997ee3735e558ca3dd4526326a6add78b"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "a77111e4acecd3945d69f77f58209bf6a58eb72d39a47de9cb01e5b73d2592f4"
+    "df74556909990345bc9032f6f5db7f817d9c273f75522a85ab6e332dd8dc7355"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {
@@ -164,9 +185,16 @@ UK_GATE_BATTERY_ENTRIES = {
         "terminal",
         "nonnegative_columns",
     ),
+    "uk_support": ("support", "terminal", "support"),
+    "uk_aggregate_admin": ("aggregate_admin", "terminal", "aggregate_vs_admin"),
     "uk_export_surface": ("export_surface", "terminal", "export_surface"),
     "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
     "uk_brma_enum_domain": ("enum_domain", "terminal", "enum_domain"),
+    "uk_calibration_reference_coverage": (
+        "calibration_reference_coverage",
+        "terminal",
+        None,
+    ),
     "uk_target_surface": ("target_surface", "terminal", "target_surface"),
     "uk_target_fit": ("target_fit", "terminal", "target_fit"),
     "uk_input_mass_parity": ("input_mass_parity", "terminal", "input_mass_parity"),
@@ -748,6 +776,10 @@ def _terminal_gate_details(name: str) -> dict:
             "atol": 0.0,
             "chunk_size": 1_000_000,
         }
+    if name == "support":
+        return {"columns_checked": 13}
+    if name == "aggregate_vs_admin":
+        return {"anchors_checked": 3}
     if name == "export_surface":
         return {
             "candidate_columns": 1,
@@ -1006,6 +1038,9 @@ def _gate_battery_payload(
             details: dict = {"check": "manifest_current"}
         elif entry_id == "uk_release_family_build_stages":
             details = {"stage_names": list(stage_names)}
+        elif entry_id == "uk_calibration_reference_coverage":
+            # Mirrors _evaluate_calibration_reference_coverage's detail block.
+            details = {"activated": 15, "resolved": 15, "matrix": 15}
         else:
             details = _terminal_gate_details(detail_name)
         gates[entry_id] = {

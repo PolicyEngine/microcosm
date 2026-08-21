@@ -24,7 +24,13 @@ uv run ruff check .      # lint
 PR CI (`.github/workflows/test.yml`) uses the US-extra sync so pool-input
 ownership and consumer existence are checked against the locked PolicyEngine-US,
 then runs the test and lint commands plus a wheel-packaging gate (build every
-shard's wheel, install into a clean venv, import and test). Editable installs
+shard's wheel, install into a clean venv under the lock's constraints, import
+and test). CI runs the test suite one pytest process per shard (a single
+suite-wide process OOM-kills the 7 GB runner); locally `uv run pytest` is
+still fine. Spec identities (`spec_sha256` pins, seed digests) attest kernel
+source and locked RNG-library versions, so they legitimately move when main
+changes an attested module or dependency — CI tests the merge ref, so merge
+main and re-pin rather than hunting for an environment leak. Editable installs
 hide packaging breaks — if you touch packaging, build wheels locally before
 pushing.
 
@@ -36,7 +42,10 @@ Builds, calibrations, and releases run outside PR CI, need gated Hugging Face
 data and credentials, and cannot run from forks. Release publication is a
 deliberate human step (`tools/publish_release.sh` →
 `microcosm-publish-release`), gated by `tools/preflight_us_release_gates.py`;
-see README "Releasing & alerts". Never publish or promote artifacts as a side
+see README "Releasing & alerts". Publication also refuses a release whose
+build recorded staging telemetry that never reached its repo
+(`--allow-missing-staging` overrides); a build that declared `--no-staging`
+publishes without the flag. Never publish or promote artifacts as a side
 effect of another task.
 
 ## Root journals are history, not state

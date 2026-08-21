@@ -146,7 +146,9 @@ def test_certified_release_dir_refusal_precedes_all_side_effects() -> None:
     builder = _load_builder_module()
     tree = ast.parse(Path(builder.__file__).read_text())
     main_fn = next(
-        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "main"
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_main"
     )
     refusals = [
         n
@@ -226,7 +228,9 @@ def test_ssi_delivery_fences_are_passed_on_the_dense_arm_only() -> None:
     builder = _load_builder_module()
     tree = ast.parse(Path(builder.__file__).read_text())
     main_fn = next(
-        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "main"
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_main"
     )
     calls = [
         n
@@ -256,7 +260,9 @@ def test_delivery_gate_result_reaches_the_manifest_gates_block() -> None:
     builder = _load_builder_module()
     tree = ast.parse(Path(builder.__file__).read_text())
     main_fn = next(
-        n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == "main"
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_main"
     )
     manifest_calls = [
         n
@@ -323,7 +329,9 @@ def test_final_household_weight_evidence_writes_only_on_gate_failure_path() -> N
     main_calls = [
         (node, stack)
         for node, stack in calls
-        if any(isinstance(anc, ast.FunctionDef) and anc.name == "main" for anc in stack)
+        if any(
+            isinstance(anc, ast.FunctionDef) and anc.name == "_main" for anc in stack
+        )
     ]
     assert len(main_calls) == 1
     call_node, stack = main_calls[0]
@@ -354,7 +362,7 @@ def test_final_household_weight_evidence_writes_only_on_gate_failure_path() -> N
     # evidence (release-dir reuse, microcosm#568 round 2) before the
     # certified dataset write.
     main_fn = next(
-        anc for anc in stack if isinstance(anc, ast.FunctionDef) and anc.name == "main"
+        anc for anc in stack if isinstance(anc, ast.FunctionDef) and anc.name == "_main"
     )
 
     def _is_bound_cleanup_for(node):
@@ -1494,7 +1502,7 @@ def test_builder_pool_release_identity_is_manifest_authenticated() -> None:
             "invented-release",
             {"publication_run_id": "fixture-publication"},
         )
-    assert "_assert_pool_release_id_value" in builder.main.__code__.co_names
+    assert "_assert_pool_release_id_value" in builder._main.__code__.co_names
 
 
 def test_builder_rejects_replaced_authenticated_pool_h5_at_first_consumer(
@@ -1582,7 +1590,7 @@ def test_authenticated_pool_h5_consumers_use_one_returned_identity() -> None:
     assert "shutil.copy2(base_h5" not in source
     assert 'pool_h5.get("sha256")' not in source
 
-    main_source = inspect.getsource(builder.main)
+    main_source = inspect.getsource(builder._main)
     diagnostics_source = inspect.getsource(
         builder._write_release_calibration_diagnostics
     )
@@ -1602,7 +1610,7 @@ def test_builder_reconciles_exact_k_count_before_any_release_write() -> None:
     import inspect
 
     builder = _load_builder_module()
-    source = inspect.getsource(builder.main)
+    source = inspect.getsource(builder._main)
     count_gate = source.index("assert_exact_k_realized_count(ladder_outcome")
 
     for later_write in (
@@ -1809,7 +1817,7 @@ def test_maximum_microsim_batch_size_defaults_and_overrides(monkeypatch) -> None
 
 def test_staging_repo_can_default_from_environment(monkeypatch) -> None:
     builder = _load_builder_module()
-    monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "policyengine/populace-us-staging")
+    monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "policyengine/populace-us-canary")
     monkeypatch.setenv("POPULACE_STAGING_PREFIX", "candidate-runs")
     monkeypatch.setattr(
         sys,
@@ -1825,8 +1833,46 @@ def test_staging_repo_can_default_from_environment(monkeypatch) -> None:
 
     args = builder._parse_args()
 
-    assert args.staging_repo_id == "policyengine/populace-us-staging"
+    assert args.staging_repo_id == "policyengine/populace-us-canary"
     assert args.staging_prefix == "candidate-runs"
+
+
+def test_empty_staging_environment_does_not_disable_staging(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "")
+    monkeypatch.setenv("POPULACE_STAGING_PREFIX", "   ")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.staging_repo_id == builder.STAGING_REPO_ID
+    assert args.staging_prefix == builder.DEFAULT_STAGING_PREFIX
+
+
+def test_env_default_treats_blank_as_unset_and_trims(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    monkeypatch.delenv("POPULACE_TEST_ENV_DEFAULT", raising=False)
+    assert builder._env_default("POPULACE_TEST_ENV_DEFAULT", "fallback") == "fallback"
+
+    monkeypatch.setenv("POPULACE_TEST_ENV_DEFAULT", "")
+    assert builder._env_default("POPULACE_TEST_ENV_DEFAULT", "fallback") == "fallback"
+
+    monkeypatch.setenv("POPULACE_TEST_ENV_DEFAULT", "   ")
+    assert builder._env_default("POPULACE_TEST_ENV_DEFAULT", "fallback") == "fallback"
+
+    monkeypatch.setenv("POPULACE_TEST_ENV_DEFAULT", " org/repo ")
+    assert builder._env_default("POPULACE_TEST_ENV_DEFAULT", "fallback") == "org/repo"
 
 
 def test_soi_indicator_rows_flag_positive_component_items() -> None:
@@ -3900,6 +3946,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
         class LiveTelemetry:
             run_id = "live-telemetry-test"
+            repo_id = "policyengine/populace-us-staging"
+            uploads_succeeded = 3
 
             def stage(self, stage, **details):
                 captured.setdefault("telemetry_events", []).append(("stage", stage))
@@ -8694,7 +8742,7 @@ def test_pool_owned_fiscal_transforms_are_guarded_for_prepared_pool_input() -> N
     main_fn = next(
         node
         for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef) and node.name == "main"
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
     )
 
     def call_name(call: ast.Call) -> str | None:
@@ -9354,7 +9402,8 @@ def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path, monkeyp
         ],
     )
     args = module._parse_args()
-    assert args.staging_repo_id == "policyengine/populace-us-staging"
+    assert module.STAGING_REPO_ID == "policyengine/populace-us-staging"
+    assert args.staging_repo_id == module.STAGING_REPO_ID
     assert not args.no_staging
 
     def namespace(no_staging: bool) -> SimpleNamespace:
@@ -9373,6 +9422,7 @@ def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path, monkeyp
     )
     assert telemetry is not None
     assert telemetry.run_id == "rel-1"
+    assert telemetry.repo_id is None
 
     # --no-staging wins even when a staging destination is configured.
     assert (
@@ -9381,6 +9431,153 @@ def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path, monkeyp
         )
         is None
     )
+
+
+def test_blank_staging_repo_id_is_refused_at_parse_time(monkeypatch, capsys) -> None:
+    module = _load_builder_module()
+    argv = [
+        "--ledger-facts",
+        "facts.jsonl",
+        "--out",
+        "release",
+        "--staging-repo-id",
+        "",
+    ]
+
+    with pytest.raises(SystemExit) as excinfo:
+        module._parse_args(argv)
+
+    assert excinfo.value.code == 2
+    assert "--no-staging" in capsys.readouterr().err
+
+
+def test_blank_staging_repo_id_is_accepted_with_a_local_staging_dir(
+    tmp_path,
+) -> None:
+    module = _load_builder_module()
+    argv = [
+        "--ledger-facts",
+        "facts.jsonl",
+        "--out",
+        "release",
+        "--staging-repo-id",
+        "",
+        "--staging-dir",
+        str(tmp_path / "stage"),
+    ]
+
+    args = module._parse_args(argv)
+
+    assert args.staging_repo_id == ""
+    assert args.staging_dir == tmp_path / "stage"
+
+
+def test_a_crashed_build_marks_its_staging_run_failed(monkeypatch) -> None:
+    module = _load_builder_module()
+    recorded: list[BaseException] = []
+
+    class Telemetry:
+        def fail(self, error):
+            recorded.append(error)
+
+    monkeypatch.setattr(module, "_ACTIVE_TELEMETRY", Telemetry())
+    monkeypatch.setattr(
+        module,
+        "_main",
+        lambda argv=None: (_ for _ in ()).throw(RuntimeError("build exploded")),
+    )
+
+    with pytest.raises(RuntimeError, match="build exploded"):
+        module.main()
+
+    assert [str(error) for error in recorded] == ["build exploded"]
+
+
+def test_crash_reporting_never_replaces_the_real_traceback(monkeypatch, capsys) -> None:
+    module = _load_builder_module()
+
+    class ExplodingTelemetry:
+        def fail(self, error):
+            raise RuntimeError("telemetry itself is broken")
+
+    monkeypatch.setattr(module, "_ACTIVE_TELEMETRY", ExplodingTelemetry())
+    monkeypatch.setattr(
+        module,
+        "_main",
+        lambda argv=None: (_ for _ in ()).throw(ValueError("the real failure")),
+    )
+
+    with pytest.raises(ValueError, match="the real failure"):
+        module.main()
+
+    assert "could not record the staging run as failed" in capsys.readouterr().err
+
+
+def test_staging_telemetry_clears_any_previous_active_run(tmp_path) -> None:
+    module = _load_builder_module()
+    args = SimpleNamespace(
+        no_staging=False,
+        staging_dir=tmp_path / "stage",
+        staging_repo_id=None,
+        staging_run_id=None,
+        staging_prefix=module.DEFAULT_STAGING_PREFIX,
+        staging_upload_interval_seconds=60.0,
+    )
+    module._staging_telemetry(args, release_root=tmp_path, release_id="rel-1")
+    assert module._ACTIVE_TELEMETRY is not None
+
+    args.no_staging = True
+    assert (
+        module._staging_telemetry(args, release_root=tmp_path, release_id="rel-2")
+        is None
+    )
+    assert module._ACTIVE_TELEMETRY is None
+
+
+def test_staging_manifest_block_distinguishes_opt_out_from_delivery() -> None:
+    module = _load_builder_module()
+
+    assert module._staging_manifest_block(None) == {
+        "enabled": False,
+        "reason": "--no-staging",
+    }
+
+    class Delivered:
+        run_id = "rel-1"
+        repo_id = "policyengine/populace-us-staging"
+        uploads_succeeded = 7
+
+    assert module._staging_manifest_block(Delivered()) == {
+        "enabled": True,
+        "run_id": "rel-1",
+        "repo_id": "policyengine/populace-us-staging",
+        "uploads_succeeded": 7,
+    }
+
+    class Undelivered:
+        run_id = "rel-2"
+        repo_id = None
+        uploads_succeeded = 0
+
+    block = module._staging_manifest_block(Undelivered())
+    assert block["enabled"] is True
+    assert block["uploads_succeeded"] == 0
+    assert block["repo_id"] is None
+
+
+def test_staging_telemetry_refuses_a_destinationless_namespace(tmp_path) -> None:
+    module = _load_builder_module()
+    args = SimpleNamespace(
+        no_staging=False,
+        staging_dir=None,
+        staging_repo_id="",
+        staging_run_id=None,
+        staging_prefix=module.DEFAULT_STAGING_PREFIX,
+        staging_upload_interval_seconds=60.0,
+    )
+
+    with pytest.raises(ValueError, match="no destination"):
+        module._staging_telemetry(args, release_root=tmp_path, release_id="rel-1")
 
 
 # ---------------------------------------------------------------------------
@@ -9991,7 +10188,7 @@ def test_main_runs_cross_register_and_take_up_contract_preflights() -> None:
     are looked up by name inside ``main``).
     """
     builder = _load_builder_module()
-    called = set(builder.main.__code__.co_names)
+    called = set(builder._main.__code__.co_names)
     for preflight in (
         "assert_release_input_coverage_manifest_current",
         "us_register_consistency_gate",
@@ -10083,7 +10280,7 @@ def test_release_h5_write_sits_between_batched_raise_and_smoke() -> None:
     import inspect
 
     builder = _load_builder_module()
-    source = inspect.getsource(builder.main)
+    source = inspect.getsource(builder._main)
     tree = ast.parse(source)
 
     batched_raises: list[int] = []

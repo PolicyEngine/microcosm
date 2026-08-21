@@ -110,6 +110,63 @@
       "notes": "Every UK source-stage column declared in source_stages.json nonnegative_outputs must be finite and non-negative on the terminal frame; this makes the shared nonnegative column gate live for UK."
     },
     {
+      "id": "uk_support",
+      "gate": "support",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "support_bounds_resources": [
+          "was_wealth_support_bounds.json",
+          "lcfs_consumption_support_bounds.json",
+          "etb_vat_support_bounds.json",
+          "etb_services_support_bounds.json"
+        ]
+      },
+      "notes": "Every WAS/LCFS/ETB imputed output covered by support clipping must remain inside committed disclosure-safe donor support bounds. Exact donor ranges are used in-run for clipping; this release gate uses outward-rounded reviewed bounds so unit-record donor minima and maxima are never committed."
+    },
+    {
+      "id": "uk_aggregate_admin",
+      "gate": "aggregate_admin",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {
+        "default_rtol": 0.15,
+        "anchors": [
+          {
+            "name": "need_electricity_mean_spending",
+            "entity": "household",
+            "measure": "electricity_consumption",
+            "value": 882.91463,
+            "period": "2023",
+            "source": "Unweighted mean of NEED 2023 income-band electricity kWh anchors converted with Ofgem Q2 2026 unit rates.",
+            "family": "need_energy",
+            "tolerance": 132.4371945
+          },
+          {
+            "name": "need_gas_mean_spending",
+            "entity": "household",
+            "measure": "gas_consumption",
+            "value": 700.3661,
+            "period": "2023",
+            "source": "Unweighted mean of NEED 2023 income-band gas kWh anchors converted with Ofgem Q2 2026 unit rates.",
+            "family": "need_energy",
+            "tolerance": 105.054915
+          },
+          {
+            "name": "nhs_spending_total",
+            "entity": "person",
+            "measure": "nhs_spending",
+            "value": 202000000000,
+            "period": "2025_26",
+            "source": "NHS 2025/26 budget anchor in etb_services_anchors.json.",
+            "family": "nhs",
+            "tolerance": 30300000000
+          }
+        ]
+      },
+      "notes": "Release-blocking aggregate-admin gate for E6 NEED energy anchors and the NHS budget. The build supplies SDC-safe measured aggregates as evidence; the gate checks signs and tolerances."
+    },
+    {
       "id": "uk_export_surface",
       "gate": "export_surface",
       "phase": "terminal",
@@ -119,6 +176,7 @@
           "benunit.child_benefit_opts_out",
           "household.bus_fare_spending",
           "household.bus_subsidy_spending",
+          "household.cash_isa",
           "household.clone_index",
           "household.constituency_code_oa",
           "household.consumer_debt",
@@ -136,7 +194,10 @@
           "household.property_purchased",
           "household.rail_usage",
           "household.region_code_oa",
+          "household.stocks_and_shares_isa",
           "person.aa_category",
+          "person.a_and_e_visits",
+          "person.admitted_patient_visits",
           "person.age_started_or_accepted_current_education_or_training",
           "person.attends_private_school_random_draw",
           "person.charitable_investment_gifts",
@@ -151,6 +212,7 @@
           "person.is_in_non_advanced_education",
           "person.is_parent",
           "person.legacy_jobseeker_proxy",
+          "person.outpatient_visits",
           "person.pension_contributions_via_salary_sacrifice",
           "person.pip_dl_category",
           "person.pip_m_category",
@@ -190,6 +252,14 @@
         ]
       },
       "notes": "The household BRMA assignment must remain inside the PolicyEngine-UK brma enum domain."
+    },
+    {
+      "id": "uk_calibration_reference_coverage",
+      "gate": "calibration_reference_coverage",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "parameters": {},
+      "notes": "Every activated UK national target reference must resolve and enter the calibration matrix; count mismatch blocks release."
     },
     {
       "id": "uk_target_surface",

@@ -45,6 +45,7 @@ KNOWN_GAPS_PATH = UK_PACKAGE_DIR / "efrs_parity_known_gaps.json"
 MANIFEST_PATH = UK_PACKAGE_DIR / "release_input_coverage_manifest.json"
 HMRC_SOURCE_STAGES_PATH = UK_PACKAGE_DIR / "hmrc_income_source_stages.json"
 CGT_SOURCE_STAGES_PATH = UK_PACKAGE_DIR / "cgt_source_stages.json"
+SOURCE_STAGES_PATH = UK_PACKAGE_DIR / "source_stages.json"
 
 CANDIDATE_REPO_ID = "policyengine/populace-uk-private"
 CANDIDATE_REPO_TYPE = "dataset"
@@ -795,6 +796,26 @@ def build_manifest(
             "hmrc_spi_income": _hmrc_family_coverage_contract(
                 candidate_source=candidate_source
             ),
+            "was_wealth": _source_stage_family_coverage_contract(
+                stage_name="was_wealth",
+                candidate_source=candidate_source,
+            ),
+            "regional_property_uprating": _source_stage_family_coverage_contract(
+                stage_name="regional_property_uprating",
+                candidate_source=candidate_source,
+            ),
+            "lcfs_consumption": _source_stage_family_coverage_contract(
+                stage_name="lcfs_consumption",
+                candidate_source=candidate_source,
+            ),
+            "etb_vat": _source_stage_family_coverage_contract(
+                stage_name="etb_vat",
+                candidate_source=candidate_source,
+            ),
+            "etb_services": _source_stage_family_coverage_contract(
+                stage_name="etb_services",
+                candidate_source=candidate_source,
+            ),
         },
         "derivation": (
             "Surface = efrs_parity_reference.json populated effective loader "
@@ -915,6 +936,47 @@ def _cgt_family_coverage_contract(
         "fact_fence_id": str(fence["fact_fence_id"]),
         "fenced_fact_count": int(fence["fenced_fact_count"]),
         "outputs": list(stage.get("outputs", [])),
+        "effective_mass_requirements": {},
+    }
+
+
+def _source_stage_family_coverage_contract(
+    *,
+    stage_name: str,
+    candidate_source: dict[str, Any],
+) -> dict[str, Any]:
+    payload = _load(SOURCE_STAGES_PATH)
+    stages = payload.get("stages")
+    if not isinstance(stages, list):
+        raise ValueError(f"{SOURCE_STAGES_PATH}: expected source stages list.")
+    matches = [
+        stage
+        for stage in stages
+        if isinstance(stage, dict) and stage.get("stage") == stage_name
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"{SOURCE_STAGES_PATH}: expected exactly one {stage_name!r} stage."
+        )
+    stage = matches[0]
+    return {
+        "status": "required_at_build",
+        "stage": stage_name,
+        "source_manifest": SOURCE_STAGES_PATH.name,
+        "source_manifest_sha256": _sha256(SOURCE_STAGES_PATH),
+        "base_candidate_sha256": str(candidate_source["sha256"]),
+        "base_candidate_tier": validate_uk_release_tier(candidate_source["tier"]),
+        "source_vintages": {
+            "survey": str(stage.get("survey", "")),
+            "source": str(stage.get("source", "")),
+        },
+        "output_weight_kind": "importance",
+        "required_mass_change_reason": (
+            "E5 source-stage transform preserves household rows and typed "
+            "household weights; total household mass is conserved."
+        ),
+        "outputs": list(stage.get("outputs", [])),
+        "rewrites": list(stage.get("rewrites", [])),
         "effective_mass_requirements": {},
     }
 

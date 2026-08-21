@@ -984,6 +984,11 @@ class TestUsSources:
             # never import or execute the retired data package.
             "packages/microcosm-build/src/microcosm/build/uk/efrs_parity_reference.json",
             "packages/microcosm-build/src/microcosm/build/uk/hmrc_income_source_stages.json",
+            # The UK national contract's registry-parity accounting names the
+            # retired data package by necessity: 651 rows at pinned ref ebf733c
+            # = 609 mapped + 42 signed exclusions + 3 unmapped declarations.
+            # A sha-locked historical reference — nothing imported or executed.
+            "packages/microcosm-build/src/microcosm/build/uk/uk_national_targets.json",
             "packages/microcosm-build/src/microcosm/build/uk_runtime/parity_reference.py",
             # The HMRC source contract pins the licensed SPI/ODS input
             # identities, whose reviewed provenance names the archived data

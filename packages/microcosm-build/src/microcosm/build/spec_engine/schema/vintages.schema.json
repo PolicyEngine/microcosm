@@ -1,0 +1,154 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "vintages.schema.json",
+ "title": "Typed vintage index; authority values live on pinned sources and locks",
+ "x-spec-surface": "normative",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "records"
+ ],
+ "properties": {
+  "records": {
+   "type": "array",
+   "minItems": 1,
+   "description": "Other files refer by vintage: ref; each row indexes exactly one external normative authority.",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "kind",
+     "authority_ref",
+     "compatible_with"
+    ],
+    "properties": {
+     "id": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     },
+     "kind": {
+      "enum": [
+       "tax_period_ref",
+       "survey_period_ref",
+       "target_period_ref",
+       "geography_vintage_ref",
+       "policy_engine_surface_ref",
+       "release_series_ref"
+      ]
+     },
+     "authority_ref": {
+      "$ref": "#/$defs/authority_ref"
+     },
+     "compatible_with": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "x-canonical-order": "set",
+      "items": {
+       "$ref": "defs.schema.json#/$defs/vintage_ref"
+      }
+     }
+    }
+   }
+  }
+ },
+ "$defs": {
+  "authority_ref": {
+   "oneOf": [
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "source",
+      "authority"
+     ],
+     "properties": {
+      "kind": {
+       "const": "source_record"
+      },
+      "source": {
+       "$ref": "defs.schema.json#/$defs/source_ref"
+      },
+      "authority": {
+       "$ref": "defs.schema.json#/$defs/identifier"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "stage",
+      "artifact_index",
+      "field"
+     ],
+     "properties": {
+      "kind": {
+       "const": "source_stage_artifact"
+      },
+      "stage": {
+       "$ref": "defs.schema.json#/$defs/identifier"
+      },
+      "artifact_index": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "field": {
+       "const": "vintage"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "pointer"
+     ],
+     "properties": {
+      "kind": {
+       "const": "engine_abi_lock"
+      },
+      "pointer": {
+       "const": "/engine/version"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "pointer"
+     ],
+     "properties": {
+      "kind": {
+       "const": "dataset_run"
+      },
+      "pointer": {
+       "const": "/dataset_run/target_period"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "pointer"
+     ],
+     "properties": {
+      "kind": {
+       "const": "publication_release"
+      },
+      "pointer": {
+       "const": "/release/line/value"
+      }
+     }
+    }
+   ]
+  }
+ }
+}

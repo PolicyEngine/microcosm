@@ -22,6 +22,9 @@ from microcosm.build.logbook import (
 
 ROOT = Path(__file__).resolve().parents[3]
 MIGRATION = ROOT / "supabase/migrations/20260805000000_logbook.sql"
+CHAIN_SCOPE_MIGRATION = (
+    ROOT / "supabase/migrations/20260818000000_logbook_chain_scopes.sql"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -159,6 +162,28 @@ def test_sql_schema_round_trip_matches_python_hash_surface() -> None:
     assert "CREATE POLICY builds_exporter_select" in sql
     assert "CREATE POLICY predictions_exporter_select" not in sql
     assert "GRANT logbook_writer, logbook_exporter TO authenticator" in sql
+
+
+def test_logbook_chain_scope_migration_contract() -> None:
+    sql = CHAIN_SCOPE_MIGRATION.read_text(encoding="utf-8")
+
+    assert "CREATE OR REPLACE FUNCTION logbook.chain_scope" in sql
+    assert "SET search_path = pg_catalog" in sql
+    assert "'us-2024-release'" in sql
+    assert "'us-pool-inc2'" in sql
+    assert "'us-stacked-pool'" in sql
+    assert "builds_single_genesis_per_scope" in sql
+    assert "builds_pipeline_declares_scope" in sql
+    assert "hashtext(new_scope)" in sql
+    # The ratified vocabulary is closed-world: the allowlist function exists,
+    # carries exactly the ratified scopes, and gates both the CHECK and the
+    # trigger — opening a scope is a reviewed migration edit here.
+    assert "CREATE OR REPLACE FUNCTION logbook.scope_declared" in sql
+    assert "'us', 'uk/frs'" in sql
+    assert "scope_declared(logbook.chain_scope(pipeline))" in sql
+    assert "not in the ratified scope list" in sql
+    assert "DROP INDEX IF EXISTS logbook.builds_unique_predecessor" not in sql
+    assert "CREATE UNIQUE INDEX builds_unique_predecessor" not in sql
 
 
 def test_canonical_json_matches_sql_number_and_unicode_vector() -> None:

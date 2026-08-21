@@ -1,0 +1,180 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "publication.schema.json",
+ "title": "Publication: attempt events, atomic promotion, audit chain != release graph",
+ "x-spec-surface": "normative",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "attempts",
+  "promotion",
+  "release",
+  "audit_chain",
+  "release_graph"
+ ],
+ "properties": {
+  "attempts": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "model",
+    "terminal_states"
+   ],
+   "properties": {
+    "model": {
+     "const": "append_only_events_then_terminal_seal"
+    },
+    "terminal_states": {
+     "type": "array",
+     "items": {
+      "enum": [
+       "landed",
+       "failed",
+       "expired"
+      ]
+     }
+    }
+   }
+  },
+  "promotion": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "latest_flip",
+    "idempotency",
+    "recovery"
+   ],
+   "properties": {
+    "latest_flip": {
+     "const": "human_gate"
+    },
+    "idempotency": {
+     "const": "required_key"
+    },
+    "recovery": {
+     "type": "array",
+     "items": {
+      "enum": [
+       "seal_ok_append_fail",
+       "append_ok_alias_fail",
+       "orphan_reconciliation",
+       "expiry_reconciliation"
+      ]
+     }
+    }
+   }
+  },
+  "release": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "line",
+    "pattern",
+    "rung_fractions"
+   ],
+   "properties": {
+    "line": {
+     "type": "object",
+     "additionalProperties": false,
+    "required": [
+      "normative",
+      "value"
+     ],
+     "description": "D6 RULED (Max 2026-08-16): microcosm-us-2024-* is the spec-engine-era line; NORMATIVE (hashed into spec_sha256). Readers accept both prefixes; populace-* rows stay valid-historical.",
+     "properties": {
+      "value": {
+       "type": "string",
+       "pattern": "^microcosm-[a-z]{2}-[0-9]{4}$"
+      },
+      "normative": {
+       "const": true
+      },
+     "note": {
+      "x-spec-surface": "documentation",
+      "type": "string"
+      },
+      "legacy_prefixes": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       },
+       "description": "Prefixes readers must still accept (valid-historical rows)."
+      }
+     }
+    },
+    "pattern": {
+     "type": "string",
+     "minLength": 1,
+     "description": "Country release-name template. Exact placeholders are normative bundle data, not global schema grammar."
+    },
+    "rung_fractions": {
+     "type": "array",
+     "minItems": 5,
+     "maxItems": 5,
+     "uniqueItems": true,
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "fraction",
+       "token",
+       "percent_basis_points"
+      ],
+      "properties": {
+       "fraction": {
+        "type": "number",
+        "exclusiveMinimum": 0,
+        "maximum": 1
+       },
+       "token": {
+        "type": "string",
+        "enum": ["f001", "f004", "f010", "f025", "f100"]
+       },
+       "percent_basis_points": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 10000
+       }
+      }
+     }
+    }
+   }
+  },
+  "audit_chain": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kind"
+   ],
+   "properties": {
+    "kind": {
+     "const": "strict_linear"
+    },
+    "store": {
+     "x-spec-surface": "operational",
+     "type": "string",
+     "description": "OPERATIONAL binding; never hashed."
+    }
+   }
+  },
+  "release_graph": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "relations"
+   ],
+   "properties": {
+    "relations": {
+     "type": "array",
+     "items": {
+      "enum": [
+       "derived_from",
+       "supersedes",
+       "revokes"
+      ]
+     }
+    }
+   }
+  }
+ }
+}

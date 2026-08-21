@@ -703,16 +703,26 @@ def _declared_agreement_surface(
         for (entity, _family), columns in normalized.items()
         for column in columns
     }
-    for program in sorted(
-        load_take_up_contract().programs,
-        key=lambda item: (item.entity, item.variable),
+    from microcosm.build.spec_engine.engine_abi import (
+        active_take_up_manifest_program_bindings,
+    )
+
+    active_bindings = active_take_up_manifest_program_bindings()
+    if active_bindings is None:
+        take_up_bindings = tuple(
+            (program.variable, program.entity, program.populace_treatment)
+            for program in load_take_up_contract().programs
+        )
+    else:
+        take_up_bindings = active_bindings
+    for variable, entity, _populace_treatment in sorted(
+        take_up_bindings,
+        key=lambda item: (item[1], item[0]),
     ):
-        key = (program.entity, program.variable)
+        key = (entity, variable)
         if key in registered_columns:
             continue
-        normalized.setdefault((program.entity, _TAKE_UP_FAMILY), []).append(
-            program.variable
-        )
+        normalized.setdefault((entity, _TAKE_UP_FAMILY), []).append(variable)
         registered_columns.add(key)
 
     for entity, columns in sorted(_SIMULATED_OUTPUTS.items()):

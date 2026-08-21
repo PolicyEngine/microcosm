@@ -26,6 +26,7 @@ from microcosm.build.uk_runtime.spi_spine import (
 from microcosm.build.uk_runtime.spi_support import (
     HOUSEHOLD_IS_SPI_SYNTHETIC_COLUMN,
     SPI_SYNTHETIC_SUPPORT_CHANNEL,
+    UKSPISupportResult,
     build_uk_spi_support_channel,
     support_channel_column,
 )
@@ -392,9 +393,9 @@ def test_reviewed_absent_incapacity_signal_raises(tmp_path: Path) -> None:
         lambda person, spi_people, build_period: person,
     )
     support = build_uk_spi_support_channel(
-        person=_base_frame().table("person").assign(
-            incapacity_benefit_reported=[1.0, 0.0]
-        ),
+        person=_base_frame()
+        .table("person")
+        .assign(incapacity_benefit_reported=[1.0, 0.0]),
         benunit=_base_frame().table("benunit"),
         household=pd.DataFrame(
             {
@@ -438,7 +439,10 @@ def _with_mutated_operation(
 ) -> SourceStageSpec:
     operations = []
     for operation in stage.operations:
-        payload: dict[str, object] = {"kind": operation.kind, **dict(operation.parameters)}
+        payload: dict[str, object] = {
+            "kind": operation.kind,
+            **dict(operation.parameters),
+        }
         if operation.kind == kind:
             payload.update(overrides)
         operations.append(payload)
@@ -507,6 +511,31 @@ def test_support_stage_parameters_accept_the_committed_manifest() -> None:
     assert share == 0.5
     assert strata == ("region",)
     assert len(declarations) == 1
+
+
+def test_support_transform_refuses_missing_builder_weight_kind(monkeypatch) -> None:
+    frame = _base_frame()
+
+    def _stub_builder(*_args, **_kwargs) -> UKSPISupportResult:
+        return UKSPISupportResult(
+            person=frame.table("person").copy(),
+            benunit=frame.table("benunit").copy(),
+            household=frame.table("household").copy(),
+            id_multiplier=1,
+            spi_household_ids=(),
+            household_weight_kind=None,
+        )
+
+    monkeypatch.setattr(
+        "microcosm.build.uk_runtime.spi_spine.build_uk_spi_support_channel",
+        _stub_builder,
+    )
+    transform = UKSPISupportChannelStageTransform(
+        stage=_committed_stage("spi_support_channel")
+    )
+
+    with pytest.raises(ValueError, match="importance household weights"):
+        transform(frame)
 
 
 def test_support_stage_parameters_refuse_gate_declaration_drift() -> None:

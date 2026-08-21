@@ -275,6 +275,7 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "failing_targets",
         }
     ),
+    "aggregate_vs_admin": frozenset({"anchors_checked"}),
     "input_mass_parity": frozenset(
         {
             "candidate_name",
@@ -315,6 +316,7 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "surface",
         }
     ),
+    "support": frozenset({"columns_checked"}),
 }
 _UK_TARGET_GEOGRAPHY_LEVELS = frozenset(
     {"national", "region", "country", "local_authority", "constituency"}
@@ -342,13 +344,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "609075af473c64fe7dbcb035b9254121d6c9c000c28fc67a14417bb02657d08f"
+    "728a5fe2f543f59e2797e4227269fe4516508a274b4fa5fe49559387d6b9d686"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "610512a5bbddeba355cf57de52579eca5f36cf43788be239307cc5c025e76783"
+    "f01e5459debc6f3ebfa097591749377b640a5d633e3df3825575b4ec15eeacb2"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "cb25537c8a99aa6c44911b098df10dfb7ba143dc3210400b61f847c3d0c9b12d"
+    "f358121fefc6e0e2371956dc0628c1d997ee3735e558ca3dd4526326a6add78b"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -361,6 +363,8 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_weight_ratio": "weight_ratio",
     "uk_weights_audit": "weights_audit",
     "uk_nonnegative_columns": "nonnegative_columns",
+    "uk_support": "support",
+    "uk_aggregate_admin": "aggregate_vs_admin",
     "uk_export_surface": "export_surface",
     "uk_take_up_signal": "take_up_signal",
     "uk_brma_enum_domain": "enum_domain",
@@ -386,9 +390,15 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_weight_ratio": ("weight_ratio", "terminal"),
     "uk_weights_audit": ("weights_audit", "terminal"),
     "uk_nonnegative_columns": ("nonnegative_columns", "terminal"),
+    "uk_support": ("support", "terminal"),
+    "uk_aggregate_admin": ("aggregate_admin", "terminal"),
     "uk_export_surface": ("export_surface", "terminal"),
     "uk_take_up_signal": ("take_up_signal", "terminal"),
     "uk_brma_enum_domain": ("enum_domain", "terminal"),
+    "uk_calibration_reference_coverage": (
+        "calibration_reference_coverage",
+        "terminal",
+    ),
     "uk_target_surface": ("target_surface", "terminal"),
     "uk_target_fit": ("target_fit", "terminal"),
     "uk_input_mass_parity": ("input_mass_parity", "terminal"),
@@ -410,7 +420,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
 # canonical hash; this pins the wrapped digest so the entry's evidence line
 # still binds the enhanced-FRS incumbent totals.
 _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "a77111e4acecd3945d69f77f58209bf6a58eb72d39a47de9cb01e5b73d2592f4"
+    "df74556909990345bc9032f6f5db7f817d9c273f75522a85ab6e332dd8dc7355"
 )
 # The degenerate binding's evidence payload digests the resolved exclusion
 # records; for a release that must be the committed register, so its digest

@@ -3,12 +3,10 @@
 ## State
 
 Dual-review remediation is in progress on `passive-pass-through-722` as of
-2026-08-21. The branch starts this pass at `a4d93f78`; the already-fetched
-`origin/main` is `2c7a7218`. The supervisor-approved detached conflict
-resolution worktree merged the immediately preceding main commit `61869aa5`,
-so its three approved resolutions will be carried into the real merge of the
-current `origin/main`. Work remains offline: no fetch, push, PR mutation,
-publication, or promotion is in scope.
+2026-08-21. The real merge of already-fetched `origin/main` at `2c7a7218` is
+resolved and ready to commit, with the supervisor-approved resolutions from
+the detached `61869aa5` merge reproduced exactly. Work remains offline: no
+fetch, push, PR mutation, publication, or promotion is in scope.
 
 An unstaged `uv.lock` refresh pre-dated this remediation pass. It is preserved
 for reconciliation with the post-merge `uv sync` result rather than discarded
@@ -25,6 +23,18 @@ or folded into an unrelated commit.
   the documented fallback.
 - Confirmed the branch, detached pre-approved merge worktree, merge base, and
   current `origin/main` identities without network access.
+- Resolved the only three merge conflicts with the approved typed country
+  resource rows, both independent multispine imports, and one measured runtime
+  graph pin. The three resolved file blobs match the pre-approved detached
+  index exactly.
+- Ran the post-merge source-blindness graph test itself with repository
+  conftests disabled because the pre-sync environment does not yet contain
+  main's new `jsonschema` dependency. The single registered tool reaches the
+  pinned 67-module graph (base 64, branch +2, main +1).
+- Traced the country-package closure failure to
+  `tools/generate_us_bundle_from_constants.py::LEGACY_RESOURCE_PATHS`; the
+  loader's `_assert_file_closure` compares that emitted manifest with package
+  files.
 - The implementation and verification bullets below describe the historical
   pre-review checkpoint at `a4d93f78`; the verdict supersedes its former
   completion claim.
@@ -81,9 +91,7 @@ or folded into an unrelated commit.
 
 ## Next
 
-- Commit this remediation baseline journal.
-- Merge the current `origin/main` as a real merge commit, adopt the approved
-  conflict resolutions, and measure the single post-merge runtime graph count.
+- Commit the resolved real merge of current `origin/main`.
 - Declare the three legacy JSON resources on main's typed file-closure surface,
   regenerate the US bundle and engine lock, and sync all packages/extras.
 - Replace the vacuous preservation proxy with a nonzero-realization regression

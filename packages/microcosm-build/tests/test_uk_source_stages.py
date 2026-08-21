@@ -32,6 +32,15 @@ E4_STAGE_NAMES = [
     "frs_household_draws",
     "frs_brma",
 ]
+E5_STAGE_NAMES = [
+    "was_wealth",
+    "regional_property_uprating",
+]
+E6_STAGE_NAMES = [
+    "lcfs_consumption",
+    "etb_vat",
+    "etb_services",
+]
 E7_STAGE_NAMES = [
     "frs_hmrc_spine_leaves",
     "spi_support_channel",
@@ -41,6 +50,8 @@ UK_SOURCE_STAGE_NAMES = [
     "frs_spine",
     *E3_STAGE_NAMES,
     *E4_STAGE_NAMES,
+    *E5_STAGE_NAMES,
+    *E6_STAGE_NAMES,
     *E7_STAGE_NAMES,
     "frs_hmrc_retained_leaves",
     "hmrc_spi_income",
@@ -49,6 +60,7 @@ UK_FRS_SPI_SPINE_DRIVER_STAGE_NAMES = [
     "frs_spine",
     *E3_STAGE_NAMES,
     *E4_STAGE_NAMES,
+    *E6_STAGE_NAMES,
     *E7_STAGE_NAMES,
 ]
 FROZEN_SOURCE_STAGES_SHA256 = (
@@ -97,6 +109,19 @@ class TestUKSourceStagesManifest:
 
         assert spec.sources is not None
         assert [stage.stage for stage in spec.sources.stages] == UK_SOURCE_STAGE_NAMES
+
+    def test_e6_block_sits_between_e5_and_e7(self) -> None:
+        canonical = _load_json(CANONICAL_SOURCE_STAGES)
+        names = [stage["stage"] for stage in canonical["stages"]]
+
+        assert (
+            names[
+                names.index("regional_property_uprating") + 1 : names.index(
+                    "frs_hmrc_spine_leaves"
+                )
+            ]
+            == E6_STAGE_NAMES
+        )
 
     def test_e7_block_is_contiguous_before_certified_pair(self) -> None:
         canonical = _load_json(CANONICAL_SOURCE_STAGES)
@@ -201,6 +226,11 @@ class TestUKSourceStagesManifest:
                     "frs_person_draws": _identity,
                     "frs_household_draws": _identity,
                     "frs_brma": _identity,
+                    "was_wealth": _identity,
+                    "regional_property_uprating": _identity,
+                    "lcfs_consumption": _identity,
+                    "etb_vat": _identity,
+                    "etb_services": _identity,
                     "frs_hmrc_spine_leaves": _identity,
                     "spi_support_channel": _identity,
                     "hmrc_spi_income_spine": _identity,
@@ -246,6 +276,14 @@ class TestDeclaredOutputsAreWrittenColumns:
         assert stage1.outputs == tuple(FRS_HMRC_RETAINED_LEAF_COLUMNS)
 
     def test_e3_outputs_are_backed_by_runtime_written_columns(self) -> None:
+        from microcosm.build.uk_runtime.etb_services import (
+            UK_ETB_SERVICES_NONNEGATIVE_OUTPUT_COLUMNS,
+            UK_ETB_SERVICES_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.etb_vat import (
+            UK_ETB_VAT_NONNEGATIVE_OUTPUT_COLUMNS,
+            UK_ETB_VAT_OUTPUT_COLUMNS,
+        )
         from microcosm.build.uk_runtime.frs_brma import FRS_BRMA_OUTPUT_COLUMNS
         from microcosm.build.uk_runtime.frs_council_tax import (
             FRS_COUNCIL_TAX_OUTPUT_COLUMNS,
@@ -277,6 +315,17 @@ class TestDeclaredOutputsAreWrittenColumns:
             FRS_TAKE_UP_NONNEGATIVE_OUTPUT_COLUMNS,
             FRS_TAKE_UP_OUTPUT_COLUMNS,
         )
+        from microcosm.build.uk_runtime.lcfs_consumption import (
+            UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS,
+            UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.regional_uprating import (
+            UK_REGIONAL_PROPERTY_REWRITES,
+        )
+        from microcosm.build.uk_runtime.was_wealth import (
+            UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS,
+            UK_WAS_WEALTH_OUTPUT_COLUMNS,
+        )
 
         spec = load_country_spec("uk")
         stages = {stage.stage: stage for stage in spec.sources.stages}
@@ -307,6 +356,31 @@ class TestDeclaredOutputsAreWrittenColumns:
             stages["frs_household_draws"].outputs == FRS_HOUSEHOLD_DRAW_OUTPUT_COLUMNS
         )
         assert stages["frs_brma"].outputs == FRS_BRMA_OUTPUT_COLUMNS
+        assert stages["was_wealth"].outputs == UK_WAS_WEALTH_OUTPUT_COLUMNS
+        assert (
+            stages["was_wealth"].nonnegative_outputs
+            == UK_WAS_WEALTH_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert stages["regional_property_uprating"].outputs == ()
+        assert (
+            stages["regional_property_uprating"].rewrites
+            == UK_REGIONAL_PROPERTY_REWRITES
+        )
+        assert stages["lcfs_consumption"].outputs == UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS
+        assert (
+            stages["lcfs_consumption"].nonnegative_outputs
+            == UK_LCFS_CONSUMPTION_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert stages["etb_vat"].outputs == UK_ETB_VAT_OUTPUT_COLUMNS
+        assert (
+            stages["etb_vat"].nonnegative_outputs
+            == UK_ETB_VAT_NONNEGATIVE_OUTPUT_COLUMNS
+        )
+        assert stages["etb_services"].outputs == UK_ETB_SERVICES_OUTPUT_COLUMNS
+        assert (
+            stages["etb_services"].nonnegative_outputs
+            == UK_ETB_SERVICES_NONNEGATIVE_OUTPUT_COLUMNS
+        )
 
     def test_e7_outputs_and_rewrites_are_backed_by_runtime_constants(self) -> None:
         from microcosm.build.uk_runtime.spi_spine import (
@@ -415,6 +489,43 @@ class TestE3ManifestLockstep:
             "materialize_rules_engine_predictors",
             "sample_categorical_from_count_table",
         ]
+        assert [op.kind for op in stages["was_wealth"].operations] == [
+            "derive",
+            "materialize_rules_engine_predictors",
+            "fit_weighted_qrf_chain",
+            "fold_into",
+            "support_clip",
+            "allocate_within_group_waterfall",
+        ]
+        assert [op.kind for op in stages["regional_property_uprating"].operations] == [
+            "uprate_to_regional_reference",
+        ]
+        assert [op.kind for op in stages["lcfs_consumption"].operations] == [
+            "derive",
+            "iterative_proportional_fit",
+            "bridge_donor_column_via_qrf",
+            "assign_binary_from_rate",
+            "materialize_rules_engine_predictors",
+            "fit_weighted_qrf_chain",
+            "support_clip",
+            "iterative_proportional_fit",
+            "fold_into",
+            "zero_when_false",
+        ]
+        assert [op.kind for op in stages["etb_vat"].operations] == [
+            "derive",
+            "materialize_rules_engine_predictors",
+            "fit_weighted_qrf",
+            "support_clip",
+        ]
+        assert [op.kind for op in stages["etb_services"].operations] == [
+            "derive",
+            "materialize_rules_engine_predictors",
+            "fit_weighted_qrf_chain",
+            "support_clip",
+            "compute_ratio",
+            "allocate_per_capita_from_cell_table",
+        ]
         assert [op.kind for op in stages["frs_hmrc_spine_leaves"].operations] == [
             "retain_adjudicated_frs_hmrc_leaves",
             "derive",
@@ -436,6 +547,10 @@ class TestE3ManifestLockstep:
         ]
 
     def test_engine_predictor_and_rewrite_constants_match_manifest(self) -> None:
+        from microcosm.build.uk_runtime.etb_services import (
+            UK_ETB_SERVICES_OUTPUT_COLUMNS,
+        )
+        from microcosm.build.uk_runtime.etb_vat import UK_ETB_VAT_PREDICTORS
         from microcosm.build.uk_runtime.frs_brma import UK_BRMA_PREDICTORS
         from microcosm.build.uk_runtime.frs_education_grants import (
             FRS_EDUCATION_GRANT_REWRITES,
@@ -446,6 +561,16 @@ class TestE3ManifestLockstep:
         )
         from microcosm.build.uk_runtime.frs_take_up import (
             UK_TAKE_UP_ANCHOR_AGGREGATES,
+        )
+        from microcosm.build.uk_runtime.lcfs_consumption import (
+            UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
+            UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
+            UK_LCFS_CONSUMPTION_PREDICTORS,
+            UK_LCFS_HAS_FUEL_PREDICTORS,
+        )
+        from microcosm.build.uk_runtime.was_wealth import (
+            UK_WAS_ENGINE_PREDICTORS,
+            UK_WAS_WEALTH_PREDICTORS,
         )
 
         spec = load_country_spec("uk")
@@ -469,6 +594,61 @@ class TestE3ManifestLockstep:
         assert (
             tuple(stages["frs_brma"].operations[0].parameters["predictors"])
             == UK_BRMA_PREDICTORS
+        )
+        assert (
+            tuple(stages["was_wealth"].operations[1].parameters["predictors"])
+            == UK_WAS_ENGINE_PREDICTORS
+        )
+        assert (
+            tuple(stages["was_wealth"].operations[2].parameters["predictors"])
+            == UK_WAS_WEALTH_PREDICTORS
+        )
+        lcfs = stages["lcfs_consumption"]
+        lcfs_ops = {op.kind: op for op in lcfs.operations}
+        assert (
+            tuple(lcfs_ops["bridge_donor_column_via_qrf"].parameters["predictors"])
+            == UK_LCFS_HAS_FUEL_PREDICTORS
+        )
+        assert (
+            tuple(
+                lcfs_ops["materialize_rules_engine_predictors"].parameters[
+                    "predictors"
+                ]
+            )
+            == UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS
+        )
+        assert (
+            tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["predictors"])
+            == UK_LCFS_CONSUMPTION_PREDICTORS
+        )
+        assert (
+            tuple(lcfs_ops["fit_weighted_qrf_chain"].parameters["targets"])
+            == UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS[:-1]
+        )
+        assert (
+            tuple(stages["etb_vat"].operations[1].parameters["predictors"])
+            == UK_ETB_VAT_PREDICTORS
+        )
+        from microcosm.build.uk_runtime.etb_services import (
+            UK_ETB_SERVICES_EDUCATION_COUNTS,
+            UK_ETB_SERVICES_ENGINE_VARIABLES,
+        )
+
+        assert (
+            tuple(stages["etb_services"].operations[1].parameters["predictors"])
+            == UK_ETB_SERVICES_ENGINE_VARIABLES
+        )
+        assert (
+            set(
+                stages["etb_services"]
+                .operations[1]
+                .parameters["derived_predictors"]
+            )
+            == set(UK_ETB_SERVICES_EDUCATION_COUNTS)
+        )
+        assert (
+            tuple(stages["etb_services"].operations[2].parameters["targets"])
+            == UK_ETB_SERVICES_OUTPUT_COLUMNS[:3]
         )
         rate_keys = [
             op.parameters["rate_key"]
@@ -516,21 +696,41 @@ class TestE3ManifestLockstep:
                 }:
                     assert isinstance(operation.parameters.get("seed"), int)
 
+    def test_e5_qrf_operation_declares_integer_seed(self) -> None:
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+
+        qrf = stages["was_wealth"].operations[2]
+
+        assert qrf.kind == "fit_weighted_qrf_chain"
+        assert qrf.parameters["seed"] == 0
+
+    def test_e6_declared_seed_lockstep(self) -> None:
+        spec = load_country_spec("uk")
+        stages = {stage.stage: stage for stage in spec.sources.stages}
+
+        lcfs_seeded = {
+            op.kind: op.parameters["seed"]
+            for op in stages["lcfs_consumption"].operations
+            if "seed" in op.parameters
+        }
+        assert lcfs_seeded == {
+            "bridge_donor_column_via_qrf": 0,
+            "assign_binary_from_rate": 0,
+            "fit_weighted_qrf_chain": 0,
+        }
+        assert stages["etb_vat"].operations[2].parameters["seed"] == 0
+        assert stages["etb_services"].operations[2].parameters["seed"] == 0
+
     def test_e7_declared_seed_lockstep(self) -> None:
         spec = load_country_spec("uk")
         stages = {stage.stage: stage for stage in spec.sources.stages}
 
-        assert (
-            stages["spi_support_channel"].operations[0].parameters["seed"] == 42
-        )
-        assert (
-            stages["hmrc_spi_income_spine"].operations[2].parameters["seed"] == 42
-        )
-        assert (
-            stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 43
-        )
+        assert stages["spi_support_channel"].operations[0].parameters["seed"] == 42
+        assert stages["hmrc_spi_income_spine"].operations[2].parameters["seed"] == 42
+        assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 43
 
-    def test_full_uk_source_stage_plan_compiles_with_e7_stages(self) -> None:
+    def test_full_uk_source_stage_plan_compiles_with_e4_stages(self) -> None:
         spec = load_country_spec("uk")
         implementations = {name: _identity for name in UK_SOURCE_STAGE_NAMES}
 

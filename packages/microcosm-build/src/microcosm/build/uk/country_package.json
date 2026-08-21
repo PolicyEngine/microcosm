@@ -1,23 +1,176 @@
 {
   "schema_version": 1,
   "country": "uk",
-  "policy": "spec-only country package; Python execution lives in shared runtime modules",
   "resources": [
-    "cgt_source_stages.json",
-    "degenerate_reviewed_exclusions.json",
-    "efrs_parity_known_gaps.json",
-    "efrs_parity_reference.json",
-    "gates.json",
-    "brma_rent_counts.json",
-    "hmrc_income_release_gate_report.json",
-    "hmrc_income_replay_report.json",
-    "hmrc_income_source_stages.json",
-    "source_stages.json",
-    "take_up_contract.json",
-    "input_mass_reviewed_exclusions.json",
-    "national_staging_build_record.json",
-    "qrf_tail_reviewed_exclusions.json",
-    "release_input_coverage_manifest.json",
-    "uk_local_target_census.json"
+    {
+      "path": "spec/bundle.yaml",
+      "kind": "bundle",
+      "schema_id": "bundle.schema.json"
+    },
+    {
+      "path": "spec/catalogs.yaml",
+      "kind": "catalogs",
+      "schema_id": "catalogs.schema.json"
+    },
+    {
+      "path": "spec/geography.yaml",
+      "kind": "geography",
+      "schema_id": "geography.schema.json"
+    },
+    {
+      "path": "spec/sources.yaml",
+      "kind": "sources",
+      "schema_id": "sources.schema.json"
+    },
+    {
+      "path": "spec/spine.yaml",
+      "kind": "spine",
+      "schema_id": "spine.schema.json"
+    },
+    {
+      "path": "spec/vintages.yaml",
+      "kind": "vintages",
+      "schema_id": "vintages.schema.json"
+    },
+    {
+      "path": "cgt_source_stages.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "degenerate_reviewed_exclusions.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "efrs_parity_known_gaps.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "efrs_parity_reference.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "gates.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "brma_rent_counts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "hmrc_income_release_gate_report.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "hmrc_income_replay_report.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "hmrc_income_source_stages.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "need_energy_targets.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "lcfs_consumption_anchors.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "etb_policy_anchors.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "etb_services_anchors.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "nhs_consumption_by_age_gender.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "lcfs_consumption_support_bounds.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "etb_vat_support_bounds.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "etb_services_support_bounds.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "regional_land_values.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "source_stages.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "take_up_contract.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "input_mass_reviewed_exclusions.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "national_staging_build_record.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "qrf_tail_reviewed_exclusions.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "release_input_coverage_manifest.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "was_wealth_support_bounds.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "uk_local_target_census.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "uk_national_targets.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "target_references.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    }
   ]
 }
