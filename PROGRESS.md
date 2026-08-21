@@ -2,7 +2,8 @@
 
 ## State
 
-Runtime unification is complete on `one-target-surface`: every US entrypoint
+Surface unification and scale-identity enforcement are complete on
+`one-target-surface`: every US entrypoint
 now compiles one national + state + congressional-district target registry,
 and the CLI/config switches that could delete CD or JCT target rows are gone.
 Parity doctrine now protects that family as a red-line compile. Sparse and dense
@@ -49,9 +50,16 @@ artifacts may differ in record count, never target membership.
   compiled registry while the taxable-interest rebase still refuses it as a
   national control. The standard 10-file affected suite reaches 100% with exit
   0 after the parity-doctrine change.
+- Removed the compiler's per-run support-exclusion parameter, the release CLI
+  and loader that populated it, its provenance branch, both experiment callers,
+  and the obsolete sparse Build-J exclusion JSON.
+- Added exact signature locks for the compiler, release builder, fiscal scorer,
+  and state scorer; legacy membership flags are parser-rejected.
+- Added a CD-bearing registry identity test across nominal 57,240-record sparse
+  and 337,704-record dense artifacts. Specs and content-addressed registry
+  version are identical. The standard affected suite reaches 100% with exit 0.
 
 ## Next
 
-- Remove the artifact-specific support-exclusion path, prove target-registry
-  identity across artifact scale, quantify the target-row delta and existing
-  25% timing evidence, then write `FINAL_REPORT.md`.
+- Quantify the target-row delta and existing 25% timing evidence, run final
+  verification, then write `FINAL_REPORT.md`.

@@ -80,7 +80,6 @@ def main():
         congressional_district_vintage_crosswalk=cd_crosswalk,
         age_targets=True,
         allow_unaged_dollar_targets=False,
-        extra_support_exclusions=None,
     )
     target_specs = registry0.specs
     # Match the release tool: identity uses TargetRegistry(specs).version.

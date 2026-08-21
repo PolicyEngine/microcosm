@@ -105,3 +105,34 @@
   (`packages/microcosm-build/tests/test_us_fiscal_targets.py:2539-2625`).
 - Validation: the standard 10-file affected suite completed to 100% with exit
   0; Ruff and `git diff --check` pass.
+
+## 2026-08-21 — artifact-scale leak removed
+
+- The hidden split was the compiler's per-run support-exclusion mapping: a
+  caller could delete otherwise compiled source rows for one artifact. That
+  parameter and its dynamic-dispatch branch are gone; the compiler now has
+  exactly five inputs, none related to artifact size, sparsity, record count,
+  support, inclusion, or diagnostic target deletion
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/fiscal_targets.py:933-1005,2069-2090,2287-2300`).
+- The release tool no longer parses or loads an artifact-specific exclusion
+  file, passes no membership override into compilation, and reports only the
+  standing surface-wide source exclusions
+  (`tools/build_us_fiscal_refresh_release.py:897-923,7770-7815,8363-8376,11192-11198`).
+  The obsolete
+  `experiments/build_j_recert/sparse_zero_support_exclusions_buildj.json` was
+  deleted and its shell/caller plumbing removed.
+- The shared `US_FISCAL_TARGET_SUPPORT_EXCLUSIONS` registry remains: it is a
+  single source-row doctrine applied identically to all artifacts, not a scale
+  input (`packages/microcosm-build/src/microcosm/build/us_runtime/fiscal_targets.py:554-660,2287-2295`).
+- The identity regression compiles one CD-bearing fact set twice under nominal
+  57,240-record sparse and 337,704-record dense labels; both the full `specs`
+  tuple and content-addressed registry `version` must match, and the exact
+  compiler signature is pinned
+  (`packages/microcosm-build/tests/test_us_fiscal_targets.py:644-696`).
+- Release/fiscal-scorer/state-scorer signature sets are pinned, and the release
+  parser rejects all three deleted membership options
+  (`packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py:52-97`;
+  `packages/microcosm-build/tests/test_us_state_files_scorer.py:26-40`).
+- Validation: six new identity/signature/parser tests pass; the standard
+  10-file affected suite completed to 100% with exit 0; Ruff and
+  `git diff --check` pass. No build ran.

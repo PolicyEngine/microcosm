@@ -1,6 +1,7 @@
 import builtins
 import hashlib
 import importlib.util
+import inspect
 import json
 import sys
 from dataclasses import replace
@@ -46,6 +47,50 @@ def _load_scorer_module():
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+def test_release_and_fiscal_scorer_signatures_have_no_membership_switches() -> None:
+    builder = _load_builder_module()
+    scorer = _load_scorer_module()
+
+    assert set(inspect.signature(builder._main).parameters) == {"argv"}
+    assert set(inspect.signature(scorer.score_frame).parameters) == {
+        "h5",
+        "ledger_facts",
+        "age_targets",
+        "allow_unaged_dollar_targets",
+        "maximum_microsim_batch_size",
+        "allow_legacy_formula_owned_inputs",
+        "allow_legacy_cd_provenance",
+        "congressional_district_vintage_crosswalk",
+        "target_materialization_cache_dir",
+        "legacy_pe_flat_h5",
+    }
+
+
+@pytest.mark.parametrize(
+    "removed_option",
+    (
+        "--include-congressional-district-targets",
+        "--diagnostic-skip-tax-expenditure-targets",
+        "--zero-support-exclusions",
+    ),
+)
+def test_release_parser_rejects_removed_membership_options(
+    removed_option: str,
+) -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(SystemExit):
+        builder._parse_args(
+            [
+                "--ledger-facts",
+                "facts.jsonl",
+                "--out",
+                "release",
+                removed_option,
+            ]
+        )
 
 
 def test__given_matching_warm_start_npz__then_builder_loads_household_weights(

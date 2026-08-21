@@ -907,20 +907,6 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--zero-support-exclusions",
-        type=Path,
-        help=(
-            "Optional JSON mapping source_record_id -> reason of per-run, "
-            "per-artifact support-expressibility exclusions that augment the "
-            "standing US_FISCAL_TARGET_SUPPORT_EXCLUSIONS registry for THIS "
-            "build only (PolicyEngine/microcosm#299 Build G). A sparse "
-            "artifact's frozen support cannot populate narrow state/tail cells "
-            "the dense parent can; declare those cells here so they do not "
-            "fail the zero-support gate, with each reason recorded in the "
-            "release manifest. The module registry is never mutated."
-        ),
-    )
-    parser.add_argument(
         "--qrf-tail-concentration-exclusions",
         type=Path,
         help=(
@@ -7801,35 +7787,6 @@ def _build_manifests(
     )
 
 
-def _load_zero_support_exclusions(path: Path | None) -> dict[str, str]:
-    """Load a per-run, per-artifact zero-support exclusion mapping.
-
-    The file is a JSON object of ``source_record_id -> reason``. Each reason
-    must be a non-empty string documenting why the sparse artifact's frozen
-    support cannot express that cell (PolicyEngine/microcosm#299 Build G). These
-    augment the standing :data:`US_FISCAL_TARGET_SUPPORT_EXCLUSIONS` for a single
-    build; the module constant is never mutated. Returns an empty mapping when
-    no path is given.
-    """
-    if path is None:
-        return {}
-    payload = json.loads(path.read_text())
-    if not isinstance(payload, dict):
-        raise ValueError(
-            f"Zero-support exclusions file {path} must be a JSON object of "
-            "source_record_id -> reason."
-        )
-    exclusions: dict[str, str] = {}
-    for source_record_id, reason in payload.items():
-        if not isinstance(reason, str) or not reason.strip():
-            raise ValueError(
-                "Every zero-support exclusion needs a non-empty reason; "
-                f"{source_record_id!r} in {path} has {reason!r}."
-            )
-        exclusions[str(source_record_id)] = reason
-    return exclusions
-
-
 def _load_qrf_tail_concentration_exclusions(path: Path | None) -> dict[str, str]:
     """Load a per-run QRF tail-concentration exclusion mapping.
 
@@ -8403,9 +8360,6 @@ def _main(argv: Sequence[str] | None = None) -> None:
         expected_facts_sha256=args.ledger_facts_sha256,
         expected_manifest_sha256=args.ledger_manifest_sha256,
     )
-    extra_support_exclusions = _load_zero_support_exclusions(
-        args.zero_support_exclusions
-    )
     target_registry = compile_us_fiscal_target_registry(
         ledger_artifact.facts,
         target_period=PERIOD,
@@ -8414,7 +8368,6 @@ def _main(argv: Sequence[str] | None = None) -> None:
         ),
         age_targets=args.age_targets,
         allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
-        extra_support_exclusions=extra_support_exclusions,
     )
     # Reviewed CMS Medicaid enrollment substitutions (microcosm#386): a state
     # whose point-in-time snapshot is unreported at source ships its cited
@@ -11242,25 +11195,6 @@ def _main(argv: Sequence[str] | None = None) -> None:
             US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.items()
         )
     ]
-    # Per-run, per-artifact support-expressibility exclusions (microcosm#299
-    # Build G): recorded separately from the standing global registry so the
-    # manifest documents exactly which cells this artifact declared un-
-    # expressible on its support, without mutating the module constant.
-    coverage["fiscal_target_support_exclusions_per_run"] = {
-        "source": (
-            str(args.zero_support_exclusions)
-            if args.zero_support_exclusions is not None
-            else None
-        ),
-        "reason": (
-            "Sparse frozen-support cells the artifact's support cannot express; "
-            "augments US_FISCAL_TARGET_SUPPORT_EXCLUSIONS for this build only."
-        ),
-        "exclusions": [
-            {"source_record_id": source_record_id, "reason": reason}
-            for source_record_id, reason in sorted(extra_support_exclusions.items())
-        ],
-    }
     write_us_source_coverage_diagnostics(
         coverage, release_dir / "us_source_coverage.json"
     )
