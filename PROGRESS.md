@@ -4,15 +4,11 @@
 
 ### State
 
-In progress. The prior assigned-only ACS QRF correction has crossed every QRF
-stage on the restricted 1% host rerun. The active boundary is now the
-`late_transfer` post-transfer receipt validator for
-`person/source_operator_weeks_unemployed/weeks_unemployed`. This lane will
-replay the preserved checkpoint without a build, identify the exact invalid
-capacity relationship, fix its generating mechanism without changing any
-threshold, band, comparator, or gate, and audit every other late-transfer
-target for the same semantic assumption. The serial host queue remains the
-only owner of 1% builds.
+Ready to commit. The generating repair, no-build checkpoint replay, focused
+matrix, all five package test roots, repository-wide Ruff, touched-file format,
+and whitespace checks are green. The preserved late-transfer checkpoint now
+validates with the exact receipt comparator unchanged. The serial host queue
+remains the only owner of the next 1% build.
 
 ### Done
 
@@ -40,13 +36,16 @@ only owner of 1% builds.
   `85,676.23791782455`. The exact `upper_prefix_mass <=
   addition_candidate_mass` proof therefore fails by one float64 ULP
   (`1.4551915228366852e-11`); every other relationship passes.
-- Confirmed this is not a count-target exception. Weeks are constrained to
-  integer donor support and the carrier event remains `weeks > 0`; the defect
-  is two reductions for one declared ordered capacity. A single shared prefix
-  schedule is the generating-mechanism repair, with the exact validator left
-  unchanged (`weeks_unemployed.py:791-800,1218-1222`;
-  `acs_transfer.py:3094-3112,3238-3259`;
-  `post_transfer_calibration.py:463-493,817-891,1389-1490`).
+- Confirmed this is not a count-target exception. The weeks source and its QRF
+  postprocessing constrain values to integer `0..52`, post-transfer amount
+  mapping constrains mutable values to positive reference-donor support, and
+  the carrier event remains `weeks > 0`; the defect is two reductions for one
+  declared ordered capacity. At reproduction commit
+  `4cc41652`, the two paths are visible at
+  `post_transfer_calibration.py:463-493,817-891`, and the unchanged exact
+  relationship at `post_transfer_calibration.py:1389-1490`
+  (`weeks_unemployed.py:791-800,911-983,1218-1222`;
+  `post_transfer_calibration.py:588-626,702-705`).
 - Added `tools/reproduce_us_post_transfer_weeks_checkpoint.py`, which validates
   all three file/identity/raw-draw digests, restores only the native clone-0
   calibration vectors, and reports the exact error and failed predicate
@@ -60,14 +59,38 @@ only owner of 1% builds.
   nonmutable recipient ballast row. The full post-transfer test file passes
   29/29 before the fix
   (`packages/microcosm-build/tests/test_us_post_transfer_calibration.py:537-631`).
+- Implemented one immutable `_PrefixSchedule` for each declared carrier order.
+  Capacity and nearest-prefix selection now consume the same cumulative
+  float64 path for both removal and addition; the strict receipt comparator is
+  byte-for-byte unchanged
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:282-287,445-515,839-922,1471-1520`).
+- Replayed the SHA-pinned checkpoint with `--expect valid`; it exited zero in
+  7.0 seconds. Candidate capacity and upper prefix are both
+  `85,676.23791782456`, their delta is zero, row selection is unchanged, and
+  strict receipt validation succeeds.
+- Converted the production-weight regression to require strict validation for
+  every late `match_reference` spec and added the symmetric removal-path
+  regression (`packages/microcosm-build/tests/test_us_post_transfer_calibration.py:537-694`).
+- Ran all 35 post-transfer calibration tests and the affected stacked-spine,
+  multispine-pool, pool-H5, and pool-tool matrix; every test passed. Touched
+  Python files pass formatting and Ruff.
+- Audited all seven late targets. The shared schedule applies to the six
+  `match_reference` targets, including the sole count target
+  `weeks_unemployed`; `disability_benefits` preserves recipient carriers and
+  never enters the capacity/prefix branch. Detailed source-cited verdicts are
+  in `_LANE-NOTES.md`.
+- Ran `uv run pytest` separately for the final repaired tree's
+  `microcosm-frame`, `microcosm-fit`, `microcosm-calibrate`, `microcosm-data`,
+  and `microcosm-build` test roots under the 12 GiB/20 ms guard. Every command
+  exited zero; only the established skips and warnings appeared.
+- Ran repository-wide `ruff check .`, touched-file `ruff format --check`, and
+  `git diff --check`; all passed.
 
 ### Next
 
-1. Commit the SHA-pinned no-build reproduction and exact expected-failure
-   regression.
-2. Replace the dual candidate/prefix reductions with one ordered prefix
-   schedule, flip the regression to strict validation, complete the
-   late-target audit, and rerun all required package shards plus Ruff.
+1. Commit the executable repair, regressions, and audit journal.
+2. Refresh and commit `FINAL_REPORT.md`; leave restricted host certification
+   and publication to the serial host owner.
 
 ## Owner continuation revalidation — 2026-08-21 11:45Z
 

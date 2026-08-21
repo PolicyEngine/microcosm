@@ -34,15 +34,15 @@ builds in this lane are off-chain at `--sample-fraction 0.01` and
   `80,851,529.27715749`, recipient total is `79,926,522.10879111`, reference
   positive mass is `2,762,659.3294707513`, and target positive mass is
   `2,731,052.2627107087` (`tools/reproduce_us_post_transfer_weeks_checkpoint.py:144-206,230-250`).
-- Capacity generation reduces the 32 candidate weights with masked
-  `ndarray.sum`, producing `85,676.23791782455`, while selection independently
-  reduces the same ID-ordered weights with `np.cumsum`, producing
-  `85,676.23791782456`
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:463-493,817-880`).
+- At reproduction commit `4cc41652`, capacity generation reduces the 32
+  candidate weights with masked `ndarray.sum`, producing
+  `85,676.23791782455`, while selection independently reduces the same
+  ID-ordered weights with `np.cumsum`, producing `85,676.23791782456`
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:463-493,817-880` at that commit).
   The exact validator relationship `0 <= lower <= upper <=
   expected_candidate_mass` therefore rejects the receipt by one float64 ULP,
   `1.4551915228366852e-11`; every other relationship passes
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:1389-1490`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:1389-1490` at `4cc41652`).
 
 ### Semantic adjudication
 
@@ -50,19 +50,80 @@ builds in this lane are off-chain at `--sample-fraction 0.01` and
   exceed its declared candidate capacity. No tolerance or target exception is
   authorized. The generating defect is that capacity and prefix evidence are
   derived by two reduction schedules for the same declared ordered carrier
-  set (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:321-327,463-493,817-891`).
+  set (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:321-327,463-493,817-891` at `4cc41652`).
 - Weeks is a valid positive-carrier target. The ASEC source accepts only
   integer `-1` or `0..52`, maps `-1` to zero, and defines the positive event as
   an in-range integer above zero
   (`packages/microcosm-build/src/microcosm/build/us_runtime/weeks_unemployed.py:791-800,1218-1222`).
-  The ACS transfer codec recognizes integer targets as discrete numeric,
-  snaps predictions to observed support, and emits integer values
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:3094-3112,3238-3259`).
+  Its dedicated QRF path rounds, clips, and revalidates predictions in that
+  domain; post-transfer amount mapping then selects only positive
+  reference-donor values and rejects support escape
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/weeks_unemployed.py:911-983`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:588-626,702-705`).
 - The semantics-preserving repair is one immutable ordered-prefix schedule per
   candidate set, consumed by both capacity and selection. Rewriting only the
   terminal cumulative value is invalid because `_nearest_prefix` requires a
   nondecreasing vector for its lower-mass tie break and `searchsorted`
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:463-493`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:487-515`).
+
+### Implemented generating repair
+
+- `_PrefixSchedule` binds one immutable ordered-position vector to one
+  float64 cumulative-mass vector. `_nearest_prefix` consumes that schedule and
+  reports its terminal element as candidate mass
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:282-287,445-515`).
+- The kernel constructs the declared amount-descending/ID removal schedule and
+  ID-ordered addition schedule once. Their terminal cumulative values generate
+  the capacity receipt, and those same objects generate the selected-prefix
+  evidence (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:839-922`).
+- The validator's exact `lower <= upper <= expected_candidate_mass`
+  relationship remains unchanged; no tolerance, threshold, band, gate, or
+  target exception was altered
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:1471-1520`).
+- The SHA-pinned checkpoint replay now reports candidate capacity and upper
+  prefix both equal to `85,676.23791782456`, a zero delta, unchanged row
+  selection, and a valid strict receipt. The production-weight regression
+  exercises all six late `match_reference` declarations, and a second
+  non-associative fixture covers the removal schedule
+  (`packages/microcosm-build/tests/test_us_post_transfer_calibration.py:537-694`).
+
+### Complete late-transfer target audit
+
+The registry contains exactly seven late targets; six share the repaired
+`match_reference` branch and one bypasses carrier selection by preserving
+recipient carriers
+(`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:208-258,839-922`).
+
+| Late target | Source semantics / observed 1% shape | Carrier verdict |
+| --- | --- | --- |
+| `pre_subsidy_care_expenses` | Nonnegative annual paid-care expense, assigned to at most one qualifying person per unit (`adult_care.py:461-517,599-603`); host had not reached it. | `match_reference`; not a count. The old independent-reduction defect applied, and the shared removal/addition schedules now cover it. |
+| `child_support_expense` | Exact nonnegative annual `CHSP_VAL` carry (`child_support.py:166-201`); QRF reported six distinct donor values. | `match_reference`; near-discrete in this sample but not a count. Same old reducer hazard, covered by the shared schedules. |
+| `child_support_received` | Exact nonnegative annual `CSP_VAL` carry (`child_support.py:166-201`); QRF reported 15 distinct donor values. | `match_reference`; near-discrete in this sample but not a count. Same old reducer hazard, covered by the shared schedules. |
+| `disability_benefits` | Nonnegative annual two-slot sum excluding workers' compensation (`disability_benefits.py:184-220,558-560`); QRF reported ten distinct donor values. | `preserve_recipient`; near-discrete in this sample, but it never creates capacity/prefix evidence, so the defect is inapplicable. |
+| `weeks_unemployed` | Integer `-1` or `0..52`, with `-1` mapped to zero (`weeks_unemployed.py:791-800,1218-1222`); QRF reported 12 distinct donor values. | `match_reference`; the only semantic count target. Positive carrier semantics remain valid, and the exact checkpoint proves its failure was reducer order, not count support. |
+| `workers_compensation` | Exact nonnegative annual `WC_VAL` carry (`workers_compensation.py:170-184,520-522`); host had not reached it. | `match_reference`; not a count. Same old reducer hazard, covered by the shared schedules. |
+| `spm_unit_energy_subsidy` | Measured nonnegative annual `SPM_ENGVAL`, consistent within and reduced to SPM unit (`energy_subsidy.py:169-233,537-557`); host had not reached it. | `match_reference`; not a count. Same old reducer hazard, covered by the shared schedules. |
+
+The host log's near-discrete evidence appears at `build.log:1252-1266,1404-1408`.
+Weeks does not rely on ACS's explicit discrete-numeric set, which contains only
+two mortgage-year targets; ordinary numeric targets otherwise use the
+continuous encoding. Its integer semantics come from the dedicated weeks
+source/QRF checks and post-transfer donor-support mapping cited above
+(`acs_transfer.py:129-138,3035-3117`). QRF's `<=32`-unique “near-discrete”
+branch is a leaf-storage optimization, not a carrier-capacity semantic
+distinction, which is why annual dollar targets also triggered it here
+(`microcosm-fit/qrf.py:388-401,482-503`).
+
+Current zero-based late-DAG positions are child support 24, disability 25,
+weeks 30, workers' compensation 31, energy subsidy 32, and adult care 34.
+The registry constructs and schedules those groups deterministically, stacked
+execution enumerates them serially, and each production group applies its
+post-transfer calibration before returning
+(`us_late_producer_registry.py:1338-1396,2013-2019`;
+`stacked_spine.py:10054-10095,10927-10931`). Thus the failed host run had
+crossed child support and disability but had not exercised workers'
+compensation, energy subsidy, or adult care; the parameterized shared-kernel
+regression covers all six matching specs before the owner reruns it.
 
 ## Source-cited mechanism record
 
@@ -110,15 +171,15 @@ comparator change.
   scope, snapshots and byte-compares protected surfaces, computes the reference
   positive mass, and uses deterministic nearest-prefix removal/addition within
   a proven attainable-mass interval
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:437-525,745-890`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:445-547,727-922`).
 - Mutable positive amounts are mapped only to reference positive support and
   are anchored at the frozen 10/25/50/75/90 percentiles; infeasible or
   conflicting anchors are recorded rather than hidden
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:555-702`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:577-724`).
 - The kernel proves boundary saturation when capacity-limited and rejects any
   change to nonmutable, negative, negative-zero, or zero-weight bytes, any
   donor-support escape, or any preserve-carrier change
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:908-956`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:939-978`).
 - The stacked owner derives ASEC clone-0 reference rows, ACS clone-0 recipient
   rows, and transferred-null mutable rows. Adult care uses qualifying rows plus
   one candidate per empty unit; weeks uses positive-UC mutable rows. The final
@@ -127,7 +188,7 @@ comparator change.
 - Schema-v2 receipts explicitly state that terminal validation cannot replay
   pre-calibration state; they separate live-replayable output claims from
   generation-transition evidence
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:43-119,958-1024`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:43-119,980-1055`).
 - Terminal validation independently recomputes live row/mask hashes, entity and
   output hashes, full weights, carrier masses, reference/recipient quantiles,
   QED, and coupled adult/weeks constraints
@@ -158,17 +219,17 @@ comparator change.
   not have the adjudicated fold/comparator authority in main and does not invent
   one. Its carrier correction is deterministic terminal reference-margin
   matching, not cross-fitting or an out-of-sample estimate
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:817-890`;
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:839-922`;
   `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:4211-4217`).
 - The unemployment-compensation row likewise lacks the adjudicated money-OOS
   authority in this branch. The implementation freezes its carrier membership
   and calibrates only conditional positive amounts; no OOS nonregression claim
   is made
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:193-207,930-956`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:193-207,952-978`).
 - Weeks-unemployed carrier matching is allowed to stop at the exact
   positive-UC-compatible capacity, but the receipt must prove the attainable
   interval and boundary saturation
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:817-924`;
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:839-955`;
   `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8863-8876`).
 - Mutable masks, input hashes, before-state diagnostics, change counts, and
   byte-preservation proofs need the generation-time pre-frame. Terminal

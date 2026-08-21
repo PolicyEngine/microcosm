@@ -279,6 +279,14 @@ class PostTransferCalibrationFrameResult:
     receipt: dict[str, object]
 
 
+@dataclass(frozen=True)
+class _PrefixSchedule:
+    """One bound carrier order and its sole float64 accumulation path."""
+
+    ordered_positions: np.ndarray
+    cumulative_mass: np.ndarray
+
+
 def _canonical_sha256(value: object) -> str:
     return hashlib.sha256(
         json.dumps(
@@ -460,14 +468,28 @@ def _descending_value_then_id_order(
     return by_id[np.argsort(-values[by_id], kind="stable")]
 
 
-def _nearest_prefix(
+def _prefix_schedule(
     ordered_positions: np.ndarray,
     weights: np.ndarray,
+) -> _PrefixSchedule:
+    positions = np.asarray(ordered_positions, dtype=np.int64).copy()
+    cumulative = np.empty(len(positions) + 1, dtype=np.float64)
+    cumulative[0] = 0.0
+    np.cumsum(weights[positions], dtype=np.float64, out=cumulative[1:])
+    positions.setflags(write=False)
+    cumulative.setflags(write=False)
+    return _PrefixSchedule(
+        ordered_positions=positions,
+        cumulative_mass=cumulative,
+    )
+
+
+def _nearest_prefix(
+    schedule: _PrefixSchedule,
     target_mass: float,
 ) -> tuple[np.ndarray, float, dict[str, object]]:
-    cumulative = np.concatenate(
-        (np.asarray([0.0]), np.cumsum(weights[ordered_positions], dtype=np.float64))
-    )
+    ordered_positions = schedule.ordered_positions
+    cumulative = schedule.cumulative_mass
     requested = max(0.0, target_mass)
     # cumulative is ascending, so np.argmin implements the declared lower-mass
     # tie break when two adjacent prefixes are equally close.
@@ -821,7 +843,16 @@ def calibrate_post_transfer_values(
         fixed_positive = recipient & (working > 0.0) & ~mutable_effective
         fixed_mass = float(numeric_weights[fixed_positive].sum())
         allowed_positive = mutable_effective & allowed & (working > 0.0)
-        allowed_positive_mass = float(numeric_weights[allowed_positive].sum())
+        allowed_positive_order = _descending_value_then_id_order(
+            working,
+            ids,
+            np.flatnonzero(allowed_positive),
+        )
+        allowed_positive_schedule = _prefix_schedule(
+            allowed_positive_order,
+            numeric_weights,
+        )
+        allowed_positive_mass = float(allowed_positive_schedule.cumulative_mass[-1])
         zero_candidates = (
             mutable_effective
             & allowed
@@ -829,7 +860,15 @@ def calibrate_post_transfer_values(
             & (working == 0.0)
             & ~np.signbit(working)
         )
-        addition_candidate_mass = float(numeric_weights[zero_candidates].sum())
+        addition_candidate_order = _stable_id_order(
+            ids,
+            np.flatnonzero(zero_candidates),
+        )
+        addition_candidate_schedule = _prefix_schedule(
+            addition_candidate_order,
+            numeric_weights,
+        )
+        addition_candidate_mass = float(addition_candidate_schedule.cumulative_mass[-1])
         minimum_attainable_mass = fixed_mass
         maximum_attainable_mass = (
             fixed_mass + allowed_positive_mass + addition_candidate_mass
@@ -840,14 +879,8 @@ def calibrate_post_transfer_values(
         )
         desired_mutable_mass = max(0.0, target_positive_mass - fixed_mass)
         if desired_mutable_mass <= allowed_positive_mass:
-            ordered = _descending_value_then_id_order(
-                working,
-                ids,
-                np.flatnonzero(allowed_positive),
-            )
             retained, retained_mass, prefix_audit = _nearest_prefix(
-                ordered,
-                numeric_weights,
+                allowed_positive_schedule,
                 desired_mutable_mass,
             )
             retained_mask = np.zeros(size, dtype=bool)
@@ -864,10 +897,8 @@ def calibrate_post_transfer_values(
             }
         else:
             needed = desired_mutable_mass - allowed_positive_mass
-            ordered = _stable_id_order(ids, np.flatnonzero(zero_candidates))
             selected, selected_mass, prefix_audit = _nearest_prefix(
-                ordered,
-                numeric_weights,
+                addition_candidate_schedule,
                 needed,
             )
             added[selected] = True

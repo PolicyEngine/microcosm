@@ -534,7 +534,18 @@ def test_allowed_masks_clear_forbidden_carrier_and_report_capacity_shortfall() -
         )
 
 
-def test_weeks_receipt_reproduces_production_candidate_reduction_split() -> None:
+@pytest.mark.parametrize(
+    "spec",
+    tuple(
+        spec
+        for spec in POST_TRANSFER_CALIBRATION_SPECS.values()
+        if spec.stage == "late_transfer" and spec.carrier_mode == "match_reference"
+    ),
+    ids=lambda spec: spec.target,
+)
+def test_late_match_receipts_share_production_candidate_prefix_mass(
+    spec: PostTransferCalibrationSpec,
+) -> None:
     production_weight_hex = (
         "0x1.3733a66e776b1p+11",
         "0x1.67143630b12ccp+8",
@@ -594,12 +605,6 @@ def test_weeks_receipt_reproduces_production_candidate_reduction_split() -> None
     recipient = ~reference
     mutable = np.zeros(len(values), dtype=bool)
     mutable[1:33] = True
-    spec = post_transfer_calibration_spec(
-        entity="person",
-        family="source_operator_weeks_unemployed",
-        target="weeks_unemployed",
-    )
-
     result = calibrate_post_transfer_values(
         values,
         weights,
@@ -614,22 +619,79 @@ def test_weeks_receipt_reproduces_production_candidate_reduction_split() -> None
 
     capacity = result.receipt["carrier"]["capacity"]
     selection = result.receipt["carrier"]["selection"]
-    assert capacity["addition_candidate_mass"] == masked_mass
-    assert capacity["maximum_attainable_mass"] == masked_mass
+    assert capacity["addition_candidate_mass"] == ordered_prefix_mass
+    assert capacity["maximum_attainable_mass"] == ordered_prefix_mass
     assert selection["candidate_mass"] == ordered_prefix_mass
     assert selection["selected_mass"] == ordered_prefix_mass
     assert selection["lower_prefix_mass"] == ordered_prefix_mass
     assert selection["upper_prefix_mass"] == ordered_prefix_mass
-    assert selection["upper_prefix_mass"] > capacity["addition_candidate_mass"]
-    with pytest.raises(
-        ValueError,
-        match="match-reference carrier capacity relationships are invalid",
-    ):
-        validate_post_transfer_calibration_receipt(
-            result.receipt,
-            spec=spec,
-            boundary="production-weight reduction regression",
+    assert selection["upper_prefix_mass"] <= capacity["addition_candidate_mass"]
+    validate_post_transfer_calibration_receipt(
+        result.receipt,
+        spec=spec,
+        boundary="production-weight reduction regression",
+    )
+
+
+def test_retain_capacity_and_selection_share_one_ordered_prefix_mass() -> None:
+    candidate_weights = np.asarray(
+        [
+            7058.927001418665,
+            7659.729944427913,
+            2574.5891324792306,
+            7988.62015511553,
+            1693.9976601157439,
+            5237.851828796898,
+            5414.693471133362,
+            8727.20414048527,
+        ],
+        dtype=np.float64,
+    )
+    masked_mass = float(candidate_weights.sum())
+    ordered_prefix_mass = float(np.cumsum(candidate_weights, dtype=np.float64)[-1])
+    assert masked_mass.hex() == "0x1.6a273a06e913cp+15"
+    assert ordered_prefix_mass.hex() == "0x1.6a273a06e913dp+15"
+
+    # A 50% reference share requests the masked total of every mutable
+    # positive. Descending values preserve the declared candidate order, while
+    # the immutable zero recipient keeps capacity below total recipient mass.
+    weights = np.concatenate(
+        (np.asarray([1.0, 1.0]), candidate_weights, np.asarray([masked_mass]))
+    )
+    values = np.concatenate(
+        (
+            np.asarray([1.0, 0.0]),
+            np.arange(len(candidate_weights), 0, -1, dtype=np.float64),
+            np.asarray([0.0]),
         )
+    )
+    reference = _mask(len(values), 0, 1)
+    recipient = ~reference
+    mutable = np.zeros(len(values), dtype=bool)
+    mutable[2:10] = True
+
+    result = calibrate_post_transfer_values(
+        values,
+        weights,
+        np.arange(len(values)),
+        spec=_match_spec(),
+        reference_rows=reference,
+        recipient_rows=recipient,
+        mutable_rows=mutable,
+    )
+
+    capacity = result.receipt["carrier"]["capacity"]
+    selection = result.receipt["carrier"]["selection"]
+    assert selection["action"] == "retain_positive_prefix"
+    assert capacity["allowed_positive_mass_before"] == ordered_prefix_mass
+    assert selection["candidate_mass"] == ordered_prefix_mass
+    assert selection["chosen_prefix_mass"] == ordered_prefix_mass
+    assert selection["upper_prefix_mass"] == ordered_prefix_mass
+    validate_post_transfer_calibration_receipt(
+        result.receipt,
+        spec=_match_spec(),
+        boundary="retain production-weight reduction regression",
+    )
 
 
 def test_match_reference_proves_immutable_positive_floor_saturation() -> None:
