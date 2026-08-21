@@ -52,6 +52,9 @@ _EXPECTED_ERROR = (
     "person/source_operator_weeks_unemployed/weeks_unemployed: "
     "match-reference carrier capacity relationships are invalid."
 )
+_EXPECTED_INVALID_CANDIDATE_MASS = 85_676.23791782455
+_EXPECTED_PREFIX_MASS = 85_676.23791782456
+_EXPECTED_VALID_MAXIMUM_MASS = 85_676.23791782453
 
 
 def _parse_args() -> argparse.Namespace:
@@ -240,6 +243,7 @@ def replay_checkpoint(checkpoint_stage_root: Path) -> dict[str, object]:
         "before_positive_mass": carrier["before_positive_mass"],
         "after_positive_mass": carrier["after_positive_mass"],
         "addition_candidate_mass": candidate_mass,
+        "maximum_attainable_mass": capacity["maximum_attainable_mass"],
         "selected_prefix_mass": selection["selected_mass"],
         "lower_prefix_mass": selection["lower_prefix_mass"],
         "upper_prefix_mass": upper_mass,
@@ -259,6 +263,22 @@ def main() -> int:
         raise SystemExit(
             f"Expected {args.expect} receipt, but replay produced {observed}."
         )
+    if args.expect == "invalid" and (
+        replay["failed_relationships"]
+        != ["upper_prefix_mass <= addition_candidate_mass"]
+        or replay["validation_error"] != _EXPECTED_ERROR
+        or replay["addition_candidate_mass"] != _EXPECTED_INVALID_CANDIDATE_MASS
+        or replay["upper_prefix_mass"] != _EXPECTED_PREFIX_MASS
+    ):
+        raise SystemExit("Invalid replay no longer matches the pinned weeks failure.")
+    if args.expect == "valid" and (
+        replay["failed_relationships"]
+        or replay["validation_error"] is not None
+        or replay["addition_candidate_mass"] != _EXPECTED_PREFIX_MASS
+        or replay["upper_prefix_mass"] != _EXPECTED_PREFIX_MASS
+        or replay["maximum_attainable_mass"] != _EXPECTED_VALID_MAXIMUM_MASS
+    ):
+        raise SystemExit("Valid replay no longer matches the pinned weeks repair.")
     return 0
 
 

@@ -4,14 +4,15 @@
 
 ### State
 
-In progress again after the required cross-target checkpoint audit. Commit
-`d7b12bab` correctly binds each candidate endpoint to its selection prefix and
-makes the weeks receipt valid, but both preserved child-support targets expose
-a second independent-reduction defect: separately accumulated positive and
-zero-candidate partition endpoints sum above the independently reduced whole
-recipient total. The validator remains correct and unchanged. The final report
-draft is withheld until whole-capacity accounting is repaired and every suite
-is rerun. The serial host queue remains the only owner of the next 1% build.
+Implementation and verification complete; commit is pending. Commit `d7b12bab`
+correctly bound each candidate endpoint to its selection prefix, and the
+cross-target checkpoint audit then exposed a second reduction defect in the
+whole attainable ceiling. The completed mechanism now derives that ceiling
+from one attainable-row union using the recipient total's reduction topology.
+Both exact validator inequalities remain unchanged. Red and green checkpoint
+replays, all 47 focused receipt tests, all five package test roots, repository-
+wide Ruff, touched-file formatting, and whitespace checks pass. The serial host
+queue remains the only owner of the next 1% build.
 
 ### Done
 
@@ -102,16 +103,48 @@ is rerun. The serial host queue remains the only owner of the next 1% build.
   `79,746,312.35214312`. Both sum to the same invalid maximum. This is the same
   generating class at the whole-capacity partition level, not evidence for a
   looser validator (`post_transfer_calibration.py:824-875,1456-1466`).
+- Added `tools/audit_us_post_transfer_child_support_checkpoints.py`. It pins the
+  assembled Frame and both child target file/identity/raw-draw hashes,
+  reconstructs production clone-0 values and half weights, and requires both
+  targets to match the exact expected relationship, ValueError, and float
+  values on either the red or green side.
+- Replayed that harness against `d7b12bab` with `--expect invalid`. Both targets
+  fail only `maximum_attainable_mass <= recipient_total`; the maximum is
+  `79,926,522.10879174`, recipient total is `79,926,522.10879111`, and the
+  delta is `6.258487701416016e-07`.
+- Replaced the partition-scalar maximum with a single attainable-row union
+  zero-masked onto the recipient-weight vector. Its identical length, order,
+  and nonnegative reduction topology makes the exact maximum/subset bound
+  structural without a clamp, tolerance, or validator change
+  (`post_transfer_calibration.py:823-885,1457-1529`).
+- Added two six-spec regressions: one reproduces the child partition sum one
+  ULP above the whole recipient reduction; the other is a constrained proper
+  subset whose regrouped sum is `0.0625` above its superset. Both now validate,
+  along with the production weeks and symmetric removal fixtures
+  (`test_us_post_transfer_calibration.py:544-753`).
+- Replayed the pinned weeks failure against `4cc41652` and the child failures
+  against `d7b12bab`; the hardened current harnesses accepted only their exact
+  respective predicates and numbers. Against the current tree, weeks and both
+  child receipts validate. Child maximum equals recipient total exactly while
+  the historical partition endpoint remains 42 ULP higher; weeks candidate and
+  upper prefix both equal `85,676.23791782456`.
+- Audited every late target again. Six `match_reference` declarations share the
+  repaired kernel and are enumerated by the regressions; disability uses
+  `preserve_recipient` and has no capacity proof. The source- and checkpoint-
+  qualified verdict for each target is in `_LANE-NOTES.md`.
+- Ran all 47 focused post-transfer tests; all passed under the memory guard.
+- Ran `uv run pytest` separately for `microcosm-fit`,
+  `microcosm-calibrate`, `microcosm-data`, `microcosm-frame`, and the complete
+  `microcosm-build` test roots on the final executable tree. Every command
+  exited zero; only established skips and warnings appeared.
+- Ran repository-wide `ruff check .`, touched-file `ruff format --check`, and
+  `git diff --check`; all passed.
 
 ### Next
 
-1. Extend the read-only checkpoint audit to bind both child-support cases and
-   add a compact regression for the partition/whole-total relationship.
-2. Generate maximum attainable mass from semantically unified capacity rows,
-   while retaining the exact ordered candidate endpoints and validator.
-3. Rerun the checkpoint audit, focused matrix, all five package roots, Ruff,
-   and whitespace checks; then commit the complete repair and final report.
-4. Leave restricted host certification, publication, and release-chain
+1. Commit the complete executable repair and verification journal, then write
+   and commit the final report with the executable commit hash.
+2. Leave restricted host certification, publication, and release-chain
    mutation to their existing owners.
 
 ## Owner continuation revalidation — 2026-08-21 11:45Z

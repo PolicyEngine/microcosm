@@ -822,7 +822,8 @@ def calibrate_post_transfer_values(
 
     working = original.copy()
     reference_total = float(numeric_weights[reference].sum())
-    recipient_total = float(numeric_weights[recipient].sum())
+    recipient_weights = numeric_weights[recipient]
+    recipient_total = float(recipient_weights.sum())
     reference_positive_mass = float(numeric_weights[reference & (original > 0.0)].sum())
     reference_share = reference_positive_mass / reference_total
     target_positive_mass = reference_share * recipient_total
@@ -870,9 +871,18 @@ def calibrate_post_transfer_values(
         )
         addition_candidate_mass = float(addition_candidate_schedule.cumulative_mass[-1])
         minimum_attainable_mass = fixed_mass
-        maximum_attainable_mass = (
-            fixed_mass + allowed_positive_mass + addition_candidate_mass
+        # The ceiling is the mass of one declared set, not the scalar sum of
+        # independently accumulated partition endpoints.  Retaining the
+        # recipient vector's length and order gives this nonnegative subset
+        # the same reduction topology as recipient_total, so the exact
+        # subset relationship is structural under floating-point addition.
+        attainable_rows = fixed_positive | allowed_positive | zero_candidates
+        attainable_recipient_weights = np.where(
+            attainable_rows[recipient],
+            recipient_weights,
+            0.0,
         )
+        maximum_attainable_mass = float(attainable_recipient_weights.sum())
         capacity_limited = bool(
             target_positive_mass < minimum_attainable_mass
             or target_positive_mass > maximum_attainable_mass

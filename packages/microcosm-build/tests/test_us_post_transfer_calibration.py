@@ -43,6 +43,13 @@ def _preserve_spec():
     )
 
 
+_LATE_MATCH_SPECS = tuple(
+    spec
+    for spec in POST_TRANSFER_CALIBRATION_SPECS.values()
+    if spec.stage == "late_transfer" and spec.carrier_mode == "match_reference"
+)
+
+
 def _canonical_sha256(value: object) -> str:
     return hashlib.sha256(
         json.dumps(
@@ -536,11 +543,7 @@ def test_allowed_masks_clear_forbidden_carrier_and_report_capacity_shortfall() -
 
 @pytest.mark.parametrize(
     "spec",
-    tuple(
-        spec
-        for spec in POST_TRANSFER_CALIBRATION_SPECS.values()
-        if spec.stage == "late_transfer" and spec.carrier_mode == "match_reference"
-    ),
+    _LATE_MATCH_SPECS,
     ids=lambda spec: spec.target,
 )
 def test_late_match_receipts_share_production_candidate_prefix_mass(
@@ -620,7 +623,7 @@ def test_late_match_receipts_share_production_candidate_prefix_mass(
     capacity = result.receipt["carrier"]["capacity"]
     selection = result.receipt["carrier"]["selection"]
     assert capacity["addition_candidate_mass"] == ordered_prefix_mass
-    assert capacity["maximum_attainable_mass"] == ordered_prefix_mass
+    assert capacity["maximum_attainable_mass"] == masked_mass
     assert selection["candidate_mass"] == ordered_prefix_mass
     assert selection["selected_mass"] == ordered_prefix_mass
     assert selection["lower_prefix_mass"] == ordered_prefix_mass
@@ -630,6 +633,123 @@ def test_late_match_receipts_share_production_candidate_prefix_mass(
         result.receipt,
         spec=spec,
         boundary="production-weight reduction regression",
+    )
+
+
+@pytest.mark.parametrize(
+    "spec",
+    _LATE_MATCH_SPECS,
+    ids=lambda spec: spec.target,
+)
+def test_late_match_capacity_uses_whole_attainable_row_union(
+    spec: PostTransferCalibrationSpec,
+) -> None:
+    recipient_weights = np.asarray(
+        [
+            float.fromhex("0x1.b69b69add8605p+10"),
+            float.fromhex("0x1.ca7a5e98478d8p+11"),
+            float.fromhex("0x1.630c87822425bp+11"),
+            float.fromhex("0x1.b5e61d1252c51p+12"),
+        ],
+        dtype=np.float64,
+    )
+    whole_mass = float(recipient_weights.sum())
+    positive_mass = float(recipient_weights[0])
+    zero_candidate_mass = float(np.cumsum(recipient_weights[1:], dtype=np.float64)[-1])
+    partition_mass = positive_mass + zero_candidate_mass
+    assert whole_mass.hex() == "0x1.dd2835457f5b6p+13"
+    assert partition_mass.hex() == "0x1.dd2835457f5b7p+13"
+    assert partition_mass > whole_mass
+
+    weights = np.concatenate((np.asarray([1.0, 1.0]), recipient_weights))
+    values = np.asarray([1.0, 0.0, 4.0, 0.0, 0.0, 0.0], dtype=np.float64)
+    reference = _mask(len(values), 0, 1)
+    recipient = ~reference
+    result = calibrate_post_transfer_values(
+        values,
+        weights,
+        np.arange(len(values)),
+        spec=spec,
+        reference_rows=reference,
+        recipient_rows=recipient,
+        mutable_rows=recipient,
+        allowed_carrier_rows=recipient,
+        addition_candidate_rows=recipient,
+    )
+
+    capacity = result.receipt["carrier"]["capacity"]
+    assert result.receipt["weights"]["recipient_total"] == whole_mass
+    assert capacity["allowed_positive_mass_before"] == positive_mass
+    assert capacity["addition_candidate_mass"] == zero_candidate_mass
+    assert capacity["maximum_attainable_mass"] == whole_mass
+    assert (
+        capacity["allowed_positive_mass_before"] + capacity["addition_candidate_mass"]
+        > capacity["maximum_attainable_mass"]
+    )
+    validate_post_transfer_calibration_receipt(
+        result.receipt,
+        spec=spec,
+        boundary="whole attainable-row union regression",
+    )
+
+
+@pytest.mark.parametrize(
+    "spec",
+    _LATE_MATCH_SPECS,
+    ids=lambda spec: spec.target,
+)
+def test_late_match_capacity_preserves_exact_subset_bound(
+    spec: PostTransferCalibrationSpec,
+) -> None:
+    recipient_weights = np.asarray(
+        [
+            float.fromhex("0x1.5cedcaec2f7f6p+5"),
+            float.fromhex("0x1.238d33e1a2a4ep-6"),
+            float.fromhex("0x1.dfbe6877a2824p-9"),
+            float.fromhex("0x1.7b846b4340ddfp+33"),
+            float.fromhex("0x1.c458051dac358p+31"),
+            float.fromhex("0x1.43314c2e4a93ep+48"),
+            float.fromhex("0x1.1d1111fbd2c7fp+21"),
+            float.fromhex("0x1.751b9d46fb62fp+24"),
+        ],
+        dtype=np.float64,
+    )
+    attainable_in_recipient = np.asarray(
+        [True, True, False, True, True, True, True, True],
+        dtype=bool,
+    )
+    recipient_total = float(recipient_weights.sum())
+    regrouped_subset_mass = float(recipient_weights[attainable_in_recipient].sum())
+    assert recipient_total.hex() == "0x1.433526fbe1945p+48"
+    assert regrouped_subset_mass.hex() == "0x1.433526fbe1946p+48"
+    assert regrouped_subset_mass > recipient_total
+
+    weights = np.concatenate((np.asarray([1.0, 1.0]), recipient_weights))
+    values = np.zeros(len(weights), dtype=np.float64)
+    values[0] = 1.0
+    values[7] = 4.0
+    reference = _mask(len(values), 0, 1)
+    recipient = ~reference
+    mutable = np.concatenate((np.asarray([False, False]), attainable_in_recipient))
+    result = calibrate_post_transfer_values(
+        values,
+        weights,
+        np.arange(len(values)),
+        spec=spec,
+        reference_rows=reference,
+        recipient_rows=recipient,
+        mutable_rows=mutable,
+        allowed_carrier_rows=mutable,
+        addition_candidate_rows=mutable,
+    )
+
+    capacity = result.receipt["carrier"]["capacity"]
+    assert result.receipt["weights"]["recipient_total"] == recipient_total
+    assert capacity["maximum_attainable_mass"] == recipient_total
+    validate_post_transfer_calibration_receipt(
+        result.receipt,
+        spec=spec,
+        boundary="exact attainable-subset bound regression",
     )
 
 
