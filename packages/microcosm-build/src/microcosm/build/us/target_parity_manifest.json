@@ -4,12 +4,12 @@
   "feed": "consumer_facts_buildn_v9_4.jsonl",
   "feed_sha256": "b3c0835631a446eb96aa84d86f3ee962d15ca356174c7114db52974f1cacc080",
   "target_period": "2024",
-  "registry_compile": "compile_us_fiscal_target_registry(age_targets=True, include_congressional_district_targets=False) + apply_us_medicaid_enrollment_substitutions (CD_SURFACE_REGIME='off', microcosm#449)",
+  "registry_compile": "compile_us_fiscal_target_registry(age_targets=True, canonical CD vintage crosswalk) + apply_us_medicaid_enrollment_substitutions; one national + state + congressional-district surface for every artifact (microcosm#449)",
   "us_data_source": "retired us-data pipeline (archived): utils/loss.py (eCPS loss matrix), db/etl_national_targets.py, db/etl_*.py, utils/national_target_parity.py",
   "family_granularity": "namespace.concept of the ledger source_record_id (us_target_family_id)",
   "governing_rule": "us-data-targeted => compiled unless source-absent; every reviewed exclusion carries a Chesterton's-fence {origin, purpose, verdict_basis}",
-  "compiled_families": "31",
-  "reviewed_exclusions": "53"
+  "compiled_families": "32",
+  "reviewed_exclusions": "52"
  },
  "families": {
   "bea_nipa.business_current_transfer_receipts": {
@@ -420,12 +420,12 @@
   "census_acs.acs1_2023": {
    "status": "reviewed_exclusion",
    "classification": "survey_derived",
-   "reason": "American Community Survey 1-year estimates \u2014 a household SAMPLE SURVEY, not an administrative universe. Used at congressional-district grain only, off for the national release.",
-   "evidence": "census_acs facts return None unless include_congressional_district_targets in fiscal_targets._reference_from_ledger_fact; sample fact census_acs.acs1_2023.b01001.female_age.01.age_15_to_17.female_population",
+   "reason": "American Community Survey 1-year estimates \u2014 a household SAMPLE SURVEY, not an administrative universe. The compiler admits ACS population-age facts only at congressional-district geography, while every acs1_2023 fact in this pinned feed is state-grain.",
+   "evidence": "fiscal_targets._reference_from_ledger_fact accepts census_acs only when geography_level == congressional_district; sample fact census_acs.acs1_2023.b01001.female_age.01.age_15_to_17.female_population",
    "fence": {
-    "origin": "not a national us-data calibration target: ACS feeds regional/CD H5 targets in us-data, off for the national build.",
-    "purpose": "n/a nationally \u2014 survey-derived CD detail, not a national fence.",
-    "verdict_basis": "survey_derived, and mechanically inert in this feed even under the CD-on N regime: the compiler admits census_acs only at congressional-district geography (fiscal_targets source gate returns None otherwise) and every acs1_2023 fact in the feed is state-grain (468/468 verified), so nothing compiles. Excluded by principle regardless: ACS is a sample survey, not an administrative universe."
+    "origin": "ACS feeds regional/CD detail in us-data, but the pinned family contains state-grain sample-survey facts rather than the compiler's CD population-age facts.",
+    "purpose": "survey-derived geographic detail, not an administrative control.",
+    "verdict_basis": "survey_derived and mechanically inert: every acs1_2023 fact in the feed is state-grain (468/468 verified), so the CD-only ACS source gate compiles none of them."
    }
   },
   "census_pep.national_resident_population_age": {
@@ -522,15 +522,8 @@
    }
   },
   "irs_soi.congressional_district_2022": {
-   "status": "reviewed_exclusion",
-   "classification": "off_by_default",
-   "reason": "IRS SOI congressional-district table. CD-level targets are opt-in (include_congressional_district_targets=False for the national release); the national and state SOI surfaces are compiled instead.",
-   "evidence": "test_soi_congressional_district_targets_are_opt_in + the include_congressional_district_targets gate in fiscal_targets._soi_reference_from_fact",
-   "fence": {
-    "origin": "us-data CD targets serve the regional/local H5 outputs (build_outputs/target_universe.py), not the national build.",
-    "purpose": "distributional shape within a congressional district for local H5 outputs.",
-    "verdict_basis": "off_by_default: CD targets are opt-in for the national release; enabling include_congressional_district_targets compiles them. The national and state SOI surfaces are compiled."
-   }
+   "status": "compiled",
+   "note": "One US target surface: national, state, and congressional-district facts compile for every calibrated artifact. Geography is a constraint; artifact record count changes only L0, never target membership. Congressional-district rows inform shape while national and state actuals retain control ownership."
   },
   "irs_soi.filing_season_week47": {
    "status": "compiled"

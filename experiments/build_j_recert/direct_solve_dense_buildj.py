@@ -20,6 +20,7 @@ dense weights AND a warm-start calibration.npz that Step D3 (the warm-start rele
 --verify-only: compile the registry + load the frame (seconds) and stop; de-risks the
 identity match before the ~18-min solve. STAGING/LOCAL ONLY.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,7 +40,9 @@ from microcosm.calibrate import calibrate  # noqa: E402
 RT = Path("/Users/maxghenis/PolicyEngine/_buildj-runtime")
 CKPT = RT / "checkpoints/buildj-dense/target_frame_checkpoint.h5"
 BASE = RT / "out/base-j/base_populace_us_2024_puf_support.h5"
-FACTS = Path("/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildh_v8.jsonl")
+FACTS = Path(
+    "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildh_v8.jsonl"
+)
 FACTS_SHA = "94b7155f7ca9e2de32ddb3a0add2fff2d8c66e73147fe5bd112cff3ba69b1669"
 PEUS = "1.764.6"
 # Build J dense registry = compile(v8) + the #387 RI substitution (5,534 specs).
@@ -77,57 +80,90 @@ def main():
     ledger = release.load_ledger_consumer_artifact(
         FACTS, expected_facts_sha256=FACTS_SHA
     )
+    cd_crosswalk = release.load_congressional_district_vintage_crosswalk(
+        release.default_congressional_district_vintage_crosswalk_path()
+    )
     registry0 = release.compile_us_fiscal_target_registry(
-        ledger.facts, target_period=release.PERIOD,
-        include_congressional_district_targets=False,
-        congressional_district_vintage_crosswalk=None,
-        age_targets=True, allow_unaged_dollar_targets=False,
-        extra_support_exclusions=None)
+        ledger.facts,
+        target_period=release.PERIOD,
+        congressional_district_vintage_crosswalk=cd_crosswalk,
+        age_targets=True,
+        allow_unaged_dollar_targets=False,
+        extra_support_exclusions=None,
+    )
     from microcosm.build.us_runtime import apply_us_medicaid_enrollment_substitutions
+
     registry1, sub_records = apply_us_medicaid_enrollment_substitutions(registry0)
     target_specs = registry1.specs
     active_registry = release.TargetRegistry(target_specs, country="us")
-    log(f"registry version = {active_registry.version}  n_specs={len(target_specs)} "
-        f"(expect 5534 = 5533 + RI substitution)")
-    log(f"substitutions: {[(r['state_fips'], r['applied'], r['stale']) for r in sub_records]}")
+    log(
+        f"registry version = {active_registry.version}  n_specs={len(target_specs)} "
+        f"(expect 5534 = 5533 + RI substitution)"
+    )
+    log(
+        f"substitutions: {[(r['state_fips'], r['applied'], r['stale']) for r in sub_records]}"
+    )
     if len(target_specs) != 5534:
         log("FATAL spec count != 5534. STOP.")
         sys.exit(3)
 
     identity = release._target_frame_checkpoint_identity(
-        base_dataset_sha256=base_sha, policyengine_us_version=PEUS, seed=0,
-        target_period=release.PERIOD, target_registry_version=active_registry.version,
-        congressional_district_vintage_crosswalk_sha256=None)
+        base_dataset_sha256=base_sha,
+        policyengine_us_version=PEUS,
+        seed=0,
+        target_period=release.PERIOD,
+        target_registry_version=active_registry.version,
+        congressional_district_vintage_crosswalk_sha256=None,
+    )
     log(f"checkpoint identity: {identity}")
 
     loaded = release._read_target_frame_checkpoint(
-        CKPT, identity=identity, target_specs=target_specs,
-        gate_congressional_district_targets=False)
+        CKPT,
+        identity=identity,
+        target_specs=target_specs,
+        gate_congressional_district_targets=False,
+    )
     if loaded is None:
         log("CHECKPOINT MISS — identity mismatch; cannot fast-load. STOP + report.")
         sys.exit(4)
     frame, registry, _comp = loaded
-    log(f"checkpoint HIT: frame n(household)={frame.n('household')} "
-        f"n_targets={len(registry)}")
+    log(
+        f"checkpoint HIT: frame n(household)={frame.n('household')} "
+        f"n_targets={len(registry)}"
+    )
 
     tlw = release._fiscal_target_loss_weights(registry)
     if args.verify_only:
         log("verify-only: frame + registry loaded from checkpoint OK. stopping.")
         return
 
-    log("calibrating (adam, 1500 epochs, lr 0.02, mass=conserve, ratio 5.0, "
-        "l2=0, seed 0) — ~18 min ...")
+    log(
+        "calibrating (adam, 1500 epochs, lr 0.02, mass=conserve, ratio 5.0, "
+        "l2=0, seed 0) — ~18 min ..."
+    )
     result = calibrate(
-        frame, registry.to_target_set(), epochs=1500, learning_rate=0.02,
-        max_weight_ratio=5.0, seed=0, mass="conserve", l2_lambda=0.0,
-        target_loss_weights=tlw, target_loss_cap=release.US_FISCAL_TARGET_LOSS_CAP,
-        warm_start_weights=None)
+        frame,
+        registry.to_target_set(),
+        epochs=1500,
+        learning_rate=0.02,
+        max_weight_ratio=5.0,
+        seed=0,
+        mass="conserve",
+        l2_lambda=0.0,
+        target_loss_weights=tlw,
+        target_loss_cap=release.US_FISCAL_TARGET_LOSS_CAP,
+        warm_start_weights=None,
+    )
     w = np.asarray(result.weights, dtype=np.float64)
     w0 = np.asarray(result.initial_weights, dtype=np.float64)
-    ess = (w.sum() ** 2) / (w ** 2).sum()
-    log(f"DONE. final_loss={result.final_loss:.10f}  initial_loss={result.initial_loss:.6f}")
-    log(f"  Build H dense anchor final_loss={BUILDH_DENSE_FINAL_LOSS:.6f} (same registry -> comparable)")
-    log(f"  ESS={ess:.2f}  n_nonzero={(w>0).sum()}  n_households={w.shape[0]}")
+    ess = (w.sum() ** 2) / (w**2).sum()
+    log(
+        f"DONE. final_loss={result.final_loss:.10f}  initial_loss={result.initial_loss:.6f}"
+    )
+    log(
+        f"  Build H dense anchor final_loss={BUILDH_DENSE_FINAL_LOSS:.6f} (same registry -> comparable)"
+    )
+    log(f"  ESS={ess:.2f}  n_nonzero={(w > 0).sum()}  n_households={w.shape[0]}")
 
     np.save(OUT / "dense_household_weight.npy", w)
     np.save(OUT / "dense_initial_weight.npy", w0)
@@ -136,7 +172,7 @@ def main():
         household_weight=w,
         initial_household_weight=w0,
     )
-    log(f"saved dense weights + warm-start npz to {OUT}  ({time.time()-t0:.1f}s)")
+    log(f"saved dense weights + warm-start npz to {OUT}  ({time.time() - t0:.1f}s)")
 
     sane = np.isfinite(result.final_loss) and SANE_LO <= result.final_loss <= SANE_HI
     log(f"SANITY {'PASS' if sane else 'FAIL'} (final_loss in [{SANE_LO}, {SANE_HI}])")

@@ -146,6 +146,10 @@ def state_admin_specs(feed: str | Path, families: list[str], soi_mode: str = "fu
     """
 
     from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+    from microcosm.build.us_runtime import (
+        default_congressional_district_vintage_crosswalk_path,
+        load_congressional_district_vintage_crosswalk,
+    )
     from microcosm.build.us_runtime.fiscal_targets import (
         compile_us_fiscal_target_registry,
     )
@@ -158,7 +162,11 @@ def state_admin_specs(feed: str | Path, families: list[str], soi_mode: str = "fu
     registry = compile_us_fiscal_target_registry(
         artifact.facts,
         target_period=PERIOD,
-        include_congressional_district_targets=False,
+        congressional_district_vintage_crosswalk=(
+            load_congressional_district_vintage_crosswalk(
+                default_congressional_district_vintage_crosswalk_path()
+            )
+        ),
         age_targets=True,
     )
     registry, ri_substitutions = apply_us_medicaid_enrollment_substitutions(registry)

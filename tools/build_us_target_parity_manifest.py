@@ -20,10 +20,9 @@ Derivation (from the sha-pinned feed + the deterministic registry compile):
 
 - **Feed-family inventory** = every ``namespace.concept`` family id the feed
   carries, with fact counts (``target_parity_feed_families.json``).
-- **Compiled families** = the families the registry compiles today
-  (``compile_us_fiscal_target_registry(age_targets=True)`` under the
-  declared ``CD_SURFACE_REGIME`` + the reviewed CMS Medicaid enrollment
-  substitution). Status ``compiled``.
+- **Compiled families** = the families the one-surface registry compiles today
+  (``compile_us_fiscal_target_registry(age_targets=True)`` + the reviewed CMS
+  Medicaid enrollment substitution). Status ``compiled``.
 - **Reviewed exclusions** = every non-compiling feed family, each with a fence.
   A feed family with neither a compile nor a fenced exclusion HALTS generation.
 - **Source-absent us-data families** = us-data targets with no feed fact.
@@ -71,16 +70,6 @@ DEFAULT_FEED_PATH = (
 DEFAULT_FEED_NAME = "consumer_facts_buildn_v9_4.jsonl"
 EXPECTED_FEED_SHA256_PREFIX = "b3c08356"
 TARGET_PERIOD = 2024
-
-# The parity declaration's congressional-district regime. Flipping this is a
-# DELIBERATE release decision, never a side effect: "on" compiles the CD
-# surface into parity; "off" fences irs_soi.congressional_district_2022 as
-# off_by_default. Generation fails closed (both directions) if the compiled
-# registry disagrees with the declared regime. #449 verdict 2026-07-21: the
-# first full-scale CD-on run (27,148 CD rows) halved within-10% (90.2% ->
-# 54.5%) and broke the SS-benefits critical row (-14.7%), so the surface
-# stays OFF until the CD loss architecture is reworked.
-CD_SURFACE_REGIME = "off"
 
 
 def _fence(origin: str, purpose: str, verdict_basis: str) -> dict[str, str]:
@@ -418,25 +407,23 @@ _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
     "census_acs.acs1_2023": (
         "survey_derived",
         "American Community Survey 1-year estimates — a household SAMPLE SURVEY, "
-        "not an administrative universe. Used at congressional-district grain "
-        "only, off for the national release.",
-        "census_acs facts return None unless include_congressional_district_"
-        "targets in fiscal_targets._reference_from_ledger_fact; sample fact "
+        "not an administrative universe. The compiler admits ACS population-age "
+        "facts only at congressional-district geography, while every acs1_2023 "
+        "fact in this pinned feed is state-grain.",
+        "fiscal_targets._reference_from_ledger_fact accepts census_acs only when "
+        "geography_level == congressional_district; sample fact "
         "census_acs.acs1_2023.b01001.female_age.01.age_15_to_17.female_population",
         _fence(
             origin=(
-                "not a national us-data calibration target: ACS feeds regional/CD "
-                "H5 targets in us-data, off for the national build."
+                "ACS feeds regional/CD detail in us-data, but the pinned family "
+                "contains state-grain sample-survey facts rather than the "
+                "compiler's CD population-age facts."
             ),
-            purpose="n/a nationally — survey-derived CD detail, not a national fence.",
+            purpose="survey-derived geographic detail, not an administrative control.",
             verdict_basis=(
-                "survey_derived, and mechanically inert in this feed even under "
-                "the CD-on N regime: the compiler admits census_acs only at "
-                "congressional-district geography (fiscal_targets source gate "
-                "returns None otherwise) and every acs1_2023 fact in the feed "
-                "is state-grain (468/468 verified), so nothing compiles. "
-                "Excluded by principle regardless: ACS is a sample survey, not "
-                "an administrative universe."
+                "survey_derived and mechanically inert: every acs1_2023 fact in "
+                "the feed is state-grain (468/468 verified), so the CD-only ACS "
+                "source gate compiles none of them."
             ),
         ),
     ),
@@ -506,30 +493,6 @@ _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
             ),
         ),
     ),
-    "irs_soi.congressional_district_2022": (
-        "off_by_default",
-        "IRS SOI congressional-district table. CD-level targets are opt-in "
-        "(include_congressional_district_targets=False for the national release); "
-        "the national and state SOI surfaces are compiled instead.",
-        "test_soi_congressional_district_targets_are_opt_in + the "
-        "include_congressional_district_targets gate in "
-        "fiscal_targets._soi_reference_from_fact",
-        _fence(
-            origin=(
-                "us-data CD targets serve the regional/local H5 outputs "
-                "(build_outputs/target_universe.py), not the national build."
-            ),
-            purpose=(
-                "distributional shape within a congressional district for local "
-                "H5 outputs."
-            ),
-            verdict_basis=(
-                "off_by_default: CD targets are opt-in for the national release; "
-                "enabling include_congressional_district_targets compiles them. "
-                "The national and state SOI surfaces are compiled."
-            ),
-        ),
-    ),
     "irs_soi.form_w2_401k_elective_deferrals": _RETIREMENT_CONTRIBUTION_EXCLUSION,
     "irs_soi.form_w2_designated_roth_401k_contributions": (
         _RETIREMENT_CONTRIBUTION_EXCLUSION
@@ -566,6 +529,16 @@ _FAMILY_EXCLUSIONS: dict[str, tuple[str, str, str, dict[str, str]]] = {
     ),
     "usda_snap.national_average_monthly_persons": _SNAP_PERSONS_EXCLUSION,
     "usda_snap.state_average_monthly_persons": _SNAP_PERSONS_EXCLUSION,
+}
+
+_COMPILED_FAMILY_NOTES = {
+    "irs_soi.congressional_district_2022": (
+        "One US target surface: national, state, and congressional-district "
+        "facts compile for every calibrated artifact. Geography is a constraint; "
+        "artifact record count changes only L0, never target membership. "
+        "Congressional-district rows inform shape while national and state "
+        "actuals retain control ownership."
+    ),
 }
 
 # us-data targets the pinned feed carries NO ledger fact for. (reason, evidence,
@@ -644,21 +617,14 @@ def _feed_family_counts(facts: list[dict]) -> Counter[str]:
 
 
 def _compiled_families(facts: list[dict]) -> set[str]:
-    # Parity is declared against the registry compiled under the declared
-    # CD regime (see CD_SURFACE_REGIME); the packaged vintage crosswalk rides
-    # only when the surface is on.
-    cd_on = CD_SURFACE_REGIME == "on"
+    # Parity is declared against the one registry every calibrated artifact
+    # compiles, using the canonical source-to-current CD vintage translation.
     registry = compile_us_fiscal_target_registry(
         facts,
         target_period=TARGET_PERIOD,
         age_targets=True,
-        include_congressional_district_targets=cd_on,
-        congressional_district_vintage_crosswalk=(
-            load_congressional_district_vintage_crosswalk(
-                default_congressional_district_vintage_crosswalk_path()
-            )
-            if cd_on
-            else None
+        congressional_district_vintage_crosswalk=load_congressional_district_vintage_crosswalk(
+            default_congressional_district_vintage_crosswalk_path()
         ),
     )
     registry, _ = apply_us_medicaid_enrollment_substitutions(registry)
@@ -667,15 +633,6 @@ def _compiled_families(facts: list[dict]) -> set[str]:
         for spec in registry.specs
         if us_target_family_id(spec.name)
     }
-    cd_compiled = "irs_soi.congressional_district_2022" in families
-    if cd_compiled != cd_on:
-        raise SystemExit(
-            "CD regime mismatch: CD_SURFACE_REGIME="
-            f"{CD_SURFACE_REGIME!r} but the compiled registry "
-            f"{'carries' if cd_compiled else 'lacks'} the CD family. Flip the "
-            "regime constant deliberately or fix the compile; parity "
-            "generation never demotes or promotes the CD surface silently."
-        )
     return families
 
 
@@ -704,6 +661,8 @@ def build_manifest(
     for family in sorted(feed_counts):
         if family in compiled:
             families[family] = {"status": COMPILED_STATUS}
+            if family in _COMPILED_FAMILY_NOTES:
+                families[family]["note"] = _COMPILED_FAMILY_NOTES[family]
         else:
             classification, reason, evidence, fence = _exclusion_for(family)
             families[family] = {
@@ -741,10 +700,10 @@ def build_manifest(
             "feed_sha256": feed_sha256,
             "target_period": str(TARGET_PERIOD),
             "registry_compile": (
-                "compile_us_fiscal_target_registry(age_targets=True, "
-                f"include_congressional_district_targets={CD_SURFACE_REGIME == 'on'}) "
-                "+ apply_us_medicaid_enrollment_substitutions "
-                f"(CD_SURFACE_REGIME={CD_SURFACE_REGIME!r}, microcosm#449)"
+                "compile_us_fiscal_target_registry(age_targets=True, canonical "
+                "CD vintage crosswalk) + apply_us_medicaid_enrollment_substitutions; "
+                "one national + state + congressional-district surface for every "
+                "artifact (microcosm#449)"
             ),
             "us_data_source": (
                 "retired us-data pipeline (archived): utils/loss.py (eCPS loss "

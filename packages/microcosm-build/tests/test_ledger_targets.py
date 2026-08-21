@@ -224,7 +224,7 @@ def _hierarchy_profile() -> dict[str, object]:
             {
                 "id": "test_cd_to_state",
                 "method": "scale_children_to_parent",
-                "enabled_when": {"include_congressional_district_targets": True},
+                "enabled_when": {"apply_hierarchy": True},
                 "child_geography_level": "congressional_district",
                 "parent_geography_level": "state",
                 "parent_geography_id": {"template": "0400000US{state_fips}"},
@@ -252,7 +252,9 @@ def _hierarchy_profile() -> dict[str, object]:
     }
 
 
-def test__given_supported_ledger_fact__then_microcosm_target_preserves_lineage() -> None:
+def test__given_supported_ledger_fact__then_microcosm_target_preserves_lineage() -> (
+    None
+):
     # Given
     mapping = LedgerTargetMapping(
         measure_by_concept={
@@ -284,7 +286,9 @@ def test__given_supported_ledger_fact__then_microcosm_target_preserves_lineage()
     assert spec.metadata["ledger_layout_record_set_id"] == "irs_soi.ty2023.table_1_1"
 
 
-def test__given_consumer_contract_row__then_microcosm_target_preserves_lineage() -> None:
+def test__given_consumer_contract_row__then_microcosm_target_preserves_lineage() -> (
+    None
+):
     # Given
     mapping = LedgerTargetMapping(
         measure_by_concept={
@@ -1229,7 +1233,7 @@ def test__given_hierarchy_profile__then_children_scale_to_parent() -> None:
     reconciled = apply_ledger_target_profile(
         registry,
         _hierarchy_profile(),
-        context={"include_congressional_district_targets": True},
+        context={"apply_hierarchy": True},
     )
 
     # Then
@@ -1276,7 +1280,7 @@ def test__given_disabled_hierarchy_profile__then_children_are_unchanged() -> Non
     reconciled = apply_ledger_target_profile(
         registry,
         _hierarchy_profile(),
-        context={"include_congressional_district_targets": False},
+        context={"apply_hierarchy": False},
     )
 
     # Then
@@ -1318,7 +1322,7 @@ def test__given_nonzero_parent_and_zero_children__then_hierarchy_fails() -> None
         apply_ledger_target_profile(
             registry,
             _hierarchy_profile(),
-            context={"include_congressional_district_targets": True},
+            context={"apply_hierarchy": True},
         )
 
 
@@ -1349,7 +1353,7 @@ def test__given_incomplete_hierarchy_children__then_reconciliation_fails() -> No
         apply_ledger_target_profile(
             registry,
             _hierarchy_profile(),
-            context={"include_congressional_district_targets": True},
+            context={"apply_hierarchy": True},
         )
 
 
@@ -1387,7 +1391,7 @@ def test__given_duplicate_hierarchy_child_ids__then_reconciliation_fails() -> No
         apply_ledger_target_profile(
             registry,
             _hierarchy_profile(),
-            context={"include_congressional_district_targets": True},
+            context={"apply_hierarchy": True},
         )
 
 

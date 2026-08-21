@@ -46,3 +46,42 @@
   exits 1 in this sandbox because `sysctl kern.clockrate` is forbidden (the
   same wrapper also exits 1 around `true`); later memory receipts use Python's
   child-resource accounting instead.
+
+## 2026-08-21 — runtime surface unified
+
+- The public compiler has no CD membership option and routes IRS SOI, ACS-CD,
+  and PEP-CD facts unconditionally
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/fiscal_targets.py:933-1010,2299-2390,2588-2625`).
+- The row-level doctrine is unchanged: CD rows compile into the registry, but
+  `_soi_taxable_interest_control_key_from_fact` rejects CD record sets as
+  national controls
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/fiscal_targets.py:1478-1510,1726-1744`).
+- Builder, fiscal scorer, state scorer, and ACS-local compilation all load the
+  packaged source-to-current CD crosswalk by default; the production source
+  aliases are active unconditionally
+  (`tools/build_us_fiscal_refresh_release.py:1486-1497,8319-8350,11226-11230`;
+  `tools/score_us_fiscal_targets.py:383-426`;
+  `tools/score_us_state_files.py:313-345`;
+  `tools/build_us_acs_local_release.py:141-170`).
+- The diagnostic JCT deletion switch and its target-profile-gate bypass were
+  deleted from all release/scorer entrypoints. The active registry is now the
+  compiled registry in the builder and both scorers
+  (`tools/build_us_fiscal_refresh_release.py:8435-8464`;
+  `tools/score_us_fiscal_targets.py:415-432`;
+  `tools/score_us_state_files.py:335-352`).
+- The generated calibration contract declares `national`, `state`, and
+  `congressional_district` in one `geography_layers` list and requires CD
+  inclusion; there is no default-layer fork
+  (`tools/us_bundle_generation/contracts.py:1322-1340`;
+  `packages/microcosm-build/src/microcosm/build/spec_engine/schema/calibration.schema.json:35-68`).
+- The parity generator compiles with the canonical crosswalk unconditionally,
+  and the regenerated manifest records 32 compiled / 52 reviewed families
+  (`tools/build_us_target_parity_manifest.py:617-655,689-729`;
+  `packages/microcosm-build/src/microcosm/build/us/target_parity_manifest.json:3-12,524-527`).
+- This deletes the dead scorer opt-in described by
+  [microcosm#569](https://github.com/PolicyEngine/microcosm/issues/569) and the
+  regime knob superseded by the one-surface decision in
+  [microcosm#449](https://github.com/PolicyEngine/microcosm/issues/449#issuecomment-5002607353).
+- Validation: the affected 10-file suite completed to 100% with exit 0 after
+  the change; Ruff, Python byte compilation, and `git diff --check` pass. No
+  build, push, chain operation, or pending-chain edit occurred.

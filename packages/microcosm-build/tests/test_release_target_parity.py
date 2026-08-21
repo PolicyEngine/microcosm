@@ -483,26 +483,19 @@ class TestRegeneration:
         )
 
         facts, _ = generator._load_feed(feed_path)
-        # Mirror the generator's declared regime (CD_SURFACE_REGIME): parity
-        # is declared and checked against the registry compiled the same way,
-        # so flipping the regime constant updates both sides together.
+        # Mirror the generator's one-surface registry, including canonical CD
+        # vintage translation.
         from microcosm.build.us_runtime import (
             default_congressional_district_vintage_crosswalk_path,
             load_congressional_district_vintage_crosswalk,
         )
 
-        cd_on = generator.CD_SURFACE_REGIME == "on"
         registry = compile_us_fiscal_target_registry(
             facts,
             target_period=2024,
             age_targets=True,
-            include_congressional_district_targets=cd_on,
-            congressional_district_vintage_crosswalk=(
-                load_congressional_district_vintage_crosswalk(
-                    default_congressional_district_vintage_crosswalk_path()
-                )
-                if cd_on
-                else None
+            congressional_district_vintage_crosswalk=load_congressional_district_vintage_crosswalk(
+                default_congressional_district_vintage_crosswalk_path()
             ),
         )
         registry, _ = apply_us_medicaid_enrollment_substitutions(registry)

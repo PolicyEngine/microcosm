@@ -26,6 +26,7 @@ the final loss will NOT equal Build G's 0.0413937. It should land in the same
 order of magnitude (~0.04). We report it and sanity-band it; we do NOT assert
 equality.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -70,59 +71,93 @@ def main():
     ledger = release.load_ledger_consumer_artifact(
         FACTS, expected_facts_sha256=FACTS_SHA
     )
+    cd_crosswalk = release.load_congressional_district_vintage_crosswalk(
+        release.default_congressional_district_vintage_crosswalk_path()
+    )
     registry0 = release.compile_us_fiscal_target_registry(
-        ledger.facts, target_period=release.PERIOD,
-        include_congressional_district_targets=False,
-        congressional_district_vintage_crosswalk=None,
-        age_targets=True, allow_unaged_dollar_targets=False,
-        extra_support_exclusions=None)
+        ledger.facts,
+        target_period=release.PERIOD,
+        congressional_district_vintage_crosswalk=cd_crosswalk,
+        age_targets=True,
+        allow_unaged_dollar_targets=False,
+        extra_support_exclusions=None,
+    )
     target_specs = registry0.specs
     # Match the release tool: identity uses TargetRegistry(specs).version.
     active_registry = release.TargetRegistry(target_specs, country="us")
-    log(f"registry version = {active_registry.version}  "
-        f"(expected {REG_VERSION_EXPECTED})  n_specs={len(target_specs)}")
+    log(
+        f"registry version = {active_registry.version}  "
+        f"(expected {REG_VERSION_EXPECTED})  n_specs={len(target_specs)}"
+    )
     if active_registry.version != REG_VERSION_EXPECTED:
-        log(f"FATAL registry version mismatch — got {active_registry.version}, "
-            f"expected {REG_VERSION_EXPECTED}. Feed/compile drift; STOP.")
+        log(
+            f"FATAL registry version mismatch — got {active_registry.version}, "
+            f"expected {REG_VERSION_EXPECTED}. Feed/compile drift; STOP."
+        )
         sys.exit(3)
 
     identity = release._target_frame_checkpoint_identity(
-        base_dataset_sha256=BASE_SHA, policyengine_us_version=PEUS, seed=0,
-        target_period=release.PERIOD, target_registry_version=active_registry.version,
-        congressional_district_vintage_crosswalk_sha256=None)
+        base_dataset_sha256=BASE_SHA,
+        policyengine_us_version=PEUS,
+        seed=0,
+        target_period=release.PERIOD,
+        target_registry_version=active_registry.version,
+        congressional_district_vintage_crosswalk_sha256=None,
+    )
     log(f"checkpoint identity: {identity}")
 
     loaded = release._read_target_frame_checkpoint(
-        CKPT, identity=identity, target_specs=target_specs,
-        gate_congressional_district_targets=False)
+        CKPT,
+        identity=identity,
+        target_specs=target_specs,
+        gate_congressional_district_targets=False,
+    )
     if loaded is None:
         log("CHECKPOINT MISS — identity mismatch; cannot fast-load. STOP + report.")
         sys.exit(4)
     frame, registry, _comp = loaded
-    log(f"checkpoint HIT: frame n(household)={frame.n('household')} "
-        f"n_targets={len(registry)}")
+    log(
+        f"checkpoint HIT: frame n(household)={frame.n('household')} "
+        f"n_targets={len(registry)}"
+    )
 
     tlw = release._fiscal_target_loss_weights(registry)
     if args.verify_only:
-        log("verify-only: frame + registry loaded from checkpoint OK. "
-            "Ready for the solve; stopping.")
+        log(
+            "verify-only: frame + registry loaded from checkpoint OK. "
+            "Ready for the solve; stopping."
+        )
         return
 
-    log("calibrating (adam, 1500 epochs, lr 0.02, mass=conserve, ratio 5.0, "
-        "l2=0, seed 0) — ~18 min ...")
+    log(
+        "calibrating (adam, 1500 epochs, lr 0.02, mass=conserve, ratio 5.0, "
+        "l2=0, seed 0) — ~18 min ..."
+    )
     result = calibrate(
-        frame, registry.to_target_set(), epochs=1500, learning_rate=0.02,
-        max_weight_ratio=5.0, seed=0, mass="conserve", l2_lambda=0.0,
-        target_loss_weights=tlw, target_loss_cap=release.US_FISCAL_TARGET_LOSS_CAP,
-        warm_start_weights=None)
+        frame,
+        registry.to_target_set(),
+        epochs=1500,
+        learning_rate=0.02,
+        max_weight_ratio=5.0,
+        seed=0,
+        mass="conserve",
+        l2_lambda=0.0,
+        target_loss_weights=tlw,
+        target_loss_cap=release.US_FISCAL_TARGET_LOSS_CAP,
+        warm_start_weights=None,
+    )
     w = np.asarray(result.weights, dtype=np.float64)
     w0 = np.asarray(result.initial_weights, dtype=np.float64)
-    ess = (w.sum() ** 2) / (w ** 2).sum()
-    log(f"DONE. final_loss={result.final_loss:.10f}  "
-        f"initial_loss={result.initial_loss:.6f}")
-    log(f"  Build G dense anchor final_loss={BUILDG_DENSE_FINAL_LOSS:.6f} "
-        f"(same order expected; registry differs 5533 vs 5521)")
-    log(f"  ESS={ess:.2f}  n_nonzero={(w>0).sum()}  n_households={w.shape[0]}")
+    ess = (w.sum() ** 2) / (w**2).sum()
+    log(
+        f"DONE. final_loss={result.final_loss:.10f}  "
+        f"initial_loss={result.initial_loss:.6f}"
+    )
+    log(
+        f"  Build G dense anchor final_loss={BUILDG_DENSE_FINAL_LOSS:.6f} "
+        f"(same order expected; registry differs 5533 vs 5521)"
+    )
+    log(f"  ESS={ess:.2f}  n_nonzero={(w > 0).sum()}  n_households={w.shape[0]}")
 
     # Save recovered dense weights.
     np.save(OUT / "dense_household_weight.npy", w)
@@ -136,11 +171,13 @@ def main():
         household_weight=w,
         initial_household_weight=w0,
     )
-    log(f"saved dense weights + warm-start npz to {OUT}  ({time.time()-t0:.1f}s)")
+    log(f"saved dense weights + warm-start npz to {OUT}  ({time.time() - t0:.1f}s)")
 
     sane = np.isfinite(result.final_loss) and SANE_LO <= result.final_loss <= SANE_HI
-    log(f"SANITY {'PASS' if sane else 'FAIL'} "
-        f"(final_loss in [{SANE_LO}, {SANE_HI}] band)")
+    log(
+        f"SANITY {'PASS' if sane else 'FAIL'} "
+        f"(final_loss in [{SANE_LO}, {SANE_HI}] band)"
+    )
     if not sane:
         sys.exit(5)
 

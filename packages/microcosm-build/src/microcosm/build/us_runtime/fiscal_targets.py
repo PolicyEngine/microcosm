@@ -921,7 +921,9 @@ def _load_us_fiscal_target_profile() -> dict[str, Any]:
 
 def _load_us_fiscal_target_manifest() -> dict[str, Any]:
     payload = json.loads(
-        files("microcosm.build.us").joinpath("fiscal_target_references.json").read_text()
+        files("microcosm.build.us")
+        .joinpath("fiscal_target_references.json")
+        .read_text()
     )
     if not isinstance(payload, dict):
         raise ValueError("US fiscal target manifest must be a JSON object.")
@@ -932,7 +934,6 @@ def compile_us_fiscal_target_registry(
     facts: object,
     *,
     target_period: int | str = 2024,
-    include_congressional_district_targets: bool = False,
     congressional_district_vintage_crosswalk: object | None = None,
     age_targets: bool = False,
     allow_unaged_dollar_targets: bool = False,
@@ -943,7 +944,6 @@ def compile_us_fiscal_target_registry(
     Args:
         facts: The Ledger consumer facts feed.
         target_period: The build period targets are compiled for.
-        include_congressional_district_targets: Opt into CD-level targets.
         congressional_district_vintage_crosswalk: Optional CD vintage crosswalk.
         age_targets: Opt into compile-time period aging of dollar-amount
             targets whose source period differs from ``target_period``
@@ -978,9 +978,6 @@ def compile_us_fiscal_target_registry(
         *_dynamic_us_fiscal_target_references(
             materialized_facts,
             target_period=target_period,
-            include_congressional_district_targets=(
-                include_congressional_district_targets
-            ),
             extra_support_exclusions=extra_support_exclusions,
         ),
         *_references_for_target_period(
@@ -1011,9 +1008,6 @@ def compile_us_fiscal_target_registry(
         context={
             "country": "us",
             "target_period": target_period,
-            "include_congressional_district_targets": (
-                include_congressional_district_targets
-            ),
         },
     )
     if age_targets:
@@ -2086,7 +2080,6 @@ def _dynamic_us_fiscal_target_references(
     facts: tuple[object, ...],
     *,
     target_period: int | str,
-    include_congressional_district_targets: bool = False,
     extra_support_exclusions: Mapping[str, str] | None = None,
 ) -> tuple[LedgerTargetReference, ...]:
     candidates: list[
@@ -2096,9 +2089,6 @@ def _dynamic_us_fiscal_target_references(
         reference = _reference_from_ledger_fact(
             fact,
             target_period=target_period,
-            include_congressional_district_targets=(
-                include_congressional_district_targets
-            ),
             extra_support_exclusions=extra_support_exclusions,
         )
         if reference is not None:
@@ -2310,7 +2300,6 @@ def _reference_from_ledger_fact(
     fact: object,
     *,
     target_period: int | str,
-    include_congressional_district_targets: bool = False,
     extra_support_exclusions: Mapping[str, str] | None = None,
 ) -> LedgerTargetReference | None:
     source_record_id = _source_record_id(fact)
@@ -2328,32 +2317,20 @@ def _reference_from_ledger_fact(
         return _soi_reference_from_fact(
             fact,
             target_period=target_period,
-            include_congressional_district_targets=(
-                include_congressional_district_targets
-            ),
         )
     if source_name == "census_stc":
         return _state_income_tax_reference_from_fact(fact, target_period=target_period)
     if source_name == "census_acs":
-        if (
-            not include_congressional_district_targets
-            or _geography_level(fact) != "congressional_district"
-        ):
+        if _geography_level(fact) != "congressional_district":
             return None
         return _population_age_reference_from_fact(
             fact,
             target_period=target_period,
-            include_congressional_district_targets=(
-                include_congressional_district_targets
-            ),
         )
     if source_name == "census_pep":
         return _population_age_reference_from_fact(
             fact,
             target_period=target_period,
-            include_congressional_district_targets=(
-                include_congressional_district_targets
-            ),
         )
     if source_name == "ssa":
         return _ssa_ssi_reference_from_fact(fact, target_period=target_period)
@@ -2377,27 +2354,19 @@ def _soi_reference_from_fact(
     fact: object,
     *,
     target_period: int | str,
-    include_congressional_district_targets: bool = False,
 ) -> LedgerTargetReference | None:
-    if (
-        _is_soi_congressional_district_record_set(fact)
-        and not include_congressional_district_targets
-    ):
-        return None
     geography_level = _geography_level(fact)
     if geography_level not in {"country", "state", "congressional_district"}:
         return None
     congressional_district_geoid: str | None = None
     if geography_level == "congressional_district":
-        if not include_congressional_district_targets:
-            return None
         congressional_district_geoid = _congressional_district_geoid(fact)
         if congressional_district_geoid is None:
             return None
     measure_id = _measure_id(fact)
-    if measure_id == "tax_filer_individual_count" and not (
-        include_congressional_district_targets
-        and geography_level == "congressional_district"
+    if (
+        measure_id == "tax_filer_individual_count"
+        and geography_level != "congressional_district"
     ):
         return None
     if _is_soi_cd_premium_tax_credit_amount_conflict(fact, measure_id=measure_id):
@@ -2612,7 +2581,6 @@ def _population_age_reference_from_fact(
     fact: object,
     *,
     target_period: int | str,
-    include_congressional_district_targets: bool = False,
 ) -> LedgerTargetReference | None:
     if _measure_id(fact) != "population":
         return None
@@ -2627,8 +2595,6 @@ def _population_age_reference_from_fact(
             return None
         geography_scope = "state"
     elif geography_level == "congressional_district":
-        if not include_congressional_district_targets:
-            return None
         congressional_district_geoid = _congressional_district_geoid(fact)
         if congressional_district_geoid is None:
             return None

@@ -1395,23 +1395,6 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--diagnostic-skip-tax-expenditure-targets",
-        action="store_true",
-        help=(
-            "Diagnostic only: drop JCT tax-expenditure calibration targets so "
-            "local target materialization can skip reform simulations. Do not "
-            "use for publishable releases."
-        ),
-    )
-    parser.add_argument(
-        "--include-congressional-district-targets",
-        action="store_true",
-        help=(
-            "Opt into SOI congressional-district target rows. Requires the "
-            "support frame to contain household congressional_district_geoid."
-        ),
-    )
-    parser.add_argument(
         "--congressional-district-vintage-crosswalk",
         type=Path,
         help=(
@@ -1419,9 +1402,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "artifact with source_geography_id, target_geography_id, and "
             "weight columns. Defaults to the packaged Census-built crosswalk "
             "(microcosm.build.us_runtime.data; see "
-            "CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK.md) when "
-            "congressional-district targets are requested; pass a path to "
-            "override it."
+            "CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK.md); pass a path to "
+            "override the default."
         ),
     )
     parser.add_argument(
@@ -1501,12 +1483,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Minimum seconds between progress uploads to the staging repo.",
     )
     args = parser.parse_args(argv)
-    if (
-        args.include_congressional_district_targets
-        and args.congressional_district_vintage_crosswalk is None
-    ):
-        # Fall back to the packaged Census-built crosswalk so CD-target builds
-        # work out of the box; an explicit path still overrides it.
+    if args.congressional_district_vintage_crosswalk is None:
+        # Every build compiles the same national + state + CD target surface,
+        # translated through the canonical packaged vintage crosswalk unless
+        # the caller supplies an explicit replacement.
         args.congressional_district_vintage_crosswalk = (
             default_congressional_district_vintage_crosswalk_path()
         )
@@ -8429,9 +8409,6 @@ def _main(argv: Sequence[str] | None = None) -> None:
     target_registry = compile_us_fiscal_target_registry(
         ledger_artifact.facts,
         target_period=PERIOD,
-        include_congressional_district_targets=(
-            args.include_congressional_district_targets
-        ),
         congressional_district_vintage_crosswalk=(
             congressional_district_vintage_crosswalk
         ),
@@ -8469,15 +8446,6 @@ def _main(argv: Sequence[str] | None = None) -> None:
             )
         )
     target_specs = target_registry.specs
-    if args.diagnostic_skip_tax_expenditure_targets:
-        tax_expenditure_measures = {
-            reform_spec.measure for reform_spec in US_JCT_TAX_EXPENDITURE_REFORMS
-        }
-        target_specs = tuple(
-            spec
-            for spec in target_specs
-            if spec.measure not in tax_expenditure_measures
-        )
     active_target_registry = TargetRegistry(target_specs, country="us")
     # SSI take-up wiring resolves as soon as the registry exists (fail-fast,
     # microcosm#507/#508): the band targets come from the same ledger-fed
@@ -8493,10 +8461,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         target_specs,
         US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     )
-    if (
-        not target_profile_gate.passed
-        and not args.diagnostic_skip_tax_expenditure_targets
-    ):
+    if not target_profile_gate.passed:
         raise RuntimeError(
             "Release gates failed: "
             + "; ".join(
@@ -11259,12 +11224,8 @@ def _main(argv: Sequence[str] | None = None) -> None:
             "source_coverage", message="Writing source coverage diagnostics."
         )
     active_aliases = DIRECT_ACTIVE_ALIASES + (
-        (
-            "census-acs-s0101-congressional-district-age-2024",
-            "soi-congressional-district-2022",
-        )
-        if args.include_congressional_district_targets
-        else ()
+        "census-acs-s0101-congressional-district-age-2024",
+        "soi-congressional-district-2022",
     )
     coverage = us_source_coverage_diagnostics(
         active_target_aliases=active_aliases,

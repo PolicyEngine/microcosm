@@ -418,8 +418,7 @@ def _source_stage_steps(
                     continue
             step = _typed_source_stage_step(operation)
             has_ssi_probability_seed = has_ssi_probability_seed or (
-                operation.get("rate_target_role")
-                == "ssa_ssi_age_band_recipients"
+                operation.get("rate_target_role") == "ssa_ssi_age_band_recipients"
             )
             step["source_operation_ref"] = {
                 "stage": str(stage["stage"]),
@@ -549,10 +548,7 @@ def _take_up_review_target(
             step
             for step in steps
             if "take_up_rate"
-            in (
-                _referenced_source_operation(step, source_stages=source_stages)
-                or step
-            )
+            in (_referenced_source_operation(step, source_stages=source_stages) or step)
         ),
         None,
     )
@@ -564,10 +560,7 @@ def _take_up_review_target(
             for step in steps
             if step.get("kind") == "assignment"
             and "rate_key"
-            in (
-                _referenced_source_operation(step, source_stages=source_stages)
-                or step
-            )
+            in (_referenced_source_operation(step, source_stages=source_stages) or step)
         ),
         None,
     )
@@ -638,7 +631,9 @@ def _attach_take_up_review_evidence(
     elif ownership == "engine":
         engine_steps = [step for step in steps if step.get("kind") == "engine_default"]
         if len(engine_steps) != 1:
-            raise RuntimeError("Engine-owned take-up must have one engine-default step.")
+            raise RuntimeError(
+                "Engine-owned take-up must have one engine-default step."
+            )
         debt = _mapping_like(engine_steps[0].get("debt"), "take-up engine debt")
         if _json_ready(debt.get("rate_review")) != _json_ready(rate):
             raise RuntimeError(
@@ -713,7 +708,9 @@ def _attach_take_up_review_evidence(
         step for step in steps if step.get("kind") == "count_calibration"
     ]
     if not calibration_steps:
-        raise RuntimeError("Reviewed take-up calibration has no typed calibration step.")
+        raise RuntimeError(
+            "Reviewed take-up calibration has no typed calibration step."
+        )
     step = calibration_steps[-1]
     effective_step = (
         _referenced_source_operation(step, source_stages=source_stages) or step
@@ -1235,9 +1232,7 @@ def resolve_calibration_tail_contracts(
         {
             "support_contract": deepcopy(tail_support["legacy_contract"]),
             "disaggregation_spec": deepcopy(execution_tail["spec"]),
-            "concentration_controls": deepcopy(
-                execution_tail["concentration_gate"]
-            ),
+            "concentration_controls": deepcopy(execution_tail["concentration_gate"]),
             "soi_e19200_agi_bands": {
                 "agi_bands": deepcopy(soi["agi_bands"]),
                 "all_returns": deepcopy(soi["all_returns"]),
@@ -1279,9 +1274,6 @@ def _fiscal_release_cli_defaults(release: Any) -> dict[str, object]:
         "l2_lambda": float(args.l2_lambda),
         "seed": int(args.seed),
         "target_family_loss_multipliers": dict(args.target_family_loss_multipliers),
-        "include_congressional_district_targets": bool(
-            args.include_congressional_district_targets
-        ),
         "gate_congressional_district_targets": bool(
             args.gate_congressional_district_targets
         ),
@@ -1332,13 +1324,10 @@ def build_calibration_contract() -> dict[str, object]:
             "source": "chronicle_facts",
             "facts_sha256": {"source": "run_request", "default": None},
             "manifest_sha256": {"source": "run_request", "default": None},
-            "geography_layers": ["national", "state"],
+            "geography_layers": ["national", "state", "congressional_district"],
             "cd_policy": "always_present_report_attainment",
-            "default_geography_layers": ["national", "state"],
             "congressional_district": {
-                "included_by_default": bool(
-                    cli["include_congressional_district_targets"]
-                ),
+                "included": True,
                 "gate_by_default": bool(cli["gate_congressional_district_targets"]),
                 "requires_vintage_crosswalk": True,
             },

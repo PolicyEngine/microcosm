@@ -2,11 +2,10 @@
 
 ## State
 
-Migration in progress on `one-target-surface` from `origin/main` at
-`2c7a7218`. The work will remove the congressional-district compilation
-opt-in so every US artifact compiles one national + state + congressional-
-district target registry; sparse and dense artifacts may differ in record
-count, never target membership.
+Runtime unification is complete on `one-target-surface`: every US entrypoint
+now compiles one national + state + congressional-district target registry,
+and the CLI/config switches that could delete CD or JCT target rows are gone.
+Sparse and dense artifacts may differ in record count, never target membership.
 
 ## Done
 
@@ -31,12 +30,22 @@ count, never target membership.
 - Established a green 10-file affected-suite baseline covering target
   compilation, parity, the release builder/scorers, CD vintage translation,
   Ledger profiles, and the generated calibration contract (100% in 349.59s).
+- Removed the congressional-district compilation option throughout the fiscal
+  compiler, builder, fiscal scorer, state-file scorer, ACS local tool, aging
+  diff, experiments, tests, docs, and generated contract. The canonical CD
+  crosswalk is now the default at each production entrypoint.
+- Removed the diagnostic JCT target-deletion option and its release-gate bypass;
+  diagnostic tools now score the same registry as releases.
+- Removed the parity generator's CD regime switch and regenerated the pinned
+  manifest to 32 compiled / 52 reviewed families. The generated calibration
+  contract declares all three geography layers and has no default-layer split.
+- The 10-file affected suite reaches 100% with exit 0 after the runtime change;
+  Ruff, byte compilation, and `git diff --check` pass.
 
 ## Next
 
-- Remove every `include_congressional_district_targets` branch and caller while
-  retaining the SOI row-level rule that CD aggregates never become national
-  controls.
-- Update parity doctrine/tests, prove target-registry identity across artifact
-  scale, quantify the target-row delta and existing 25% timing evidence, then
-  write `FINAL_REPORT.md`.
+- Strengthen parity anti-rot and the explicit always-compiled / never-control
+  invariant.
+- Remove the artifact-specific support-exclusion path, prove target-registry
+  identity across artifact scale, quantify the target-row delta and existing
+  25% timing evidence, then write `FINAL_REPORT.md`.
