@@ -4,10 +4,11 @@
 
 ### State
 
-Verification in progress. The reported traceback exactly identifies historical
-commit `33bf52fe`; the current branch already contains the complete scoped
-runtime correction and direct regression coverage. Three independent audits
-found no remaining canonical leak and no warranted duplicate executable edit.
+Local correction and verification complete; final reporting is in progress.
+The reported traceback exactly identifies historical commit `33bf52fe`; the
+current branch contains the complete scoped runtime correction and direct
+regression coverage. Three independent audits and fresh guarded tests found no
+remaining canonical leak and no warranted duplicate executable edit.
 
 ### Done
 
@@ -47,12 +48,22 @@ found no remaining canonical leak and no warranted duplicate executable edit.
   12 rehashed QRF structure mutations under the owner 12 GiB/20 ms guard. All
   14 cases passed; maximum observed per-process RSS was 0.571 GiB. The only
   warning was joblib's logical-core fallback.
+- Ran all 529 tests in the five directly affected ordinary-transfer,
+  multispine-serialization, stacked-spine, pool-tool, and H5 files together
+  under the owner guard. Pytest reached 100% with exit zero; maximum observed
+  per-process RSS was 1.673 GiB. A separate collection pass confirmed file
+  counts of 64, 5, 258, 164, and 38.
+- Ran repository-wide Ruff lint, Ruff formatting checks on all 15 Python files
+  changed since `33bf52fe^`, committed-range and worktree whitespace checks,
+  and executable-tree comparison against all-build-suite checkpoint
+  `a5be536f`; all passed. Runtime source, tools, specs, project metadata, and
+  the lockfile have no drift from that checkpoint. Its only affected-test
+  difference is the committed three-line strict assigned-family regression.
 
 ### Next
 
-Run the five directly affected test files together, then repository lint,
-format, whitespace, and executable-tree drift checks. Refresh and commit the
-final report only after those results are known.
+Take a final read-only host snapshot, refresh `FINAL_REPORT.md` with the current
+revision-bound diagnosis and verification results, then close this journal.
 
 ## Current continuation — 2026-08-21 02:14Z
 
