@@ -4,21 +4,16 @@
 
 ### State
 
-Diagnosis, focused regression, affected-suite, static, and sharded
-repository-suite verification are complete; final artifact and report checks
-are in progress. The supplied traceback
-fingerprints historical commit `33bf52fe`, while the current tree already
-contains the narrow assigned-target correction and exact taxable-interest
-regression. Current source, history, runtime enumeration, and two independent
-audits find no remaining scope leak or reason for a duplicate executable edit.
-The regression is demonstrably failing-first, all 14 decisive cases pass, and
-all 529 tests in the five directly affected files pass on the current tree.
-Repository lint, formatting, whitespace, and executable-drift checks also
-pass. A monolithic repository run reached 83% without test failures before the
-owner guard stopped cumulative process RSS, so it is not counted as a suite
-verdict. Fresh-process shards subsequently covered the exact full collection
-without failures. Prior completion claims below remain historical until this
-continuation completes the final artifact/report checks.
+Complete. The supplied traceback fingerprints historical commit `33bf52fe`,
+while the current tree contains the narrow assigned-target correction and exact
+taxable-interest regression. Current source, history, runtime enumeration, and
+two independent audits find no remaining scope leak or reason for a duplicate
+executable edit. The regression is demonstrably failing-first; all 14 decisive
+cases, all 529 directly affected cases, and the exact 6,608-item repository
+collection pass without failures in guarded fresh processes. Lint, formatting,
+whitespace, and executable-drift checks pass. `FINAL_REPORT.md` contains the
+final continuation report. The restricted host retry remains an external,
+unterminated certification boundary and is not claimed green.
 
 ### Done
 
@@ -111,11 +106,23 @@ continuation completes the final artifact/report checks.
   repository items. No shard failed. The core+UK outcome summary includes two
   additional passing subtest outcomes beyond its 1,887 collected items, which
   explains why naively adding its pass/skip summary yields two extra outcomes.
+- Took a final 2026-08-21 01:54:15 EDT read-only host snapshot. The external
+  runner remained alive with no current error match, but no runner exit,
+  `pool.h5`, pool manifest, or gates artifact existed. Its artifacts do not
+  explicitly bind a Microcosm Git SHA, so no host certification is claimed.
+- Re-ran repository lint, scoped formatting, worktree and committed-range
+  whitespace, and exact executable-tree checks after the complete suite; all
+  passed. The only untracked files are the preserved owner-provided failure and
+  memory-guard artifacts.
+- Rewrote and committed `FINAL_REPORT.md` at `6f162239` with the current root
+  cause, correction, red/green proof, focused/affected/full-suite results,
+  static verification, current commits, and remaining host boundary.
 
 ### Next
 
-Perform final host-artifact, static, and worktree-cleanliness checks, then
-refresh and commit `FINAL_REPORT.md` and close this journal.
+Obtain a terminal, revision-bound restricted host verdict with the final pool,
+manifest, and gates artifacts. Do not publish or mutate the pending release
+chain as a side effect of that verification.
 
 ## Current continuation — 2026-08-21 03:29Z
 
