@@ -4,13 +4,15 @@
 
 ### State
 
-Diagnosis complete; verification in progress. The supplied traceback
+Diagnosis and focused regression verification complete; affected-suite
+verification in progress. The supplied traceback
 fingerprints historical commit `33bf52fe`, while the current tree already
 contains the narrow assigned-target correction and exact taxable-interest
 regression. Current source, history, runtime enumeration, and two independent
 audits find no remaining scope leak or reason for a duplicate executable edit.
-Prior test and completion claims below remain historical until this
-continuation reruns them on the current tree.
+The regression is demonstrably failing-first and all 14 decisive cases pass on
+the current tree. Prior broader-suite and completion claims below remain
+historical until this continuation reruns them.
 
 ### Done
 
@@ -58,13 +60,21 @@ continuation reruns them on the current tree.
   records taxable interest rebuilt successfully at survey target 22/47 without
   the supplied traceback, but it carries no revision binding and is not treated
   as terminal certification evidence.
+- Demonstrated the exact regression failing-first in an isolated temporary
+  worktree at `22b2c6bc`, where the test exists but the runtime remains
+  unchanged from `33bf52fe`. It followed the supplied line 4512-to-4310 path
+  and emitted the same taxable-interest record-binding error. Peak observed
+  per-process RSS was 0.425 GiB; the temporary worktree was then removed.
+- Ran the exact taxable-interest boundary, the real banked wide-family
+  producer, and all 12 rehashed QRF structure mutations on current `HEAD`
+  under the owner 12 GiB/20 ms guard. All 14 cases passed with 0.564 GiB peak
+  observed per-process RSS. The only warning was joblib's logical-core
+  fallback.
 
 ### Next
 
-Demonstrate the exact boundary regression failing on the unchanged bad runtime
-and passing on the current tree, then run the decisive focused cases, affected
-suite, lint, format, whitespace, and executable-drift checks under the owner
-guard.
+Run the five-file affected suite under the owner guard, then complete lint,
+format, whitespace, and executable-drift checks.
 
 ## Current continuation — 2026-08-21 03:29Z
 
