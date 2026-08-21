@@ -2,181 +2,171 @@
 
 ## Outcome
 
-The package 3 ACS QRF scope leak is corrected and locally verified. Only the
-nine assigned model-required, source-operator, and adult-care targets opt into
-QRF regime work, evidence, and two-part post-transfer calibration. The
-unassigned `person/puf_tax_itemization/taxable_interest_income` target retains
-ordinary transfer behavior, strict four-count receipt accounting, and no QRF
+The package 3 shared-path leak is fixed and locally verified. Only the nine
+assigned model-required, source-operator, and adult-care targets opt into QRF
+regime detection, regime verification, pattern evidence, and two-part
+post-transfer calibration. The unassigned
+`person/puf_tax_itemization/taxable_interest_income` target retains ordinary
+transfer behavior, the four legacy transfer counts, and no QRF pattern
 evidence.
 
 The supplied traceback fingerprints historical commit `33bf52fe`. The current
-branch already contained the complete correction and exact failing-first
-regression, so this continuation made no duplicate executable or test edit. It
-independently reconstructed the failure, reproduced the regression red on the
-leaking runtime, verified it green on current `HEAD`, ran all 14 decisive cases
-and all 529 directly affected cases, collected the exact 6,608-item repository
-surface, and reran lint, formatting, whitespace, and Git-object drift checks.
-All completed local verdicts are green.
-
-The restricted host build is not claimed certified. At the final
-2026-08-21 02:21:24 EDT read-only snapshot, its process still held the empty
-live `build.log` open, the guard continued emitting resource-wait heartbeats,
-and no final pool, manifest, gates, terminal exit, or revision-bound artifact
-existed.
+branch already contained the scoped implementation and exact failing-first
+regression, so this continuation did not add duplicate executable or test code.
+It independently reconstructed the failure and correction, re-audited every
+canonical producer/consumer path, reran the decisive regression matrix and all
+529 directly affected tests, and reran static checks. Every completed local
+verdict is green.
 
 ## Root cause
 
-Commit `33bf52fe` widened ACS QRF regime detection, fitted-result verification,
-provenance, receipt attachment, and terminal receipt validation to every
-transferred target. That exceeded the nine owner-declared calibration targets.
+At `33bf52fe`, `validate_stacked_gap_fill_receipt` called
+`_validate_acs_imputed_pattern_evidence` for every transferred target before it
+looked up the target in the assigned calibration registry. The transfer runtime
+also detected and attached QRF regime evidence globally.
 
 The canonical `puf_tax_itemization` family has 15 targets and is split at the
-certified eight-target fit width. The real taxable-interest record therefore
-uses `puf_tax_itemization__batch_1`, while the public receipt surface and old
-validator expected `puf_tax_itemization`. The old validator validated every
-target before consulting the calibration registry, producing the exact
-historical path:
+certified maximum of eight targets per fit. Taxable interest therefore had the
+physical record family `puf_tax_itemization__batch_1`, while the old validator
+required the public family `puf_tax_itemization`. That mismatch produced the
+exact historical traceback:
 
-- `validate_stacked_gap_fill_receipt`, line 4512 at `33bf52fe`;
-- `_validate_acs_imputed_pattern_evidence`, line 4310 at `33bf52fe`; and
+- `stacked_spine.py:4512` at `33bf52fe`: unconditional evidence validation;
+- `stacked_spine.py:4310` at `33bf52fe`: pattern-record binding failure; and
 - `ValueError: ... taxable_interest_income: ACS QRF pattern record binding is invalid.`
 
-Accepting arbitrary `__batch_*` aliases would weaken assigned-target binding
-and merely expose the next 8-versus-15 target-order mismatch. Assignment
-scoping, not permissive family matching, is the correct fix.
+Permitting a batch alias would not be a sound repair. It would next expose an
+eight-recorded-regimes versus fifteen-expected-targets mismatch and would leave
+unassigned targets doing calibration-specific runtime work. Value calibration
+itself was already registry-filtered; the leak was in regime detection and
+verification, provenance, receipt attachment, and terminal validation.
 
 ## Correction
 
-The immutable registry contains exactly two early and seven late targets:
+The correction is carried by these committed steps:
 
-- early: `unemployment_compensation` and
-  `self_employment_income_last_year`;
-- late adult care: `pre_subsidy_care_expenses`;
-- late child support: `child_support_expense` and
-  `child_support_received`;
-- late disability and weeks: `disability_benefits` and `weeks_unemployed`;
-- late workers compensation: `workers_compensation`; and
-- late energy subsidy: `spm_unit_energy_subsidy`.
+- `22b2c6bc` adds the failing-first regression for the exact taxable-interest
+  boundary.
+- `176c60fc` introduces default-empty `regime_evidence_targets`, scopes ordinary
+  and banked regime work and provenance to that explicit selection, makes both
+  stacked owners derive the selection from the calibration registry, attaches
+  evidence only for selected targets, and performs assignment lookup before
+  strict record validation.
+- `0b4339d1` covers unassigned legacy transfer-count tampering.
+- `887df056` restores strict exact family binding, validates the four legacy
+  counts independently for assigned and unassigned targets, and adds a real
+  banked wide-family integration regression.
+- `94b7aecb` requires the complete count block, pins the canonical fit width,
+  and proves mixed selected/unselected families preserve the unassigned draw.
+- `21a48ba5` rejects a fully rehashed, plausible in-range `__batch_1` forgery.
 
-The committed correction enforces that surface at independent boundaries:
+The current canonical reachability audit confirms:
 
-- `transfer_acs_inputs` has an explicit, default-empty
-  `regime_evidence_targets` selection. Both stacked owners derive their
-  selection from the immutable registry.
-- Ordinary and banked fits detect, verify, and retain regimes only for selected
-  model targets. Unselected sibling records explicitly carry empty regimes.
-- Early and late receipt builders independently attach QRF evidence only for
-  selected targets.
-- Terminal validators require the complete legacy four-count block for every
-  target, reject forged evidence on unassigned targets before record binding,
-  and retain exact family binding for assigned targets.
-- Selection does not alter unassigned draws, post-transfer calibration writes
-  only selected target columns, and warm banks persist raw draws/state while
-  evidence is recomputed from the current selection.
-- The canonical gap-fill owner remains pinned to the certified width eight.
+- the immutable policy contains exactly two early and seven late assigned
+  targets;
+- only the early and late stacked owners opt into regime evidence, and both use
+  that registry-derived selection;
+- ordinary and banked fits compute and verify regimes only for selected model
+  targets, while unselected target records receive empty regime tuples;
+- warm target banks persist raw draws and chain state, not stale regime
+  evidence;
+- receipt builders omit QRF evidence for unassigned targets;
+- early and late validators reject forged unassigned evidence before invoking
+  strict pattern-record binding;
+- generic multispine and pool-tool callers retain the empty default; and
+- calibration writes only the selected target column and selected rows.
 
-The primary correction and hardening commits are:
-
-- `22b2c6bc` — add the exact failing-first taxable-interest regression;
-- `176c60fc` — scope ACS QRF evidence to calibration targets;
-- `887df056` — restore strict family binding and independent legacy counts;
-- `94b7aecb` — close mixed-family, count, and fit-width gaps; and
-- `21a48ba5` — reject a plausible rehashed assigned `__batch_1` alias.
+No alternate unassigned draw or write path was found. A noncanonical library
+caller may explicitly request regime evidence for any target on its requested
+surface; no production caller opts taxable interest into that API.
 
 ## Regression evidence
 
-`test_gap_fill_qrf_binding_excludes_unassigned_batched_targets` is the exact
-validator regression. In a detached temporary worktree at test-only commit
-`22b2c6bc`, whose runtime is byte-identical to `33bf52fe`, it failed through
-the supplied line 4512-to-4310 path with the same taxable-interest binding
-message. Peak observed RSS was 0.452 GiB. The temporary worktree was removed.
+The principal regression is
+`test_gap_fill_qrf_binding_excludes_unassigned_batched_targets`. It constructs
+the exact `person/puf_tax_itemization/taxable_interest_income` receipt with
+realistic `puf_tax_itemization__batch_1` evidence, requires the canonical
+validator to reject the evidence as undeclared, then removes it and proves the
+unchanged four-count legacy receipt validates.
 
-On current `HEAD`, 14 decisive cases passed under the owner-provided 12 GiB/
-20 ms guard with a 0.570 GiB maximum observed per-process RSS:
+Complementary coverage proves:
 
-- the exact unassigned taxable-interest validator boundary;
-- the real banked 15-target producer, proving taxable interest has empty
-  regimes and no receipt evidence while assigned unemployment compensation
-  retains both; and
-- all 12 fully rehashed QRF structure mutations, including exact, plausible
-  in-range, and out-of-range record-family forgeries.
+- a real banked 15-target PUF itemization run gives taxable interest the
+  physical `__batch_1` record but empty regimes and no QRF receipt evidence;
+- selected unemployment compensation in the same run retains regimes and
+  evidence;
+- selecting a sibling for evidence does not change an unselected target's draw;
+- default wide-family transfer behavior has no regimes; and
+- all fully rehashed structure mutations, including an in-range family alias,
+  fail strict assigned-target binding.
 
-Three independent read-only source, history, regression, bank-resume, and host
-audits found no canonical alternate leakage path or material missing regression
-for the supplied failure.
+The exact regression is demonstrably failing-first: at test-only commit
+`22b2c6bc`, whose runtime matches `33bf52fe`, it reaches the supplied
+line-4512-to-line-4310 record-binding error rather than the corrected
+undeclared-evidence boundary.
 
 ## Verification
 
-The five directly affected ordinary-transfer, multispine-serialization,
-stacked-spine, pool-tool, and H5 files collected 64, 5, 258, 164, and 38 cases:
-529 total. All 529 passed together with exit zero under the owner guard; maximum
-observed per-process RSS was 1.589 GiB.
+Current focused verification ran under the owner-provided 12 GiB/20 ms guard:
 
-The current repository collects exactly 6,608 items across 260 files, with a
-1.163 GiB collection peak. `packages`, `tools`, `specs`, `pyproject.toml`, and
-`uv.lock` are byte-for-byte Git-identical to complete-suite checkpoint
-`d29a8705`; only `PROGRESS.md` and `FINAL_REPORT.md` differ. Fresh-process
-shards at that exact checkpoint covered the complete collection without a
-failure:
+- exact taxable-interest validator regression;
+- real banked 15-target integration regression; and
+- all 12 rehashed QRF structure mutations.
 
-| Shard | Result | Peak RSS |
-|---|---:|---:|
-| `microcosm-fit` | 93 passed | 0.724 GiB |
-| `microcosm-calibrate` | 201 passed | 0.436 GiB |
-| `microcosm-data` | 275 passed, 1 skipped | 11.049 GiB |
-| `microcosm-frame` | 294 passed, 36 skipped | 6.488 GiB |
-| build core + UK | 1,856 passed, 33 skipped | 4.182 GiB |
-| build US a-r | 2,406 passed, 3 skipped | 8.844 GiB |
-| build US s-z | 1,411 passed, 1 skipped | 10.579 GiB |
+Result: 14 passed, exit zero, maximum observed per-process RSS 0.572 GiB. The
+only warning was joblib falling back to logical-core detection.
 
-The core+UK summary contains two additional passing subtest outcomes beyond
-its 1,887 collected items; the shard collection union, rather than naive
-summary addition, is the authoritative 6,608-item count.
+All five directly affected files then ran together under the same guard:
 
-Static verification passed:
+- ordinary ACS transfer: 64 tests;
+- multispine serialization: 5 tests;
+- stacked spine: 258 tests;
+- multispine pool tool: 164 tests; and
+- multispine H5 I/O: 38 tests.
+
+Result: all 529 tests reached 100% with exit zero and no failures; maximum
+observed per-process RSS was 1.665 GiB.
+
+The complete package/config tree is Git-identical to checkpoint `d29a8705`,
+where fresh-process shards covered all 6,608 collected repository items without
+a failure. Later commits change only the root journals. Static verification on
+the current tree also passes:
 
 - repository-wide `ruff check .`;
 - `ruff format --check` on all 15 Python files changed since `33bf52fe^`;
-- `git diff --check 33bf52fe^..HEAD` and worktree whitespace checks; and
-- exact package/config Git-object equality with `d29a8705`.
+- `git diff --check 33bf52fe^..HEAD`; and
+- worktree whitespace checks.
 
-The first format invocation supplied a newline-separated zsh value as one file
-argument and exited before checking files. The null-delimited rerun checked all
-15 files successfully and made no changes.
+The first attempted focused invocation did not start because `uv` tried to
+initialize its cache outside the writable sandbox. The successful runs used the
+already-synced worktree virtual environment and current worktree sources.
 
-The GitNexus debugging workflow was selected. Graph query/context endpoints and
-resources were unavailable, so direct raise-site, caller, producer, validator,
-test, runtime-enumeration, warm-bank, and Git-history tracing provided the
-documented fallback.
+The GitNexus debugging workflow was selected. Its CLI could not resolve this
+worktree because the global registry contains only unrelated repositories and
+the sandbox cannot register a Microcosm index. Direct raise-site, Git-history,
+caller, producer, serializer, validator, warm-bank, and regression tracing
+provided the fallback and was reconciled by three independent read-only audits.
 
-## Current continuation commits
+## Host verification boundary
 
-- `3194df71` — reopen the owner continuation;
-- `7e55e5c5` — confirm the current scoped diagnosis and red/green proof;
-- `4c1f3fea` — record the guarded 529-test affected suite; and
-- `b5706f6f` — record lint, format, whitespace, collection, drift, and host
-  checks.
+Host certification is not claimed. At the read-only snapshot taken
+2026-08-21 06:44:27Z, the external 1% retry was active and had rebuilt the
+assembled checkpoint plus targets 1 through 13 of 47. Its current log contained
+no traceback, but it had not yet reached taxable interest, terminal stacked
+receipt validation, or a runner verdict.
 
-## Remaining host boundary
+The host directory contained `build.log`, `guard.log`, and a checkpoint tree.
+It did not contain final `pool.h5`, manifest, gates, or terminal-exit artifacts,
+and the mutable log did not bind the run to a Microcosm Git revision. Progress
+through target 13 is therefore neither a pass nor a certification result.
 
-At 2026-08-21 02:21:24 EDT, PID 28857 still had the worktree as its current
-directory and held stdout/stderr open to `pkg3/build.log`. The live state was:
+Completion of the external boundary requires a revision-bound off-chain 1%
+retry with a durable terminal exit and passing final pool, manifest, and gates
+artifacts. Publication and pending-logbook mutation remain outside this task.
 
-- `build.log`: zero bytes, unchanged since 02:00:52 EDT;
-- `guard.log`: 8,256 bytes, with a 02:19 EDT resource-wait heartbeat;
-- directory contents: only `build.log` and `guard.log`; and
-- absent: checkpoint tree, `pool.h5`, `pool.manifest.json`, `pool.gates.json`,
-  logbook spool/receipts, and a terminal exit marker.
+## Continuation commits
 
-The preceding attempt had progressed through the transfer build without the
-supplied traceback, then rolled over and deleted its checkpoints/truncated its
-log. The retry script would have stopped before rollover if a gates artifact
-existed, so that ended attempt was not certifying. The current live log also
-contains no supplied binding traceback, but an empty self-truncating log is not
-a success verdict.
-
-Executable content is Git-identical to the complete local-suite checkpoint,
-but neither launcher, log, nor artifact records a Microcosm Git SHA. Completion
-of the external boundary requires a durable terminal exit and passing final
-pool, manifest, and gates artifacts with explicit revision provenance. Do not
-publish or mutate the release chain as a side effect of that verification.
+- `8920193e` — reopen the current owner continuation in `PROGRESS.md`;
+- `36e08f26` — record the current diagnosis, audits, guarded tests, and static
+  verification; and
+- this report commit — refresh the required output file from current evidence.
