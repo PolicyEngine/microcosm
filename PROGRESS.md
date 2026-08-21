@@ -4,15 +4,14 @@
 
 ### State
 
-Implementation and verification complete; commit is pending. Commit `d7b12bab`
-correctly bound each candidate endpoint to its selection prefix, and the
-cross-target checkpoint audit then exposed a second reduction defect in the
-whole attainable ceiling. The completed mechanism now derives that ceiling
-from one attainable-row union using the recipient total's reduction topology.
+Complete as of 2026-08-21 20:14Z. Executable commit `a932974f` binds each
+candidate endpoint to its selection schedule and derives the whole attainable
+ceiling from one row union using the recipient total's reduction topology.
 Both exact validator inequalities remain unchanged. Red and green checkpoint
 replays, all 47 focused receipt tests, all five package test roots, repository-
-wide Ruff, touched-file formatting, and whitespace checks pass. The serial host
-queue remains the only owner of the next 1% build.
+wide Ruff, touched-file formatting, and whitespace checks pass. The final
+report is written to `FINAL_REPORT.md`; this closing commit is documentation-
+only. The serial host queue remains the only owner of the next 1% build.
 
 ### Done
 
@@ -139,13 +138,19 @@ queue remains the only owner of the next 1% build.
   exited zero; only established skips and warnings appeared.
 - Ran repository-wide `ruff check .`, touched-file `ruff format --check`, and
   `git diff --check`; all passed.
+- Committed the complete executable repair, pinned harnesses, strict
+  regressions, seven-target audit, and green verification record at
+  `a932974f`.
+- Rewrote `FINAL_REPORT.md` with the exact weeks and child red/green evidence,
+  semantic adjudication, target-by-target verdicts, verification boundary,
+  commit lineage, and host-owner handoff.
 
 ### Next
 
-1. Commit the complete executable repair and verification journal, then write
-   and commit the final report with the executable commit hash.
-2. Leave restricted host certification, publication, and release-chain
-   mutation to their existing owners.
+1. The serial host owner reruns the restricted 1% build at executable commit
+   `a932974f`.
+2. Certification, publication, and release-chain mutation remain with their
+   existing owners.
 
 ## Owner continuation revalidation — 2026-08-21 11:45Z
 

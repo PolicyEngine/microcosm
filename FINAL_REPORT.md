@@ -1,261 +1,255 @@
-# Final report: package 3 ACS QRF receipt scoping
+# Final report: pkg3 post-transfer receipt validation failure #2
 
 ## Outcome
 
-The shared stacked gap-fill leak is fixed and locally verified. Canonical
-production now limits the added calibration-audit regime detection and
-verification, per-target regime provenance, QRF receipt evidence, and two-part
-post-transfer calibration to the nine assigned model-required,
-source-operator, and adult-care targets. The QRF's ordinary operational regime
-logic remains unchanged for every fitted target. The unassigned
-`person/puf_tax_itemization/taxable_interest_income` target retains ordinary
-transfer behavior: its physical fit record remains
-`puf_tax_itemization__batch_1`, its audit regimes are empty, its receipt has the
-four legacy transfer counts and no QRF pattern evidence, and it receives no
-post-transfer calibration write.
+Fixed at executable commit `a932974f`.
 
-The supplied traceback fingerprints historical executable commit `33bf52fe`.
-The current branch already contained the assigned-only executable repair, the
-exact synthetic binding regression, and the strengthened real ordinary/banked
-producer-to-validator regression when this continuation began, so no duplicate
-runtime or test edit was made. This pass independently reconstructed the
-failure, traced every canonical caller and consumer, reconciled three
-independent audits, and reran the focused, directly affected, and complete
-repository surfaces at the current tip. Both wide-family cases are proven red
-at the supplied invariant on the historical runtime and green on the current
-runtime. The 16-check focused matrix, all 530 directly affected tests, the full
-6,609-item repository suite, static checks, and exact production/test-tree
-bindings are green. A live restricted-host retry has also rebuilt taxable
-interest and progressed well beyond it without the reported binding error, but
-that retry remains nonterminal and is not a certification result.
+The supplied weeks-unemployed failure was a receipt-generation bug, not an
+invalid carrier model and not a count-target exception. Candidate capacity and
+prefix selection reduced the same ordered weights through different float64
+paths, so the prefix exceeded its declared candidate mass by one ULP. The
+required cross-target audit then exposed the same class of bug one level up:
+the first repair composed maximum capacity from independently rounded
+partition endpoints, putting both child-support maxima 42 ULP above the whole
+recipient mass.
 
-## Root cause
+The complete fix changes both generating relationships:
 
-At `33bf52fe`, `validate_stacked_gap_fill_receipt` invoked
-`_validate_acs_imputed_pattern_evidence` for every transferred target before it
-looked up the target in the early calibration registry. The transfer runtime
-also performed the newly added calibration-audit regime detection and
-verification, retained its provenance, and attached QRF regime evidence
-globally. The target's ordinary QRF fitting was not itself the leak.
+- one immutable `_PrefixSchedule` now supplies each candidate endpoint and all
+  prefix-selection evidence (`post_transfer_calibration.py:282-287,471-515,844-872,891-928`);
+- maximum capacity is generated from the row union
+  `fixed_positive | allowed_positive | zero_candidates`, zero-masked onto the
+  recipient-weight vector with identical length, order, and reduction topology
+  to `recipient_total` (`post_transfer_calibration.py:823-885`).
 
-The canonical `puf_tax_itemization` family has 15 targets and is physically
-split at the certified maximum of eight targets per fit. Taxable interest
-therefore carried a record whose physical family was
-`puf_tax_itemization__batch_1`, while the old validator compared it with the
-public family `puf_tax_itemization`. The supplied traceback maps exactly to the
-old runtime:
+The exact validator inequalities are unchanged: maximum must not exceed its
+recipient superset, and a reported prefix must not exceed its candidate set
+(`post_transfer_calibration.py:1457-1475,1499-1529`). No tolerance, threshold,
+band, gate, comparator, seed, fold, target, or carrier constraint changed.
 
-- `stacked_spine.py:4512` at `33bf52fe`: unconditional evidence validation for
-  every target; and
-- `stacked_spine.py:4310` at `33bf52fe`: strict record-family binding failure.
+Both SHA-pinned no-build harnesses now validate. All five package test roots,
+repository-wide Ruff, touched-file formatting, and whitespace checks are
+green. This lane ran no host build and made no push. The serial host owner owns
+the next 1% rerun against `a932974f`.
 
-Accepting a batch alias would not have repaired the leak. Unassigned targets
-would still have performed calibration-specific regime work and emitted
-calibration-specific provenance, and the evidence's regime-target surface
-would still have been overbroad. The correct boundary is assignment scoping,
-not weakened record binding.
+## No-build checkpoint reproduction
 
-## Correction and assigned surface
+The read-only stage root was:
 
-The committed correction has four matching fences:
+```text
+/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/pkg3/pool.checkpoints/stacked/8f5077d6a1d5440b241f22fe4d20ad1d889924a27d094cb669e1035f9306546b
+```
 
-1. `transfer_acs_inputs` defaults `regime_evidence_targets` to empty. The two
-   stacked owners explicitly derive their selections from the immutable
-   post-transfer calibration registry.
-2. Ordinary and banked fits perform the additional audit detection and
-   verification only for selected model targets. Per-target provenance strips
-   audit regimes from unselected sibling records without changing their
-   ordinary QRF draws.
-3. Early and late receipt builders attach QRF evidence only to the same
-   registry-derived selection, and calibration application writes only the
-   selected target column and selected rows.
-4. Both terminal validators first validate the four legacy row counts for
-   every target. For an unassigned target they reject any QRF or calibration
-   evidence and continue; strict QRF record binding remains exact and runs only
-   for a declared target.
+The current no-build checks are:
 
-The immutable policy contains exactly two early and seven late targets:
+```text
+uv run python tools/reproduce_us_post_transfer_weeks_checkpoint.py \
+  --checkpoint-stage-root <stage-root-above> --expect valid
+uv run python tools/audit_us_post_transfer_child_support_checkpoints.py \
+  --checkpoint-stage-root <stage-root-above> --expect valid
+```
 
-- early: `unemployment_compensation` and
-  `self_employment_income_last_year`;
-- late adult care: `pre_subsidy_care_expenses`;
-- late child support: `child_support_expense` and
-  `child_support_received`;
-- late source operators: `disability_benefits`, `weeks_unemployed`,
-  `workers_compensation`, and `spm_unit_energy_subsidy`.
+### Weeks-unemployed failure
 
-Taxable interest is absent. All four production `transfer_acs_inputs` caller
-classes were traced. Only the early and late stacked owners opt into regime
-evidence; generic multispine and pool-tool callers retain the empty default.
-No alternate canonical producer, ordinary/banked fit, target-bank resume,
-serializer, receipt builder, terminal validator, or calibration-write path
-broadens the nine-target policy.
+`tools/reproduce_us_post_transfer_weeks_checkpoint.py` validates the assembled
+Frame plus unemployment-compensation and weeks target file, identity, and raw-
+draw hashes. It reconstructs only the native clone-0 vectors and calls the live
+kernel and strict validator; it performs no fit, DAG execution, artifact write,
+or build (`reproduce_us_post_transfer_weeks_checkpoint.py:1-6,27-58,76-143,146-254`).
 
-One API qualification is intentional: a noncanonical library caller may
-explicitly request regime provenance for any target already on its requested
-transfer surface. No production caller exposes that choice, and canonical
-stacked validators reject evidence on unassigned targets.
+Pinned artifacts:
 
-One branch-scope qualification is independent of this correction. The original
-lane also changed the two pinned SIPP vehicle and voluntary-filing readers to
-streaming type inference after a full-donor parser exceeded the memory ceiling.
-Those loaders output `household_vehicles_owned`, `household_vehicles_value`, and
-`would_file_taxes_voluntarily`; none overlaps the nine calibration targets or
-any calibration/evidence call path. `_LANE-NOTES.md` records the downstream
-coercion, locked-fact coverage, and guarded memory results. This continuation
-preserves those already verified operational mitigations; the assigned-only
-claim here is specifically about calibration, QRF audit, and receipt behavior.
+| Artifact | File SHA-256 | Identity SHA-256 | Raw-draw SHA-256 |
+| --- | --- | --- | --- |
+| `assembled.checkpoint.h5` | `5ce1815fc44dc43c7c24ccf27526852b8f1bddbdfe371255410a22f9b56ac015` | whole file pinned | n/a |
+| `019__unemployment_compensation.h5` | `dc6637936ed4bd0322d38eaa3a4920fd137565f314387db3b3fdc7dfd6bc3086` | `708722093ca610426175998d50bbb6663585b07ffef912899f17adc90520f51f` | `e32d1559668e10b24abad8e1d639e4dbade964a712925bfe8f56d3136b839840` |
+| `000__weeks_unemployed.h5` | `898397733aa3e5d8ec7d6679cb16a0504e826e25d23ca2c788f4397e0e061a43` | `d0d554ba05045e39a07f0f9515c83bbf754f067df12b8247f4bf3866162c4bdd` | `0214c8dcbc118676336069b906a07ee6145f2178542b6c5b4fb5899ad62d09f3` |
 
-## Regression evidence
+The production owner selects ASEC clone-0 reference rows, ACS clone-0
+recipient rows, transferred nonnull mutable cells, and positive-UC mutable rows
+for both the weeks allowed and addition masks
+(`stacked_spine.py:8960-8971,8995-9032`). The pinned replay contains:
 
-`test_gap_fill_qrf_binding_excludes_unassigned_batched_targets` constructs the
-exact unassigned taxable-interest receipt with realistic
-`puf_tax_itemization__batch_1` evidence. It requires the canonical validator to
-reject that evidence as undeclared, then removes it and proves that the
-unchanged four-count legacy receipt validates.
+- 38,604 native person rows;
+- 4,311 reference and 34,293 recipient/mutable rows;
+- 134 positive reference rows;
+- 24 initial recipient positives, all disallowed; and
+- 32 positive-UC addition candidates
+  (`reproduce_us_post_transfer_weeks_checkpoint.py:146-193`).
 
-The test is genuinely failing-first. Commit `22b2c6bc` contains the regression
-while its runtime object is byte-identical to failing `33bf52fe`; that runtime
-reaches the supplied line-4512-to-line-4310 error instead of the corrected
-undeclared-evidence boundary. A prior detached execution recorded in the
-committed journal reproduced the exact taxable-interest failure.
+At reproduction commit `4cc41652`, the harness with `--expect invalid` exits
+zero only for the exact supplied failure. Candidate capacity is
+`85,676.23791782455`; the ID-ordered upper prefix is
+`85,676.23791782456`; the excess is `1.4551915228366852e-11`. The sole false
+relationship is:
 
-`test_gap_fill_scopes_qrf_evidence_off_wide_unassigned_family` exercises the
-real 15-target family through both ordinary and banked transfer. Both cases
-prove that taxable interest retains the physical `__batch_1` record with empty
-regimes and no QRF receipt, while selected unemployment compensation in the
-same transfer retains regimes and evidence. Commit `ad2a44c1` then closes the
-target-receipt-to-validator gap: each case copies the actual generated taxable
-receipt into a canonical receipt and calls `validate_stacked_gap_fill_receipt`.
-The splice is deliberately limited to that target because test-authority
-execution does not create the unrelated canonical calibration-owner receipts.
+```text
+upper_prefix_mass <= addition_candidate_mass
+```
 
-The bridge is demonstrated failing-first, not inferred. In an isolated
-temporary worktree, replacing only `acs_multispine.py`, `acs_transfer.py`, and
-`stacked_spine.py` with their exact `33bf52fe` objects made both ordinary and
-banked cases fail at lines 4512 and 4310 with the supplied taxable-interest
-record-binding error. Restoring the current three objects made the identical
-two cases pass. The temporary worktree was removed without changing the shared
-tree.
+It raises exactly:
+
+```text
+ValueError: Frame post-transfer calibration person/source_operator_weeks_unemployed/weeks_unemployed: match-reference carrier capacity relationships are invalid.
+```
+
+The harness pins that predicate, both floats, and the complete error rather
+than accepting any aggregate validation failure
+(`reproduce_us_post_transfer_weeks_checkpoint.py:210-231,257-286`).
+
+Against `a932974f`, `--expect valid` reports candidate and upper prefix both
+`85,676.23791782456`, zero prefix/candidate delta, no failed relationships,
+and a valid receipt. The attainable-union maximum under the recipient
+reduction topology is `85,676.23791782453`.
+
+### Child-support cross-target reproduction
+
+`tools/audit_us_post_transfer_child_support_checkpoints.py` reconstructs the
+same native clone-0 support and half weights for both child-support targets.
+It pins each target's whole-file, identity, and raw-draw hashes, then requires
+both receipts—not merely one—to match the requested exact red or green state
+(`audit_us_post_transfer_child_support_checkpoints.py:1-80,91-207,210-302`).
+
+| Artifact | File SHA-256 | Identity SHA-256 | Raw-draw SHA-256 |
+| --- | --- | --- | --- |
+| `000__child_support_expense.h5` | `d119075e19fb767f3d8d24c7c0149d0df1ed963774a4b93d96974a72b3ac9bfe` | `41e3a6e3877fda23107b27bcd85aa6dd95e0f341d1e4b079defa6847f90b4cab` | `8b2845aff0aa0695d98ae30828523bf6bca9c5d4ed5d2d91d2d1a636bb917600` |
+| `001__child_support_received.h5` | `66120896d5793f3d737f9ffac2058e2196992e357f8d869f4b31b259d041b3aa` | `41e3a6e3877fda23107b27bcd85aa6dd95e0f341d1e4b079defa6847f90b4cab` | `ea7f2eebb430b654acc639ef6ee6ed482207ffd74d54ba3a47cb55056813a381` |
+
+Against the incomplete candidate-only repair `d7b12bab`, both receipts fail
+only:
+
+```text
+maximum_attainable_mass <= recipient_total
+```
+
+For each target, recipient total is `79,926,522.10879111`; the partition-
+composed maximum is `79,926,522.10879174`; the excess is
+`6.258487701416016e-07`, or 42 ULP. The underlying endpoints are:
+
+| Target | Allowed-positive mass | Addition-candidate mass | Old composed maximum |
+| --- | ---: | ---: | ---: |
+| `child_support_expense` | `71,696.09739141785` | `79,854,826.01140033` | `79,926,522.10879174` |
+| `child_support_received` | `180,209.75664861224` | `79,746,312.35214312` | `79,926,522.10879174` |
+
+Against `a932974f`, both strict receipts validate. Their attainable-union
+maximum equals recipient total exactly, `79,926,522.10879111`, while the
+independently rounded diagnostic partition sum remains
+`79,926,522.10879174`. This demonstrates that the generating set relationship,
+not the validator, was repaired.
+
+## Root cause and semantic decision
+
+Float64 addition is order-sensitive. The original code used a masked
+`ndarray.sum` for candidate capacity and a separately ordered `np.cumsum` for
+prefix selection. The first repair correctly unified those two values, but it
+then added independently rounded fixed, existing-positive, and zero-candidate
+endpoints to describe a different claim: the maximum mass of their row union.
+
+Both strict invariants are semantically correct:
+
+1. a prefix cannot exceed the candidate set from which it was selected; and
+2. an attainable subset cannot exceed its recipient superset.
+
+The final maximum implementation retains the recipient vector's length and
+order and replaces unattainable entries with zero. With finite nonnegative
+weights, each attainable leaf is less than or equal to its corresponding
+recipient leaf, and the identical reduction topology preserves that ordering
+through every floating-point addition (`post_transfer_calibration.py:775-783,823-885`).
+It does not use `min`, `nextafter`, a tolerance, or a post-hoc clamp.
+
+The regressions lock both numerical mechanisms for every late
+`match_reference` declaration:
+
+- the exact 32 production weeks weights distinguish masked sum from ordered
+  prefix by one ULP;
+- a four-weight case makes independently rounded capacity partitions exceed
+  their whole set by one ULP; and
+- a constrained proper-subset case makes a compressed subset sum
+  `0x1.433526fbe1946p+48`, or `0.0625`, greater than its superset
+  `0x1.433526fbe1945p+48`; the same-topology union validates exactly
+  (`test_us_post_transfer_calibration.py:544-753`).
+
+Weeks remains a valid positive-carrier calibration target. Its source accepts
+only integer `-1` or `0..52` and maps `-1` to zero; its QRF path rounds, clips,
+positive-UC-gates, and revalidates `0..52`; its carrier event is `weeks > 0`
+(`weeks_unemployed.py:791-800,911-983,1218-1222`). Post-transfer amount mapping
+uses only positive reference-donor support (`post_transfer_calibration.py:577-626,690-705`).
+Count-valued support therefore does not invalidate weighted carrier capacity.
+
+The ACS runtime's explicit discrete-numeric set contains only two mortgage-year
+targets; other numeric targets use the ordinary numeric encoding
+(`acs_transfer.py:129-138,3035-3117`). QRF's at-most-32-value “near-discrete”
+branch is a leaf-storage optimization, not a carrier semantic type
+(`microcosm-fit/qrf.py:388-401,482-503`). Annual child-support and disability
+amounts also entered that optimization in the host log, which independently
+rules out treating it as a weeks-specific count exception.
+
+## Seven-target late-transfer audit
+
+The immutable registry declares seven late targets. Six use
+`match_reference`; disability benefits uses `preserve_recipient` and never
+emits capacity or prefix evidence
+(`post_transfer_calibration.py:208-258,840-932,1319-1335`).
+
+| Late target | Evidence and verdict |
+| --- | --- |
+| `child_support_expense` | Covered. Nonnegative annual `CHSP_VAL`, not a count (`child_support.py:166-201,369-383`). Its pinned checkpoint fails the old whole-capacity relationship and validates the final union mechanism. |
+| `child_support_received` | Covered. Nonnegative annual `CSP_VAL`, not a count (`child_support.py:166-201,369-383`). Its pinned checkpoint has the same red/green proof. |
+| `disability_benefits` | Inapplicable to this capacity bug. It is a nonnegative annual two-slot amount excluding workers' compensation (`disability_benefits.py:184-220,382-395`) and uses `preserve_recipient`; its inspected checkpoint keeps before/after carrier mass at `42,658.57948297383` with `capacity=None` and `selection=None`, as required by the preserve-mode receipt branch (`post_transfer_calibration.py:1319-1335`). |
+| `weeks_unemployed` | Covered. Sole semantic count target, integer `0..52`, with carrier additions constrained to positive-UC mutable rows (`weeks_unemployed.py:791-800,911-983,1218-1222`; `stacked_spine.py:8995-9008`). Exact pinned red/green replay proves reducer order caused the failure. |
+| `workers_compensation` | Covered. Nonnegative annual `WC_VAL`, not a count (`workers_compensation.py:143-184,337-355`). It uses the default mutable carrier/addition masks (`post_transfer_calibration.py:786-812`) and the shared six-spec regressions. |
+| `spm_unit_energy_subsidy` | Covered. Nonnegative measured `SPM_ENGVAL`, checked within unit and reduced to SPM-unit float64 (`energy_subsidy.py:157-233,537-557`). Its entity grain changes the weights, not the set/reduction mechanism; the shared regressions cover its declaration. |
+| `pre_subsidy_care_expenses` | Covered. Nonnegative monetary care expense. ACS reconciliation restricts carriers to qualifying people and at most one per tax unit; the late owner admits one stable zero candidate per empty unit (`acs_transfer.py:660-739,1277-1299`; `stacked_spine.py:8728-8746,8977-8986`). The proper-subset six-spec regression covers this constrained structure. |
+
+Current zero-based late-DAG positions are child support 24, disability 25,
+weeks 30, workers' compensation 31, energy subsidy 32, and adult care 34.
+Registry scheduling and stacked execution are deterministic, and each group
+calibrates before returning (`us_late_producer_registry.py:1338-1396,2013-2019`;
+`stacked_spine.py:10054-10095,10927-10931`). The failed host run produced child,
+disability, and weeks checkpoints but stopped before workers, energy, and adult
+care. Verdicts for those later targets are therefore source/mask proofs plus
+shared-kernel regressions, not claims of nonexistent checkpoint replay.
 
 ## Verification
 
-This continuation reran the strengthened boundary matrix under the
-owner-provided 12 GiB/20 ms guard:
+On the exact tree committed as `a932974f`, these commands ran serially under
+the owner-provided memory guard and exited zero:
 
-- exact taxable-interest validator regression;
-- real ordinary and banked 15-target transfer;
-- all 12 fully rehashed strict-binding structure mutations; and
-- mixed-family selected-regime draw preservation.
+```text
+uv run pytest packages/microcosm-fit/tests -q
+uv run pytest packages/microcosm-calibrate/tests -q
+uv run pytest packages/microcosm-data/tests -q
+uv run pytest packages/microcosm-frame/tests -q
+uv run pytest packages/microcosm-build/tests -q
+uv run ruff check .
+uv run ruff format --check <four touched Python files>
+git diff --check
+```
 
-All 16 checks passed with exit zero. The guard reported 0.029 GiB maximum
-observed per-process RSS; the only warning was joblib's physical-core fallback.
-The first launcher attempt never reached collection because the sandbox denied
-`uv`'s default user cache, so every successful run used a task-local cache under
-`/private/tmp`.
+The focused post-transfer file passed all 47 cases. The complete build root
+also covered stacked-spine, late-DAG, multispine pool, H5, pool-tool, terminal
+receipt, and owner-mask paths. Only established skips and warnings appeared.
 
-All five directly affected files then ran together under the owner-provided
-12 GiB/20 ms guard:
+Both current checkpoint commands exited zero with `--expect valid`. Detached
+temporary worktrees proved the hardened red side: weeks against `4cc41652` and
+both child receipts against `d7b12bab`. The temporary worktrees were removed.
 
-- ordinary ACS transfer: 64 tests;
-- multispine serialization: 5 tests;
-- stacked spine: 259 tests;
-- multispine pool tooling: 164 tests; and
-- H5 receipt I/O: 38 tests.
+No host build ran from this lane. The read-only host log and checkpoint tree
+were not modified. The owner-provided untracked `.codex-memory-guard.py` and
+`_BUILD-FAILURE-1PCT.txt` remain unchanged. Nothing was pushed.
 
-All 530 completed together at the current executable/test tree with exit zero.
-The guard reported 0.029 GiB maximum observed per-process RSS; warning display
-was disabled for the broad matrix.
+## Commit lineage and handoff
 
-The complete repository suite then ran in one guarded process. Fresh collection
-was 6,609 items. Pytest reached 100% with expected skips and exit zero, and the
-guard again reported 0.029 GiB maximum observed per-process RSS. This is the
-current-tip suite result requested by the continuation, not an inference from a
-prior checkpoint.
+- `b533bc61` — open and commit the progress journal;
+- `4cc41652` — add the SHA-pinned weeks reproduction and red regression;
+- `d7b12bab` — bind candidate capacity to its ordered selection schedule;
+- `47742720` — record the cross-target child-support escalation;
+- `a932974f` — generate maximum capacity from the attainable row union, add
+  the child red/green harness and exact proper-subset regressions, complete the
+  seven-target audit, and record the green suite; and
+- the following documentation-only commit — close `PROGRESS.md` and publish
+  this report without changing the tested executable tree.
 
-Static verification also passed:
-
-- repository-wide `ruff check .`;
-- `ruff format --check` on all 15 Python files changed since `33bf52fe^`;
-- `git diff --check 33bf52fe^..HEAD`; and
-- index/worktree whitespace and final tracked-tree cleanliness checks.
-
-A diagnostic repository-wide format check identified 49 pre-existing files
-outside the changed range that would be reformatted. They span unrelated
-experiments, UK runtime/tests, and other US/tool files; no out-of-scope bulk
-reformat was made. The repository's prescribed lint gate and every changed-file
-format check are green.
-
-The current `microcosm-build/src` tree is `7234ac19`, identical to complete-suite
-checkpoint `d29a8705` and reviewed regression checkpoint `ad2a44c1`. The current
-build-tests tree is `0c5d7816`, identical to `ad2a44c1`. Relative to
-`d29a8705`, the only test change is the strengthened ordinary/banked terminal
-validator regression in `test_us_stacked_spine.py`; relative to `ad2a44c1`,
-only `PROGRESS.md` and `FINAL_REPORT.md` differ. No production/configuration
-file has drifted from either checkpoint.
-
-The GitNexus debugging workflow guided the raise-site, history, caller, and
-consumer trace. The normal graph-query tools were unavailable and the repository
-was not registered in the CLI index. The skill-directed local analysis parsed
-far enough to create a partial index, but sandbox policy blocked registration at
-`/Users/maxghenis/.gitnexus/registry.json`; the generated 100 MiB index was moved
-out of the worktree to `/private/tmp`. Direct source, exact Git-object, and
-history tracing supplied the documented fallback. Three independent read-only
-audits of invariant flow, regression strength, and branch scope agreed with the
-result.
-
-## Host verification boundary
-
-Host certification is not claimed. The retry workflow deleted the original
-checkpoints and repeatedly truncated the mutable `build.log`; the supplied
-traceback now survives only in the owner-provided `_BUILD-FAILURE-1PCT.txt` and
-committed journals. The offending executable blob is unambiguously the one
-introduced by `33bf52fe` and retained through `22b2c6bc`, but the deleted
-artifacts did not embed a Microcosm SHA. The exact process-launch journal commit
-therefore cannot be recovered from the host log.
-
-At the final read-only snapshot, `2026-08-21 11:42:58Z`, a new external retry
-was active. Its mutable `build.log` was 211,849 bytes and contained no traceback,
-`ValueError`, or binding failure. It had written the exact taxable-interest
-checkpoint as target 22/47 with physical family
-`puf_tax_itemization__batch_1`, then progressed through target 39/47. The
-checkpoint tree contained 41 files, including the assembled checkpoint and
-manifest. This is direct evidence that the reported boundary did not recur in
-the live retry up to that snapshot.
-
-The same snapshot had no runner exit marker and no final `pool.h5`,
-`pool.manifest.json`, or `pool.gates.json`. The mutable log also does not bind
-the process launch to a recoverable Microcosm SHA. Progress beyond the former
-failure is therefore not a terminal, revision-bound host verdict, and no host
-or certification success is inferred.
-
-Completion of the external boundary requires a durable, terminal,
-revision-bound 1% result with passing final pool, manifest, and gates artifacts.
-Publication and release-chain mutation remain outside this task.
-
-## Commit lineage
-
-The executable/regression correction is carried by:
-
-- `22b2c6bc` — add the failing-first scoped-binding regression;
-- `176c60fc` — scope regime work, provenance, receipts, and validation to the
-  registry-derived selection;
-- `0b4339d1`, `887df056`, `94b7aecb`, and `21a48ba5` — harden legacy counts,
-  exact family/width binding, mixed-family behavior, and rehashed forgery
-  rejection;
-- `f3246728` — exercise the real wide-family boundary through ordinary and
-  banked transfer; and
-- `ad2a44c1` — pass the real generated taxable-interest receipts through the
-  canonical terminal validator in both modes.
-
-This continuation audit is recorded by:
-
-- `2210eb43` — reopen the required progress journal;
-- `8880eec2` — record the independent raise-site, caller, history, and
-  regression diagnosis;
-- `522d64f8` — record the fresh 16-check focused matrix;
-- `1bf2519f` — record the guarded 530-test affected matrix;
-- `ef7e2e63` — record the fresh 6,609-item full suite, static checks, and exact
-  prior-checkpoint object bindings; and
-- this commit — refresh the required output report with the current result and
-  nonterminal host snapshot.
+The next authorized action is the serial host owner's 1% rerun at executable
+commit `a932974f`. Certification, publication, and release-chain mutation stay
+outside this lane.
