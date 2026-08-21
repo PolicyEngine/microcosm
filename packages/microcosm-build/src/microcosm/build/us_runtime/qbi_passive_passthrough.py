@@ -352,7 +352,8 @@ def validate_qbi_passive_passthrough_assumptions(
     )
     if not math.isclose(expected, amount, rel_tol=1e-10, abs_tol=1.0):
         raise ValueError("Passive expected aggregate does not hit its target.")
-    _ = shift
+    if not _SOLVER_LOWER_BOUND <= shift <= _SOLVER_UPPER_BOUND:
+        raise ValueError("Passive log-odds shift is outside its solver bounds.")
     tolerance = _number(
         calibration.get("replay_relative_tolerance"),
         "calibration.replay_relative_tolerance",

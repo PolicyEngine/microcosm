@@ -164,6 +164,11 @@ def test_packaged_assumptions_are_strict_and_pin_evidence_digest(
     with pytest.raises(ValueError, match="random-stream contract drifted"):
         validate_qbi_passive_passthrough_assumptions(drifted_stream)
 
+    out_of_bounds_shift = deepcopy(assumptions)
+    out_of_bounds_shift["calibration"]["log_odds_shift"] = 31.0
+    with pytest.raises(ValueError, match="outside its solver bounds"):
+        validate_qbi_passive_passthrough_assumptions(out_of_bounds_shift)
+
     monkeypatch.setattr(passive_module, "_resource_sha256", lambda _name: "0" * 64)
     with pytest.raises(ValueError, match="evidence digest does not match"):
         load_qbi_passive_passthrough_assumptions()
@@ -438,7 +443,9 @@ def test_assumptions_builder_is_deterministic_on_a_synthetic_replay(
     not os.environ.get(PUF_REPLAY_ENVIRONMENT),
     reason=f"set {PUF_REPLAY_ENVIRONMENT} to run the restricted replay",
 )
-def test_restricted_replay_hits_provisional_target_and_pins_artifact() -> None:
+def test_restricted_replay_independently_resolves_persisted_shift_and_pins_artifact() -> (
+    None
+):
     builder = _load_assumptions_builder()
     replay_path = Path(os.environ[PUF_REPLAY_ENVIRONMENT]).expanduser()
     passthrough, schedule_e, weights, artifact = builder.read_replay_artifact(
@@ -458,16 +465,40 @@ def test_restricted_replay_hits_provisional_target_and_pins_artifact() -> None:
     assert committed_artifact["tax_unit_rows"] == EXPECTED_REPLAY_TAX_UNIT_ROWS
     assert committed_artifact["person_rows"] == EXPECTED_REPLAY_PERSON_ROWS
 
+    evidence = load_qbi_passive_passthrough_evidence()
+    bounds = evidence["external_anchor"]["passive_passthrough_bounds"]
+    target = (bounds["lower"]["amount"] + bounds["upper"]["amount"]) / 2.0
+    solved_shift, solved_expected = calibrate_qbi_passive_log_odds_shift(
+        passthrough,
+        schedule_e,
+        weights,
+        evidence=evidence,
+        target=target,
+    )
+    persisted_calibration = assumptions["calibration"]
+
+    assert target == PROVISIONAL_TARGET
+    assert solved_shift == pytest.approx(
+        persisted_calibration["log_odds_shift"],
+        rel=0.0,
+        abs=1e-12,
+    )
+    assert solved_expected == pytest.approx(target, rel=0.0, abs=1.0)
+    assert solved_expected == pytest.approx(
+        persisted_calibration["expected_aggregate"],
+        rel=0.0,
+        abs=1.0,
+    )
+
     assigned = assign_passive_partnership_s_corp_income(
         passthrough,
         schedule_e,
-        seed=assumptions["calibration"]["seeded_replay"]["seed"],
+        seed=persisted_calibration["seeded_replay"]["seed"],
     )
     achieved = float(np.dot(weights, assigned))
-    target = assumptions["calibration"]["provisional_target"]["amount"]
 
     assert achieved == pytest.approx(
-        assumptions["calibration"]["seeded_replay"]["aggregate"],
+        persisted_calibration["seeded_replay"]["aggregate"],
         rel=0.0,
         abs=1e-3,
     )

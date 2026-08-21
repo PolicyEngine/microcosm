@@ -7,9 +7,10 @@ Dual-review remediation is in progress on `passive-pass-through-722` as of
 committed as `d9f19c66`, with the supervisor-approved resolutions reproduced
 exactly. The post-merge resource closure and first-class typed passive contract
 are regenerated and their fail-closed coverage ledger is verified. The
-non-vacuous QBI preservation regression and locked-registry release gate are
-also complete. Work remains offline: no fetch, push, PR mutation, publication,
-or promotion is in scope.
+non-vacuous QBI preservation regression, locked-registry release gate, and
+non-circular restricted calibration certification are also complete. Work
+remains offline: no fetch, push, PR mutation, publication, or promotion is in
+scope.
 
 ## Done
 
@@ -80,6 +81,14 @@ or promotion is in scope.
   `00b4c73b0ff2e29abf00b9f6f8112c9b87e937d323fb5c973bb5cd0652a95931`)
   and F0 report. The targeted gate/resource/inventory/adapter suite passes 153
   tests in 8m34s; the generator check and targeted Ruff are clean.
+- Replaced the circular restricted replay check with an independent solve: the
+  validator derives the `$54,628,492,000` midpoint from the evidence artifact's
+  separately pinned bounds, runs the full 128-iteration calibration on the
+  restricted PUF, and compares the solved `-1.157105426398319` shift to the
+  persisted value within `1e-12` (expected aggregate within `$1`). The ordinary
+  assumptions validator also rejects shifts outside the declared solver bounds
+  instead of discarding the parsed value. All 12 passive tests pass in 53.76s
+  with the restricted artifact, and targeted Ruff is clean.
 - The implementation and verification bullets below describe the historical
   pre-review checkpoint at `a4d93f78`; the verdict supersedes its former
   completion claim.
@@ -136,8 +145,6 @@ or promotion is in scope.
 
 ## Next
 
-- Make restricted certification independently re-solve and compare the
-  calibration shift.
 - Run targeted and full workspace tests with the prescribed restricted-data
   environment, run Ruff, commit regenerated artifacts, and write the final
   report to `FINAL_REPORT.md`.
