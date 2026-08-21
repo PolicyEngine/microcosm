@@ -2469,3 +2469,46 @@ head; it still writes `us-f1-certification.json` and
 
 1. Continue the complete 38-node rerun past restoration and validate exact RNG
    plan consumption and artifact equality.
+
+## F1 continuation r6 dirty-work disposition (2026-08-20)
+
+### State
+
+- The r6 scope is only the already-authored certification runner and a current
+  host handoff. The wiring named by the owner is committed through `48813a94`;
+  no landed executor, RNG, frame-restoration, or boolean-kind work was redone.
+- The worktree arrived with 22 modified tracked files containing an
+  interdependent, post-HEAD attempt to continue deliverable-A physical wiring.
+  `_F1-CHARTER-R2.md` through `_F1-CHARTER-R6.md` are separate untracked
+  owner-provided instruction copies.
+
+### Done
+
+- Read-only review found that the tracked WIP was relevant in intent: it
+  attempted authenticated source snapshots, compiled resource bindings,
+  expanded implicit-structural projection rules, full bundle callbacks, and
+  production node-reuse evidence.
+- It was not a coherent green advance. An affected 452-test batch completed
+  with five failures in 885.95 seconds: an existing executor test no longer
+  refused an undeclared EXPAND column, the changed catalog pin expected 181
+  columns while the live catalog still had 173, bundle entrypoint stubs reached
+  a forbidden constants primary callback, and constants-adapter identity pins
+  no longer matched the regenerated spec. The fifth failure was the already
+  journaled hours-worked wrapper AST mismatch in an untouched pre-clone seam.
+  A separate new full-graph fixture
+  failed immediately because `any()` was called with four positional
+  arguments. The generated US identity had moved without complete re-pinning,
+  and Ruff format check reported 16 dirty Python files needing formatting.
+- Because those changes could not be verified as a coherent wiring step, all
+  22 exact tracked paths were reverted with `git checkout --`; no stash was
+  used. The owner charter copies were preserved byte-untouched and remain
+  untracked because they are task authority, not B/C product deliverables.
+- The committed `tools/f1_certification_run.py`, its typed receipt/comparator
+  library, and its synthetic test module were not part of the dirty WIP.
+
+### Next
+
+1. Revalidate the committed single-mode runner and synthetic four-receipt
+   comparator against the current committed plan.
+2. Append a current exact four-build host handoff that supersedes stale status
+   language without rewriting the historical r5 receipt.

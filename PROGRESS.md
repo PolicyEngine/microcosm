@@ -7,9 +7,8 @@
 - The requested scope is deliverables B and C only: revalidate or complete the
   single-build certification runner and four-receipt comparator, then append
   the exact high-memory-host handoff.
-- Current HEAD is `48813a94`. The tracked worktree arrived with a large
-  uncommitted continuation of the already-landed physical wiring; its exact
-  disposition is under read-only audit before any cleanup or retention commit.
+- Current HEAD is `9047610b`. The tracked worktree is clean after the audited,
+  incomplete post-HEAD wiring WIP was reverted file-by-file without stash.
 - `_F1-CHARTER-R2.md` through `_F1-CHARTER-R6.md` are untracked owner-provided
   instruction copies. They are being read as authority but are not product
   deliverables and will not be staged without explicit reason.
@@ -24,12 +23,19 @@
   prior fail-closed runner are committed; no landed work will be redone.
 - Started independent read-only audits of the dirty wiring, runner/receipt
   contract, comparator tests, and host-command handoff.
+- Audited all 22 dirty tracked files. The interdependent WIP advanced physical
+  wiring in intent but was not verifiably committable: the affected batch had
+  five failures, including a new executor scope regression, a stale catalog
+  count, stale spec pins, and incomplete bundle callback routing; its new
+  full-graph fixture also raised a malformed `any()` call. Sixteen touched
+  Python files were not Ruff-formatted.
+- Reverted those 22 exact tracked paths with `git checkout --`. The five
+  untracked owner charter copies were preserved unmodified and uncommitted.
 
 ## Next
 
-1. Classify the dirty wiring changes against current HEAD, retain and commit
-   only changes that verifiably advance the charter or wiring, and journal the
-   disposition without using stash.
+1. Commit the dirty-work disposition in this progress journal and the lane
+   notes.
 2. Reconcile `tools/f1_certification_run.py` and its synthetic comparator tests
    with the latest sealed plan-lock and production evidence surfaces; run only
    unit/fixture-scale verification under 20 GiB.
