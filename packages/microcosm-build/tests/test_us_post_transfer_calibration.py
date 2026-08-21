@@ -534,6 +534,104 @@ def test_allowed_masks_clear_forbidden_carrier_and_report_capacity_shortfall() -
         )
 
 
+def test_weeks_receipt_reproduces_production_candidate_reduction_split() -> None:
+    production_weight_hex = (
+        "0x1.3733a66e776b1p+11",
+        "0x1.67143630b12ccp+8",
+        "0x1.313794763032ep+12",
+        "0x1.eabdc186d0017p+10",
+        "0x1.67143630b12ccp+9",
+        "0x1.badd31c4963fcp+9",
+        "0x1.d8c98b9dfa58ep+11",
+        "0x1.f6b5e5775e71ep+8",
+        "0x1.253f7085a1c27p+11",
+        "0x1.fcb1f76fa5aa1p+11",
+        "0x1.b7df28c872a3bp+11",
+        "0x1.d2cd79a5b320ap+10",
+        "0x1.d8c98b9dfa58ep+10",
+        "0x1.104d31a0a87dbp+13",
+        "0x1.04550db01a0d4p+11",
+        "0x1.104d31a0a87dbp+11",
+        "0x1.c6d555b524b03p+10",
+        "0x1.e640b40c9a975p+12",
+        "0x1.dec59d9641911p+8",
+        "0x1.04550db01a0d4p+12",
+        "0x1.5b1c124022bc6p+11",
+        "0x1.5c9b16be348a6p+12",
+        "0x1.96f4c5f2eaee8p+10",
+        "0x1.730c5a213f9d3p+9",
+        "0x1.14ca3f1adde7dp+12",
+        "0x1.9cf0d7eb3226bp+10",
+        "0x1.3d2fb866bea35p+11",
+        "0x1.6b9143aae696fp+12",
+        "0x1.1f435e8d5a8a3p+10",
+        "0x1.e4c1af8e88c94p+10",
+        "0x1.3733a66e776b1p+9",
+        "0x1.3733a66e776b1p+8",
+    )
+    candidate_weights = np.asarray(
+        [float.fromhex(value) for value in production_weight_hex],
+        dtype="<f8",
+    )
+    assert (
+        hashlib.sha256(candidate_weights.tobytes()).hexdigest()
+        == "a32b75bc371f26e65815071d379affb2feb5fba000605a96199bab8ddc8aa5a8"
+    )
+    masked_mass = float(candidate_weights.sum())
+    ordered_prefix_mass = float(np.cumsum(candidate_weights, dtype=np.float64)[-1])
+    assert masked_mass.hex() == "0x1.4eac3ce82ebb9p+16"
+    assert ordered_prefix_mass.hex() == "0x1.4eac3ce82ebbap+16"
+
+    # The last recipient is immutable ballast. It keeps this fixture shaped
+    # like production (32 candidates among many recipients) and isolates the
+    # candidate/prefix relationship from the separate recipient-total bound.
+    weights = np.concatenate(
+        (np.asarray([1.0]), candidate_weights, np.asarray([1_000_000.0]))
+    )
+    values = np.zeros(len(weights), dtype=np.float64)
+    values[0] = 1.0
+    reference = _mask(len(values), 0)
+    recipient = ~reference
+    mutable = np.zeros(len(values), dtype=bool)
+    mutable[1:33] = True
+    spec = post_transfer_calibration_spec(
+        entity="person",
+        family="source_operator_weeks_unemployed",
+        target="weeks_unemployed",
+    )
+
+    result = calibrate_post_transfer_values(
+        values,
+        weights,
+        np.arange(len(values)),
+        spec=spec,
+        reference_rows=reference,
+        recipient_rows=recipient,
+        mutable_rows=mutable,
+        allowed_carrier_rows=mutable,
+        addition_candidate_rows=mutable,
+    )
+
+    capacity = result.receipt["carrier"]["capacity"]
+    selection = result.receipt["carrier"]["selection"]
+    assert capacity["addition_candidate_mass"] == masked_mass
+    assert capacity["maximum_attainable_mass"] == masked_mass
+    assert selection["candidate_mass"] == ordered_prefix_mass
+    assert selection["selected_mass"] == ordered_prefix_mass
+    assert selection["lower_prefix_mass"] == ordered_prefix_mass
+    assert selection["upper_prefix_mass"] == ordered_prefix_mass
+    assert selection["upper_prefix_mass"] > capacity["addition_candidate_mass"]
+    with pytest.raises(
+        ValueError,
+        match="match-reference carrier capacity relationships are invalid",
+    ):
+        validate_post_transfer_calibration_receipt(
+            result.receipt,
+            spec=spec,
+            boundary="production-weight reduction regression",
+        )
+
+
 def test_match_reference_proves_immutable_positive_floor_saturation() -> None:
     values = np.asarray([0.0, 10.0, 10.0, 10.0, 10.0, 10.0, 20.0, 20.0, 20.0, 20.0])
     weights = np.asarray([8.0, 0.5, 0.5, 0.5, 0.5] * 2)

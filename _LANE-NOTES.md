@@ -14,6 +14,56 @@ builds in this lane are off-chain at `--sample-fraction 0.01` and
 `--sample-seed 578`; they omit `--logbook-prev-row-digest` and do not touch
 `logbook-pending-chain.txt`.
 
+## Post-transfer receipt failure #2: ordered capacity evidence
+
+### No-build reproduction
+
+- The SHA-pinned replay harness reads the assembled Frame checkpoint and the
+  unemployment-compensation and weeks-unemployed target-bank H5 files,
+  validates their file, identity, and raw-draw digests, reconstructs only the
+  native clone-0 vectors, and calls the calibration kernel and its strict
+  receipt validator. It performs no target fit, DAG execution, Frame write, or
+  build (`tools/reproduce_us_post_transfer_weeks_checkpoint.py:1-6,74-112,115-250`).
+- The stacked owner selects ASEC clone-0 reference rows, ACS clone-0 recipient
+  rows, transferred-null mutable rows, and—for weeks—only mutable rows with
+  positive unemployment compensation as allowed/addition candidates
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8960-8971,8995-9032`).
+- The preserved replay contains 4,311 reference rows, 34,293 recipient/mutable
+  rows, 134 positive reference rows, 24 initial recipient positives (all
+  disallowed), and 32 positive-UC addition candidates. Its reference total is
+  `80,851,529.27715749`, recipient total is `79,926,522.10879111`, reference
+  positive mass is `2,762,659.3294707513`, and target positive mass is
+  `2,731,052.2627107087` (`tools/reproduce_us_post_transfer_weeks_checkpoint.py:144-206,230-250`).
+- Capacity generation reduces the 32 candidate weights with masked
+  `ndarray.sum`, producing `85,676.23791782455`, while selection independently
+  reduces the same ID-ordered weights with `np.cumsum`, producing
+  `85,676.23791782456`
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:463-493,817-880`).
+  The exact validator relationship `0 <= lower <= upper <=
+  expected_candidate_mass` therefore rejects the receipt by one float64 ULP,
+  `1.4551915228366852e-11`; every other relationship passes
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:1389-1490`).
+
+### Semantic adjudication
+
+- The invariant is correct and target-type agnostic: a selected prefix cannot
+  exceed its declared candidate capacity. No tolerance or target exception is
+  authorized. The generating defect is that capacity and prefix evidence are
+  derived by two reduction schedules for the same declared ordered carrier
+  set (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:321-327,463-493,817-891`).
+- Weeks is a valid positive-carrier target. The ASEC source accepts only
+  integer `-1` or `0..52`, maps `-1` to zero, and defines the positive event as
+  an in-range integer above zero
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/weeks_unemployed.py:791-800,1218-1222`).
+  The ACS transfer codec recognizes integer targets as discrete numeric,
+  snaps predictions to observed support, and emits integer values
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:3094-3112,3238-3259`).
+- The semantics-preserving repair is one immutable ordered-prefix schedule per
+  candidate set, consumed by both capacity and selection. Rewriting only the
+  terminal cumulative value is invalid because `_nearest_prefix` requires a
+  nondecreasing vector for its lower-mass tie break and `searchsorted`
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/post_transfer_calibration.py:463-493`).
+
 ## Source-cited mechanism record
 
 - The battery computes positive and negative carrier incidence separately,

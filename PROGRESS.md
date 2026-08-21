@@ -44,14 +44,28 @@ only owner of 1% builds.
   integer donor support and the carrier event remains `weeks > 0`; the defect
   is two reductions for one declared ordered capacity. A single shared prefix
   schedule is the generating-mechanism repair, with the exact validator left
-  unchanged.
+  unchanged (`weeks_unemployed.py:791-800,1218-1222`;
+  `acs_transfer.py:3094-3112,3238-3259`;
+  `post_transfer_calibration.py:463-493,817-891,1389-1490`).
+- Added `tools/reproduce_us_post_transfer_weeks_checkpoint.py`, which validates
+  all three file/identity/raw-draw digests, restores only the native clone-0
+  calibration vectors, and reports the exact error and failed predicate
+  without executing a fit or build (`tools/reproduce_us_post_transfer_weeks_checkpoint.py:1-6,74-112,115-250`).
+- Ran that harness against the read-only SHA-addressed host tree with
+  `--expect invalid`; it exited zero in 7.4 seconds and reported only
+  `upper_prefix_mass <= addition_candidate_mass` as false, with the exact
+  `1.4551915228366852e-11` delta.
+- Added a hermetic expected-failure regression containing the exact 32
+  production candidate-weight bytes (SHA-256 `a32b75bc...aa5a8`) plus a
+  nonmutable recipient ballast row. The full post-transfer test file passes
+  29/29 before the fix
+  (`packages/microcosm-build/tests/test_us_post_transfer_calibration.py:537-631`).
 
 ### Next
 
-1. Commit this green journal-only starting checkpoint.
-2. Add and execute the SHA-pinned no-build checkpoint harness plus an exact
-   synthetic expected-failure regression, then commit the reproduction.
-3. Replace the dual candidate/prefix reductions with one ordered prefix
+1. Commit the SHA-pinned no-build reproduction and exact expected-failure
+   regression.
+2. Replace the dual candidate/prefix reductions with one ordered prefix
    schedule, flip the regression to strict validation, complete the
    late-target audit, and rerun all required package shards plus Ruff.
 
