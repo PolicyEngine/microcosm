@@ -1,3 +1,44 @@
+# F1 continuation r6 certification-runner progress — 2026-08-20
+
+## State
+
+- Work is local on `spec-engine-f1`; nothing has been pushed, and no pool or
+  sample build has run in this continuation.
+- The requested scope is deliverables B and C only: revalidate or complete the
+  single-build certification runner and four-receipt comparator, then append
+  the exact high-memory-host handoff.
+- Current HEAD is `48813a94`. The tracked worktree arrived with a large
+  uncommitted continuation of the already-landed physical wiring; its exact
+  disposition is under read-only audit before any cleanup or retention commit.
+- `_F1-CHARTER-R2.md` through `_F1-CHARTER-R6.md` are untracked owner-provided
+  instruction copies. They are being read as authority but are not product
+  deliverables and will not be staged without explicit reason.
+
+## Done
+
+- Read `CLAUDE.md`, `_F1-CHARTER-R5.md`, `_F1-CHARTER-R6.md`, the approved
+  `_F1-CHARTER.md` including the D4 two-tier ruling, and the complete current
+  `_F1-LANE-NOTES.md` journal.
+- Inspected branch status and history. The executor dispatch, ledger RNG,
+  narrow/full frame restoration, boolean value-kind preservation, and the
+  prior fail-closed runner are committed; no landed work will be redone.
+- Started independent read-only audits of the dirty wiring, runner/receipt
+  contract, comparator tests, and host-command handoff.
+
+## Next
+
+1. Classify the dirty wiring changes against current HEAD, retain and commit
+   only changes that verifiably advance the charter or wiring, and journal the
+   disposition without using stash.
+2. Reconcile `tools/f1_certification_run.py` and its synthetic comparator tests
+   with the latest sealed plan-lock and production evidence surfaces; run only
+   unit/fixture-scale verification under 20 GiB.
+3. Append the exact sequential four-build/comparator host handoff to
+   `_F1-LANE-NOTES.md`, update this journal and `FINAL_REPORT.md`, and commit
+   each coherent step. Do not run the four host builds or push.
+
+---
+
 # F1 continuation r4 verification reprise — 2026-08-20
 
 ## State
