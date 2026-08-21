@@ -20,11 +20,14 @@ exact synthetic binding regression, and the strengthened real ordinary/banked
 producer-to-validator regression when this continuation began, so no duplicate
 runtime or test edit was made. This pass independently reconstructed the
 failure, traced every canonical caller and consumer, reconciled three
-independent audits, and reran the focused and directly affected surfaces at the
-current tip. Both wide-family cases are proven red at the supplied invariant on
-the historical runtime and green on the current runtime. All 530 directly
-affected tests, static checks, and exact production/test-tree bindings are
-green at the current tip.
+independent audits, and reran the focused, directly affected, and complete
+repository surfaces at the current tip. Both wide-family cases are proven red
+at the supplied invariant on the historical runtime and green on the current
+runtime. The 16-check focused matrix, all 530 directly affected tests, the full
+6,609-item repository suite, static checks, and exact production/test-tree
+bindings are green. A live restricted-host retry has also rebuilt taxable
+interest and progressed well beyond it without the reported binding error, but
+that retry remains nonterminal and is not a certification result.
 
 ## Root cause
 
@@ -137,17 +140,19 @@ tree.
 
 ## Verification
 
-An independent focused audit reran the strengthened boundary matrix:
+This continuation reran the strengthened boundary matrix under the
+owner-provided 12 GiB/20 ms guard:
 
 - exact taxable-interest validator regression;
-- real ordinary 15-target transfer; and
-- real banked 15-target transfer.
+- real ordinary and banked 15-target transfer;
+- all 12 fully rehashed strict-binding structure mutations; and
+- mixed-family selected-regime draw preservation.
 
-All three passed under the owner-provided 12 GiB/20 ms guard with exit zero and
-0.571 GiB maximum observed per-process RSS; the ordinary case emitted only the
-known joblib physical-core fallback warning. A separate guarded run exercised
-all 12 fully-rehashed strict-binding mutation variants; all passed with 0.389
-GiB maximum observed per-process RSS.
+All 16 checks passed with exit zero. The guard reported 0.029 GiB maximum
+observed per-process RSS; the only warning was joblib's physical-core fallback.
+The first launcher attempt never reached collection because the sandbox denied
+`uv`'s default user cache, so every successful run used a task-local cache under
+`/private/tmp`.
 
 All five directly affected files then ran together under the owner-provided
 12 GiB/20 ms guard:
@@ -158,35 +163,46 @@ All five directly affected files then ran together under the owner-provided
 - multispine pool tooling: 164 tests; and
 - H5 receipt I/O: 38 tests.
 
-All 530 passed together at the current executable/test tree with exit zero and
-maximum observed per-process RSS of 1.602 GiB. This latest run supersedes the
-earlier affected-matrix results. Warning display was disabled for the broad
-matrix.
+All 530 completed together at the current executable/test tree with exit zero.
+The guard reported 0.029 GiB maximum observed per-process RSS; warning display
+was disabled for the broad matrix.
+
+The complete repository suite then ran in one guarded process. Fresh collection
+was 6,609 items. Pytest reached 100% with expected skips and exit zero, and the
+guard again reported 0.029 GiB maximum observed per-process RSS. This is the
+current-tip suite result requested by the continuation, not an inference from a
+prior checkpoint.
 
 Static verification also passed:
 
 - repository-wide `ruff check .`;
 - `ruff format --check` on all 15 Python files changed since `33bf52fe^`;
 - `git diff --check 33bf52fe^..HEAD`; and
-- worktree whitespace checks.
+- index/worktree whitespace and final tracked-tree cleanliness checks.
 
-Every current production source, tool, spec, project, and lock Git object is
-identical to complete-suite checkpoint `d29a8705`. At that checkpoint, guarded
-fresh-process shards covered all 6,608 collected repository items without a
-failed shard. Current production and test objects are also exact matches to
-reviewed regression checkpoint `ad2a44c1`; relative to the complete-suite
-checkpoint, the only package difference is the strengthened ordinary/banked
-regression in `test_us_stacked_spine.py`, whose complete 259-test file passed in
-the fresh matrix.
+A diagnostic repository-wide format check identified 49 pre-existing files
+outside the changed range that would be reformatted. They span unrelated
+experiments, UK runtime/tests, and other US/tool files; no out-of-scope bulk
+reformat was made. The repository's prescribed lint gate and every changed-file
+format check are green.
+
+The current `microcosm-build/src` tree is `7234ac19`, identical to complete-suite
+checkpoint `d29a8705` and reviewed regression checkpoint `ad2a44c1`. The current
+build-tests tree is `0c5d7816`, identical to `ad2a44c1`. Relative to
+`d29a8705`, the only test change is the strengthened ordinary/banked terminal
+validator regression in `test_us_stacked_spine.py`; relative to `ad2a44c1`,
+only `PROGRESS.md` and `FINAL_REPORT.md` differ. No production/configuration
+file has drifted from either checkpoint.
 
 The GitNexus debugging workflow guided the raise-site, history, caller, and
-consumer trace. The normal registry-backed tools were unavailable, but the
-preserved graph indexed at `42819d5` was opened through GitNexus's read-only
-local backend. Error-text query and context resolved the regression surface;
-custom Cypher confirmed that the oversized production module was absent from
-the graph, so direct source and Git-object tracing supplied that portion of the
-documented fallback. Three independent read-only audits of runtime reachability,
-regression coverage, and branch scope agreed with the result.
+consumer trace. The normal graph-query tools were unavailable and the repository
+was not registered in the CLI index. The skill-directed local analysis parsed
+far enough to create a partial index, but sandbox policy blocked registration at
+`/Users/maxghenis/.gitnexus/registry.json`; the generated 100 MiB index was moved
+out of the worktree to `/private/tmp`. Direct source, exact Git-object, and
+history tracing supplied the documented fallback. Three independent read-only
+audits of invariant flow, regression strength, and branch scope agreed with the
+result.
 
 ## Host verification boundary
 
@@ -198,14 +214,20 @@ introduced by `33bf52fe` and retained through `22b2c6bc`, but the deleted
 artifacts did not embed a Microcosm SHA. The exact process-launch journal commit
 therefore cannot be recovered from the host log.
 
-At the final read-only snapshot, `2026-08-21 10:13:00Z`, the external directory
-contained only `build.log` and `guard.log`. `build.log` had been truncated to
-zero bytes at `10:07:12Z`; the latest guard heartbeat at `10:09:11Z` still
-reported a resource wait behind one other job. There was no traceback left to
-inspect, but also no runner exit marker, transferred or simulated checkpoint,
-final `pool.h5`, `pool.manifest.json`, or `pool.gates.json`. An empty mutable log
-is not a passing result, so no terminal host or certification verdict is
-inferred.
+At the final read-only snapshot, `2026-08-21 11:42:58Z`, a new external retry
+was active. Its mutable `build.log` was 211,849 bytes and contained no traceback,
+`ValueError`, or binding failure. It had written the exact taxable-interest
+checkpoint as target 22/47 with physical family
+`puf_tax_itemization__batch_1`, then progressed through target 39/47. The
+checkpoint tree contained 41 files, including the assembled checkpoint and
+manifest. This is direct evidence that the reported boundary did not recur in
+the live retry up to that snapshot.
+
+The same snapshot had no runner exit marker and no final `pool.h5`,
+`pool.manifest.json`, or `pool.gates.json`. The mutable log also does not bind
+the process launch to a recoverable Microcosm SHA. Progress beyond the former
+failure is therefore not a terminal, revision-bound host verdict, and no host
+or certification success is inferred.
 
 Completion of the external boundary requires a durable, terminal,
 revision-bound 1% result with passing final pool, manifest, and gates artifacts.
@@ -226,12 +248,14 @@ The executable/regression correction is carried by:
 - `ad2a44c1` — pass the real generated taxable-interest receipts through the
   canonical terminal validator in both modes.
 
-This final revalidation is recorded by:
+This continuation audit is recorded by:
 
-- `6962c949` — reopen the required progress journal;
-- `e414bb71` — record the independent raise-site, caller, history, and
+- `2210eb43` — reopen the required progress journal;
+- `8880eec2` — record the independent raise-site, caller, history, and
   regression diagnosis;
-- `83bae655` — record the fresh focused and guarded 530-test verification;
-- `30db846e` — record static checks and exact prior-suite object bindings;
-- `1776c443` — record the final nonterminal host snapshot; and
-- this commit — refresh the required report with the current result.
+- `522d64f8` — record the fresh 16-check focused matrix;
+- `1bf2519f` — record the guarded 530-test affected matrix;
+- `ef7e2e63` — record the fresh 6,609-item full suite, static checks, and exact
+  prior-checkpoint object bindings; and
+- this commit — refresh the required output report with the current result and
+  nonterminal host snapshot.
