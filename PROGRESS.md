@@ -7,14 +7,15 @@
 In progress. The supplied traceback is now proven to come from historical
 runtime `33bf52fe`, not the current executable: its exact line 4512 validates
 every target and line 4310 raises the reported strict family-binding error.
-The current assigned-only runtime correction is intact, independent call-path
-and test audits found no remaining canonical leak, and the strengthened
-ordinary/banked regression now sends the real generated taxable-interest
-receipt through the canonical terminal validator. The regression is proven
-red on the historical runtime and green on the current runtime; the focused
-matrix, all 530 directly affected tests, the complete changed 259-test file,
-and static/object checks are green. Only the required final report and journal
-closure remain.
+Complete as of 2026-08-21 08:34:04Z. The current assigned-only runtime
+correction is intact, independent call-path and test audits found no remaining
+canonical leak, and the strengthened ordinary/banked regression now sends the
+real generated taxable-interest receipt through the canonical terminal
+validator. The regression is proven red on the historical runtime and green on
+the current runtime; the focused matrix, all 530 directly affected tests, the
+complete changed 259-test file, and static/object checks are green. The
+required final report is committed at `17367506`. The active restricted host
+retry remains an external, nonterminal certification boundary.
 
 ### Done
 
@@ -99,12 +100,18 @@ closure remain.
   it had already passed the old taxable-interest boundary. Final `pool.h5`,
   manifest, gates, and a terminal exit marker were still absent, so no host
   certification is claimed.
+- Refreshed and committed `FINAL_REPORT.md` at `17367506` with the exact root
+  cause, assigned-only correction, strengthened ordinary/banked red-green
+  evidence, affected and changed-file test results, static/object checks,
+  corrected host revision forensics, and precise non-certification boundary.
+- Received an independent final fact-check approval of the report and current
+  journal state with no concrete factual issue.
 
 ### Next
 
-Refresh and commit the required `FINAL_REPORT.md`, then mark this continuation
-complete in the journal without claiming the still-active host retry as a
-terminal certification result.
+Obtain a durable, terminal, revision-bound restricted 1% host result with
+passing `pool.h5`, `pool.manifest.json`, and `pool.gates.json`. Do not publish or
+mutate the release chain as a side effect of that external verification.
 
 ## Reopened owner verification — 2026-08-21
 
