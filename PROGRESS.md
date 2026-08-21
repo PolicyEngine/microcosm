@@ -4,14 +4,13 @@
 
 ### State
 
-Diagnosis and directly affected verification complete; repository-wide
-verification in progress. The supplied traceback maps to the historical
-globally attached QRF audit-evidence path at `33bf52fe`. The current tree
-already contains the assigned-only executable correction and the exact
-synthetic plus real ordinary/banked regressions, so a duplicate runtime or test
-edit is not warranted unless remaining verification exposes a gap. No current
-completion or host-certification claim is inherited from earlier journal
-entries.
+Local verification complete; final report and journal closure pending. The
+supplied traceback maps to the historical globally attached QRF audit-evidence
+path at `33bf52fe`. The current tree already contains the assigned-only
+executable correction and the exact synthetic plus real ordinary/banked
+regressions, so no duplicate runtime or test edit was warranted. Focused,
+directly affected, repository-wide, static, and Git-object checks are green.
+No restricted host-certification claim is inherited or made.
 
 ### Done
 
@@ -67,12 +66,27 @@ entries.
   collection was 64 ordinary-transfer, five multispine, 259 stacked-spine, 164
   pool-tool, and 38 H5 receipt-I/O tests. All 530 completed with exit zero; the
   guard reported 0.029 GiB maximum observed per-process RSS.
+- Ran the repository-wide pytest suite under the guard. Fresh collection was
+  6,609 items; the run reached 100% with expected skips and exit zero. The
+  guard again reported 0.029 GiB maximum observed per-process RSS.
+- Ran repository-wide `ruff check .`, changed-range `ruff format --check` on
+  all 15 Python files changed since `33bf52fe^`, committed-range whitespace
+  checks, index/worktree whitespace checks, and final tracked-tree cleanliness
+  checks; all passed. A diagnostic repository-wide format check identified 49
+  pre-existing out-of-range files, so no unrelated bulk reformat was made.
+- Bound the current Git objects to earlier reviewed checkpoints. The current
+  `microcosm-build/src` tree is `7234ac19`, identical to both complete-suite
+  checkpoint `d29a8705` and reviewed regression checkpoint `ad2a44c1`. The
+  current build-tests tree is `0c5d7816`, identical to `ad2a44c1`; relative to
+  `d29a8705`, its only test change is the strengthened ordinary/banked terminal
+  validator regression. Everything after `ad2a44c1` is journal-only.
 
 ### Next
 
-Run repository-wide tests and static checks. If all pass, refresh
-`FINAL_REPORT.md` with revision-bound results and close this continuation
-without claiming restricted host certification.
+Refresh `FINAL_REPORT.md` with the current diagnosis, assigned-only fences,
+exact regressions, fresh 6,609-item suite result, static/object evidence, and
+explicit nonterminal restricted-host boundary. Then close this journal in a
+final committed checkpoint.
 
 ## Owner continuation revalidation — 2026-08-21 09:47Z
 
