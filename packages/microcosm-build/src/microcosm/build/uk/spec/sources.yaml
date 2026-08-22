@@ -237,6 +237,10 @@ stages:
   - student_loans
   - access_fund
   - education_grants
+  - healthy_start_vouchers
+  - free_school_breakfasts
+  - free_school_fruit_veg
+  - free_school_meals
   - council_tax_benefit_reported
   - maintenance_expenses
   - childcare_expenses
