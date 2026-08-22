@@ -50,9 +50,18 @@ push, pull-request mutation, rebase, reset, checkout, or stash is in scope.
   `2.220446049250313e-16`, and independently seeded aggregate
   `$55,021,131,518.061035` (`0.7187449327011208%` above the provisional
   `$54,628,492,000` midpoint). No test run exited 137.
+- Committed the B1 closure as `bd537c42` and the B3 closure as `92dd3568`.
+  Both received independent static review with no defects found.
+- Re-ran the committed B3 synthetic node (`1 passed`) and exercised the
+  env-unset restricted node (`1 skipped`). The earlier artifact-backed replay
+  passed once. Touched-file Ruff check and format check are clean.
+- Updated `FINAL_REPORT.md` and `PROGRESS_PASSIVE_722.md` with a dated
+  2026-08-22 record that separates CI coverage from the env-gated replay,
+  maps each finding to its closing commit, and marks older self-certification
+  language as superseded.
 
 ## Next
 
-- Run only targeted tests and touched-file Ruff checks, update the two branch
-  handoff reports with exact CI/certification scope and commit mappings, and
-  write the final certification record to `FINAL_REPORT.md`.
+- No local implementation work remains. The supervisor can push the committed
+  handoff and let clean-runner CI arbitrate the suite; no local push or PR
+  mutation is in scope.

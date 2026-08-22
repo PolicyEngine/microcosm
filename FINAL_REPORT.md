@@ -133,13 +133,11 @@ place and becomes a no-op once the engine recognizes it.
 - TY2023 administrative anchors are applied to the pinned 2024-shaped replay
   without a population-vintage backcast. Line 12 also differs from the modeled
   surface in deductions/modifications and estate/trust-return coverage.
-- Exact historical v1/v2/v3 seeded simulator goldens could not be executed:
-  that simulator and its tests are absent from current main, and stacking the
-  stale branches would violate the rename decision above. The available
-  replacement test proves the independent passive family does not call or
-  advance old streams and preserves all 15 current archived QBI leaves
-  byte-for-byte under multiple passive seeds. This is not a claim that the
-  absent historical golden suite was run.
+- A CI-executable, test-only harness now freezes the exact historical
+  simulator, reconciler, and v1/v2/v3 assumptions from `cfbf6330`, each with a
+  literal SHA-256 guard. It composes each historical version with the current
+  passive stage on a synthetic fixture; it does not restore those retired
+  implementations to production runtime.
 - Current main exposes no v3 latent entity form to the frame wrapper. The pure
   API's latent-form routing is covered synthetically; live assignment therefore
   uses the SCF Schedule-E-band cells.
@@ -151,23 +149,58 @@ place and becomes a no-op once the engine recognizes it.
 
 All commands ran offline with the existing synced environment.
 
-- Full workspace, exact final code tree: `6,394 passed, 73 skipped` in
-  42m45s; exit code 0. Pytest reported 1,890 non-failing warnings.
+The following are historical pre-re-verdict results and were not rerun during
+the high-load 2026-08-22 closure:
+
+- Full workspace: `6,394 passed, 73 skipped` in 42m45s; exit code 0. Pytest
+  reported 1,890 non-failing warnings.
 - Restricted replay with the specified `POPULACE_PUF_2024_H5` artifact:
   `12 passed`.
 - Evidence, passive assignment, and reform diagnostics focused set:
   `64 passed, 1 expected gated skip`.
 - Spec-only country-package, executable-entrypoint, and ordinary incumbent
   guard set: `51 passed`.
-- Repository-wide `uv run ruff check .`: clean.
-- All 26 changed Python files: Ruff format check clean.
-- `git diff --check origin/main...HEAD`: clean.
-- Manual incumbent package-name sweep over every changed Python, TOML,
-  Markdown, and JSON file: no hits. This was run explicitly because the
-  ordinary guard skips paths under `.claude/`.
-- Deterministic resource regeneration, strict content hashes, checkpoint
-  identities, release ownership/coverage, replay tolerance, and QBI
-  byte-preservation contracts pass.
+- Repository-wide `uv run ruff check .`: clean; all 26 then-changed Python
+  files passed Ruff format check.
+
+### 2026-08-22 B1/B3 re-verdict closure
+
+- **B1 — `bd537c42`:** the CI nodes
+  `packages/microcosm-build/tests/test_us_qbi_passive_passthrough_history.py::test_historical_qbi_versions_are_byte_isolated_from_passive_stage[v1]`,
+  `packages/microcosm-build/tests/test_us_qbi_passive_passthrough_history.py::test_historical_qbi_versions_are_byte_isolated_from_passive_stage[v2]`,
+  and
+  `packages/microcosm-build/tests/test_us_qbi_passive_passthrough_history.py::test_historical_qbi_versions_are_byte_isolated_from_passive_stage[v3]`
+  all passed. Each requires a positive passive row count and weighted aggregate,
+  guards and byte-compares the complete literal 15-leaf simulator surface
+  between the baseline and passive-staged pipelines, compares the final routed
+  self-employment leaf, preserves global NumPy RNG state, and compares every
+  QBI-family draw. The fixture is synthetic and has no H5 dependency.
+- **B3 — `92dd3568`:** the CI node
+  `packages/microcosm-build/tests/test_us_qbi_passive_passthrough.py::test_test_local_calibration_matches_hand_answer_and_production_solver`
+  passed once. Its test-local JSON parser, inverse-CDF integration, odds
+  transform, aggregate, and bisection reproduce the hand-computable
+  `log(3)`/`$187.50` case and independently cross-check the production solver.
+  The restricted node
+  `packages/microcosm-build/tests/test_us_qbi_passive_passthrough.py::test_restricted_replay_independently_resolves_persisted_shift_and_pins_artifact`
+  is collected in ordinary CI but explicitly skips when
+  `POPULACE_PUF_2024_H5` is unset; that path was exercised once (`1 skipped`).
+  A supplied but missing path still raises `FileNotFoundError`.
+- The B3 restricted node was also run once with the SHA-pinned artifact and
+  passed. The test-local solved shift is `-1.157105426398319`, exactly the
+  committed `-1.157105426398319`. The JSON's `[-30, 30]`, 128-iteration
+  bisection implies a nominal final bracket of
+  `1.7632415262334313e-37`; the stated effective binary64 shift tolerance is
+  `2.220446049250313e-16`. The test-local expected aggregate is
+  `$54,628,491,999.99999`, versus committed `$54,628,491,999.999985`. The
+  independently reconstructed seeded aggregate is `$55,021,131,518.061035`,
+  compared with the committed value at absolute tolerance `$0.001`; its error
+  from the `$54,628,492,000` midpoint is `0.7187449327011208%` and it realizes
+  6,207 positive rows.
+- Touched-file `uv run ruff check` and `uv run ruff format --check` are clean.
+  No test run exited 137. A full suite was deliberately not run; clean-runner
+  CI remains the suite arbiter.
+- No new towncrier fragment was added for this test/documentation-only closure;
+  the existing branch fragment remains `722-passive-pass-through.added.md`.
 
 The towncrier fragment is `changelog.d/722-passive-pass-through.added.md`.
 No network access, push, or pull request was used.
@@ -184,3 +217,6 @@ No network access, push, or pull request was used.
 - `218b6cb9` — clarify provisional contracts.
 - `0842acef` and `3f6ecc73` — update stage-order/sparse fixtures.
 - `cc7fe11f` — format branch-owned passive files.
+- `1172a595` — start the B1/B3 re-verdict closure journal.
+- `bd537c42` — close B1 with durable historical v1/v2/v3 stream isolation.
+- `92dd3568` — close B3 with independent calibration certification.

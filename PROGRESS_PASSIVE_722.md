@@ -2,15 +2,11 @@
 
 ## State
 
-Dual-review remediation is in progress on `passive-pass-through-722` as of
-2026-08-21. The real merge of already-fetched `origin/main` at `2c7a7218` is
-committed as `d9f19c66`, with the supervisor-approved resolutions reproduced
-exactly. The post-merge resource closure and first-class typed passive contract
-are regenerated and their fail-closed coverage ledger is verified. The
-non-vacuous QBI preservation regression, locked-registry release gate, and
-non-circular restricted calibration certification are also complete. Work
-remains offline: no fetch, push, PR mutation, publication, or promotion is in
-scope.
+The adjudicated B1 and B3 re-verdict findings are closed locally on
+`passive-pass-through-722` as of 2026-08-22. B1 closes in `bd537c42`; B3 closes
+in `92dd3568`. The earlier merge and remediation history below remains the
+branch record. Work remains offline: no fetch, push, PR mutation, publication,
+or promotion is in scope, and clean-runner CI remains the suite arbiter.
 
 ## Done
 
@@ -81,14 +77,11 @@ scope.
   `00b4c73b0ff2e29abf00b9f6f8112c9b87e937d323fb5c973bb5cd0652a95931`)
   and F0 report. The targeted gate/resource/inventory/adapter suite passes 153
   tests in 8m34s; the generator check and targeted Ruff are clean.
-- Replaced the circular restricted replay check with an independent solve: the
-  validator derives the `$54,628,492,000` midpoint from the evidence artifact's
-  separately pinned bounds, runs the full 128-iteration calibration on the
-  restricted PUF, and compares the solved `-1.157105426398319` shift to the
-  persisted value within `1e-12` (expected aggregate within `$1`). The ordinary
-  assumptions validator also rejects shifts outside the declared solver bounds
-  instead of discarding the parsed value. All 12 passive tests pass in 53.76s
-  with the restricted artifact, and targeted Ruff is clean.
+- The 2026-08-21 restricted replay check called the production calibration
+  solver and therefore did not constitute an independent solve. Its former
+  certification claim is superseded by the 2026-08-22 B3 entry below. The
+  ordinary assumptions validator change and its historical test results remain
+  valid branch history.
 - The implementation and verification bullets below describe the historical
   pre-review checkpoint at `a4d93f78`; the verdict supersedes its former
   completion claim.
@@ -143,8 +136,35 @@ scope.
 - Added and committed the towncrier fragment and wrote the completion report
   to `FINAL_REPORT.md`.
 
+## 2026-08-22 — B1/B3 re-verdict closure
+
+- **B1 maps to `bd537c42`.** A secrets-free CI test freezes SHA-pinned
+  historical v1/v2/v3 simulators, reconciler, and assumptions from `cfbf6330`.
+  Its three parameters each require positive passive realization, guard and
+  byte-compare the complete literal 15-leaf QBI simulation surface with and
+  without the passive stage, compare the routed self-employment result,
+  preserve global NumPy RNG state, and compare all version-family draws. The
+  targeted node passed all three parameters.
+- **B3 maps to `92dd3568`.** The secrets-free CI test uses test-local JSON
+  parsing, inverse-CDF integration, an odds transform, row-wise weighted
+  aggregation, and bisection. It reproduces the hand-computable `log(3)` shift
+  and `$187.50` target, then cross-checks the production solver; the targeted
+  node passed once. These test-local routines import or call no production
+  calibration helper.
+- The B3 real replay remains env-gated. Ordinary CI collects it but explicitly
+  skips when `POPULACE_PUF_2024_H5` is unset (`1 skipped` was exercised); a set
+  but missing path raises `FileNotFoundError`. With the supplied restricted
+  artifact it passed once: independently solved and committed shifts are both
+  `-1.157105426398319`; the effective binary64 shift tolerance derived from
+  the JSON's 128-iteration bracket is `2.220446049250313e-16`; the independently
+  reconstructed seeded aggregate is `$55,021,131,518.061035` and its midpoint
+  error is `0.7187449327011208%`.
+- Touched-file Ruff check and format check are clean. No test run exited 137.
+  The earlier full-suite counts above were not rerun during this high-load
+  closure and must not be read as results for the new B1/B3 commits.
+
 ## Next
 
-- Run targeted and full workspace tests with the prescribed restricted-data
-  environment, run Ruff, commit regenerated artifacts, and write the final
-  report to `FINAL_REPORT.md`.
+- The supervisor can push the local commits and let clean-runner CI arbitrate
+  the suite. The PolicyEngine-US #9306 dependency and provisional calibration
+  follow-ups remain unchanged; this task performs no promotion.
