@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import math
 import os
 from copy import deepcopy
 from importlib.resources import files
@@ -26,7 +27,6 @@ from microcosm.build.us_runtime.qbi_passive_passthrough import (
     assign_passive_partnership_s_corp_income,
     calibrate_qbi_passive_log_odds_shift,
     load_qbi_passive_passthrough_assumptions,
-    load_qbi_passive_passthrough_evidence,
     validate_qbi_passive_passthrough_assumptions,
     with_us_qbi_passive_passthrough_assignment,
 )
@@ -44,6 +44,11 @@ EXPECTED_REPLAY_BYTES = 241_045_964
 EXPECTED_REPLAY_TAX_UNIT_ROWS = 207_692
 EXPECTED_REPLAY_PERSON_ROWS = 484_015
 PROVISIONAL_TARGET = 54_628_492_000.0
+QBI_PASSIVE_ASSUMPTIONS_RESOURCE = "qbi_passive_passthrough_assumptions_v1.json"
+_TEST_LOCAL_QUANTILE_NAMES = ("q05", "q25", "q50", "q75", "q95")
+_TEST_LOCAL_SCHEDULE_E_CUTS = np.array(
+    [0.0, 25_000.0, 100_000.0, 250_000.0, 1_000_000.0]
+)
 
 
 def _load_assumptions_builder():
@@ -57,13 +62,219 @@ def _load_assumptions_builder():
     return builder
 
 
+def _test_local_resource_payload(name: str) -> dict[str, object]:
+    payload = json.loads(files("microcosm.build.us").joinpath(name).read_bytes())
+    assert isinstance(payload, dict)
+    return payload
+
+
+def _test_local_evidence_model(
+    evidence: dict[str, object],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    methodology = evidence["methodology"]
+    assert isinstance(methodology, dict)
+    expected_band_order = [
+        "nonpositive",
+        "0_to_25k",
+        "25k_to_100k",
+        "100k_to_250k",
+        "250k_to_1m",
+        "over_1m",
+    ]
+    assert [band["id"] for band in methodology["income_bands"]] == expected_band_order
+    probabilities = np.asarray(
+        methodology["quantile_probabilities"],
+        dtype=np.float64,
+    )
+    assert probabilities.tolist() == [0.05, 0.25, 0.5, 0.75, 0.95]
+    cells = evidence["cells"]
+    assert isinstance(cells, list)
+    assert [cell["income_band"] for cell in cells] == expected_band_order
+    prevalence = np.asarray(
+        [cell["holding_prevalence"]["estimate"] for cell in cells],
+        dtype=np.float64,
+    )
+    quantiles = np.asarray(
+        [
+            [
+                cell["conditional_share"]["selected_quantiles"][name]
+                for name in _TEST_LOCAL_QUANTILE_NAMES
+            ]
+            for cell in cells
+        ],
+        dtype=np.float64,
+    )
+    probability_knots = np.concatenate(([0.0], probabilities, [1.0]))
+    flat_extended_quantiles = np.concatenate(
+        (quantiles[:, :1], quantiles, quantiles[:, -1:]),
+        axis=1,
+    )
+    share_means = np.sum(
+        np.diff(probability_knots)
+        * (flat_extended_quantiles[:, :-1] + flat_extended_quantiles[:, 1:])
+        / 2.0,
+        axis=1,
+    )
+    return prevalence, probabilities, quantiles, share_means
+
+
+def _test_local_shifted_probability(
+    prevalence: np.ndarray,
+    shift: float,
+) -> np.ndarray:
+    odds = prevalence / (1.0 - prevalence)
+    shifted_odds = odds * math.exp(shift)
+    return shifted_odds / (1.0 + shifted_odds)
+
+
+def _test_local_expected_aggregate(
+    partnership_s_corp_income: object,
+    schedule_e_income: object,
+    person_weights: object,
+    *,
+    evidence: dict[str, object],
+    log_odds_shift: float,
+) -> float:
+    passthrough = np.maximum(
+        np.asarray(partnership_s_corp_income, dtype=np.float64),
+        0.0,
+    )
+    schedule_e = np.asarray(schedule_e_income, dtype=np.float64)
+    weights = np.asarray(person_weights, dtype=np.float64)
+    assert passthrough.ndim == schedule_e.ndim == weights.ndim == 1
+    assert len(passthrough) == len(schedule_e) == len(weights)
+    assert np.isfinite(passthrough).all()
+    assert np.isfinite(schedule_e).all()
+    assert np.isfinite(weights).all() and np.all(weights >= 0.0)
+
+    band = np.searchsorted(
+        _TEST_LOCAL_SCHEDULE_E_CUTS,
+        schedule_e,
+        side="left",
+    )
+    prevalence, _probabilities, _quantiles, share_means = _test_local_evidence_model(
+        evidence
+    )
+    chance = _test_local_shifted_probability(prevalence, log_odds_shift)
+    return float(
+        np.sum(
+            weights * passthrough * share_means[band] * chance[band],
+            dtype=np.float64,
+        )
+    )
+
+
+def _test_local_bisect_shift(
+    partnership_s_corp_income: object,
+    schedule_e_income: object,
+    person_weights: object,
+    *,
+    evidence: dict[str, object],
+    target: float,
+    solver: dict[str, object],
+) -> tuple[float, float]:
+    lower = float(solver["lower_bound"])
+    upper = float(solver["upper_bound"])
+    iterations = int(solver["iterations"])
+
+    def expected(shift: float) -> float:
+        return _test_local_expected_aggregate(
+            partnership_s_corp_income,
+            schedule_e_income,
+            person_weights,
+            evidence=evidence,
+            log_odds_shift=shift,
+        )
+
+    if not expected(lower) <= target <= expected(upper):
+        raise ValueError("Test-local passive target is outside the solver bracket.")
+    for _iteration in range(iterations):
+        candidate = lower + (upper - lower) / 2.0
+        if expected(candidate) >= target:
+            upper = candidate
+        else:
+            lower = candidate
+    shift = lower + (upper - lower) / 2.0
+    return shift, expected(shift)
+
+
+def _test_local_bisection_tolerance(
+    solver: dict[str, object],
+    *,
+    reference_shift: float,
+) -> float:
+    span = float(solver["upper_bound"]) - float(solver["lower_bound"])
+    nominal_final_bracket = math.ldexp(span, -int(solver["iterations"]))
+    # The documented 128 halvings outrun binary64. Around mathematical zero,
+    # exp(shift) and the shifted odds operate at unit scale, so one ULP of that
+    # scale is the effective floor; nonzero roots use their own larger scale.
+    binary64_floor = math.ulp(max(1.0, abs(reference_shift)))
+    return max(nominal_final_bracket, binary64_floor)
+
+
+def _test_local_seeded_assignment(
+    partnership_s_corp_income: object,
+    schedule_e_income: object,
+    *,
+    seed: int,
+    evidence: dict[str, object],
+    assumptions: dict[str, object],
+) -> np.ndarray:
+    passthrough = np.maximum(
+        np.asarray(partnership_s_corp_income, dtype=np.float64),
+        0.0,
+    )
+    schedule_e = np.asarray(schedule_e_income, dtype=np.float64)
+    band = np.searchsorted(
+        _TEST_LOCAL_SCHEDULE_E_CUTS,
+        schedule_e,
+        side="left",
+    )
+    prevalence, probabilities, quantiles, _share_means = _test_local_evidence_model(
+        evidence
+    )
+    calibration = assumptions["calibration"]
+    streams = assumptions["random_streams"]
+    assert isinstance(calibration, dict) and isinstance(streams, dict)
+    chance = _test_local_shifted_probability(
+        prevalence,
+        float(calibration["log_odds_shift"]),
+    )
+    presence = np.random.Generator(
+        np.random.PCG64(
+            np.random.SeedSequence(
+                [seed, streams["family_entropy"], streams["presence_family"]]
+            )
+        )
+    ).random(len(passthrough))
+    share_draw = np.random.Generator(
+        np.random.PCG64(
+            np.random.SeedSequence(
+                [seed, streams["family_entropy"], streams["share_family"]]
+            )
+        )
+    ).random(len(passthrough))
+    sampled_share = np.asarray(
+        [
+            np.interp(share_draw[row], probabilities, quantiles[band[row]])
+            for row in range(len(passthrough))
+        ],
+        dtype=np.float64,
+    )
+    return np.where(
+        (passthrough > 0.0) & (presence < chance[band]),
+        passthrough * sampled_share,
+        0.0,
+    )
+
+
 def _constant_evidence(
     *,
     prevalence: float,
     shares: list[float] | None = None,
     quantiles: tuple[float, float, float, float, float] | None = None,
 ) -> dict[str, object]:
-    evidence = deepcopy(load_qbi_passive_passthrough_evidence())
+    evidence = deepcopy(_test_local_resource_payload(QBI_PASSIVE_EVIDENCE_RESOURCE))
     if shares is None:
         shares = [0.5] * len(evidence["cells"])
     if len(shares) != len(evidence["cells"]):
@@ -372,32 +583,59 @@ def test_current_qbi_pipeline_preserves_leaf_bytes_when_passive_realizes() -> No
     assert passive.between(0.0, passthrough.clip(lower=0.0)).all()
 
 
-def test_calibration_solver_hits_a_synthetic_target_and_rejects_impossible_one() -> (
-    None
-):
+def test_test_local_calibration_matches_hand_answer_and_production_solver() -> None:
     evidence = _constant_evidence(prevalence=0.5, shares=[0.5] * 6)
+    assumptions = _test_local_resource_payload(QBI_PASSIVE_ASSUMPTIONS_RESOURCE)
+    calibration = assumptions["calibration"]
+    assert isinstance(calibration, dict)
+    solver = calibration["solver"]
+    assert isinstance(solver, dict)
     passthrough = np.array([100.0, 200.0])
     schedule_e = np.array([1.0, 1.0])
     weights = np.array([1.0, 2.0])
+    hand_computed_shift = math.log(3.0)
+    hand_computed_target = (100.0 * 1.0 + 200.0 * 2.0) * 0.5 * 0.75
+    aggregate_tolerance = math.ulp(hand_computed_target)
 
-    shift, achieved = calibrate_qbi_passive_log_odds_shift(
+    assert hand_computed_target == 187.5
+    assert (
+        abs(
+            _test_local_expected_aggregate(
+                passthrough,
+                schedule_e,
+                weights,
+                evidence=evidence,
+                log_odds_shift=hand_computed_shift,
+            )
+            - hand_computed_target
+        )
+        <= aggregate_tolerance
+    )
+    local_shift, local_achieved = _test_local_bisect_shift(
         passthrough,
         schedule_e,
         weights,
         evidence=evidence,
-        target=125.0,
+        target=hand_computed_target,
+        solver=solver,
+    )
+    shift_tolerance = _test_local_bisection_tolerance(
+        solver,
+        reference_shift=hand_computed_shift,
     )
 
-    assert shift == pytest.approx(0.0, abs=1e-12)
-    assert achieved == pytest.approx(125.0, abs=1e-10)
-    with pytest.raises(ValueError, match="target is unattainable"):
-        calibrate_qbi_passive_log_odds_shift(
-            passthrough,
-            schedule_e,
-            weights,
-            evidence=evidence,
-            target=300.0,
-        )
+    production_shift, production_achieved = calibrate_qbi_passive_log_odds_shift(
+        passthrough,
+        schedule_e,
+        weights,
+        evidence=evidence,
+        target=hand_computed_target,
+    )
+
+    assert abs(local_shift - hand_computed_shift) <= shift_tolerance
+    assert abs(local_achieved - hand_computed_target) <= aggregate_tolerance
+    assert abs(production_shift - local_shift) <= shift_tolerance
+    assert abs(production_achieved - hand_computed_target) <= aggregate_tolerance
 
 
 def test_assumptions_builder_is_deterministic_on_a_synthetic_replay(
@@ -451,7 +689,7 @@ def test_restricted_replay_independently_resolves_persisted_shift_and_pins_artif
     passthrough, schedule_e, weights, artifact = builder.read_replay_artifact(
         replay_path
     )
-    assumptions = load_qbi_passive_passthrough_assumptions()
+    assumptions = _test_local_resource_payload(QBI_PASSIVE_ASSUMPTIONS_RESOURCE)
     committed_artifact = assumptions["calibration"]["replay_artifact"]
 
     assert artifact == {
@@ -465,41 +703,47 @@ def test_restricted_replay_independently_resolves_persisted_shift_and_pins_artif
     assert committed_artifact["tax_unit_rows"] == EXPECTED_REPLAY_TAX_UNIT_ROWS
     assert committed_artifact["person_rows"] == EXPECTED_REPLAY_PERSON_ROWS
 
-    evidence = load_qbi_passive_passthrough_evidence()
+    evidence = _test_local_resource_payload(QBI_PASSIVE_EVIDENCE_RESOURCE)
     bounds = evidence["external_anchor"]["passive_passthrough_bounds"]
     target = (bounds["lower"]["amount"] + bounds["upper"]["amount"]) / 2.0
-    solved_shift, solved_expected = calibrate_qbi_passive_log_odds_shift(
+    persisted_calibration = assumptions["calibration"]
+    solver = persisted_calibration["solver"]
+    solved_shift, solved_expected = _test_local_bisect_shift(
         passthrough,
         schedule_e,
         weights,
         evidence=evidence,
         target=target,
+        solver=solver,
     )
-    persisted_calibration = assumptions["calibration"]
+    shift_tolerance = _test_local_bisection_tolerance(
+        solver,
+        reference_shift=float(persisted_calibration["log_odds_shift"]),
+    )
 
     assert target == PROVISIONAL_TARGET
-    assert solved_shift == pytest.approx(
-        persisted_calibration["log_odds_shift"],
-        rel=0.0,
-        abs=1e-12,
+    assert (
+        abs(solved_shift - persisted_calibration["log_odds_shift"]) <= shift_tolerance
     )
-    assert solved_expected == pytest.approx(target, rel=0.0, abs=1.0)
-    assert solved_expected == pytest.approx(
-        persisted_calibration["expected_aggregate"],
-        rel=0.0,
-        abs=1.0,
-    )
+    assert abs(solved_expected - target) <= 1e-3
+    assert abs(solved_expected - persisted_calibration["expected_aggregate"]) <= 1e-3
 
-    assigned = assign_passive_partnership_s_corp_income(
+    assigned = _test_local_seeded_assignment(
         passthrough,
         schedule_e,
         seed=persisted_calibration["seeded_replay"]["seed"],
+        evidence=evidence,
+        assumptions=assumptions,
     )
     achieved = float(np.dot(weights, assigned))
 
-    assert achieved == pytest.approx(
-        persisted_calibration["seeded_replay"]["aggregate"],
-        rel=0.0,
-        abs=1e-3,
+    assert abs(achieved - persisted_calibration["seeded_replay"]["aggregate"]) <= 1e-3
+    assert (
+        np.count_nonzero(assigned > 0.0)
+        == (persisted_calibration["seeded_replay"]["positive_assigned_rows"])
     )
-    assert abs(achieved / target - 1.0) <= 0.05
+    assert abs(achieved / target - 1.0) == pytest.approx(
+        persisted_calibration["seeded_replay"]["relative_error"],
+        rel=0.0,
+        abs=1e-15,
+    )

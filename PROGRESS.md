@@ -2,7 +2,7 @@
 
 ## State
 
-Re-verdict finding B1 is closed locally and B3 is in progress offline on
+Re-verdict findings B1 and B3 are closed locally offline on
 `passive-pass-through-722` from starting HEAD `bc0ddb0a`. No production code,
 restricted artifacts, or supervisor-owned tests have been changed. No fetch,
 push, pull-request mutation, rebase, reset, checkout, or stash is in scope.
@@ -36,11 +36,23 @@ push, pull-request mutation, rebase, reset, checkout, or stash is in scope.
   Touched-file Ruff check and format check are clean. An earlier duplicate was
   manually interrupted during the installed-engine collection import (exit
   130); it produced no test result. No run exited 137.
+- Replaced the circular B3 calibration check with test-local evidence parsing,
+  inverse-CDF integration, odds shifting, row-wise weighted aggregation, and
+  bisection. Those helpers consume only committed JSON and caller-supplied raw
+  arrays; they call no production calibration or subordinate helper.
+- The two-row synthetic CI node has the hand solution `shift = ln(3)` and
+  aggregate `(100*1 + 200*2) * 0.5 * 0.75 = 187.5`; the test-local and
+  production solvers agree within the artifact-derived binary64 floor. Its
+  final run passed (exit 0).
+- The required restricted replay passed (exit 0) with the supplied SHA-pinned
+  `puf_2024.h5`: test-local solved shift `-1.157105426398319`, committed shift
+  `-1.157105426398319`, effective shift tolerance
+  `2.220446049250313e-16`, and independently seeded aggregate
+  `$55,021,131,518.061035` (`0.7187449327011208%` above the provisional
+  `$54,628,492,000` midpoint). No test run exited 137.
 
 ## Next
 
-- Add a test-local aggregate and bisection plus synthetic and env-gated B3
-  cross-checks; run the restricted replay once with the supplied artifact.
 - Run only targeted tests and touched-file Ruff checks, update the two branch
   handoff reports with exact CI/certification scope and commit mappings, and
   write the final certification record to `FINAL_REPORT.md`.
