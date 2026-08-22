@@ -87,6 +87,7 @@ ALLOWED_SOURCE_OPERATION_KINDS = frozenset(
         "derive_workers_compensation",
         "derive_weeks_unemployed",
         "derive_wic_claim",
+        "derive_work_experience_inputs",
         "disaggregate_aggregate_records",
         "fit_labor_market_models",
         "fit_tip_income_model",

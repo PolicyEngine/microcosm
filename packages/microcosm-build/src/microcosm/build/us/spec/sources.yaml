@@ -2881,3 +2881,72 @@ stages:
     toward the measured premium structure for the self-employed slice, outside the federal income_tax
     probe''s scope. External anchor class: IRS SOI Pub 1304 Table 1.4 TY2023 self-employed health insurance
     deduction, 3,595,764 returns / $31.23B (ledger#105, buildn v9.2 feed).'
+- stage: work_experience_inputs
+  survey: Census CPS ASEC
+  source: https://www.census.gov/programs-surveys/cps.html
+  grain: person
+  artifacts:
+  - kind: public_microdata
+    format: zip_csv
+    vintage: 2023 ASEC / 2022 income reference year
+    locator: https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asecpub23csv.zip
+    sha256: d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11
+    size_bytes: 150165063
+    member: pppub23.csv
+    member_size_bytes: 281065733
+    member_crc32: 49c09e5f
+    member_sha256: 19b56537e50e7663f954361ef2bb5ce9cef8d9d45f156fe1a69a99b654198ffe
+  - kind: public_microdata
+    format: zip_csv
+    vintage: 2024 ASEC / 2023 income reference year
+    locator: https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asecpub24csv.zip
+    sha256: cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09
+    size_bytes: 148664101
+    member: pppub24.csv
+    member_size_bytes: 277250415
+    member_crc32: 87950ece
+    member_sha256: 21a2b9e0e4b08534563578a45acad77868af4ae9a7d46f23776b707d4a559aa7
+  - kind: public_microdata
+    format: zip_csv
+    vintage: 2025 ASEC / 2024 income reference year
+    locator: https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asecpub25csv.zip
+    sha256: 318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b
+    size_bytes: 147271429
+    member: pppub25.csv
+    member_size_bytes: 277882549
+    member_crc32: 7dc2878f
+    member_sha256: 06921fe83fc66c907e6c7b86b82255dc70458ee7d76258fc48297cb34f0c06b5
+  - kind: official_data_dictionary
+    format: pdf
+    vintage: '2024'
+    locator: https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asec2024_ddl_pub_full.pdf
+    lines: person WEIND entry, position 326 length 2; WEMIND entry, position 329 length 2; WKSWORK/WORKYN work-experience
+      universe statements
+  operations:
+  - kind: read_table
+    table: person
+    weight: person_weight
+  - kind: derive_work_experience_inputs
+  outputs:
+  - detailed_industry_recode
+  - major_industry_recode
+  - worked_last_year
+  nonnegative_outputs:
+  - detailed_industry_recode
+  - major_industry_recode
+  notes: 'Net-new factual-input coverage with no archived derivation to port: the retired eCPS build never surfaced industry
+    or an explicit worked-last-year indicator (its cps.py carried only the POCCU2 occupation recode). WEIND (''IND. OF LONGEST
+    JOB BY DETAILED GROUPS'', position 326 length 2; 0 = NIU, 22 = Military, 23 = Never worked) and WEMIND (''IND. OF LONGEST
+    JOB BY MAJOR IND. GROUPS'', position 329 length 2), universe all persons 15+, restore from the three SHA-pinned official
+    ASEC person archives via exact per-income-year PERIDNUM joins (the frozen census_cps inputs never carried them; identical
+    zip/member identities to the education-assistance sidecar pins) and carry directly to both support clones through the
+    shared source identity, exactly as the POCCU2 occupation recode carries. worked_last_year derives as WKSWORK > 0, the
+    official universe condition of the work-experience recode block: measured on the pinned archives, WEIND holds a worker
+    code 1-22 iff WKSWORK > 0 with zero violations (worked rows 73,186 / 73,471 / 72,460; A_FNLWGT-weighted worked shares
+    0.519968 / 0.523171 / 0.522794; nonzero-recode shares 0.821737 / 0.822002 / 0.824376 across income years 2022-2024), while
+    WORKYN = 1 under-covers that universe by 642 / 572 / 594 allocation rows carrying positive weeks and a real industry (WORKYN
+    = 1 never appears without positive WKSWORK), so the recode-universe definition is the indicator and WORKYN is load-time
+    audit evidence only. The loader also enforces recode coherence ((WEIND = 0) iff (WEMIND = 0), zero violations measured)
+    and the derive handler re-enforces both identities on the pool surface with zero tolerance. Downstream demand: PolicyEngine/microcosm#719
+    (Living Wage Institute MVP person schema: working indicator + industry + occupation on every person record). Industry-conditional
+    modeling stays owned by PolicyEngine-US; this stage persists measured facts only.'

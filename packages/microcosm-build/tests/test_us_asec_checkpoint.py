@@ -134,7 +134,7 @@ def _raw_binding(frame: Frame) -> dict[str, object]:
                 "operation": "exact_source_join",
                 "source_pins": [pin],
             }
-            for column in ("ED_VAL", "LKWEEKS", "PAW_TYP")
+            for column in ("ED_VAL", "LKWEEKS", "PAW_TYP", "WEIND", "WEMIND")
         },
         "schema_version": ASEC_RAW_STAGE_SCHEMA_VERSION,
         "source_construction_identity": frame_identity(frame).to_payload(),
@@ -166,6 +166,8 @@ def _raw_us_frame(*, id_offset: int = 0) -> Frame:
     tables["person"]["ED_VAL"] = [0.0, 500.0]
     tables["person"]["LKWEEKS"] = [-1, 12]
     tables["person"]["PAW_TYP"] = np.asarray([0, 1], dtype=np.int64)
+    tables["person"]["WEIND"] = np.asarray([0, 7], dtype=np.int64)
+    tables["person"]["WEMIND"] = np.asarray([0, 5], dtype=np.int64)
     return Frame(
         tables,
         source.schema,
@@ -248,7 +250,7 @@ def test_loads_operator_untouched_raw_stage_checkpoint(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "column",
-    ("ED_VAL", "LKWEEKS", "PAW_TYP", "PERIDNUM", "source_year"),
+    ("ED_VAL", "LKWEEKS", "PAW_TYP", "WEIND", "WEMIND", "PERIDNUM", "source_year"),
 )
 def test_raw_loader_rejects_missing_input_complete_source_column(
     tmp_path: Path,
@@ -278,6 +280,9 @@ def test_raw_loader_rejects_missing_input_complete_source_column(
         ("ED_VAL", [0.0, np.nan], "ED_VAL must be complete"),
         ("LKWEEKS", [-1, 53], "LKWEEKS must be complete"),
         ("PAW_TYP", [0, 4], "PAW_TYP must be complete integers"),
+        ("WEIND", [0, 24], "WEIND must be complete integers"),
+        ("WEMIND", [0, 16], "WEMIND must be complete integers"),
+        ("WEIND", [0, 0], "must be zero on exactly the same"),
     ),
 )
 def test_raw_loader_rejects_invalid_input_complete_source_values(

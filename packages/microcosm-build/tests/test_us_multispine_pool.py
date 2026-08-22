@@ -126,6 +126,7 @@ _EXPECTED_POOL_SOURCE_OPERATOR_ORDER = (
     "with_us_retirement_distribution_inputs",
     "with_us_immigration_inputs",
     "with_us_education_inputs",
+    "with_us_work_experience_inputs",
 )
 
 _EXPECTED_PRE_CLONE_SOURCE_OPERATOR_ORDER = (
@@ -154,6 +155,7 @@ _EXPECTED_POST_CLONE_SOURCE_OPERATOR_ORDER = (
     "with_us_retirement_distribution_inputs",
     "with_us_immigration_inputs",
     "with_us_education_inputs",
+    "with_us_work_experience_inputs",
 )
 
 
@@ -1167,10 +1169,10 @@ def test_pool_transfer_plan_extends_legacy_except_receipted_asset_deferrals() ->
     assert "has_marketplace_health_coverage" not in owners
 
     target_names = sorted(owners)
-    assert len(target_names) == 118
+    assert len(target_names) == 121
     assert (
         hashlib.sha256(("\n".join(target_names) + "\n").encode()).hexdigest()
-        == "74fd985208c62ee51a96c161ee2766118e4d92020ce2897bf2942e2625db9484"
+        == "d9a204e09e31e9a79b070da1b7ad01d7dc6a49a99ac1b79b551f9a178252938d"
     )
 
 
@@ -1190,11 +1192,11 @@ def test_pool_transfer_plan_partitions_at_the_declared_producer_boundary() -> No
     source_producers = keys(pool_post_puf_source_producer_target_families())
 
     assert len(early) == 48
-    assert len(late) == 70
+    assert len(late) == 73
     assert early.isdisjoint(late)
     assert early | late == full
     assert len(puf_producers) == 43
-    assert len(source_producers) == 29
+    assert len(source_producers) == 32
     assert len(puf_producers & source_producers) == 2
     assert puf_producers | source_producers == late
     assert ("person", "source_operator_cps_carried", "strike_benefits") in early
@@ -1225,13 +1227,13 @@ def test_pool_input_surface_normalizes_all_four_source_registries() -> None:
     surface = pool_input_surface()
     by_name = {entry.variable: entry for entry in surface}
 
-    assert len(surface) == len(by_name) == 139
+    assert len(surface) == len(by_name) == 142
     assert [entry.variable for entry in surface] == sorted(by_name)
     assert Counter(
         provenance for entry in surface for provenance in entry.provenance
     ) == Counter(
         {
-            "pool_transfer_target_families": 118,
+            "pool_transfer_target_families": 121,
             "POOL_DEFERRED_TRANSFER_INPUTS": 3,
             "PRIMARY_QRF_TARGET_ORDER": 65,
             "load_take_up_contract": 13,
@@ -1859,6 +1861,9 @@ def _producer_dtype_source_frame() -> Frame:
     person["PEAFEVER"] = 2
     person["ED_VAL"] = [0.0, 500.0, 0.0, 1_000.0]
     person["qualified_tuition_expenses"] = [0.0, 1_000.0, 0.0, 2_000.0]
+    # Work-experience recodes coherent with WKSWORK = [52, 0, 48, 0].
+    person["WEIND"] = np.asarray([7, 0, 21, 0], dtype=np.int64)
+    person["WEMIND"] = np.asarray([5, 0, 13, 0], dtype=np.int64)
     return _replace_person(frame, person)
 
 
@@ -2135,7 +2140,7 @@ def test_every_pool_transfer_target_is_an_installed_engine_input_leaf() -> None:
         for columns in families.values()
         for target in columns
     }
-    assert len(targets) == 118
+    assert len(targets) == 121
     acs_transfer_module.assert_acs_transfer_targets_are_input_leaves(
         targets,
         require_known=True,
@@ -2160,7 +2165,7 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
         )
     )
 
-    assert len(targets) == 118
+    assert len(targets) == 121
     assert len(predictors) == 32
     assert len(primary_predictor_sets) == 65
     primary_targets = tuple(
@@ -2177,13 +2182,13 @@ def test_every_pool_transfer_family_accepts_its_produced_physical_dtype(
     assert len(primary_predictor_sets[0][1]) == 8
     assert len(primary_predictor_sets[-1][1]) == 72
     assert len(POOL_DEFERRED_TRANSFER_INPUTS) == 3
-    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 121
+    assert len(targets) + len(POOL_DEFERRED_TRANSFER_INPUTS) == 124
     assert set(POOL_SOURCE_OPERATOR_ORDER) <= set(calls)
     assert all(calls[name] > 0 for name in POOL_SOURCE_OPERATOR_ORDER)
     assert calls["with_us_prior_year_income_inputs"] == 2
     assert calls["primary_puf_qrf.fit"] > 0
     assert calls["primary_puf_qrf.predict"] > 0
-    assert sum(calls[name] for name in POOL_SOURCE_OPERATOR_ORDER) == 22
+    assert sum(calls[name] for name in POOL_SOURCE_OPERATOR_ORDER) == 23
 
 
 def test_object_backed_is_female_becomes_nullable_before_production_transfer_fit(
@@ -2803,7 +2808,7 @@ def test_source_finalizer_requires_all_16_receipts_and_preserves_run_order(
     assert deferred_calls == [finalized.frame]
     assert finalized.receipt["operator_order"] == list(execution_order)
     assert [item["order_index"] for item in finalized.receipt["suboperators"]] == list(
-        range(16)
+        range(17)
     )
     assert finalized.receipt["deferred_transfer_inputs"] == {
         "inputs": {"fixture": {"status": "pending"}}
@@ -2823,7 +2828,7 @@ def test_source_finalizer_rejects_incomplete_receipts_before_deferred_inputs(
         for operator in POOL_POST_CLONE_SOURCE_OPERATOR_ORDER[:-1]
     }
 
-    with pytest.raises(ValueError, match=r"exactly.*16.*missing=.*education"):
+    with pytest.raises(ValueError, match=r"exactly.*17.*missing=.*work_experience"):
         finalize_multispine_source_inputs(
             _source_frame(),
             operator_receipts=receipts,
@@ -2983,8 +2988,8 @@ def test_production_operator_invocations_are_total_and_guarded(
         for phase in contract.phases
     }
     assert observed_placements == registered_placements
-    assert len({name for name, _phase in observed_placements}) == 23
-    assert len(observed_placements) == 24
+    assert len({name for name, _phase in observed_placements}) == 24
+    assert len(observed_placements) == 25
 
 
 def test_derive_stage_rejects_preclone_pool_before_kernels(

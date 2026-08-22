@@ -91,6 +91,9 @@ from microcosm.build.us_runtime.weeks_unemployed import (
     US_WEEKS_UNEMPLOYED_OUTPUT_COLUMNS,
 )
 from microcosm.build.us_runtime.wic_claim import US_WIC_CLAIM_OUTPUT_COLUMNS
+from microcosm.build.us_runtime.work_experience_inputs import (
+    US_WORK_EXPERIENCE_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.workers_compensation import (
     US_WORKERS_COMPENSATION_OUTPUT_COLUMNS,
 )
@@ -333,6 +336,9 @@ PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
     },
     "education_inputs": {
         "person": frozenset(US_EDUCATION_INPUTS_OWNED_OUTPUT_COLUMNS),
+    },
+    "work_experience_inputs": {
+        "person": frozenset(US_WORK_EXPERIENCE_OUTPUT_COLUMNS),
     },
     "scf_wealth": {
         "person": frozenset(US_SCF_FINANCIAL_ASSET_OUTPUT_COLUMNS),

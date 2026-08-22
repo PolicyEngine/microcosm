@@ -80,6 +80,9 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "is_self_employed",
     "pre_subsidy_care_expenses",
     "is_incapable_of_self_care",
+    "detailed_industry_recode",
+    "major_industry_recode",
+    "worked_last_year",
 )
 
 # Per-column annotations for post-reference hard requirements whose absence

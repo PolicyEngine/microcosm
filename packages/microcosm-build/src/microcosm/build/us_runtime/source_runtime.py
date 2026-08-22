@@ -90,6 +90,9 @@ from microcosm.build.us_runtime.weeks_unemployed import (
     impute_us_weeks_unemployed_to_puf_support_from_manifest,
 )
 from microcosm.build.us_runtime.wic_claim import derive_us_wic_claim_from_manifest
+from microcosm.build.us_runtime.work_experience_inputs import (
+    derive_us_work_experience_inputs_from_manifest,
+)
 from microcosm.build.us_runtime.workers_compensation import (
     derive_us_workers_compensation_from_manifest,
     impute_us_workers_compensation_to_puf_support_from_manifest,
@@ -313,6 +316,9 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
         ),
         "derive_eligibility_inputs": derive_us_eligibility_inputs_from_manifest,
         "derive_education_inputs": derive_us_education_inputs_from_manifest,
+        "derive_work_experience_inputs": (
+            derive_us_work_experience_inputs_from_manifest
+        ),
         "derive_hours_worked": derive_us_hours_worked_from_manifest,
         "derive_medicare_take_up": derive_us_medicare_take_up_from_manifest,
         "derive_pregnancy": derive_us_pregnancy_from_manifest,

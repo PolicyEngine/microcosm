@@ -1422,6 +1422,18 @@
      "additionalProperties": false,
      "properties": {
       "kind": {
+       "const": "derive_work_experience_inputs"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
        "const": "derive_eligibility_inputs"
       }
      },

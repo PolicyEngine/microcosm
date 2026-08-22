@@ -1061,6 +1061,26 @@ from microcosm.build.us_runtime.wic_claim import (
     us_wic_claim_summary,
     with_us_wic_claim_input,
 )
+from microcosm.build.us_runtime.work_experience_inputs import (
+    US_WORK_EXPERIENCE_NONCONSTANT_PERSON_COLUMNS,
+    US_WORK_EXPERIENCE_OUTPUT_COLUMNS,
+    US_WORK_EXPERIENCE_REQUIRED_SOURCE_COLUMNS,
+    US_WORK_EXPERIENCE_STAGE_NAME,
+    derive_us_work_experience_inputs_from_manifest,
+    us_work_experience_signal_gate,
+    us_work_experience_stage_spec,
+    us_work_experience_summary,
+    with_us_work_experience_inputs,
+)
+from microcosm.build.us_runtime.work_experience_source import (
+    ASEC_WORK_EXPERIENCE_ARCHIVES,
+    ASEC_WORK_EXPERIENCE_INCOME_YEARS,
+    ASEC_WORK_EXPERIENCE_SOURCE_COLUMNS,
+    WORK_EXPERIENCE_OFFICIAL_DICTIONARY_URL,
+    fetch_asec_work_experience_source,
+    fill_asec_work_experience_source,
+    load_asec_work_experience_sources,
+)
 from microcosm.build.us_runtime.workers_compensation import (
     US_WORKERS_COMPENSATION_NONCONSTANT_PERSON_COLUMNS,
     US_WORKERS_COMPENSATION_OUTPUT_COLUMNS,
@@ -1403,6 +1423,22 @@ __all__ = [
     "us_wic_claim_stage_spec",
     "us_wic_claim_summary",
     "with_us_wic_claim_input",
+    "ASEC_WORK_EXPERIENCE_ARCHIVES",
+    "ASEC_WORK_EXPERIENCE_INCOME_YEARS",
+    "ASEC_WORK_EXPERIENCE_SOURCE_COLUMNS",
+    "US_WORK_EXPERIENCE_NONCONSTANT_PERSON_COLUMNS",
+    "US_WORK_EXPERIENCE_OUTPUT_COLUMNS",
+    "US_WORK_EXPERIENCE_REQUIRED_SOURCE_COLUMNS",
+    "US_WORK_EXPERIENCE_STAGE_NAME",
+    "WORK_EXPERIENCE_OFFICIAL_DICTIONARY_URL",
+    "derive_us_work_experience_inputs_from_manifest",
+    "fetch_asec_work_experience_source",
+    "fill_asec_work_experience_source",
+    "load_asec_work_experience_sources",
+    "us_work_experience_signal_gate",
+    "us_work_experience_stage_spec",
+    "us_work_experience_summary",
+    "with_us_work_experience_inputs",
     "US_MISC_ITEMIZED_NONCONSTANT_PERSON_COLUMNS",
     "US_MISC_ITEMIZED_OUTPUT_COLUMNS",
     "US_MISC_ITEMIZED_STAGE_NAME",
@@ -2355,6 +2391,17 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "educational assistance carries directly from ASEC ED_VAL."
         ),
     ),
+    US_WORK_EXPERIENCE_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "Industry of the longest job (WEIND detailed groups, WEMIND major "
+            "groups) restores from the three SHA-pinned official ASEC person "
+            "archives by exact PERIDNUM join and carries directly; "
+            "worked_last_year is WKSWORK > 0, the work-experience recode "
+            "universe. Nothing is imputed (microcosm#719)."
+        ),
+    ),
     US_RETIREMENT_CONTRIBUTION_STAGE_NAME: DonorSpec(
         survey="Census CPS ASEC + published retirement-contribution shares",
         source="https://www.census.gov/programs-surveys/cps.html",
@@ -2437,6 +2484,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_WORKERS_COMPENSATION_STAGE_NAME,
     US_WEEKS_UNEMPLOYED_STAGE_NAME,
     US_EDUCATION_INPUTS_STAGE_NAME,
+    US_WORK_EXPERIENCE_STAGE_NAME,
     "capital_gain_distributions",
     "scf_wealth",
     US_SSI_DISABILITY_CRITERIA_STAGE_NAME,

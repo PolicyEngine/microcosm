@@ -2919,6 +2919,11 @@ _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
                 "source_operator_wic_claim",
                 "would_claim_wic",
             ),
+            (
+                "person",
+                "source_operator_work_experience_inputs",
+                "worked_last_year",
+            ),
             ("person", "take_up", "takes_up_basic_health_program_if_eligible"),
             ("person", "take_up", "takes_up_chip_if_eligible"),
             ("person", "take_up", "takes_up_early_head_start_if_eligible"),
@@ -2951,6 +2956,16 @@ _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
                 "immigration_status_str",
             ),
             ("person", "source_operator_immigration", "ssn_card_type"),
+            (
+                "person",
+                "source_operator_work_experience_inputs",
+                "detailed_industry_recode",
+            ),
+            (
+                "person",
+                "source_operator_work_experience_inputs",
+                "major_industry_recode",
+            ),
             (
                 "tax_unit",
                 "puf_tax_itemization",
@@ -5014,6 +5029,7 @@ _SOURCE_MANIFEST_STAGE_BY_OPERATOR: Mapping[str, str] = MappingProxyType(
         "with_us_retirement_distribution_inputs": "retirement_distributions",
         "with_us_immigration_inputs": "immigration_status",
         "with_us_education_inputs": "education_inputs",
+        "with_us_work_experience_inputs": "work_experience_inputs",
     }
 )
 _SOURCE_STAGE_SPEC_RESOLVER_BY_OPERATOR: Mapping[str, tuple[str, str]] = (
@@ -5079,13 +5095,17 @@ _SOURCE_STAGE_SPEC_RESOLVER_BY_OPERATOR: Mapping[str, tuple[str, str]] = (
                 "microcosm.build.us_runtime.education_inputs",
                 "us_education_inputs_stage_spec",
             ),
+            "with_us_work_experience_inputs": (
+                "microcosm.build.us_runtime.work_experience_inputs",
+                "us_work_experience_stage_spec",
+            ),
         }
     )
 )
 _DIRECT_HOUSING_ASSISTANCE_SOURCE_OPERATOR = (
     "impute_us_housing_assistance_to_puf_support"
 )
-if len(_SOURCE_MANIFEST_STAGE_BY_OPERATOR) != 15 or set(
+if len(_SOURCE_MANIFEST_STAGE_BY_OPERATOR) != 16 or set(
     _SOURCE_MANIFEST_STAGE_BY_OPERATOR
 ) | {_DIRECT_HOUSING_ASSISTANCE_SOURCE_OPERATOR} != set(
     POOL_POST_CLONE_SOURCE_OPERATOR_ORDER
@@ -5274,6 +5294,8 @@ def _late_source_execution_config_binding(
             if operator == "with_us_weeks_unemployed"
             else {"asec_education_source": {"mode": "not_supplied"}}
             if operator == "with_us_education_inputs"
+            else {"asec_work_experience_source": {"mode": "not_supplied"}}
+            if operator == "with_us_work_experience_inputs"
             else {}
         ),
         "source_stage_spec": _late_source_stage_spec_binding(operator),
@@ -7493,12 +7515,12 @@ _canonical_full_transfer_keys = set(
     _surface_target_keys(_freeze_target_families(pool_transfer_target_families()))
 )
 if (
-    len(_canonical_surface_keys) != 131
-    or len(set(_canonical_surface_keys)) != 131
+    len(_canonical_surface_keys) != 134
+    or len(set(_canonical_surface_keys)) != 134
     or len(_canonical_early_transfer_keys) != 48
-    or len(_canonical_late_transfer_keys) != 70
+    or len(_canonical_late_transfer_keys) != 73
     or len(_canonical_late_puf_producer_keys) != 43
-    or len(_canonical_late_source_producer_keys) != 29
+    or len(_canonical_late_source_producer_keys) != 32
     or len(_canonical_late_puf_producer_keys & _canonical_late_source_producer_keys)
     != 2
     or _canonical_late_puf_producer_keys | _canonical_late_source_producer_keys
@@ -7506,7 +7528,7 @@ if (
     or _canonical_early_transfer_keys & _canonical_late_transfer_keys
     or _canonical_early_transfer_keys | _canonical_late_transfer_keys
     != _canonical_full_transfer_keys
-    or len(_canonical_full_transfer_keys) != 118
+    or len(_canonical_full_transfer_keys) != 121
     or set(_plan_target_keys(_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR))
     != _canonical_early_transfer_keys
     or not _canonical_full_transfer_keys.issubset(_canonical_surface_keys)
@@ -7526,10 +7548,10 @@ if (
     )
 ):
     raise RuntimeError(
-        "Canonical stacked authority must partition the exact 118-target "
-        "transfer surface into 48 early gap-fill and 70 post-PUF targets "
-        "inside an exact 131-target terminal surface and metric registry; "
-        "the late surface must be exactly covered by 43 PUF-clone and 29 "
+        "Canonical stacked authority must partition the exact 121-target "
+        "transfer surface into 48 early gap-fill and 73 post-PUF targets "
+        "inside an exact 134-target terminal surface and metric registry; "
+        "the late surface must be exactly covered by 43 PUF-clone and 32 "
         "ASEC-source producer targets with their declared two-target overlap."
     )
 
