@@ -172,6 +172,10 @@ OUTPUT_COLUMNS = (
     "student_loans",
     "access_fund",
     "education_grants",
+    "healthy_start_vouchers",
+    "free_school_breakfasts",
+    "free_school_fruit_veg",
+    "free_school_meals",
     "council_tax_benefit_reported",
     "maintenance_expenses",
     "childcare_expenses",
@@ -525,6 +529,20 @@ def _add_person_income(
     pe_person["education_grants"] = np.maximum(
         _number(person, "grtdir1") + _number(person, "grtdir2"), 0
     )
+    # In-kind benefits recorded per person on the FRS tapes. Each is a direct
+    # weeklyised amount with no derivation: healthy-start vouchers appear on
+    # both the adult and child tapes, the three school ones only on the child
+    # tape, so absent columns read as zero for adults through `_number`.
+    pe_person["healthy_start_vouchers"] = (
+        _positive(person, "heartval") * WEEKS_IN_YEAR
+    )
+    pe_person["free_school_breakfasts"] = (
+        _positive(person, "fsbval") * WEEKS_IN_YEAR
+    )
+    pe_person["free_school_fruit_veg"] = (
+        _positive(person, "fsfvval") * WEEKS_IN_YEAR
+    )
+    pe_person["free_school_meals"] = _positive(person, "fsmval") * WEEKS_IN_YEAR
 
 
 def _odd_job_income(person: pd.DataFrame, oddjob: pd.DataFrame) -> np.ndarray:

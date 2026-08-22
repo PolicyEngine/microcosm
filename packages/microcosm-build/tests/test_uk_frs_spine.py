@@ -154,6 +154,8 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "ACCSSAMT": 1.0,
         "GRTDIR1": 2.0,
         "GRTDIR2": 3.0,
+        # heartval is on the adult tape too; the three school columns are not.
+        "HEARTVAL": 5.0,
     }
     adult_2 = {**adult_1, "SERNUM": 2, "PERSON": 1, "SEX": 2, "HRPID": 1}
     child_1 = {
@@ -173,6 +175,10 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "TRAIN": 9,
         "EMAAMT": 0.0,
         "CHEMAAMT": 1.0,
+        "FSMVAL": 3.0,
+        "FSFVVAL": 1.0,
+        "FSBVAL": 2.0,
+        "HEARTVAL": 4.0,
     }
     return {
         "adult": [adult_2, adult_1],
@@ -1691,3 +1697,37 @@ class TestScottishWaterAndSewerage:
             scottish_water_and_sewerage_weekly(absent).iloc[0]
         )
         assert result > 0
+
+
+def test_in_kind_benefits_map_from_the_raw_person_tapes(tmp_path: Path) -> None:
+    """The four in-kind benefit columns, ported at #686.
+
+    They were absent from the spine while the incumbent mapped them straight
+    off the person tapes, so the parity screen reported them as columns the
+    candidate did not produce. Each is a plain weeklyised amount.
+    """
+
+    stage = _write_fixture(tmp_path)
+
+    frame = build_uk_frs_spine_frame(tmp_path, stage=stage)
+    person = frame.table("person").set_index("person_id")
+
+    children = person.loc[person["age"] < 16]
+    assert len(children) == 1
+    child = children.iloc[0]
+    assert child["free_school_meals"] == pytest.approx(3.0 * WEEKS_IN_YEAR)
+    assert child["free_school_fruit_veg"] == pytest.approx(1.0 * WEEKS_IN_YEAR)
+    assert child["free_school_breakfasts"] == pytest.approx(2.0 * WEEKS_IN_YEAR)
+    assert child["healthy_start_vouchers"] == pytest.approx(4.0 * WEEKS_IN_YEAR)
+
+    # heartval is on the adult tape as well; the school columns are child-only
+    # and must read as zero for adults rather than propagating NaN.
+    adults = person.loc[person["age"] > 16]
+    assert (adults["healthy_start_vouchers"] > 0).all()
+    for column in (
+        "free_school_meals",
+        "free_school_fruit_veg",
+        "free_school_breakfasts",
+    ):
+        assert (adults[column] == 0).all()
+        assert person[column].notna().all()

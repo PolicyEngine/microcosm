@@ -482,6 +482,139 @@ def e6_identity_receipt(
     }
 
 
+def e7_identity_receipt(
+    frame,
+    *,
+    permutation_seed: int,
+) -> dict[str, object]:
+    """Receipt E7 deterministic layers under row permutation by entity id.
+
+    Covered: the support-channel labelling the SPI stack introduces — each
+    entity's channel and clone index, the composite source key, and the
+    propagation of a household's channel down to its persons and benefit
+    units. These are pure functions of the synthetic flag and the entity ids,
+    so they are bitwise both under permutation and against the store, and they
+    are the layer E7 actually contributes to the artifact.
+
+    Not covered here, and deliberately so:
+
+    * the stage-1/stage-2 QRF fits and the dividend redraw, which twin-build
+      determinism covers — the e6 and e8 precedent for QRF surfaces;
+    * the ``employer_pension_contributions = 3 * employee_pension_contributions``
+      derive, which is a genuine E7 deterministic layer but which E8's
+      salary_sacrifice rewrites in place afterwards. Measured on the E8
+      roster the relation survives on only 95.9% of survey-channel persons,
+      so the stage-time relation is not reconstructible from the final
+      artifact. That is the #721 rewrites-provenance class, not a defect, and
+      asserting it here would fail for the wrong reason.
+    """
+
+    def recompute(person_t, benunit_t, household_t) -> dict[str, pd.DataFrame]:
+        household_out = pd.DataFrame(index=household_t["household_id"].to_numpy())
+        person_out = pd.DataFrame(index=person_t["person_id"].to_numpy())
+        benunit_out = pd.DataFrame(index=benunit_t["benunit_id"].to_numpy())
+
+        if "household_is_spi_synthetic" not in household_t.columns:
+            return {}
+        synthetic = household_t["household_is_spi_synthetic"].astype(bool).to_numpy()
+        channel = np.where(synthetic, "spi", "frs")
+        household_out["household_support_channel"] = channel
+        household_out["household_support_clone_index"] = np.where(synthetic, 1, 0)
+
+        if {"source_year", "source_household_id"} <= set(household_t.columns):
+            household_out["source_household_key"] = [
+                f"{int(year)}:{int(source)}"
+                for year, source in zip(
+                    household_t["source_year"].to_numpy(),
+                    household_t["source_household_id"].to_numpy(),
+                    strict=True,
+                )
+            ]
+
+        # The channel is a household property; persons and benefit units
+        # inherit it through membership, never redraw it.
+        by_household = pd.Series(channel, index=household_t["household_id"].to_numpy())
+        person_channel = (
+            person_t["person_household_id"].map(by_household).to_numpy(dtype=object)
+        )
+        person_out["person_support_channel"] = person_channel
+        by_benunit = pd.Series(
+            person_channel, index=person_t["person_benunit_id"].to_numpy()
+        )
+        by_benunit = by_benunit[~by_benunit.index.duplicated(keep="first")]
+        benunit_out["benunit_support_channel"] = (
+            benunit_t["benunit_id"].map(by_benunit).to_numpy(dtype=object)
+        )
+        return {
+            "household": household_out,
+            "person": person_out,
+            "benunit": benunit_out,
+        }
+
+    person = frame.table("person")
+    benunit = frame.table("benunit")
+    household = frame.table("household")
+
+    original = recompute(person, benunit, household)
+    rng = np.random.default_rng(permutation_seed)
+    permuted = recompute(
+        person.iloc[rng.permutation(len(person))].reset_index(drop=True),
+        benunit.iloc[rng.permutation(len(benunit))].reset_index(drop=True),
+        household.iloc[rng.permutation(len(household))].reset_index(drop=True),
+    )
+
+    stored_tables = {
+        "person": person.set_index("person_id"),
+        "benunit": benunit.set_index("benunit_id"),
+        "household": household.set_index("household_id"),
+    }
+    mismatches: dict[str, list[str]] = {}
+    stored_mismatches: dict[str, list[str]] = {}
+    # Labels and integer indices: bitwise on both surfaces, no tolerance.
+    for entity, values in original.items():
+        for column in values.columns:
+            left = values[column]
+            right = permuted[entity][column].reindex(left.index)
+            if not np.array_equal(
+                left.to_numpy().astype(str), right.to_numpy().astype(str)
+            ):
+                mismatches.setdefault(entity, []).append(column)
+            stored_table = stored_tables[entity]
+            if column in stored_table.columns:
+                kept = stored_table[column].reindex(left.index)
+                if not np.array_equal(
+                    left.to_numpy().astype(str), kept.to_numpy().astype(str)
+                ):
+                    stored_mismatches.setdefault(entity, []).append(column)
+    return {
+        "check": "uk_e7_identity_stability",
+        "permutation_seed": permutation_seed,
+        "identical_under_permutation": not mismatches,
+        "permutation_mismatches": mismatches,
+        "matches_stored_columns": not stored_mismatches,
+        "stored_column_mismatches": stored_mismatches,
+        "tolerance_policy": (
+            "bitwise on both surfaces: the support channel, clone index and "
+            "source key are labels and integer indices, so no float "
+            "tolerance applies"
+        ),
+        "columns_by_entity": {
+            entity: list(values.columns) for entity, values in original.items()
+        },
+        "qrf_draw_columns_scope": (
+            "excluded: the stage-1/stage-2 QRF fits and the dividend redraw "
+            "are covered by twin-build determinism (the e6 and e8 precedent)"
+        ),
+        "rewritten_layer_scope": (
+            "excluded: employer_pension_contributions = 3 x "
+            "employee_pension_contributions is an E7 derive, but E8 "
+            "salary_sacrifice rewrites the multiplicand in place afterwards, "
+            "so the stage-time relation is not reconstructible from the "
+            "final artifact (#721 rewrites-provenance class)"
+        ),
+    }
+
+
 def e8_identity_receipt(
     frame,
     *,
@@ -722,7 +855,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-h5", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--check", choices=("e4", "e5", "e6", "e8"), default="e4")
+    parser.add_argument(
+        "--check", choices=("e4", "e5", "e6", "e7", "e8"), default="e4"
+    )
     parser.add_argument("--permutation-seed", type=int, default=123)
     args = parser.parse_args()
 
@@ -758,6 +893,17 @@ def main() -> int:
         # stored. Scope to the population the stage saw.
         receipt = e5_identity_receipt(
             _frs_only_frame(frame),
+            permutation_seed=args.permutation_seed,
+        )
+        ok = bool(
+            receipt["identical_under_permutation"] and receipt["matches_stored_columns"]
+        )
+    elif args.check == "e7":
+        # E7's own layer is the support-channel stack, which is defined over
+        # the whole frame including the rows it stacks — so unlike e4/e5 this
+        # receipt deliberately does NOT scope to the unstacked rows.
+        receipt = e7_identity_receipt(
+            frame,
             permutation_seed=args.permutation_seed,
         )
         ok = bool(
