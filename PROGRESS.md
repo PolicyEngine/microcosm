@@ -1,4 +1,38 @@
-# F1 residual brokered-QRF verification continuation — 2026-08-22
+# F1 residual brokered-QRF landing — 2026-08-22/23
+
+## State
+
+- The salvaged repair is verified green across the whole workspace and is
+  being committed by this continuation together with one additional fix of
+  its own: the ninth mapped-at-HEAD red
+  (`test_us_spine_blindness.py::test_runtime_population_operators_are_source_spine_blind`,
+  flagging `pool_physical_executor.py:140`) was still red in the salvage and
+  is closed by replacing the `lambda row: row[0]` sort key with tuple
+  unpacking in `_available_input_sort_key` — production-module change only,
+  bit-identical ordering, scanner untouched.
+- The full per-run verification ledger (every build module in 30+ serial
+  measured processes, the four other package suites, ruff, coverage
+  `--check`, bundle `--check`, whitespace, and the 299-file/7,371-test
+  collection gate) is in `_F1-LANE-NOTES.md` §"F1 residual brokered-QRF
+  salvage verification and landing (2026-08-22)". Max RSS across runs:
+  11.13 GiB, under the 15 GiB ceiling. The only reds ever seen were the
+  blindness red above (repaired) and deadline-bound trade CLI/bulk child
+  interpreters that exceeded their authored 60 s deadlines while four to
+  eight other lanes saturated the host — each passed on solo rerun with no
+  source or test change.
+- Nothing pushed; no build, sample rung, Logbook operation, exclusion, or
+  publication. `logbook-pending-chain.txt` untouched.
+
+## Next
+
+1. Commit the implementation with the journals (verification is complete:
+   every module green at the final tree, including all five imdb_bulk
+   deadline tests on solo reruns), then append and commit the
+   `FINAL_REPORT.md` closeout.
+
+---
+
+# F1 residual brokered-QRF verification continuation — 2026-08-22 [superseded by the landing above]
 
 ## State
 

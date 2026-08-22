@@ -431,6 +431,38 @@ def test_expand_classifier_prefers_lineage_then_unique_remap_inference(
         )
 
 
+def test_expand_classifier_binds_explicit_precedence_and_conflict_refusal(
+    registry: ClosedScopeRegistry,
+) -> None:
+    explicit_wins = pd.DataFrame(
+        {
+            "person_id": [7, 97, 107],
+            "person_support_channel": ["survey_alpha"] * 3,
+            "person_support_clone_index": np.array([0, 0, 1], dtype=np.int64),
+            "person_source_id": [7, 97, 7],
+        }
+    )
+    classified = classify_added_support_rows(
+        "person",
+        explicit_wins,
+        "person_id",
+        frozenset({107}),
+        registry,
+    )
+    assert classified[107].source_row_id == 7
+
+    conflicting = explicit_wins.copy()
+    conflicting["person_spine_source_id"] = [7, 97, 97]
+    with pytest.raises(FrameProjectionCodecError, match="ambiguous explicit source ids"):
+        classify_added_support_rows(
+            "person",
+            conflicting,
+            "person_id",
+            frozenset({107}),
+            registry,
+        )
+
+
 def _expand_frame(*, expanded: bool, corrupt_private: bool = False) -> Frame:
     schema = EntitySchema(group_entities=("household",))
     person_private = ["native"] if not expanded else ["native", "native"]

@@ -23,6 +23,7 @@ from microcosm.build.serialization_dtypes import (
     canonicalize_frame_string_dtypes,
 )
 from microcosm.build.spec_engine.brokers import (
+    BrokerReceipt,
     BrokerSession,
     KernelBrokerSession,
     PhysicalOperation,
@@ -90,7 +91,7 @@ def _run_under_primary_qrf_broker(
     operation: Callable[[QRFGeneratorLease], None],
     boundary_key: str = "default",
     invocation: RNGInvocation | None = None,
-) -> None:
+) -> BrokerReceipt:
     node = next(node for node in compiled.nodes if node.id == "primary_puf_qrf")
     input_binding_sha256 = "b" * 64
     session: BrokerSession
@@ -131,6 +132,7 @@ def _run_under_primary_qrf_broker(
         event.broker == "rng" and event.operation == "qrf_generators"
         for event in receipt.events
     )
+    return receipt
 
 
 def _checkpoint_member_bytes(root: Path) -> dict[str, bytes]:
@@ -528,7 +530,7 @@ def test_brokered_in_process_chain_is_checkpoint_byte_exact(
             rng_generators=generators,
         )
 
-    _run_under_primary_qrf_broker(
+    receipt = _run_under_primary_qrf_broker(
         compiled_us_spec,
         sink_root=tmp_path,
         seed=17,
@@ -537,6 +539,38 @@ def test_brokered_in_process_chain_is_checkpoint_byte_exact(
 
     assert _checkpoint_member_bytes(bundle_root) == _checkpoint_member_bytes(
         constants_root
+    )
+    assert receipt.status == "complete"
+    assert not any(event.disposition == "refused" for event in receipt.events)
+    assert any(
+        event.resource == "primary_qrf_fit_draw"
+        and event.operation == "token"
+        and event.reason_code == "compiled_rng_grant"
+        for event in receipt.events
+    )
+    assert any(
+        event.resource == "primary_qrf_fit_draw"
+        and event.operation == "qrf_generators"
+        and event.reason_code == "legacy_v1_rng_lease"
+        for event in receipt.events
+    )
+    assert any(
+        event.reason_code == "brokered_seeded_qrf_estimator_fit"
+        for event in receipt.events
+    )
+    assert any(
+        event.reason_code == "brokered_qrf_estimator_draw" for event in receipt.events
+    )
+    dependency_runtime = [
+        event
+        for event in receipt.events
+        if event.reason_code == "pinned_qrf_dependency_runtime"
+    ]
+    assert dependency_runtime
+    assert all(
+        type(event.details["observed_wait_call_count"]) is int
+        and event.details["observed_wait_call_count"] >= 0
+        for event in dependency_runtime
     )
 
 

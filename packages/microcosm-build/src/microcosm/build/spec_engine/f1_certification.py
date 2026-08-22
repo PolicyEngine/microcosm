@@ -8,7 +8,6 @@ and the four-receipt comparator applies the compiler-issued execution ABI.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import os
@@ -827,14 +826,19 @@ class F1ColdBuildReceipt:
             raise F1CertificationError("typed production evidence required")
         assert_request_matches_evidence(request, production_evidence)
         audit = resume_audit_from_evidence(production_evidence)
+        publication_run_id = _publication_certification_run_id(production_evidence)
+        resolved_run_id = certification_run_id or publication_run_id
+        if _uuid(resolved_run_id, location="certification_run_id") != publication_run_id:
+            raise F1CertificationError(
+                "certification_run_id differs from publication_run_id"
+            )
         candidate = cls(
-            certification_run_id=(certification_run_id or str(uuid.uuid4())),
+            certification_run_id=resolved_run_id,
             request=request,
             production_evidence=production_evidence,
             resume_audit=audit,
             receipt_sha256="0" * 64,
         )
-        _uuid(candidate.certification_run_id, location="certification_run_id")
         return cls(
             certification_run_id=candidate.certification_run_id,
             request=request,
@@ -927,6 +931,10 @@ class F1ColdBuildReceipt:
                 row["receipt_sha256"], location="cold_build_receipt/receipt_sha256"
             ),
         )
+        if candidate.certification_run_id != _publication_certification_run_id(evidence):
+            raise F1CertificationError(
+                "certification_run_id differs from publication_run_id"
+            )
         _validate_aggregate_digests(candidate, row)
         if candidate.receipt_sha256 != sha256_json(candidate.body_wire()):
             raise F1CertificationError("cold build receipt seal mismatch")
@@ -1505,9 +1513,15 @@ def atomic_write_json(path: str | Path, value: Mapping[str, object]) -> Path:
 def atomic_write_bytes(path: str | Path, payload: bytes) -> Path:
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
+    temporary = destination.with_name(f".{destination.name}.tmp")
     try:
-        with temporary.open("xb") as stream:
+        stream = temporary.open("xb")
+    except FileExistsError as error:
+        raise F1CertificationError(
+            f"atomic temporary path already exists: {temporary}"
+        ) from error
+    try:
+        with stream:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
@@ -1729,7 +1743,7 @@ def _node_reuse_keys_sha256(values: Mapping[str, str]) -> str:
 
 
 def _plan_lock_sha256(plan_lock: Mapping[str, object]) -> str:
-    return hashlib.sha256(canonical_json_bytes(plan_lock)).hexdigest()
+    return sha256_json(plan_lock)
 
 
 def _execution_abi(plan_lock: Mapping[str, object]) -> dict[str, object]:
@@ -2574,6 +2588,24 @@ def _uuid(value: object, *, location: str) -> str:
     if str(parsed) != value:
         raise F1CertificationError(f"{location}: canonical UUID required")
     return value
+
+
+def _publication_certification_run_id(evidence: F1ProductionEvidence) -> str:
+    publication = _object(
+        evidence.receipt_surfaces.get("publication_manifest"),
+        location="receipt_surfaces/publication_manifest",
+    )
+    value = publication.get("publication_run_id")
+    if (
+        not isinstance(value, str)
+        or len(value) != 32
+        or any(character not in "0123456789abcdef" for character in value)
+    ):
+        raise F1CertificationError(
+            "receipt_surfaces/publication_manifest/publication_run_id: "
+            "32-character lowercase UUID hex required"
+        )
+    return str(uuid.UUID(hex=value))
 
 
 def _mode(value: object) -> str:

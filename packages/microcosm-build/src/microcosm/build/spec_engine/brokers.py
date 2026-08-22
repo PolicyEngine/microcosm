@@ -34,6 +34,7 @@ import sys
 import threading
 import time as time_module
 import uuid
+import weakref
 from collections.abc import Callable, Iterator, Mapping, MutableMapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import ExitStack, contextmanager
@@ -42,7 +43,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from string import Formatter
-from types import FunctionType, MappingProxyType, MethodType, ModuleType
+from types import CodeType, FunctionType, MappingProxyType, MethodType, ModuleType
 from typing import IO, Any, Literal
 from unittest.mock import patch
 
@@ -125,6 +126,33 @@ _PINNED_DEPENDENCY_ENVIRONMENT_DEFAULTS = MappingProxyType(
         "OMP_NUM_THREADS": os.environ.get("OMP_NUM_THREADS"),
         "PYARROW_IGNORE_TIMEZONE": None,
     }
+)
+_QRF_DEPENDENCY_RNG_FAMILY = "microcosm.fit.QRF SeedSequence(PCG64)"
+_QRF_DIRECT_DYNAMIC_METHODS = (
+    "apply",
+    "_validate_X_predict",
+    "_get_y_train_leaves",
+    "_get_y_train_leaves_slice",
+    "_get_y_bound_leaves",
+    "_oob_samples",
+    "_validate_params",
+)
+_HGB_DIRECT_DYNAMIC_METHODS = (
+    "_bin_data",
+    "_check_early_stopping_loss",
+    "_check_early_stopping_scorer",
+    "_check_interaction_cst",
+    "_clear_state",
+    "_encode_y",
+    "_encode_y_val",
+    "_finalize_sample_weight",
+    "_get_loss",
+    "_get_small_trainset",
+    "_is_fitted",
+    "_preprocess_X",
+    "_print_iteration_stats",
+    "_raw_predict",
+    "_validate_parameters",
 )
 _SAFE_GENERATOR_DRAW_METHODS = frozenset(
     {"choice", "integers", "permutation", "random"}
@@ -819,6 +847,137 @@ class PhysicalOperation:
             if resolved not in roots:
                 roots.append(resolved)
         object.__setattr__(self, "sink_roots", tuple(roots))
+
+
+@dataclass(frozen=True, slots=True)
+class _QRFDependencyBinding:
+    """Exact threaded dependency inventory frozen before kernel activation."""
+
+    usable_cpu_count: int
+    physical_cpu_count: int
+    predict_cpu_count: int
+    joblib_version: str
+    quantile_grid_sha256: str
+    quantile_grid: np.ndarray = field(repr=False, compare=False)
+    quantile_forest_type: type = field(repr=False, compare=False)
+    qrf_fit: FunctionType = field(repr=False, compare=False)
+    qrf_predict: FunctionType = field(repr=False, compare=False)
+    hgb_fit: FunctionType = field(repr=False, compare=False)
+    hgb_predict_proba: FunctionType = field(repr=False, compare=False)
+    parallel_module: ModuleType = field(repr=False, compare=False)
+    parallel_clock: ModuleType = field(repr=False, compare=False)
+    parallel_backend_module: ModuleType = field(repr=False, compare=False)
+    parallel_backend_cpu_count: FunctionType = field(repr=False, compare=False)
+    openmp_module: ModuleType = field(repr=False, compare=False)
+    openmp_cpu_count: FunctionType = field(repr=False, compare=False)
+    openmp_cpu_counts: object = field(repr=False, compare=False)
+    gradient_module: ModuleType = field(repr=False, compare=False)
+    gradient_clock: object = field(repr=False, compare=False)
+    grower_module: ModuleType = field(repr=False, compare=False)
+    grower_clock: object = field(repr=False, compare=False)
+    connection_module: ModuleType = field(repr=False, compare=False)
+    connection_clock: ModuleType = field(repr=False, compare=False)
+    get_active_backend: FunctionType = field(repr=False, compare=False)
+    get_active_backend_code: CodeType = field(repr=False, compare=False)
+    parallel_config_type: type = field(repr=False, compare=False)
+    parallel_config_methods: tuple[tuple[str, FunctionType, CodeType], ...] = field(
+        repr=False,
+        compare=False,
+    )
+    threading_backend_type: type = field(repr=False, compare=False)
+    threading_backend_methods: tuple[tuple[str, FunctionType, CodeType], ...] = field(
+        repr=False,
+        compare=False,
+    )
+    backend_cpu_callers: frozenset[CodeType] = field(repr=False, compare=False)
+    openmp_cpu_callers: frozenset[CodeType] = field(repr=False, compare=False)
+    parallel_time_callers: frozenset[CodeType] = field(repr=False, compare=False)
+    parallel_sleep_callers: frozenset[CodeType] = field(repr=False, compare=False)
+    gradient_time_callers: frozenset[CodeType] = field(repr=False, compare=False)
+    grower_time_callers: frozenset[CodeType] = field(repr=False, compare=False)
+    connection_monotonic_callers: frozenset[CodeType] = field(
+        repr=False,
+        compare=False,
+    )
+    dependency_inventory: tuple[
+        tuple[
+            object,
+            str,
+            object,
+            tuple[tuple[object, CodeType | None], ...],
+        ],
+        ...,
+    ] = field(repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("usable", self.usable_cpu_count),
+            ("physical", self.physical_cpu_count),
+            ("predict", self.predict_cpu_count),
+        ):
+            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+                raise BrokerContractError(
+                    f"pinned QRF dependency {name} CPU count must be positive"
+                )
+        if not self.joblib_version:
+            raise BrokerContractError("pinned QRF dependency version is unavailable")
+        if (
+            len(self.quantile_grid_sha256) != 64
+            or self.quantile_grid.dtype != np.dtype(np.float64)
+            or self.quantile_grid.ndim != 1
+            or self.quantile_grid.flags.writeable
+        ):
+            raise BrokerContractError("pinned QRF quantile grid is invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class _QRFEstimatorFitBinding:
+    """Session-local proof that one estimator consumed one QRF fit child."""
+
+    estimator_ref: weakref.ReferenceType[object] = field(repr=False, compare=False)
+    owner: BrokerOwner
+    site_id: str
+    boundary_instance: int
+    contract_sha256: str
+    pair_prefix: str
+
+
+def _record_qrf_adapter_refusal(
+    session: BrokerSession,
+    token: RNGStreamToken,
+    *,
+    operation: str,
+    reason_code: str,
+) -> None:
+    """Record one typed QRF refusal before control returns to kernel code."""
+
+    session._log.record(
+        broker="rng",
+        operation=operation,
+        resource=token.site_id,
+        disposition="refused",
+        reason_code=reason_code,
+        details={"owner": token.owner.to_wire()},
+    )
+
+
+def _refuse_qrf_adapter(
+    session: BrokerSession,
+    token: RNGStreamToken,
+    *,
+    operation: str,
+    reason_code: str,
+    message: str,
+) -> None:
+    """Record one typed QRF refusal before raising to caller-owned code."""
+
+    _record_qrf_adapter_refusal(
+        session,
+        token,
+        operation=operation,
+        reason_code=reason_code,
+    )
+    raise BrokerAccessError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -1770,14 +1929,8 @@ def _physical_sink_probe_path(
     ):
         resolved = Path(os.path.realpath(lexical))
     allowed = any(
-        (
-            lexical.is_relative_to(root)
-            and resolved.is_relative_to(root)
-        )
-        or (
-            root.is_relative_to(lexical)
-            and root.is_relative_to(resolved)
-        )
+        (lexical.is_relative_to(root) and resolved.is_relative_to(root))
+        or (root.is_relative_to(lexical) and root.is_relative_to(resolved))
         for root in operation.sink_roots
     )
     if not allowed:
@@ -1854,6 +2007,912 @@ def _physical_seeded_constructor(
     SeededConstructor.__name__ = constructor.__name__
     SeededConstructor.__qualname__ = constructor.__qualname__
     return SeededConstructor
+
+
+def _qrf_dependency_code(value: object, *, label: str) -> CodeType:
+    """Return one authenticated Python implementation code object."""
+
+    unwrapped = inspect.unwrap(value) if callable(value) else value
+    code = getattr(unwrapped, "__code__", None)
+    if not isinstance(code, CodeType):
+        raise BrokerContractError(
+            f"pinned QRF dependency caller {label!r} is unavailable"
+        )
+    return code
+
+
+def _qrf_callable_chain(
+    value: object,
+) -> tuple[tuple[object, CodeType | None], ...]:
+    """Capture a callable and every exact implementation it wraps."""
+
+    if not callable(value):
+        return ()
+    chain: list[tuple[object, CodeType | None]] = []
+    seen: set[int] = set()
+    current = value
+    while callable(current) and id(current) not in seen:
+        seen.add(id(current))
+        raw_code = getattr(current, "__code__", None)
+        code = raw_code if isinstance(raw_code, CodeType) else None
+        chain.append((current, code))
+        wrapped = getattr(current, "__wrapped__", None)
+        if wrapped is None:
+            break
+        current = wrapped
+    return tuple(chain)
+
+
+def _qrf_callable_chain_is_intact(
+    value: object,
+    expected: tuple[tuple[object, CodeType | None], ...],
+) -> bool:
+    """Require wrapper identity and code identity through the full chain."""
+
+    actual = _qrf_callable_chain(value)
+    return len(actual) == len(expected) and all(
+        actual_value is expected_value and actual_code is expected_code
+        for (actual_value, actual_code), (expected_value, expected_code) in zip(
+            actual,
+            expected,
+            strict=True,
+        )
+    )
+
+
+def _loaded_qrf_dependency_module(name: str) -> ModuleType:
+    """Require a dependency that the implementation-pinned estimators loaded."""
+
+    module = sys.modules.get(name)
+    if not isinstance(module, ModuleType):
+        raise BrokerContractError(
+            f"pinned QRF dependency module {name!r} is not loaded"
+        )
+    return module
+
+
+def _capture_qrf_dependency_binding() -> _QRFDependencyBinding:
+    """Freeze the exact threaded dependency topology before activation."""
+
+    with _AMBIENT_GUARD_LOCK:
+        if _current_policy() is not None:
+            raise BrokerContractError(
+                "pinned QRF dependency topology cannot be captured inside a kernel"
+            )
+        fit_override = _ORIGINAL_ENVIRON.get("POPULACE_FIT_N_JOBS")
+        predict_override = _ORIGINAL_ENVIRON.get("POPULACE_FIT_PREDICT_WORKERS")
+        if fit_override is not None or (
+            predict_override is not None and predict_override.strip()
+        ):
+            raise BrokerContractError(
+                "brokered in-process QRF requires unset fit and prediction "
+                "worker overrides"
+            )
+        joblib_module = _loaded_qrf_dependency_module("joblib")
+        parallel_module = _loaded_qrf_dependency_module("joblib.parallel")
+        backend_module = _loaded_qrf_dependency_module("joblib._parallel_backends")
+        context_module = _loaded_qrf_dependency_module(
+            "joblib.externals.loky.backend.context"
+        )
+        openmp_module = _loaded_qrf_dependency_module("sklearn.utils._openmp_helpers")
+        gradient_module = _loaded_qrf_dependency_module(
+            "sklearn.ensemble._hist_gradient_boosting.gradient_boosting"
+        )
+        grower_module = _loaded_qrf_dependency_module(
+            "sklearn.ensemble._hist_gradient_boosting.grower"
+        )
+        connection_module = _loaded_qrf_dependency_module("multiprocessing.connection")
+        qrf_estimator_module = _loaded_qrf_dependency_module(
+            "quantile_forest._quantile_forest"
+        )
+        fit_qrf_module = _loaded_qrf_dependency_module("microcosm.fit.qrf")
+
+        parallel_cpu_count = getattr(parallel_module, "cpu_count", None)
+        backend_cpu_count = getattr(backend_module, "cpu_count", None)
+        context_cpu_count = getattr(context_module, "cpu_count", None)
+        openmp_cpu_count = getattr(openmp_module, "cpu_count", None)
+        if (
+            not isinstance(parallel_cpu_count, FunctionType)
+            or not isinstance(backend_cpu_count, FunctionType)
+            or not isinstance(context_cpu_count, FunctionType)
+            or not isinstance(openmp_cpu_count, FunctionType)
+            or backend_cpu_count is not context_cpu_count
+            or openmp_cpu_count is not parallel_cpu_count
+        ):
+            raise BrokerContractError(
+                "pinned QRF dependency CPU-count aliases have drifted"
+            )
+        original_perf_counter = _ORIGINAL_OPERATIONAL_CLOCKS.get("perf_counter")
+        if (
+            getattr(parallel_module, "time", None) is not time_module
+            or getattr(gradient_module, "time", None) is not _ORIGINAL_TIME
+            or original_perf_counter is None
+            or getattr(grower_module, "time", None) is not original_perf_counter
+            or getattr(connection_module, "time", None) is not time_module
+        ):
+            raise BrokerContractError(
+                "pinned QRF dependency clock aliases have drifted"
+            )
+
+        parallel_class = getattr(parallel_module, "Parallel", None)
+        callback_class = getattr(parallel_module, "BatchCompletionCallBack", None)
+        pool_mixin = getattr(backend_module, "PoolManagerMixin", None)
+        threading_backend_type = getattr(backend_module, "ThreadingBackend", None)
+        backends = getattr(parallel_module, "BACKENDS", None)
+        get_active_backend = getattr(parallel_module, "get_active_backend", None)
+        parallel_config_type = getattr(parallel_module, "parallel_config", None)
+        hgb_type = getattr(gradient_module, "HistGradientBoostingClassifier", None)
+        grower_type = getattr(grower_module, "TreeGrower", None)
+        qrf_type = getattr(
+            qrf_estimator_module,
+            "RandomForestQuantileRegressor",
+            None,
+        )
+        quantile_forest_type = getattr(qrf_estimator_module, "QuantileForest", None)
+        forest_regressor_type = (
+            None
+            if not isinstance(qrf_type, type) or len(qrf_type.__mro__) < 3
+            else qrf_type.__mro__[2]
+        )
+        qrf_fit = None if qrf_type is None else getattr(qrf_type, "fit", None)
+        qrf_predict = None if qrf_type is None else getattr(qrf_type, "predict", None)
+        hgb_fit = None if hgb_type is None else getattr(hgb_type, "fit", None)
+        hgb_predict_proba = (
+            None if hgb_type is None else getattr(hgb_type, "predict_proba", None)
+        )
+        raw_quantile_grid = getattr(fit_qrf_module, "_QUANTILE_GRID", None)
+        if (
+            parallel_class is None
+            or callback_class is None
+            or pool_mixin is None
+            or not isinstance(threading_backend_type, type)
+            or not isinstance(backends, dict)
+            or backends.get("threading") is not threading_backend_type
+            or not isinstance(get_active_backend, FunctionType)
+            or not isinstance(parallel_config_type, type)
+            or not isinstance(hgb_type, type)
+            or not isinstance(grower_type, type)
+            or not isinstance(qrf_type, type)
+            or not isinstance(quantile_forest_type, type)
+            or not isinstance(forest_regressor_type, type)
+            or not isinstance(qrf_fit, FunctionType)
+            or not isinstance(qrf_predict, FunctionType)
+            or not isinstance(hgb_fit, FunctionType)
+            or not isinstance(hgb_predict_proba, FunctionType)
+            or type(raw_quantile_grid) is not np.ndarray
+            or raw_quantile_grid.dtype != np.dtype(np.float64)
+            or raw_quantile_grid.ndim != 1
+            or len(raw_quantile_grid) < 2
+        ):
+            raise BrokerContractError(
+                "pinned QRF dependency threaded backend inventory has drifted"
+            )
+        openmp_cpu_counts = getattr(openmp_module, "_CPU_COUNTS", None)
+        if not isinstance(openmp_cpu_counts, dict):
+            raise BrokerContractError(
+                "pinned QRF dependency OpenMP CPU cache has drifted"
+            )
+
+        joblib_version = getattr(joblib_module, "__version__", None)
+        if not isinstance(joblib_version, str):
+            raise BrokerContractError("pinned Joblib version is unavailable")
+        quantile_grid = np.ascontiguousarray(raw_quantile_grid).copy()
+        quantile_grid.flags.writeable = False
+
+        def inventory(
+            owner: object,
+            name: str,
+        ) -> tuple[
+            object,
+            str,
+            object,
+            tuple[tuple[object, CodeType | None], ...],
+        ]:
+            value = getattr(owner, name)
+            return owner, name, value, _qrf_callable_chain(value)
+
+        direct_inventory = tuple(
+            inventory(owner, name)
+            for owner, names in (
+                (
+                    qrf_estimator_module,
+                    ("RandomForestQuantileRegressor", "QuantileForest"),
+                ),
+                (
+                    qrf_type,
+                    (
+                        "fit",
+                        "predict",
+                        *_QRF_DIRECT_DYNAMIC_METHODS,
+                    ),
+                ),
+                (forest_regressor_type, ("fit",)),
+                (quantile_forest_type, ("predict",)),
+                (joblib_module, ("hash",)),
+                (gradient_module, ("HistGradientBoostingClassifier",)),
+                (
+                    hgb_type,
+                    ("fit", "predict_proba", *_HGB_DIRECT_DYNAMIC_METHODS),
+                ),
+                (
+                    parallel_module,
+                    ("Parallel", "BatchCompletionCallBack", "get_active_backend"),
+                ),
+                (
+                    parallel_class,
+                    ("_dispatch", "_retrieve", "print_progress", "__call__"),
+                ),
+                (callback_class, ("get_status", "_dispatch_new")),
+                (pool_mixin, ("effective_n_jobs",)),
+                (grower_type, ("_initialize_root", "split_next")),
+                (connection_module, ("wait",)),
+            )
+            for name in names
+        )
+        inspected_functions = tuple(
+            getattr(owner, name)
+            for owner, names in (
+                (qrf_type, ("fit", "predict", *_QRF_DIRECT_DYNAMIC_METHODS)),
+                (forest_regressor_type, ("fit",)),
+                (hgb_type, ("fit", "predict_proba", *_HGB_DIRECT_DYNAMIC_METHODS)),
+            )
+            for name in names
+        )
+        referenced_inventory: list[
+            tuple[
+                object,
+                str,
+                object,
+                tuple[tuple[object, CodeType | None], ...],
+            ]
+        ] = []
+        for function in inspected_functions:
+            for implementation, code in _qrf_callable_chain(function):
+                globals_map = getattr(implementation, "__globals__", None)
+                module = sys.modules.get(getattr(implementation, "__module__", ""))
+                if code is None or not isinstance(globals_map, dict) or module is None:
+                    continue
+                for name in code.co_names:
+                    if name == "time" and module is gradient_module:
+                        continue
+                    value = globals_map.get(name)
+                    if callable(value) and getattr(module, name, None) is value:
+                        referenced_inventory.append(inventory(module, name))
+        dependency_inventory = tuple(
+            {
+                (id(owner), name): (owner, name, expected, chain)
+                for owner, name, expected, chain in (
+                    *direct_inventory,
+                    *referenced_inventory,
+                )
+            }.values()
+        )
+        return _QRFDependencyBinding(
+            usable_cpu_count=backend_cpu_count(),
+            physical_cpu_count=openmp_cpu_count(only_physical_cores=True),
+            predict_cpu_count=_ORIGINAL_OS_CPU_COUNT() or 1,
+            joblib_version=joblib_version,
+            quantile_grid_sha256=_sha256_bytes(quantile_grid.tobytes()),
+            quantile_grid=quantile_grid,
+            quantile_forest_type=quantile_forest_type,
+            qrf_fit=qrf_fit,
+            qrf_predict=qrf_predict,
+            hgb_fit=hgb_fit,
+            hgb_predict_proba=hgb_predict_proba,
+            parallel_module=parallel_module,
+            parallel_clock=time_module,
+            parallel_backend_module=backend_module,
+            parallel_backend_cpu_count=backend_cpu_count,
+            openmp_module=openmp_module,
+            openmp_cpu_count=openmp_cpu_count,
+            openmp_cpu_counts=openmp_cpu_counts,
+            gradient_module=gradient_module,
+            gradient_clock=_ORIGINAL_TIME,
+            grower_module=grower_module,
+            grower_clock=original_perf_counter,
+            connection_module=connection_module,
+            connection_clock=time_module,
+            get_active_backend=get_active_backend,
+            get_active_backend_code=get_active_backend.__code__,
+            parallel_config_type=parallel_config_type,
+            parallel_config_methods=tuple(
+                (name, method, method.__code__)
+                for name in dir(parallel_config_type)
+                if isinstance(
+                    (method := getattr(parallel_config_type, name, None)),
+                    FunctionType,
+                )
+            ),
+            threading_backend_type=threading_backend_type,
+            threading_backend_methods=tuple(
+                (name, method, method.__code__)
+                for name in dir(threading_backend_type)
+                if isinstance(
+                    (method := getattr(threading_backend_type, name, None)),
+                    FunctionType,
+                )
+            ),
+            backend_cpu_callers=frozenset(
+                {
+                    _qrf_dependency_code(
+                        pool_mixin.effective_n_jobs,
+                        label="PoolManagerMixin.effective_n_jobs",
+                    )
+                }
+            ),
+            openmp_cpu_callers=frozenset(
+                {
+                    _qrf_dependency_code(
+                        hgb_type.fit,
+                        label="HistGradientBoostingClassifier.fit",
+                    )
+                }
+            ),
+            parallel_time_callers=frozenset(
+                _qrf_dependency_code(getattr(owner, name), label=f"{label}.{name}")
+                for owner, label, names in (
+                    (
+                        callback_class,
+                        "BatchCompletionCallBack",
+                        ("get_status", "_dispatch_new"),
+                    ),
+                    (
+                        parallel_class,
+                        "Parallel",
+                        ("_dispatch", "print_progress", "__call__"),
+                    ),
+                )
+                for name in names
+            ),
+            parallel_sleep_callers=frozenset(
+                {
+                    _qrf_dependency_code(
+                        parallel_class._retrieve,
+                        label="Parallel._retrieve",
+                    )
+                }
+            ),
+            gradient_time_callers=frozenset(
+                {
+                    _qrf_dependency_code(
+                        hgb_type.fit,
+                        label="HistGradientBoostingClassifier.fit",
+                    ),
+                    _qrf_dependency_code(
+                        hgb_type._bin_data,
+                        label="HistGradientBoostingClassifier._bin_data",
+                    ),
+                }
+            ),
+            grower_time_callers=frozenset(
+                _qrf_dependency_code(
+                    getattr(grower_type, name),
+                    label=f"TreeGrower.{name}",
+                )
+                for name in ("_initialize_root", "split_next")
+            ),
+            connection_monotonic_callers=frozenset(
+                {
+                    _qrf_dependency_code(
+                        connection_module.wait,
+                        label="multiprocessing.connection.wait",
+                    )
+                }
+            ),
+            dependency_inventory=dependency_inventory,
+        )
+
+
+def _refuse_qrf_dependency_runtime(
+    session: BrokerSession,
+    *,
+    resource: str,
+    reason_code: str,
+) -> None:
+    policy = _current_policy()
+    if (
+        not session.sealed
+        and policy is not None
+        and policy.session is session
+        and policy.activation is session._active_activation
+    ):
+        session._log.record(
+            broker="ambient",
+            operation="physical_operation_dependency_runtime",
+            resource=resource,
+            disposition="refused",
+            reason_code=reason_code,
+        )
+    raise BrokerAccessError("pinned QRF dependency runtime access was refused")
+
+
+def _require_qrf_dependency_runtime(
+    session: BrokerSession,
+    activation: object,
+    *,
+    caller: CodeType,
+    allowed_callers: frozenset[CodeType],
+    resource: str,
+) -> None:
+    policy = _current_policy()
+    if (
+        session.sealed
+        or session._qrf_dependency_runtime_activation is not activation
+        or policy is None
+        or policy.session is not session
+        or policy.activation is not session._active_activation
+        or policy.role != "kernel"
+    ):
+        _refuse_qrf_dependency_runtime(
+            session,
+            resource=resource,
+            reason_code="qrf_dependency_runtime_inactive",
+        )
+    if caller not in allowed_callers:
+        _refuse_qrf_dependency_runtime(
+            session,
+            resource=resource,
+            reason_code="qrf_dependency_caller_refused",
+        )
+
+
+class _QRFDependencyVirtualClock:
+    """A scope-local deterministic scheduler clock with no host-time signal."""
+
+    __slots__ = ("_lock", "_value")
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._value = 0.0
+
+    def tick(self, increment: float = 0.01) -> float:
+        with self._lock:
+            self._value += increment
+            return self._value
+
+
+class _QRFDependencyParallelClock:
+    """Revocable module-local Joblib scheduling clock."""
+
+    __slots__ = (
+        "_activation",
+        "_binding",
+        "_session",
+        "_sleep_count",
+        "_sleep_count_lock",
+        "_virtual_clock",
+    )
+
+    def __init__(
+        self,
+        *,
+        session: BrokerSession,
+        activation: object,
+        binding: _QRFDependencyBinding,
+        virtual_clock: _QRFDependencyVirtualClock,
+    ) -> None:
+        self._session = session
+        self._activation = activation
+        self._binding = binding
+        self._sleep_count = 0
+        self._sleep_count_lock = threading.Lock()
+        self._virtual_clock = virtual_clock
+
+    @property
+    def sleep_count(self) -> int:
+        """Return the number of authenticated Joblib scheduler waits."""
+
+        with self._sleep_count_lock:
+            return self._sleep_count
+
+    def time(self) -> float:
+        _require_qrf_dependency_runtime(
+            self._session,
+            self._activation,
+            caller=sys._getframe(1).f_code,
+            allowed_callers=self._binding.parallel_time_callers,
+            resource="joblib.parallel.time",
+        )
+        return self._virtual_clock.tick()
+
+    def sleep(self, seconds: object) -> None:
+        _require_qrf_dependency_runtime(
+            self._session,
+            self._activation,
+            caller=sys._getframe(1).f_code,
+            allowed_callers=self._binding.parallel_sleep_callers,
+            resource="joblib.parallel.sleep",
+        )
+        if (
+            isinstance(seconds, bool)
+            or not isinstance(seconds, int | float)
+            or float(seconds) != 0.01
+        ):
+            _refuse_qrf_dependency_runtime(
+                self._session,
+                resource="joblib.parallel.sleep",
+                reason_code="qrf_dependency_wait_shape_invalid",
+            )
+        original_sleep = _ORIGINAL_OPERATIONAL_CLOCKS.get("sleep")
+        if original_sleep is None:  # pragma: no cover - supported Python invariant
+            raise BrokerContractError("pinned Joblib sleep clock is unavailable")
+        with self._sleep_count_lock:
+            self._sleep_count += 1
+        original_sleep(seconds)
+
+
+class _QRFDependencyConnectionClock:
+    """Revocable module-local multiprocessing poll clock."""
+
+    __slots__ = ("_activation", "_binding", "_session", "_virtual_clock")
+
+    def __init__(
+        self,
+        *,
+        session: BrokerSession,
+        activation: object,
+        binding: _QRFDependencyBinding,
+        virtual_clock: _QRFDependencyVirtualClock,
+    ) -> None:
+        self._session = session
+        self._activation = activation
+        self._binding = binding
+        self._virtual_clock = virtual_clock
+
+    def monotonic(self) -> float:
+        _require_qrf_dependency_runtime(
+            self._session,
+            self._activation,
+            caller=sys._getframe(1).f_code,
+            allowed_callers=self._binding.connection_monotonic_callers,
+            resource="multiprocessing.connection.monotonic",
+        )
+        return self._virtual_clock.tick()
+
+
+def _authenticate_qrf_dependency_lease(
+    session: BrokerSession,
+    lease: GeneratorLease,
+    *,
+    operation: Literal[
+        "fit_seeded_qrf_estimator",
+        "draw_qrf_estimator",
+        "predict_qrf_gate",
+    ],
+) -> tuple[RNGStreamToken, str]:
+    """Bind dependency runtime authority to one live ledger-issued child."""
+
+    resource = session.owner.id
+    if type(lease) is not GeneratorLease:
+        _refuse_qrf_dependency_runtime(
+            session,
+            resource=resource,
+            reason_code="qrf_dependency_lease_refused",
+        )
+    lease_session = object.__getattribute__(lease, "_session")
+    token = object.__getattribute__(lease, "_token")
+    label = object.__getattribute__(lease, "_label")
+    handle = object.__getattribute__(lease, "_handle")
+    resource = token.site_id
+    expected_role = (
+        "fit_child_0" if operation == "fit_seeded_qrf_estimator" else "draw_child_1"
+    )
+    brokers = (session._rng, *session._supplemental_rngs)
+    broker = next((row for row in brokers if row._owner == token.owner), None)
+    site = None if broker is None else broker._sites.get(token.site_id)
+    contract = None if broker is None else broker._contracts.get(token.site_id)
+    valid = (
+        lease_session is session
+        and session._rng_leases.contains(handle)
+        and not object.__getattribute__(lease, "_closed")
+        and label.endswith(expected_role)
+        and broker is not None
+        and site is not None
+        and contract is not None
+        and token._issuer is broker._issuer
+        and token._activation is session._active_activation
+        and token.protocol_id == broker.protocol_id
+        and token.protocol_sha256 == broker.protocol_sha256
+        and token.stream == site.stream
+        and token.contract_sha256 == sha256_json(contract)
+        and contract["rng_family"] == _QRF_DEPENDENCY_RNG_FAMILY
+        and (token.site_id, token.boundary_instance) in broker._consumed
+    )
+    if not valid:
+        _refuse_qrf_dependency_runtime(
+            session,
+            resource=resource,
+            reason_code="qrf_dependency_lease_refused",
+        )
+    return token, label
+
+
+@contextmanager
+def _pinned_qrf_dependency_operational_scope(
+    session: BrokerSession,
+    *,
+    lease: GeneratorLease,
+    operation: Literal[
+        "fit_seeded_qrf_estimator",
+        "draw_qrf_estimator",
+        "predict_qrf_gate",
+    ],
+) -> Iterator[None]:
+    """Replay exact threaded scheduler inputs through revocable module aliases."""
+
+    token, lease_label = _authenticate_qrf_dependency_lease(
+        session,
+        lease,
+        operation=operation,
+    )
+    binding = session._qrf_dependency_binding
+    if binding is None:
+        _refuse_qrf_dependency_runtime(
+            session,
+            resource=token.site_id,
+            reason_code="qrf_dependency_topology_missing",
+        )
+    if (
+        session._qrf_dependency_runtime_activation is not None
+        or binding.parallel_module.time is not binding.parallel_clock
+        or binding.parallel_backend_module.cpu_count
+        is not binding.parallel_backend_cpu_count
+        or binding.openmp_module.cpu_count is not binding.openmp_cpu_count
+        or binding.openmp_module._CPU_COUNTS is not binding.openmp_cpu_counts
+        or binding.gradient_module.time is not binding.gradient_clock
+        or binding.grower_module.time is not binding.grower_clock
+        or binding.connection_module.time is not binding.connection_clock
+    ):
+        _refuse_qrf_dependency_runtime(
+            session,
+            resource=token.site_id,
+            reason_code="qrf_dependency_alias_inventory_drifted",
+        )
+    if (
+        binding.parallel_module.get_active_backend is not binding.get_active_backend
+        or binding.get_active_backend.__code__ is not binding.get_active_backend_code
+        or binding.parallel_module.parallel_config is not binding.parallel_config_type
+        or any(
+            getattr(binding.parallel_config_type, name, None) is not method
+            or method.__code__ is not code
+            for name, method, code in binding.parallel_config_methods
+        )
+        or any(
+            getattr(binding.threading_backend_type, name, None) is not method
+            or method.__code__ is not code
+            for name, method, code in binding.threading_backend_methods
+        )
+        or any(
+            getattr(owner, name, None) is not expected
+            or not _qrf_callable_chain_is_intact(expected, chain)
+            for owner, name, expected, chain in binding.dependency_inventory
+        )
+    ):
+        _refuse_qrf_dependency_runtime(
+            session,
+            resource=token.site_id,
+            reason_code="qrf_dependency_backend_inventory_drifted",
+        )
+    backend = binding.threading_backend_type(nesting_level=0)
+    if type(backend) is not binding.threading_backend_type or any(
+        name in vars(backend)
+        for name, _method, _code in binding.threading_backend_methods
+    ):
+        _refuse_qrf_dependency_runtime(
+            session,
+            resource=token.site_id,
+            reason_code="qrf_dependency_backend_refused",
+        )
+
+    activation = object()
+    object.__setattr__(session, "_qrf_dependency_runtime_activation", activation)
+
+    def dependency_backend_cpu_count(only_physical_cores: bool = False) -> int:
+        _require_qrf_dependency_runtime(
+            session,
+            activation,
+            caller=sys._getframe(1).f_code,
+            allowed_callers=binding.backend_cpu_callers,
+            resource="joblib._parallel_backends.cpu_count",
+        )
+        if only_physical_cores is not False:
+            _refuse_qrf_dependency_runtime(
+                session,
+                resource="joblib._parallel_backends.cpu_count",
+                reason_code="qrf_dependency_cpu_count_shape_invalid",
+            )
+        return binding.usable_cpu_count
+
+    def dependency_openmp_cpu_count(only_physical_cores: bool = False) -> int:
+        _require_qrf_dependency_runtime(
+            session,
+            activation,
+            caller=sys._getframe(1).f_code,
+            allowed_callers=binding.openmp_cpu_callers,
+            resource="sklearn.utils._openmp_helpers.cpu_count",
+        )
+        if not isinstance(only_physical_cores, bool):
+            _refuse_qrf_dependency_runtime(
+                session,
+                resource="sklearn.utils._openmp_helpers.cpu_count",
+                reason_code="qrf_dependency_cpu_count_shape_invalid",
+            )
+        return (
+            binding.physical_cpu_count
+            if only_physical_cores
+            else binding.usable_cpu_count
+        )
+
+    virtual_clock = _QRFDependencyVirtualClock()
+
+    def dependency_gradient_time() -> float:
+        _require_qrf_dependency_runtime(
+            session,
+            activation,
+            caller=sys._getframe(1).f_code,
+            allowed_callers=binding.gradient_time_callers,
+            resource="sklearn.gradient_boosting.time",
+        )
+        return virtual_clock.tick()
+
+    def dependency_grower_time() -> float:
+        _require_qrf_dependency_runtime(
+            session,
+            activation,
+            caller=sys._getframe(1).f_code,
+            allowed_callers=binding.grower_time_callers,
+            resource="sklearn.hist_gradient_grower.time",
+        )
+        return virtual_clock.tick()
+
+    parallel_clock = _QRFDependencyParallelClock(
+        session=session,
+        activation=activation,
+        binding=binding,
+        virtual_clock=virtual_clock,
+    )
+    connection_clock = _QRFDependencyConnectionClock(
+        session=session,
+        activation=activation,
+        binding=binding,
+        virtual_clock=virtual_clock,
+    )
+    openmp_cpu_counts = MappingProxyType(
+        {
+            False: binding.usable_cpu_count,
+            True: binding.physical_cpu_count,
+        }
+    )
+    completed = False
+    try:
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch.object(
+                    binding.parallel_backend_module,
+                    "cpu_count",
+                    dependency_backend_cpu_count,
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    binding.openmp_module,
+                    "cpu_count",
+                    dependency_openmp_cpu_count,
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    binding.openmp_module,
+                    "_CPU_COUNTS",
+                    openmp_cpu_counts,
+                )
+            )
+            stack.enter_context(
+                patch.object(binding.parallel_module, "time", parallel_clock)
+            )
+            stack.enter_context(
+                patch.object(
+                    binding.gradient_module,
+                    "time",
+                    dependency_gradient_time,
+                )
+            )
+            stack.enter_context(
+                patch.object(
+                    binding.grower_module,
+                    "time",
+                    dependency_grower_time,
+                )
+            )
+            stack.enter_context(
+                patch.object(binding.connection_module, "time", connection_clock)
+            )
+            stack.enter_context(
+                binding.parallel_config_type(
+                    backend=backend,
+                    n_jobs=-1,
+                    verbose=0,
+                    temp_folder=None,
+                    max_nbytes="1M",
+                    mmap_mode="r",
+                    prefer=None,
+                    require=None,
+                )
+            )
+            try:
+                yield
+                completed = True
+            finally:
+                active_backend, active_n_jobs = binding.get_active_backend(
+                    prefer="threads"
+                )
+                aliases_intact = (
+                    binding.parallel_backend_module.cpu_count
+                    is dependency_backend_cpu_count
+                    and binding.openmp_module.cpu_count is dependency_openmp_cpu_count
+                    and binding.openmp_module._CPU_COUNTS is openmp_cpu_counts
+                    and binding.parallel_module.time is parallel_clock
+                    and binding.gradient_module.time is dependency_gradient_time
+                    and binding.grower_module.time is dependency_grower_time
+                    and binding.connection_module.time is connection_clock
+                    and active_backend is backend
+                    and active_n_jobs == -1
+                    and not any(
+                        name in vars(backend)
+                        for name, _method, _code in binding.threading_backend_methods
+                    )
+                    and binding.get_active_backend.__code__
+                    is binding.get_active_backend_code
+                    and all(
+                        getattr(binding.parallel_config_type, name, None) is method
+                        and method.__code__ is code
+                        for name, method, code in binding.parallel_config_methods
+                    )
+                    and all(
+                        getattr(binding.threading_backend_type, name, None) is method
+                        and method.__code__ is code
+                        for name, method, code in binding.threading_backend_methods
+                    )
+                    and all(
+                        getattr(owner, name, None) is expected
+                        and _qrf_callable_chain_is_intact(expected, chain)
+                        for owner, name, expected, chain in binding.dependency_inventory
+                    )
+                )
+                object.__setattr__(
+                    session,
+                    "_qrf_dependency_runtime_activation",
+                    None,
+                )
+                if not aliases_intact:
+                    _refuse_qrf_dependency_runtime(
+                        session,
+                        resource=token.site_id,
+                        reason_code="qrf_dependency_runtime_tampered",
+                    )
+    finally:
+        object.__setattr__(session, "_qrf_dependency_runtime_activation", None)
+    if completed:
+        session._log.record(
+            broker="ambient",
+            operation="physical_operation_dependency_runtime",
+            resource=token.site_id,
+            disposition="allowed",
+            reason_code="pinned_qrf_dependency_runtime",
+            details={
+                "owner": token.owner.to_wire(),
+                "lease_label": lease_label,
+                "operation": operation,
+                "joblib_version": binding.joblib_version,
+                "usable_cpu_count": binding.usable_cpu_count,
+                "physical_cpu_count": binding.physical_cpu_count,
+                "predict_cpu_count": binding.predict_cpu_count,
+                "quantile_grid_sha256": binding.quantile_grid_sha256,
+                "scheduler_clock": "virtual_10ms_step",
+                "wait_seconds": [0.01],
+                "observed_wait_call_count": parallel_clock.sleep_count,
+            },
+        )
 
 
 @contextmanager
@@ -2063,22 +3122,34 @@ def _physical_operation_compatibility_scope(
                     stack.enter_context(patch.object(time_module, name, original))
                 for name, original in _ORIGINAL_SUBPROCESS.items():
                     stack.enter_context(patch.object(subprocess, name, original))
-                stack.enter_context(
-                    patch.object(os, "urandom", _ORIGINAL_OS_URANDOM)
-                )
+                stack.enter_context(patch.object(os, "urandom", _ORIGINAL_OS_URANDOM))
                 stack.enter_context(patch.object(uuid, "uuid4", _ORIGINAL_UUID4))
         yield
+
+
+@dataclass(slots=True)
+class _AuthorizedQRFQuantiles:
+    """Bit-exact draw-child output and the indices already handed to forests."""
+
+    values: np.ndarray
+    consumed: np.ndarray
 
 
 class _GeneratorLeaseStore:
     """Session-owned serialized states; no raw generator survives a broker call."""
 
-    __slots__ = ("_authorized_child_seeds", "_session", "_states")
+    __slots__ = (
+        "_authorized_child_seeds",
+        "_authorized_qrf_quantiles",
+        "_session",
+        "_states",
+    )
 
     def __init__(self, session: BrokerSession) -> None:
         self._session = session
         self._states: dict[object, bytes] = {}
         self._authorized_child_seeds: dict[object, list[int]] = {}
+        self._authorized_qrf_quantiles: dict[object, _AuthorizedQRFQuantiles] = {}
 
     def register(self, generator: np.random.Generator) -> object:
         self._session._require_active()
@@ -2095,10 +3166,12 @@ class _GeneratorLeaseStore:
     def close(self, handle: object) -> None:
         self._states.pop(handle, None)
         self._authorized_child_seeds.pop(handle, None)
+        self._authorized_qrf_quantiles.pop(handle, None)
 
     def close_all(self) -> None:
         self._states.clear()
         self._authorized_child_seeds.clear()
+        self._authorized_qrf_quantiles.clear()
 
     def _decode_state(self, handle: object) -> dict[str, object]:
         try:
@@ -2155,8 +3228,10 @@ class _GeneratorLeaseStore:
         generator = self._materialize(handle)
         result = getattr(generator, method)(*args, **dict(kwargs))
         self._store(handle, generator)
-        if method == "integers" and isinstance(result, int | np.integer) and not (
-            isinstance(result, bool | np.bool_)
+        if (
+            method == "integers"
+            and isinstance(result, int | np.integer)
+            and not (isinstance(result, bool | np.bool_))
         ):
             self._authorized_child_seeds[handle].append(int(result))
         if _contains_raw_generator(result):
@@ -2183,22 +3258,146 @@ class _GeneratorLeaseStore:
         )
         return result
 
-    def consume_child_seed(self, handle: object, value: object) -> int:
+    def qrf_row_quantiles(
+        self,
+        handle: object,
+        size: int,
+        *,
+        token: RNGStreamToken,
+        label: str,
+    ) -> np.ndarray:
+        """Issue one typed row-quantile vector from the draw-child lease."""
+
+        if isinstance(size, bool) or not isinstance(size, int) or size < 0:
+            _refuse_qrf_adapter(
+                self._session,
+                token,
+                operation="qrf_row_quantiles",
+                reason_code="qrf_row_quantile_size_refused",
+                message="QRF row-quantile size must be non-negative",
+            )
+        result = self.draw(
+            handle,
+            "random",
+            (size,),
+            {},
+            token=token,
+            label=label,
+        )
+        if type(result) is not np.ndarray or result.dtype != np.dtype(np.float64):
+            raise BrokerContractError(
+                "brokered QRF row quantiles must be an exact float64 array"
+            )
+        bits = result.view(np.uint64).copy()
+        self._authorized_qrf_quantiles[handle] = _AuthorizedQRFQuantiles(
+            values=bits,
+            consumed=np.zeros(len(bits), dtype=np.bool_),
+        )
+        self._session._log.record(
+            broker="rng",
+            operation="qrf_row_quantiles",
+            resource=token.site_id,
+            disposition="allowed",
+            reason_code="brokered_qrf_row_quantiles",
+            details={
+                "owner": token.owner.to_wire(),
+                "boundary_instance": token.boundary_instance,
+                "size": size,
+            },
+        )
+        return result
+
+    def consume_qrf_row_quantiles(
+        self,
+        handle: object,
+        values: np.ndarray,
+        *,
+        token: RNGStreamToken,
+    ) -> None:
+        """Consume an ordered subset of the latest typed draw-child vector."""
+
+        record = self._authorized_qrf_quantiles.get(handle)
+        candidate = np.ascontiguousarray(values).view(np.uint64).reshape(-1)
+        matched_mask: np.ndarray | None = None
+        if record is not None:
+            if (
+                len(candidate) == len(record.values)
+                and not record.consumed.any()
+                and np.array_equal(record.values, candidate)
+            ):
+                matched_mask = np.ones(len(record.values), dtype=np.bool_)
+            else:
+                candidate_mask = np.isin(record.values, candidate)
+                candidate_mask &= ~record.consumed
+                if int(candidate_mask.sum()) == len(candidate) and np.array_equal(
+                    record.values[candidate_mask], candidate
+                ):
+                    matched_mask = candidate_mask
+                else:
+                    matched_indices = np.empty(len(candidate), dtype=np.intp)
+                    cursor = 0
+                    matched_count = 0
+                    for value in candidate:
+                        while cursor < len(record.values) and (
+                            record.consumed[cursor] or record.values[cursor] != value
+                        ):
+                            cursor += 1
+                        if cursor == len(record.values):
+                            break
+                        matched_indices[matched_count] = cursor
+                        matched_count += 1
+                        cursor += 1
+                    if matched_count == len(candidate):
+                        matched_mask = np.zeros(len(record.values), dtype=np.bool_)
+                        matched_mask[matched_indices] = True
+        if record is None or matched_mask is None:
+            self._session._log.record(
+                broker="rng",
+                operation="draw_qrf_estimator",
+                resource=token.site_id,
+                disposition="refused",
+                reason_code="qrf_row_quantile_provenance_refused",
+            )
+            raise BrokerAccessError(
+                "QRF row quantiles were not issued by this draw-child lease"
+            )
+        record.consumed |= matched_mask
+
+    def consume_child_seed(
+        self,
+        handle: object,
+        value: object,
+        *,
+        token: RNGStreamToken,
+    ) -> int:
         """Consume one scalar seed previously drawn from this exact lease."""
 
         self._session._require_active()
         if isinstance(value, bool) or not isinstance(value, int | np.integer):
-            raise BrokerAccessError(
-                "seeded estimator random_state must be an integer lease draw"
+            _refuse_qrf_adapter(
+                self._session,
+                token,
+                operation="fit_seeded_qrf_estimator",
+                reason_code="qrf_estimator_seed_provenance_refused",
+                message=("seeded estimator random_state must be an integer lease draw"),
             )
         seed = int(value)
         try:
             authorized = self._authorized_child_seeds[handle]
             index = authorized.index(seed)
         except (KeyError, ValueError) as error:
-            raise BrokerAccessError(
-                "seeded estimator random_state was not drawn from this lease"
-            ) from error
+            try:
+                _refuse_qrf_adapter(
+                    self._session,
+                    token,
+                    operation="fit_seeded_qrf_estimator",
+                    reason_code="qrf_estimator_seed_provenance_refused",
+                    message=(
+                        "seeded estimator random_state was not drawn from this lease"
+                    ),
+                )
+            except BrokerAccessError as refusal:
+                raise refusal from error
         authorized.pop(index)
         return seed
 
@@ -2276,17 +3475,190 @@ class GeneratorLease:
             label=object.__getattribute__(self, "_label"),
         )
 
+    def _require_qrf_lease_role(
+        self,
+        role: Literal["fit_child_0", "draw_child_1"],
+        *,
+        operation: str,
+    ) -> str:
+        session = object.__getattribute__(self, "_session")
+        token = object.__getattribute__(self, "_token")
+        label = object.__getattribute__(self, "_label")
+        if not label.endswith(role):
+            session._log.record(
+                broker="rng",
+                operation=operation,
+                resource=token.site_id,
+                disposition="refused",
+                reason_code="qrf_lease_role_refused",
+                details={"actual_label": label, "required_role": role},
+            )
+            raise BrokerAccessError(
+                f"QRF {operation} requires the ledger-issued {role!r} lease"
+            )
+        return label
+
     def qrf_fit_n_jobs(self) -> int:
         """Return the constants-era unset fit-width without ambient env reads."""
 
         object.__getattribute__(self, "_check")()
+        object.__getattribute__(self, "_require_qrf_lease_role")(
+            "fit_child_0",
+            operation="qrf_fit_n_jobs",
+        )
         return -1
 
     def qrf_predict_workers(self) -> int:
         """Return the host width through a captured operational primitive."""
 
         object.__getattribute__(self, "_check")()
-        return _ORIGINAL_OS_CPU_COUNT() or 1
+        object.__getattribute__(self, "_require_qrf_lease_role")(
+            "fit_child_0",
+            operation="qrf_predict_workers",
+        )
+        session = object.__getattribute__(self, "_session")
+        binding = session._qrf_dependency_binding
+        if binding is None:
+            raise BrokerAccessError("pinned QRF dependency topology is unavailable")
+        return binding.predict_cpu_count
+
+    def qrf_row_quantiles(self, size: int) -> np.ndarray:
+        """Draw a forest-bound quantile vector from the exact draw child."""
+
+        object.__getattribute__(self, "_check")()
+        object.__getattribute__(self, "_require_qrf_lease_role")(
+            "draw_child_1",
+            operation="qrf_row_quantiles",
+        )
+        session = object.__getattribute__(self, "_session")
+        return session._rng_leases.qrf_row_quantiles(
+            object.__getattribute__(self, "_handle"),
+            size,
+            token=object.__getattribute__(self, "_token"),
+            label=object.__getattribute__(self, "_label"),
+        )
+
+    def qrf_gate_probabilities(
+        self,
+        estimator: object,
+        features: object,
+    ) -> np.ndarray:
+        """Predict sign-gate probabilities through the pinned dependency."""
+
+        object.__getattribute__(self, "_check")()
+        session = object.__getattribute__(self, "_session")
+        token = object.__getattribute__(self, "_token")
+        object.__getattribute__(self, "_require_qrf_lease_role")(
+            "draw_child_1",
+            operation="predict_qrf_gate",
+        )
+        binding = session._qrf_dependency_binding
+        if binding is None:
+            _refuse_qrf_adapter(
+                session,
+                token,
+                operation="predict_qrf_gate",
+                reason_code="qrf_dependency_topology_missing",
+                message="pinned QRF dependency topology is unavailable",
+            )
+        estimator_type = type(estimator)
+        module = sys.modules.get(
+            "sklearn.ensemble._hist_gradient_boosting.gradient_boosting"
+        )
+        installed_type = (
+            None
+            if module is None
+            else getattr(module, "HistGradientBoostingClassifier", None)
+        )
+        if estimator_type is not installed_type:
+            _refuse_qrf_adapter(
+                session,
+                token,
+                operation="predict_qrf_gate",
+                reason_code="qrf_gate_implementation_refused",
+                message="QRF sign gate is not an implementation-pinned dependency",
+            )
+        if any(name in vars(estimator) for name in _HGB_DIRECT_DYNAMIC_METHODS):
+            _refuse_qrf_adapter(
+                session,
+                token,
+                operation="predict_qrf_gate",
+                reason_code="qrf_gate_implementation_refused",
+                message="QRF sign gate shadows a pinned dependency method",
+            )
+        classes = getattr(estimator, "classes_", None)
+        if (
+            type(features) is not np.ndarray
+            or features.ndim != 2
+            or features.dtype.hasobject
+            or type(classes) is not np.ndarray
+            or classes.ndim != 1
+            or len(classes) < 1
+        ):
+            _refuse_qrf_adapter(
+                session,
+                token,
+                operation="predict_qrf_gate",
+                reason_code="qrf_gate_arguments_refused",
+                message="pinned QRF sign-gate arguments are invalid",
+            )
+        fit_binding = session._qrf_estimator_fit_bindings.get(id(estimator))
+        lease_label = object.__getattribute__(self, "_label")
+        pair_prefix = lease_label.removesuffix("draw_child_1")
+        if (
+            fit_binding is None
+            or fit_binding.estimator_ref() is not estimator
+            or fit_binding.owner != token.owner
+            or fit_binding.site_id != token.site_id
+            or fit_binding.boundary_instance != token.boundary_instance
+            or fit_binding.contract_sha256 != token.contract_sha256
+            or fit_binding.pair_prefix != pair_prefix
+        ):
+            _refuse_qrf_adapter(
+                session,
+                token,
+                operation="predict_qrf_gate",
+                reason_code="qrf_gate_fit_provenance_refused",
+                message="QRF sign gate lacks a matching ledger fit-child binding",
+            )
+        try:
+            with _pinned_qrf_dependency_operational_scope(
+                session,
+                lease=self,
+                operation="predict_qrf_gate",
+            ):
+                result = binding.hgb_predict_proba(estimator, features)
+        except Exception:
+            _record_qrf_adapter_refusal(
+                session,
+                token,
+                operation="predict_qrf_gate",
+                reason_code="qrf_dependency_execution_failed",
+            )
+            raise
+        if (
+            type(result) is not np.ndarray
+            or result.dtype != np.dtype(np.float64)
+            or result.shape != (len(features), len(classes))
+            or not np.isfinite(result).all()
+            or _contains_raw_generator(result)
+        ):
+            _refuse_qrf_adapter(
+                session,
+                token,
+                operation="predict_qrf_gate",
+                reason_code="qrf_gate_output_refused",
+                message="pinned QRF sign-gate prediction returned invalid output",
+            )
+        session._log.record(
+            broker="rng",
+            operation="predict_qrf_gate",
+            resource=token.site_id,
+            disposition="allowed",
+            reason_code="brokered_qrf_gate_probabilities",
+            details={"owner": token.owner.to_wire()},
+        )
+        return result
 
     def draw_qrf_estimator(
         self,
@@ -2303,6 +3675,20 @@ class GeneratorLease:
         object.__getattribute__(self, "_check")()
         session = object.__getattribute__(self, "_session")
         token = object.__getattribute__(self, "_token")
+        handle = object.__getattribute__(self, "_handle")
+        object.__getattribute__(self, "_require_qrf_lease_role")(
+            "draw_child_1",
+            operation="draw_qrf_estimator",
+        )
+        binding = session._qrf_dependency_binding
+        if binding is None:
+            _refuse_qrf_adapter(
+                session,
+                token,
+                operation="draw_qrf_estimator",
+                reason_code="qrf_dependency_topology_missing",
+                message="pinned QRF dependency topology is unavailable",
+            )
         estimator_type = type(estimator)
         identity = (estimator_type.__module__, estimator_type.__qualname__)
         module = sys.modules.get("quantile_forest._quantile_forest")
@@ -2311,10 +3697,14 @@ class GeneratorLease:
             if module is None
             else getattr(module, "RandomForestQuantileRegressor", None)
         )
-        if identity != (
-            "quantile_forest._quantile_forest",
-            "RandomForestQuantileRegressor",
-        ) or estimator_type is not installed_type:
+        if (
+            identity
+            != (
+                "quantile_forest._quantile_forest",
+                "RandomForestQuantileRegressor",
+            )
+            or estimator_type is not installed_type
+        ):
             session._log.record(
                 broker="rng",
                 operation="draw_qrf_estimator",
@@ -2326,21 +3716,55 @@ class GeneratorLease:
             raise BrokerAccessError(
                 "QRF prediction is not an implementation-pinned dependency"
             )
+        forest_backend = getattr(estimator, "forest_", None)
         if (
-            not isinstance(features, np.ndarray)
+            any(name in vars(estimator) for name in _QRF_DIRECT_DYNAMIC_METHODS)
+            or type(forest_backend) is not binding.quantile_forest_type
+        ):
+            _refuse_qrf_adapter(
+                session,
+                token,
+                operation="draw_qrf_estimator",
+                reason_code="qrf_estimator_implementation_refused",
+                message="QRF prediction shadows a pinned dependency method",
+            )
+        if (
+            type(features) is not np.ndarray
             or features.ndim != 2
-            or not isinstance(row_quantiles, np.ndarray)
+            or features.dtype.hasobject
+            or len(features) < 1
+            or type(row_quantiles) is not np.ndarray
             or row_quantiles.ndim != 1
+            or row_quantiles.dtype != np.dtype(np.float64)
             or len(row_quantiles) != len(features)
-            or not isinstance(grid, np.ndarray)
+            or type(grid) is not np.ndarray
             or grid.ndim != 1
+            or grid.dtype != np.dtype(np.float64)
             or len(grid) < 2
             or isinstance(workers, bool)
             or not isinstance(workers, int)
             or workers < 1
             or not isinstance(bounds, tuple)
         ):
-            raise BrokerAccessError("pinned QRF draw arguments are invalid")
+            _refuse_qrf_adapter(
+                session,
+                token,
+                operation="draw_qrf_estimator",
+                reason_code="qrf_draw_arguments_refused",
+                message="pinned QRF draw arguments are invalid",
+            )
+        provided_grid = np.ascontiguousarray(grid).copy()
+        if not np.array_equal(provided_grid, binding.quantile_grid):
+            _refuse_qrf_adapter(
+                session,
+                token,
+                operation="draw_qrf_estimator",
+                reason_code="qrf_quantile_grid_refused",
+                message="QRF quantile grid differs from the pinned production grid",
+            )
+        bound_grid = binding.quantile_grid
+        bound_row_quantiles = np.ascontiguousarray(row_quantiles).copy()
+        bound_row_quantiles.flags.writeable = False
         normalized_bounds: list[tuple[int, int]] = []
         cursor = 0
         for bound in bounds:
@@ -2352,14 +3776,59 @@ class GeneratorLease:
                     for value in bound
                 )
             ):
-                raise BrokerAccessError("pinned QRF draw bounds are invalid")
+                _refuse_qrf_adapter(
+                    session,
+                    token,
+                    operation="draw_qrf_estimator",
+                    reason_code="qrf_draw_bounds_refused",
+                    message="pinned QRF draw bounds are invalid",
+                )
             start, stop = bound
             if start != cursor or stop <= start or stop > len(features):
-                raise BrokerAccessError("pinned QRF draw bounds are not contiguous")
+                _refuse_qrf_adapter(
+                    session,
+                    token,
+                    operation="draw_qrf_estimator",
+                    reason_code="qrf_draw_bounds_refused",
+                    message="pinned QRF draw bounds are not contiguous",
+                )
             normalized_bounds.append((start, stop))
             cursor = stop
         if cursor != len(features):
-            raise BrokerAccessError("pinned QRF draw bounds do not cover the rows")
+            _refuse_qrf_adapter(
+                session,
+                token,
+                operation="draw_qrf_estimator",
+                reason_code="qrf_draw_bounds_refused",
+                message="pinned QRF draw bounds do not cover the rows",
+            )
+        fit_binding = session._qrf_estimator_fit_bindings.get(id(estimator))
+        lease_label = object.__getattribute__(self, "_label")
+        pair_prefix = lease_label.removesuffix("draw_child_1")
+        if (
+            fit_binding is None
+            or fit_binding.estimator_ref() is not estimator
+            or fit_binding.owner != token.owner
+            or fit_binding.site_id != token.site_id
+            or fit_binding.boundary_instance != token.boundary_instance
+            or fit_binding.contract_sha256 != token.contract_sha256
+            or fit_binding.pair_prefix != pair_prefix
+        ):
+            session._log.record(
+                broker="rng",
+                operation="draw_qrf_estimator",
+                resource=token.site_id,
+                disposition="refused",
+                reason_code="qrf_estimator_fit_provenance_refused",
+            )
+            raise BrokerAccessError(
+                "QRF estimator lacks a matching ledger fit-child binding"
+            )
+        session._rng_leases.consume_qrf_row_quantiles(
+            handle,
+            bound_row_quantiles,
+            token=token,
+        )
         counter = 0
         counter_lock = threading.Lock()
         operational_identity = sha256_json(token.to_wire()).encode("ascii")
@@ -2367,7 +3836,13 @@ class GeneratorLease:
         def dependency_urandom(size: int) -> bytes:
             nonlocal counter
             if isinstance(size, bool) or not isinstance(size, int) or size < 0:
-                raise BrokerAccessError("pinned dependency requested invalid bytes")
+                _refuse_qrf_adapter(
+                    session,
+                    token,
+                    operation="draw_qrf_estimator",
+                    reason_code="qrf_dependency_urandom_shape_refused",
+                    message="pinned dependency requested invalid bytes",
+                )
             output = bytearray()
             with counter_lock:
                 while len(output) < size:
@@ -2385,18 +3860,18 @@ class GeneratorLease:
         def draw_chunk(bound: tuple[int, int]) -> None:
             start, stop = bound
             predictions = np.asarray(
-                estimator_type.predict(
+                binding.qrf_predict(
                     estimator,
                     features[start:stop],
-                    quantiles=list(grid),
+                    quantiles=list(bound_grid),
                 )
-            ).reshape(stop - start, len(grid))
-            quantiles = row_quantiles[start:stop]
-            upper = np.searchsorted(grid, quantiles, side="left")
-            upper = np.clip(upper, 1, len(grid) - 1)
+            ).reshape(stop - start, len(bound_grid))
+            quantiles = bound_row_quantiles[start:stop]
+            upper = np.searchsorted(bound_grid, quantiles, side="left")
+            upper = np.clip(upper, 1, len(bound_grid) - 1)
             lower = upper - 1
-            grid_lo = grid[lower]
-            grid_hi = grid[upper]
+            grid_lo = bound_grid[lower]
+            grid_hi = bound_grid[upper]
             span = grid_hi - grid_lo
             weight = np.where(span > 0, (quantiles - grid_lo) / span, 0.0)
             weight = np.clip(weight, 0.0, 1.0)
@@ -2406,23 +3881,42 @@ class GeneratorLease:
             output[start:stop] = values_lo + weight * (values_hi - values_lo)
 
         saved_n_jobs = getattr(estimator, "n_jobs", None)
-        with (
-            patch.object(os, "urandom", dependency_urandom),
-            patch.object(time_module, "time", _ORIGINAL_TIME),
-        ):
-            if workers <= 1 or len(normalized_bounds) <= 1:
-                for bound in normalized_bounds:
-                    draw_chunk(bound)
-            else:
-                estimator.n_jobs = 1
-                try:
-                    with ThreadPoolExecutor(max_workers=workers) as pool:
-                        for _ in pool.map(draw_chunk, normalized_bounds):
-                            pass
-                finally:
-                    estimator.n_jobs = saved_n_jobs
+        try:
+            with (
+                _pinned_qrf_dependency_operational_scope(
+                    session,
+                    lease=self,
+                    operation="draw_qrf_estimator",
+                ),
+                patch.object(os, "urandom", dependency_urandom),
+            ):
+                if workers <= 1 or len(normalized_bounds) <= 1:
+                    for bound in normalized_bounds:
+                        draw_chunk(bound)
+                else:
+                    estimator.n_jobs = 1
+                    try:
+                        with ThreadPoolExecutor(max_workers=workers) as pool:
+                            for _ in pool.map(draw_chunk, normalized_bounds):
+                                pass
+                    finally:
+                        estimator.n_jobs = saved_n_jobs
+        except Exception:
+            _record_qrf_adapter_refusal(
+                session,
+                token,
+                operation="draw_qrf_estimator",
+                reason_code="qrf_dependency_execution_failed",
+            )
+            raise
         if _contains_raw_generator(output):
-            raise BrokerAccessError("QRF prediction returned unexpected authority")
+            _refuse_qrf_adapter(
+                session,
+                token,
+                operation="draw_qrf_estimator",
+                reason_code="qrf_draw_authority_escape",
+                message="QRF prediction returned unexpected authority",
+            )
         session._log.record(
             broker="rng",
             operation="draw_qrf_estimator",
@@ -2459,6 +3953,10 @@ class GeneratorLease:
         session = object.__getattribute__(self, "_session")
         token = object.__getattribute__(self, "_token")
         handle = object.__getattribute__(self, "_handle")
+        object.__getattribute__(self, "_require_qrf_lease_role")(
+            "fit_child_0",
+            operation="fit_seeded_qrf_estimator",
+        )
         estimator_type = type(estimator)
         identity = (estimator_type.__module__, estimator_type.__qualname__)
         allowed = {
@@ -2489,28 +3987,175 @@ class GeneratorLease:
             raise BrokerAccessError(
                 "seeded QRF estimator is not an implementation-pinned dependency"
             )
+        if (
+            type(features) is not np.ndarray
+            or features.ndim != 2
+            or features.dtype.hasobject
+            or type(targets) is not np.ndarray
+            or targets.ndim != 1
+            or targets.dtype.hasobject
+            or len(targets) != len(features)
+            or (
+                sample_weight is not None
+                and (
+                    type(sample_weight) is not np.ndarray
+                    or sample_weight.ndim != 1
+                    or sample_weight.dtype.hasobject
+                    or len(sample_weight) != len(features)
+                )
+            )
+        ):
+            _refuse_qrf_adapter(
+                session,
+                token,
+                operation="fit_seeded_qrf_estimator",
+                reason_code="qrf_fit_arguments_refused",
+                message="pinned QRF fit arrays are invalid",
+            )
         seed = session._rng_leases.consume_child_seed(
             handle,
             getattr(estimator, "random_state", None),
+            token=token,
         )
+        prior_binding = session._qrf_estimator_fit_bindings.get(id(estimator))
+        if prior_binding is not None and prior_binding.estimator_ref() is None:
+            session._qrf_estimator_fit_bindings.pop(id(estimator), None)
+            prior_binding = None
+        if prior_binding is not None:
+            session._log.record(
+                broker="rng",
+                operation="fit_seeded_qrf_estimator",
+                resource=token.site_id,
+                disposition="refused",
+                reason_code="qrf_estimator_refit_refused",
+            )
+            raise BrokerAccessError("QRF estimator is already bound to a fit child")
         local_python_rng = _ORIGINAL_PYTHON_RANDOM_CLASS(0)
-        fit = estimator_type.fit
         kwargs = {}
+
+        def has_exact_parameters(expected: Mapping[str, object]) -> bool:
+            for name, value in expected.items():
+                actual = getattr(estimator, name, object())
+                if value is None:
+                    if actual is not None:
+                        return False
+                elif type(actual) is not type(value) or actual != value:
+                    return False
+            return True
+
         if identity[1] == "HistGradientBoostingClassifier":
-            if getattr(estimator, "warm_start", None) is not False:
-                raise BrokerAccessError(
-                    "pinned sign-gate adapter requires warm_start=False"
+            if any(name in vars(estimator) for name in _HGB_DIRECT_DYNAMIC_METHODS):
+                _refuse_qrf_adapter(
+                    session,
+                    token,
+                    operation="fit_seeded_qrf_estimator",
+                    reason_code="qrf_estimator_implementation_refused",
+                    message="QRF sign gate shadows a pinned dependency method",
+                )
+            if not has_exact_parameters(
+                {
+                    "categorical_features": "from_dtype",
+                    "class_weight": None,
+                    "early_stopping": "auto",
+                    "interaction_cst": None,
+                    "l2_regularization": 0.0,
+                    "learning_rate": 0.1,
+                    "loss": "log_loss",
+                    "max_bins": 255,
+                    "max_depth": None,
+                    "max_features": 1.0,
+                    "max_iter": 100,
+                    "max_leaf_nodes": 31,
+                    "min_samples_leaf": 20,
+                    "monotonic_cst": None,
+                    "n_iter_no_change": 10,
+                    "scoring": "loss",
+                    "tol": 1e-7,
+                    "validation_fraction": 0.1,
+                    "verbose": 0,
+                    "warm_start": False,
+                }
+            ):
+                _refuse_qrf_adapter(
+                    session,
+                    token,
+                    operation="fit_seeded_qrf_estimator",
+                    reason_code="qrf_estimator_configuration_refused",
+                    message=(
+                        "pinned sign-gate adapter requires the exact built-in "
+                        "production configuration"
+                    ),
                 )
             kwargs["sample_weight"] = sample_weight
-        elif sample_weight is not None:
-            raise BrokerAccessError(
-                "quantile-forest compatibility fit does not accept sample weights"
+        else:
+            max_samples_leaf = getattr(estimator, "max_samples_leaf", object())
+            if (
+                sample_weight is not None
+                or any(name in vars(estimator) for name in _QRF_DIRECT_DYNAMIC_METHODS)
+                or not has_exact_parameters(
+                    {
+                        "bootstrap": True,
+                        "ccp_alpha": 0.0,
+                        "criterion": "squared_error",
+                        "default_quantiles": 0.5,
+                        "max_depth": None,
+                        "max_features": 1.0,
+                        "max_leaf_nodes": None,
+                        "max_samples": None,
+                        "min_impurity_decrease": 0.0,
+                        "min_samples_leaf": 1,
+                        "min_samples_split": 2,
+                        "min_weight_fraction_leaf": 0.0,
+                        "monotonic_cst": None,
+                        "oob_score": False,
+                        "verbose": 0,
+                        "warm_start": False,
+                    }
+                )
+                or type(getattr(estimator, "n_estimators", None)) is not int
+                or getattr(estimator, "n_estimators", 0) < 1
+                or type(getattr(estimator, "n_jobs", None)) is not int
+                or getattr(estimator, "n_jobs", None) != -1
+                or not (
+                    max_samples_leaf is None or type(max_samples_leaf) in {int, float}
+                )
+            ):
+                _refuse_qrf_adapter(
+                    session,
+                    token,
+                    operation="fit_seeded_qrf_estimator",
+                    reason_code="qrf_estimator_configuration_refused",
+                    message=(
+                        "pinned quantile-forest adapter requires the exact "
+                        "built-in production configuration"
+                    ),
+                )
+
+        binding = session._qrf_dependency_binding
+        if binding is None:
+            _refuse_qrf_adapter(
+                session,
+                token,
+                operation="fit_seeded_qrf_estimator",
+                reason_code="qrf_dependency_topology_missing",
+                message="pinned QRF dependency topology is unavailable",
             )
+        fit = (
+            binding.hgb_fit
+            if identity[1] == "HistGradientBoostingClassifier"
+            else binding.qrf_fit
+        )
 
         def dependency_default_rng(seed: object = None) -> np.random.Generator:
             if seed is None:
-                raise BrokerAccessError(
-                    "pinned QRF dependency requested an entropy-seeded generator"
+                _refuse_qrf_adapter(
+                    session,
+                    token,
+                    operation="fit_seeded_qrf_estimator",
+                    reason_code="qrf_dependency_entropy_refused",
+                    message=(
+                        "pinned QRF dependency requested an entropy-seeded generator"
+                    ),
                 )
             return _ORIGINAL_DEFAULT_RNG(seed)
 
@@ -2520,7 +4165,13 @@ class GeneratorLease:
         def dependency_urandom(size: int) -> bytes:
             nonlocal operational_counter
             if isinstance(size, bool) or not isinstance(size, int) or size < 0:
-                raise BrokerAccessError("pinned dependency requested invalid bytes")
+                _refuse_qrf_adapter(
+                    session,
+                    token,
+                    operation="fit_seeded_qrf_estimator",
+                    reason_code="qrf_dependency_urandom_shape_refused",
+                    message="pinned dependency requested invalid bytes",
+                )
             output = bytearray()
             while len(output) < size:
                 payload = (
@@ -2532,29 +4183,62 @@ class GeneratorLease:
                 operational_counter += 1
             return bytes(output[:size])
 
-        with (
-            patch.object(np.random, "RandomState", _ORIGINAL_RANDOM_STATE),
-            patch.object(np.random, "default_rng", dependency_default_rng),
-            patch.object(python_random, "seed", local_python_rng.seed),
-            patch.object(python_random, "shuffle", local_python_rng.shuffle),
-            patch.object(os, "urandom", dependency_urandom),
-            patch.object(time_module, "time", _ORIGINAL_TIME),
-        ):
-            result = fit(estimator, features, targets, **kwargs)
+        try:
+            with (
+                _pinned_qrf_dependency_operational_scope(
+                    session,
+                    lease=self,
+                    operation="fit_seeded_qrf_estimator",
+                ),
+                patch.object(np.random, "RandomState", _ORIGINAL_RANDOM_STATE),
+                patch.object(np.random, "default_rng", dependency_default_rng),
+                patch.object(python_random, "seed", local_python_rng.seed),
+                patch.object(python_random, "shuffle", local_python_rng.shuffle),
+                patch.object(os, "urandom", dependency_urandom),
+            ):
+                result = fit(estimator, features, targets, **kwargs)
+        except Exception:
+            _record_qrf_adapter_refusal(
+                session,
+                token,
+                operation="fit_seeded_qrf_estimator",
+                reason_code="qrf_dependency_execution_failed",
+            )
+            raise
         if identity[1] == "HistGradientBoostingClassifier":
             feature_rng = getattr(estimator, "_feature_subsample_rng", None)
             if not isinstance(feature_rng, _ORIGINAL_GENERATOR):
-                raise BrokerAccessError(
-                    "pinned sign-gate fit did not retain its expected generator"
+                _refuse_qrf_adapter(
+                    session,
+                    token,
+                    operation="fit_seeded_qrf_estimator",
+                    reason_code="qrf_estimator_rng_state_refused",
+                    message=(
+                        "pinned sign-gate fit did not retain its expected generator"
+                    ),
                 )
             # The generator is fit-only state when warm_start is disabled.
             # Strip it before returning the estimator so raw RNG authority
             # cannot escape this exact dependency adapter.
             estimator._feature_subsample_rng = None
         if result is not estimator or _contains_raw_generator(result):
-            raise BrokerAccessError(
-                "seeded QRF estimator fit returned unexpected authority"
+            _refuse_qrf_adapter(
+                session,
+                token,
+                operation="fit_seeded_qrf_estimator",
+                reason_code="qrf_fit_authority_escape",
+                message="seeded QRF estimator fit returned unexpected authority",
             )
+        session._qrf_estimator_fit_bindings[id(estimator)] = _QRFEstimatorFitBinding(
+            estimator_ref=weakref.ref(estimator),
+            owner=token.owner,
+            site_id=token.site_id,
+            boundary_instance=token.boundary_instance,
+            contract_sha256=token.contract_sha256,
+            pair_prefix=object.__getattribute__(self, "_label").removesuffix(
+                "fit_child_0"
+            ),
+        )
         session._log.record(
             broker="rng",
             operation="fit_seeded_qrf_estimator",
@@ -3774,7 +5458,10 @@ class RNGBroker:
 
         self._session._require_active()
         reason: str | None = None
-        if not isinstance(handle, DerivedSeedHandle) or handle._issuer is not self._issuer:
+        if (
+            not isinstance(handle, DerivedSeedHandle)
+            or handle._issuer is not self._issuer
+        ):
             reason = "foreign_derived_seed_handle"
         elif handle._activation is not self._session._active_activation:
             reason = "expired_derived_seed_handle"
@@ -4585,9 +6272,7 @@ class KernelRNGBroker(_KernelBrokerView):
         *args: object,
         **kwargs: object,
     ) -> object:
-        brokers = object.__getattribute__(
-            self, "_KernelRNGBroker__brokers_by_site"
-        )
+        brokers = object.__getattribute__(self, "_KernelRNGBroker__brokers_by_site")
         broker = brokers.get(site_id)
         if broker is None:
             broker = object.__getattribute__(self, "_KernelRNGBroker__primary")
@@ -4847,6 +6532,9 @@ class BrokerSession:
         "_log",
         "_physical_operation",
         "_physical_operation_invoked",
+        "_qrf_dependency_binding",
+        "_qrf_dependency_runtime_activation",
+        "_qrf_estimator_fit_bindings",
         "_rng",
         "_rng_leases",
         "_sealed_receipt",
@@ -4942,6 +6630,9 @@ class BrokerSession:
         self._sealed_receipt: BrokerReceipt | None = None
         self._physical_operation: PhysicalOperation | None = None
         self._physical_operation_invoked = False
+        self._qrf_dependency_binding: _QRFDependencyBinding | None = None
+        self._qrf_dependency_runtime_activation: object | None = None
+        self._qrf_estimator_fit_bindings: dict[int, _QRFEstimatorFitBinding] = {}
         self._rng_leases = _GeneratorLeaseStore(self)
         self._torch_rng_leases = _TorchGeneratorLeaseStore(self)
         supplemental_grants = tuple(supplemental_seed_owners)
@@ -4979,9 +6670,7 @@ class BrokerSession:
                     "SeedStreamMap grant"
                 )
             site_ids = set(grant.sites)
-            sites = tuple(
-                site for site in seed_stream_map.sites if site.id in site_ids
-            )
+            sites = tuple(site for site in seed_stream_map.sites if site.id in site_ids)
             if tuple(site.id for site in sites) != grant.sites:
                 raise BrokerContractError(
                     f"supplemental seed owner {owner_key!r} site order differs "
@@ -5069,9 +6758,7 @@ class BrokerSession:
                 owner=supplemental_owner,
                 protocol_id=protocol_id,
                 protocol_sha256=protocol_sha256,
-                sites=owner_sites[
-                    (supplemental_owner.kind, supplemental_owner.id)
-                ],
+                sites=owner_sites[(supplemental_owner.kind, supplemental_owner.id)],
                 run_inputs={} if run_inputs is None else run_inputs,
                 invocation_plan=normalized_owner_plans[
                     (supplemental_owner.kind, supplemental_owner.id)
@@ -5317,6 +7004,27 @@ class BrokerSession:
             raise BrokerContractError(
                 "physical operation sink roots must exactly match sink-write authority"
             )
+        if operation.policy == "broker-only" and any(
+            contract["rng_family"] == _QRF_DEPENDENCY_RNG_FAMILY
+            for rng in (self._rng, *self._supplemental_rngs)
+            for contract in rng._contracts.values()
+        ):
+            binding = _capture_qrf_dependency_binding()
+            object.__setattr__(self, "_qrf_dependency_binding", binding)
+            self._log.record(
+                broker="ambient",
+                operation="physical_operation_dependency_topology",
+                resource="joblib.cpu_count",
+                disposition="allowed",
+                reason_code="pinned_qrf_dependency_topology",
+                details={
+                    "joblib_version": binding.joblib_version,
+                    "usable_cpu_count": binding.usable_cpu_count,
+                    "physical_cpu_count": binding.physical_cpu_count,
+                    "predict_cpu_count": binding.predict_cpu_count,
+                    "quantile_grid_sha256": binding.quantile_grid_sha256,
+                },
+            )
         object.__setattr__(self, "_physical_operation", operation)
 
     def _run_physical_operation(self, *, input_binding_sha256: str) -> object:
@@ -5525,11 +7233,17 @@ class BrokerSession:
     def _audit_allowed_events(self) -> None:
         """Fail closed if a broker event is incompatible with sealed authority."""
 
+        rng_brokers = (self.rng, *self._supplemental_rngs)
         granted_sites = frozenset(
-            site_id
-            for rng in (self.rng, *self._supplemental_rngs)
-            for site_id in rng.granted_sites
+            site_id for rng in rng_brokers for site_id in rng.granted_sites
         )
+        qrf_site_owners = {
+            site_id: rng._owner.to_wire()
+            for rng in rng_brokers
+            for site_id, contract in rng._contracts.items()
+            if contract["rng_family"] == _QRF_DEPENDENCY_RNG_FAMILY
+        }
+        qrf_sites = frozenset(qrf_site_owners)
         for event in self._log.events():
             if event.disposition != "allowed":
                 continue
@@ -5561,6 +7275,67 @@ class BrokerSession:
                 and event.resource in _PINNED_DEPENDENCY_ENVIRONMENT_DEFAULTS
             ):
                 authorized = True
+            binding = self._qrf_dependency_binding
+            operation = self._physical_operation
+            if (
+                event.broker == "ambient"
+                and binding is not None
+                and operation is not None
+                and operation.policy == "broker-only"
+                and event.operation == "physical_operation_dependency_topology"
+                and event.reason_code == "pinned_qrf_dependency_topology"
+                and event.resource == "joblib.cpu_count"
+            ):
+                authorized = thaw_json(event.details) == {
+                    "joblib_version": binding.joblib_version,
+                    "usable_cpu_count": binding.usable_cpu_count,
+                    "physical_cpu_count": binding.physical_cpu_count,
+                    "predict_cpu_count": binding.predict_cpu_count,
+                    "quantile_grid_sha256": binding.quantile_grid_sha256,
+                }
+            if (
+                event.broker == "ambient"
+                and binding is not None
+                and operation is not None
+                and operation.policy == "broker-only"
+                and event.operation == "physical_operation_dependency_runtime"
+                and event.reason_code == "pinned_qrf_dependency_runtime"
+                and event.resource in qrf_sites
+            ):
+                details = thaw_json(event.details)
+                lease_label = details.get("lease_label")
+                adapter = details.get("operation")
+                wait_count = details.get("observed_wait_call_count")
+                authorized = (
+                    type(wait_count) is int
+                    and wait_count >= 0
+                    and details
+                    == {
+                        "owner": qrf_site_owners[event.resource],
+                        "lease_label": lease_label,
+                        "operation": adapter,
+                        "joblib_version": binding.joblib_version,
+                        "usable_cpu_count": binding.usable_cpu_count,
+                        "physical_cpu_count": binding.physical_cpu_count,
+                        "predict_cpu_count": binding.predict_cpu_count,
+                        "quantile_grid_sha256": binding.quantile_grid_sha256,
+                        "scheduler_clock": "virtual_10ms_step",
+                        "wait_seconds": [0.01],
+                        "observed_wait_call_count": wait_count,
+                    }
+                    and (
+                        (
+                            adapter == "fit_seeded_qrf_estimator"
+                            and isinstance(lease_label, str)
+                            and lease_label.endswith("fit_child_0")
+                        )
+                        or (
+                            adapter in {"draw_qrf_estimator", "predict_qrf_gate"}
+                            and isinstance(lease_label, str)
+                            and lease_label.endswith("draw_child_1")
+                        )
+                    )
+                )
             if authorized:
                 continue
             self._log.record(
@@ -5593,9 +7368,11 @@ class BrokerSession:
             )
         if status == "complete":
             for rng in (self.rng, *self._supplemental_rngs):
-                for site_id, consumed, declared in (
-                    rng._unconsumed_declared_invocations()
-                ):
+                for (
+                    site_id,
+                    consumed,
+                    declared,
+                ) in rng._unconsumed_declared_invocations():
                     self._log.record(
                         broker="rng",
                         operation="invocation_plan_consumption",
@@ -5610,6 +7387,7 @@ class BrokerSession:
                     )
         self._rng_leases.close_all()
         self._torch_rng_leases.close_all()
+        self._qrf_estimator_fit_bindings.clear()
         file_close_error: BrokerAccessError | None = None
         try:
             self.files.close_all()

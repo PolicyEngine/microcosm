@@ -401,7 +401,9 @@ def load_sipp_2023_vehicle_donor(
         delimiter="|",
         usecols=list(SIPP_VEHICLE_SOURCE_COLUMNS),
         chunksize=int(chunksize),
-        low_memory=False,
+        # Keep inference chunk-local for the 3.73 GB, very-wide source. Every
+        # selected non-ID column is normalized with to_numeric below.
+        low_memory=True,
     )
     for chunk in reader:
         month = pd.to_numeric(chunk["MONTHCODE"], errors="coerce")

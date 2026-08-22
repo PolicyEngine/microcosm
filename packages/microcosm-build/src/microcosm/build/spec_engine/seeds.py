@@ -397,6 +397,7 @@ _PYTHON_HASHLIB_VERSION = "BLAKE2b-RFC7693;SHA-256-FIPS180-4"
 _QRF_RNG_VERSION = ";".join(
     (
         f"microcosm-fit=={_distribution_version('microcosm-fit')}",
+        f"joblib=={_distribution_version('joblib')}",
         f"numpy=={_distribution_version('numpy')}",
         f"scikit-learn=={_distribution_version('scikit-learn')}",
         f"quantile-forest=={_distribution_version('quantile-forest')}",

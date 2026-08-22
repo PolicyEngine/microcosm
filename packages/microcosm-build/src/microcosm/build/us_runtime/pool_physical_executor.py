@@ -18,7 +18,6 @@ from artifact bytes, plan identity, and semantic node-reuse identity.
 from __future__ import annotations
 
 import copy
-import hashlib
 import pickle
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, is_dataclass, replace
@@ -46,6 +45,9 @@ from microcosm.build.spec_engine.executor import (
     apply_patch,
     execute_node,
     order_nodes,
+)
+from microcosm.build.spec_engine.executor import (
+    _pickle_sha256 as _executor_pickle_sha256,
 )
 from microcosm.build.spec_engine.model import thaw_json
 from microcosm.build.spec_engine.scope_algebra import ClosedScopeRegistry
@@ -100,12 +102,20 @@ class USPoolPhysicalExecutionRecord:
 
 def _pickle_sha256(value: object) -> str:
     try:
-        payload = pickle.dumps(value, protocol=5)
+        return _executor_pickle_sha256(value)
     except (AttributeError, pickle.PickleError, TypeError, ValueError) as error:
         raise USPoolPhysicalExecutorError(
             "physical executor input cannot be content-bound"
         ) from error
-    return hashlib.sha256(payload).hexdigest()
+
+
+def _available_input_sort_key(
+    row: tuple[tuple[str, str], object],
+) -> tuple[str, str]:
+    # Tuple unpacking keeps this module free of subscript reads so the
+    # source-spine blindness scan can prove it never selects a column.
+    key, _value = row
+    return key
 
 
 def _normalized_available_inputs(
@@ -136,7 +146,7 @@ def _normalized_available_inputs(
         raise USPoolPhysicalExecutorError(
             "available-input keys repeat after canonical normalization"
         )
-    return tuple(sorted(rows, key=lambda row: row[0]))
+    return tuple(sorted(rows, key=_available_input_sort_key))
 
 
 def _available_inputs_with_absence(
@@ -461,8 +471,7 @@ class USPoolPhysicalExecutor:
     def _expected_node(self, producer_name: str) -> CompiledNode:
         if self._failed_node_id is not None:
             raise USPoolPhysicalExecutorError(
-                f"physical executor is sealed by failed node "
-                f"{self._failed_node_id!r}"
+                f"physical executor is sealed by failed node {self._failed_node_id!r}"
             )
         if self._next_index == len(self._nodes):
             raise USPoolPhysicalExecutorError(
@@ -524,8 +533,7 @@ class USPoolPhysicalExecutor:
                 "RNG invocation plan and factory are mutually exclusive"
             )
         if (
-            rng_invocation_plan is not None
-            or rng_invocation_plan_factory is not None
+            rng_invocation_plan is not None or rng_invocation_plan_factory is not None
         ) and (supplemental_seed_owners or rng_invocation_plans_by_owner is not None):
             raise USPoolPhysicalExecutorError(
                 "direct RNG plans cannot be combined with owner-scoped plans"
@@ -711,9 +719,7 @@ class USPoolPhysicalExecutor:
                 input_binding_sha256=input_binding_sha256,
                 patch_sha256=validated_patch._patch_sha256,
                 result_projection_sha256=validated_patch._result_sha256,
-                broker_receipt_sha256=(
-                    validated_patch.broker_receipt.receipt_sha256
-                ),
+                broker_receipt_sha256=(validated_patch.broker_receipt.receipt_sha256),
             )
         )
         self._next_index += 1

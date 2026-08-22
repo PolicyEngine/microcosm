@@ -39,6 +39,7 @@ from microcosm.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
 )
+from microcosm.build.us_runtime.qbi_inputs import US_QBI_BOOLEAN_OUTPUT_COLUMNS
 from microcosm.build.us_runtime.us_late_overlap_ownership import (
     US_LATE_OVERLAP_OWNERSHIP_TARGETS,
     US_LATE_SOURCE_CALLBACK_PASSTHROUGH_OUTPUTS,
@@ -578,10 +579,13 @@ def test_primary_puf_inventory_declares_exact_read_before_write_surface() -> Non
     for column in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS:
         label = f"person_output_allocation_basis:{column}"
         requirement = requirements[label]
+        expected_value_kind = (
+            "non_null" if column in US_QBI_BOOLEAN_OUTPUT_COLUMNS else "finite_numeric"
+        )
         assert tuple(
             (item.entity, item.column, item.value_kind)
             for item in requirement.alternatives[0]
-        ) == (("person", column, "finite_numeric"),)
+        ) == (("person", column, expected_value_kind),)
         assert contract_inputs[f"@effective:{label}"].tolerated_absence_receipts == (
             f"optional_input:{US_LATE_PRIMARY_PUF_STAGE}:{label}",
         )

@@ -7,6 +7,7 @@ import datetime as datetime_module
 import hashlib
 import os
 import time
+from collections import deque
 from collections.abc import Iterator, Mapping
 from contextlib import ExitStack
 from dataclasses import replace
@@ -17,6 +18,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.spec_engine import brokers as broker_module
 from microcosm.build.spec_engine.brokers import (
     AmbientAccessError,
     BrokerAccessError,
@@ -243,6 +245,210 @@ def test_legacy_v1_qrf_child_streams_match_captured_constants_draw(
         ],
         rel=0.0,
         abs=0.0,
+    )
+
+
+def test_qrf_dependency_adapters_refuse_the_opposite_ledger_child(
+    compiled_us: CompiledSpecIR,
+) -> None:
+    session = _owner_session(
+        compiled_us,
+        "producer_node",
+        "primary_puf_qrf",
+        run_inputs={"build_model_seed": 19},
+    )
+    with session.activate():
+        token = session.rng.token("primary_qrf_fit_draw")
+        with session.rng.qrf_generators(token) as generators:
+            with pytest.raises(BrokerAccessError, match="fit_child_0"):
+                generators.draw.qrf_fit_n_jobs()
+            with pytest.raises(BrokerAccessError, match="draw_child_1"):
+                generators.fit.draw_qrf_estimator(
+                    None,
+                    None,
+                    None,
+                    grid=None,
+                    bounds=None,
+                    workers=1,
+                )
+    receipt = session.seal(status="aborted")
+    assert [
+        event.reason_code
+        for event in receipt.events
+        if event.reason_code == "qrf_lease_role_refused"
+    ] == ["qrf_lease_role_refused", "qrf_lease_role_refused"]
+
+
+@pytest.mark.parametrize(
+    "unsafe_parameters",
+    (
+        {"loss": "custom-loss-object"},
+        {"class_weight": {0: 1.0, 1: 1.0}},
+    ),
+    ids=("loss", "class-weight"),
+)
+def test_qrf_dependency_adapter_refuses_custom_hgb_configuration(
+    compiled_us: CompiledSpecIR,
+    unsafe_parameters: dict[str, object],
+) -> None:
+    from sklearn._loss.loss import HalfBinomialLoss
+    from sklearn.ensemble import HistGradientBoostingClassifier
+
+    session = _owner_session(
+        compiled_us,
+        "producer_node",
+        "primary_puf_qrf",
+        run_inputs={"build_model_seed": 19},
+    )
+    features = np.array([[-1.0], [0.0], [1.0], [2.0]], dtype=np.float64)
+    labels = np.array([0, 0, 1, 1], dtype=np.int64)
+    with session.activate():
+        token = session.rng.token("primary_qrf_fit_draw")
+        with session.rng.qrf_generators(token) as generators:
+            seed = int(generators.fit.integers(0, 2**31 - 1))
+            if unsafe_parameters.get("loss") == "custom-loss-object":
+                unsafe_parameters = {"loss": HalfBinomialLoss()}
+            estimator = HistGradientBoostingClassifier(
+                random_state=seed,
+                **unsafe_parameters,
+            )
+            with pytest.raises(
+                BrokerAccessError,
+                match="exact built-in production configuration",
+            ):
+                generators.fit.fit_seeded_qrf_estimator(
+                    estimator,
+                    features,
+                    labels,
+                )
+    session.seal(status="aborted")
+
+
+def test_qrf_dependency_adapter_refuses_callable_forest_configuration(
+    compiled_us: CompiledSpecIR,
+) -> None:
+    from quantile_forest import RandomForestQuantileRegressor
+
+    session = _owner_session(
+        compiled_us,
+        "producer_node",
+        "primary_puf_qrf",
+        run_inputs={"build_model_seed": 19},
+    )
+    features = np.array([[-1.0], [0.0], [1.0], [2.0]], dtype=np.float64)
+    targets = np.array([1.0, 2.0, 4.0, 8.0], dtype=np.float64)
+
+    def unsafe_score(_targets: object, _predictions: object) -> float:
+        return 0.0
+
+    with session.activate():
+        token = session.rng.token("primary_qrf_fit_draw")
+        with session.rng.qrf_generators(token) as generators:
+            seed = int(generators.fit.integers(0, 2**31 - 1))
+            estimator = RandomForestQuantileRegressor(
+                n_estimators=3,
+                n_jobs=-1,
+                oob_score=unsafe_score,
+                random_state=seed,
+            )
+            with pytest.raises(
+                BrokerAccessError,
+                match="exact built-in production configuration",
+            ):
+                generators.fit.fit_seeded_qrf_estimator(
+                    estimator,
+                    features,
+                    targets,
+                )
+    session.seal(status="aborted")
+
+
+def test_qrf_dependency_binding_refuses_ambient_worker_overrides(
+    compiled_us: CompiledSpecIR,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from quantile_forest import RandomForestQuantileRegressor  # noqa: F401
+
+    node = next(node for node in compiled_us.nodes if node.id == "primary_puf_qrf")
+
+    def unused_operation(_context: KernelBrokerSession) -> None:
+        raise AssertionError("worker-control refusal must precede dispatch")
+
+    monkeypatch.setenv("POPULACE_FIT_N_JOBS", "1")
+    with pytest.raises(
+        BrokerContractError,
+        match="requires unset fit and prediction worker overrides",
+    ):
+        BrokerSession.for_compiled_node(
+            node,
+            run_provenance_identity=_fixture_run_provenance_wire(),
+            run_inputs={"build_model_seed": 19},
+            physical_operation=PhysicalOperation(
+                function=unused_operation,
+                implementation_sha256=node.kernel_implementation_sha256,
+                input_binding_sha256="b" * 64,
+                policy="broker-only",
+                sink_roots=(tmp_path,),
+            ),
+        )
+
+
+def test_caught_qrf_adapter_refusal_taints_complete_receipt(
+    compiled_us: CompiledSpecIR,
+    tmp_path: Path,
+) -> None:
+    from sklearn.ensemble import HistGradientBoostingClassifier
+
+    node = next(node for node in compiled_us.nodes if node.id == "primary_puf_qrf")
+    features = np.array([[-1.0], [0.0], [1.0], [2.0]], dtype=np.float64)
+    labels = np.array([0, 0, 1, 1], dtype=np.int64)
+    input_binding_sha256 = sha256_json({"fixture": "caught-qrf-refusal"})
+
+    def physical_operation(context: KernelBrokerSession) -> None:
+        token = context.rng.token("primary_qrf_fit_draw")
+        with context.rng.qrf_generators(token) as generators:
+            seed = int(generators.fit.integers(0, 2**31 - 1))
+            estimator = HistGradientBoostingClassifier(
+                class_weight={0: 1.0, 1: 1.0},
+                random_state=seed,
+            )
+            with pytest.raises(
+                BrokerAccessError,
+                match="exact built-in production configuration",
+            ):
+                generators.fit.fit_seeded_qrf_estimator(
+                    estimator,
+                    features,
+                    labels,
+                )
+
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        run_inputs={"build_model_seed": 19},
+        rng_invocation_plan={
+            "primary_qrf_fit_draw": (RNGInvocation("default"),),
+            "primary_puf_monolithic_qrf_model": (),
+        },
+        physical_operation=PhysicalOperation(
+            function=physical_operation,
+            implementation_sha256=node.kernel_implementation_sha256,
+            input_binding_sha256=input_binding_sha256,
+            policy="broker-only",
+            sink_roots=(tmp_path,),
+        ),
+    )
+    with session.activate():
+        session.kernel_view.run_physical_operation(
+            input_binding_sha256=input_binding_sha256
+        )
+    with pytest.raises(BrokerAccessError, match="cannot complete"):
+        session.seal()
+    assert session.receipt.status == "aborted"
+    assert any(
+        event.reason_code == "qrf_estimator_configuration_refused"
+        for event in session.receipt.events
     )
 
 
@@ -949,8 +1155,10 @@ def test_file_broker_rejects_wrong_identity_and_symlink_binding(tmp_path: Path) 
         lambda: time.time(),
         lambda: time.monotonic(),
         lambda: time.perf_counter(),
+        lambda: time.sleep(0.01),
         lambda: datetime_module.datetime.now(),
         lambda: os.stat("."),
+        lambda: os.stat("/sys/fs/cgroup/cpu.max"),
         lambda: np.random.default_rng(),
         lambda: np.random.beta(1.0, 1.0),
     ],
@@ -1446,10 +1654,16 @@ def test_physical_operation_seed_and_sink_scope_is_grant_bound(
 
 def test_brokered_qrf_dependency_adapter_preserves_seeded_draws(
     compiled_us: CompiledSpecIR,
+    monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    from joblib import parallel_config
+    from joblib._parallel_backends import ThreadingBackend
     from quantile_forest import RandomForestQuantileRegressor
     from sklearn.ensemble import HistGradientBoostingClassifier
+    from sklearn.utils import _openmp_helpers
+
+    from microcosm.fit import qrf as qrf_module
 
     node = next(node for node in compiled_us.nodes if node.id == "primary_puf_qrf")
     seed = 73
@@ -1460,7 +1674,7 @@ def test_brokered_qrf_dependency_adapter_preserves_seeded_draws(
     target_values = np.array([1.0, 1.5, 2.0, 4.0, 8.0, 16.0])
     labels = np.array([0, 0, 0, 1, 1, 1])
     weights = np.ones(len(features), dtype=np.float64)
-    grid = np.array([0.1, 0.5, 0.9], dtype=np.float64)
+    grid = np.asarray(qrf_module._QUANTILE_GRID, dtype=np.float64).copy()
 
     fit_child, draw_child = np.random.SeedSequence(seed).spawn(2)
     expected_fit_rng = np.random.default_rng(fit_child)
@@ -1469,18 +1683,21 @@ def test_brokered_qrf_dependency_adapter_preserves_seeded_draws(
     expected_gate_seed = int(expected_fit_rng.integers(0, 2**31 - 1))
     expected_forest = RandomForestQuantileRegressor(
         n_estimators=3,
-        n_jobs=1,
+        n_jobs=-1,
         random_state=expected_forest_seed,
     ).fit(features, target_values)
     expected_gate = HistGradientBoostingClassifier(
-        max_iter=3,
         random_state=expected_gate_seed,
     ).fit(features, labels, sample_weight=weights)
     row_quantiles = expected_draw_rng.random(len(features))
     predictions = np.asarray(
         expected_forest.predict(features, quantiles=list(grid))
     ).reshape(len(features), len(grid))
-    upper = np.clip(np.searchsorted(grid, row_quantiles, side="left"), 1, 2)
+    upper = np.clip(
+        np.searchsorted(grid, row_quantiles, side="left"),
+        1,
+        len(grid) - 1,
+    )
     lower = upper - 1
     interpolation_weight = np.clip(
         (row_quantiles - grid[lower]) / (grid[upper] - grid[lower]),
@@ -1492,7 +1709,27 @@ def test_brokered_qrf_dependency_adapter_preserves_seeded_draws(
         predictions[rows, upper] - predictions[rows, lower]
     )
     expected_gate_probabilities = expected_gate.predict_proba(features)
+    openmp_cache = _openmp_helpers._CPU_COUNTS
+    openmp_cache_snapshot = dict(openmp_cache)
     input_binding_sha256 = sha256_json({"fixture": "brokered-qrf-adapter"})
+    issued_quantiles: list[np.ndarray] = []
+    original_consume = broker_module._GeneratorLeaseStore.consume_qrf_row_quantiles
+
+    def consume_then_mutate_caller_array(
+        store: object,
+        handle: object,
+        values: np.ndarray,
+        *,
+        token: object,
+    ) -> None:
+        original_consume(store, handle, values, token=token)  # type: ignore[arg-type]
+        issued_quantiles[-1].fill(0.5)
+
+    monkeypatch.setattr(
+        broker_module._GeneratorLeaseStore,
+        "consume_qrf_row_quantiles",
+        consume_then_mutate_caller_array,
+    )
 
     def physical_operation(context: KernelBrokerSession) -> dict[str, np.ndarray]:
         token = context.rng.token("primary_qrf_fit_draw", "default")
@@ -1501,7 +1738,7 @@ def test_brokered_qrf_dependency_adapter_preserves_seeded_draws(
             gate_seed = int(generators.fit.integers(0, 2**31 - 1))
             forest = RandomForestQuantileRegressor(
                 n_estimators=3,
-                n_jobs=1,
+                n_jobs=-1,
                 random_state=forest_seed,
             )
             generators.fit.fit_seeded_qrf_estimator(
@@ -1510,7 +1747,6 @@ def test_brokered_qrf_dependency_adapter_preserves_seeded_draws(
                 target_values,
             )
             gate = HistGradientBoostingClassifier(
-                max_iter=3,
                 random_state=gate_seed,
             )
             generators.fit.fit_seeded_qrf_estimator(
@@ -1520,7 +1756,8 @@ def test_brokered_qrf_dependency_adapter_preserves_seeded_draws(
                 sample_weight=weights,
             )
             assert gate._feature_subsample_rng is None
-            quantiles = generators.draw.random(len(features))
+            quantiles = generators.draw.qrf_row_quantiles(len(features))
+            issued_quantiles.append(quantiles)
             draws = generators.draw.draw_qrf_estimator(
                 forest,
                 features,
@@ -1529,9 +1766,13 @@ def test_brokered_qrf_dependency_adapter_preserves_seeded_draws(
                 bounds=((0, 2), (2, 4), (4, 6)),
                 workers=2,
             )
+            gate_probabilities = generators.draw.qrf_gate_probabilities(
+                gate,
+                features,
+            )
             return {
                 "draws": np.asarray(draws),
-                "gate_probabilities": gate.predict_proba(features),
+                "gate_probabilities": gate_probabilities,
             }
 
     session = BrokerSession.for_compiled_node(
@@ -1550,10 +1791,17 @@ def test_brokered_qrf_dependency_adapter_preserves_seeded_draws(
             sink_roots=(tmp_path,),
         ),
     )
-    with session.activate():
-        actual = session.kernel_view.run_physical_operation(
-            input_binding_sha256=input_binding_sha256
-        )
+    poisoned_backend = ThreadingBackend()
+
+    def refuse_unbound_backend(_workers: int) -> int:
+        raise AssertionError("the caller-provided Joblib backend escaped its scope")
+
+    poisoned_backend.effective_n_jobs = refuse_unbound_backend
+    with parallel_config(backend=poisoned_backend):
+        with session.activate():
+            actual = session.kernel_view.run_physical_operation(
+                input_binding_sha256=input_binding_sha256
+            )
     receipt = session.seal()
 
     np.testing.assert_array_equal(actual["draws"], expected_draws)
@@ -1561,13 +1809,787 @@ def test_brokered_qrf_dependency_adapter_preserves_seeded_draws(
         actual["gate_probabilities"], expected_gate_probabilities
     )
     assert receipt.status == "complete"
+    assert not any(event.disposition == "refused" for event in receipt.events)
+    assert _openmp_helpers._CPU_COUNTS is openmp_cache
+    assert _openmp_helpers._CPU_COUNTS == openmp_cache_snapshot
+    assert any(
+        event.reason_code == "pinned_qrf_dependency_topology"
+        for event in receipt.events
+    )
+    runtime_events = [
+        event
+        for event in receipt.events
+        if event.reason_code == "pinned_qrf_dependency_runtime"
+    ]
+    assert [
+        (event.details["operation"], event.details["lease_label"])
+        for event in runtime_events
+    ] == [
+        ("fit_seeded_qrf_estimator", "fit_child_0"),
+        ("fit_seeded_qrf_estimator", "fit_child_0"),
+        ("draw_qrf_estimator", "draw_child_1"),
+        ("predict_qrf_gate", "draw_child_1"),
+    ]
+    assert all(
+        type(event.details["observed_wait_call_count"]) is int
+        and event.details["observed_wait_call_count"] >= 0
+        for event in runtime_events
+    )
     assert any(
         event.reason_code == "brokered_seeded_qrf_estimator_fit"
         for event in receipt.events
     )
     assert any(
-        event.reason_code == "brokered_qrf_estimator_draw"
+        event.reason_code == "brokered_qrf_estimator_draw" for event in receipt.events
+    )
+
+
+def test_brokered_qrf_dependency_adapter_accepts_supplemental_compiled_owner(
+    compiled_us: CompiledSpecIR,
+    tmp_path: Path,
+) -> None:
+    from quantile_forest import RandomForestQuantileRegressor
+
+    node = next(node for node in compiled_us.nodes if node.id == "primary_puf_qrf")
+    stream_map = compiled_us.seed_stream_map
+    supplemental = stream_map.owner("pipeline_operation", "gap_fill_stacked_spine")
+    assert supplemental is not None
+    assert "acs_qrf_fit_draw" in supplemental.sites
+    features = np.array([[-1.0], [0.0], [1.0], [2.0]], dtype=np.float64)
+    targets = np.array([1.0, 2.0, 4.0, 8.0], dtype=np.float64)
+    boundary = "supplemental-qrf"
+    input_binding_sha256 = sha256_json({"fixture": "supplemental-qrf-adapter"})
+
+    def physical_operation(context: KernelBrokerSession) -> None:
+        context.rng.sha256_derived_seed(
+            context.rng.token("acs_transfer_pattern_seed", boundary)
+        )
+        token = context.rng.token("acs_qrf_fit_draw", boundary)
+        assert token.owner == BrokerOwner(supplemental.kind, supplemental.id)
+        with context.rng.qrf_generators(token) as generators:
+            seed = int(generators.fit.integers(0, 2**31 - 1))
+            estimator = RandomForestQuantileRegressor(
+                n_estimators=1,
+                n_jobs=-1,
+                random_state=seed,
+            )
+            generators.fit.fit_seeded_qrf_estimator(
+                estimator,
+                features,
+                targets,
+            )
+
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        run_inputs={"build_model_seed": 73},
+        seed_stream_map=stream_map,
+        supplemental_seed_owners=(supplemental,),
+        rng_invocation_plans_by_owner={
+            ("producer_node", node.id): {site.id: () for site in node.seed_sites},
+            (supplemental.kind, supplemental.id): {
+                "acs_transfer_family_seed": (),
+                "acs_transfer_pattern_seed": (
+                    RNGInvocation(
+                        boundary,
+                        {
+                            "entity": "person",
+                            "family": "income",
+                            "nul_joined_ordered_optional_predictors": "",
+                        },
+                    ),
+                ),
+                "acs_qrf_fit_draw": (
+                    RNGInvocation(
+                        boundary,
+                        {
+                            "derived_from": {
+                                "site_id": "acs_transfer_pattern_seed",
+                                "boundary_key": boundary,
+                            }
+                        },
+                    ),
+                ),
+            },
+        },
+        physical_operation=PhysicalOperation(
+            function=physical_operation,
+            implementation_sha256=node.kernel_implementation_sha256,
+            input_binding_sha256=input_binding_sha256,
+            policy="broker-only",
+            sink_roots=(tmp_path,),
+        ),
+    )
+    with session.activate():
+        session.kernel_view.run_physical_operation(
+            input_binding_sha256=input_binding_sha256
+        )
+    receipt = session.seal()
+
+    assert receipt.status == "complete"
+    assert not any(event.disposition == "refused" for event in receipt.events)
+    runtime = next(
+        event
         for event in receipt.events
+        if event.reason_code == "pinned_qrf_dependency_runtime"
+    )
+    assert runtime.resource == "acs_qrf_fit_draw"
+    assert thaw_json(runtime.details["owner"]) == {
+        "kind": supplemental.kind,
+        "id": supplemental.id,
+    }
+
+
+def test_brokered_qrf_draw_requires_matching_fit_and_quantile_provenance(
+    compiled_us: CompiledSpecIR,
+    tmp_path: Path,
+) -> None:
+    import gc
+    import weakref
+
+    from quantile_forest import RandomForestQuantileRegressor
+
+    from microcosm.fit import qrf as qrf_module
+
+    node = next(node for node in compiled_us.nodes if node.id == "primary_puf_qrf")
+    stream_map = compiled_us.seed_stream_map
+    supplemental = stream_map.owner("pipeline_operation", "gap_fill_stacked_spine")
+    assert supplemental is not None
+    features = np.array([[-1.0], [0.0], [1.0], [2.0]], dtype=np.float64)
+    targets = np.array([1.0, 2.0, 4.0, 8.0], dtype=np.float64)
+    production_grid = np.asarray(qrf_module._QUANTILE_GRID, dtype=np.float64).copy()
+    alternate_grid = np.array([0.25, 0.75], dtype=np.float64)
+    boundary = "cross-site-qrf"
+    input_binding_sha256 = sha256_json({"fixture": "qrf-draw-provenance"})
+
+    def physical_operation(context: KernelBrokerSession) -> None:
+        primary_token = context.rng.token("primary_qrf_fit_draw")
+        with context.rng.qrf_generators(primary_token) as primary:
+            seed = int(primary.fit.integers(0, 2**31 - 1))
+            estimator = RandomForestQuantileRegressor(
+                n_estimators=1,
+                n_jobs=-1,
+                random_state=seed,
+            )
+            primary.fit.fit_seeded_qrf_estimator(estimator, features, targets)
+            with pytest.raises(
+                BrokerAccessError,
+                match="not issued by this draw-child lease",
+            ):
+                primary.draw.draw_qrf_estimator(
+                    estimator,
+                    features,
+                    np.full(len(features), 0.5, dtype=np.float64),
+                    grid=production_grid,
+                    bounds=((0, len(features)),),
+                    workers=1,
+                )
+            issued_quantiles = primary.draw.qrf_row_quantiles(len(features))
+            with pytest.raises(BrokerAccessError, match="pinned production grid"):
+                primary.draw.draw_qrf_estimator(
+                    estimator,
+                    features,
+                    issued_quantiles,
+                    grid=alternate_grid,
+                    bounds=((0, len(features)),),
+                    workers=1,
+                )
+
+        context.rng.sha256_derived_seed(
+            context.rng.token("acs_transfer_pattern_seed", boundary)
+        )
+        supplemental_token = context.rng.token("acs_qrf_fit_draw", boundary)
+        with context.rng.qrf_generators(supplemental_token) as supplemental_qrf:
+            quantiles = supplemental_qrf.draw.qrf_row_quantiles(len(features))
+            with pytest.raises(
+                BrokerAccessError,
+                match="matching ledger fit-child binding",
+            ):
+                supplemental_qrf.draw.draw_qrf_estimator(
+                    estimator,
+                    features,
+                    quantiles,
+                    grid=production_grid,
+                    bounds=((0, len(features)),),
+                    workers=1,
+                )
+        estimator_ref = weakref.ref(estimator)
+        del estimator
+        gc.collect()
+        assert estimator_ref() is None
+
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        run_inputs={"build_model_seed": 73},
+        seed_stream_map=stream_map,
+        supplemental_seed_owners=(supplemental,),
+        rng_invocation_plans_by_owner={
+            ("producer_node", node.id): {
+                "primary_qrf_fit_draw": (RNGInvocation("default"),),
+                "primary_puf_monolithic_qrf_model": (),
+            },
+            (supplemental.kind, supplemental.id): {
+                "acs_transfer_family_seed": (),
+                "acs_transfer_pattern_seed": (
+                    RNGInvocation(
+                        boundary,
+                        {
+                            "entity": "person",
+                            "family": "income",
+                            "nul_joined_ordered_optional_predictors": "",
+                        },
+                    ),
+                ),
+                "acs_qrf_fit_draw": (
+                    RNGInvocation(
+                        boundary,
+                        {
+                            "derived_from": {
+                                "site_id": "acs_transfer_pattern_seed",
+                                "boundary_key": boundary,
+                            }
+                        },
+                    ),
+                ),
+            },
+        },
+        physical_operation=PhysicalOperation(
+            function=physical_operation,
+            implementation_sha256=node.kernel_implementation_sha256,
+            input_binding_sha256=input_binding_sha256,
+            policy="broker-only",
+            sink_roots=(tmp_path,),
+        ),
+    )
+    with session.activate():
+        session.kernel_view.run_physical_operation(
+            input_binding_sha256=input_binding_sha256
+        )
+    receipt = session.seal(status="aborted")
+
+    reasons = {event.reason_code for event in receipt.events}
+    assert "qrf_row_quantile_provenance_refused" in reasons
+    assert "qrf_estimator_fit_provenance_refused" in reasons
+    assert "qrf_quantile_grid_refused" in reasons
+
+
+def test_qrf_dependency_binding_refuses_estimator_method_drift(
+    compiled_us: CompiledSpecIR,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from quantile_forest import RandomForestQuantileRegressor
+
+    node = next(node for node in compiled_us.nodes if node.id == "primary_puf_qrf")
+    features = np.array([[-1.0], [0.0], [1.0], [2.0]], dtype=np.float64)
+    targets = np.array([1.0, 2.0, 4.0, 8.0], dtype=np.float64)
+    input_binding_sha256 = sha256_json({"fixture": "qrf-method-drift"})
+
+    def fabricated_fit(
+        estimator: object,
+        _features: object,
+        _targets: object,
+        **_kwargs: object,
+    ) -> object:
+        raise AssertionError("drifted estimator method must never execute")
+
+    def physical_operation(context: KernelBrokerSession) -> None:
+        token = context.rng.token("primary_qrf_fit_draw")
+        with context.rng.qrf_generators(token) as generators:
+            seed = int(generators.fit.integers(0, 2**31 - 1))
+            estimator = RandomForestQuantileRegressor(
+                n_estimators=1,
+                n_jobs=-1,
+                random_state=seed,
+            )
+            monkeypatch.setattr(RandomForestQuantileRegressor, "fit", fabricated_fit)
+            with pytest.raises(BrokerAccessError, match="runtime access was refused"):
+                generators.fit.fit_seeded_qrf_estimator(
+                    estimator,
+                    features,
+                    targets,
+                )
+
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        run_inputs={"build_model_seed": 73},
+        rng_invocation_plan={
+            "primary_qrf_fit_draw": (RNGInvocation("default"),),
+            "primary_puf_monolithic_qrf_model": (),
+        },
+        physical_operation=PhysicalOperation(
+            function=physical_operation,
+            implementation_sha256=node.kernel_implementation_sha256,
+            input_binding_sha256=input_binding_sha256,
+            policy="broker-only",
+            sink_roots=(tmp_path,),
+        ),
+    )
+    with session.activate():
+        session.kernel_view.run_physical_operation(
+            input_binding_sha256=input_binding_sha256
+        )
+    receipt = session.seal(status="aborted")
+
+    reasons = [event.reason_code for event in receipt.events]
+    assert receipt.status == "aborted"
+    assert "qrf_dependency_backend_inventory_drifted" in reasons
+    assert "qrf_dependency_execution_failed" in reasons
+    assert "brokered_seeded_qrf_estimator_fit" not in reasons
+
+
+@pytest.mark.parametrize("drift_target", ("predict-proba", "wrapped-fit-body"))
+def test_qrf_dependency_binding_refuses_gate_prediction_method_drift(
+    compiled_us: CompiledSpecIR,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    drift_target: str,
+) -> None:
+    import inspect
+
+    from sklearn.ensemble import HistGradientBoostingClassifier
+
+    node = next(node for node in compiled_us.nodes if node.id == "primary_puf_qrf")
+    features = np.array([[-1.0], [0.0], [1.0], [2.0]], dtype=np.float64)
+    labels = np.array([0, 0, 1, 1], dtype=np.int64)
+    input_binding_sha256 = sha256_json(
+        {"fixture": "qrf-gate-method-drift", "target": drift_target}
+    )
+
+    def fabricated_probabilities(
+        _estimator: object,
+        values: np.ndarray,
+    ) -> np.ndarray:
+        raise AssertionError(
+            f"drifted gate prediction must never execute for {len(values)} rows"
+        )
+
+    def fabricated_fit_body(
+        _estimator: object,
+        *_args: object,
+        **_kwargs: object,
+    ) -> object:
+        raise AssertionError("drifted wrapped fit body must never execute")
+
+    def physical_operation(context: KernelBrokerSession) -> None:
+        token = context.rng.token("primary_qrf_fit_draw")
+        with context.rng.qrf_generators(token) as generators:
+            seed = int(generators.fit.integers(0, 2**31 - 1))
+            estimator = HistGradientBoostingClassifier(random_state=seed)
+            generators.fit.fit_seeded_qrf_estimator(
+                estimator,
+                features,
+                labels,
+            )
+            if drift_target == "predict-proba":
+                monkeypatch.setattr(
+                    HistGradientBoostingClassifier,
+                    "predict_proba",
+                    fabricated_probabilities,
+                )
+            else:
+                unwrapped_fit = inspect.unwrap(HistGradientBoostingClassifier.fit)
+                assert unwrapped_fit is not HistGradientBoostingClassifier.fit
+                monkeypatch.setattr(
+                    unwrapped_fit,
+                    "__code__",
+                    fabricated_fit_body.__code__,
+                )
+            with pytest.raises(BrokerAccessError, match="runtime access was refused"):
+                generators.draw.qrf_gate_probabilities(estimator, features)
+
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        run_inputs={"build_model_seed": 73},
+        rng_invocation_plan={
+            "primary_qrf_fit_draw": (RNGInvocation("default"),),
+            "primary_puf_monolithic_qrf_model": (),
+        },
+        physical_operation=PhysicalOperation(
+            function=physical_operation,
+            implementation_sha256=node.kernel_implementation_sha256,
+            input_binding_sha256=input_binding_sha256,
+            policy="broker-only",
+            sink_roots=(tmp_path,),
+        ),
+    )
+    with session.activate():
+        session.kernel_view.run_physical_operation(
+            input_binding_sha256=input_binding_sha256
+        )
+    receipt = session.seal(status="aborted")
+
+    reasons = [event.reason_code for event in receipt.events]
+    assert receipt.status == "aborted"
+    assert "qrf_dependency_backend_inventory_drifted" in reasons
+    assert "qrf_dependency_execution_failed" in reasons
+    assert "brokered_qrf_gate_probabilities" not in reasons
+
+
+@pytest.mark.parametrize("drift_scope", ("class", "instance", "module-global"))
+def test_qrf_dependency_binding_refuses_transitive_apply_method_drift(
+    compiled_us: CompiledSpecIR,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    drift_scope: str,
+) -> None:
+    import quantile_forest._quantile_forest as qrf_dependency_module
+    from quantile_forest import RandomForestQuantileRegressor
+
+    from microcosm.fit import qrf as qrf_module
+
+    node = next(node for node in compiled_us.nodes if node.id == "primary_puf_qrf")
+    features = np.array([[-1.0], [0.0], [1.0], [2.0]], dtype=np.float64)
+    targets = np.array([1.0, 2.0, 4.0, 8.0], dtype=np.float64)
+    grid = np.asarray(qrf_module._QUANTILE_GRID, dtype=np.float64).copy()
+    input_binding_sha256 = sha256_json(
+        {"fixture": "qrf-apply-method-drift", "scope": drift_scope}
+    )
+
+    def fabricated_apply(
+        _estimator: object,
+        values: np.ndarray,
+    ) -> np.ndarray:
+        raise AssertionError(
+            f"drifted transitive method must never execute for {len(values)} rows"
+        )
+
+    def fabricated_fitted_check(_estimator: object) -> None:
+        raise AssertionError("drifted dependency global must never execute")
+
+    def physical_operation(context: KernelBrokerSession) -> None:
+        token = context.rng.token("primary_qrf_fit_draw")
+        with context.rng.qrf_generators(token) as generators:
+            seed = int(generators.fit.integers(0, 2**31 - 1))
+            estimator = RandomForestQuantileRegressor(
+                n_estimators=1,
+                n_jobs=-1,
+                random_state=seed,
+            )
+            generators.fit.fit_seeded_qrf_estimator(estimator, features, targets)
+            if drift_scope == "class":
+                monkeypatch.setattr(
+                    RandomForestQuantileRegressor,
+                    "apply",
+                    fabricated_apply,
+                )
+                expected_message = "runtime access was refused"
+            elif drift_scope == "instance":
+                monkeypatch.setattr(
+                    estimator,
+                    "apply",
+                    fabricated_apply.__get__(estimator, type(estimator)),
+                )
+                expected_message = "shadows a pinned dependency method"
+            else:
+                monkeypatch.setattr(
+                    qrf_dependency_module,
+                    "check_is_fitted",
+                    fabricated_fitted_check,
+                )
+                expected_message = "runtime access was refused"
+            quantiles = generators.draw.qrf_row_quantiles(len(features))
+            with pytest.raises(BrokerAccessError, match=expected_message):
+                generators.draw.draw_qrf_estimator(
+                    estimator,
+                    features,
+                    quantiles,
+                    grid=grid,
+                    bounds=((0, len(features)),),
+                    workers=1,
+                )
+
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        run_inputs={"build_model_seed": 73},
+        rng_invocation_plan={
+            "primary_qrf_fit_draw": (RNGInvocation("default"),),
+            "primary_puf_monolithic_qrf_model": (),
+        },
+        physical_operation=PhysicalOperation(
+            function=physical_operation,
+            implementation_sha256=node.kernel_implementation_sha256,
+            input_binding_sha256=input_binding_sha256,
+            policy="broker-only",
+            sink_roots=(tmp_path,),
+        ),
+    )
+    with session.activate():
+        session.kernel_view.run_physical_operation(
+            input_binding_sha256=input_binding_sha256
+        )
+    receipt = session.seal(status="aborted")
+
+    reasons = [event.reason_code for event in receipt.events]
+    if drift_scope in {"class", "module-global"}:
+        assert "qrf_dependency_backend_inventory_drifted" in reasons
+        assert "qrf_dependency_execution_failed" in reasons
+    else:
+        assert "qrf_estimator_implementation_refused" in reasons
+    assert "brokered_qrf_estimator_draw" not in reasons
+
+
+def test_qrf_draw_refuses_empty_candidate_against_nonempty_issuance(
+    compiled_us: CompiledSpecIR,
+    tmp_path: Path,
+) -> None:
+    from quantile_forest import RandomForestQuantileRegressor
+
+    from microcosm.fit import qrf as qrf_module
+
+    node = next(node for node in compiled_us.nodes if node.id == "primary_puf_qrf")
+    features = np.array([[-1.0], [0.0], [1.0], [2.0]], dtype=np.float64)
+    targets = np.array([1.0, 2.0, 4.0, 8.0], dtype=np.float64)
+    grid = np.asarray(qrf_module._QUANTILE_GRID, dtype=np.float64).copy()
+    input_binding_sha256 = sha256_json({"fixture": "qrf-empty-draw"})
+
+    def physical_operation(context: KernelBrokerSession) -> None:
+        token = context.rng.token("primary_qrf_fit_draw")
+        with context.rng.qrf_generators(token) as generators:
+            seed = int(generators.fit.integers(0, 2**31 - 1))
+            estimator = RandomForestQuantileRegressor(
+                n_estimators=1,
+                n_jobs=-1,
+                random_state=seed,
+            )
+            generators.fit.fit_seeded_qrf_estimator(estimator, features, targets)
+            generators.draw.qrf_row_quantiles(len(features))
+            with pytest.raises(BrokerAccessError, match="arguments are invalid"):
+                generators.draw.draw_qrf_estimator(
+                    estimator,
+                    np.empty((0, 1), dtype=np.float64),
+                    np.empty(0, dtype=np.float64),
+                    grid=grid,
+                    bounds=(),
+                    workers=1,
+                )
+
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        run_inputs={"build_model_seed": 73},
+        rng_invocation_plan={
+            "primary_qrf_fit_draw": (RNGInvocation("default"),),
+            "primary_puf_monolithic_qrf_model": (),
+        },
+        physical_operation=PhysicalOperation(
+            function=physical_operation,
+            implementation_sha256=node.kernel_implementation_sha256,
+            input_binding_sha256=input_binding_sha256,
+            policy="broker-only",
+            sink_roots=(tmp_path,),
+        ),
+    )
+    with session.activate():
+        session.kernel_view.run_physical_operation(
+            input_binding_sha256=input_binding_sha256
+        )
+    receipt = session.seal(status="aborted")
+
+    reasons = [event.reason_code for event in receipt.events]
+    assert "qrf_draw_arguments_refused" in reasons
+    assert "brokered_qrf_estimator_draw" not in reasons
+
+
+def test_qrf_target_pairs_refuse_cross_target_fit_provenance(
+    compiled_us: CompiledSpecIR,
+    tmp_path: Path,
+) -> None:
+    from quantile_forest import RandomForestQuantileRegressor
+    from sklearn.ensemble import HistGradientBoostingClassifier
+
+    from microcosm.fit import qrf as qrf_module
+
+    node = next(node for node in compiled_us.nodes if node.id == "primary_puf_qrf")
+    stream_map = compiled_us.seed_stream_map
+    supplemental = stream_map.owner("source_stage", "scf_wealth")
+    assert supplemental is not None
+    assert "sipp_financial_asset_qrf_models" in supplemental.sites
+    features = np.array([[-1.0], [0.0], [1.0], [2.0]], dtype=np.float64)
+    targets = np.array([1.0, 2.0, 4.0, 8.0], dtype=np.float64)
+    labels = np.array([0, 0, 1, 1], dtype=np.int64)
+    grid = np.asarray(qrf_module._QUANTILE_GRID, dtype=np.float64).copy()
+    input_binding_sha256 = sha256_json({"fixture": "qrf-cross-target-pair"})
+
+    def physical_operation(context: KernelBrokerSession) -> None:
+        token = context.rng.token("sipp_financial_asset_qrf_models")
+        pairs = context.rng.qrf_target_generators(token)
+        with ExitStack() as stack:
+            first, second, _third = (stack.enter_context(pair) for pair in pairs)
+            forest_seed = int(first.fit.integers(0, 2**31 - 1))
+            gate_seed = int(first.fit.integers(0, 2**31 - 1))
+            forest = RandomForestQuantileRegressor(
+                n_estimators=1,
+                n_jobs=-1,
+                random_state=forest_seed,
+            )
+            first.fit.fit_seeded_qrf_estimator(forest, features, targets)
+            gate = HistGradientBoostingClassifier(random_state=gate_seed)
+            first.fit.fit_seeded_qrf_estimator(gate, features, labels)
+            quantiles = second.draw.qrf_row_quantiles(len(features))
+            with pytest.raises(
+                BrokerAccessError,
+                match="matching ledger fit-child binding",
+            ):
+                second.draw.draw_qrf_estimator(
+                    forest,
+                    features,
+                    quantiles,
+                    grid=grid,
+                    bounds=((0, len(features)),),
+                    workers=1,
+                )
+            with pytest.raises(
+                BrokerAccessError,
+                match="matching ledger fit-child binding",
+            ):
+                second.draw.qrf_gate_probabilities(gate, features)
+
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        run_inputs={"build_model_seed": 73},
+        seed_stream_map=stream_map,
+        supplemental_seed_owners=(supplemental,),
+        rng_invocation_plans_by_owner={
+            ("producer_node", node.id): {site.id: () for site in node.seed_sites},
+            (supplemental.kind, supplemental.id): {
+                site_id: (
+                    (RNGInvocation("default"),)
+                    if site_id == "sipp_financial_asset_qrf_models"
+                    else ()
+                )
+                for site_id in supplemental.sites
+            },
+        },
+        physical_operation=PhysicalOperation(
+            function=physical_operation,
+            implementation_sha256=node.kernel_implementation_sha256,
+            input_binding_sha256=input_binding_sha256,
+            policy="broker-only",
+            sink_roots=(tmp_path,),
+        ),
+    )
+    with session.activate():
+        session.kernel_view.run_physical_operation(
+            input_binding_sha256=input_binding_sha256
+        )
+    receipt = session.seal(status="aborted")
+
+    reasons = [event.reason_code for event in receipt.events]
+    assert "qrf_estimator_fit_provenance_refused" in reasons
+    assert "qrf_gate_fit_provenance_refused" in reasons
+    assert "brokered_qrf_estimator_draw" not in reasons
+    assert "brokered_qrf_gate_probabilities" not in reasons
+
+
+def test_qrf_dependency_runtime_is_module_local_and_revoked(
+    compiled_us: CompiledSpecIR,
+    tmp_path: Path,
+) -> None:
+    import multiprocessing.connection as multiprocessing_connection
+
+    import joblib._parallel_backends as parallel_backends
+    import joblib.parallel as parallel_module
+    from quantile_forest import RandomForestQuantileRegressor  # noqa: F401
+    from sklearn.ensemble import HistGradientBoostingClassifier  # noqa: F401
+    from sklearn.ensemble._hist_gradient_boosting import gradient_boosting, grower
+
+    node = next(node for node in compiled_us.nodes if node.id == "primary_puf_qrf")
+    input_binding_sha256 = sha256_json({"fixture": "qrf-runtime-revocation"})
+    retained: list[object] = []
+    original_cpu_count = parallel_backends.cpu_count
+
+    class PendingJob:
+        calls = 0
+
+        def get_status(self, *, timeout: object) -> object:
+            self.calls += 1
+            return parallel_module.TASK_PENDING
+
+    class OneWaitRetrieval:
+        def __init__(self) -> None:
+            self._aborting = False
+            self._jobs = deque([PendingJob()])
+            self._wait_checks = 0
+            self.return_ordered = True
+            self.timeout = None
+
+        def _wait_retrieval(self) -> bool:
+            self._wait_checks += 1
+            return self._wait_checks == 1
+
+    def unused_physical_operation(_context: KernelBrokerSession) -> None:
+        raise AssertionError("the revocation fixture does not dispatch")
+
+    session = BrokerSession.for_compiled_node(
+        node,
+        run_provenance_identity=_fixture_run_provenance_wire(),
+        run_inputs={"build_model_seed": 73},
+        rng_invocation_plan={
+            "primary_qrf_fit_draw": (RNGInvocation("default"),),
+            "primary_puf_monolithic_qrf_model": (),
+        },
+        physical_operation=PhysicalOperation(
+            function=unused_physical_operation,
+            implementation_sha256=node.kernel_implementation_sha256,
+            input_binding_sha256=input_binding_sha256,
+            policy="broker-only",
+            sink_roots=(tmp_path,),
+        ),
+    )
+    with session.activate():
+        token = session.rng.token("primary_qrf_fit_draw", "default")
+        with session.rng.qrf_generators(token) as generators:
+            with broker_module._pinned_qrf_dependency_operational_scope(
+                session,
+                lease=generators.fit,
+                operation="fit_seeded_qrf_estimator",
+            ):
+                retained.append(parallel_backends.cpu_count)
+                retrieval = OneWaitRetrieval()
+                assert list(parallel_module.Parallel._retrieve(retrieval)) == []
+                assert retrieval._jobs[0].calls == 1
+                with pytest.raises(AmbientAccessError):
+                    time.monotonic()
+                with pytest.raises(BrokerAccessError):
+                    multiprocessing_connection._init_timeout(0.0)
+                with pytest.raises(BrokerAccessError):
+                    gradient_boosting.time()
+                with pytest.raises(BrokerAccessError):
+                    grower.time()
+            with pytest.raises(BrokerAccessError, match="runtime access was refused"):
+                retained[0]()  # type: ignore[operator]
+            assert generators.fit.qrf_fit_n_jobs() == -1
+    receipt = session.seal(status="aborted")
+    assert parallel_backends.cpu_count is original_cpu_count
+    runtime = next(
+        event
+        for event in receipt.events
+        if event.reason_code == "pinned_qrf_dependency_runtime"
+    )
+    assert runtime.details["observed_wait_call_count"] == 1
+    event_count = len(receipt.events)
+    with pytest.raises(BrokerAccessError, match="runtime access was refused"):
+        retained[0]()  # type: ignore[operator]
+    assert len(session.receipt.events) == event_count
+    assert any(
+        event.reason_code == "ambient_access_prohibited" for event in receipt.events
+    )
+    assert any(
+        event.reason_code == "qrf_dependency_runtime_inactive"
+        for event in receipt.events
+    )
+    assert (
+        sum(
+            event.reason_code == "qrf_dependency_caller_refused"
+            for event in receipt.events
+        )
+        == 3
     )
 
 
@@ -1709,9 +2731,7 @@ def test_broker_only_physical_operation_routes_compiled_supplemental_owner(
     def physical_operation(context: KernelBrokerSession) -> tuple[float, int]:
         primary_token = context.rng.token("primary_qrf_fit_draw")
         supplemental_token = context.rng.token("puf_clone_attachment")
-        observed_tokens.extend(
-            (primary_token.to_wire(), supplemental_token.to_wire())
-        )
+        observed_tokens.extend((primary_token.to_wire(), supplemental_token.to_wire()))
         with context.rng.qrf_generators(primary_token) as generators:
             primary_draw = float(generators.draw.random(1)[0])
         with context.rng.generator(supplemental_token) as generator:
@@ -1799,9 +2819,7 @@ def test_supplemental_rng_token_is_isolated_from_primary_owner(
             generator.random(1)
     receipt = session.seal(status="aborted")
     assert token.owner == BrokerOwner(supplemental.kind, supplemental.id)
-    assert any(
-        event.reason_code == "foreign_rng_token" for event in receipt.events
-    )
+    assert any(event.reason_code == "foreign_rng_token" for event in receipt.events)
 
 
 def test_broker_only_physical_operation_does_not_restore_direct_rng(
@@ -1834,8 +2852,7 @@ def test_broker_only_physical_operation_does_not_restore_direct_rng(
             )
     receipt = session.seal(status="aborted")
     assert not any(
-        event.reason_code == "legacy_v1_physical_rng_grant"
-        for event in receipt.events
+        event.reason_code == "legacy_v1_physical_rng_grant" for event in receipt.events
     )
     assert any(
         event.reason_code == "ambient_access_prohibited" for event in receipt.events
@@ -1923,9 +2940,9 @@ def test_kernel_can_verify_but_not_read_derived_seed(
         },
     )
     expected = int.from_bytes(
-        hashlib.sha256(
-            f"19\0person\0income\0{optional_predictors}".encode()
-        ).digest()[:4],
+        hashlib.sha256(f"19\0person\0income\0{optional_predictors}".encode()).digest()[
+            :4
+        ],
         "little",
     )
     with session.activate():

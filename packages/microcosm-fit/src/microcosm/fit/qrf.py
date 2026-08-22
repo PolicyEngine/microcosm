@@ -109,6 +109,14 @@ class _QRFGeneratorLease(_QRFGenerator, Protocol):
 
     def qrf_predict_workers(self) -> int: ...
 
+    def qrf_row_quantiles(self, size: int) -> np.ndarray: ...
+
+    def qrf_gate_probabilities(
+        self,
+        estimator: object,
+        features: object,
+    ) -> np.ndarray: ...
+
     def fit_seeded_qrf_estimator(
         self,
         estimator: object,
@@ -1144,11 +1152,30 @@ def _gate_draw_with_rng(
 ) -> np.ndarray:
     """Draw sign classes from a fitted gate using the supplied RNG stream."""
     x = features.loc[:, list(columns)].to_numpy(dtype=np.float64)
-    proba = np.asarray(gate.predict_proba(x))
+    try:
+        broker_predict = rng.qrf_gate_probabilities  # type: ignore[attr-defined]
+    except AttributeError:
+        proba = np.asarray(gate.predict_proba(x))
+    else:
+        if not callable(broker_predict):
+            raise TypeError("Broker QRF sign-gate adapter must be callable.")
+        proba = np.asarray(broker_predict(gate, x))
     cumulative = np.cumsum(proba, axis=1)
     u = rng.random(len(x))
     chosen = (cumulative >= u[:, None]).argmax(axis=1)
     return np.asarray(gate.classes_)[chosen]
+
+
+def _qrf_row_quantiles(rng: _QRFGenerator, size: int) -> np.ndarray:
+    """Draw the same PCG64 values through the broker's typed forest path."""
+
+    try:
+        broker_draw = rng.qrf_row_quantiles  # type: ignore[attr-defined]
+    except AttributeError:
+        return np.asarray(rng.random(size), dtype=np.float64)
+    if not callable(broker_draw):
+        raise TypeError("Broker QRF row-quantile adapter must be callable.")
+    return np.asarray(broker_draw(size), dtype=np.float64)
 
 
 def _draw_target_with_rng(
@@ -1168,6 +1195,8 @@ def _draw_target_with_rng(
             "releasing to draw again."
         )
     n = len(features)
+    if n == 0:
+        return np.empty(0, dtype=np.float64)
     if model.regime == Regime.DEGENERATE_ZERO:
         return np.zeros(n, dtype=np.float64)
 
@@ -1184,7 +1213,7 @@ def _draw_target_with_rng(
             raise TypeError("Broker QRF draw adapter must be callable.")
         return forest.draw(rows, row_quantiles, broker_rng=rng)
 
-    quantiles = rng.random(n)
+    quantiles = _qrf_row_quantiles(rng, n)
     if model.regime == Regime.POSITIVE_ONLY:
         return draw_forest(model.positive, features, quantiles)
     if model.regime == Regime.NEGATIVE_ONLY:

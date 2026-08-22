@@ -2959,3 +2959,326 @@ head. A well-formed FAIL still writes
 3. If the legacy draw contract is unambiguous, repair it and pin the complete
    brokered draw path with a regression. If a legacy seed/draw site is truly
    ambiguous, stop here with a costed owner decision memo instead.
+
+## F1 residual brokered-QRF reproduction and repair (2026-08-21)
+
+### Exact reproduction
+
+- The required unchanged reproduction was:
+  `uv run pytest packages/microcosm-build/tests/test_puf_qrf_chain.py::test_brokered_in_process_chain_is_checkpoint_byte_exact -vv`.
+  It failed after 500.79 seconds (579.20 seconds wrapper wall time) with
+  `microcosm.build.spec_engine.brokers.AmbientAccessError: ambient clock access
+  'sleep' is prohibited for producer_node 'primary_puf_qrf'`.
+- The only failing test id in that direct reproduction was
+  `packages/microcosm-build/tests/test_puf_qrf_chain.py::test_brokered_in_process_chain_is_checkpoint_byte_exact`.
+  The exception occurred before its intended raw-byte assertion,
+  `assert _checkpoint_member_bytes(bundle_root) ==
+  _checkpoint_member_bytes(constants_root)`, at
+  `test_puf_qrf_chain.py:540-542`. The test's broker helper requests
+  `primary_qrf_fit_draw` with build seed 17 and one declared invocation at
+  `test_puf_qrf_chain.py:86-135`.
+- The observed call chain entered Joblib 1.5.3's worker retrieval loop and its
+  `time.sleep(0.01)` at installed `joblib/parallel.py:1800`. The physical ambient
+  guard correctly refuses every unbrokered clock primitive, including sleep, at
+  `spec_engine/brokers.py:1674-1695`. The failure was therefore an operational
+  dependency-capability gap; it was not a failed byte comparison and did not
+  identify a different random draw.
+
+### 72-site ledger diagnosis and owner ruling
+
+- No owner ruling is required. The ledger is explicit: `primary_qrf_fit_draw`
+  uses `run_request.build_model_seed`, QRF's PCG64 SeedSequence family, the
+  checkpointed donor/declared-target/recipient orders, one reset per model, and
+  `SeedSequence(seed).spawn(2): fit_child_0 draw_child_1`
+  (`spec_engine/seeds.py:841-857`). Its sole compiled owner is producer node
+  `primary_puf_qrf` (`us/spec/spine.yaml:287-290`); the legacy monolithic QRF
+  site has that same owner (`us/spec/spine.yaml:369-372`).
+- Each site's `rng_version` is part of its canonical wire contract
+  (`spec_engine/seeds.py:133-147`), and all site wires are part of the seed
+  protocol digest (`spec_engine/seeds.py:177-188`). Joblib is now an explicit
+  QRF dependency and version input (`microcosm-build/pyproject.toml:14-21` and
+  `spec_engine/seeds.py:397-405`), so scheduling behavior cannot change behind
+  an unchanged QRF RNG identity.
+- The exact production census remains closed at 72 sites. The independent
+  source audit pins 217 modules, 283 stochastic/hash callsites, 120 ledger
+  bindings, 163 typed exemptions, and 162 non-draw hash classifications
+  (`test_spec_engine_seeds.py:399-420`); no exclusion or new site was added.
+
+### Contract-preserving repair
+
+- `microcosm.fit.qrf` now recognizes typed broker methods for fit width, predict
+  width, estimator fit/draw, row quantiles, and gate probabilities while retaining
+  the ordinary NumPy fallback (`microcosm/fit/qrf.py:103-135` and
+  `:1147-1238`). A brokered target uses its supplied fit and draw leases through
+  the same state validation and advancement path as the legacy generator
+  (`microcosm/fit/qrf.py:1460-1508`). Empty candidate sets return before asking
+  the broker for a false draw (`microcosm/fit/qrf.py:1197-1201`).
+- Before physical activation, the broker freezes the exact Joblib version, CPU
+  topology, production quantile grid, QRF/HGB entrypoints, backend methods,
+  wrapper chains, and referenced callable globals
+  (`spec_engine/brokers.py:852-942` and `:2080-2311`). During a fit or prediction
+  it grants only caller-authenticated, revocable module-local CPU/clock aliases
+  under the exact threaded backend, and it rechecks every alias and callable on
+  exit (`spec_engine/brokers.py:2626-2910`). Joblib sleep is restricted to the
+  observed authenticated 0.01-second scheduler yield
+  (`spec_engine/brokers.py:2486-2535`); arbitrary ambient clock and cgroup/file
+  access remains refused by the outer guard.
+- The draw child issues a typed float64 row-quantile vector and records exact
+  uint64 provenance before a forest can consume it
+  (`spec_engine/brokers.py:3256-3361`). Fit requires a seed actually drawn from
+  the fit child and records the estimator's owner/site/boundary/contract/pair
+  proof (`spec_engine/brokers.py:3930-4027` and `:4230-4240`). Gate and forest
+  prediction require the matching draw child and exact fit proof
+  (`spec_engine/brokers.py:3540-3629` and `:3662-3826`); forest inputs are copied
+  read-only before provenance consumption to close mutation races
+  (`spec_engine/brokers.py:3751-3762`).
+- Dependency runtime events are authorized at seal only when their exact owner,
+  site, child role, version, topology, quantile-grid digest, virtual clock, and
+  0.01-second wait shape match the captured binding
+  (`spec_engine/brokers.py:7277-7335`). Any refused event or unconsumed declared
+  invocation prevents an honest complete receipt
+  (`spec_engine/brokers.py:7347-7382`).
+- The regression surface now pins the honest seeded draw, supplemental owners,
+  quantile provenance and grid, cross-target pair refusal, empty-candidate
+  refusal, class/instance/global/wrapped dependency drift, and audited runtime
+  events (`test_spec_engine_brokers.py:1654-2540`). The end-to-end primary test
+  still compares every checkpoint member byte and additionally requires a
+  complete receipt, zero refused events, the compiled ledger grant, typed QRF
+  lease, fit, draw, and dependency-runtime evidence
+  (`test_puf_qrf_chain.py:474-565`); restored-state resume remains byte-exact at
+  `test_puf_qrf_chain.py:569-655`.
+
+### Exact-census and identity closure
+
+- Full-suite discovery exposed previously unvisited r6 stochastic/hash census
+  drift after the older r6 inventory had stopped at the QRF module. The repair
+  renamed stale discovered callsites, bound the second adult-care permutation to
+  its already-existing ledger site, and reclassified current artifact hash
+  callsites (`seed_callsite_coverage.py:1016-1020`, `:1166-1182`,
+  `:1548-1575`, and `:1781-1808`). This is exact coverage, not an exclusion.
+- Ambient UUID/hash callsites in the landed F1 receipt module were removed by
+  binding the cold receipt ID to the publication run ID and validating that bind
+  on load (`f1_certification.py:815-848`, `:925-940`, and `:2593-2608`), using a
+  deterministic exclusive temporary name (`f1_certification.py:1513-1532`), and
+  sharing canonical `sha256_json` for the plan lock
+  (`f1_certification.py:1739-1746`). The pool physical executor likewise
+  delegates pickle identity to the canonical executor implementation
+  (`pool_physical_executor.py:103-109`).
+- These census changes do not soften the comparator. Coverage passes only when
+  node reuse, selector inventory, calibration scope, and plan bindings are all
+  complete (`f1_certification.py:367-391`), and the four-receipt verdict still
+  ANDs vector coverage, coldness, within-mode determinism, and cross-mode byte
+  equality (`f1_certification.py:1308-1440`).
+- Adding Joblib to the QRF `rng_version` intentionally moved the global protocol
+  digest to `abee2ab7af39a8593adeae34b296bc4a5158ad79dc05201bc608eeaf77ad3065`
+  and compiled owner-map digest to
+  `9f233c088e03d947a15f3eb6f3e0b471ae007790ebb241cfcce5ef2415e58be9`.
+  Every country spec embeds the complete protocol in its normative envelope
+  (`spec_engine/loader.py:404-418`), so BE, UK, and US moved deterministically.
+  The fail-closed coverage generator rejected the stale pins, then passed after
+  the repository receipt was regenerated: 41,911/41,911 fields and 40/40
+  inventory checks (`inventory_coverage.py:1835-1875`).
+  [Correction, 2026-08-22 landing continuation: the two digests in this
+  bullet were the killed lane's intermediate values and predate its own final
+  deterministic attestation refresh. The salvaged tree it left behind — the
+  tree verified and landed by this continuation — pins protocol
+  `f1968c11ea4a73b83b4a130c0fd04f48550c8dc5cf2e1641f8ae9a5638c9b262` and
+  compiled owner-map
+  `3ccb07409eccf96707ad3ac40ba6043d479d4d1977302e1e4e266c78d651206f`, as
+  recorded in `docs/evidence/spec-engine/us-f0-coverage.json`
+  ("seed_protocol_and_owner_map_digests_exact", observed == expected) and
+  re-proven by the generated-coverage `--check` in the landing verification
+  below.]
+
+### Verification in progress
+
+- The full final-source `test_puf_qrf_chain.py` module is green in 1,574.24
+  seconds at 2,052,304 KiB maximum RSS. The byte-identity and restored-resume
+  tests both pass. The only warning is the legacy/non-brokered Joblib physical
+  core fallback; the brokered path captures and audits topology explicitly.
+- The corrected country-bundle module passes 15 tests, coverage-tool module 7,
+  inventory-coverage module 14, and the live multispine spec-binding regression
+  1. The generated coverage `--check`, lock check, `git diff --check`, and
+  repository Ruff pass. Full final-source build-test shards remain in progress;
+  no repository-wide green claim is made until all three finish.
+- No population build, sample rung, Logbook operation, exclusion, publication,
+  host comparator, or push ran. All measured processes remain below 15 GiB RSS;
+  the current maximum is the already-green `microcosm-data` suite at
+  11,845,712 KiB.
+
+### Next
+
+1. Finish every final-source build-test shard and rerun shard 2's first 15
+   modules, which preceded only the deterministic attestation refresh.
+2. Append exact totals and maximum RSS, commit the coherent implementation, and
+   then write and commit the requested closeout in `FINAL_REPORT.md`.
+
+## F1 residual brokered-QRF salvage verification and landing (2026-08-22)
+
+### Salvage disposition
+
+- The killed lane's uncommitted repair was recovered from
+  `refs/codex-salvage/spec-engine-f1-20260822-170822-45486` (`c7a52e1a`).
+  The working tree at this landing continuation's start was already
+  byte-identical to that snapshot on every source, test, evidence, and lock
+  path (`git diff c7a52e1a --stat` showed only `PROGRESS.md`, whose
+  continuation journal is committed at `7d4a60dc`). The two later salvages
+  (`af4901cc`, `c7a52e1a`) supersede the first (`18077eac`) where they
+  overlap. Taken: all 25 non-journal paths verbatim. Discarded: nothing.
+- The killed lane's own journal section above ("F1 residual brokered-QRF
+  reproduction and repair (2026-08-21)") is retained as its attributed
+  record, with one dated correction note added in place for its stale
+  intermediate protocol/owner-map digests.
+
+### Reproduction, red set, and no-weakening audit (committed at 7d4a60dc)
+
+- The prior landing continuation reproduced the deliverable-A failure at the
+  committed pre-repair tree:
+  `test_puf_qrf_chain.py::test_brokered_in_process_chain_is_checkpoint_byte_exact`
+  fails in 121.42 s (2.03 GiB RSS) with
+  `microcosm.build.spec_engine.brokers.AmbientAccessError: ambient clock
+  access 'sleep' is prohibited for producer_node 'primary_puf_qrf'`, raised
+  from Joblib 1.5.3 `parallel.py:2072 __call__` → `:1682 _get_outputs` →
+  `:1800 _retrieve` → `time.sleep(0.01)` before the member-byte assertion
+  could run. It also mapped the full committed-HEAD red set — the eight
+  additional census/pin failures in `test_spec_engine_seeds.py` (2),
+  `test_us_spine_blindness.py` (5), and `test_us_late_producer_dag.py` (1)
+  (573 run, 565 passed, 8 failed) — and completed the independent
+  no-weakening audit. Those exact test ids and the audit are journaled in
+  `PROGRESS.md` at `7d4a60dc`.
+- This continuation independently re-verified the load-bearing mechanisms
+  against the frozen tree before committing: the checkpoint comparison
+  `_checkpoint_member_bytes(bundle_root) == _checkpoint_member_bytes(constants_root)`
+  is unchanged and now followed by seven receipt requirements — complete
+  status, zero refused events, `compiled_rng_grant`, `legacy_v1_rng_lease`,
+  `brokered_seeded_qrf_estimator_fit`, `brokered_qrf_estimator_draw`, and
+  `pinned_qrf_dependency_runtime` evidence (`test_puf_qrf_chain.py:540-574`);
+  the ambient refusal remains generic and fail-closed
+  (`brokers.py:1529-1532`); the brokered joblib yield authenticates the
+  caller's code object and refuses any wait shape other than the literal
+  float `0.01` before delegating to the pre-captured original sleep
+  (`brokers.py:2518-2541`), and scheduler time reads return virtual-clock
+  ticks, never host time (`brokers.py:2508-2516`); the entire `seeds.py`
+  diff is one line adding `joblib==<locked>` to the attested
+  `_QRF_RNG_VERSION` (`seeds.py:400`) — no ledger site, seed material,
+  consumption order, or reset boundary changed.
+- Identity closure at the frozen tree, verified from bytes: protocol
+  `f1968c11ea4a73b83b4a130c0fd04f48550c8dc5cf2e1641f8ae9a5638c9b262`,
+  compiled owner map
+  `3ccb07409eccf96707ad3ac40ba6043d479d4d1977302e1e4e266c78d651206f`
+  (`docs/evidence/spec-engine/us-f0-coverage.json`, observed == expected),
+  US `spec_sha256`
+  `f30af091fedadf9a0bc9f49560dbcbaca68053a395da9242a4eb018320b281bc`
+  (evidence + `test_us_multispine_pool_tool.py:3309`), BE
+  `dab60ebc0f97cbe3bb846724a768e54ab94aee571cebd7fb2e68b2a00dafac60`, UK
+  `bc6e4193a79c8f3e7ee7b78f8a761a9f8b01e5059230384526f7ccd088c5b45e`
+  (`test_spec_engine_country_bundles.py:35,45`).
+
+### One residual red found and repaired by this continuation
+
+- The landing verification caught one genuine red the salvage never closed:
+  `test_us_spine_blindness.py::test_runtime_population_operators_are_source_spine_blind`
+  (`test_us_spine_blindness.py:3256`) flags
+  `pool_physical_executor.py` line 140:47, "subscript with an unresolvable
+  dynamic selector (fail-closed)". The offending
+  `sorted(rows, key=lambda row: row[0])` exists verbatim at committed HEAD
+  and in the salvage — it is the fifth blindness failure of the mapped HEAD
+  red set; the killed lane repaired the other four and died before ever
+  running this module against its final tree.
+- Repair (production module only; the scanner is untouched): the sort key is
+  now the module-level `_available_input_sort_key`, which extracts the
+  unique `(entity, column)` key by tuple unpacking — no subscript syntax
+  remains, so the fail-closed scan can prove the module never selects a
+  column. Sort semantics are bit-identical (same keys, same comparisons);
+  no behavior, identity, or gate changed.
+- Post-fix, `test_us_spine_blindness.py` + `test_us_pool_physical_executor.py`
+  pass 499/499 together, and the executor-facing safety margin batch
+  (`test_us_pool_kernel_authority.py`, `test_us_pool_physical_authority.py`,
+  `test_f1_certification_run.py`) passes 53/53. The only test modules that
+  reference `pool_physical_executor` are the two rerun above (verified by
+  grep), so pre-fix chunk results for unrelated modules remain valid; the
+  brokered byte-exact chain test was nevertheless re-run at the exact final
+  tree and passes (83.14 s, 2.0 GiB RSS).
+
+### Landing verification (this continuation, per-run ledger, final tree)
+
+Every run is a separate serial `uv run pytest` process (the repository's
+per-shard CI model), measured with `/usr/bin/time -l`; RSS is that process
+tree's maximum. The build package was run as 30+ module groups because this
+lane's execution harness caps any single foreground command at 600 s. Two
+deliberate overlaps occurred (disjoint module sets, journaled below); every
+red seen during verification was re-run solo before judgment.
+
+| Run | Result | Wall | Max RSS |
+| --- | --- | --- | --- |
+| `test_puf_qrf_chain.py::test_brokered_in_process_chain_is_checkpoint_byte_exact` (re-run at final tree) | 1 passed | 83.14 s | 2.0 GiB |
+| `test_puf_qrf_chain.py` resume/subprocess/earnings chain trio | 3 passed | 387.59 s | 1.96 GiB |
+| `test_puf_qrf_chain.py` remaining 16 | 16 passed, 4 deselected | 1,779.15 s | 1.60 GiB |
+| build chunk aa 1-17 (compare→ledger_targets) | 481 passed | 193.20 s | 2.21 GiB |
+| build chunk aa 18-32 (logbook→artifact_comparison) | 345 passed, 1 skipped | 154.60 s | 4.26 GiB |
+| build chunk aa 33-43 (spec-engine battery→imputation, incl. brokers) | 305 passed | 553.07 s | 3.46 GiB |
+| build chunk ab 1-20 (spec-engine inventory→trace) | 300 passed | 967.17 s | 2.99 GiB |
+| build chunk ab 21-44 (UK battery→h5_payload_compare) | 263 passed, 5 skipped | 74.74 s | 0.57 GiB |
+| build chunk ac all 45 (UK hmrc→terminal_gates) | 711 passed, 26 skipped | 410.44 s | 1.68 GiB |
+| build chunk ad 1-22 (UK wealth + US acs→asec) | 629 passed, 1 skipped | 267.37 s | 3.96 GiB |
+| build chunk ad 23-45 (US base_pool→financial_assistance) | 291 passed, 1 skipped | 508.15 s | 7.16 GiB |
+| `test_us_scf_wealth.py` | 32 passed | 346.23 s | 2.10 GiB |
+| build chunk ae singles/groups (7 runs) | 1,556 passed, 2 skipped | 2,793.83 s total | ≤4.15 GiB |
+| build chunk af G1 (relationship→sipp_head_start) | 134 passed | 576.48 s | 4.07 GiB |
+| build chunk af G2 (sipp_tips→spec_materializers) | 174 passed | 815.06 s | 3.65 GiB |
+| af spine trio (agreement, assembly, spm_resources; blindness red handled below) | 39 passed | 83.49 s | 1.61 GiB |
+| `test_us_spine_blindness.py` + `test_us_pool_physical_executor.py` (post-fix) | 499 passed | 88.40 s | 1.53 GiB |
+| executor margin batch (kernel/physical authority + f1_certification_run, post-fix) | 53 passed | 146.21 s | 2.26 GiB |
+| af ssi/stacked chunk (ssi_disability→take_up_contract) | 361 passed | 2,471.02 s | 3.97 GiB |
+| `test_us_trade_census_imports.py` | 12 passed | 401.45 s | 1.60 GiB |
+| `test_us_trade_crosscheck.py` | 17 passed | 236.25 s | 1.60 GiB |
+| `test_us_trade_entries_cli.py` (3 solo groups after a contention-flaked overlapped run) | 13 passed | 823.27 s total | 1.59 GiB |
+| `test_us_trade_entry_generator.py` | 18 passed | 379.25 s | 1.60 GiB |
+| `test_us_trade_facts.py` | 29 passed | 318.83 s | 1.60 GiB |
+| `test_us_trade_imdb_goldens.py` | 13 passed | 193.96 s | 7.75 GiB |
+| `test_us_trade_imdb_bulk.py` (module run; 5 deadline reds re-run below) | 73 passed, 5 failed | 1,334.94 s | 1.60 GiB |
+| imdb_bulk deadline tests solo: end_to_end_offline, fallback_crash, exchange_interrupted, legacy_migration[retarget], legacy_migration[vacate] | 5 × 1 passed | 84.86–131.80 s each | ≤1.60 GiB |
+| af rows 38-41 (voluntary_filing→wic_claim) | 77 passed, 1 skipped | 329.52 s | 4.26 GiB |
+| af rows 42-44 (wic_nutritional→validation_input_coverage) | 38 passed | 121.82 s | 3.57 GiB |
+| `packages/microcosm-fit/tests` | 98 passed | 730.63 s | 0.52 GiB |
+| `packages/microcosm-frame/tests` | 294 passed, 36 skipped | 450.20 s | 6.49 GiB |
+| `packages/microcosm-calibrate/tests` | 201 passed | 64.39 s | 0.45 GiB |
+| `packages/microcosm-data/tests` | 275 passed, 1 skipped | 230.82 s | 11.13 GiB |
+| `uv run ruff check .` (repo-wide) | All checks passed | — | — |
+| `tools/spec_engine_coverage.py --check` | 41911/41911 fields; 40/40 inventory | — | — |
+| `tools/generate_us_bundle_from_constants.py --check` | pass at `f30af091…` | — | — |
+| `git diff --check` | clean | — | — |
+
+- Module coverage is closed: the six chunk lists' union is byte-identical to
+  the live `packages/microcosm-build/tests/test_*.py` set (264 modules,
+  verified by `diff`), and the other four packages ran as whole
+  directories. The repository-wide collection gate counts 299 test files
+  and 7,371 tests.
+- Contention context: four to eight other worktree lanes ran heavy suites
+  on this host throughout (1-minute load averages 40-117). Two overlaps of
+  disjoint module sets were used deliberately (fit/frame alongside the QRF
+  remainder; trade modules alongside CPU-bound af groups). The only reds
+  ever observed were (a) the genuine blindness red above, repaired and
+  re-verified, and (b) deadline-bound trade CLI/bulk tests whose spawned
+  child interpreters exceeded their authored 60 s `subprocess.run`
+  deadlines under that load; every one passed on solo rerun with no source
+  or test change. No gate, band, ceiling, fold, or seed was changed
+  anywhere.
+- The trade deadline mechanism was captured, not assumed: a faulthandler
+  stack dump at 55 s shows the child still inside the tool import —
+  `tools/build_us_import_entry_margins.py:114` importing
+  `microcosm.build.us_runtime` reaches the module-level
+  `default_spine_agreement_registry()` at `spine_agreement.py:953`, whose
+  take-up projection runs `assert_engine_abi_lock_current`
+  (`engine_abi.py:432` → `:310` → `:78`), which rebuilds the live
+  PolicyEngine-US take-up contract via `inspect.getsource` over engine
+  variables (`microcosm/frame/adapters/policyengine_us.py:655`, `:464`).
+  A bare import measured 58.45 s wall / 40.50 s user CPU at load ~47.
+  This import-time cost is identical at committed HEAD (the salvage and
+  this continuation touch none of those modules) and the 60 s deadline is
+  authored in the tests, so no repair belongs to this lane; the tests pass
+  whenever the child wins an instantaneous scheduling window, including at
+  load average 116.
+- Maximum RSS across every run in this continuation: 11.13 GiB
+  (`microcosm-data`), under the 15 GiB lane ceiling. No pool build, sample
+  rung, Logbook operation, exclusion, publication, or push occurred.

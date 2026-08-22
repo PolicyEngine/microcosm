@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Hashable, Mapping, Sequence
+from dataclasses import dataclass
+from numbers import Integral
 from typing import Any, Protocol
 
 import numpy as np
@@ -10,10 +12,13 @@ import pandas as pd
 
 __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
+    "CompilerSupportRowClassification",
     "PERSON_SUPPORT_CHANNEL_COLUMN",
     "PUF_TAX_DETAIL_CLONE_INDEX",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
     "SPINE_ASSEMBLY_MANIFEST_KEY",
+    "SupportProvenanceError",
+    "compiler_support_row_atoms",
     "has_support_role_metadata",
     "puf_tax_detail_clone_mask",
     "spine_assembly_manifest",
@@ -24,6 +29,7 @@ __all__ = [
     "support_clone_index_column",
     "support_role_series",
     "support_source_id_column",
+    "resolve_added_support_rows",
     "validate_assembly_provenance",
     "without_support_role_metadata",
 ]
@@ -34,6 +40,18 @@ PUF_TAX_DETAIL_SUPPORT_CHANNEL = "puf_tax_detail"
 PUF_TAX_DETAIL_CLONE_INDEX = 1
 SPINE_ASSEMBLY_MANIFEST_KEY = "us_spine_assembly_manifest"
 _SPINE_ASSEMBLY_MANIFEST_VERSION = 1
+
+
+class SupportProvenanceError(ValueError):
+    """Support lineage cannot satisfy a compiler-owned row contract."""
+
+
+@dataclass(frozen=True, slots=True)
+class CompilerSupportRowClassification:
+    """Provenance-owner result for one compiler-authorized added row."""
+
+    atom: str
+    source_row_id: Hashable
 
 
 class _ProvenanceSchema(Protocol):
@@ -51,6 +69,190 @@ class _ProvenanceFrame(Protocol):
     schema: _ProvenanceSchema
 
     def table(self, entity: str) -> pd.DataFrame: ...
+
+
+def _compiler_clone_index(value: object, *, location: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        raise SupportProvenanceError(f"{location} must be an integer")
+    return int(value)
+
+
+def _compiler_row_atom(
+    *,
+    entity: str,
+    row_id: Hashable,
+    channel: object,
+    clone_index: object,
+) -> tuple[str, int]:
+    if not isinstance(channel, str) or not channel:
+        raise SupportProvenanceError(
+            f"row {entity}.{row_id!r} has an invalid support channel"
+        )
+    clone = _compiler_clone_index(
+        clone_index,
+        location=f"row {entity}.{row_id!r} support clone index",
+    )
+    atom = f"origin:{channel}/clone:{clone}"
+    return atom, clone
+
+
+def compiler_support_row_atoms(
+    table: pd.DataFrame,
+    *,
+    entity: str,
+    entity_key: str,
+) -> Mapping[Hashable, str]:
+    """Derive opaque compiler atoms without exposing raw source lineage."""
+
+    channel_column = support_channel_column(entity)
+    clone_column = support_clone_index_column(entity)
+    missing = [
+        column for column in (channel_column, clone_column) if column not in table
+    ]
+    if missing:
+        raise SupportProvenanceError(
+            f"entity {entity!r} lacks compiler row-lineage columns {missing!r}"
+        )
+    rows: dict[Hashable, str] = {}
+    for row_id, channel, clone_index in zip(
+        table[entity_key],
+        table[channel_column],
+        table[clone_column],
+        strict=True,
+    ):
+        try:
+            hash(row_id)
+        except TypeError as error:  # pragma: no cover - Frame validates ids
+            raise SupportProvenanceError(
+                f"entity {entity!r} has an unhashable stable id"
+            ) from error
+        atom, _clone = _compiler_row_atom(
+            entity=entity,
+            row_id=row_id,
+            channel=channel,
+            clone_index=clone_index,
+        )
+        rows[row_id] = atom
+    return rows
+
+
+def _compiler_native_source_candidates(
+    *,
+    entity: str,
+    row: pd.Series,
+    row_id: Hashable,
+    clone_index: int,
+    native_ids: frozenset[Hashable],
+) -> frozenset[Hashable]:
+    explicit: set[Hashable] = set()
+    for column in (
+        support_source_id_column(entity),
+        spine_source_id_column(entity),
+    ):
+        if column not in row.index:
+            continue
+        candidate = row[column]
+        try:
+            if candidate in native_ids:
+                explicit.add(candidate)
+        except TypeError:
+            continue
+    if len(explicit) > 1:
+        raise SupportProvenanceError(
+            f"added row {entity}.{row_id!r} has ambiguous explicit source ids "
+            f"{sorted(map(repr, explicit))!r}"
+        )
+    if explicit:
+        return frozenset(explicit)
+
+    if (
+        isinstance(row_id, bool)
+        or not isinstance(row_id, Integral)
+        or clone_index <= 0
+    ):
+        return frozenset()
+    remapped = int(row_id)
+    max_digits = max(1, len(str(abs(remapped))))
+    inferred: set[Hashable] = set()
+    for power in range(1, max_digits + 2):
+        candidate = remapped - clone_index * (10**power)
+        if candidate in native_ids:
+            inferred.add(candidate)
+    return frozenset(inferred)
+
+
+def resolve_added_support_rows(
+    entity: str,
+    table: pd.DataFrame,
+    entity_key: str,
+    added_ids: frozenset[Hashable],
+) -> Mapping[Hashable, CompilerSupportRowClassification]:
+    """Classify compiler EXPAND rows entirely inside the provenance owner."""
+
+    if not isinstance(entity, str) or not entity:
+        raise SupportProvenanceError("classifier entity must be non-empty")
+    if not isinstance(table, pd.DataFrame):
+        raise TypeError("classifier table must be a DataFrame")
+    if entity_key not in table:
+        raise SupportProvenanceError(
+            f"classifier table for {entity!r} lacks key {entity_key!r}"
+        )
+    channel_column = support_channel_column(entity)
+    clone_column = support_clone_index_column(entity)
+    missing = [
+        column for column in (channel_column, clone_column) if column not in table
+    ]
+    if missing:
+        raise SupportProvenanceError(
+            f"classifier table for {entity!r} lacks support lineage {missing!r}"
+        )
+    if table[entity_key].duplicated().any():
+        raise SupportProvenanceError(
+            f"classifier key {entity}.{entity_key} must be unique"
+        )
+    rows = table.set_index(entity_key, drop=False)
+    observed_ids = frozenset(rows.index.tolist())
+    if not added_ids <= observed_ids:
+        raise SupportProvenanceError(
+            f"classifier added ids are absent from {entity!r}: "
+            f"{sorted(map(repr, added_ids - observed_ids))!r}"
+        )
+    native_ids = observed_ids - added_ids
+    if not native_ids:
+        raise SupportProvenanceError(
+            f"classifier for {entity!r} has no native source rows"
+        )
+
+    result: dict[Hashable, CompilerSupportRowClassification] = {}
+    for row_id in added_ids:
+        row = rows.loc[row_id]
+        if isinstance(row, pd.DataFrame):  # pragma: no cover - duplicate check above
+            raise SupportProvenanceError(
+                f"classifier key {entity}.{row_id!r} is not unique"
+            )
+        atom, clone_index = _compiler_row_atom(
+            entity=entity,
+            row_id=row_id,
+            channel=row[channel_column],
+            clone_index=row[clone_column],
+        )
+        sources = _compiler_native_source_candidates(
+            entity=entity,
+            row=row,
+            row_id=row_id,
+            clone_index=clone_index,
+            native_ids=native_ids,
+        )
+        if len(sources) != 1:
+            raise SupportProvenanceError(
+                f"added row {entity}.{row_id!r} must resolve to exactly one "
+                f"native source id; candidates={sorted(map(repr, sources))!r}"
+            )
+        result[row_id] = CompilerSupportRowClassification(
+            atom=atom,
+            source_row_id=next(iter(sources)),
+        )
+    return result
 
 
 def spine_assembly_manifest(

@@ -220,8 +220,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "parity_reference.py",
         "pregnancy.py",
         # Compiler-issued pool capability projections; no population treatment.
+        "pool_artifact_coverage.py",
+        "pool_frame_projection.py",
         "pool_kernel_authority.py",
         "pool_physical_authority.py",
+        "pool_physical_executor.py",
         "pool_runtime_plan.py",
         # Pinned-archive sidecar restore (PAW_TYP); no population treatment.
         "public_assistance_type_source.py",
@@ -3258,6 +3261,15 @@ def test_runtime_population_operators_are_source_spine_blind() -> None:
     )
 
 
+def test_pool_projection_remains_a_scanned_non_owner() -> None:
+    """The compiler codec must delegate provenance rather than gain an exemption."""
+
+    module_name = "pool_frame_projection.py"
+    assert module_name not in _SOURCE_SPINE_PROVENANCE_OWNERS
+    source = (_US_RUNTIME / module_name).read_text()
+    assert not _source_spine_accesses(source)
+
+
 def test_registered_population_operators_do_not_read_any_source_channel() -> None:
     """The migrated operator surface may resolve clone roles, never sources."""
 
@@ -3287,8 +3299,8 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 70, (
-            f"{tool.name} must reach the pinned 70-module runtime graph; "
+        assert len(runtime_graph) == 72, (
+            f"{tool.name} must reach the pinned 72-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

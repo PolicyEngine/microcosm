@@ -668,6 +668,7 @@ version = "0.1.0"
 source = { editable = "packages/microcosm-build" }
 dependencies = [
     { name = "huggingface-hub" },
+    { name = "joblib" },
     { name = "jsonschema" },
     { name = "microcosm-calibrate" },
     { name = "microcosm-fit" },
@@ -704,6 +705,7 @@ requires-dist = [
     { name = "h5py", marker = "extra == 'uk'", specifier = ">=3" },
     { name = "h5py", marker = "extra == 'us'", specifier = ">=3" },
     { name = "huggingface-hub", specifier = ">=0.20" },
+    { name = "joblib", specifier = ">=1.5,<1.6" },
     { name = "jsonschema", specifier = ">=4.23,<5" },
     { name = "microcosm-calibrate", editable = "packages/microcosm-calibrate" },
     { name = "microcosm-data", marker = "extra == 'us'", editable = "packages/microcosm-data" },

@@ -28,6 +28,7 @@ from microcosm.build.spec_engine.f1_certification import (
     F1ProductionEvidence,
     F1RunRequest,
     assert_f1_selector_coverage_contract_current,
+    atomic_write_bytes,
     atomic_write_json,
     compare_f1_cold_build_receipts,
     complete_coverage_evidence,
@@ -110,7 +111,15 @@ def _plan_lock() -> dict[str, object]:
                 "json_pointer_pattern": "/operational",
                 "rule": "operational_excluded",
                 "category": "fixture",
-            }
+            },
+            {
+                # Mirror the compiler-owned production rule already pinned by
+                # current_compiler_ir_abi(); this fixture is not a registry.
+                "artifact_role": "publication_manifest",
+                "json_pointer_pattern": "/publication_run_id",
+                "rule": "operational_excluded",
+                "category": "uuid_nonce",
+            },
         ],
         "resume_predicate": None,
     }
@@ -276,11 +285,13 @@ def _identities(
 def _publication(
     *,
     operational: str,
+    publication_run_id: str = uuid.UUID(int=1).hex,
     primary_status: str = "initialized",
     unsealed_marker: str = "same",
 ) -> dict[str, object]:
     return {
         "operational": operational,
+        "publication_run_id": publication_run_id,
         "unsealed_marker": unsealed_marker,
         "sampling": {"sample_fraction": 0.01, "sample_seed": 578},
         "clone_attachment": {"fraction": 1.0, "seed": 578},
@@ -532,6 +543,7 @@ def _cold_receipt(
         receipt_surfaces={
             "publication_manifest": _publication(
                 operational=f"run-{run_number}",
+                publication_run_id=uuid.UUID(int=run_number).hex,
                 primary_status=primary_status,
                 unsealed_marker=unsealed_marker,
             )
@@ -619,6 +631,65 @@ def test_synthetic_four_receipt_comparator_passes() -> None:
     assert verdict["vector_coverage"]["passed"] is True
     assert verdict["within_mode_determinism"]["passed"] is True
     assert verdict["cross_mode_equality"]["passed"] is True
+
+
+def test_cold_receipt_default_id_is_bound_to_publication_run() -> None:
+    evidence = _production_evidence_fixture()
+    receipt = F1ColdBuildReceipt.create(
+        request=F1RunRequest(
+            sample_fraction=0.01,
+            seed=578,
+            clone_attachment_seed=578,
+        ),
+        production_evidence=evidence,
+    )
+    publication = evidence.receipt_surfaces["publication_manifest"]
+    assert isinstance(publication, dict)
+    assert receipt.certification_run_id == str(
+        uuid.UUID(hex=str(publication["publication_run_id"]))
+    )
+
+
+def test_cold_receipt_refuses_run_id_that_differs_from_publication() -> None:
+    evidence = _production_evidence_fixture()
+    request = F1RunRequest(
+        sample_fraction=0.01,
+        seed=578,
+        clone_attachment_seed=578,
+    )
+    with pytest.raises(ValueError, match="differs from publication_run_id"):
+        F1ColdBuildReceipt.create(
+            request=request,
+            production_evidence=evidence,
+            certification_run_id=str(uuid.UUID(int=2)),
+        )
+
+    receipt = F1ColdBuildReceipt.create(
+        request=request,
+        production_evidence=evidence,
+    )
+    wire = receipt.to_wire()
+    wire["certification_run_id"] = str(uuid.UUID(int=2))
+    with pytest.raises(ValueError, match="differs from publication_run_id"):
+        F1ColdBuildReceipt.from_mapping(wire)
+
+
+def test_atomic_writer_refuses_unowned_deterministic_temporary(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "receipt.json"
+    temporary = tmp_path / ".receipt.json.tmp"
+    temporary.write_bytes(b"foreign")
+
+    with pytest.raises(ValueError, match="atomic temporary path already exists"):
+        atomic_write_bytes(output, b"payload")
+
+    assert not output.exists()
+    assert temporary.read_bytes() == b"foreign"
+    temporary.unlink()
+    atomic_write_bytes(output, b"payload")
+    assert output.read_bytes() == b"payload"
+    assert not temporary.exists()
 
 
 def test_synthetic_within_mode_drift_fails() -> None:

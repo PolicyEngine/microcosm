@@ -23,7 +23,6 @@ import copy
 import pickle
 import re
 from collections.abc import Hashable, Mapping, Sequence
-from numbers import Integral
 from typing import Any
 
 import pandas as pd
@@ -42,10 +41,9 @@ from microcosm.build.spec_engine.scope_algebra import (
     ScopeAlgebraError,
 )
 from microcosm.build.us_runtime.support_provenance import (
-    spine_source_id_column,
-    support_channel_column,
-    support_clone_index_column,
-    support_source_id_column,
+    SupportProvenanceError,
+    compiler_support_row_atoms,
+    resolve_added_support_rows,
 )
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
@@ -232,29 +230,13 @@ def _projection_tables(
     return result
 
 
-def _coerce_clone_index(value: object, *, location: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, Integral):
-        raise FrameProjectionCodecError(f"{location} must be an integer")
-    return int(value)
-
-
-def _row_atom(
+def _checked_row_atom(
     *,
     entity: str,
     row_id: Hashable,
-    channel: object,
-    clone_index: object,
+    atom: str,
     registry: ClosedScopeRegistry,
 ) -> str:
-    if not isinstance(channel, str) or not channel:
-        raise FrameProjectionCodecError(
-            f"row {entity}.{row_id!r} has an invalid support channel"
-        )
-    clone = _coerce_clone_index(
-        clone_index,
-        location=f"row {entity}.{row_id!r} support clone index",
-    )
-    atom = f"origin:{channel}/clone:{clone}"
     if atom not in registry.universe:
         raise FrameProjectionCodecError(
             f"row {entity}.{row_id!r} resolves to atom {atom!r}, outside "
@@ -271,36 +253,22 @@ def _frame_row_atoms(
     for entity in frame.entities:
         table = frame.table(entity)
         key = frame.schema.entity_id_column(entity)
-        channel_column = support_channel_column(entity)
-        clone_column = support_clone_index_column(entity)
-        missing = [
-            column for column in (channel_column, clone_column) if column not in table
-        ]
-        if missing:
-            raise FrameProjectionCodecError(
-                f"entity {entity!r} lacks compiler row-lineage columns "
-                f"{missing!r}"
+        try:
+            derived = compiler_support_row_atoms(
+                table,
+                entity=entity,
+                entity_key=key,
             )
+        except SupportProvenanceError as error:
+            raise FrameProjectionCodecError(str(error)) from error
         rows: dict[Hashable, frozenset[str]] = {}
-        for row_id, channel, clone_index in zip(
-            table[key],
-            table[channel_column],
-            table[clone_column],
-            strict=True,
-        ):
-            try:
-                hash(row_id)
-            except TypeError as error:  # pragma: no cover - Frame validates ids
-                raise FrameProjectionCodecError(
-                    f"entity {entity!r} has an unhashable stable id"
-                ) from error
+        for row_id, atom in derived.items():
             rows[row_id] = frozenset(
                 {
-                    _row_atom(
+                    _checked_row_atom(
                         entity=entity,
                         row_id=row_id,
-                        channel=channel,
-                        clone_index=clone_index,
+                        atom=atom,
                         registry=registry,
                     )
                 }
@@ -496,51 +464,6 @@ def projection_to_frame(
     )
 
 
-def _native_source_candidates(
-    *,
-    entity: str,
-    row: pd.Series,
-    row_id: Hashable,
-    clone_index: int,
-    native_ids: frozenset[Hashable],
-) -> frozenset[Hashable]:
-    explicit: set[Hashable] = set()
-    for column in (
-        support_source_id_column(entity),
-        spine_source_id_column(entity),
-    ):
-        if column not in row.index:
-            continue
-        candidate = row[column]
-        try:
-            if candidate in native_ids:
-                explicit.add(candidate)
-        except TypeError:
-            continue
-    if len(explicit) > 1:
-        raise FrameProjectionCodecError(
-            f"added row {entity}.{row_id!r} has ambiguous explicit source ids "
-            f"{sorted(map(repr, explicit))!r}"
-        )
-    if explicit:
-        return frozenset(explicit)
-
-    if (
-        isinstance(row_id, bool)
-        or not isinstance(row_id, Integral)
-        or clone_index <= 0
-    ):
-        return frozenset()
-    remapped = int(row_id)
-    max_digits = max(1, len(str(abs(remapped))))
-    inferred: set[Hashable] = set()
-    for power in range(1, max_digits + 2):
-        candidate = remapped - clone_index * (10**power)
-        if candidate in native_ids:
-            inferred.add(candidate)
-    return frozenset(inferred)
-
-
 def classify_added_support_rows(
     entity: str,
     table: pd.DataFrame,
@@ -556,70 +479,26 @@ def classify_added_support_rows(
     Ambiguous or missing lineage is refused.
     """
 
-    if not isinstance(entity, str) or not entity:
-        raise FrameProjectionCodecError("classifier entity must be non-empty")
-    if not isinstance(table, pd.DataFrame):
-        raise TypeError("classifier table must be a DataFrame")
-    if entity_key not in table:
-        raise FrameProjectionCodecError(
-            f"classifier table for {entity!r} lacks key {entity_key!r}"
+    try:
+        resolved = resolve_added_support_rows(
+            entity,
+            table,
+            entity_key,
+            added_ids,
         )
-    required = (support_channel_column(entity), support_clone_index_column(entity))
-    missing = [column for column in required if column not in table]
-    if missing:
-        raise FrameProjectionCodecError(
-            f"classifier table for {entity!r} lacks support lineage {missing!r}"
-        )
-    if table[entity_key].duplicated().any():
-        raise FrameProjectionCodecError(
-            f"classifier key {entity}.{entity_key} must be unique"
-        )
-    rows = table.set_index(entity_key, drop=False)
-    observed_ids = frozenset(rows.index.tolist())
-    if not added_ids <= observed_ids:
-        raise FrameProjectionCodecError(
-            f"classifier added ids are absent from {entity!r}: "
-            f"{sorted(map(repr, added_ids - observed_ids))!r}"
-        )
-    native_ids = observed_ids - added_ids
-    if not native_ids:
-        raise FrameProjectionCodecError(
-            f"classifier for {entity!r} has no native source rows"
-        )
-
+    except SupportProvenanceError as error:
+        raise FrameProjectionCodecError(str(error)) from error
     result: dict[Hashable, RowClassification] = {}
-    for row_id in added_ids:
-        row = rows.loc[row_id]
-        if isinstance(row, pd.DataFrame):  # pragma: no cover - duplicate check above
-            raise FrameProjectionCodecError(
-                f"classifier key {entity}.{row_id!r} is not unique"
-            )
-        clone_index = _coerce_clone_index(
-            row[support_clone_index_column(entity)],
-            location=f"row {entity}.{row_id!r} support clone index",
-        )
-        atom = _row_atom(
+    for row_id, lineage in resolved.items():
+        atom = _checked_row_atom(
             entity=entity,
             row_id=row_id,
-            channel=row[support_channel_column(entity)],
-            clone_index=clone_index,
+            atom=lineage.atom,
             registry=registry,
         )
-        sources = _native_source_candidates(
-            entity=entity,
-            row=row,
-            row_id=row_id,
-            clone_index=clone_index,
-            native_ids=native_ids,
-        )
-        if len(sources) != 1:
-            raise FrameProjectionCodecError(
-                f"added row {entity}.{row_id!r} must resolve to exactly one "
-                f"native source id; candidates={sorted(map(repr, sources))!r}"
-            )
         result[row_id] = RowClassification(
             atoms=frozenset({atom}),
-            source_row_id=next(iter(sources)),
+            source_row_id=lineage.source_row_id,
         )
     return result
 
@@ -908,8 +787,6 @@ def _restore_narrow_result_external_surfaces(
     before: Frame,
     narrow: Frame,
     node: CompiledNode,
-    *,
-    metadata: Mapping[str, Any],
 ) -> Frame:
     """Copy unprojected columns onto a validated narrow callback result."""
 
@@ -1038,7 +915,7 @@ def _restore_narrow_result_external_surfaces(
         weights,
         narrow.strata,
         mass_log=narrow.mass_log,
-        metadata=metadata,
+        metadata=narrow.metadata,
     )
 
 
@@ -1084,7 +961,6 @@ def merge_projection_into_frame(
             before_frame,
             legacy_result_frame,
             node,
-            metadata=validated_metadata,
         )
     _validate_external_surfaces(before_frame, merged_result, node)
     _assert_projection_matches_result(projection, merged_result, node)
@@ -1112,5 +988,5 @@ def merge_projection_into_frame(
         weights,
         merged_result.strata,
         mass_log=merged_result.mass_log,
-        metadata=validated_metadata,
+        metadata=merged_result.metadata,
     )

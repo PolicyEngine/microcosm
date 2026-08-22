@@ -1016,7 +1016,7 @@ LEGACY_V1_PRODUCTION_BINDINGS = (
     *_bindings(
         "microcosm.build.us_runtime.puf_support",
         "_attach_clone_arm_to_seeded_sample",
-        ("numpy.random.Generator.choice", "numpy.random.default_rng"),
+        ("stochastic.unresolved.choice", "numpy.random.default_rng"),
         "puf_clone_attachment",
     ),
     *_bindings(
@@ -1169,10 +1169,16 @@ LEGACY_V1_PRODUCTION_BINDINGS = (
         ("numpy.random.Generator.permutation", "numpy.random.default_rng"),
         "adult_care_weighted_prefix_assignment",
     ),
+    _bind(
+        "microcosm.build.us_runtime.adult_care",
+        "derive_us_adult_care_from_manifest",
+        "stochastic.unresolved.permutation",
+        "adult_care_weighted_prefix_assignment",
+    ),
     *_bindings(
         "microcosm.build.us_runtime.puf_capital_gains_tail",
         "_recipient_candidates",
-        ("numpy.random.Generator.random", "numpy.random.default_rng"),
+        ("stochastic.unresolved.random", "numpy.random.default_rng"),
         "capital_gains_tail_random_rank",
     ),
     *_bindings(
@@ -1558,7 +1564,7 @@ LEGACY_V1_PRODUCTION_BINDINGS = (
     ),
     *_bindings(
         "microcosm.fit.qrf",
-        "_draw_target_with_rng",
+        "_qrf_row_quantiles",
         ("numpy.random.Generator.random",),
         *_QRF_ALL_SITE_IDS,
     ),
@@ -1776,19 +1782,9 @@ _NON_DRAW_HASH_CLASSIFICATIONS = (
         "content_identity", "microcosm.build.spec_engine.canonical", "sha256_json"
     ),
     _hash_classification(
-        "source_integrity",
-        "microcosm.build.spec_engine.artifact_collection",
-        "_authenticate_plan_value",
-    ),
-    _hash_classification(
-        "source_integrity",
-        "microcosm.build.spec_engine.artifact_collection",
-        "_cross_authenticate_checkpoint",
-    ),
-    _hash_classification(
         "content_identity",
         "microcosm.build.spec_engine.artifact_collection",
-        "_dtype_descriptor",
+        "_DigestSink.__init__",
     ),
     _hash_classification(
         "source_integrity",
@@ -1798,13 +1794,7 @@ _NON_DRAW_HASH_CLASSIFICATIONS = (
     _hash_classification(
         "content_identity",
         "microcosm.build.spec_engine.artifact_comparison",
-        "_artifact_row",
-    ),
-    _hash_classification(
-        "content_identity",
-        "microcosm.build.spec_engine.artifact_comparison",
-        "_artifact_row",
-        occurrence=1,
+        "ArtifactDigest.from_bytes",
     ),
     _hash_classification(
         "content_identity",

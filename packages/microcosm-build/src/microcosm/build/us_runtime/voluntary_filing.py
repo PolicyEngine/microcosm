@@ -385,7 +385,9 @@ def load_sipp_2023_voluntary_filing_donor(
         delimiter="|",
         usecols=list(SIPP_VOLUNTARY_FILING_SOURCE_COLUMNS),
         chunksize=int(chunksize),
-        low_memory=False,
+        # Keep inference chunk-local for the 3.73 GB, very-wide source. Every
+        # selected non-ID column is normalized with _numeric below.
+        low_memory=True,
     )
     for chunk in reader:
         month = _numeric(chunk["MONTHCODE"])
