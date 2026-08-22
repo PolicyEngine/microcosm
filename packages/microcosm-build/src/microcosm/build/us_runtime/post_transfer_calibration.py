@@ -132,7 +132,6 @@ class PostTransferCalibrationSpec:
     special_constraint: Literal[
         "none",
         "adult_care_qualifying_one_per_tax_unit",
-        "weeks_requires_positive_unemployment_compensation",
     ] = "none"
 
     def __post_init__(self) -> None:
@@ -156,7 +155,6 @@ class PostTransferCalibrationSpec:
         if self.special_constraint not in {
             "none",
             "adult_care_qualifying_one_per_tax_unit",
-            "weeks_requires_positive_unemployment_compensation",
         }:
             raise ValueError(
                 "Unknown post-transfer calibration special constraint "
@@ -177,7 +175,6 @@ def _spec(
     special_constraint: Literal[
         "none",
         "adult_care_qualifying_one_per_tax_unit",
-        "weeks_requires_positive_unemployment_compensation",
     ] = "none",
 ) -> PostTransferCalibrationSpec:
     return PostTransferCalibrationSpec(
@@ -240,7 +237,6 @@ _ORDERED_SPECS = (
         "weeks_unemployed",
         "late_transfer",
         "match_reference",
-        "weeks_requires_positive_unemployment_compensation",
     ),
     _spec(
         "person",

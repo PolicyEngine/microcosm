@@ -106,7 +106,7 @@ models:
         stage: late_transfer
         carrier_mode: match_reference
         negative_leg: byte_exact
-        special_constraint: weeks_requires_positive_unemployment_compensation
+        special_constraint: none
       - entity: person
         family: source_operator_workers_compensation
         target: workers_compensation
@@ -121,7 +121,7 @@ models:
         carrier_mode: match_reference
         negative_leg: byte_exact
         special_constraint: none
-      sha256: ff609afd95d8a1443a5c32b08dc9d444c439d802a77972158c355afc56955332
+      sha256: 8326939889ba4036c191a9ab3347a3eae98527ad79b3abc9e9f98bfc58873aa3
 predictor_sets:
   acs_person_transfer:
     required:

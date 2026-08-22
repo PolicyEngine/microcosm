@@ -1,17 +1,19 @@
 # Battery residual-fixes progress
 
-## Residual FIX packages — 2026-08-22 15:50Z
+## Residual FIX packages — 2026-08-22 22:32Z
 
 ### State
 
-In progress on branch `battery-residual-fixes` from starting revision
-`bb94f789`, stacked on `battery-pkg3-two-part`. This lane owns only the
-post-pkg3 residual FIX candidates named by the owner: adult-care post-
-reconciliation, model-required targeted calibration, Schedule D joint-parent
-reconciliation, and any still-red pkg3-scope SSI or weeks-unemployed incidence
-checks. No pool build, gate/band/ceiling/fold/seed tuning, exclusion change,
-push, certification, or publication is authorized. Earlier sections of this
-journal describe prior pkg3 work and are historical, not current state.
+Implementation and complete five-shard verification are complete on branch
+`battery-residual-fixes`, stacked on `battery-pkg3-two-part`. The only new
+generating change removes a PUF-only unemployment-compensation condition from
+the late ASEC-to-ACS `weeks_unemployed` carrier calibration. The other named
+checks were either already green under pkg3, outside their adjudicated
+criterion, or traced to an upstream owner rather than changed locally. The
+green executable commit remains, followed by the documentation-only final
+report commit. No pool build,
+gate/band/ceiling/fold/seed tuning, exclusion change, push, certification, or
+publication has occurred. Earlier sections of this journal are historical.
 
 ### Done
 
@@ -34,17 +36,54 @@ journal describe prior pkg3 work and are historical, not current state.
   `microcosm-data`, and `microcosm-build` test roots; every command exited
   zero with only established skips and warnings. Repository-wide
   `uv run --no-sync ruff check .` and `git diff --check` also pass.
+- Recomputed the mirror-deduplicated battery universe directly from the
+  SHA-pinned gate artifacts: baseline has 127 unique failures and pkg3 has 114;
+  pkg3's `terminal_gates` and `agreement_gate` are byte-equivalent JSON.
+- Confirmed the two adjudicated adult-care expense checks reached green
+  incidence (`1.024210809`) and insufficient 1% QED support after pkg3's
+  qualifying mutable-carrier selection and mutable-positive amount map. The
+  separately red incapacity flag is not one of those two expense checks.
+- Confirmed unemployment-compensation's assigned positive-amount QED is
+  exactly `0.0`; its sparse carrier-incidence failure is a distinct unassigned
+  criterion. Confirmed Schedule D's assigned joint-parent incidence is green
+  at `1.092661186`; its new QED failure follows still-red PUF-tax parent amount
+  shapes and remains with that lane.
+- Diagnosed SSI without changing a gate or formula: take-up is `true` on every
+  pkg3 row, eligibility is slightly lower on ACS, and the excess appears only
+  after the upstream countable-income test. No SSI-local calibrated surface is
+  authorized by the adjudication.
+- Removed the late weeks/UC coupling from the closed policy, production owner,
+  receipt validators, fixtures, and authored lineage identity. Added an owner-
+  level regression proving zero-UC ACS recipients remain valid mutable weeks
+  carriers while integer donor support and immutable bytes are preserved.
+- Extended the SHA-pinned pkg3 checkpoint replay with historical and current
+  carrier scopes. The current code admits all 34,293 mutable ACS rows rather
+  than only 32 positive-UC rows, produces 2,174 positive rows on integer donor
+  support `1..46`, is not capacity-limited, validates exactly, and predicts an
+  incidence ratio of `1.000668542` rather than `0.031371146`.
+- Ran the focused lineage, kernel, stacked-owner, H5, and publication-validator
+  matrix after the fix; all selected tests and touched-file Ruff checks pass.
+- Ran `uv run --no-sync pytest -q` separately for the complete implementation
+  tree's `microcosm-frame`, `microcosm-fit`, `microcosm-calibrate`,
+  `microcosm-data`, and `microcosm-build` test roots. Every shard exited zero;
+  the build shard reached 100% with one expected skip and only established
+  warnings. Repository-wide `uv run --no-sync ruff check .` and
+  `git diff --check` also pass.
+- Audited host checkpoint reuse. Although pkg3's `assembled` stage is the
+  semantic pre-change cut, the changed policy is hashed into its checkpoint
+  identity and the CLI has no safe stage-import override. `_LANE-NOTES.md`
+  therefore records an exact cold 1% command in a fresh residual namespace;
+  copying or rebinding the pkg3 manifest is explicitly forbidden.
 
 ### Next
 
-1. Commit this startup journal before changing executable code.
-2. Read the adjudication sources and pkg3 evidence, recompute the 114-failure
-   pkg3 universe directly from `pkg3/pool.gates.json`, mirror-deduplicate it,
-   and identify only the named in-scope red checks.
-3. Trace each owned residual to code-cited generating mechanisms; implement
-   the smallest fixes with regressions and green per-commit verification.
-4. Record exact serial-host 1% rerun requests in `_LANE-NOTES.md` and replace
-   `FINAL_REPORT.md` with the completed handoff.
+1. Rerun the documentation-policy guard after recording the green verification
+   result.
+2. Commit the weeks generating fix, regressions, pinned replay, adjudication,
+   and verification record as one coherent green step.
+3. Replace `FINAL_REPORT.md`, close this current progress section, and commit
+   the documentation-only handoff. The serial host owner then queues the
+   recorded guarded 1% rerun; this lane does not run it.
 
 ## Main/F0 calibration-policy merge — 2026-08-22 02:09Z
 

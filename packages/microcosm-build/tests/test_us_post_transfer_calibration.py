@@ -95,6 +95,13 @@ def test_policy_identity_binds_exact_nine_specs_and_its_content_hash() -> None:
         "person/model_required_numeric/unemployment_compensation",
         "person/source_operator_disability_benefits/disability_benefits",
     }
+    weeks_spec = post_transfer_calibration_spec(
+        entity="person",
+        family="source_operator_weeks_unemployed",
+        target="weeks_unemployed",
+    )
+    assert weeks_spec.carrier_mode == "match_reference"
+    assert weeks_spec.special_constraint == "none"
 
 
 def test_kernel_and_validator_reject_caller_constructed_undeclared_spec() -> None:
@@ -144,11 +151,6 @@ def test_kernel_and_validator_reject_caller_constructed_undeclared_spec() -> Non
             entity="person",
             family="adult_care",
             target="pre_subsidy_care_expenses",
-        ),
-        post_transfer_calibration_spec(
-            entity="person",
-            family="source_operator_weeks_unemployed",
-            target="weeks_unemployed",
         ),
     ),
 )

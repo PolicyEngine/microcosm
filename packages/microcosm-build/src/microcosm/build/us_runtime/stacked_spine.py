@@ -4050,24 +4050,6 @@ def _validate_post_transfer_live_output_context(
                 f"{boundary}: live adult-care carriers violate qualifying-person "
                 "or one-carrier-per-tax-unit structure."
             )
-    elif spec.special_constraint == "weeks_requires_positive_unemployment_compensation":
-        positive_weeks = recipient_rows & pd.to_numeric(
-            table[target],
-            errors="raise",
-        ).gt(0.0).to_numpy(dtype=bool)
-        positive_unemployment = (
-            pd.to_numeric(
-                table["unemployment_compensation"],
-                errors="raise",
-            )
-            .gt(0.0)
-            .to_numpy(dtype=bool)
-        )
-        if (positive_weeks & ~positive_unemployment).any():
-            raise ValueError(
-                f"{boundary}: live positive weeks-unemployed carriers lack "
-                "positive unemployment compensation."
-            )
 
 
 def _validate_post_transfer_live_output_binding(
@@ -4884,18 +4866,6 @@ def validate_stacked_post_puf_transfer_receipt(
                         f"{boundary}: adult-care calibration structure evidence "
                         f"is invalid for {target_key!r}."
                     )
-            elif spec.special_constraint == (
-                "weeks_requires_positive_unemployment_compensation"
-            ) and (
-                constraint.get("positive_unemployment_mutable_rows")
-                != calibration_scope.get("allowed_carrier_rows")
-                or calibration_scope.get("allowed_carrier_rows")
-                != calibration_scope.get("addition_candidate_rows")
-            ):
-                raise ValueError(
-                    f"{boundary}: weeks-unemployed calibration constraint "
-                    f"evidence is invalid for {target_key!r}."
-                )
             if frame is not None:
                 _validate_post_transfer_live_output_context(
                     frame,
@@ -8992,21 +8962,6 @@ def _apply_stacked_post_transfer_calibrations(
                     ),
                 }
             )
-        elif (
-            spec.special_constraint
-            == "weeks_requires_positive_unemployment_compensation"
-        ):
-            person = current.table("person")
-            unemployment = pd.to_numeric(
-                person["unemployment_compensation"],
-                errors="raise",
-            )
-            allowed_rows = mutable_rows & unemployment.gt(0.0)
-            addition_rows = allowed_rows.copy()
-            constraint_receipt["positive_unemployment_mutable_rows"] = int(
-                allowed_rows.sum()
-            )
-
         reference_mask = reference_rows.to_numpy(dtype=bool)
         recipient_mask = recipient_rows.to_numpy(dtype=bool)
         mutable_mask = mutable_rows.to_numpy(dtype=bool)

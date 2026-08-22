@@ -542,8 +542,6 @@ def _canonical_late_calibration_owner_receipt(
                 ],
             }
         )
-    elif spec.special_constraint == "weeks_requires_positive_unemployment_compensation":
-        constraint["positive_unemployment_mutable_rows"] = scope["allowed_carrier_rows"]
     owner: dict[str, object] = {
         "stage": "late_transfer",
         "reference_selection": "asec_origin_clone_0",

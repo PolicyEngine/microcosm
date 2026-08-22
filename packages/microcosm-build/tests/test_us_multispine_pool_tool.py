@@ -963,13 +963,6 @@ def _canonical_late_calibration_owner_receipt(
                     ],
                 }
             )
-        elif (
-            spec.special_constraint
-            == "weeks_requires_positive_unemployment_compensation"
-        ):
-            constraint["positive_unemployment_mutable_rows"] = scope[
-                "allowed_carrier_rows"
-            ]
         owner: dict[str, object] = {
             "stage": "late_transfer",
             "reference_selection": "asec_origin_clone_0",
@@ -1030,8 +1023,6 @@ def _canonical_late_calibration_owner_receipt(
                 ],
             }
         )
-    elif spec.special_constraint == "weeks_requires_positive_unemployment_compensation":
-        constraint["positive_unemployment_mutable_rows"] = scope["allowed_carrier_rows"]
     owner: dict[str, object] = {
         "stage": "late_transfer",
         "reference_selection": "asec_origin_clone_0",
@@ -2308,29 +2299,8 @@ def test_late_transfer_validator_rejects_stripped_calibration_evidence(
         )
 
 
-@pytest.mark.parametrize(
-    ("target", "constraint_column", "replacement", "error_match"),
-    (
-        (
-            "weeks_unemployed",
-            "unemployment_compensation",
-            0.0,
-            "positive weeks-unemployed carriers lack positive unemployment",
-        ),
-        (
-            "pre_subsidy_care_expenses",
-            "is_incapable_of_self_care",
-            False,
-            "live adult-care carriers violate qualifying-person",
-        ),
-    ),
-)
-def test_late_transfer_validator_recomputes_live_coupled_constraints(
+def test_late_transfer_validator_recomputes_live_adult_care_constraint(
     pool_tool: ModuleType,
-    target: str,
-    constraint_column: str,
-    replacement: object,
-    error_match: str,
 ) -> None:
     frame, impute, _transition = _authorized_late_impute_fixture(
         pool_tool,
@@ -2345,9 +2315,11 @@ def test_late_transfer_validator_recomputes_live_coupled_constraints(
     tables = {entity: frame.table(entity).copy(deep=True) for entity in frame.entities}
     person = tables["person"]
     recipient = person[support_channel_column("person")].astype(str).eq("acs")
-    carrier = recipient & pd.to_numeric(person[target], errors="raise").gt(0.0)
+    carrier = recipient & pd.to_numeric(
+        person["pre_subsidy_care_expenses"], errors="raise"
+    ).gt(0.0)
     assert carrier.any()
-    person.loc[person.index[carrier][0], constraint_column] = replacement
+    person.loc[person.index[carrier][0], "is_incapable_of_self_care"] = False
     tables.update({name: frame.link(name) for name in frame.links})
     corrupted = Frame(
         tables,
@@ -2358,7 +2330,10 @@ def test_late_transfer_validator_recomputes_live_coupled_constraints(
         metadata=frame.metadata,
     )
 
-    with pytest.raises(ValueError, match=error_match):
+    with pytest.raises(
+        ValueError,
+        match="live adult-care carriers violate qualifying-person",
+    ):
         stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
             receipt,
             boundary="live coupled-constraint mutation",

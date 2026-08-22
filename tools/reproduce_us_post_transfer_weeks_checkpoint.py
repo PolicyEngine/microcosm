@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+from typing import Literal
 
 import h5py
 import numpy as np
@@ -55,6 +56,10 @@ _EXPECTED_ERROR = (
 _EXPECTED_INVALID_CANDIDATE_MASS = 85_676.23791782455
 _EXPECTED_PREFIX_MASS = 85_676.23791782456
 _EXPECTED_VALID_MAXIMUM_MASS = 85_676.23791782453
+_EXPECTED_CURRENT_AFTER_POSITIVE_MASS = 2_732_878.0869445894
+_EXPECTED_CURRENT_AFTER_POSITIVE_ROWS = 2_174
+_EXPECTED_CURRENT_INCIDENCE_RATIO = 1.0006685423998691
+_EXPECTED_CURRENT_MAXIMUM_MASS = 79_926_522.10879111
 
 
 def _parse_args() -> argparse.Namespace:
@@ -70,6 +75,15 @@ def _parse_args() -> argparse.Namespace:
         required=True,
         choices=("invalid", "valid"),
         help="Assert the current kernel either reproduces or fixes the receipt.",
+    )
+    parser.add_argument(
+        "--carrier-scope",
+        choices=("legacy-positive-unemployment", "current-mutable"),
+        default="legacy-positive-unemployment",
+        help=(
+            "Replay the historical pkg3 carrier mask or the current late-transfer "
+            "owner's ordinary mutable-recipient scope."
+        ),
     )
     return parser.parse_args()
 
@@ -115,7 +129,14 @@ def _load_target_draw(
     return raw_bits.view("<f8").astype(np.float64, copy=True)
 
 
-def replay_checkpoint(checkpoint_stage_root: Path) -> dict[str, object]:
+def replay_checkpoint(
+    checkpoint_stage_root: Path,
+    *,
+    carrier_scope: Literal[
+        "legacy-positive-unemployment",
+        "current-mutable",
+    ] = "legacy-positive-unemployment",
+) -> dict[str, object]:
     """Return the exact capacity evidence and validator outcome for the replay."""
 
     stage_root = checkpoint_stage_root.resolve()
@@ -161,7 +182,12 @@ def replay_checkpoint(checkpoint_stage_root: Path) -> dict[str, object]:
         np.float64
     )
     mutable = recipient & np.isfinite(values)
-    allowed = mutable & (unemployment > 0.0)
+    positive_unemployment = mutable & (unemployment > 0.0)
+    allowed = (
+        positive_unemployment
+        if carrier_scope == "legacy-positive-unemployment"
+        else mutable
+    )
     weights = (
         np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
         / _FULL_POOL_CLONE_COUNT
@@ -172,6 +198,7 @@ def replay_checkpoint(checkpoint_stage_root: Path) -> dict[str, object]:
         "reference_rows": int(reference.sum()),
         "recipient_rows": int(recipient.sum()),
         "mutable_rows": int(mutable.sum()),
+        "positive_unemployment_mutable_rows": int(positive_unemployment.sum()),
         "allowed_addition_rows": int(allowed.sum()),
         "reference_positive_rows": int((reference & (values > 0.0)).sum()),
         "recipient_positive_rows_before": int((recipient & (values > 0.0)).sum()),
@@ -179,14 +206,23 @@ def replay_checkpoint(checkpoint_stage_root: Path) -> dict[str, object]:
             (recipient & (values > 0.0) & ~allowed).sum()
         ),
     }
-    expected_counts = {
+    expected_counts: dict[str, int] = {
         "reference_rows": _EXPECTED_REFERENCE_ROWS,
         "recipient_rows": _EXPECTED_RECIPIENT_ROWS,
         "mutable_rows": _EXPECTED_RECIPIENT_ROWS,
-        "allowed_addition_rows": _EXPECTED_ALLOWED_ROWS,
+        "positive_unemployment_mutable_rows": _EXPECTED_ALLOWED_ROWS,
+        "allowed_addition_rows": (
+            _EXPECTED_ALLOWED_ROWS
+            if carrier_scope == "legacy-positive-unemployment"
+            else _EXPECTED_RECIPIENT_ROWS
+        ),
         "reference_positive_rows": _EXPECTED_REFERENCE_POSITIVE_ROWS,
         "recipient_positive_rows_before": _EXPECTED_RECIPIENT_POSITIVE_ROWS,
-        "disallowed_positive_rows_before": _EXPECTED_RECIPIENT_POSITIVE_ROWS,
+        "disallowed_positive_rows_before": (
+            _EXPECTED_RECIPIENT_POSITIVE_ROWS
+            if carrier_scope == "legacy-positive-unemployment"
+            else 0
+        ),
     }
     if observed_counts != expected_counts:
         raise ValueError(
@@ -196,6 +232,14 @@ def replay_checkpoint(checkpoint_stage_root: Path) -> dict[str, object]:
     spec = post_transfer_calibration_spec_for_target(
         entity="person", target="weeks_unemployed"
     )
+    scope_kwargs = (
+        {
+            "allowed_carrier_rows": allowed,
+            "addition_candidate_rows": allowed,
+        }
+        if carrier_scope == "legacy-positive-unemployment"
+        else {}
+    )
     result = calibrate_post_transfer_values(
         values,
         weights,
@@ -204,8 +248,7 @@ def replay_checkpoint(checkpoint_stage_root: Path) -> dict[str, object]:
         reference_rows=reference,
         recipient_rows=recipient,
         mutable_rows=mutable,
-        allowed_carrier_rows=allowed,
-        addition_candidate_rows=allowed,
+        **scope_kwargs,
     )
     carrier = result.receipt["carrier"]
     capacity = carrier["capacity"]
@@ -230,7 +273,10 @@ def replay_checkpoint(checkpoint_stage_root: Path) -> dict[str, object]:
         if validation_error != _EXPECTED_ERROR:
             raise
 
+    recipient_positive_values = result.values[recipient & (result.values > 0.0)]
+
     return {
+        "carrier_scope": carrier_scope,
         "artifact_sha256": {
             "assembled": _ASSEMBLED_SHA256,
             "unemployment_compensation": _UC_FILE_SHA256,
@@ -242,6 +288,26 @@ def replay_checkpoint(checkpoint_stage_root: Path) -> dict[str, object]:
         "target_positive_mass": carrier["target_positive_mass"],
         "before_positive_mass": carrier["before_positive_mass"],
         "after_positive_mass": carrier["after_positive_mass"],
+        "after_positive_rows": int((recipient & (result.values > 0.0)).sum()),
+        "recipient_positive_support": {
+            "minimum": float(recipient_positive_values.min()),
+            "maximum": float(recipient_positive_values.max()),
+            "noninteger_rows": int(
+                np.count_nonzero(
+                    recipient_positive_values != np.floor(recipient_positive_values)
+                )
+            ),
+            "donor_support_violations": result.receipt["amount"][
+                "donor_support_violations"
+            ],
+        },
+        "reference_positive_share": carrier["reference_positive_share"],
+        "after_positive_share": carrier["after_positive_share"],
+        "incidence_ratio_acs_over_asec": (
+            float(carrier["after_positive_share"])
+            / float(carrier["reference_positive_share"])
+        ),
+        "capacity_limited": carrier["capacity_limited"],
         "addition_candidate_mass": candidate_mass,
         "maximum_attainable_mass": capacity["maximum_attainable_mass"],
         "selected_prefix_mass": selection["selected_mass"],
@@ -256,13 +322,43 @@ def replay_checkpoint(checkpoint_stage_root: Path) -> dict[str, object]:
 
 def main() -> int:
     args = _parse_args()
-    replay = replay_checkpoint(args.checkpoint_stage_root)
+    replay = replay_checkpoint(
+        args.checkpoint_stage_root,
+        carrier_scope=args.carrier_scope,
+    )
     print(json.dumps(replay, indent=2, sort_keys=True, allow_nan=False))
     observed = "valid" if replay["receipt_valid"] else "invalid"
     if observed != args.expect:
         raise SystemExit(
             f"Expected {args.expect} receipt, but replay produced {observed}."
         )
+    if args.carrier_scope == "current-mutable":
+        if (
+            args.expect != "valid"
+            or replay["failed_relationships"]
+            or replay["validation_error"] is not None
+            or replay["capacity_limited"] is not False
+            or replay["counts"]["allowed_addition_rows"] != _EXPECTED_RECIPIENT_ROWS
+            or replay["counts"]["positive_unemployment_mutable_rows"]
+            != _EXPECTED_ALLOWED_ROWS
+            or replay["after_positive_mass"] != _EXPECTED_CURRENT_AFTER_POSITIVE_MASS
+            or replay["after_positive_rows"] != _EXPECTED_CURRENT_AFTER_POSITIVE_ROWS
+            or replay["incidence_ratio_acs_over_asec"]
+            != _EXPECTED_CURRENT_INCIDENCE_RATIO
+            or replay["maximum_attainable_mass"] != _EXPECTED_CURRENT_MAXIMUM_MASS
+            or replay["recipient_positive_support"]["noninteger_rows"] != 0
+            or replay["recipient_positive_support"]["donor_support_violations"] != 0
+            or not (
+                0.0
+                < replay["recipient_positive_support"]["minimum"]
+                <= replay["recipient_positive_support"]["maximum"]
+                <= 52.0
+            )
+        ):
+            raise SystemExit(
+                "Current-scope replay no longer matches the mutable-recipient repair."
+            )
+        return 0
     if args.expect == "invalid" and (
         replay["failed_relationships"]
         != ["upper_prefix_mass <= addition_candidate_mass"]

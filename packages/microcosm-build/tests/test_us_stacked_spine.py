@@ -5480,14 +5480,6 @@ def _run_real_late_executor_fixture(
                 )
                 allowed_rows = allowed_series.to_numpy(dtype=bool)
                 addition_rows = addition_series.to_numpy(dtype=bool)
-            elif spec.special_constraint == (
-                "weeks_requires_positive_unemployment_compensation"
-            ):
-                allowed_rows = live_recipient & pd.to_numeric(
-                    live_table["unemployment_compensation"],
-                    errors="raise",
-                ).gt(0.0).to_numpy(dtype=bool)
-                addition_rows = allowed_rows.copy()
             application = (
                 post_transfer_calibration_runtime.apply_post_transfer_calibration(
                     frame,
@@ -5514,12 +5506,6 @@ def _run_real_late_executor_fixture(
                         ],
                     }
                 )
-            elif spec.special_constraint == (
-                "weeks_requires_positive_unemployment_compensation"
-            ):
-                constraint["positive_unemployment_mutable_rows"] = scope[
-                    "allowed_carrier_rows"
-                ]
             owner: dict[str, object] = {
                 "stage": "late_transfer",
                 "reference_selection": "asec_origin_clone_0",
@@ -6376,6 +6362,80 @@ def test_late_calibration_owner_mutates_only_acs_clone_zero_transfer_cells() -> 
     assert receipt["recipient_rows"] == int(recipient_rows.sum())
     assert receipt["mutable_rows"] == int(recipient_rows.sum())
     assert receipt["calibration"]["invariants"]["immutable_bytes_preserved"]
+
+
+def test_weeks_late_calibration_does_not_require_unemployment_carriers() -> None:
+    frame = _post_puf_transfer_fixture()
+    person = frame.table("person").copy(deep=True)
+    channel = person[support_channel_column("person")].astype(str)
+    clone_index = pd.to_numeric(
+        person[support_clone_index_column("person")],
+        errors="raise",
+    )
+    reference_rows = channel.eq("asec") & clone_index.eq(0)
+    recipient_rows = channel.eq("acs") & clone_index.eq(0)
+    target = "weeks_unemployed"
+
+    person["unemployment_compensation"] = 0.0
+    person[target] = 0.0
+    person.loc[reference_rows, target] = 12.0
+    transferred_person = person.copy(deep=True)
+    before_person = transferred_person.copy(deep=True)
+    before_person.loc[recipient_rows, target] = np.nan
+
+    def rebuild(person_table: pd.DataFrame) -> Frame:
+        tables = {entity: frame.table(entity) for entity in frame.entities}
+        tables["person"] = person_table
+        return Frame(
+            tables,
+            frame.schema,
+            {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+            frame.strata,
+            mass_log=frame.mass_log,
+            metadata=frame.metadata,
+        )
+
+    calibrated, receipts = (
+        stacked_spine_module._apply_stacked_post_transfer_calibrations(
+            rebuild(before_person),
+            rebuild(transferred_person),
+            target_families={
+                "person": {
+                    "source_operator_weeks_unemployed": (target,),
+                }
+            },
+            stage="late_transfer",
+        )
+    )
+
+    calibrated_person = calibrated.table("person")
+    pd.testing.assert_series_equal(
+        calibrated_person.loc[~recipient_rows, target],
+        transferred_person.loc[~recipient_rows, target],
+        check_exact=True,
+    )
+    recipient_values = calibrated_person.loc[recipient_rows, target].to_numpy(
+        dtype=np.float64
+    )
+    assert (recipient_values > 0.0).all()
+    assert (recipient_values == np.floor(recipient_values)).all()
+    assert set(recipient_values) == {12.0}
+    assert (
+        calibrated_person.loc[recipient_rows, "unemployment_compensation"].eq(0.0).all()
+    )
+
+    receipt = receipts[f"person/source_operator_weeks_unemployed/{target}"]
+    calibration = receipt["calibration"]
+    scope = calibration["scope"]
+    carrier = calibration["carrier"]
+    assert receipt["constraint"] == {"constraint": "none"}
+    assert scope["allowed_carrier_rows_mode"] == "default_mutable"
+    assert scope["addition_candidate_rows_mode"] == "default_allowed"
+    assert scope["allowed_carrier_rows"] == int(recipient_rows.sum())
+    assert scope["addition_candidate_rows"] == int(recipient_rows.sum())
+    assert carrier["capacity_limited"] is False
+    assert carrier["after_positive_share"] == carrier["reference_positive_share"] == 1.0
+    assert calibration["invariants"]["immutable_bytes_preserved"] is True
 
 
 @pytest.mark.parametrize(
