@@ -212,7 +212,7 @@ def _source_stage_base_candidate_tier(
     source_manifest: str,
     *,
     stage_name: str,
-) -> str:
+) -> str | None:
     payload = _resource_payload(source_manifest)
     stages = payload.get("stages")
     if not isinstance(stages, list):
@@ -228,6 +228,8 @@ def _source_stage_base_candidate_tier(
         )
     base_candidate = matching[0].get("base_candidate")
     if not isinstance(base_candidate, Mapping):
+        if source_manifest == "source_stages.json":
+            return None
         raise ValueError(
             f"{source_manifest}: stage {stage_name!r} needs base_candidate."
         )
@@ -308,6 +310,17 @@ def _parse_family_coverage(
                 f"{resource}: family {name!r} needs a reviewed "
                 "required_mass_change_reason."
             )
+        mass_change_semantics = str(
+            raw_family.get("mass_change_semantics", "mass_conserving")
+        ).strip()
+        if mass_change_semantics not in {
+            "mass_conserving",
+            "mass_increasing_support",
+        }:
+            raise ValueError(
+                f"{resource}: family {name!r} has invalid "
+                f"mass_change_semantics {mass_change_semantics!r}."
+            )
 
         raw_requirements = raw_family.get("effective_mass_requirements", {})
         if not isinstance(raw_requirements, Mapping):
@@ -371,6 +384,7 @@ def _parse_family_coverage(
             "base_candidate_tier": base_candidate_tier,
             "output_weight_kind": output_weight_kind,
             "required_mass_change_reason": required_mass_change_reason,
+            "mass_change_semantics": mass_change_semantics,
             "effective_mass_requirements": requirements,
         }
     return families
@@ -931,20 +945,27 @@ def _family_build_state_diagnostics(
 
         required_reason = str(family.get("required_mass_change_reason", "")).strip()
         if required_reason:
+            semantics = str(family.get("mass_change_semantics", "mass_conserving"))
             records = tuple(getattr(frame, "mass_log", ()))
             matches = [
                 record
                 for record in records
                 if _mass_record_field(record, "reason") == required_reason
             ]
-            valid_matches = [record for record in matches if _valid_mass_record(record)]
+            valid_matches = [
+                record
+                for record in matches
+                if _valid_mass_record(record, semantics=semantics)
+            ]
             details["required_mass_change_reason"] = required_reason
+            details["mass_change_semantics"] = semantics
             details["matching_mass_change_records"] = len(matches)
             details["valid_mass_change_records"] = len(valid_matches)
             if not valid_matches:
                 failures.append(
                     f"{family_name}: final dataset lacks the reviewed, "
-                    "mass-conserving household MassChangeRecord carrying its "
+                    f"{semantics.replace('_', '-')} household MassChangeRecord "
+                    "carrying its "
                     f"declared reason: {required_reason!r}."
                 )
 
@@ -958,24 +979,30 @@ def _mass_record_field(record: object, name: str) -> object:
     return getattr(record, name, None)
 
 
-def _valid_mass_record(record: object) -> bool:
+def _valid_mass_record(record: object, *, semantics: str) -> bool:
     old_total = _mass_record_field(record, "old_total")
     new_total = _mass_record_field(record, "new_total")
     declared_factor = _mass_record_field(record, "declared_factor")
     try:
         old = float(old_total)
         new = float(new_total)
-        factor = float(declared_factor)
     except (TypeError, ValueError):
         return False
-    return bool(
+    common = bool(
         _mass_record_field(record, "entity") == "household"
         and np.isfinite(old)
         and old > 0.0
         and np.isfinite(new)
-        and np.isclose(old, new, rtol=1e-9, atol=0.0)
-        and factor == 1.0
     )
+    if not common:
+        return False
+    if semantics == "mass_increasing_support":
+        return bool(new > old and declared_factor is None)
+    try:
+        factor = float(declared_factor)
+    except (TypeError, ValueError):
+        return False
+    return bool(np.isclose(old, new, rtol=1e-9, atol=0.0) and factor == 1.0)
 
 
 def uk_release_input_coverage_gate(

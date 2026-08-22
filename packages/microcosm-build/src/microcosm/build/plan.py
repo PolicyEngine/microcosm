@@ -71,6 +71,8 @@ class Stage:
             happens inside and any failure aborts the build.
         produces: Columns the stage must add (validated after the
             transform). Empty is allowed for assert/report-only stages.
+        rewrites: Declared outputs that may have an earlier canonical producer
+            and are intentionally replaced by this stage.
         consumes: Columns that must exist (on any entity) before the stage
             runs.
         donor: The donor survey, when the stage imputes. ``None`` for
@@ -80,6 +82,7 @@ class Stage:
     name: str
     transform: Callable[[Frame], Frame]
     produces: tuple[str, ...] = ()
+    rewrites: tuple[str, ...] = ()
     consumes: tuple[str, ...] = ()
     donor: DonorSpec | None = None
 
@@ -143,12 +146,15 @@ class StagePlan:
             names.add(stage.name)
             for column in stage.produces:
                 if column in producers:
-                    raise ValueError(
-                        f"Column {column!r} is declared by two stages "
-                        f"({producers[column]!r} and {stage.name!r}); every "
-                        "column has one canonical producer."
-                    )
-                producers[column] = stage.name
+                    if column not in stage.rewrites:
+                        raise ValueError(
+                            f"Column {column!r} is declared by two stages "
+                            f"({producers[column]!r} and {stage.name!r}); every "
+                            "column has one canonical producer unless a later "
+                            "stage explicitly declares it as a rewrite."
+                        )
+                else:
+                    producers[column] = stage.name
         self._stages = materialized
 
     @property

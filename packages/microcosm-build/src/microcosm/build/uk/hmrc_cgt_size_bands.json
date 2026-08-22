@@ -1,0 +1,111 @@
+{
+  "version": 1,
+  "country": "uk",
+  "source": {
+    "citation": "HMRC, Capital Gains Tax statistics, Table 2.1a: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain, individuals, 2023 to 2024 (provisional).",
+    "collection_url": "https://www.gov.uk/government/statistics/capital-gains-tax-statistics",
+    "url": "https://assets.publishing.service.gov.uk/media/6878ac562bad77c3dae4dcef/Table_2_2025_Size_of_gain.ods",
+    "artifact": "Table_2_2025_Size_of_gain.ods",
+    "sheet": "2_1a_2023-24",
+    "published": "2025-07-24",
+    "ods_sha256": "696456114f408edd84c004fbe6175d918c5a511b6aaa7a53a95ca8936db22491",
+    "ods_size_bytes": 10658,
+    "ods_retrieved": "2026-08-21",
+    "ods_content_check": "Sheet 2_1a_2023-24 present; taxpayer (79/74/53 thousand) and gains (1418/2645/22714 GBP million) cell values match the committed extraction.",
+    "extracted_csv_sha256": "97e6bfc60d35eec230a62f4412e3adc034f58c46b3699570415a547f59628ecb",
+    "mapped_build_period": "2024",
+    "period_mapping": "latest_published_tax_year",
+    "units": {
+      "taxpayers_thousands": "thousand taxpayers",
+      "gains_gbp_millions": "GBP million",
+      "tax_gbp_millions": "GBP million"
+    },
+    "definition_note": "Published figures include only taxpayers with a CGT liability; they are narrower than all people with positive gains or gains above the annual exempt amount."
+  },
+  "rows": [
+    {
+      "lower_limit": 0,
+      "taxpayers_thousands": 2,
+      "gains_gbp_millions": 1,
+      "tax_gbp_millions": 9
+    },
+    {
+      "lower_limit": 3000,
+      "taxpayers_thousands": 0,
+      "gains_gbp_millions": 1,
+      "tax_gbp_millions": 0
+    },
+    {
+      "lower_limit": 6000,
+      "taxpayers_thousands": 61,
+      "gains_gbp_millions": 461,
+      "tax_gbp_millions": 18
+    },
+    {
+      "lower_limit": 10000,
+      "taxpayers_thousands": 23,
+      "gains_gbp_millions": 251,
+      "tax_gbp_millions": 20
+    },
+    {
+      "lower_limit": 12300,
+      "taxpayers_thousands": 79,
+      "gains_gbp_millions": 1418,
+      "tax_gbp_millions": 169
+    },
+    {
+      "lower_limit": 25000,
+      "taxpayers_thousands": 74,
+      "gains_gbp_millions": 2645,
+      "tax_gbp_millions": 423
+    },
+    {
+      "lower_limit": 50000,
+      "taxpayers_thousands": 53,
+      "gains_gbp_millions": 3731,
+      "tax_gbp_millions": 706
+    },
+    {
+      "lower_limit": 100000,
+      "taxpayers_thousands": 37,
+      "gains_gbp_millions": 5649,
+      "tax_gbp_millions": 1077
+    },
+    {
+      "lower_limit": 250000,
+      "taxpayers_thousands": 14,
+      "gains_gbp_millions": 4766,
+      "tax_gbp_millions": 826
+    },
+    {
+      "lower_limit": 500000,
+      "taxpayers_thousands": 8,
+      "gains_gbp_millions": 5705,
+      "tax_gbp_millions": 895
+    },
+    {
+      "lower_limit": 1000000,
+      "taxpayers_thousands": 5,
+      "gains_gbp_millions": 6390,
+      "tax_gbp_millions": 1067
+    },
+    {
+      "lower_limit": 2000000,
+      "taxpayers_thousands": 3,
+      "gains_gbp_millions": 9189,
+      "tax_gbp_millions": 1718
+    },
+    {
+      "lower_limit": 5000000,
+      "taxpayers_thousands": 2,
+      "gains_gbp_millions": 22714,
+      "tax_gbp_millions": 4532
+    }
+  ],
+  "retained_band_checksums": {
+    "minimum_lower_limit": 12300,
+    "band_count": 9,
+    "taxpayers": 275000,
+    "gains_gbp": 62207000000
+  }
+}

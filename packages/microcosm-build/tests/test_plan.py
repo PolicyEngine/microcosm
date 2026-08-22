@@ -56,6 +56,25 @@ class TestPlanValidation:
                 ]
             )
 
+    def test_explicit_rewrite_may_follow_canonical_producer(self) -> None:
+        plan = StagePlan(
+            [
+                Stage(
+                    name="produce",
+                    transform=lambda frame: frame,
+                    produces=("net_worth",),
+                ),
+                Stage(
+                    name="rewrite",
+                    transform=lambda frame: frame,
+                    produces=("net_worth",),
+                    rewrites=("net_worth",),
+                ),
+            ]
+        )
+
+        assert [stage.name for stage in plan.stages] == ["produce", "rewrite"]
+
     def test_empty_donor_fields_refused(self) -> None:
         with pytest.raises(ValueError, match="source citation is required"):
             DonorSpec(survey="SCF", source="")
