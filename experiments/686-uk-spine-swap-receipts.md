@@ -325,6 +325,99 @@ depends on:
   swap-acceptance behaviour — a register entry that matches nothing is either
   stale or the run is incomplete, and both deserve to stop the swap.
 
+---
+
+## R3 — the spine, rebuilt; and the L2 adjudication queue
+
+### L0 ladder
+
+Built from the raw licensed tabs on this branch (re-pin + water fix), FRS
+2024-25, all 24 stages, every attempt landing a Logbook row with disposition
+`iterating`:
+
+| rung | households (post-stack) | verdict |
+|---|---|---|
+| smoke `f001` | 794 | built clean |
+| dev `f010` | 5,526 | built clean |
+| full `1.0` (twin A) | 52,846 | built clean |
+
+**The record-count identity closes exactly at full scale:**
+(16,288 raw FRS + 10,000 SPI) × 2 capital-gains clone + 270 CGT band donors
+= **52,846** households, matching the pinned incumbent to the row.
+Persons 113,649 and benefit units 61,211 against the incumbent's 113,617 and
+61,223 — the standing E8 donor-composition outcome, unchanged by this rebuild.
+
+The Scottish water fix reproduces at every scale: the `frs_spine` share is
+`0.8783767190569745` in all three builds (it is measured before sampling, so
+the rungs agree by construction), and the weighted Scottish charge lands at
+£390.80 / £375.08 / £405.34 across smoke / dev / full against roughly £185
+under the retired mapping.
+
+### Parity against the re-pinned reference
+
+`verify_uk_spine_parity.py` over the full twin-A extraction (144 candidate
+input layers): 142 columns compared, 113 differing, 3 missing, 2 extra,
+**26 beyond ±0.02**. For comparison the #723 screen found 27 beyond the band
+against the 1.56.14 reference, which is the predicted outcome of a re-pin
+where no reference share moved by more than 0.0046.
+
+### Attribution — and a correction to how it is done
+
+Divergences are attributed to **the stage whose values survive**, which is the
+last stage to either produce *or rewrite* the column. Attributing by producing
+stage alone is wrong and produces false findings: `savings_interest_income`
+and `tax_free_savings_income` both originate in `frs_spine` and are then
+rewritten by `hmrc_spi_income_spine`, so a naive attribution reports them as
+raw-mapping divergences outside every signed class — the same signature that
+made the water defect real. They are E7, not new findings. The distinction
+matters precisely because the raw-mapping signature is the one that indicates
+a genuine defect rather than a method difference.
+
+With rewrites folded in, **every beyond-band divergence falls in an
+established class**, and the only raw-mapping one is already signed:
+
+| class | count | columns |
+|---|---|---|
+| E6 consumption | 15 | bus_subsidy_spending, dfe_education_spending, restaurants_and_hotels, petrol, education, household_furnishings, electricity, miscellaneous, communication, alcohol_and_tobacco, gas, domestic_energy, diesel, transport, health |
+| E5 wealth QRF | 6 | savings, property_wealth, corporate_wealth, other_residential_property_value, main_residence_value, student_loan_balance |
+| E7 SPI channel | 3 | tax_free_savings_income, employer_pension_contributions, savings_interest_income |
+| E8 CGT/salsac/loans | 1 | employee_pension_contributions |
+| E2 raw FRS mapping | 1 | water_and_sewerage_charges — **signed** |
+
+Zero divergent columns are unattributable to a stage.
+
+### The queue — pending María's adjudication
+
+The parity verdict is `defect` by construction: the register holds only the two
+water adjudications, so all 119 remaining differences are unsigned. That is the
+correct starting state, not a failure. Each of the following needs a ruling
+before it becomes a register entry; none should be transcribed on its prose
+classification alone.
+
+1. **E6 consumption, 15 columns.** The largest deltas in the whole screen
+   (bus_subsidy +0.238, dfe_education +0.225). The E6 acceptance established
+   ours is donor-faithful and the incumbent collapses zero-inflated targets;
+   if that stands, one class entry scoped to these 15 covers them.
+2. **E5 wealth QRF, 6 columns.** The standing correlated-rank-draw difference.
+   `owned_land` is *not* among them — worth noting given its exclusion expires
+   2026-09-20.
+3. **E7 SPI channel, 3 columns.** The U14 QRF-surface class at ~38% synthetic
+   composition, carried from #717 and still pending adjudication there.
+4. **E8, 1 column** — `employee_pension_contributions`, the signed
+   conversion-depth difference from #684.
+5. **Entity counts.** Persons +32, benefit units −12. Signed at E8 as a
+   donor-selection RNG outcome; needs an `entity_counts` register entry, which
+   is the one surface where a surface-wide entry is legitimate.
+6. **Missing, 3 columns** — `free_school_meals`, `free_school_fruit_veg`,
+   `healthy_start_vouchers`: the E9 derived-benefit family. This is a genuine
+   coverage gap rather than a method difference, and it is the one item here
+   that may argue against swapping rather than for signing.
+7. **Extra, 2 columns** — `num_bedrooms` (`frs_spine`) and
+   `other_investment_income` (`hmrc_spi_income_spine`). Net-new columns the
+   incumbent does not populate; `other_investment_income` is declared by the
+   incumbent's own national restoration, so the spine is ahead of the pinned
+   artifact rather than behind it.
+
 ### Carried consequence
 
 The re-pin does not by itself re-validate the #723 acceptance screen: the
