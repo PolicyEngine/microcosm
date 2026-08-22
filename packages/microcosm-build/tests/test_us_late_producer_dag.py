@@ -343,9 +343,9 @@ def test_canonical_us_late_registry_has_exact_producer_surface() -> None:
     registry = CANONICAL_US_LATE_PRODUCER_REGISTRY
     groups = CANONICAL_US_LATE_TRANSFER_GROUPS
 
-    assert len(registry) == 38
-    assert len(groups) == 19
-    assert sum(len(group.targets) for group in groups) == 70
+    assert len(registry) == 40
+    assert len(groups) == 20
+    assert sum(len(group.targets) for group in groups) == 73
     assert {contract.kind for contract in registry.values()} == {
         "primary_puf",
         "acs_earnings_universe",
@@ -435,9 +435,9 @@ def test_late_overlap_ownership_exhausts_every_permitted_dual_write() -> None:
     declared = set(US_LATE_OVERLAP_OWNERSHIP_TARGETS)
 
     assert len(primary) == 65
-    assert len(source_writes) == 35
-    assert len(source_writes & transfer) == 29
-    assert len(transfer) == 70
+    assert len(source_writes) == 38
+    assert len(source_writes & transfer) == 32
+    assert len(transfer) == 73
     assert len(recipient_owned) == 60
     assert (
         callback_passthroughs
@@ -626,7 +626,7 @@ def test_primary_puf_inventory_declares_exact_read_before_write_surface() -> Non
 def test_canonical_us_late_registry_declares_required_cross_producer_edges() -> None:
     edges = set(CANONICAL_US_LATE_PRODUCER_SCHEDULE.edges)
 
-    assert len(edges) == 71
+    assert len(edges) == 75
     assert (
         US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
         US_LATE_PRIMARY_PUF_STAGE,
@@ -805,10 +805,10 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
     }
     assert receipt["status"] == "derived_and_import_validated"
     assert receipt["schedule_sha256"] == reconstructed.sha256
-    assert receipt["producer_count"] == 38
-    assert receipt["source_producer_count"] == 16
-    assert receipt["transfer_group_count"] == 19
-    assert receipt["transfer_target_count"] == 70
+    assert receipt["producer_count"] == 40
+    assert receipt["source_producer_count"] == 17
+    assert receipt["transfer_group_count"] == 20
+    assert receipt["transfer_target_count"] == 73
     assert receipt["order"][:2] == [
         US_LATE_ACS_EARNINGS_UNIVERSE_STAGE,
         US_LATE_PRIMARY_PUF_STAGE,
@@ -1016,9 +1016,9 @@ def test_every_origin_exclusive_raw_input_has_its_native_scope() -> None:
         ("household", "H_TENURE"): "asec_source",
     }
     expected_counts = {
-        ("household", "TYPEHUGQ"): 39,
+        ("household", "TYPEHUGQ"): 41,
         ("person", "MCARE"): 2,
-        ("person", "PERIDNUM"): 18,
+        ("person", "PERIDNUM"): 19,
         ("person", "SEMP"): 2,
         ("person", "WAGP"): 2,
         **{
@@ -1055,10 +1055,10 @@ def test_every_origin_exclusive_raw_input_has_its_native_scope() -> None:
     assert observed == Counter(
         {(*key, required_scope[key]): count for key, count in expected_counts.items()}
     )
-    assert sum(observed.values()) == 101
-    assert sum(count for key, count in observed.items() if key[2] == "acs_source") == 43
+    assert sum(observed.values()) == 104
+    assert sum(count for key, count in observed.items() if key[2] == "acs_source") == 45
     assert (
-        sum(count for key, count in observed.items() if key[2] == "asec_source") == 58
+        sum(count for key, count in observed.items() if key[2] == "asec_source") == 59
     )
     assert receipts[("household", "TYPEHUGQ")] == set()
 
@@ -1287,6 +1287,7 @@ def test_source_numeric_input_audit_is_fully_executable() -> None:
             "SPM_CAPHOUSESUB",
         },
         "with_us_education_inputs": {"ED_VAL", "qualified_tuition_expenses"},
+        "with_us_work_experience_inputs": {"WEIND", "WEMIND", "WKSWORK"},
     }
     assert set(expected_finite) == set(US_LATE_SOURCE_INPUT_INVENTORIES)
     for operator, expected_columns in expected_finite.items():
@@ -1324,7 +1325,7 @@ def test_source_numeric_input_audit_is_fully_executable() -> None:
         } == {"finite_numeric"}
 
 
-def test_late_target_dependency_kinds_partition_51_numeric_17_boolean_2_string() -> (
+def test_late_target_dependency_kinds_partition_53_numeric_18_boolean_2_string() -> (
     None
 ):
     string_targets = {"ssn_card_type", "immigration_status_str"}
@@ -1346,6 +1347,7 @@ def test_late_target_dependency_kinds_partition_51_numeric_17_boolean_2_string()
         "is_pursuing_credential_for_american_opportunity_credit",
         "takes_up_medicare_if_eligible",
         "would_claim_wic",
+        "worked_last_year",
     }
     observed: dict[str, set[str]] = {}
     for group in CANONICAL_US_LATE_TRANSFER_GROUPS:
@@ -1361,8 +1363,8 @@ def test_late_target_dependency_kinds_partition_51_numeric_17_boolean_2_string()
             }
     numeric_targets = set(observed) - boolean_targets - string_targets
     assert (len(numeric_targets), len(boolean_targets), len(string_targets)) == (
-        51,
-        17,
+        53,
+        18,
         2,
     )
     assert all(observed[target] == {"finite_numeric"} for target in numeric_targets)
