@@ -461,8 +461,7 @@ def load_asec_work_experience_sources(
         )
         raw = _load_one_source(path, pins, chunk_size)
         missing = sorted(
-            {*ASEC_WORK_EXPERIENCE_SOURCE_COLUMNS, *_AUDIT_COLUMNS}
-            - set(raw.columns)
+            {*ASEC_WORK_EXPERIENCE_SOURCE_COLUMNS, *_AUDIT_COLUMNS} - set(raw.columns)
         )
         if missing:
             raise ValueError(
@@ -579,8 +578,7 @@ def fill_asec_work_experience_source(
     missing_person = [column for column in required_person if column not in person]
     if missing_person:
         raise ValueError(
-            "ASEC work-experience repair requires person column(s): "
-            f"{missing_person}."
+            f"ASEC work-experience repair requires person column(s): {missing_person}."
         )
     required_source = ("source_year", *ASEC_WORK_EXPERIENCE_SOURCE_COLUMNS)
     missing_source = [column for column in required_source if column not in source]
@@ -612,38 +610,70 @@ def fill_asec_work_experience_source(
             existing = pd.to_numeric(result[column], errors="coerce")
             if existing.notna().any():
                 raise ValueError(
-                    f"ASEC work-experience repair must not overwrite an "
-                    f"existing {column} surface."
+                    f"ASEC work-experience fill found a preexisting {column} "
+                    "column with values; refusing to overwrite measured data."
                 )
-            result = result.drop(columns=[column])
-    person_identity = _fixed_width_peridnum(
-        result["PERIDNUM"], label="ASEC work-experience person"
-    )
-    keys = pd.MultiIndex.from_arrays(
-        [person_years.astype(np.int64), person_identity],
-        names=("source_year", "PERIDNUM"),
-    )
-    donor_index = pd.MultiIndex.from_arrays(
-        [
-            pd.to_numeric(donor["source_year"], errors="coerce").astype(np.int64),
-            donor["PERIDNUM"],
-        ],
-        names=("source_year", "PERIDNUM"),
-    )
-    if donor_index.duplicated().any():
-        raise ValueError(
-            "ASEC work-experience sidecar (source_year, PERIDNUM) keys must "
-            "be unique."
+        result[column] = np.nan
+
+    for year in needed_years:
+        year_mask = person_years.eq(year).to_numpy()
+        year_donor = donor.loc[
+            pd.to_numeric(donor["source_year"], errors="coerce").eq(year)
+        ].set_index("PERIDNUM")
+        keys = _fixed_width_peridnum(
+            result.loc[year_mask, "PERIDNUM"], label="ASEC work-experience frame"
         )
-    lookup = donor.set_index(donor_index)
-    for column in (_DETAILED_SOURCE, _MAJOR_SOURCE):
-        joined = lookup[column].reindex(keys)
-        if joined.isna().any():
-            missing_rows = int(joined.isna().sum())
+        missing_keys = keys[~keys.isin(year_donor.index)].drop_duplicates()
+        if not missing_keys.empty:
             raise ValueError(
-                f"ASEC work-experience sidecar does not cover {missing_rows} "
-                f"pooled person(s) for {column}; the exact Census identity "
-                "join must be total."
+                "ASEC work-experience sidecar does not cover frame PERIDNUM "
+                f"key(s) for income year {year}: {missing_keys.tolist()[:5]}."
             )
-        result[column] = joined.to_numpy(dtype=np.int64)
+        aligned = year_donor.reindex(keys.to_numpy())
+        aligned.index = result.index[year_mask]
+        identity_pairs = [
+            (
+                "PH_SEQ",
+                "source_household_id" if "source_household_id" in result else "PH_SEQ",
+            ),
+            ("P_SEQ", "P_SEQ"),
+            ("A_LINENO", "A_LINENO"),
+        ]
+        for donor_column, frame_column in identity_pairs:
+            if frame_column not in result:
+                continue
+            observed = pd.to_numeric(
+                result.loc[year_mask, frame_column], errors="coerce"
+            ).to_numpy(dtype=np.float64)
+            expected = pd.to_numeric(aligned[donor_column], errors="coerce").to_numpy(
+                dtype=np.float64
+            )
+            mismatch = (
+                ~np.isfinite(observed) | ~np.isfinite(expected) | (observed != expected)
+            )
+            if mismatch.any():
+                rows = result.index[year_mask].to_numpy()[mismatch][:5].tolist()
+                raise ValueError(
+                    "ASEC work-experience redundant identity mismatch for "
+                    f"{frame_column} against sidecar {donor_column} in income "
+                    f"year {year} at row(s): {rows}."
+                )
+        for column, upper in (
+            (_DETAILED_SOURCE, _DETAILED_MAX),
+            (_MAJOR_SOURCE, _MAJOR_MAX),
+        ):
+            values = pd.to_numeric(aligned[column], errors="coerce").to_numpy(
+                dtype=np.float64
+            )
+            valid = np.isfinite(values) & (values == np.floor(values))
+            valid &= (values >= 0.0) & (values <= float(upper))
+            if not valid.all():
+                raise ValueError(
+                    f"ASEC work-experience sidecar {column} is invalid for income "
+                    f"year {year}."
+                )
+            result.loc[result.index[year_mask], column] = values
+    for column in (_DETAILED_SOURCE, _MAJOR_SOURCE):
+        result[column] = result[column].to_numpy(dtype=np.int64)
+    result.attrs["work_experience_source_audit"] = source.attrs.get("source_audit", {})
     return result

@@ -158,8 +158,7 @@ def derive_us_work_experience_inputs_from_manifest(
         )
     if frame is None:
         raise SourceRuntimeError(
-            "US work-experience derivation requires the person table to be "
-            "read first."
+            "US work-experience derivation requires the person table to be read first."
         )
     unexpected = sorted(
         set(operation.parameters) - _DERIVE_WORK_EXPERIENCE_PARAMETER_KEYS
