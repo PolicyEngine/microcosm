@@ -20,6 +20,13 @@ from typing import Any
 from microcosm.calibrate import TargetRegistry, TargetSpec
 
 SUPPORTED_LEDGER_AGGREGATIONS = frozenset(("sum",))
+ALLOWED_ASSERTION_POLICIES = frozenset(("observed_only", "allow_source_projection"))
+ALLOWED_VALUE_OPERATIONS = frozenset(
+    ("identity", "sum", "calendar_year_average", "latest_plateau")
+)
+MULTI_FACT_VALUE_OPERATIONS = frozenset(
+    ("sum", "calendar_year_average", "latest_plateau")
+)
 DEFAULT_HIERARCHY_MATCH_SPEC_FIELDS = ("entity", "period", "family", "filter")
 
 
@@ -73,6 +80,7 @@ class LedgerTargetReference:
     tolerance: float | None = None
     notes: str = ""
     metadata: Mapping[str, str] = field(default_factory=dict)
+    assertion_policy: str = "observed_only"
     uprating_index: str | None = None
     uprating_from_period: int | str | None = None
     uprating_to_period: int | str | None = None
@@ -89,16 +97,21 @@ class LedgerTargetReference:
                 f"LedgerTargetReference {self.name!r}: either ledger_fact_key "
                 "or ledger_source_record_id or ledger_selector is required."
             )
-        if self.value_operation != "identity":
+        if self.value_operation not in ALLOWED_VALUE_OPERATIONS:
             raise ValueError(
                 f"LedgerTargetReference {self.name!r}: unsupported value_operation "
                 f"{self.value_operation!r}. Microcosm currently permits only "
-                "identity resolution from Ledger facts."
+                f"{sorted(ALLOWED_VALUE_OPERATIONS)!r} resolution from Ledger facts."
             )
         if not isinstance(self.ledger_selector, Mapping):
             raise TypeError(
                 f"LedgerTargetReference {self.name!r}: ledger_selector must be a "
                 f"mapping, got {type(self.ledger_selector).__name__}."
+            )
+        if self.assertion_policy not in ALLOWED_ASSERTION_POLICIES:
+            raise ValueError(
+                f"LedgerTargetReference {self.name!r}: unsupported "
+                f"assertion_policy {self.assertion_policy!r}."
             )
         if not self.entity:
             raise ValueError(
@@ -368,8 +381,8 @@ def compile_ledger_target_references(
     fact_index = _ledger_fact_index(facts)
     specs: list[TargetSpec] = []
     for reference in references:
-        fact = _resolve_reference_fact(reference, fact_index)
-        specs.append(target_spec_from_ledger_reference(fact, reference))
+        resolved = _resolve_reference_fact(reference, fact_index)
+        specs.append(target_spec_from_ledger_reference(resolved, reference))
     return TargetRegistry(specs, country=country)
 
 
@@ -495,11 +508,88 @@ def reconcile_ledger_target_hierarchy(
 
 
 def target_spec_from_ledger_reference(
-    fact: object,
+    fact: object | tuple[object, ...],
     reference: LedgerTargetReference,
 ) -> TargetSpec:
     """Compile one resolved Ledger fact plus Microcosm mapping into a target."""
 
+    facts = fact if isinstance(fact, tuple) else (fact,)
+    if not facts:
+        raise ValueError(f"Ledger target reference {reference.name!r} has no facts.")
+    if len(facts) > 1 and reference.value_operation not in MULTI_FACT_VALUE_OPERATIONS:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: multiple Ledger facts "
+            "require an aggregating value_operation, got "
+            f"{reference.value_operation!r}."
+        )
+    numeric_values = []
+    for member in facts:
+        numeric_values.append(_numeric_fact_value(member, reference))
+        _validate_fact_aggregation(member, reference)
+
+    if reference.value_operation == "calendar_year_average":
+        numeric_value = sum(numeric_values) / len(numeric_values)
+    elif reference.value_operation == "latest_plateau":
+        numeric_value = numeric_values[-1]
+    elif reference.value_operation == "sum":
+        numeric_value = sum(numeric_values)
+    else:
+        numeric_value = numeric_values[0]
+    representative_fact = _value_representative_fact(
+        facts,
+        operation=reference.value_operation,
+    )
+
+    if not reference.measure:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: measure is required; "
+            "count-like facts must be represented as sums of prepared indicator "
+            "columns."
+        )
+    period = (
+        reference.period
+        if reference.period is not None
+        else _at(representative_fact, "period", "value")
+    )
+    if period is None:
+        raise ValueError(f"Ledger fact for {reference.name!r} is missing period.")
+
+    return TargetSpec(
+        name=reference.name,
+        entity=reference.entity,
+        measure=reference.measure,
+        value=numeric_value,
+        filter=reference.filter,
+        period=period,
+        se=reference.se,
+        source=_source_citation(representative_fact),
+        family=reference.family,
+        signed=reference.signed,
+        tolerance=reference.tolerance,
+        notes=reference.notes,
+        metadata={
+            **_ledger_metadata(
+                representative_fact,
+                fact_key=_fact_key(representative_fact),
+            ),
+            **_multi_fact_reference_metadata(facts),
+            "ledger_resolved_assertion": _fact_assertion(representative_fact),
+            **_reference_metadata(reference),
+        },
+    )
+
+
+def _value_representative_fact(
+    facts: tuple[object, ...],
+    *,
+    operation: str,
+) -> object:
+    if len(facts) == 1 or operation not in MULTI_FACT_VALUE_OPERATIONS:
+        return facts[0]
+    return max(enumerate(facts), key=lambda item: (_period_key(item[1]), item[0]))[1]
+
+
+def _numeric_fact_value(fact: object, reference: LedgerTargetReference) -> float:
     value = _at(fact, "value")
     if value is None:
         raise ValueError(f"Ledger fact for {reference.name!r} is missing value.")
@@ -513,7 +603,13 @@ def target_spec_from_ledger_reference(
         raise ValueError(
             f"Ledger fact for {reference.name!r} has invalid value {value!r}."
         )
+    return numeric_value
 
+
+def _validate_fact_aggregation(
+    fact: object,
+    reference: LedgerTargetReference,
+) -> None:
     aggregation = _str_at(fact, "aggregation", "method")
     accepts_time_mean = (
         reference.metadata.get("fact_aggregation") == "time_mean"
@@ -529,38 +625,21 @@ def target_spec_from_ledger_reference(
             "over time periods on a stock count (still a linear level), never "
             "over entities (a per-unit ratio is not calibratable)."
         )
-    if not reference.measure:
-        raise ValueError(
-            f"Ledger target reference {reference.name!r}: measure is required; "
-            "count-like facts must be represented as sums of prepared indicator "
-            "columns."
-        )
-    period = (
-        reference.period
-        if reference.period is not None
-        else _at(fact, "period", "value")
-    )
-    if period is None:
-        raise ValueError(f"Ledger fact for {reference.name!r} is missing period.")
 
-    return TargetSpec(
-        name=reference.name,
-        entity=reference.entity,
-        measure=reference.measure,
-        value=numeric_value,
-        filter=reference.filter,
-        period=period,
-        se=reference.se,
-        source=_source_citation(fact),
-        family=reference.family,
-        signed=reference.signed,
-        tolerance=reference.tolerance,
-        notes=reference.notes,
-        metadata={
-            **_ledger_metadata(fact, fact_key=_fact_key(fact)),
-            **_reference_metadata(reference),
-        },
-    )
+
+def _multi_fact_reference_metadata(facts: tuple[object, ...]) -> dict[str, str]:
+    if len(facts) == 1:
+        return {}
+    member_keys = tuple(_fact_key(fact) or _source_record_id(fact) for fact in facts)
+    payload = json.dumps(member_keys, separators=(",", ":"))
+    return {
+        "ledger_member_fact_count": str(len(facts)),
+        "ledger_member_aggregate_fact_keys": payload,
+        "ledger_member_fact_keys": payload,
+        "ledger_member_fact_digest": hashlib.sha256(
+            payload.encode("utf-8")
+        ).hexdigest(),
+    }
 
 
 def ledger_target_registry_parity_report(
@@ -801,6 +880,14 @@ def _resolve_reference_fact(
             if _fact_matches_selector(fact, reference.ledger_selector)
         ]
         eligible_matches = _eligible_selector_matches(reference, matches)
+        if reference.value_operation == "sum" and eligible_matches:
+            return _resolve_sum_reference_facts(reference, eligible_matches)
+        if reference.value_operation == "calendar_year_average" and eligible_matches:
+            return _resolve_calendar_year_average_reference_facts(
+                reference, eligible_matches
+            )
+        if reference.value_operation == "latest_plateau" and eligible_matches:
+            return _resolve_latest_plateau_reference_facts(reference, eligible_matches)
         if len(eligible_matches) == 1:
             return eligible_matches[0]
         latest_match = _latest_period_selector_match(reference, eligible_matches)
@@ -833,6 +920,166 @@ def _resolve_reference_fact(
     )
 
 
+def _resolve_sum_reference_facts(
+    reference: LedgerTargetReference,
+    eligible_matches: list[object],
+) -> tuple[object, ...]:
+    partitions: dict[tuple[tuple[str, ...], tuple[int, int, str]], list[object]] = {}
+    for fact in eligible_matches:
+        key = (_selector_sum_partition_key(fact), _period_key(fact))
+        partitions.setdefault(key, []).append(fact)
+    if not partitions:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r} did not match a Ledger "
+            "fact partition."
+        )
+    latest_period = max(period_key for _, period_key in partitions)
+    latest_matches = [
+        fact
+        for (_, period_key), facts in partitions.items()
+        if period_key == latest_period
+        for fact in facts
+    ]
+    return tuple(
+        sorted(
+            latest_matches,
+            key=lambda fact: _fact_key(fact) or _source_record_id(fact),
+        )
+    )
+
+
+def _resolve_calendar_year_average_reference_facts(
+    reference: LedgerTargetReference,
+    eligible_matches: list[object],
+) -> tuple[object, ...]:
+    monthly_matches = _monthly_operation_matches(
+        reference, eligible_matches, operation="calendar_year_average"
+    )
+    target_year = _calendar_year_from_reference(reference)
+    year_matches = [
+        fact for fact in monthly_matches if _fact_year_month(fact)[0] == target_year
+    ]
+    if not year_matches:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: value_operation="
+            "'calendar_year_average' found no monthly Ledger facts in calendar "
+            f"year {target_year}."
+        )
+    return _latest_series_partition(
+        reference, year_matches, operation="calendar_year_average"
+    )
+
+
+def _resolve_latest_plateau_reference_facts(
+    reference: LedgerTargetReference,
+    eligible_matches: list[object],
+) -> tuple[object, ...]:
+    monthly_matches = _monthly_operation_matches(
+        reference, eligible_matches, operation="latest_plateau"
+    )
+    partition = _latest_series_partition(
+        reference, monthly_matches, operation="latest_plateau"
+    )
+    sorted_partition = tuple(sorted(partition, key=_fact_month_sort_key))
+    plateau_value = _numeric_fact_value(sorted_partition[-1], reference)
+    plateau = [sorted_partition[-1]]
+    expected_month = _fact_month_index(sorted_partition[-1]) - 1
+    for fact in reversed(sorted_partition[:-1]):
+        if _fact_month_index(fact) != expected_month:
+            break
+        if _numeric_fact_value(fact, reference) != plateau_value:
+            break
+        plateau.append(fact)
+        expected_month -= 1
+    return tuple(reversed(plateau))
+
+
+def _monthly_operation_matches(
+    reference: LedgerTargetReference,
+    eligible_matches: list[object],
+    *,
+    operation: str,
+) -> list[object]:
+    non_month = [
+        _at(fact, "period", "value")
+        for fact in eligible_matches
+        if _str_at(fact, "period", "type") != "month"
+    ]
+    if non_month:
+        examples = tuple(str(period) for period in non_month[:5])
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: value_operation="
+            f"{operation!r} requires monthly Ledger facts; non-month period "
+            f"values include {examples!r}."
+        )
+    return eligible_matches
+
+
+def _calendar_year_from_reference(reference: LedgerTargetReference) -> int:
+    period_key = _period_key_from_value(reference.period)
+    if not period_key[0]:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: value_operation="
+            "'calendar_year_average' requires a parseable target period."
+        )
+    return period_key[1] // 100
+
+
+def _latest_series_partition(
+    reference: LedgerTargetReference,
+    matches: list[object],
+    *,
+    operation: str,
+) -> tuple[object, ...]:
+    partitions: dict[tuple[str, ...], list[object]] = {}
+    for fact in matches:
+        partitions.setdefault(_selector_period_invariant_key(fact), []).append(fact)
+    if not partitions:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: value_operation="
+            f"{operation!r} did not match a Ledger fact partition."
+        )
+    latest_period = max(_period_key(fact) for fact in matches)
+    latest_partitions = [
+        partition
+        for partition in partitions.values()
+        if max(_period_key(fact) for fact in partition) == latest_period
+    ]
+    if len(latest_partitions) != 1:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: value_operation="
+            f"{operation!r} matched multiple monthly Ledger series identities "
+            "at the latest eligible period."
+        )
+    return tuple(sorted(latest_partitions[0], key=_fact_month_sort_key))
+
+
+def _fact_month_sort_key(fact: object) -> tuple[int, str]:
+    return (_fact_month_index(fact), _fact_key(fact) or _source_record_id(fact) or "")
+
+
+def _fact_month_index(fact: object) -> int:
+    year, month = _fact_year_month(fact)
+    return year * 12 + month
+
+
+def _fact_year_month(fact: object) -> tuple[int, int]:
+    period_key = _period_key(fact)
+    if not period_key[0]:
+        raise ValueError("Ledger monthly period is not parseable.")
+    year_month = period_key[1]
+    year = year_month // 100
+    month = year_month % 100
+    if month < 1 or month > 12:
+        raise ValueError("Ledger monthly period does not carry a month value.")
+    return year, month
+
+
+def _selector_sum_partition_key(fact: object) -> tuple[str, ...]:
+    invariant = _selector_period_invariant_key(fact)
+    return invariant[:8] + invariant[11:]
+
+
 def _eligible_selector_matches(
     reference: LedgerTargetReference,
     matches: list[object],
@@ -842,7 +1089,19 @@ def _eligible_selector_matches(
         fact
         for fact in matches
         if _not_after_target_period(_period_key(fact), target_period_key)
+        and _assertion_allowed(reference, fact)
     ]
+
+
+def _assertion_allowed(reference: LedgerTargetReference, fact: object) -> bool:
+    assertion = _fact_assertion(fact)
+    if assertion == "source_projection":
+        return reference.assertion_policy == "allow_source_projection"
+    return True
+
+
+def _fact_assertion(fact: object) -> str:
+    return _str_at(fact, "assertion") or "observation"
 
 
 def _latest_period_selector_match(
@@ -886,7 +1145,7 @@ def _selector_period_invariant_key(fact: object) -> tuple[str, ...]:
         _str_at(fact, "aggregation", "method"),
         _normalized_record_set_id(_str_at(fact, "layout", "record_set_id")),
         _str_at(fact, "layout", "groupby_dimension"),
-        _str_at(fact, "layout", "groupby_value_id"),
+        _normalized_period_bearing_id(_str_at(fact, "layout", "groupby_value_id")),
         json.dumps(_dimensions(fact), sort_keys=True, separators=(",", ":")),
         json.dumps(_constraint_rows(fact), sort_keys=True, separators=(",", ":")),
         _domain(fact),
@@ -897,7 +1156,65 @@ def _normalized_record_set_id(record_set_id: str) -> str:
     if not record_set_id:
         return ""
     return ".".join(
-        part for part in record_set_id.split(".") if not _is_period_token(part)
+        normalized
+        for part in record_set_id.split(".")
+        if (normalized := _normalized_record_set_part(part))
+    )
+
+
+def _normalized_record_set_part(value: str) -> str:
+    if _is_period_token(value):
+        return ""
+    normalized = value.lower().replace("-", "_")
+    pieces = [
+        piece
+        for piece in normalized.split("_")
+        if piece and not _is_period_fragment(piece)
+    ]
+    return "_".join(pieces)
+
+
+def _normalized_period_bearing_id(value: str) -> str:
+    if _is_period_token(value):
+        return ""
+    return _normalized_record_set_part(value)
+
+
+def _is_period_fragment(value: str) -> bool:
+    normalized = value.lower().replace("-", "_")
+    if _is_period_token(normalized):
+        return True
+    month_names = (
+        "jan",
+        "january",
+        "feb",
+        "february",
+        "mar",
+        "march",
+        "apr",
+        "april",
+        "may",
+        "jun",
+        "june",
+        "jul",
+        "july",
+        "aug",
+        "august",
+        "sep",
+        "sept",
+        "september",
+        "oct",
+        "october",
+        "nov",
+        "november",
+        "dec",
+        "december",
+    )
+    return any(
+        normalized.startswith(month)
+        and normalized[len(month) :].isdigit()
+        and len(normalized[len(month) :]) == 4
+        for month in month_names
     )
 
 
@@ -905,11 +1222,11 @@ def _is_period_token(value: str) -> bool:
     normalized = value.lower().replace("-", "_")
     if normalized.startswith("month"):
         normalized = normalized[len("month") :]
-    parts = normalized.split("_", maxsplit=1)
-    if len(parts) == 2 and all(part.isdigit() for part in parts):
-        return len(parts[0]) == 4 and len(parts[1]) in {1, 2}
     if normalized[:2] in {"ty", "cy", "fy"}:
         normalized = normalized[2:]
+    parts = normalized.split("_", maxsplit=1)
+    if len(parts) == 2 and all(part.isdigit() for part in parts):
+        return len(parts[0]) == 4 and len(parts[1]) in {1, 2, 4}
     return normalized.isdigit() and len(normalized) == 4
 
 
@@ -920,15 +1237,25 @@ def _period_key(fact: object) -> tuple[int, int, str]:
 def _period_key_from_value(value: object) -> tuple[int, int, str]:
     label = "" if value is None else str(value)
     normalized = label.lower().replace("-", "_")
+    if normalized[:2] in {"ty", "cy", "fy"}:
+        normalized = normalized[2:]
     for prefix in ("month", "tax_year_", "calendar_year_", "fiscal_year_"):
         if normalized.startswith(prefix):
             normalized = normalized[len(prefix) :]
             break
     parts = normalized.split("_", maxsplit=1)
     if len(parts) == 2:
-        year, month = parts
-        if year.isdigit() and month.isdigit():
-            return (1, int(year) * 100 + int(month), label)
+        year, suffix = parts
+        if year.isdigit() and suffix.isdigit():
+            if len(suffix) == 4:
+                suffix_value = 99
+            elif len(suffix) <= 2 and int(suffix) <= 12:
+                suffix_value = int(suffix)
+            elif len(suffix) <= 2:
+                suffix_value = 99
+            else:
+                suffix_value = int(suffix)
+            return (1, int(year) * 100 + suffix_value, label)
     try:
         return (1, int(normalized) * 100 + 99, label)
     except ValueError:
@@ -952,7 +1279,9 @@ def _not_after_target_period(
     source_period_key: tuple[int, int, str],
     target_period_key: tuple[int, int, str],
 ) -> bool:
-    if not source_period_key[0] or not target_period_key[0]:
+    if not source_period_key[0]:
+        return False
+    if not target_period_key[0]:
         return True
     return source_period_key[1] <= target_period_key[1]
 
@@ -960,6 +1289,7 @@ def _not_after_target_period(
 def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
     metadata = dict(reference.metadata)
     metadata["ledger_value_operation"] = reference.value_operation
+    metadata["ledger_assertion_policy"] = reference.assertion_policy
     for key, value in sorted(reference.ledger_selector.items()):
         if isinstance(value, Mapping):
             continue
@@ -1018,18 +1348,6 @@ def _source_record_id(fact: object) -> str:
     return _str_at(fact, "source_record_id") or _str_at(
         fact, "lineage", "source_record_id"
     )
-
-
-def _unique_facts(facts: Iterable[object]) -> tuple[object, ...]:
-    unique: list[object] = []
-    seen: set[int] = set()
-    for fact in facts:
-        identity = id(fact)
-        if identity in seen:
-            continue
-        seen.add(identity)
-        unique.append(fact)
-    return tuple(unique)
 
 
 def _fact_matches_selector(fact: object, selector: Mapping[str, object]) -> bool:
@@ -1116,7 +1434,7 @@ def _selector_candidates(fact: object, key: str) -> tuple[str, ...]:
     if key == "domain":
         return (_domain(fact),)
     if key == "assertion":
-        return (_str_at(fact, "assertion") or "observation",)
+        return (_fact_assertion(fact),)
     raise ValueError(f"Unsupported Ledger fact selector field {key!r}.")
 
 

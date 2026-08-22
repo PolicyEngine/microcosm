@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_190
+EXPECTED_AUTHORED_FIELD_COUNT = 32_189
 EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_252
-EXPECTED_CONFIGURATION_FIELD_COUNT = 41_442
+EXPECTED_CONFIGURATION_FIELD_COUNT = 41_441
 
 
 class FieldUsageError(AssertionError):
@@ -313,8 +313,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "36564747627fb0058bb99e8e8c4397e41d8ecc472a20c49d4b6d7df1003a80ec",
     ),
     "calibration": (
-        313,
-        "efdada2593834fe36650c88d1b4ea6b9a6c4ef1456a06cce2cb02111066d3101",
+        312,
+        "9bad55b4945af1c4213c510942e7b9d22d104bf75b0d9804e4a183e1656c8393",
     ),
     "catalog_columns": (
         1_646,
@@ -1041,7 +1041,9 @@ def _verify_source_pins(context: _VerificationContext, claim: UsageClaim) -> Non
         if isinstance(row, Mapping) and isinstance(row.get("id"), str)
     ]
     if len(ids) != len(rows) or len(ids) != len(set(ids)):
-        raise FieldUsageError("source_pins: source ids are not an exact unique registry")
+        raise FieldUsageError(
+            "source_pins: source ids are not an exact unique registry"
+        )
 
     expected_refs: set[tuple[str, str, str]] = set()
     for index, value in enumerate(rows):
@@ -1384,9 +1386,7 @@ def _verify_claim(context: _VerificationContext, claim: UsageClaim) -> None:
         "legacy": lambda: _verify_legacy(context, claim),
         "source_pins": lambda: _verify_source_pins(context, claim),
         "spine_channels": lambda: _verify_spine_channels(context, claim),
-        "spine_assembly_legacy": lambda: _verify_spine_assembly_legacy(
-            context, claim
-        ),
+        "spine_assembly_legacy": lambda: _verify_spine_assembly_legacy(context, claim),
         "spine_assembly_validation": lambda: _verify_spine_assembly_validation(
             context, claim
         ),

@@ -69,7 +69,7 @@ HMRC_CGT_JOINT_ODS_SHA256 = (
 HMRC_CGT_JOINT_ODS_SIZE_BYTES = 11_996
 HMRC_CGT_SOURCE_LABEL = "HMRC capital gains table 3"
 HMRC_CGT_SOURCE_VINTAGE = "2023-24"
-HMRC_CGT_BUILD_PERIOD = "2023"
+HMRC_CGT_BUILD_PERIOD = "2024"
 
 #: Worksheet per tax year, newest first. The publication carries four years,
 #: so a stage can fit each year rather than aging one forward.
@@ -325,7 +325,9 @@ def materialize_hmrc_capital_gains_joint_distribution(
     Args:
         path: Local copy of the published ODS.
         tax_year: Which published year to read, as ``"2023-24"``.
-        build_period: The build period these facts are declared against.
+        build_period: The build period these facts are declared against. The
+            latest published tax year 2023-24 is replayed against build period
+            2024 (signed, microcosm#723).
         verify_fingerprint: Whether to require the pinned hash and size. Only
             a caller reading a different vintage should turn this off, and it
             then owns checking what it read.

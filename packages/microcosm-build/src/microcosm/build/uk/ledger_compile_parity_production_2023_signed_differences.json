@@ -1,0 +1,2328 @@
+{
+ "compiled_count": 211,
+ "counts_by_kind": {
+  "calibration_drift": 6,
+  "fixture_only": 131,
+  "ledger_only": 193
+ },
+ "difference_count": 330,
+ "differences": [
+  {
+   "fixture_value": 82000.0,
+   "kind": "fixture_only",
+   "name": "ons.population.scotland_households_3plus_children",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 730000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_age_0_9",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 745000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_age_10_19",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 729000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_age_20_29",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 868000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_age_30_39",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 829000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_age_40_49",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 873000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_age_50_59",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 721000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_age_60_69",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 612000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_age_70_79",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 360000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_age_80_89",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 535000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_midlands_age_0_9",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 588000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_midlands_age_10_19",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 614000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_midlands_age_20_29",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 652000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_midlands_age_30_39",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 605000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_midlands_age_40_49",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 686000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_midlands_age_50_59",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 572000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_midlands_age_60_69",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 475000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_midlands_age_70_79",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 260000.0,
+   "kind": "fixture_only",
+   "name": "ons/east_midlands_age_80_89",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 290045387683.9658,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/EAST_MIDLANDS",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 516403292240.49414,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/EAST_OF_ENGLAND",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1130653075012.1692,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/LONDON",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 113814239475.71474,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/NORTH_EAST",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 402421888791.4934,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/NORTH_WEST",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 266822289184.47226,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/SCOTLAND",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 842967388093.2286,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/SOUTH_EAST",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 434617600950.541,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/SOUTH_WEST",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 170639951561.47794,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/WALES",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 346703742992.981,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/WEST_MIDLANDS",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 283675747954.8778,
+   "kind": "fixture_only",
+   "name": "ons/household_land_value/YORKSHIRE",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1047000.0,
+   "kind": "fixture_only",
+   "name": "ons/london_age_0_9",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1043000.0,
+   "kind": "fixture_only",
+   "name": "ons/london_age_10_19",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1429000.0,
+   "kind": "fixture_only",
+   "name": "ons/london_age_20_29",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1545000.0,
+   "kind": "fixture_only",
+   "name": "ons/london_age_30_39",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1280000.0,
+   "kind": "fixture_only",
+   "name": "ons/london_age_40_49",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1086000.0,
+   "kind": "fixture_only",
+   "name": "ons/london_age_50_59",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 751000.0,
+   "kind": "fixture_only",
+   "name": "ons/london_age_60_69",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 484000.0,
+   "kind": "fixture_only",
+   "name": "ons/london_age_70_79",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 289000.0,
+   "kind": "fixture_only",
+   "name": "ons/london_age_80_89",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 283000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_east_age_0_9",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 312000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_east_age_10_19",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 333000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_east_age_20_29",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 347000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_east_age_30_39",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 314000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_east_age_40_49",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 371000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_east_age_50_59",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 341000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_east_age_60_69",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 264000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_east_age_70_79",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 145000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_east_age_80_89",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 851000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_west_age_0_9",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 906000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_west_age_10_19",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 958000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_west_age_20_29",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1029000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_west_age_30_39",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 914000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_west_age_40_49",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1018000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_west_age_50_59",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 858000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_west_age_60_69",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 680000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_west_age_70_79",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 379000.0,
+   "kind": "fixture_only",
+   "name": "ons/north_west_age_80_89",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 235000.0,
+   "kind": "fixture_only",
+   "name": "ons/northern_ireland_age_0_9",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 245000.0,
+   "kind": "fixture_only",
+   "name": "ons/northern_ireland_age_10_19",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 224000.0,
+   "kind": "fixture_only",
+   "name": "ons/northern_ireland_age_20_29",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 258000.0,
+   "kind": "fixture_only",
+   "name": "ons/northern_ireland_age_30_39",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 247000.0,
+   "kind": "fixture_only",
+   "name": "ons/northern_ireland_age_40_49",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 258000.0,
+   "kind": "fixture_only",
+   "name": "ons/northern_ireland_age_50_59",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 217000.0,
+   "kind": "fixture_only",
+   "name": "ons/northern_ireland_age_60_69",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 157000.0,
+   "kind": "fixture_only",
+   "name": "ons/northern_ireland_age_70_79",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 89000.0,
+   "kind": "fixture_only",
+   "name": "ons/northern_ireland_age_80_89",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 528000.0,
+   "kind": "fixture_only",
+   "name": "ons/scotland_age_0_9",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 600000.0,
+   "kind": "fixture_only",
+   "name": "ons/scotland_age_10_19",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 689000.0,
+   "kind": "fixture_only",
+   "name": "ons/scotland_age_20_29",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 717000.0,
+   "kind": "fixture_only",
+   "name": "ons/scotland_age_30_39",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 673000.0,
+   "kind": "fixture_only",
+   "name": "ons/scotland_age_40_49",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 793000.0,
+   "kind": "fixture_only",
+   "name": "ons/scotland_age_50_59",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 702000.0,
+   "kind": "fixture_only",
+   "name": "ons/scotland_age_60_69",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 520000.0,
+   "kind": "fixture_only",
+   "name": "ons/scotland_age_70_79",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 282000.0,
+   "kind": "fixture_only",
+   "name": "ons/scotland_age_80_89",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1044000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_east_age_0_9",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1119000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_east_age_10_19",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1062000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_east_age_20_29",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1250000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_east_age_30_39",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1241000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_east_age_40_49",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1296000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_east_age_50_59",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1052000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_east_age_60_69",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 882000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_east_age_70_79",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 531000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_east_age_80_89",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 579000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_west_age_0_9",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 650000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_west_age_10_19",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 675000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_west_age_20_29",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 724000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_west_age_30_39",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 686000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_west_age_40_49",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 800000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_west_age_50_59",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 716000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_west_age_60_69",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 630000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_west_age_70_79",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 369000.0,
+   "kind": "fixture_only",
+   "name": "ons/south_west_age_80_89",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 8298342.0,
+   "kind": "fixture_only",
+   "name": "ons/tenure_england_owned_outright",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 7597225.0,
+   "kind": "fixture_only",
+   "name": "ons/tenure_england_owned_with_mortgage",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 5251573.0,
+   "kind": "fixture_only",
+   "name": "ons/tenure_england_rented_privately",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 4247906.0,
+   "kind": "fixture_only",
+   "name": "ons/tenure_england_social_rent",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 25395046.0,
+   "kind": "fixture_only",
+   "name": "ons/tenure_england_total",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 326000.0,
+   "kind": "fixture_only",
+   "name": "ons/wales_age_0_9",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 364000.0,
+   "kind": "fixture_only",
+   "name": "ons/wales_age_10_19",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 378000.0,
+   "kind": "fixture_only",
+   "name": "ons/wales_age_20_29",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 398000.0,
+   "kind": "fixture_only",
+   "name": "ons/wales_age_30_39",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 364000.0,
+   "kind": "fixture_only",
+   "name": "ons/wales_age_40_49",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 436000.0,
+   "kind": "fixture_only",
+   "name": "ons/wales_age_50_59",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 393000.0,
+   "kind": "fixture_only",
+   "name": "ons/wales_age_60_69",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 327000.0,
+   "kind": "fixture_only",
+   "name": "ons/wales_age_70_79",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 181000.0,
+   "kind": "fixture_only",
+   "name": "ons/wales_age_80_89",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 703000.0,
+   "kind": "fixture_only",
+   "name": "ons/west_midlands_age_0_9",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 747000.0,
+   "kind": "fixture_only",
+   "name": "ons/west_midlands_age_10_19",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 753000.0,
+   "kind": "fixture_only",
+   "name": "ons/west_midlands_age_20_29",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 813000.0,
+   "kind": "fixture_only",
+   "name": "ons/west_midlands_age_30_39",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 739000.0,
+   "kind": "fixture_only",
+   "name": "ons/west_midlands_age_40_49",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 805000.0,
+   "kind": "fixture_only",
+   "name": "ons/west_midlands_age_50_59",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 661000.0,
+   "kind": "fixture_only",
+   "name": "ons/west_midlands_age_60_69",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 542000.0,
+   "kind": "fixture_only",
+   "name": "ons/west_midlands_age_70_79",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 321000.0,
+   "kind": "fixture_only",
+   "name": "ons/west_midlands_age_80_89",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 621000.0,
+   "kind": "fixture_only",
+   "name": "ons/yorkshire_and_the_humber_age_0_9",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 669000.0,
+   "kind": "fixture_only",
+   "name": "ons/yorkshire_and_the_humber_age_10_19",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 713000.0,
+   "kind": "fixture_only",
+   "name": "ons/yorkshire_and_the_humber_age_20_29",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 745000.0,
+   "kind": "fixture_only",
+   "name": "ons/yorkshire_and_the_humber_age_30_39",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 668000.0,
+   "kind": "fixture_only",
+   "name": "ons/yorkshire_and_the_humber_age_40_49",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 751000.0,
+   "kind": "fixture_only",
+   "name": "ons/yorkshire_and_the_humber_age_50_59",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 635000.0,
+   "kind": "fixture_only",
+   "name": "ons/yorkshire_and_the_humber_age_60_69",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 510000.0,
+   "kind": "fixture_only",
+   "name": "ons/yorkshire_and_the_humber_age_70_79",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 287000.0,
+   "kind": "fixture_only",
+   "name": "ons/yorkshire_and_the_humber_age_80_89",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 20226.0,
+   "kind": "fixture_only",
+   "name": "slc.support.adult_dependants_grant_recipients",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 54638997.0,
+   "kind": "fixture_only",
+   "name": "slc.support.adult_dependants_grant_spend",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 1151607.0,
+   "kind": "fixture_only",
+   "name": "slc.support.maintenance_loan_recipients",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 8594103415.0,
+   "kind": "fixture_only",
+   "name": "slc.support.maintenance_loan_spend",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 89283.0,
+   "kind": "fixture_only",
+   "name": "slc.support.parents_learning_allowance_recipients",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 153266251.0,
+   "kind": "fixture_only",
+   "name": "slc.support.parents_learning_allowance_spend",
+   "period": 2023,
+   "reason": "Fixture row has no Ledger-compiled counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 65937000000.0,
+   "name": "hmrc.cgt.gains_total",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 378000.0,
+   "name": "hmrc.cgt.taxpayers_total",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 222000.0,
+   "name": "hmrc/dividend_income_count_income_band_100_000_to_150_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 115000.0,
+   "name": "hmrc/dividend_income_count_income_band_12_570_to_15_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 92000.0,
+   "name": "hmrc/dividend_income_count_income_band_150_000_to_200_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 372000.0,
+   "name": "hmrc/dividend_income_count_income_band_15_000_to_20_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19000.0,
+   "name": "hmrc/dividend_income_count_income_band_1_000_000_to_inf",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 75000.0,
+   "name": "hmrc/dividend_income_count_income_band_200_000_to_300_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 843000.0,
+   "name": "hmrc/dividend_income_count_income_band_20_000_to_30_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 49000.0,
+   "name": "hmrc/dividend_income_count_income_band_300_000_to_500_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 667000.0,
+   "name": "hmrc/dividend_income_count_income_band_30_000_to_40_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 627000.0,
+   "name": "hmrc/dividend_income_count_income_band_40_000_to_50_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 32000.0,
+   "name": "hmrc/dividend_income_count_income_band_500_000_to_1_000_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 643000.0,
+   "name": "hmrc/dividend_income_count_income_band_50_000_to_70_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 336000.0,
+   "name": "hmrc/dividend_income_count_income_band_70_000_to_100_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 6870000000.0,
+   "name": "hmrc/dividend_income_income_band_100_000_to_150_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 175000000.0,
+   "name": "hmrc/dividend_income_income_band_12_570_to_15_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3450000000.0,
+   "name": "hmrc/dividend_income_income_band_150_000_to_200_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 855000000.0,
+   "name": "hmrc/dividend_income_income_band_15_000_to_20_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11100000000.0,
+   "name": "hmrc/dividend_income_income_band_1_000_000_to_inf",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3700000000.0,
+   "name": "hmrc/dividend_income_income_band_200_000_to_300_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3330000000.0,
+   "name": "hmrc/dividend_income_income_band_20_000_to_30_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3430000000.0,
+   "name": "hmrc/dividend_income_income_band_300_000_to_500_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 4700000000.0,
+   "name": "hmrc/dividend_income_income_band_30_000_to_40_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8400000000.0,
+   "name": "hmrc/dividend_income_income_band_40_000_to_50_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3820000000.0,
+   "name": "hmrc/dividend_income_income_band_500_000_to_1_000_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12500000000.0,
+   "name": "hmrc/dividend_income_income_band_50_000_to_70_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 9440000000.0,
+   "name": "hmrc/dividend_income_income_band_70_000_to_100_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 791000.0,
+   "name": "hmrc/employment_income_count_income_band_100_000_to_150_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1360000.0,
+   "name": "hmrc/employment_income_count_income_band_12_570_to_15_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 264000.0,
+   "name": "hmrc/employment_income_count_income_band_150_000_to_200_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3100000.0,
+   "name": "hmrc/employment_income_count_income_band_15_000_to_20_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 21000.0,
+   "name": "hmrc/employment_income_count_income_band_1_000_000_to_inf",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 180000.0,
+   "name": "hmrc/employment_income_count_income_band_200_000_to_300_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 7470000.0,
+   "name": "hmrc/employment_income_count_income_band_20_000_to_30_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 93000.0,
+   "name": "hmrc/employment_income_count_income_band_300_000_to_500_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 5370000.0,
+   "name": "hmrc/employment_income_count_income_band_30_000_to_40_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3500000.0,
+   "name": "hmrc/employment_income_count_income_band_40_000_to_50_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 44000.0,
+   "name": "hmrc/employment_income_count_income_band_500_000_to_1_000_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3430000.0,
+   "name": "hmrc/employment_income_count_income_band_50_000_to_70_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1640000.0,
+   "name": "hmrc/employment_income_count_income_band_70_000_to_100_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 82300000000.0,
+   "name": "hmrc/employment_income_income_band_100_000_to_150_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 16900000000.0,
+   "name": "hmrc/employment_income_income_band_12_570_to_15_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 39200000000.0,
+   "name": "hmrc/employment_income_income_band_150_000_to_200_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 48600000000.0,
+   "name": "hmrc/employment_income_income_band_15_000_to_20_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 35500000000.0,
+   "name": "hmrc/employment_income_income_band_1_000_000_to_inf",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 36600000000.0,
+   "name": "hmrc/employment_income_income_band_200_000_to_300_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 172000000000.0,
+   "name": "hmrc/employment_income_income_band_20_000_to_30_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 29000000000.0,
+   "name": "hmrc/employment_income_income_band_300_000_to_500_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 170000000000.0,
+   "name": "hmrc/employment_income_income_band_30_000_to_40_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 139000000000.0,
+   "name": "hmrc/employment_income_income_band_40_000_to_50_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23100000000.0,
+   "name": "hmrc/employment_income_income_band_500_000_to_1_000_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 174000000000.0,
+   "name": "hmrc/employment_income_income_band_50_000_to_70_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 118000000000.0,
+   "name": "hmrc/employment_income_income_band_70_000_to_100_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 109000.0,
+   "name": "hmrc/private_pension_income_count_income_band_100_000_to_150_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1070000.0,
+   "name": "hmrc/private_pension_income_count_income_band_12_570_to_15_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 29000.0,
+   "name": "hmrc/private_pension_income_count_income_band_150_000_to_200_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2140000.0,
+   "name": "hmrc/private_pension_income_count_income_band_15_000_to_20_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2000.0,
+   "name": "hmrc/private_pension_income_count_income_band_1_000_000_to_inf",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20000.0,
+   "name": "hmrc/private_pension_income_count_income_band_200_000_to_300_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2660000.0,
+   "name": "hmrc/private_pension_income_count_income_band_20_000_to_30_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 10000.0,
+   "name": "hmrc/private_pension_income_count_income_band_300_000_to_500_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1450000.0,
+   "name": "hmrc/private_pension_income_count_income_band_30_000_to_40_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 779000.0,
+   "name": "hmrc/private_pension_income_count_income_band_40_000_to_50_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 4000.0,
+   "name": "hmrc/private_pension_income_count_income_band_500_000_to_1_000_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 643000.0,
+   "name": "hmrc/private_pension_income_count_income_band_50_000_to_70_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 259000.0,
+   "name": "hmrc/private_pension_income_count_income_band_70_000_to_100_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 5430000000.0,
+   "name": "hmrc/private_pension_income_income_band_100_000_to_150_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 4350000000.0,
+   "name": "hmrc/private_pension_income_income_band_12_570_to_15_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1810000000.0,
+   "name": "hmrc/private_pension_income_income_band_150_000_to_200_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13600000000.0,
+   "name": "hmrc/private_pension_income_income_band_15_000_to_20_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 370000000.0,
+   "name": "hmrc/private_pension_income_income_band_1_000_000_to_inf",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1570000000.0,
+   "name": "hmrc/private_pension_income_income_band_200_000_to_300_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 30200000000.0,
+   "name": "hmrc/private_pension_income_income_band_20_000_to_30_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1120000000.0,
+   "name": "hmrc/private_pension_income_income_band_300_000_to_500_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 24900000000.0,
+   "name": "hmrc/private_pension_income_income_band_30_000_to_40_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 16900000000.0,
+   "name": "hmrc/private_pension_income_income_band_40_000_to_50_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 640000000.0,
+   "name": "hmrc/private_pension_income_income_band_500_000_to_1_000_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 17400000000.0,
+   "name": "hmrc/private_pension_income_income_band_50_000_to_70_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 9470000000.0,
+   "name": "hmrc/private_pension_income_income_band_70_000_to_100_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 137000.0,
+   "name": "hmrc/property_income_count_income_band_100_000_to_150_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 101000.0,
+   "name": "hmrc/property_income_count_income_band_12_570_to_15_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 54000.0,
+   "name": "hmrc/property_income_count_income_band_150_000_to_200_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 232000.0,
+   "name": "hmrc/property_income_count_income_band_15_000_to_20_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 7000.0,
+   "name": "hmrc/property_income_count_income_band_1_000_000_to_inf",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 41000.0,
+   "name": "hmrc/property_income_count_income_band_200_000_to_300_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 431000.0,
+   "name": "hmrc/property_income_count_income_band_20_000_to_30_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 23000.0,
+   "name": "hmrc/property_income_count_income_band_300_000_to_500_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 364000.0,
+   "name": "hmrc/property_income_count_income_band_30_000_to_40_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 325000.0,
+   "name": "hmrc/property_income_count_income_band_40_000_to_50_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 13000.0,
+   "name": "hmrc/property_income_count_income_band_500_000_to_1_000_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 397000.0,
+   "name": "hmrc/property_income_count_income_band_50_000_to_70_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 226000.0,
+   "name": "hmrc/property_income_count_income_band_70_000_to_100_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 85000.0,
+   "name": "hmrc/self_employment_income_count_income_band_100_000_to_150_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 444000.0,
+   "name": "hmrc/self_employment_income_count_income_band_12_570_to_15_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 40000.0,
+   "name": "hmrc/self_employment_income_count_income_band_150_000_to_200_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 651000.0,
+   "name": "hmrc/self_employment_income_count_income_band_15_000_to_20_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11000.0,
+   "name": "hmrc/self_employment_income_count_income_band_1_000_000_to_inf",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 34000.0,
+   "name": "hmrc/self_employment_income_count_income_band_200_000_to_300_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 961000.0,
+   "name": "hmrc/self_employment_income_count_income_band_20_000_to_30_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 21000.0,
+   "name": "hmrc/self_employment_income_count_income_band_300_000_to_500_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 595000.0,
+   "name": "hmrc/self_employment_income_count_income_band_30_000_to_40_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 359000.0,
+   "name": "hmrc/self_employment_income_count_income_band_40_000_to_50_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15000.0,
+   "name": "hmrc/self_employment_income_count_income_band_500_000_to_1_000_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 311000.0,
+   "name": "hmrc/self_employment_income_count_income_band_50_000_to_70_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 143000.0,
+   "name": "hmrc/self_employment_income_count_income_band_70_000_to_100_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 4980000000.0,
+   "name": "hmrc/self_employment_income_income_band_100_000_to_150_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 4810000000.0,
+   "name": "hmrc/self_employment_income_income_band_12_570_to_15_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3650000000.0,
+   "name": "hmrc/self_employment_income_income_band_150_000_to_200_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8030000000.0,
+   "name": "hmrc/self_employment_income_income_band_15_000_to_20_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 19500000000.0,
+   "name": "hmrc/self_employment_income_income_band_1_000_000_to_inf",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 4390000000.0,
+   "name": "hmrc/self_employment_income_income_band_200_000_to_300_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 15700000000.0,
+   "name": "hmrc/self_employment_income_income_band_20_000_to_30_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 4840000000.0,
+   "name": "hmrc/self_employment_income_income_band_300_000_to_500_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12600000000.0,
+   "name": "hmrc/self_employment_income_income_band_30_000_to_40_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8730000000.0,
+   "name": "hmrc/self_employment_income_income_band_40_000_to_50_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 6670000000.0,
+   "name": "hmrc/self_employment_income_income_band_500_000_to_1_000_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8220000000.0,
+   "name": "hmrc/self_employment_income_income_band_50_000_to_70_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 5360000000.0,
+   "name": "hmrc/self_employment_income_income_band_70_000_to_100_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 74000.0,
+   "name": "hmrc/state_pension_count_income_band_100_000_to_150_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1140000.0,
+   "name": "hmrc/state_pension_count_income_band_12_570_to_15_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 21000.0,
+   "name": "hmrc/state_pension_count_income_band_150_000_to_200_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2050000.0,
+   "name": "hmrc/state_pension_count_income_band_15_000_to_20_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2000.0,
+   "name": "hmrc/state_pension_count_income_band_1_000_000_to_inf",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 14000.0,
+   "name": "hmrc/state_pension_count_income_band_200_000_to_300_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2320000.0,
+   "name": "hmrc/state_pension_count_income_band_20_000_to_30_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8000.0,
+   "name": "hmrc/state_pension_count_income_band_300_000_to_500_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1160000.0,
+   "name": "hmrc/state_pension_count_income_band_30_000_to_40_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 568000.0,
+   "name": "hmrc/state_pension_count_income_band_40_000_to_50_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3000.0,
+   "name": "hmrc/state_pension_count_income_band_500_000_to_1_000_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 441000.0,
+   "name": "hmrc/state_pension_count_income_band_50_000_to_70_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 176000.0,
+   "name": "hmrc/state_pension_count_income_band_70_000_to_100_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 847000000.0,
+   "name": "hmrc/state_pension_income_band_100_000_to_150_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 11800000000.0,
+   "name": "hmrc/state_pension_income_band_12_570_to_15_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 265000000.0,
+   "name": "hmrc/state_pension_income_band_150_000_to_200_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 22200000000.0,
+   "name": "hmrc/state_pension_income_band_15_000_to_20_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 20000000.0,
+   "name": "hmrc/state_pension_income_band_1_000_000_to_inf",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 179000000.0,
+   "name": "hmrc/state_pension_income_band_200_000_to_300_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 24900000000.0,
+   "name": "hmrc/state_pension_income_band_20_000_to_30_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 96000000.0,
+   "name": "hmrc/state_pension_income_band_300_000_to_500_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 12300000000.0,
+   "name": "hmrc/state_pension_income_band_30_000_to_40_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 6020000000.0,
+   "name": "hmrc/state_pension_income_band_40_000_to_50_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 43000000.0,
+   "name": "hmrc/state_pension_income_band_500_000_to_1_000_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 4660000000.0,
+   "name": "hmrc/state_pension_income_band_50_000_to_70_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1890000000.0,
+   "name": "hmrc/state_pension_income_band_70_000_to_100_000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 7497928.0,
+   "name": "ons.population.age_0_9_by_region",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8161755.0,
+   "name": "ons.population.age_10_19_by_region",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8525289.0,
+   "name": "ons.population.age_20_29_by_region",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 9336791.0,
+   "name": "ons.population.age_30_39_by_region",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 8489468.0,
+   "name": "ons.population.age_40_49_by_region",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 9148143.0,
+   "name": "ons.population.age_50_59_by_region",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 7671378.0,
+   "name": "ons.population.age_60_69_by_region",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 5963774.0,
+   "name": "ons.population.age_70_79_by_region",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2858964.0,
+   "name": "ons.population.age_80_89_by_region",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1742660.0,
+   "name": "ons.population.female_0_4",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2025209.0,
+   "name": "ons.population.female_10_14",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1947075.0,
+   "name": "ons.population.female_15_19",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2008105.0,
+   "name": "ons.population.female_20_24",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2232408.0,
+   "name": "ons.population.female_25_29",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2417082.0,
+   "name": "ons.population.female_30_34",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2396290.0,
+   "name": "ons.population.female_35_39",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2282889.0,
+   "name": "ons.population.female_40_44",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2056833.0,
+   "name": "ons.population.female_45_49",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2304569.0,
+   "name": "ons.population.female_50_54",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2360196.0,
+   "name": "ons.population.female_55_59",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1916898.0,
+   "name": "ons.population.female_5_9",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2133183.0,
+   "name": "ons.population.female_60_64",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1794961.0,
+   "name": "ons.population.female_65_69",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1633749.0,
+   "name": "ons.population.female_70_74",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1518990.0,
+   "name": "ons.population.female_75_79",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 985351.0,
+   "name": "ons.population.female_80_84",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 650117.0,
+   "name": "ons.population.female_85_89",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 408216.0,
+   "name": "ons.population.female_90_plus",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1829347.0,
+   "name": "ons.population.male_0_4",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2125078.0,
+   "name": "ons.population.male_10_14",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2064393.0,
+   "name": "ons.population.male_15_19",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2089437.0,
+   "name": "ons.population.male_20_24",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2195339.0,
+   "name": "ons.population.male_25_29",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2283116.0,
+   "name": "ons.population.male_30_34",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2240303.0,
+   "name": "ons.population.male_35_39",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2163337.0,
+   "name": "ons.population.male_40_44",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1986409.0,
+   "name": "ons.population.male_45_49",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2218309.0,
+   "name": "ons.population.male_50_54",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2265069.0,
+   "name": "ons.population.male_55_59",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2009023.0,
+   "name": "ons.population.male_5_9",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2048486.0,
+   "name": "ons.population.male_60_64",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1694748.0,
+   "name": "ons.population.male_65_69",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1486710.0,
+   "name": "ons.population.male_70_74",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1324325.0,
+   "name": "ons.population.male_75_79",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 777961.0,
+   "name": "ons.population.male_80_84",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 445535.0,
+   "name": "ons.population.male_85_89",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 203503.0,
+   "name": "ons.population.male_90_plus",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 68265209.0,
+   "name": "ons.population.uk_total",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "fixture_value": 557000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 554243.0,
+   "name": "isc.private_school_students",
+   "period": 2023,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 1957550396058.5835,
+   "kind": "calibration_drift",
+   "ledger_value": 1976893000000.0,
+   "name": "ons.land.corporate_land_value",
+   "period": 2023,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 4798764603941.416,
+   "kind": "calibration_drift",
+   "ledger_value": 4383082000000.0,
+   "name": "ons.land.household_land_value",
+   "period": 2023,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 46000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 46197.0,
+   "name": "ons.population.scotland_babies_under_1",
+   "period": 2023,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 900000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 894695.0,
+   "name": "ons.population.scotland_children_under_16",
+   "period": 2023,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  },
+  {
+   "fixture_value": 5900000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 6089000.0,
+   "name": "ons.public_sector_employment",
+   "period": 2023,
+   "reason": "Ledger-compiled value differs from the fixture value at this comparison period."
+  }
+ ],
+ "fixture_count": 149
+}

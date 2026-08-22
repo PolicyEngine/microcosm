@@ -1,0 +1,402 @@
+#!/usr/bin/env python
+"""Generate UK Ledger target references from the national contract.
+
+This is an offline authoring tool. It consumes an already-exported Ledger
+consumer fact JSONL feed; it does not fetch data or contact Chronicle.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+from collections import Counter
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+
+from microcosm.build.target_reference_authoring import (
+    TargetReferenceAuthoringConfig,
+    author_target_references,
+    target_references_resource,
+)
+
+UK_GEOGRAPHY_IDS = {
+    "uk": "K02000001",
+    "great_britain": "K03000001",
+    "england": "E92000001",
+    "scotland": "S92000003",
+    "wales": "W92000004",
+    "northern_ireland": "N92000002",
+}
+
+POLICYENGINE_BINDING_KEYS = frozenset(
+    {
+        "affected_flag_variable",
+        "band",
+        "band_period_factor",
+        "count_of",
+        "filters",
+        "folded_into",
+        "from_entity",
+        "gate_comparison",
+        "gate_parameter",
+        "gated_variable",
+        "groupby_variable",
+        "household_conditions",
+        "kind",
+        "map_to",
+        "metric_name",
+        "notes",
+        "output_delta",
+        "output_variable",
+        "reduce",
+        "source_lines",
+        "threshold_price_base_year",
+        "value_expression",
+        "value_variable",
+        "zeroed_input",
+    }
+)
+
+_UK_DATA_REPO = "policyengine-" + "uk-data"
+
+PROPERTY_INCOME_SIGNED_EXCLUSION_RATIONALE = (
+    "Signed out pending a first-class value-scaling operation or a Chronicle "
+    "package for HMRC Property Rental Income Statistics with declared "
+    "reconciliation: the Ledger facts are official HMRC SPI Table 3.7 net "
+    "property-income amounts, while the incumbent calibration target applies "
+    "the populace-side x1.9 property-income undercount adjustment. The x1.9 "
+    f"trace is {_UK_DATA_REPO} PR #311 / issue {_UK_DATA_REPO}#230: "
+    "SPI covers only taxpayers with liability, and HMRC Property Rental Income "
+    "Statistics show GBP 46.68bn versus SPI about GBP 24.5bn for 2020-21. "
+    "Binding the raw SPI facts would knowingly calibrate to 10/19 of the "
+    "incumbent surface."
+)
+
+
+DESCRIPTION = (
+    "UK active-subset Ledger target references for the FRS 2024-25 line. "
+    "Rows are generated from uk_national_targets.json: name is the contract "
+    "target_id or an incumbent-compatible fan-out row name; ledger_selector "
+    "is the contract selector plus geography pins; entity is from_entity, "
+    "then map_to, then household; measure is the prepared-column metric name "
+    "or fan-out row name; family is the contract family; period is 2025 "
+    "(opening-year convention for the FRS 2024-25 survey line). Observed "
+    "values stay in Ledger facts and resolve by identity unless the reference "
+    "declares value_operation=sum for a genuine multi-fact residue. Deferred "
+    "classes and geography-pin decisions are recorded in "
+    "uk/target_reference_membership.json. metadata.measure_kind records that "
+    "measures are prepared columns produced from the contract binding payload "
+    "referenced by metadata.contract_target_id."
+)
+
+
+def main() -> None:
+    args = _parser().parse_args()
+    contract = json.loads(args.contract.read_text())
+    facts = [
+        json.loads(line)
+        for line in args.ledger_facts.read_text().splitlines()
+        if line.strip()
+    ]
+    inverse_mapping = _registry_inverse(contract)
+    config = TargetReferenceAuthoringConfig(
+        target_period=args.period,
+        geography_pins=_geography_pins(contract),
+        fanout_name=lambda target, fact: _fanout_name(
+            target,
+            fact,
+            inverse_mapping,
+        ),
+        sum_target_ids=_sum_target_ids(contract),
+        value_operation_by_target_id=_value_operation_by_target_id(contract),
+        selector_pins_by_target_id=_selector_pins(contract),
+        signed_exclusions_by_target_id=_signed_exclusions(contract),
+        binding_vocabulary=POLICYENGINE_BINDING_KEYS,
+        source_fact_feed=str(args.ledger_facts),
+    )
+    authored = author_target_references(contract, facts, config)
+    _add_uk_membership_accounting(authored.membership_report, authored.references)
+    resource = target_references_resource(
+        country="uk",
+        description=DESCRIPTION,
+        authored=authored,
+    )
+    args.output.write_text(json.dumps(resource, indent=2) + "\n")
+    args.membership_report.write_text(
+        json.dumps(authored.membership_report, indent=2) + "\n"
+    )
+    print(json.dumps(authored.membership_report["status_counts"], sort_keys=True))
+    print(
+        f"active_reference_count={authored.membership_report['active_reference_count']}"
+    )
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--contract", type=Path, required=True)
+    parser.add_argument("--ledger-facts", type=Path, required=True)
+    parser.add_argument("--period", type=int, default=2025)
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--membership-report", type=Path, required=True)
+    return parser
+
+
+def _registry_inverse(contract: Mapping[str, Any]) -> dict[str, list[str]]:
+    inverse: dict[str, list[str]] = {}
+    for ancestor, target_id in contract["registry_parity"]["mapped"].items():
+        inverse.setdefault(str(target_id), []).append(str(ancestor))
+    return {key: sorted(value) for key, value in inverse.items()}
+
+
+def _geography_pins(contract: Mapping[str, Any]) -> dict[str, dict[str, str]]:
+    return {
+        str(target["target_id"]): {
+            "geography_level": "country",
+            "geography_id": _geography_id_for_target(target),
+        }
+        for target in contract.get("targets", ())
+    }
+
+
+def _geography_id_for_target(target: Mapping[str, Any]) -> str:
+    target_id = str(target["target_id"]).lower()
+    selector = target.get("ledger_selector") or {}
+    concept = str(selector.get("source_concept", "")).lower()
+    measure = str(selector.get("source_measure_id", "")).lower()
+    haystack = " ".join((target_id, concept, measure))
+    if "northern" in haystack or "domestic_rates" in haystack:
+        return UK_GEOGRAPHY_IDS["northern_ireland"]
+    if "scotland" in haystack:
+        return UK_GEOGRAPHY_IDS["scotland"]
+    if "wales" in haystack:
+        return UK_GEOGRAPHY_IDS["wales"]
+    if "england" in haystack or target_id.startswith("voa."):
+        return UK_GEOGRAPHY_IDS["england"]
+    if target_id.startswith("dwp.") or target_id.startswith("slc."):
+        return UK_GEOGRAPHY_IDS["great_britain"]
+    return UK_GEOGRAPHY_IDS["uk"]
+
+
+def _sum_target_ids(contract: Mapping[str, Any]) -> frozenset[str]:
+    target_ids: set[str] = set()
+    for target in contract.get("targets", ()):
+        selector = target["ledger_selector"]
+        binding = target["bindings"]["policyengine"]
+        if "value_expression" in binding:
+            target_ids.add(str(target["target_id"]))
+        if any(isinstance(value, list) for value in selector.values()):
+            target_ids.add(str(target["target_id"]))
+        dimension_values = selector.get("dimension_values")
+        if isinstance(dimension_values, Mapping) and any(
+            isinstance(value, list) for value in dimension_values.values()
+        ):
+            target_ids.add(str(target["target_id"]))
+    return frozenset(target_ids)
+
+
+def _value_operation_by_target_id(contract: Mapping[str, Any]) -> dict[str, str]:
+    operations = {target_id: "sum" for target_id in _sum_target_ids(contract)}
+    for target in contract.get("targets", ()):
+        selector = target["ledger_selector"]
+        target_id = str(target["target_id"])
+        if selector.get("source_concept") == "dwp.uc_benefit_units":
+            operations[target_id] = "calendar_year_average"
+    return operations
+
+
+def _selector_pins(contract: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    pins: dict[str, dict[str, Any]] = {}
+    for target in contract.get("targets", ()):
+        selector = target["ledger_selector"]
+        dimension_values = selector.get("dimension_values")
+        if (
+            selector.get("source_concept") == "ons.mid_year_population_estimate"
+            and isinstance(dimension_values, Mapping)
+        ):
+            pins[str(target["target_id"])] = {
+                "dimensions": sorted(str(key) for key in dimension_values)
+            }
+    return pins
+
+
+def _signed_exclusions(contract: Mapping[str, Any]) -> dict[str, str]:
+    target_ids = {
+        str(target["target_id"])
+        for target in contract.get("targets", ())
+    }
+    target_id = "hmrc.spi.property_income.amount_by_total_income_band"
+    if target_id not in target_ids:
+        return {}
+    return {target_id: PROPERTY_INCOME_SIGNED_EXCLUSION_RATIONALE}
+
+
+def _fanout_name(
+    target: Mapping[str, Any],
+    fact: Mapping[str, Any],
+    inverse_mapping: Mapping[str, list[str]],
+) -> str | None:
+    target_id = str(target["target_id"])
+    value_id = str(fact.get("layout", {}).get("groupby_value_id") or "")
+    preferred_tokens, fallback_tokens = _dimension_tokens(fact)
+    candidates = inverse_mapping.get(target_id, ())
+    for candidate in candidates:
+        if value_id and value_id not in _GEOGRAPHY_VALUE_IDS and value_id in candidate:
+            return candidate
+        if any(token in candidate for token in preferred_tokens):
+            return candidate
+    for candidate in candidates:
+        if any(token in candidate for token in fallback_tokens):
+            return candidate
+    if len(candidates) == 1:
+        return None
+    if candidates:
+        return None
+    safe_value = value_id.replace("/", "_") or "detail"
+    return f"{target_id}.{safe_value}"
+
+
+def _dimension_tokens(fact: Mapping[str, Any]) -> tuple[list[str], list[str]]:
+    preferred: list[str] = []
+    fallback: list[str] = []
+    dimensions = fact.get("dimensions") or {}
+    if not isinstance(dimensions, Mapping):
+        return preferred, fallback
+    for value in dimensions.values():
+        if isinstance(value, int):
+            token = _int_token(value)
+            preferred.append(f"income_band_{token}_to")
+            fallback.append(f"_{token}")
+        elif isinstance(value, str) and value.isdigit():
+            token = _int_token(int(value))
+            preferred.append(f"income_band_{token}_to")
+            fallback.append(f"_{token}")
+        elif isinstance(value, str):
+            annual_band = _annual_uc_award_band_token(value)
+            if annual_band:
+                preferred.append(annual_band)
+                fallback.append(annual_band.removeprefix("annual_payment_"))
+    return preferred, fallback
+
+
+def _int_token(value: int) -> str:
+    return f"{value:,}".replace(",", "_")
+
+
+def _annual_uc_award_band_token(value: str) -> str:
+    normalized = value.strip().lower()
+    if normalized == "no payment" or "or over" in normalized:
+        return ""
+    if " to " not in normalized:
+        return ""
+    numbers = [
+        float(number.replace(",", ""))
+        for number in re.findall(r"[0-9][0-9,]*(?:\.[0-9]+)?", value)
+    ]
+    if len(numbers) != 2:
+        return ""
+    lower = int((numbers[0] // 100) * 100 * 12)
+    upper = int(numbers[1] * 12)
+    return f"annual_payment_{_int_token(lower)}_to_{_int_token(upper)}"
+
+
+def _add_uk_membership_accounting(
+    report: dict[str, Any],
+    references: tuple[dict[str, Any], ...],
+) -> None:
+    fanout_counts = Counter(
+        reference["family"]
+        for reference in references
+        if reference["name"] != reference["metadata"]["contract_target_id"]
+    )
+    council_tax_count = sum(
+        1
+        for reference in references
+        if reference["metadata"]["contract_target_id"].startswith(
+            "voa.council_tax_stock."
+        )
+    )
+    report["fanout_family_outcomes"] = [
+        {
+            "family": "hmrc_spi",
+            "status": "active_with_signed_property_amount_exclusion",
+            "active_reference_count": fanout_counts.get("hmrc_spi", 0),
+            "signed_rationale": (
+                "SPI income-band targets fan out by strict total-income-band "
+                "dimension pins, except the HMRC property-income amount "
+                "surface. Those 13 rows are signed out because Ledger carries "
+                "the official SPI Table 3.7 net property-income amounts, "
+                "while the incumbent target applies the populace-side x1.9 "
+                "property-income undercount adjustment traced to "
+                f"{_UK_DATA_REPO} PR #311 / issue #230 and HMRC "
+                "Property Rental Income Statistics."
+            ),
+        },
+        {
+            "family": "dwp_universal_credit",
+            "status": "active_with_unmapped_vintage_residue_skipped",
+            "active_reference_count": fanout_counts.get("dwp_universal_credit", 0),
+            "skipped_unmapped_fact_count": 12,
+            "signed_rationale": (
+                "UC payment-distribution targets fan out over family_type and "
+                "monthly_award_amount_bands into incumbent-compatible "
+                "annual-payment rows. The four source-only 'No payment' facts "
+                "and eight overlapping source-only 'or over' facts are left "
+                "out; no active reference may use the legacy nan_to_nan band "
+                "name."
+            ),
+        },
+        {
+            "family": "council_tax_stock",
+            "status": "active_declared_rows",
+            "active_reference_count": council_tax_count,
+            "signed_rationale": (
+                "VOA council-tax stock bands are declared as nine explicit "
+                "target rows, including total, and each resolves with its "
+                "country-level geography and band pin."
+            ),
+        },
+    ]
+    report["signed_exclusion_rationales"] = [
+        {
+            "family": "hmrc_spi",
+            "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
+            "status": "signed_excluded",
+            "signed_rationale": report["targets"][
+                "hmrc.spi.property_income.amount_by_total_income_band"
+            ]["candidates"][0]["signed_rationale"],
+        }
+    ]
+    report["multi_fact_rationales"] = [
+        {
+            "family": "ons_population",
+            "target_id": "ons.population.scotland_households_3plus_children",
+            "candidate_name": "ons/scotland_households_3plus_children",
+            "status": "adjudication_pending",
+            "signed_rationale": (
+                "Remaining multi_fact is genuine: the selector reaches ONS "
+                "mid-year population age rows for Scotland across six eligible "
+                "periods, while the contract target is a household count with "
+                "three or more children. No Ledger household-composition fact "
+                "at or before 2025 is selected by the current contract, so "
+                "Microcosm must not adjudicate a replacement source here."
+            ),
+        }
+    ]
+
+
+_GEOGRAPHY_VALUE_IDS = frozenset(
+    {
+        "england",
+        "great_britain",
+        "northern_ireland",
+        "scotland",
+        "uk",
+        "wales",
+    }
+)
+
+
+if __name__ == "__main__":
+    main()

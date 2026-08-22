@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "country": "uk",
+  "policy": "The UK FRS release pin freezes the raw Family Resources Survey vintage that seeds the UK build; runtime loaders and source manifests must agree on its survey, base, calibration, UKDS, DOI, acquisition, and hash identity before licensed tabs are consumed.",
+  "name": "frs_2024_25",
+  "survey_year": 2024,
+  "base_year": 2024,
+  "calibration_year": 2025,
+  "time_period": "2024",
+  "vintage": "2024_25",
+  "ukds_study_number": 9563,
+  "doi": "10.5255/UKDA-SN-9563-1",
+  "ukds_tab_zip": {
+    "filename": "9563tab_05DD0069587DBD25E5719D355CE05FC0827D5EDD58C24ECE9AB85ACD954A9AEB_V1.zip",
+    "sha256": "05dd0069587dbd25e5719d355ce05fc0827d5edd58c24ece9ab85acd954a9aeb"
+  },
+  "acquisition": {
+    "huggingface_repo": "policyengine/policyengine-uk-data-private",
+    "huggingface_revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
+    "zip_filename": "frs_2024_25.zip",
+    "zip_sha256": "05dd0069587dbd25e5719d355ce05fc0827d5edd58c24ece9ab85acd954a9aeb",
+    "zip_size_bytes": 46637202
+  },
+  "notes": "Tape years labeled by tax year (2024_25) per the SPI-stage convention. Donor vintages (SPI 2022-23, WAS r8, LCFS 2023-24, ETB) unchanged. Adopted from the old E11 scope (microcosm#723)."
+}

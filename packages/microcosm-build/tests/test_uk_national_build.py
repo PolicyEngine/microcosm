@@ -251,7 +251,7 @@ def _write_two_row_h5(
                 "child_benefit_opts_out": flags(23),
                 "would_claim_pc": flags(70),
                 "would_claim_uc": flags(55),
-                "would_claim_tfc": flags(59),
+                "would_claim_tfc": flags(88),
                 "would_claim_extended_childcare": flags(81),
                 "would_claim_universal_childcare": flags(56),
                 "would_claim_targeted_childcare": flags(60),
@@ -279,7 +279,7 @@ def _write_two_row_h5(
                         index % 4 >= 2 for index in range(n)
                     ],
                     "household_owns_tv": flags(95),
-                    "would_evade_tv_licence_fee": flags(11),
+                    "would_evade_tv_licence_fee": flags(13),
                     "main_residential_property_purchased_is_first_home": flags(38),
                     "property_purchased": flags(4),
                     "brma": [
@@ -1091,6 +1091,8 @@ def test_national_build_real_terminal_batch_blocks_incomplete_qrf_before_staging
     assert statuses == {
         "uk_release_input_coverage_manifest_current": "passed",
         "uk_release_family_build_stages": "passed",
+        "uk_ledger_compile_parity_production_2023": "evidence_absent",
+        "uk_ledger_compile_parity_incumbent_2025": "evidence_absent",
         "uk_release_input_coverage": "passed",
         "uk_degenerate_release_surface": "passed",
         "uk_zero_weight_strata": "passed",
@@ -1796,8 +1798,8 @@ def test_release_candidate_blocks_on_named_evidence_gaps(tmp_path) -> None:
             gate_registry=registry,
             release_candidate=True,
         )
-    assert error.value.phase == "terminal"
-    assert "[uk_weight_ratio]" in str(error.value)
+    assert error.value.phase == "preflight"
+    assert "[uk_ledger_compile_parity_production_2023]" in str(error.value)
     assert not (tmp_path / "candidate.h5").exists()
 
 

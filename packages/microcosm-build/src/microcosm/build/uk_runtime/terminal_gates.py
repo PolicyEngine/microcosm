@@ -70,7 +70,10 @@ __all__ = [
 ]
 
 UK_CANDIDATE_DATASET_NAME = "populace_uk_2023"
-UK_REFERENCE_DATASET_NAME = "enhanced_frs_2023_24_recalibrated"
+# The label names the pinned reference artifact exactly: the 2024-25 line's
+# published enhanced_frs_2024_25.h5 (no separate "recalibrated" variant
+# exists at this vintage; the June report strings keep their own label).
+UK_REFERENCE_DATASET_NAME = "enhanced_frs_2024_25"
 UK_MAX_TARGET_ABS_RELATIVE_ERROR = 0.25
 
 

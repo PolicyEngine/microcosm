@@ -910,20 +910,6 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--zero-support-exclusions",
-        type=Path,
-        help=(
-            "Optional JSON mapping source_record_id -> reason of per-run, "
-            "per-artifact support-expressibility exclusions that augment the "
-            "standing US_FISCAL_TARGET_SUPPORT_EXCLUSIONS registry for THIS "
-            "build only (PolicyEngine/microcosm#299 Build G). A sparse "
-            "artifact's frozen support cannot populate narrow state/tail cells "
-            "the dense parent can; declare those cells here so they do not "
-            "fail the zero-support gate, with each reason recorded in the "
-            "release manifest. The module registry is never mutated."
-        ),
-    )
-    parser.add_argument(
         "--qrf-tail-concentration-exclusions",
         type=Path,
         help=(
@@ -1398,23 +1384,6 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
-        "--diagnostic-skip-tax-expenditure-targets",
-        action="store_true",
-        help=(
-            "Diagnostic only: drop JCT tax-expenditure calibration targets so "
-            "local target materialization can skip reform simulations. Do not "
-            "use for publishable releases."
-        ),
-    )
-    parser.add_argument(
-        "--include-congressional-district-targets",
-        action="store_true",
-        help=(
-            "Opt into SOI congressional-district target rows. Requires the "
-            "support frame to contain household congressional_district_geoid."
-        ),
-    )
-    parser.add_argument(
         "--congressional-district-vintage-crosswalk",
         type=Path,
         help=(
@@ -1422,9 +1391,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "artifact with source_geography_id, target_geography_id, and "
             "weight columns. Defaults to the packaged Census-built crosswalk "
             "(microcosm.build.us_runtime.data; see "
-            "CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK.md) when "
-            "congressional-district targets are requested; pass a path to "
-            "override it."
+            "CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK.md); pass a path to "
+            "override the default."
         ),
     )
     parser.add_argument(
@@ -1504,12 +1472,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Minimum seconds between progress uploads to the staging repo.",
     )
     args = parser.parse_args(argv)
-    if (
-        args.include_congressional_district_targets
-        and args.congressional_district_vintage_crosswalk is None
-    ):
-        # Fall back to the packaged Census-built crosswalk so CD-target builds
-        # work out of the box; an explicit path still overrides it.
+    if args.congressional_district_vintage_crosswalk is None:
+        # Every build compiles the same national + state + CD target surface,
+        # translated through the canonical packaged vintage crosswalk unless
+        # the caller supplies an explicit replacement.
         args.congressional_district_vintage_crosswalk = (
             default_congressional_district_vintage_crosswalk_path()
         )
@@ -7842,35 +7808,6 @@ def _build_manifests(
     )
 
 
-def _load_zero_support_exclusions(path: Path | None) -> dict[str, str]:
-    """Load a per-run, per-artifact zero-support exclusion mapping.
-
-    The file is a JSON object of ``source_record_id -> reason``. Each reason
-    must be a non-empty string documenting why the sparse artifact's frozen
-    support cannot express that cell (PolicyEngine/microcosm#299 Build G). These
-    augment the standing :data:`US_FISCAL_TARGET_SUPPORT_EXCLUSIONS` for a single
-    build; the module constant is never mutated. Returns an empty mapping when
-    no path is given.
-    """
-    if path is None:
-        return {}
-    payload = json.loads(path.read_text())
-    if not isinstance(payload, dict):
-        raise ValueError(
-            f"Zero-support exclusions file {path} must be a JSON object of "
-            "source_record_id -> reason."
-        )
-    exclusions: dict[str, str] = {}
-    for source_record_id, reason in payload.items():
-        if not isinstance(reason, str) or not reason.strip():
-            raise ValueError(
-                "Every zero-support exclusion needs a non-empty reason; "
-                f"{source_record_id!r} in {path} has {reason!r}."
-            )
-        exclusions[str(source_record_id)] = reason
-    return exclusions
-
-
 def _load_qrf_tail_concentration_exclusions(path: Path | None) -> dict[str, str]:
     """Load a per-run QRF tail-concentration exclusion mapping.
 
@@ -8444,21 +8381,14 @@ def _main(argv: Sequence[str] | None = None) -> None:
         expected_facts_sha256=args.ledger_facts_sha256,
         expected_manifest_sha256=args.ledger_manifest_sha256,
     )
-    extra_support_exclusions = _load_zero_support_exclusions(
-        args.zero_support_exclusions
-    )
     target_registry = compile_us_fiscal_target_registry(
         ledger_artifact.facts,
         target_period=PERIOD,
-        include_congressional_district_targets=(
-            args.include_congressional_district_targets
-        ),
         congressional_district_vintage_crosswalk=(
             congressional_district_vintage_crosswalk
         ),
         age_targets=args.age_targets,
         allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
-        extra_support_exclusions=extra_support_exclusions,
     )
     # Reviewed CMS Medicaid enrollment substitutions (microcosm#386): a state
     # whose point-in-time snapshot is unreported at source ships its cited
@@ -8490,15 +8420,6 @@ def _main(argv: Sequence[str] | None = None) -> None:
             )
         )
     target_specs = target_registry.specs
-    if args.diagnostic_skip_tax_expenditure_targets:
-        tax_expenditure_measures = {
-            reform_spec.measure for reform_spec in US_JCT_TAX_EXPENDITURE_REFORMS
-        }
-        target_specs = tuple(
-            spec
-            for spec in target_specs
-            if spec.measure not in tax_expenditure_measures
-        )
     active_target_registry = TargetRegistry(target_specs, country="us")
     # SSI take-up wiring resolves as soon as the registry exists (fail-fast,
     # microcosm#507/#508): the band targets come from the same ledger-fed
@@ -8514,10 +8435,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         target_specs,
         US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
     )
-    if (
-        not target_profile_gate.passed
-        and not args.diagnostic_skip_tax_expenditure_targets
-    ):
+    if not target_profile_gate.passed:
         raise RuntimeError(
             "Release gates failed: "
             + "; ".join(
@@ -11284,12 +11202,8 @@ def _main(argv: Sequence[str] | None = None) -> None:
             "source_coverage", message="Writing source coverage diagnostics."
         )
     active_aliases = DIRECT_ACTIVE_ALIASES + (
-        (
-            "census-acs-s0101-congressional-district-age-2024",
-            "soi-congressional-district-2022",
-        )
-        if args.include_congressional_district_targets
-        else ()
+        "census-acs-s0101-congressional-district-age-2024",
+        "soi-congressional-district-2022",
     )
     coverage = us_source_coverage_diagnostics(
         active_target_aliases=active_aliases,
@@ -11306,25 +11220,6 @@ def _main(argv: Sequence[str] | None = None) -> None:
             US_FISCAL_TARGET_SUPPORT_EXCLUSIONS.items()
         )
     ]
-    # Per-run, per-artifact support-expressibility exclusions (microcosm#299
-    # Build G): recorded separately from the standing global registry so the
-    # manifest documents exactly which cells this artifact declared un-
-    # expressible on its support, without mutating the module constant.
-    coverage["fiscal_target_support_exclusions_per_run"] = {
-        "source": (
-            str(args.zero_support_exclusions)
-            if args.zero_support_exclusions is not None
-            else None
-        ),
-        "reason": (
-            "Sparse frozen-support cells the artifact's support cannot express; "
-            "augments US_FISCAL_TARGET_SUPPORT_EXCLUSIONS for this build only."
-        ),
-        "exclusions": [
-            {"source_record_id": source_record_id, "reason": reason}
-            for source_record_id, reason in sorted(extra_support_exclusions.items())
-        ],
-    }
     write_us_source_coverage_diagnostics(
         coverage, release_dir / "us_source_coverage.json"
     )

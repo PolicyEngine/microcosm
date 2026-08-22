@@ -28,6 +28,7 @@ QRF tail concentration) read the frame directly and skip it.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
@@ -47,6 +48,7 @@ from microcosm.build.gates import (
     GateResult,
     aggregate_admin_gate,
     enum_domain_gate,
+    ledger_compile_parity_gate,
     nonnegative_columns_gate,
     support_gate,
     weights_audit_gate,
@@ -714,6 +716,65 @@ def _evaluate_tail_concentration(
     )
 
 
+def _evaluate_ledger_compile_parity(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    fixture_resource = str(parameters["fixture_resource"])
+    fixture = json.loads(
+        files("microcosm.build.uk").joinpath(fixture_resource).read_text()
+    )
+    signed_differences = parameters.get("signed_differences", ())
+    signed_resource = parameters.get("signed_differences_resource")
+    if signed_resource is not None:
+        signed_differences = json.loads(
+            files("microcosm.build.uk").joinpath(str(signed_resource)).read_text()
+        )["differences"]
+    target_period = parameters["target_period"]
+    return ledger_compile_parity_gate(
+        _ledger_compile_parity_registry(context, target_period),
+        fixture,
+        signed_differences=signed_differences,
+    )
+
+
+def _ledger_compile_parity_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    target_period = parameters["target_period"]
+    registry = _ledger_compile_parity_registry(context, target_period)
+    fixture_resource = str(parameters["fixture_resource"])
+    fixture_text = files("microcosm.build.uk").joinpath(fixture_resource).read_text()
+    return {
+        "registry_version": getattr(registry, "version", None),
+        "registry_count": len(registry) if hasattr(registry, "__len__") else None,
+        "fixture_resource": fixture_resource,
+        "fixture_sha256": hashlib.sha256(fixture_text.encode("utf-8")).hexdigest(),
+        "target_period": target_period,
+        "signed_differences": parameters.get("signed_differences", ()),
+        "signed_differences_resource": parameters.get("signed_differences_resource"),
+    }
+
+
+def _ledger_compile_parity_registry(
+    context: EvidenceContext,
+    target_period: object,
+) -> object:
+    registries = context.artifacts["uk_ledger_compiled_registries"]
+    if not isinstance(registries, Mapping):
+        raise TypeError(
+            "uk_ledger_compiled_registries must map target periods to registries."
+        )
+    if target_period in registries:
+        return registries[target_period]
+    target_period_key = str(target_period)
+    if target_period_key in registries:
+        return registries[target_period_key]
+    raise KeyError(
+        f"UK Ledger compile parity has no registry for target period "
+        f"{target_period!r}; available periods: {sorted(map(str, registries))}."
+    )
+
+
 # ---------------------------------------------------------------------------
 # The registry
 # ---------------------------------------------------------------------------
@@ -858,5 +919,20 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         ),
         artifact_keys=frozenset({"exclusions_evaluated_on"}),
         legacy_name="qrf_tail_concentration",
+    ),
+    "ledger_compile_parity": UKGateBinding(
+        name="ledger_compile_parity",
+        evaluator=_evaluate_ledger_compile_parity,
+        parameter_keys=frozenset(
+            {
+                "fixture_resource",
+                "signed_differences",
+                "signed_differences_resource",
+                "target_period",
+            }
+        ),
+        artifact_keys=frozenset({"uk_ledger_compiled_registries"}),
+        needs_frame=False,
+        evidence=_ledger_compile_parity_evidence,
     ),
 }

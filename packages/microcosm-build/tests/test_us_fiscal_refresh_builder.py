@@ -1,6 +1,7 @@
 import builtins
 import hashlib
 import importlib.util
+import inspect
 import json
 import sys
 from dataclasses import replace
@@ -46,6 +47,50 @@ def _load_scorer_module():
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+def test_release_and_fiscal_scorer_signatures_have_no_membership_switches() -> None:
+    builder = _load_builder_module()
+    scorer = _load_scorer_module()
+
+    assert set(inspect.signature(builder._main).parameters) == {"argv"}
+    assert set(inspect.signature(scorer.score_frame).parameters) == {
+        "h5",
+        "ledger_facts",
+        "age_targets",
+        "allow_unaged_dollar_targets",
+        "maximum_microsim_batch_size",
+        "allow_legacy_formula_owned_inputs",
+        "allow_legacy_cd_provenance",
+        "congressional_district_vintage_crosswalk",
+        "target_materialization_cache_dir",
+        "legacy_pe_flat_h5",
+    }
+
+
+@pytest.mark.parametrize(
+    "removed_option",
+    (
+        "--include-congressional-district-targets",
+        "--diagnostic-skip-tax-expenditure-targets",
+        "--zero-support-exclusions",
+    ),
+)
+def test_release_parser_rejects_removed_membership_options(
+    removed_option: str,
+) -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(SystemExit):
+        builder._parse_args(
+            [
+                "--ledger-facts",
+                "facts.jsonl",
+                "--out",
+                "release",
+                removed_option,
+            ]
+        )
 
 
 def test__given_matching_warm_start_npz__then_builder_loads_household_weights(
@@ -999,7 +1044,7 @@ def test_runtime_versions_use_local_workspace_package_version(
     assert versions["microcosm-data"] == "0.1.0"
 
 
-def test_reviewed_exclusions_do_not_report_opted_in_cd_sources() -> None:
+def test_reviewed_exclusions_do_not_report_active_cd_sources() -> None:
     builder = _load_builder_module()
     acs_cd_alias = "census-acs-s0101-congressional-district-age-2024"
     soi_cd_alias = "soi-congressional-district-2022"
@@ -1738,8 +1783,8 @@ def test_org_wages_donor_override_parses(monkeypatch) -> None:
 def test_cd_targets_default_to_the_packaged_vintage_crosswalk(monkeypatch) -> None:
     builder = _load_builder_module()
 
-    # CD targets with no explicit crosswalk fall back to the packaged
-    # Census-built default so the build works out of the box.
+    # Every target compilation with no explicit crosswalk falls back to the
+    # packaged Census-built default.
     monkeypatch.setattr(
         sys,
         "argv",
@@ -1749,7 +1794,6 @@ def test_cd_targets_default_to_the_packaged_vintage_crosswalk(monkeypatch) -> No
             "facts.jsonl",
             "--out",
             "release",
-            "--include-congressional-district-targets",
         ],
     )
     args = builder._parse_args()
@@ -1768,7 +1812,6 @@ def test_cd_targets_default_to_the_packaged_vintage_crosswalk(monkeypatch) -> No
             "facts.jsonl",
             "--out",
             "release",
-            "--include-congressional-district-targets",
             "--congressional-district-vintage-crosswalk",
             "crosswalk.csv",
         ],
@@ -3942,6 +3985,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         fake_sha256,
     )
     monkeypatch.setattr(builder, "_git_output", lambda *args: "commit")
+    monkeypatch.setattr(
+        builder,
+        "_assert_cd_vintage_support_matches",
+        lambda h5_path, crosswalk_metadata, **kwargs: None,
+    )
     if terminal_mode == "telemetry":
 
         class LiveTelemetry:

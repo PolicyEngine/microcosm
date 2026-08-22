@@ -111,10 +111,14 @@ SOURCE_ABSENT_CLASSIFICATION = "source_absent"
 #:   including nonfilers, the ~$12.4T universe that tax-return / CPS-reported
 #:   wages undercount by two-thirds. Silent loss of it is the exact failure the
 #:   Chesterton's-fence audit surfaced.
+#: - ``irs_soi.congressional_district_2022``: the CD target family is ordinary
+#:   geography inside the one US target surface. Artifact record count may
+#:   change L0, never whether these constraints compile (microcosm#449).
 RED_LINE_COMPILED_FAMILIES = (
     "ssa_ssi_monthly.ssi_federal_payment_recipients",
     "ssa_supplement.ssi_recipients",
     "bea_nipa.total_wages_salaries",
+    "irs_soi.congressional_district_2022",
 )
 
 

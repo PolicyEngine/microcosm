@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 from collections.abc import Mapping, Sequence
 from importlib.resources import files
@@ -69,6 +70,7 @@ __all__ = [
 ]
 
 UK_HMRC_INCOME_SOURCE_STAGES_RESOURCE = "hmrc_income_source_stages.json"
+UK_CANONICAL_SOURCE_STAGES_RESOURCE = "source_stages.json"
 HMRC_DISTRIBUTIONAL_INPUTS = (
     "gift_aid",
     "charitable_investment_gifts",
@@ -90,9 +92,10 @@ _STAGE2_SOURCE_FAITHFUL_PREDICTORS = (
 _STAGE2_REVIEWED_ABSENT_PREDICTORS = {
     "other_investment_income": (
         "This remains a stage-1 SPI draw and an official HMRC fact component, "
-        "but it is not an FRS-only stage-2 predictor: policyengine-uk-data "
-        "frs_only.py defines exactly six income predictors and the certified "
-        "Microcosm UK base candidate has no other_investment_income column."
+        "but it is not an FRS-only stage-2 predictor: the incumbent UK data "
+        "build's frs_only.py defines exactly six income predictors and the "
+        "certified Microcosm UK base candidate has no other_investment_income "
+        "column."
     )
 }
 
@@ -239,7 +242,7 @@ def assert_uk_hmrc_income_source_contract_current(
         failures,
         "published_fact_surface.period_mapping",
         surface.get("period_mapping"),
-        "tax_year_start",
+        "latest_published_tax_year",
     )
     _expect(
         failures,
@@ -300,7 +303,7 @@ def assert_uk_hmrc_income_source_contract_current(
         failures,
         "frs_leaves.source_vintage",
         frs_leaves.get("source_vintage"),
-        "2023-24",
+        "2024-25",
     )
     _expect(
         failures,
@@ -708,7 +711,7 @@ def assert_uk_hmrc_income_source_contract_current(
         failures,
         "materialize.period_mapping",
         materialize.get("period_mapping"),
-        "tax_year_start",
+        "latest_published_tax_year",
     )
     _expect(
         failures,
@@ -905,7 +908,12 @@ def assert_uk_hmrc_income_source_contract_current(
         "stage.outputs",
         tuple(stage.get("outputs", ())),
         (
-            *HMRC_SPI_INCOME_COMPONENTS,
+            *(
+                "hmrc_spi_state_pension_income"
+                if component == "state_pension"
+                else component
+                for component in HMRC_SPI_INCOME_COMPONENTS
+            ),
             *HMRC_DISTRIBUTIONAL_INPUTS,
             *SPI_HMRC_DERIVED_AUXILIARY_COLUMNS,
         ),
@@ -971,11 +979,63 @@ def uk_hmrc_weighted_qrf_output_columns(
 
 
 def _load_payload(resource: Any | None) -> Mapping[str, Any]:
-    target = (
-        files("microcosm.build.uk").joinpath(UK_HMRC_INCOME_SOURCE_STAGES_RESOURCE)
-        if resource is None
-        else resource
-    )
+    if resource is None:
+        frozen_payload = json.loads(
+            files("microcosm.build.uk")
+            .joinpath(UK_HMRC_INCOME_SOURCE_STAGES_RESOURCE)
+            .read_text(encoding="utf-8")
+        )
+        if not isinstance(frozen_payload, Mapping):
+            raise ValueError("UK HMRC source manifest root must be a JSON object.")
+        frozen_stages = frozen_payload.get("stages")
+        if not isinstance(frozen_stages, Sequence) or isinstance(
+            frozen_stages, (str, bytes)
+        ):
+            raise ValueError("UK HMRC source manifest stages must be a list.")
+        if len(frozen_stages) != 1 or not isinstance(frozen_stages[0], Mapping):
+            raise ValueError(
+                "UK HMRC source manifest must contain exactly one source stage."
+            )
+        payload = json.loads(
+            files("microcosm.build.uk")
+            .joinpath(UK_CANONICAL_SOURCE_STAGES_RESOURCE)
+            .read_text(encoding="utf-8")
+        )
+        if not isinstance(payload, Mapping):
+            raise ValueError("UK source manifest root must be a JSON object.")
+        stages = payload.get("stages")
+        if not isinstance(stages, Sequence) or isinstance(stages, (str, bytes)):
+            raise ValueError("UK source manifest stages must be a list.")
+        retained = [
+            stage
+            for stage in stages
+            if isinstance(stage, Mapping)
+            and stage.get("stage") == "frs_hmrc_retained_leaves"
+        ]
+        hmrc = [
+            stage
+            for stage in stages
+            if isinstance(stage, Mapping) and stage.get("stage") == "hmrc_spi_income"
+        ]
+        if len(retained) != 1 or len(hmrc) != 1:
+            raise ValueError(
+                "UK source manifest must contain exactly one "
+                "frs_hmrc_retained_leaves stage and one hmrc_spi_income stage."
+            )
+        stage = copy.deepcopy(dict(hmrc[0]))
+        stage["base_candidate"] = copy.deepcopy(
+            dict(frozen_stages[0].get("base_candidate", {}))
+        )
+        stage["operations"] = [
+            *copy.deepcopy(list(retained[0].get("operations", ()))),
+            *copy.deepcopy(list(hmrc[0].get("operations", ()))),
+        ]
+        return {
+            "country": payload.get("country"),
+            "version": payload.get("version"),
+            "stages": [stage],
+        }
+    target = resource
     if hasattr(target, "read_text"):
         raw = target.read_text(encoding="utf-8")
     else:

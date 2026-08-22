@@ -12,12 +12,10 @@ targets:
   geography_layers:
   - national
   - state
+  - congressional_district
   cd_policy: always_present_report_attainment
-  default_geography_layers:
-  - national
-  - state
   congressional_district:
-    included_by_default: false
+    included: true
     gate_by_default: false
     requires_vintage_crosswalk: true
   county:

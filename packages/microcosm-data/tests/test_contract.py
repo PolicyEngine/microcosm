@@ -64,19 +64,20 @@ UK_EVIDENCE_GATE_NAMES = {
     "qrf_tail_concentration": ("qrf_tail_concentration",),
 }
 UK_INPUT_MASS_REFERENCE_IDENTITY = {
-    "filename": "enhanced_frs_2023_24.h5",
-    "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
-    "sha256": "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
-    "vintage": "2023_24",
+    "filename": "enhanced_frs_2024_25.h5",
+    "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
+    "sha256": "97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e",
+    "vintage": "2024_25",
 }
 UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256 = (
-    "c36c015a60f796ad9199a4a5652706f5310909cb572b1c90092ef9df1fa7187e"
+    "e70a45387c6adc13df5d7eb7da3c2cada7972a2f293a9238c8c29c9e885e4659"
 )
 UK_INPUT_MASS_ACTIVE_REFERENCE = "efrs-post-calibration"
 UK_INPUT_MASS_REFERENCE_SCOPE_NOTE = (
-    "Post-calibration eFRS production incumbent; structurally lacks the SPI "
-    "clone channel, so SPI-channel-exclusive columns are comparable only "
-    "through per-reference reviewed exclusions."
+    "Channel-blind post-calibration enhanced-FRS production incumbent, pinned "
+    "to the 2024-25 line; structurally lacks the SPI clone channel, so "
+    "SPI-channel-exclusive columns are comparable only through per-reference "
+    "reviewed exclusions."
 )
 UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
     "charitable_investment_gifts": {
@@ -90,8 +91,8 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
         ),
         "approved_by": "juaristi22",
         "adjudication": "microcosm#630",
-        "approved_on": "2026-08-17",
-        "expires_on": "2027-02-17",
+        "approved_on": "2026-08-20",
+        "expires_on": "2027-02-20",
     },
     "owned_land": {
         "reason": (
@@ -111,8 +112,8 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
         ),
         "approved_by": "juaristi22",
         "adjudication": "microcosm#714",
-        "approved_on": "2026-08-19",
-        "expires_on": "2026-09-19",
+        "approved_on": "2026-08-20",
+        "expires_on": "2026-09-20",
     },
 }
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
@@ -144,19 +145,19 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "728a5fe2f543f59e2797e4227269fe4516508a274b4fa5fe49559387d6b9d686"
+    "404968fba9a626d4b534dfbef87721ff9d98c5af356758b2bab49dbaf004fdc3"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "f01e5459debc6f3ebfa097591749377b640a5d633e3df3825575b4ec15eeacb2"
+    "59c7808d50a9ef84d37f524779a7518b4fb4f62dc7d17eb47e4a108d830c3798"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "f358121fefc6e0e2371956dc0628c1d997ee3735e558ca3dd4526326a6add78b"
+    "bfb987361037e6475ea9906894cb16e5b3cd0ff515096bd55d4918dfd7331d2c"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "df74556909990345bc9032f6f5db7f817d9c273f75522a85ab6e332dd8dc7355"
+    "806f46de90a0bf08c70c977ab63dad1ed644088c89e40df1869ce07b97f63c0c"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {
@@ -166,6 +167,16 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_release_family_build_stages": ("source_coverage", "preflight", None),
+    "uk_ledger_compile_parity_production_2023": (
+        "ledger_compile_parity",
+        "preflight",
+        None,
+    ),
+    "uk_ledger_compile_parity_incumbent_2025": (
+        "ledger_compile_parity",
+        "preflight",
+        None,
+    ),
     "uk_release_input_coverage": (
         "release_input_coverage",
         "terminal",
@@ -1038,9 +1049,22 @@ def _gate_battery_payload(
             details: dict = {"check": "manifest_current"}
         elif entry_id == "uk_release_family_build_stages":
             details = {"stage_names": list(stage_names)}
+        elif entry_id == "uk_ledger_compile_parity_production_2023":
+            details = {
+                "fixture": "production_2023",
+                "expected_count": 149,
+                "actual_count": 149,
+                "signed_difference_count": 0,
+            }
+        elif entry_id == "uk_ledger_compile_parity_incumbent_2025":
+            details = {
+                "fixture": "incumbent_2025",
+                "expected_count": 636,
+                "actual_count": 636,
+                "signed_difference_count": 0,
+            }
         elif entry_id == "uk_calibration_reference_coverage":
-            # Mirrors _evaluate_calibration_reference_coverage's detail block.
-            details = {"activated": 15, "resolved": 15, "matrix": 15}
+            details = {"activated": 388, "resolved": 388, "matrix": 388}
         else:
             details = _terminal_gate_details(detail_name)
         gates[entry_id] = {
@@ -1055,6 +1079,22 @@ def _gate_battery_payload(
     evidence = {
         "uk_release_family_build_stages": _canonical_sha256(
             {"stage_names": list(stage_names)}
+        ),
+        "uk_ledger_compile_parity_production_2023": _canonical_sha256(
+            {
+                "fixture_resource": "parity_fixture_production_2023.json",
+                "registry_count": 149,
+                "registry_version": "fixture",
+                "signed_differences": [],
+            }
+        ),
+        "uk_ledger_compile_parity_incumbent_2025": _canonical_sha256(
+            {
+                "fixture_resource": "registry_parity_fixture_2025.json",
+                "registry_count": 636,
+                "registry_version": "fixture",
+                "signed_differences": [],
+            }
         ),
         "uk_degenerate_release_surface": UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256,
         "uk_input_mass_parity": UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256,

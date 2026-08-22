@@ -65,6 +65,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UKReviewedExclusion,
     exclusion_evaluation_date,
 )
+from microcosm.calibrate import TargetRegistry
 from microcosm.frame import (
     Frame,
     MassChangeRecord,
@@ -358,6 +359,7 @@ def build_uk_national_dataset(
     release_candidate: bool = False,
     now: date | None = None,
     gate_registry: Mapping[str, GateBinding] | None = None,
+    ledger_target_registry: Mapping[int | str, TargetRegistry] | None = None,
 ) -> UKNationalBuildResult:
     """Run ordered national stages, hard-gate the result, and stage an H5.
 
@@ -482,14 +484,17 @@ def build_uk_national_dataset(
     diagnostic_path.unlink(missing_ok=True)
     # Mirrors the US cheap preflight: graph or reference drift blocks before
     # source stages — now with the refusal persisted as a schema-4 report.
+    preflight_artifacts: dict[str, object] = {
+        "coverage_engine": engine,
+        "build_stage_names": tuple(stage.name for stage in materialized_stages),
+    }
+    if ledger_target_registry is not None:
+        preflight_artifacts["uk_ledger_compiled_registries"] = dict(
+            ledger_target_registry
+        )
     battery.run_phase(
         "preflight",
-        EvidenceContext(
-            artifacts={
-                "coverage_engine": engine,
-                "build_stage_names": tuple(stage.name for stage in materialized_stages),
-            }
-        ),
+        EvidenceContext(artifacts=preflight_artifacts),
     )
     battery.enforce("preflight", mode=BlockingMode.BLOCKS_ARTIFACT)
     frame, provenance = load_uk_national_frame(requested_input_path)
