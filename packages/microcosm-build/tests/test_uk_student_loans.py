@@ -236,3 +236,18 @@ def test_stock_drift_assert_rejects_2025_change() -> None:
     stocks = _stocks(plan_2=1, plan_5=10_000)
     with pytest.raises(ValueError, match="PLAN_2.*drifted"):
         _assert_student_loans_stage_parameters(_stage(), stocks=stocks, year=2025)
+
+
+def test_drift_assert_rejects_extra_keys_and_operations() -> None:
+    with pytest.raises(ValueError, match="drifted"):
+        _assert_student_loans_stage_parameters(
+            _drift(2, "undeclared_extra_key"),
+            stocks=load_slc_liable_stocks(),
+            year=2025,
+        )
+    stage = _stage()
+    extra = replace(stage, operations=(*stage.operations, stage.operations[-1]))
+    with pytest.raises(ValueError, match="operation order drifted"):
+        _assert_student_loans_stage_parameters(
+            extra, stocks=load_slc_liable_stocks(), year=2025
+        )

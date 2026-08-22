@@ -11,8 +11,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from microcosm.build.source_manifest import SourceOperationSpec, SourceStageSpec
+from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.uk_runtime.cgt_structure import (
+    _assert_closed_world_operations,
+)
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
@@ -302,90 +305,69 @@ def _enum_name(value: object) -> str:
     return text.rsplit(".", 1)[-1]
 
 
-def _operation(stage: SourceStageSpec, kind: str) -> SourceOperationSpec:
-    matches = [operation for operation in stage.operations if operation.kind == kind]
-    if len(matches) != 1:
-        raise ValueError(
-            f"Stage {stage.stage!r} must declare exactly one {kind!r} operation."
-        )
-    return matches[0]
-
-
-def _assert_parameters(
-    operation: SourceOperationSpec,
-    expected: Mapping[str, object],
-) -> None:
-    for name, value in expected.items():
-        actual = operation.parameters.get(name)
-        if actual != value:
-            raise ValueError(
-                f"{operation.kind} manifest parameter {name!r} drifted: "
-                f"expected {value!r}, got {actual!r}."
-            )
-
-
 def _assert_student_loans_stage_parameters(
     stage: SourceStageSpec,
     *,
     stocks: Mapping[str, Any],
     year: int,
 ) -> None:
-    """Bind every stage parameter; per-plan receipts supply arm 2."""
+    """Bind every stage parameter closed-world; per-plan receipts supply arm 2."""
 
-    _assert_parameters(
-        _operation(stage, "assign_student_loan_plan_cohorts"),
-        {
-            "year_rule": YEAR_RULE,
-            "start_year_formula": "year - age + 18",
-            "reported_repayment_test": "student_loan_repayments > 0",
-            "reported_country_gate": False,
-            "plan_1_before": PLAN_1_BEFORE,
-            "plan_5_from": PLAN_5_FROM,
-            "enum_domain": list(STUDENT_LOAN_ENUM_DOMAIN),
-            "plan_4_imputation": False,
-        },
+    region_exclusions = list(EXCLUDED_ENGLAND_REGIONS)
+    _assert_closed_world_operations(
+        stage,
+        (
+            (
+                "assign_student_loan_plan_cohorts",
+                {
+                    "year_rule": YEAR_RULE,
+                    "start_year_formula": "year - age + 18",
+                    "reported_repayment_test": "student_loan_repayments > 0",
+                    "reported_country_gate": False,
+                    "plan_1_before": PLAN_1_BEFORE,
+                    "plan_5_from": PLAN_5_FROM,
+                    "enum_domain": list(STUDENT_LOAN_ENUM_DOMAIN),
+                    "plan_4_imputation": False,
+                },
+            ),
+            (
+                "top_up_to_stock",
+                {
+                    "plan": "PLAN_5",
+                    "priority": 1,
+                    "resource": "slc_liable_stocks.json",
+                    "stock_series": "plan_5.liable",
+                    "year_rule": YEAR_RULE,
+                    "age_min": PLAN_5_MIN_AGE,
+                    "age_max": PLAN_5_MAX_AGE,
+                    "cohort_start_min": PLAN_5_FROM,
+                    "eligible_region_exclusions": region_exclusions,
+                    "highest_education": "TERTIARY",
+                    "seed": STUDENT_LOAN_SEED,
+                    "salt": PLAN_SALTS["PLAN_5"],
+                },
+            ),
+            (
+                "top_up_to_stock",
+                {
+                    "plan": "PLAN_2",
+                    "priority": 2,
+                    "resource": "slc_liable_stocks.json",
+                    "stock_series": "plan_2.liable",
+                    "year_rule": YEAR_RULE,
+                    "age_min": PLAN_2_MIN_AGE,
+                    "age_max": PLAN_2_MAX_AGE,
+                    "cohort_start_min": PLAN_1_BEFORE,
+                    "cohort_start_max_exclusive": PLAN_5_FROM,
+                    "eligible_region_exclusions": region_exclusions,
+                    "highest_education": "TERTIARY",
+                    "seed": STUDENT_LOAN_SEED,
+                    "salt": PLAN_SALTS["PLAN_2"],
+                    "reason": STUDENT_LOANS_MASS_CHANGE_REASON,
+                },
+            ),
+        ),
     )
-    top_ups = [
-        operation
-        for operation in stage.operations
-        if operation.kind == "top_up_to_stock"
-    ]
-    if [operation.parameters.get("plan") for operation in top_ups] != list(
-        PLAN_PRIORITY
-    ):
-        raise ValueError(
-            "Student-loan top-up priority drifted from PLAN_5 then PLAN_2."
-        )
-    expected = {
-        "PLAN_5": {
-            "priority": 1,
-            "stock_series": "plan_5.liable",
-            "age_min": PLAN_5_MIN_AGE,
-            "age_max": PLAN_5_MAX_AGE,
-            "cohort_start_min": PLAN_5_FROM,
-            "salt": PLAN_SALTS["PLAN_5"],
-        },
-        "PLAN_2": {
-            "priority": 2,
-            "stock_series": "plan_2.liable",
-            "age_min": PLAN_2_MIN_AGE,
-            "age_max": PLAN_2_MAX_AGE,
-            "cohort_start_min": PLAN_1_BEFORE,
-            "cohort_start_max_exclusive": PLAN_5_FROM,
-            "salt": PLAN_SALTS["PLAN_2"],
-            "reason": STUDENT_LOANS_MASS_CHANGE_REASON,
-        },
-    }
-    for operation in top_ups:
-        plan = str(operation.parameters["plan"])
-        shared = {
-            "resource": "slc_liable_stocks.json",
-            "year_rule": YEAR_RULE,
-            "eligible_region_exclusions": list(EXCLUDED_ENGLAND_REGIONS),
-            "highest_education": "TERTIARY",
-            "seed": STUDENT_LOAN_SEED,
-        }
-        _assert_parameters(operation, {**shared, **expected[plan]})
     if year == 2025:
         for plan, expected_stock in PLAN_2025_STOCKS.items():
             if _stock(stocks, plan, year) != expected_stock:

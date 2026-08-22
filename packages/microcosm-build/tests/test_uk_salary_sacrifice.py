@@ -222,3 +222,17 @@ def test_resource_drift_assert_rejects_anchor_change() -> None:
     anchor["derived"] = {**anchor["derived"], "stage_target": 1}
     with pytest.raises(ValueError, match="stage_target.*drifted"):
         _assert_salary_sacrifice_stage_parameters(_stage(), anchor=anchor)
+
+
+def test_drift_assert_rejects_extra_keys_and_operations() -> None:
+    with pytest.raises(ValueError, match="drifted"):
+        _assert_salary_sacrifice_stage_parameters(
+            _drift(1, "undeclared_extra_key"),
+            anchor=load_salary_sacrifice_anchor(),
+        )
+    stage = _stage()
+    extra = replace(stage, operations=(*stage.operations, stage.operations[-1]))
+    with pytest.raises(ValueError, match="operation order drifted"):
+        _assert_salary_sacrifice_stage_parameters(
+            extra, anchor=load_salary_sacrifice_anchor()
+        )

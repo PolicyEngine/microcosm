@@ -1300,6 +1300,25 @@ def main() -> int:
     else:
         known_gaps = _load(KNOWN_GAPS_PATH)
     manifest = build_manifest(reference=reference, known_gaps_payload=known_gaps)
+    generic_fallback_reason = (
+        "E5 source-stage transform preserves household rows and typed "
+        "household weights; total household mass is conserved."
+    )
+    declared_reasons: dict[str, str] = {}
+    for family_name, family in manifest.get("family_coverage", {}).items():
+        reason = str(family.get("required_mass_change_reason", "")).strip()
+        if not reason or reason == generic_fallback_reason:
+            # The pre-E8 families share the generic fallback (standing
+            # follow-up); every stage-declared reason must be unique so a
+            # receipt identifies exactly one family.
+            continue
+        if reason in declared_reasons:
+            raise ValueError(
+                f"family_coverage reasons must be unique receipt identities: "
+                f"{family_name!r} and {declared_reasons[reason]!r} share "
+                f"{reason!r}."
+            )
+        declared_reasons[reason] = family_name
     _write_or_check(MANIFEST_PATH, manifest, check=args.check)
     action = "current" if args.check else "wrote"
     print(

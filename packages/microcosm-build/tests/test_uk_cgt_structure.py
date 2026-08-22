@@ -276,3 +276,32 @@ def test_donor_drift_assert_covers_every_reviewed_parameter(parameter: str) -> N
             _drift(_stage("cgt_band_donors"), 0, parameter),
             size_bands=load_hmrc_cgt_size_bands(),
         )
+
+
+def test_donor_drift_assert_rejects_propensity_and_extra_keys() -> None:
+    """Closed-world equality: undeclared and extra parameters both fail."""
+    for parameter in ("propensity", "undeclared_extra_key"):
+        with pytest.raises(ValueError, match="drifted"):
+            _assert_cgt_donor_stage_parameters(
+                _drift(_stage("cgt_band_donors"), 0, parameter),
+                size_bands=load_hmrc_cgt_size_bands(),
+            )
+
+
+def test_drift_asserts_reject_extra_operations() -> None:
+    for name, check in (
+        ("cgt_incidence_clone", _assert_cgt_incidence_stage_parameters),
+        (
+            "cgt_band_donors",
+            lambda stage: _assert_cgt_donor_stage_parameters(
+                stage, size_bands=load_hmrc_cgt_size_bands()
+            ),
+        ),
+    ):
+        stage = _stage(name)
+        extra = replace(
+            stage,
+            operations=(*stage.operations, stage.operations[-1]),
+        )
+        with pytest.raises(ValueError, match="operation order drifted"):
+            check(extra)

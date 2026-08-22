@@ -12,11 +12,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from microcosm.build.source_manifest import SourceOperationSpec, SourceStageSpec
+from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.cgt_structure import (
     HOUSEHOLD_IS_CGT_BAND_DONOR,
     HOUSEHOLD_IS_CGT_CLONE,
+    _assert_closed_world_operations,
 )
 from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
@@ -280,64 +281,57 @@ def _qrf_class():
     return import_module("microcosm.fit").QRF
 
 
-def _operation(stage: SourceStageSpec, kind: str) -> SourceOperationSpec:
-    matches = [operation for operation in stage.operations if operation.kind == kind]
-    if len(matches) != 1:
-        raise ValueError(
-            f"Stage {stage.stage!r} must declare exactly one {kind!r} operation."
-        )
-    return matches[0]
-
-
-def _assert_parameters(
-    operation: SourceOperationSpec,
-    expected: Mapping[str, object],
-) -> None:
-    for name, value in expected.items():
-        actual = operation.parameters.get(name)
-        if actual != value:
-            raise ValueError(
-                f"{operation.kind} manifest parameter {name!r} drifted: "
-                f"expected {value!r}, got {actual!r}."
-            )
-
-
 def _assert_salary_sacrifice_stage_parameters(
     stage: SourceStageSpec,
     *,
     anchor: Mapping[str, Any],
 ) -> None:
-    """Bind all stage parameters; result evidence supplies arm 2."""
+    """Bind all stage parameters closed-world; result evidence supplies arm 2."""
 
-    _assert_parameters(
-        _operation(stage, "fit_weighted_qrf"),
-        {
-            "training_population": "support_channel == frs and not capital-gains clone and not CGT band donor and salary_sacrifice_asked == 1",
-            "target_population": "salary_sacrifice_asked != 1 frame-wide",
-            "predictors": list(SALSAC_PREDICTORS),
-            "targets": [SALSAC_OUTPUT],
-            "weights": "household_weight",
-            "weight_mapping": "household_to_person",
-            "seed": SALSAC_QRF_SEED,
-            "n_estimators": SALSAC_QRF_ESTIMATORS,
-            "clamp_minimum": 0,
-            "preserve_asked_rows": True,
-            "cache": False,
-        },
-    )
-    _assert_parameters(
-        _operation(stage, "convert_donors_to_target_stock"),
-        {
-            "resource": "salary_sacrifice_anchor.json",
-            "target": int(SALSAC_STAGE_TARGET),
-            "donor_pool": "employee_pension_contributions > 0 and pension_contributions_via_salary_sacrifice == 0 and employment_income > 0",
-            "rate_cap": SALSAC_RATE_CAP,
-            "move": "full employee_pension_contributions to pension_contributions_via_salary_sacrifice; source zeroed",
-            "seed": SALSAC_CONVERSION_SEED,
-            "salt": SALSAC_CONVERSION_SALT,
-            "receipt": "weighted_headcount",
-            "reason": SALSAC_MASS_CHANGE_REASON,
-        },
+    _assert_closed_world_operations(
+        stage,
+        (
+            (
+                "fit_weighted_qrf",
+                {
+                    "training_population": (
+                        "support_channel == frs and not capital-gains clone and "
+                        "not CGT band donor and salary_sacrifice_asked == 1"
+                    ),
+                    "target_population": "salary_sacrifice_asked != 1 frame-wide",
+                    "predictors": list(SALSAC_PREDICTORS),
+                    "targets": [SALSAC_OUTPUT],
+                    "weights": "household_weight",
+                    "weight_mapping": "household_to_person",
+                    "seed": SALSAC_QRF_SEED,
+                    "n_estimators": SALSAC_QRF_ESTIMATORS,
+                    "clamp_minimum": 0,
+                    "preserve_asked_rows": True,
+                    "cache": False,
+                },
+            ),
+            (
+                "convert_donors_to_target_stock",
+                {
+                    "resource": "salary_sacrifice_anchor.json",
+                    "target": int(SALSAC_STAGE_TARGET),
+                    "donor_pool": (
+                        "employee_pension_contributions > 0 and "
+                        "pension_contributions_via_salary_sacrifice == 0 and "
+                        "employment_income > 0"
+                    ),
+                    "rate_cap": SALSAC_RATE_CAP,
+                    "move": (
+                        "full employee_pension_contributions to "
+                        "pension_contributions_via_salary_sacrifice; source zeroed"
+                    ),
+                    "seed": SALSAC_CONVERSION_SEED,
+                    "salt": SALSAC_CONVERSION_SALT,
+                    "receipt": "weighted_headcount",
+                    "reason": SALSAC_MASS_CHANGE_REASON,
+                },
+            ),
+        ),
     )
     hmrc = anchor.get("hmrc_anchor", {})
     derived = anchor.get("derived", {})

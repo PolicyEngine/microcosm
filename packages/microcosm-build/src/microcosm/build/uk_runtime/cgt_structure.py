@@ -563,6 +563,42 @@ def _assert_parameters(
             )
 
 
+def _assert_closed_world_operations(
+    stage: SourceStageSpec,
+    expected_operations: tuple[tuple[str, dict[str, object]], ...],
+) -> None:
+    """Exact operation order and full-mapping equality per operation.
+
+    Whole-payload equality rejects value drift, missing keys, and extra keys
+    alike (adversarial-review finding on the E8 PR: asserting a named subset
+    let lockstep manifest edits move undeclared-but-load-bearing semantics).
+    The expected sequence is ordered so repeated kinds are supported and an
+    extra, missing, or reordered operation fails by position.
+    """
+
+    kinds = tuple(operation.kind for operation in stage.operations)
+    expected_kinds = tuple(kind for kind, _ in expected_operations)
+    if kinds != expected_kinds:
+        raise ValueError(
+            f"Stage {stage.stage!r} operation order drifted: expected "
+            f"{expected_kinds}, got {kinds}."
+        )
+    for operation, (kind, expected) in zip(
+        stage.operations, expected_operations, strict=True
+    ):
+        actual = dict(operation.parameters)
+        if actual != expected:
+            drifted = sorted(
+                key
+                for key in {*actual, *expected}
+                if actual.get(key) != expected.get(key)
+            )
+            raise ValueError(
+                f"Stage {stage.stage!r} {kind} declaration drifted "
+                f"from the reviewed mapping on parameter(s) {drifted}."
+            )
+
+
 def _assert_cgt_incidence_stage_parameters(stage: SourceStageSpec) -> None:
     """Bind every stage-19 manifest parameter to reviewed code constants.
 
@@ -570,37 +606,44 @@ def _assert_cgt_incidence_stage_parameters(stage: SourceStageSpec) -> None:
     :class:`UKCGTIncidenceCloneResult` supplies the executed-effect receipt.
     """
 
-    _assert_parameters(
-        _operation(stage, "clone_records"),
-        {
-            "entity": "household",
-            "copies": 2,
-            "flag_column": HOUSEHOLD_IS_CGT_CLONE,
-            "original_flag": False,
-            "clone_flag": True,
-            "mass_split": CGT_CLONE_MASS_SPLIT,
-            "weight_kind_out": WeightKind.IMPORTANCE.value,
-            "conservation": "exact_total",
-            "id_remapping": "id_multiplier_for_values",
-            "declared_factor": 1.0,
-            "reason": CGT_CLONE_MASS_CHANGE_REASON,
-        },
-    )
-    _assert_parameters(
-        _operation(stage, "draw_capital_gains_prior_from_banded_quantiles"),
-        {
-            "resource": "advani_summers_capital_gains_distribution.json",
-            "income_proxy_components": list(UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS),
-            "allowance_subtraction": False,
-            "carrier": "oldest adult; person_id ascending breaks age ties",
-            "adult_minimum_age": CGT_ADULT_MINIMUM_AGE,
-            "quantile_points": list(CGT_QUANTILE_POINTS),
-            "spline_degree": 1,
-            "extrapolation": "ext=0",
-            "keep_negative_draws": True,
-            "seed": CGT_PRIOR_SEED,
-            "salt": CGT_PRIOR_SALT,
-        },
+    _assert_closed_world_operations(
+        stage,
+        (
+            (
+                "clone_records",
+                {
+                    "entity": "household",
+                    "copies": 2,
+                    "flag_column": HOUSEHOLD_IS_CGT_CLONE,
+                    "original_flag": False,
+                    "clone_flag": True,
+                    "mass_split": CGT_CLONE_MASS_SPLIT,
+                    "weight_kind_out": WeightKind.IMPORTANCE.value,
+                    "conservation": "exact_total",
+                    "id_remapping": "id_multiplier_for_values",
+                    "declared_factor": 1.0,
+                    "reason": CGT_CLONE_MASS_CHANGE_REASON,
+                },
+            ),
+            (
+                "draw_capital_gains_prior_from_banded_quantiles",
+                {
+                    "resource": "advani_summers_capital_gains_distribution.json",
+                    "income_proxy_components": list(
+                        UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS
+                    ),
+                    "allowance_subtraction": False,
+                    "carrier": "oldest adult; person_id ascending breaks age ties",
+                    "adult_minimum_age": CGT_ADULT_MINIMUM_AGE,
+                    "quantile_points": list(CGT_QUANTILE_POINTS),
+                    "spline_degree": 1,
+                    "extrapolation": "ext=0",
+                    "keep_negative_draws": True,
+                    "seed": CGT_PRIOR_SEED,
+                    "salt": CGT_PRIOR_SALT,
+                },
+            ),
+        ),
     )
 
 
@@ -611,26 +654,36 @@ def _assert_cgt_donor_stage_parameters(
 ) -> None:
     """Bind stage-20 parameters and recompute the band/weight invariants."""
 
-    operation = _operation(stage, "stack_band_donor_households")
-    _assert_parameters(
-        operation,
-        {
-            "size_band_resource": "hmrc_cgt_size_bands.json",
-            "incidence_resource": "advani_summers_capital_gains_distribution.json",
-            "minimum_band_lower": MIN_DONOR_BAND_LOWER,
-            "donors_per_band": DONORS_PER_BAND,
-            "expected_band_count": DONOR_BAND_COUNT,
-            "expected_donor_count": DONOR_TOTAL,
-            "candidate_order": "household_id ascending",
-            "draw": "weighted_without_replacement",
-            "seed": DONOR_SEED,
-            "flag_column": HOUSEHOLD_IS_CGT_BAND_DONOR,
-            "carrier": "oldest adult; person_id ascending breaks age ties",
-            "initial_weight": "published band taxpayers / donors_per_band",
-            "never_zero_weight": DONOR_NEVER_ZERO_WEIGHT,
-            "weight_kind_out": WeightKind.IMPORTANCE.value,
-            "reason": CGT_DONOR_MASS_CHANGE_REASON,
-        },
+    _assert_closed_world_operations(
+        stage,
+        (
+            (
+                "stack_band_donor_households",
+                {
+                    "size_band_resource": "hmrc_cgt_size_bands.json",
+                    "incidence_resource": (
+                        "advani_summers_capital_gains_distribution.json"
+                    ),
+                    "minimum_band_lower": MIN_DONOR_BAND_LOWER,
+                    "donors_per_band": DONORS_PER_BAND,
+                    "expected_band_count": DONOR_BAND_COUNT,
+                    "expected_donor_count": DONOR_TOTAL,
+                    "candidate_order": "household_id ascending",
+                    "draw": "weighted_without_replacement",
+                    "propensity": (
+                        "Advani-Summers percent_with_gains at oldest-adult "
+                        "component-sum income"
+                    ),
+                    "seed": DONOR_SEED,
+                    "flag_column": HOUSEHOLD_IS_CGT_BAND_DONOR,
+                    "carrier": "oldest adult; person_id ascending breaks age ties",
+                    "initial_weight": "published band taxpayers / donors_per_band",
+                    "never_zero_weight": DONOR_NEVER_ZERO_WEIGHT,
+                    "weight_kind_out": WeightKind.IMPORTANCE.value,
+                    "reason": CGT_DONOR_MASS_CHANGE_REASON,
+                },
+            ),
+        ),
     )
     bands = _retained_size_bands(size_bands)
     if len(bands) != DONOR_BAND_COUNT:

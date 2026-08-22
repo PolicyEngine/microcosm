@@ -82,6 +82,7 @@ from microcosm.frame import Frame, MassChangeRecord
 __all__ = [
     "UK_CGT_IMPUTATION_SEED",
     "UK_CGT_MASS_CONSERVATION_REASON",
+    "UK_CGT_SPINE_MASS_CONSERVATION_REASON",
     "UK_CGT_IMPUTATION_STAGE_NAME",
     "UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS",
     "UKCGTImputationSummary",
@@ -108,6 +109,16 @@ UK_CGT_MASS_CONSERVATION_REASON = (
 #: Base seed for the stage's draws. Combined with the build period so two
 #: periods draw differently while each build is reproducible.
 UK_CGT_IMPUTATION_SEED = 552
+
+#: The spine projection records the same conservation invariant under its
+#: own reason so the terminal family validator can never satisfy the
+#: certified and spine families with one shared record (adversarial-review
+#: finding on the E8 PR: reason strings are the receipt identity).
+UK_CGT_SPINE_MASS_CONSERVATION_REASON = (
+    "Amounts-only capital gains redraw on the source spine: household "
+    "weights pass through unchanged and total household mass is conserved."
+)
+
 
 #: Persisted components of the model's ``total_income`` concept (ITA 2007
 #: s.23: taxable income after tax reliefs and before allowances).
@@ -437,6 +448,7 @@ def impute_uk_capital_gains(
     parameters: UKCGTPolicyParameters,
     *,
     seed: int = UK_CGT_IMPUTATION_SEED,
+    mass_change_reason: str = UK_CGT_MASS_CONSERVATION_REASON,
 ) -> Frame:
     """Redraw gainers' amounts from the published joint distribution."""
     validate_uk_national_frame(frame)
@@ -550,7 +562,7 @@ def impute_uk_capital_gains(
         old_total=household_mass,
         new_total=household_mass,
         declared_factor=1.0,
-        reason=UK_CGT_MASS_CONSERVATION_REASON,
+        reason=mass_change_reason,
     )
     result_frame = uk_national_frame(
         person=new_person,
@@ -619,6 +631,7 @@ def uk_capital_gains_imputation_stage(
     tax_year: str = HMRC_CGT_SOURCE_VINTAGE,
     parameters: UKCGTPolicyParameters | None = None,
     seed: int = UK_CGT_IMPUTATION_SEED,
+    mass_change_reason: str = UK_CGT_MASS_CONSERVATION_REASON,
 ) -> UKNationalStage:
     """Build the national stage that redraws capital gains amounts.
 
@@ -633,7 +646,13 @@ def uk_capital_gains_imputation_stage(
             artifact_path, tax_year=tax_year
         )
         resolved = parameters or uk_cgt_policy_parameters(uk_time_period(frame))
-        return impute_uk_capital_gains(frame, distribution, resolved, seed=seed)
+        return impute_uk_capital_gains(
+            frame,
+            distribution,
+            resolved,
+            seed=seed,
+            mass_change_reason=mass_change_reason,
+        )
 
     return UKNationalStage(name=UK_CGT_IMPUTATION_STAGE_NAME, transform=transform)
 
@@ -649,7 +668,10 @@ def uk_cgt_spine_stage_transform(
     """
 
     _assert_cgt_spine_stage_parameters(stage)
-    return uk_capital_gains_imputation_stage(ods_path).transform
+    return uk_capital_gains_imputation_stage(
+        ods_path,
+        mass_change_reason=UK_CGT_SPINE_MASS_CONSERVATION_REASON,
+    ).transform
 
 
 def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
@@ -749,11 +771,11 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
         },
         "record_mass_conservation_receipt": {
             "entity": "household",
-            "reason": UK_CGT_MASS_CONSERVATION_REASON,
+            "reason": UK_CGT_SPINE_MASS_CONSERVATION_REASON,
             "declared_factor": 1.0,
             "gate_coupling": (
                 "The terminal family gate requires a valid mass-conserving "
-                "MassChangeRecord carrying exactly this reason."
+                "MassChangeRecord carrying exactly this spine-specific reason."
             ),
         },
         "classify_cgt_band_facts_with_reviewed_fence": {
