@@ -399,8 +399,7 @@ class TestExistingPackagesGeneralize:
             "calendar_year_average"
         )
         assert (
-            references["obr.income_tax"].assertion_policy
-            == "allow_source_projection"
+            references["obr.income_tax"].assertion_policy == "allow_source_projection"
         )
 
         fanout = references["hmrc/employment_income_income_band_100_000_to_150_000"]
@@ -646,12 +645,12 @@ class TestUKGatesManifest:
     ) -> None:
         params = {gate.id: gate.parameters for gate in manifest.gates}
 
-        assert params["uk_ledger_compile_parity_production_2023"][
-            "target_period"
-        ] == 2023
-        assert params["uk_ledger_compile_parity_incumbent_2025"][
-            "target_period"
-        ] == 2025
+        assert (
+            params["uk_ledger_compile_parity_production_2023"]["target_period"] == 2023
+        )
+        assert (
+            params["uk_ledger_compile_parity_incumbent_2025"]["target_period"] == 2025
+        )
 
     def test_only_the_weights_audit_blocks_on_absent_evidence(self, manifest) -> None:
         # "An absent audit is not a passing audit" — the retired schema-3

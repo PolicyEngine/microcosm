@@ -670,34 +670,126 @@ def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
             f"CGT spine operation order drifted: expected {expected_kinds}, got {kinds}."
         )
     operations = {
-        operation.kind: operation.parameters for operation in stage.operations
+        operation.kind: dict(operation.parameters) for operation in stage.operations
     }
-    expected = {
-        ("verify_pinned_cgt_ods", "artifact_role"): "cgt_published_fact_surface",
-        ("verify_pinned_cgt_ods", "require_before_source_read"): True,
-        ("verify_pinned_cgt_ods", "runtime_sha256_required"): True,
-        ("verify_pinned_cgt_ods", "fail_on_mismatch"): True,
-        ("taxable_income_proxy", "components"): list(
-            UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS
-        ),
-        ("taxable_income_proxy", "fail_on_missing_component"): True,
-        ("rank_preserving_allocation", "minimum_allocation_people"): 1,
-        ("within_band_draws", "seed_base"): UK_CGT_IMPUTATION_SEED,
-        ("within_band_draws", "mean_repair_margin"): _MEAN_MARGIN,
-        ("within_band_draws", "deterministic"): True,
-        ("record_mass_conservation_receipt", "reason"): (
-            UK_CGT_MASS_CONSERVATION_REASON
-        ),
-        ("record_mass_conservation_receipt", "declared_factor"): 1.0,
-        ("classify_cgt_band_facts_with_reviewed_fence", "calibration_permitted"): (
-            False
-        ),
-        ("classify_cgt_band_facts_with_reviewed_fence", "fenced_fact_count"): 76,
+    # Closed-world reviewed mapping: every operation's FULL declared parameter
+    # payload must equal the reviewed constants below (adversarial-review
+    # finding on #740 — asserting a subset let lockstep manifest edits move
+    # behavioral declarations without a matching reviewed code change; whole-
+    # mapping equality also rejects extra keys).
+    expected_operations = {
+        "verify_pinned_cgt_ods": {
+            "artifact_role": "cgt_published_fact_surface",
+            "require_before_source_read": True,
+            "runtime_sha256_required": True,
+            "fail_on_mismatch": True,
+        },
+        "taxable_income_proxy": {
+            "components": list(UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS),
+            "components_semantics": (
+                "Persisted leaves of the model's total_income concept (ITA "
+                "2007 s.23); state_pension_reported stands in for "
+                "social_security_income, whose other taxable benefits are "
+                "not persisted; reliefs such as pension contributions and "
+                "Gift Aid are not deducted."
+            ),
+            "allowance": (
+                "tapered Personal Allowance from the policy_parameters artifact"
+            ),
+            "fail_on_missing_component": True,
+        },
+        "rank_preserving_allocation": {
+            "within": "income band",
+            "ordering": "existing gains descending, person_id ascending on ties",
+            "band_order": "highest gain band first",
+            "suppressed_cell_allocation": (
+                "count implied by the cell's published gains at the band-total mean"
+            ),
+            "column_reconciliation": (
+                "every income column rescales onto its published All-row taxpayer total"
+            ),
+            "shortfall_policy": (
+                "proportional scale-down when the population holds less "
+                "gainer mass than published taxpayers"
+            ),
+            "minimum_allocation_people": int(_MINIMUM_ALLOCATION_PEOPLE),
+            "weights": (
+                "household_weight mapped to persons; no person splits across bands"
+            ),
+        },
+        "within_band_draws": {
+            "bounded_band_family": (
+                "truncated exponential matched to the cell's published mean"
+            ),
+            "open_band_family": "Pareto with alpha = mean / (mean - lower bound)",
+            "mean_repair_margin": _MEAN_MARGIN,
+            "mean_repair_reason": (
+                "Published counts round to the nearest thousand and amounts "
+                "to the nearest million; four cells of the 2023-24 table "
+                "imply a mean outside their own band, and repaired means "
+                "clamp just inside the violated boundary."
+            ),
+            "bottom_band_floor": "annual exempt amount plus one pound",
+            "seed_base": UK_CGT_IMPUTATION_SEED,
+            "seed_mixing": (
+                "seed combined with the build period; draws ordered by allocation rank"
+            ),
+            "deterministic": True,
+        },
+        "sub_aea_remainder": {
+            "policy": (
+                "gainers beyond the published taxpayer mass keep their "
+                "existing amounts capped at the annual exempt amount"
+            ),
+            "rationale": (
+                "Table 3 covers only individuals with a CGT liability; "
+                "remaining gainers are treated as sub-AEA gainers rather "
+                "than invented into the liability distribution or deleted."
+            ),
+        },
+        "record_mass_conservation_receipt": {
+            "entity": "household",
+            "reason": UK_CGT_MASS_CONSERVATION_REASON,
+            "declared_factor": 1.0,
+            "gate_coupling": (
+                "The terminal family gate requires a valid mass-conserving "
+                "MassChangeRecord carrying exactly this reason."
+            ),
+        },
+        "classify_cgt_band_facts_with_reviewed_fence": {
+            "calibration_permitted": False,
+            "fact_fence_id": "cgt_band_facts_policy_endogenous_proxy_conditioned",
+            "fenced_fact_count": 76,
+            "fenced_fact_composition": (
+                "60 joint cells, 10 gain-band row totals, 6 income-column totals"
+            ),
+            "classification_rationale": (
+                "The taxpayer count is endogenous to policy, the income "
+                "conditioning is an arithmetic proxy, and the published "
+                "surface needs rounding and suppression reconciliation "
+                "before any per-band fact is exact."
+            ),
+            "calibrated_facts_unchanged": (
+                "The two aggregate facts in UK_CGT_TARGET_SPECS remain the "
+                "only calibrated CGT facts."
+            ),
+            "promotion_path": (
+                "A separately reviewed target profile may lift specific "
+                "band facts after the reconciliation and proxy adequacy "
+                "are adjudicated."
+            ),
+            "adjudication": "https://github.com/PolicyEngine/microcosm/issues/552",
+        },
     }
-    for (kind, parameter), value in expected.items():
-        actual = operations[kind].get(parameter)
-        if actual != value:
+    for kind, expected_parameters in expected_operations.items():
+        actual = operations[kind]
+        if actual != expected_parameters:
+            drifted = sorted(
+                key
+                for key in {*actual, *expected_parameters}
+                if actual.get(key) != expected_parameters.get(key)
+            )
             raise ValueError(
-                f"CGT spine {kind} parameter {parameter!r} drifted: expected "
-                f"{value!r}, got {actual!r}."
+                f"CGT spine {kind} declaration drifted from the reviewed "
+                f"mapping on parameter(s) {drifted}."
             )

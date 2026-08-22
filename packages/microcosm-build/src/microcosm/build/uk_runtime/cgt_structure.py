@@ -462,6 +462,18 @@ def _distribution_rows(resource: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     minimums = [float(row["minimum_total_income"]) for row in rows]
     if minimums != sorted(minimums) or minimums[0] != 0.0:
         raise ValueError("Advani-Summers income bands must be sorted and start at 0.")
+    # Fail closed on non-monotone quantile rows: the prior draw interpolates
+    # and extrapolates these values as a quantile function, so a malformed
+    # row (the class the corrected percentile-69 dropped digit belonged to)
+    # would silently fabricate loss-makers instead of failing the build.
+    for row in rows:
+        knots = [float(row[column]) for column in CGT_PRIOR_PERCENTILE_COLUMNS]
+        if any(late < early for early, late in zip(knots, knots[1:], strict=False)):
+            raise ValueError(
+                "Advani-Summers quantile columns must be non-decreasing; "
+                f"row with minimum_total_income {row['minimum_total_income']!r} "
+                "is not a valid quantile function."
+            )
     return rows
 
 

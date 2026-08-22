@@ -24,6 +24,12 @@ from microcosm.build.uk_runtime.hmrc_capital_gains import (
 from microcosm.build.uk_runtime.release_input_coverage import (
     load_uk_release_input_coverage_manifest,
 )
+from microcosm.build.uk_runtime.salary_sacrifice import (
+    SALSAC_MASS_CHANGE_REASON,
+)
+from microcosm.build.uk_runtime.student_loans import (
+    STUDENT_LOANS_MASS_CHANGE_REASON,
+)
 
 _MANIFEST_PATH = (
     Path(__file__).resolve().parents[1]
@@ -154,6 +160,20 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
                 new_total=100.0,
                 declared_factor=1.0,
                 reason=UK_CGT_MASS_CONSERVATION_REASON,
+            ),
+            MassChangeRecord(
+                entity="household",
+                old_total=100.0,
+                new_total=100.0,
+                declared_factor=1.0,
+                reason=SALSAC_MASS_CHANGE_REASON,
+            ),
+            MassChangeRecord(
+                entity="household",
+                old_total=100.0,
+                new_total=100.0,
+                declared_factor=1.0,
+                reason=STUDENT_LOANS_MASS_CHANGE_REASON,
             ),
             MassChangeRecord(
                 entity="household",

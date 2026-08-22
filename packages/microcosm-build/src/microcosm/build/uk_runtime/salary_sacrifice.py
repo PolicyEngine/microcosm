@@ -25,7 +25,7 @@ from microcosm.build.uk_runtime.national_frame import (
     validate_uk_national_frame,
 )
 from microcosm.build.uk_runtime.spi_support import support_channel_column
-from microcosm.frame import Frame
+from microcosm.frame import Frame, MassChangeRecord
 
 QRF: Any | None = None
 
@@ -41,6 +41,11 @@ SALSAC_QRF_SEED = 42
 SALSAC_QRF_ESTIMATORS = 100
 SALSAC_CONVERSION_SEED = 2024
 SALSAC_CONVERSION_SALT = "salary_sacrifice_conversion"
+SALSAC_MASS_CHANGE_REASON = (
+    "Salary-sacrifice support stage rewrites pension columns only; household "
+    "rows and typed household weights pass through and total household mass "
+    "is conserved."
+)
 
 
 def load_salary_sacrifice_anchor() -> Mapping[str, Any]:
@@ -69,6 +74,8 @@ class UKSalarySacrificeResult:
     converted_rows: int
     converted_mass: float
     moved_amount: float
+    expected_converted_mass: float
+    realization_deviation: float
 
     def evidence(self) -> dict[str, object]:
         return {
@@ -90,6 +97,8 @@ class UKSalarySacrificeResult:
                 "converted_rows": self.converted_rows,
                 "converted_mass": self.converted_mass,
                 "moved_amount": self.moved_amount,
+                "expected_converted_mass": self.expected_converted_mass,
+                "realization_deviation": self.realization_deviation,
             },
         }
 
@@ -225,6 +234,14 @@ def impute_salary_sacrifice(frame: Frame) -> UKSalarySacrificeResult:
     person["employee_pension_contributions"] = employee
     post_headcount = float(person_weights[final_ss > 0.0].sum())
     converted_mass = float(person_weights[converted].sum())
+    total = frame.weights_for("household").total
+    mass_receipt = MassChangeRecord(
+        entity="household",
+        old_total=total,
+        new_total=total,
+        declared_factor=1.0,
+        reason=SALSAC_MASS_CHANGE_REASON,
+    )
     result_frame = uk_national_frame(
         person=person,
         benunit=frame.table("benunit").copy(),
@@ -232,7 +249,7 @@ def impute_salary_sacrifice(frame: Frame) -> UKSalarySacrificeResult:
         time_period=uk_time_period(frame),
         weight_kind=uk_household_weight_kind(frame),
         household_weights=frame.weights_for("household").values,
-        mass_log=frame.mass_log,
+        mass_log=(*frame.mass_log, mass_receipt),
     )
     validate_uk_national_frame(result_frame)
     return UKSalarySacrificeResult(
@@ -248,6 +265,12 @@ def impute_salary_sacrifice(frame: Frame) -> UKSalarySacrificeResult:
         converted_rows=int(converted.sum()),
         converted_mass=converted_mass,
         moved_amount=moved_amount,
+        expected_converted_mass=rate * donor_pool_mass,
+        realization_deviation=(
+            (converted_mass - rate * donor_pool_mass) / (rate * donor_pool_mass)
+            if rate * donor_pool_mass > 0.0
+            else 0.0
+        ),
     )
 
 
@@ -313,6 +336,7 @@ def _assert_salary_sacrifice_stage_parameters(
             "seed": SALSAC_CONVERSION_SEED,
             "salt": SALSAC_CONVERSION_SALT,
             "receipt": "weighted_headcount",
+            "reason": SALSAC_MASS_CHANGE_REASON,
         },
     )
     hmrc = anchor.get("hmrc_anchor", {})

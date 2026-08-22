@@ -2140,6 +2140,8 @@ stages:
     seed: 2024
     salt: salary_sacrifice_conversion
     receipt: weighted_headcount
+    reason: Salary-sacrifice support stage rewrites pension columns only; household
+      rows and typed household weights pass through and total household mass is conserved.
   outputs:
   - pension_contributions_via_salary_sacrifice
   - employee_pension_contributions
@@ -2212,6 +2214,8 @@ stages:
     highest_education: TERTIARY
     seed: 42
     salt: student_loan_plan_2
+    reason: Student-loan plan assignment writes an enum column only; household rows
+      and typed household weights pass through and total household mass is conserved.
   outputs:
   - student_loan_plan
   rewrites:

@@ -20,7 +20,7 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_time_period,
     validate_uk_national_frame,
 )
-from microcosm.frame import Frame
+from microcosm.frame import Frame, MassChangeRecord
 
 PLAN_1_BEFORE = 2012
 PLAN_5_FROM = 2023
@@ -38,6 +38,11 @@ PLAN_SALTS = {
     "PLAN_2": "student_loan_plan_2",
 }
 PLAN_2025_STOCKS = {"PLAN_2": 8_940_000.0, "PLAN_5": 10_000.0}
+STUDENT_LOANS_MASS_CHANGE_REASON = (
+    "Student-loan plan assignment writes an enum column only; household rows "
+    "and typed household weights pass through and total household mass is "
+    "conserved."
+)
 
 
 def load_slc_liable_stocks() -> Mapping[str, Any]:
@@ -61,6 +66,8 @@ class UKStudentLoanPlanReceipt:
     rate: float
     topped_up_rows: int
     topped_up_mass: float
+    expected_topped_up_mass: float
+    realization_deviation: float
     final_england_count: float
 
     def evidence(self) -> dict[str, object]:
@@ -73,6 +80,8 @@ class UKStudentLoanPlanReceipt:
             "rate": self.rate,
             "topped_up_rows": self.topped_up_rows,
             "topped_up_mass": self.topped_up_mass,
+            "expected_topped_up_mass": self.expected_topped_up_mass,
+            "realization_deviation": self.realization_deviation,
             "final_england_count": self.final_england_count,
         }
 
@@ -209,6 +218,13 @@ def assign_student_loan_plans(
             rate=rate,
             topped_up_rows=int(topped_up.sum()),
             topped_up_mass=float(person_weights[topped_up].sum()),
+            expected_topped_up_mass=rate * eligible_mass,
+            realization_deviation=(
+                (float(person_weights[topped_up].sum()) - rate * eligible_mass)
+                / (rate * eligible_mass)
+                if rate * eligible_mass > 0.0
+                else 0.0
+            ),
             final_england_count=float(
                 person_weights[(plan == plan_name) & is_england].sum()
             ),
@@ -217,6 +233,14 @@ def assign_student_loan_plans(
     if unknown:
         raise ValueError(f"Student-loan assignment emitted unknown plan(s): {unknown}.")
     person["student_loan_plan"] = plan
+    total = frame.weights_for("household").total
+    mass_receipt = MassChangeRecord(
+        entity="household",
+        old_total=total,
+        new_total=total,
+        declared_factor=1.0,
+        reason=STUDENT_LOANS_MASS_CHANGE_REASON,
+    )
     result_frame = uk_national_frame(
         person=person,
         benunit=frame.table("benunit").copy(),
@@ -224,7 +248,7 @@ def assign_student_loan_plans(
         time_period=uk_time_period(frame),
         weight_kind=uk_household_weight_kind(frame),
         household_weights=frame.weights_for("household").values,
-        mass_log=frame.mass_log,
+        mass_log=(*frame.mass_log, mass_receipt),
     )
     validate_uk_national_frame(result_frame)
     return UKStudentLoansResult(
@@ -349,6 +373,7 @@ def _assert_student_loans_stage_parameters(
             "cohort_start_min": PLAN_1_BEFORE,
             "cohort_start_max_exclusive": PLAN_5_FROM,
             "salt": PLAN_SALTS["PLAN_2"],
+            "reason": STUDENT_LOANS_MASS_CHANGE_REASON,
         },
     }
     for operation in top_ups:

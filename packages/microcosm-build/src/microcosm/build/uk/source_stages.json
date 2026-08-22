@@ -2657,7 +2657,8 @@
           "move": "full employee_pension_contributions to pension_contributions_via_salary_sacrifice; source zeroed",
           "seed": 2024,
           "salt": "salary_sacrifice_conversion",
-          "receipt": "weighted_headcount"
+          "receipt": "weighted_headcount",
+          "reason": "Salary-sacrifice support stage rewrites pension columns only; household rows and typed household weights pass through and total household mass is conserved."
         }
       ],
       "outputs": [
@@ -2736,7 +2737,8 @@
           "eligible_region_exclusions": ["SCOTLAND", "WALES", "NORTHERN_IRELAND"],
           "highest_education": "TERTIARY",
           "seed": 42,
-          "salt": "student_loan_plan_2"
+          "salt": "student_loan_plan_2",
+          "reason": "Student-loan plan assignment writes an enum column only; household rows and typed household weights pass through and total household mass is conserved."
         }
       ],
       "outputs": ["student_loan_plan"],

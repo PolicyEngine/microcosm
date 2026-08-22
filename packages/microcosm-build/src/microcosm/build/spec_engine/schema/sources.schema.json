@@ -6628,6 +6628,7 @@
      "required": ["kind", "resource", "target", "donor_pool", "rate_cap", "move", "seed", "salt", "receipt"],
      "properties": {
       "kind": {"const": "convert_donors_to_target_stock"},
+      "reason": {"type": "string"},
       "resource": {"type": "string"},
       "target": {"type": "number"},
       "donor_pool": {"type": "string"},
@@ -6660,6 +6661,7 @@
      "required": ["kind", "plan", "priority", "resource", "stock_series", "year_rule", "age_min", "age_max", "cohort_start_min", "eligible_region_exclusions", "highest_education", "seed", "salt"],
      "properties": {
       "kind": {"const": "top_up_to_stock"},
+      "reason": {"type": "string"},
       "plan": {"type": "string"},
       "priority": {"type": "integer"},
       "resource": {"type": "string"},
