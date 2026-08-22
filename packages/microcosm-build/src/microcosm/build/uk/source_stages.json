@@ -2620,9 +2620,9 @@
     {
      "kind": "record_mass_conservation_receipt",
      "entity": "household",
-     "reason": "Amounts-only capital gains redraw: household weights pass through unchanged and total household mass is conserved.",
+     "reason": "Amounts-only capital gains redraw on the source spine: household weights pass through unchanged and total household mass is conserved.",
      "declared_factor": 1.0,
-     "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this reason."
+     "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this spine-specific reason."
     },
     {
      "kind": "classify_cgt_band_facts_with_reviewed_fence",
