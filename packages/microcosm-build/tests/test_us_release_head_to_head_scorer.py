@@ -429,6 +429,28 @@ def test_dropped_targets_fail_loudly_before_scoring(monkeypatch) -> None:
         )
 
 
+def test_artifact_path_keeps_h5_symlink_name(tmp_path) -> None:
+    """A Hugging Face cache snapshot is an .h5-named symlink to an
+    extensionless blob; the scorer must keep the snapshot name so the
+    dataset loader's suffix validation and the filename identity both see
+    the real artifact name."""
+
+    module = _load_head_to_head_module()
+    blob = tmp_path / "blobs" / ("a" * 8)
+    blob.parent.mkdir()
+    blob.write_bytes(b"not-really-h5")
+    snapshot = tmp_path / "snapshots" / "populace_us_2024.h5"
+    snapshot.parent.mkdir()
+    snapshot.symlink_to(blob)
+
+    kept = module._resolved_artifact_path(snapshot)
+
+    assert kept.name == "populace_us_2024.h5"
+    assert kept.suffix == ".h5"
+    with pytest.raises(FileNotFoundError):
+        module._resolved_artifact_path(tmp_path / "missing.h5")
+
+
 def test_live_incumbent_identity_annotation() -> None:
     module = _load_head_to_head_module()
 

@@ -289,12 +289,17 @@ def _pool_manifest_from_directory(path: Path) -> Path:
 
 
 def _resolved_artifact_path(path: Path) -> Path:
-    resolved = path.expanduser().resolve()
-    if resolved.is_dir():
-        return _pool_manifest_from_directory(resolved)
-    if not resolved.is_file():
-        raise FileNotFoundError(f"Scoring artifact is not a file: {resolved}")
-    return resolved
+    # Never resolve() the artifact file path: Hugging Face cache snapshots
+    # are symlinks named <file>.h5 pointing at extensionless blob files, so
+    # resolving would both strip the .h5 suffix the policyengine-us dataset
+    # loader validates and replace the meaningful filename identity with a
+    # blob hash.
+    expanded = path.expanduser()
+    if expanded.is_dir():
+        return _pool_manifest_from_directory(expanded)
+    if not expanded.is_file():
+        raise FileNotFoundError(f"Scoring artifact is not a file: {expanded}")
+    return expanded
 
 
 def _h5_layout(path: Path) -> str:
