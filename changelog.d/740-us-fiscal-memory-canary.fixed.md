@@ -1,0 +1,1 @@
+Run the US fiscal-refresh per-family module-leak measurement in a fresh interpreter: variable-module names are keyed by id(system), so a warm suite process can recycle a dead system's address and re-register its module set under existing names, spuriously zeroing the leak canary (the nondeterministic main-CI red first seen on the FRS 2024-25 retarget merge run).

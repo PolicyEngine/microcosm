@@ -1577,6 +1577,7 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
     pins = tool._input_artifact_pins(stages)
 
     assert set(pins) == {
+        "cgt_published_fact_surface",
         "etb_household_tab",
         "lcfs_household_tab",
         "lcfs_person_tab",
@@ -1597,8 +1598,32 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
             "etb_vat",
             "etb_services",
             "hmrc_spi_income_spine",
+            "hmrc_cgt_gains_spine",
         )
         for artifact in stage_map[stage_name].artifacts
-        if "table" not in artifact and "resource" not in artifact
+        if "table" not in artifact
+        and "resource" not in artifact
+        and "sha256" in artifact
     }
     assert {role: pin["sha256"] for role, pin in pins.items()} == declared
+
+
+def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
+    tool = _load_tool()
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    stages = spec.sources.stage_map()
+
+    declared = tool._declared_seeds([stages[name] for name in tool._STAGE_NAMES])
+
+    assert declared["cgt_incidence_clone"] == {"cgt_prior_amount": 0}
+    assert declared["cgt_band_donors"] == {"stack_band_donor_households": 1}
+    assert declared["hmrc_cgt_gains_spine"] == {"within_band_draws": 552}
+    assert declared["salary_sacrifice"] == {
+        "salary_sacrifice": 42,
+        "salary_sacrifice_conversion": 2024,
+    }
+    assert declared["student_loans"] == {
+        "student_loan_plan_5": 42,
+        "student_loan_plan_2": 42,
+    }

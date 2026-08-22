@@ -272,23 +272,30 @@ def _evaluate_take_up_signal(
     return uk_take_up_signal_gate(context.frame, **dict(parameters))
 
 
-def _evaluate_brma_enum_domain(
+def _evaluate_enum_domain(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
     columns = tuple(parameters.get("columns", ()))
-    if columns != ("brma",):
-        raise ValueError("uk_brma_enum_domain must declare columns ['brma'].")
-    domain = context.artifacts.get("brma_enum_domain")
+    if len(columns) != 1 or not isinstance(columns[0], str):
+        raise ValueError("UK enum_domain gates must declare exactly one column.")
+    column = columns[0]
+    domain = context.artifacts.get(f"{column}_enum_domain")
     if domain is None:
         engine = context.artifacts["rules_engine"]
-        variable = engine._variable("brma")
+        variable = engine._variable(column)
         domain = getattr(variable, "possible_values", None)
     if domain is None:
-        raise ValueError("brma enum domain could not be resolved from evidence.")
-    return enum_domain_gate(
-        {"brma": context.frame.table("household")["brma"]},
-        {"brma": domain},
-    )
+        raise ValueError(f"{column} enum domain could not be resolved from evidence.")
+    matches = [
+        context.frame.table(entity)[column]
+        for entity in context.frame.entities
+        if column in context.frame.table(entity).columns
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"{column} must occur on exactly one frame entity; found {len(matches)}."
+        )
+    return enum_domain_gate({column: matches[0]}, {column: domain})
 
 
 def _evaluate_support(
@@ -830,7 +837,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
     ),
     "enum_domain": UKGateBinding(
         name="enum_domain",
-        evaluator=_evaluate_brma_enum_domain,
+        evaluator=_evaluate_enum_domain,
         parameter_keys=frozenset({"columns"}),
     ),
     "support": UKGateBinding(

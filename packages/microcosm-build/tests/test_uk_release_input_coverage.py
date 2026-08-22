@@ -605,6 +605,11 @@ class TestUKManifest:
             {
                 "hmrc_spi_income",
                 "hmrc_cgt_gains",
+                "cgt_incidence_clone",
+                "cgt_band_donors",
+                "hmrc_cgt_gains_spine",
+                "salary_sacrifice",
+                "student_loans",
                 "was_wealth",
                 "regional_property_uprating",
                 "lcfs_consumption",

@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "country": "uk",
+  "source": {
+    "citation": "Student Loans Company, Student loan forecasts for England, Table 6a, Higher education total.",
+    "permalink": "https://explore-education-statistics.service.gov.uk/data-tables/permalink/6ff75517-7124-487c-cb4e-08de6eccf22d",
+    "raw_artifact_sha256": "b6de727ec0f8b1771c9a2d2c781b405830872634ed7283bf23e46a3898873922",
+    "chronicle_package_id": "slc-student-loan-borrower-forecasts-england-2025",
+    "chronicle_candidate": true,
+    "period_note": "Academic year 2024/25 maps to calendar year 2025 here; Chronicle stores the academic-year opening year 2024."
+  },
+  "plans": {
+    "plan_2": {
+      "above_threshold": {"2025": 3985000, "2026": 4460000, "2027": 4825000, "2028": 5045000, "2029": 5160000, "2030": 5205000},
+      "liable": {"2025": 8940000, "2026": 9710000, "2027": 10360000, "2028": 10615000, "2029": 10600000, "2030": 10525000}
+    },
+    "plan_5": {
+      "above_threshold": {"2025": 0, "2026": 35000, "2027": 145000, "2028": 390000, "2029": 770000, "2030": 1235000},
+      "liable": {"2025": 10000, "2026": 230000, "2027": 630000, "2028": 1380000, "2029": 2360000, "2030": 3400000}
+    }
+  }
+}

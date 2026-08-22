@@ -69,6 +69,11 @@ def uk_stage_implementations(
     frs_hmrc_spine_leaves_transform: Callable[[Frame], Frame] | None = None,
     spi_support_channel_transform: Callable[[Frame], Frame] | None = None,
     hmrc_spi_income_spine_transform: Callable[[Frame], Frame] | None = None,
+    cgt_incidence_clone_transform: Callable[[Frame], Frame] | None = None,
+    cgt_band_donors_transform: Callable[[Frame], Frame] | None = None,
+    hmrc_cgt_gains_spine_transform: Callable[[Frame], Frame] | None = None,
+    salary_sacrifice_transform: Callable[[Frame], Frame] | None = None,
+    student_loans_transform: Callable[[Frame], Frame] | None = None,
 ) -> dict[str, Callable[[Frame], Frame]]:
     """Return the whole-stage implementation map for the UK source plan."""
 
@@ -96,6 +101,11 @@ def uk_stage_implementations(
         "frs_hmrc_spine_leaves": frs_hmrc_spine_leaves_transform,
         "spi_support_channel": spi_support_channel_transform,
         "hmrc_spi_income_spine": hmrc_spi_income_spine_transform,
+        "cgt_incidence_clone": cgt_incidence_clone_transform,
+        "cgt_band_donors": cgt_band_donors_transform,
+        "hmrc_cgt_gains_spine": hmrc_cgt_gains_spine_transform,
+        "salary_sacrifice": salary_sacrifice_transform,
+        "student_loans": student_loans_transform,
     }
     implementations.update(
         {

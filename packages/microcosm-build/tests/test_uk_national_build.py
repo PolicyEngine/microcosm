@@ -1104,6 +1104,7 @@ def test_national_build_real_terminal_batch_blocks_incomplete_qrf_before_staging
         "uk_aggregate_admin": "evidence_absent",
         "uk_take_up_signal": "passed",
         "uk_brma_enum_domain": "passed",
+        "uk_student_loan_plan_enum_domain": "failed",
         # The legacy report omitted unevidenced gates; the battery names
         # every gap — non-blocking off the release-candidate posture.
         "uk_export_surface": "evidence_absent",
