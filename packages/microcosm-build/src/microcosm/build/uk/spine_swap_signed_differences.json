@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "scope_note": "Adjudicated intentional differences between the microcosm-built UK spine and the frozen enhanced-FRS incumbent (#686). The whole-spine comparison treats anything differing that is not signed here as a defect, so every entry is scoped to the exact surface and columns where the difference is expected to appear: a too-broad entry would sign a real defect. Entries are permanent adjudications and carry no expiry; time-limited per-gate suppressions belong in input_mass_reviewed_exclusions.json, qrf_tail_reviewed_exclusions.json or degenerate_reviewed_exclusions.json instead, and an entry here points at one through its evidence field when both descend from the same adjudication. The register is completed during the whole-spine parity loop: the E4-E8 method classes recorded in the licensed per-increment acceptance receipts, and the columns the #723 screen placed beyond the parity band, are transcribed here as each is re-measured against the re-pinned 1.56.16 reference and scoped to the divergence actually observed, rather than carried across on their prose classification.",
+  "differences": [
+    {
+      "id": "scottish-water-incumbent-nan-zeroing",
+      "class": "defect_fix",
+      "scope": {
+        "surface": "nonzero_shares",
+        "columns": ["water_and_sewerage_charges"],
+        "entities": ["household"]
+      },
+      "expectation": "column_differs",
+      "magnitude_evidence": "The spine's unweighted nonzero share exceeds the incumbent's by about +0.10 on the whole file. FRS 2024-25 retired CWATAMT/CSEWAMT: the headers survive but carry no data in any of the 16,288 households. The incumbent adds the retired CSEWAMT before filling, so NaN propagates and the charge is zeroed for every Scottish household that has one; the spine fills per column and they stand. Reproduced on the raw tab as 12,644 nonzero households for the incumbent formula against 14,307 for ours, a +0.1021 share gap whose 1,663 differing households are all Scottish, with England, Wales and Northern Ireland identical under both. Latent since at least 2023-24, where 378 Scottish households were already affected. The defect is on the incumbent side and survives at 1.56.16.",
+      "evidence": "experiments/686-uk-spine-swap-receipts.md#r1-scottish-water-and-sewerage-charges-736-item-13",
+      "adjudicator": "juaristi22",
+      "adjudicated_on": "2026-08-22"
+    },
+    {
+      "id": "scottish-water-sewerage-successor-level",
+      "class": "mechanism_change",
+      "scope": {
+        "surface": "weighted_totals",
+        "columns": ["water_and_sewerage_charges", "council_tax"],
+        "entities": ["household"]
+      },
+      "expectation": "column_differs",
+      "magnitude_evidence": "The Scottish charge is assembled from the successors FRS 2024-25 published for the cells it retired, so its level rises against both the incumbent and our own earlier build. CWATAMTD is the water charge alone; CSEWAMT1 supplies the sewerage side and is discounted at the household's own observed CWATAMTD/CWATAMT1 factor, which keeps the retired cells' after-discount meaning rather than switching to a gross basis. Weighted annual per Scottish household moves from about GBP 185 on water alone to about GBP 395, against roughly GBP 490 for England and Wales on WATSEWRT; the incumbent sits at zero because of the separate NaN defect. The same amount is netted from council_tax, so that column moves by the same construction. The nonzero share is unaffected, so this entry deliberately does not sign the share surface.",
+      "evidence": "experiments/686-uk-spine-swap-receipts.md#r1-scottish-water-and-sewerage-charges-736-item-13",
+      "adjudicator": "juaristi22",
+      "adjudicated_on": "2026-08-22"
+    }
+  ]
+}

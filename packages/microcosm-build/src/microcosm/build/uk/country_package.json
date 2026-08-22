@@ -168,6 +168,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "spine_swap_signed_differences.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "ledger_compile_parity_incumbent_2025_signed_differences.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
