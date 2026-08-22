@@ -283,6 +283,48 @@ that a blank retired cell and an absent one give the same non-zero answer.
 
 The retired cells are no longer read anywhere in the runtime.
 
+---
+
+## R2 — parity instrument, first end-to-end run
+
+Not an acceptance run: the E8 spine artifact predates both the re-pin and the
+Scottish water fix, and the signed register is deliberately seeded with only
+the two adjudications made so far. The run exists to prove the instrument
+behaves as specified on real artifacts before the L0–L3 ladder depends on it.
+
+Candidate extracted from `data/ukds/acceptance/e8/spine-a.h5` with
+`build_uk_efrs_parity_reference.py --candidate-h5 --emit-candidate-json`
+(144 candidate input layers), diffed with `verify_uk_spine_parity.py`.
+Evidence: `data/ukds/acceptance/686-spine-swap/`
+(`candidate_extraction_e8_spine_a.json`, `parity_receipt_e8_spine_a.json`).
+
+**Verdict `defect`, exit 1** — correct for a deliberately under-seeded
+register, and the state the L2 loop starts from.
+
+| surface | result |
+|---|---|
+| entity counts | household 52,846 = 52,846 (identity holds); person 113,617 vs 113,649 and benunit 61,223 vs 61,211 differ — the known E8 donor-composition outcome, not yet transcribed into the register |
+| shares | 142 compared, 113 differing, 3 missing in candidate, 2 extra |
+| unsigned | 119 |
+
+The three columns missing on the candidate side are `free_school_meals`,
+`free_school_fruit_veg` and `healthy_start_vouchers` — the E9 derived-benefit
+class the #723 receipt already named, unchanged by the re-pin.
+
+Two behaviours worth recording, because they are the ones the swap decision
+depends on:
+
+* `water_and_sewerage_charges` measured **+0.100897** (0.776937 → 0.877834)
+  and bound to `scottish-water-incumbent-nan-zeroing`, so it is reported as a
+  *signed* difference and excluded from the unsigned list. The share
+  reproduces the divergence #736 recorded, now against the re-pinned
+  reference, and this candidate predates the level fix.
+* `scottish-water-sewerage-successor-level` correctly appears under
+  `unused_ids`: it signs `weighted_totals`, and this run supplied no weighted
+  registers. Under `--strict` that would fail the run, which is the intended
+  swap-acceptance behaviour — a register entry that matches nothing is either
+  stale or the run is incomplete, and both deserve to stop the swap.
+
 ### Carried consequence
 
 The re-pin does not by itself re-validate the #723 acceptance screen: the
