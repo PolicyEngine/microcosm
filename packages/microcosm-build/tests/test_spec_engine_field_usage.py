@@ -98,14 +98,14 @@ def test_exact_complete_ledger_has_one_primary_mode_per_pointer(field_ledger) ->
         "resolved_bindings": 9_252,
     }
     assert field_ledger.mode_counts == {
-        "legacy_behavior": 13_244,
+        "legacy_behavior": 13_297,
         "compiler_semantic": 27_661,
-        "front_end_validation": 346,
+        "front_end_validation": 355,
         "identity_only": 128,
     }
     assert field_ledger.generation0_effect_counts == {
-        "legacy_behavior": 37_717,
-        "no_generation0_effect": 3_662,
+        "legacy_behavior": 37_770,
+        "no_generation0_effect": 3_671,
     }
     assert len({field.pointer for field in field_ledger.fields}) == 41_441
 

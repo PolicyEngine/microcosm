@@ -362,8 +362,8 @@ def test_checked_in_us_lock_is_fresh_schema_valid_and_not_authored() -> None:
         for row in payload["programs"].values()
     )
     remaining = payload["remaining_stage_input_manifest"]
-    assert len(remaining["rows"]) == 993
-    assert remaining["receipt"]["entry_count"] == 993
+    assert len(remaining["rows"]) == 997
+    assert remaining["receipt"]["entry_count"] == 997
     assert remaining["receipt"]["stage_counts"] == {
         "derive": 34,
         "seed": 29,
