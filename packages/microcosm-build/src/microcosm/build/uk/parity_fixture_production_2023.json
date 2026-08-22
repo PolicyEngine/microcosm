@@ -1,0 +1,2019 @@
+{
+ "country": "uk",
+ "fixture": "production_2023",
+ "mapping": {
+  "mapped_count": 133,
+  "unmapped": [
+   {
+    "name": "ons/household_land_value/NORTH_EAST",
+    "period": 2023,
+    "reason": "No registry_parity.mapped contract counterpart for the production 2023 target name."
+   },
+   {
+    "name": "ons/household_land_value/NORTH_WEST",
+    "period": 2023,
+    "reason": "No registry_parity.mapped contract counterpart for the production 2023 target name."
+   },
+   {
+    "name": "ons/household_land_value/YORKSHIRE",
+    "period": 2023,
+    "reason": "No registry_parity.mapped contract counterpart for the production 2023 target name."
+   },
+   {
+    "name": "ons/household_land_value/EAST_MIDLANDS",
+    "period": 2023,
+    "reason": "No registry_parity.mapped contract counterpart for the production 2023 target name."
+   },
+   {
+    "name": "ons/household_land_value/WEST_MIDLANDS",
+    "period": 2023,
+    "reason": "No registry_parity.mapped contract counterpart for the production 2023 target name."
+   },
+   {
+    "name": "ons/household_land_value/EAST_OF_ENGLAND",
+    "period": 2023,
+    "reason": "No registry_parity.mapped contract counterpart for the production 2023 target name."
+   },
+   {
+    "name": "ons/household_land_value/LONDON",
+    "period": 2023,
+    "reason": "No registry_parity.mapped contract counterpart for the production 2023 target name."
+   },
+   {
+    "name": "ons/household_land_value/SOUTH_EAST",
+    "period": 2023,
+    "reason": "No registry_parity.mapped contract counterpart for the production 2023 target name."
+   },
+   {
+    "name": "ons/household_land_value/SOUTH_WEST",
+    "period": 2023,
+    "reason": "No registry_parity.mapped contract counterpart for the production 2023 target name."
+   },
+   {
+    "name": "ons/household_land_value/WALES",
+    "period": 2023,
+    "reason": "No registry_parity.mapped contract counterpart for the production 2023 target name."
+   },
+   {
+    "name": "ons/household_land_value/SCOTLAND",
+    "period": 2023,
+    "reason": "No registry_parity.mapped contract counterpart for the production 2023 target name."
+   },
+   {
+    "name": "ons/tenure_england_owned_outright",
+    "period": 2023,
+    "reason": "No registry_parity.mapped contract counterpart for the production 2023 target name."
+   },
+   {
+    "name": "ons/tenure_england_owned_with_mortgage",
+    "period": 2023,
+    "reason": "No registry_parity.mapped contract counterpart for the production 2023 target name."
+   },
+   {
+    "name": "ons/tenure_england_rented_privately",
+    "period": 2023,
+    "reason": "No registry_parity.mapped contract counterpart for the production 2023 target name."
+   },
+   {
+    "name": "ons/tenure_england_social_rent",
+    "period": 2023,
+    "reason": "No registry_parity.mapped contract counterpart for the production 2023 target name."
+   },
+   {
+    "name": "ons/tenure_england_total",
+    "period": 2023,
+    "reason": "No registry_parity.mapped contract counterpart for the production 2023 target name."
+   }
+  ]
+ },
+ "provenance": {
+  "release_id": "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z",
+  "source_path": "packages/microcosm-data/tests/fixtures/uk_june_2023/populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z/calibration_diagnostics.json",
+  "source_sha256": "134fa8dd6da2f5a3b4f41d2c725ce9ec410c14eddce74cba3ed62d5b6dd1b90d",
+  "target_surface_sha256": "fb2fc115fbae53a501b8acbc1529f319b9e07b74478c7bd02d00c674d4c10022"
+ },
+ "rows": [
+  {
+   "contract_target_id": "isc.private_school_students",
+   "entity": "household",
+   "family": "obr",
+   "measure": "obr/private_school_students",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "obr/private_school_students",
+   "period": 2023,
+   "source": "obr",
+   "value": 557000.0
+  },
+  {
+   "contract_target_id": "ons.household_composition.lone_households_under_65",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/lone_households_under_65",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/lone_households_under_65",
+   "period": 2023,
+   "source": "ons",
+   "value": 4166000.0
+  },
+  {
+   "contract_target_id": "ons.household_composition.lone_households_over_65",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/lone_households_over_65",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/lone_households_over_65",
+   "period": 2023,
+   "source": "ons",
+   "value": 4214000.0
+  },
+  {
+   "contract_target_id": "ons.household_composition.unrelated_adult_households",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/unrelated_adult_households",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/unrelated_adult_households",
+   "period": 2023,
+   "source": "ons",
+   "value": 827000.0
+  },
+  {
+   "contract_target_id": "ons.household_composition.couple_no_children_households",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/couple_no_children_households",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/couple_no_children_households",
+   "period": 2023,
+   "source": "ons",
+   "value": 7956000.0
+  },
+  {
+   "contract_target_id": "ons.household_composition.couple_under_3_children_households",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/couple_under_3_children_households",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/couple_under_3_children_households",
+   "period": 2023,
+   "source": "ons",
+   "value": 5210000.0
+  },
+  {
+   "contract_target_id": "ons.household_composition.couple_3_plus_children_households",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/couple_3_plus_children_households",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/couple_3_plus_children_households",
+   "period": 2023,
+   "source": "ons",
+   "value": 907000.0
+  },
+  {
+   "contract_target_id": "ons.household_composition.couple_non_dependent_children_only_households",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/couple_non_dependent_children_only_households",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/couple_non_dependent_children_only_households",
+   "period": 2023,
+   "source": "ons",
+   "value": 1793000.0
+  },
+  {
+   "contract_target_id": "ons.household_composition.lone_parent_dependent_children_households",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/lone_parent_dependent_children_households",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/lone_parent_dependent_children_households",
+   "period": 2023,
+   "source": "ons",
+   "value": 1904000.0
+  },
+  {
+   "contract_target_id": "ons.household_composition.lone_parent_non_dependent_children_households",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/lone_parent_non_dependent_children_households",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/lone_parent_non_dependent_children_households",
+   "period": 2023,
+   "source": "ons",
+   "value": 1089000.0
+  },
+  {
+   "contract_target_id": "ons.household_composition.multi_family_households",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/multi_family_households",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/multi_family_households",
+   "period": 2023,
+   "source": "ons",
+   "value": 290000.0
+  },
+  {
+   "contract_target_id": "ons.land.household_land_value",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/household_land_value",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/household_land_value",
+   "period": 2023,
+   "source": "ons",
+   "value": 4798764603941.416
+  },
+  {
+   "contract_target_id": "ons.land.corporate_land_value",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/corporate_land_value",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/corporate_land_value",
+   "period": 2023,
+   "source": "ons",
+   "value": 1957550396058.5835
+  },
+  {
+   "contract_target_id": "ons.land.land_value",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/land_value",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/land_value",
+   "period": 2023,
+   "source": "ons",
+   "value": 6756315000000.0
+  },
+  {
+   "contract_target_id": "ons.public_sector_employment",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/public_sector_employment",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/public_sector_employment",
+   "period": 2023,
+   "source": "ons",
+   "value": 5900000.0
+  },
+  {
+   "contract_target_id": "ons.savings_interest_income",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/savings_interest_income",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/savings_interest_income",
+   "period": 2023,
+   "source": "ons",
+   "value": 86040000000.0
+  },
+  {
+   "contract_target_id": "slc.support.maintenance_loan_recipients",
+   "entity": "household",
+   "family": "slc",
+   "measure": "slc/maintenance_loan_recipients",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "slc/maintenance_loan_recipients",
+   "period": 2023,
+   "source": "slc",
+   "value": 1151607.0
+  },
+  {
+   "contract_target_id": "slc.support.maintenance_loan_spend",
+   "entity": "household",
+   "family": "slc",
+   "measure": "slc/maintenance_loan_spend",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "slc/maintenance_loan_spend",
+   "period": 2023,
+   "source": "slc",
+   "value": 8594103415.0
+  },
+  {
+   "contract_target_id": "slc.support.parents_learning_allowance_recipients",
+   "entity": "household",
+   "family": "slc",
+   "measure": "slc/parents_learning_allowance_recipients",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "slc/parents_learning_allowance_recipients",
+   "period": 2023,
+   "source": "slc",
+   "value": 89283.0
+  },
+  {
+   "contract_target_id": "slc.support.parents_learning_allowance_spend",
+   "entity": "household",
+   "family": "slc",
+   "measure": "slc/parents_learning_allowance_spend",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "slc/parents_learning_allowance_spend",
+   "period": 2023,
+   "source": "slc",
+   "value": 153266251.0
+  },
+  {
+   "contract_target_id": "slc.support.adult_dependants_grant_recipients",
+   "entity": "household",
+   "family": "slc",
+   "measure": "slc/adult_dependants_grant_recipients",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "slc/adult_dependants_grant_recipients",
+   "period": 2023,
+   "source": "slc",
+   "value": 20226.0
+  },
+  {
+   "contract_target_id": "slc.support.adult_dependants_grant_spend",
+   "entity": "household",
+   "family": "slc",
+   "measure": "slc/adult_dependants_grant_spend",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "slc/adult_dependants_grant_spend",
+   "period": 2023,
+   "source": "slc",
+   "value": 54638997.0
+  },
+  {
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/household_land_value/NORTH_EAST",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/household_land_value/NORTH_EAST",
+   "period": 2023,
+   "source": "ons",
+   "value": 113814239475.71474
+  },
+  {
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/household_land_value/NORTH_WEST",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/household_land_value/NORTH_WEST",
+   "period": 2023,
+   "source": "ons",
+   "value": 402421888791.4934
+  },
+  {
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/household_land_value/YORKSHIRE",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/household_land_value/YORKSHIRE",
+   "period": 2023,
+   "source": "ons",
+   "value": 283675747954.8778
+  },
+  {
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/household_land_value/EAST_MIDLANDS",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/household_land_value/EAST_MIDLANDS",
+   "period": 2023,
+   "source": "ons",
+   "value": 290045387683.9658
+  },
+  {
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/household_land_value/WEST_MIDLANDS",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/household_land_value/WEST_MIDLANDS",
+   "period": 2023,
+   "source": "ons",
+   "value": 346703742992.981
+  },
+  {
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/household_land_value/EAST_OF_ENGLAND",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/household_land_value/EAST_OF_ENGLAND",
+   "period": 2023,
+   "source": "ons",
+   "value": 516403292240.49414
+  },
+  {
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/household_land_value/LONDON",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/household_land_value/LONDON",
+   "period": 2023,
+   "source": "ons",
+   "value": 1130653075012.1692
+  },
+  {
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/household_land_value/SOUTH_EAST",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/household_land_value/SOUTH_EAST",
+   "period": 2023,
+   "source": "ons",
+   "value": 842967388093.2286
+  },
+  {
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/household_land_value/SOUTH_WEST",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/household_land_value/SOUTH_WEST",
+   "period": 2023,
+   "source": "ons",
+   "value": 434617600950.541
+  },
+  {
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/household_land_value/WALES",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/household_land_value/WALES",
+   "period": 2023,
+   "source": "ons",
+   "value": 170639951561.47794
+  },
+  {
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/household_land_value/SCOTLAND",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/household_land_value/SCOTLAND",
+   "period": 2023,
+   "source": "ons",
+   "value": 266822289184.47226
+  },
+  {
+   "contract_target_id": "ons.population.age_0_9_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/east_age_0_9",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/east_age_0_9",
+   "period": 2023,
+   "source": "ons",
+   "value": 730000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_10_19_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/east_age_10_19",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/east_age_10_19",
+   "period": 2023,
+   "source": "ons",
+   "value": 745000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_20_29_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/east_age_20_29",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/east_age_20_29",
+   "period": 2023,
+   "source": "ons",
+   "value": 729000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_30_39_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/east_age_30_39",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/east_age_30_39",
+   "period": 2023,
+   "source": "ons",
+   "value": 868000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_40_49_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/east_age_40_49",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/east_age_40_49",
+   "period": 2023,
+   "source": "ons",
+   "value": 829000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_50_59_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/east_age_50_59",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/east_age_50_59",
+   "period": 2023,
+   "source": "ons",
+   "value": 873000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_60_69_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/east_age_60_69",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/east_age_60_69",
+   "period": 2023,
+   "source": "ons",
+   "value": 721000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_70_79_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/east_age_70_79",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/east_age_70_79",
+   "period": 2023,
+   "source": "ons",
+   "value": 612000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_80_89_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/east_age_80_89",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/east_age_80_89",
+   "period": 2023,
+   "source": "ons",
+   "value": 360000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_0_9_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/east_midlands_age_0_9",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/east_midlands_age_0_9",
+   "period": 2023,
+   "source": "ons",
+   "value": 535000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_10_19_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/east_midlands_age_10_19",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/east_midlands_age_10_19",
+   "period": 2023,
+   "source": "ons",
+   "value": 588000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_20_29_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/east_midlands_age_20_29",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/east_midlands_age_20_29",
+   "period": 2023,
+   "source": "ons",
+   "value": 614000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_30_39_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/east_midlands_age_30_39",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/east_midlands_age_30_39",
+   "period": 2023,
+   "source": "ons",
+   "value": 652000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_40_49_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/east_midlands_age_40_49",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/east_midlands_age_40_49",
+   "period": 2023,
+   "source": "ons",
+   "value": 605000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_50_59_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/east_midlands_age_50_59",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/east_midlands_age_50_59",
+   "period": 2023,
+   "source": "ons",
+   "value": 686000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_60_69_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/east_midlands_age_60_69",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/east_midlands_age_60_69",
+   "period": 2023,
+   "source": "ons",
+   "value": 572000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_70_79_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/east_midlands_age_70_79",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/east_midlands_age_70_79",
+   "period": 2023,
+   "source": "ons",
+   "value": 475000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_80_89_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/east_midlands_age_80_89",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/east_midlands_age_80_89",
+   "period": 2023,
+   "source": "ons",
+   "value": 260000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_0_9_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/london_age_0_9",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/london_age_0_9",
+   "period": 2023,
+   "source": "ons",
+   "value": 1047000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_10_19_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/london_age_10_19",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/london_age_10_19",
+   "period": 2023,
+   "source": "ons",
+   "value": 1043000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_20_29_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/london_age_20_29",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/london_age_20_29",
+   "period": 2023,
+   "source": "ons",
+   "value": 1429000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_30_39_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/london_age_30_39",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/london_age_30_39",
+   "period": 2023,
+   "source": "ons",
+   "value": 1545000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_40_49_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/london_age_40_49",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/london_age_40_49",
+   "period": 2023,
+   "source": "ons",
+   "value": 1280000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_50_59_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/london_age_50_59",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/london_age_50_59",
+   "period": 2023,
+   "source": "ons",
+   "value": 1086000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_60_69_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/london_age_60_69",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/london_age_60_69",
+   "period": 2023,
+   "source": "ons",
+   "value": 751000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_70_79_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/london_age_70_79",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/london_age_70_79",
+   "period": 2023,
+   "source": "ons",
+   "value": 484000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_80_89_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/london_age_80_89",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/london_age_80_89",
+   "period": 2023,
+   "source": "ons",
+   "value": 289000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_0_9_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/north_east_age_0_9",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/north_east_age_0_9",
+   "period": 2023,
+   "source": "ons",
+   "value": 283000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_10_19_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/north_east_age_10_19",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/north_east_age_10_19",
+   "period": 2023,
+   "source": "ons",
+   "value": 312000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_20_29_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/north_east_age_20_29",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/north_east_age_20_29",
+   "period": 2023,
+   "source": "ons",
+   "value": 333000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_30_39_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/north_east_age_30_39",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/north_east_age_30_39",
+   "period": 2023,
+   "source": "ons",
+   "value": 347000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_40_49_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/north_east_age_40_49",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/north_east_age_40_49",
+   "period": 2023,
+   "source": "ons",
+   "value": 314000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_50_59_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/north_east_age_50_59",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/north_east_age_50_59",
+   "period": 2023,
+   "source": "ons",
+   "value": 371000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_60_69_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/north_east_age_60_69",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/north_east_age_60_69",
+   "period": 2023,
+   "source": "ons",
+   "value": 341000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_70_79_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/north_east_age_70_79",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/north_east_age_70_79",
+   "period": 2023,
+   "source": "ons",
+   "value": 264000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_80_89_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/north_east_age_80_89",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/north_east_age_80_89",
+   "period": 2023,
+   "source": "ons",
+   "value": 145000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_0_9_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/north_west_age_0_9",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/north_west_age_0_9",
+   "period": 2023,
+   "source": "ons",
+   "value": 851000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_10_19_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/north_west_age_10_19",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/north_west_age_10_19",
+   "period": 2023,
+   "source": "ons",
+   "value": 906000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_20_29_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/north_west_age_20_29",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/north_west_age_20_29",
+   "period": 2023,
+   "source": "ons",
+   "value": 958000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_30_39_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/north_west_age_30_39",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/north_west_age_30_39",
+   "period": 2023,
+   "source": "ons",
+   "value": 1029000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_40_49_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/north_west_age_40_49",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/north_west_age_40_49",
+   "period": 2023,
+   "source": "ons",
+   "value": 914000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_50_59_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/north_west_age_50_59",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/north_west_age_50_59",
+   "period": 2023,
+   "source": "ons",
+   "value": 1018000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_60_69_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/north_west_age_60_69",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/north_west_age_60_69",
+   "period": 2023,
+   "source": "ons",
+   "value": 858000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_70_79_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/north_west_age_70_79",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/north_west_age_70_79",
+   "period": 2023,
+   "source": "ons",
+   "value": 680000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_80_89_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/north_west_age_80_89",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/north_west_age_80_89",
+   "period": 2023,
+   "source": "ons",
+   "value": 379000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_0_9_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/northern_ireland_age_0_9",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/northern_ireland_age_0_9",
+   "period": 2023,
+   "source": "ons",
+   "value": 235000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_10_19_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/northern_ireland_age_10_19",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/northern_ireland_age_10_19",
+   "period": 2023,
+   "source": "ons",
+   "value": 245000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_20_29_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/northern_ireland_age_20_29",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/northern_ireland_age_20_29",
+   "period": 2023,
+   "source": "ons",
+   "value": 224000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_30_39_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/northern_ireland_age_30_39",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/northern_ireland_age_30_39",
+   "period": 2023,
+   "source": "ons",
+   "value": 258000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_40_49_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/northern_ireland_age_40_49",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/northern_ireland_age_40_49",
+   "period": 2023,
+   "source": "ons",
+   "value": 247000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_50_59_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/northern_ireland_age_50_59",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/northern_ireland_age_50_59",
+   "period": 2023,
+   "source": "ons",
+   "value": 258000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_60_69_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/northern_ireland_age_60_69",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/northern_ireland_age_60_69",
+   "period": 2023,
+   "source": "ons",
+   "value": 217000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_70_79_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/northern_ireland_age_70_79",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/northern_ireland_age_70_79",
+   "period": 2023,
+   "source": "ons",
+   "value": 157000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_80_89_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/northern_ireland_age_80_89",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/northern_ireland_age_80_89",
+   "period": 2023,
+   "source": "ons",
+   "value": 89000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_0_9_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/scotland_age_0_9",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/scotland_age_0_9",
+   "period": 2023,
+   "source": "ons",
+   "value": 528000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_10_19_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/scotland_age_10_19",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/scotland_age_10_19",
+   "period": 2023,
+   "source": "ons",
+   "value": 600000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_20_29_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/scotland_age_20_29",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/scotland_age_20_29",
+   "period": 2023,
+   "source": "ons",
+   "value": 689000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_30_39_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/scotland_age_30_39",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/scotland_age_30_39",
+   "period": 2023,
+   "source": "ons",
+   "value": 717000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_40_49_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/scotland_age_40_49",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/scotland_age_40_49",
+   "period": 2023,
+   "source": "ons",
+   "value": 673000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_50_59_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/scotland_age_50_59",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/scotland_age_50_59",
+   "period": 2023,
+   "source": "ons",
+   "value": 793000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_60_69_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/scotland_age_60_69",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/scotland_age_60_69",
+   "period": 2023,
+   "source": "ons",
+   "value": 702000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_70_79_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/scotland_age_70_79",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/scotland_age_70_79",
+   "period": 2023,
+   "source": "ons",
+   "value": 520000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_80_89_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/scotland_age_80_89",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/scotland_age_80_89",
+   "period": 2023,
+   "source": "ons",
+   "value": 282000.0
+  },
+  {
+   "contract_target_id": "ons.population.scotland_children_under_16",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/scotland_children_under_16",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/scotland_children_under_16",
+   "period": 2023,
+   "source": "ons",
+   "value": 900000.0
+  },
+  {
+   "contract_target_id": "ons.population.scotland_babies_under_1",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/scotland_babies_under_1",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/scotland_babies_under_1",
+   "period": 2023,
+   "source": "ons",
+   "value": 46000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_0_9_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/south_east_age_0_9",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/south_east_age_0_9",
+   "period": 2023,
+   "source": "ons",
+   "value": 1044000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_10_19_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/south_east_age_10_19",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/south_east_age_10_19",
+   "period": 2023,
+   "source": "ons",
+   "value": 1119000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_20_29_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/south_east_age_20_29",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/south_east_age_20_29",
+   "period": 2023,
+   "source": "ons",
+   "value": 1062000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_30_39_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/south_east_age_30_39",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/south_east_age_30_39",
+   "period": 2023,
+   "source": "ons",
+   "value": 1250000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_40_49_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/south_east_age_40_49",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/south_east_age_40_49",
+   "period": 2023,
+   "source": "ons",
+   "value": 1241000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_50_59_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/south_east_age_50_59",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/south_east_age_50_59",
+   "period": 2023,
+   "source": "ons",
+   "value": 1296000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_60_69_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/south_east_age_60_69",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/south_east_age_60_69",
+   "period": 2023,
+   "source": "ons",
+   "value": 1052000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_70_79_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/south_east_age_70_79",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/south_east_age_70_79",
+   "period": 2023,
+   "source": "ons",
+   "value": 882000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_80_89_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/south_east_age_80_89",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/south_east_age_80_89",
+   "period": 2023,
+   "source": "ons",
+   "value": 531000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_0_9_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/south_west_age_0_9",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/south_west_age_0_9",
+   "period": 2023,
+   "source": "ons",
+   "value": 579000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_10_19_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/south_west_age_10_19",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/south_west_age_10_19",
+   "period": 2023,
+   "source": "ons",
+   "value": 650000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_20_29_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/south_west_age_20_29",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/south_west_age_20_29",
+   "period": 2023,
+   "source": "ons",
+   "value": 675000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_30_39_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/south_west_age_30_39",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/south_west_age_30_39",
+   "period": 2023,
+   "source": "ons",
+   "value": 724000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_40_49_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/south_west_age_40_49",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/south_west_age_40_49",
+   "period": 2023,
+   "source": "ons",
+   "value": 686000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_50_59_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/south_west_age_50_59",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/south_west_age_50_59",
+   "period": 2023,
+   "source": "ons",
+   "value": 800000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_60_69_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/south_west_age_60_69",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/south_west_age_60_69",
+   "period": 2023,
+   "source": "ons",
+   "value": 716000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_70_79_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/south_west_age_70_79",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/south_west_age_70_79",
+   "period": 2023,
+   "source": "ons",
+   "value": 630000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_80_89_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/south_west_age_80_89",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/south_west_age_80_89",
+   "period": 2023,
+   "source": "ons",
+   "value": 369000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_0_9_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/wales_age_0_9",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/wales_age_0_9",
+   "period": 2023,
+   "source": "ons",
+   "value": 326000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_10_19_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/wales_age_10_19",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/wales_age_10_19",
+   "period": 2023,
+   "source": "ons",
+   "value": 364000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_20_29_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/wales_age_20_29",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/wales_age_20_29",
+   "period": 2023,
+   "source": "ons",
+   "value": 378000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_30_39_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/wales_age_30_39",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/wales_age_30_39",
+   "period": 2023,
+   "source": "ons",
+   "value": 398000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_40_49_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/wales_age_40_49",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/wales_age_40_49",
+   "period": 2023,
+   "source": "ons",
+   "value": 364000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_50_59_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/wales_age_50_59",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/wales_age_50_59",
+   "period": 2023,
+   "source": "ons",
+   "value": 436000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_60_69_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/wales_age_60_69",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/wales_age_60_69",
+   "period": 2023,
+   "source": "ons",
+   "value": 393000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_70_79_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/wales_age_70_79",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/wales_age_70_79",
+   "period": 2023,
+   "source": "ons",
+   "value": 327000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_80_89_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/wales_age_80_89",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/wales_age_80_89",
+   "period": 2023,
+   "source": "ons",
+   "value": 181000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_0_9_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/west_midlands_age_0_9",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/west_midlands_age_0_9",
+   "period": 2023,
+   "source": "ons",
+   "value": 703000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_10_19_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/west_midlands_age_10_19",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/west_midlands_age_10_19",
+   "period": 2023,
+   "source": "ons",
+   "value": 747000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_20_29_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/west_midlands_age_20_29",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/west_midlands_age_20_29",
+   "period": 2023,
+   "source": "ons",
+   "value": 753000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_30_39_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/west_midlands_age_30_39",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/west_midlands_age_30_39",
+   "period": 2023,
+   "source": "ons",
+   "value": 813000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_40_49_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/west_midlands_age_40_49",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/west_midlands_age_40_49",
+   "period": 2023,
+   "source": "ons",
+   "value": 739000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_50_59_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/west_midlands_age_50_59",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/west_midlands_age_50_59",
+   "period": 2023,
+   "source": "ons",
+   "value": 805000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_60_69_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/west_midlands_age_60_69",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/west_midlands_age_60_69",
+   "period": 2023,
+   "source": "ons",
+   "value": 661000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_70_79_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/west_midlands_age_70_79",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/west_midlands_age_70_79",
+   "period": 2023,
+   "source": "ons",
+   "value": 542000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_80_89_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/west_midlands_age_80_89",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/west_midlands_age_80_89",
+   "period": 2023,
+   "source": "ons",
+   "value": 321000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_0_9_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/yorkshire_and_the_humber_age_0_9",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/yorkshire_and_the_humber_age_0_9",
+   "period": 2023,
+   "source": "ons",
+   "value": 621000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_10_19_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/yorkshire_and_the_humber_age_10_19",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/yorkshire_and_the_humber_age_10_19",
+   "period": 2023,
+   "source": "ons",
+   "value": 669000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_20_29_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/yorkshire_and_the_humber_age_20_29",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/yorkshire_and_the_humber_age_20_29",
+   "period": 2023,
+   "source": "ons",
+   "value": 713000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_30_39_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/yorkshire_and_the_humber_age_30_39",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/yorkshire_and_the_humber_age_30_39",
+   "period": 2023,
+   "source": "ons",
+   "value": 745000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_40_49_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/yorkshire_and_the_humber_age_40_49",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/yorkshire_and_the_humber_age_40_49",
+   "period": 2023,
+   "source": "ons",
+   "value": 668000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_50_59_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/yorkshire_and_the_humber_age_50_59",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/yorkshire_and_the_humber_age_50_59",
+   "period": 2023,
+   "source": "ons",
+   "value": 751000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_60_69_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/yorkshire_and_the_humber_age_60_69",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/yorkshire_and_the_humber_age_60_69",
+   "period": 2023,
+   "source": "ons",
+   "value": 635000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_70_79_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/yorkshire_and_the_humber_age_70_79",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/yorkshire_and_the_humber_age_70_79",
+   "period": 2023,
+   "source": "ons",
+   "value": 510000.0
+  },
+  {
+   "contract_target_id": "ons.population.age_80_89_by_region",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/yorkshire_and_the_humber_age_80_89",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/yorkshire_and_the_humber_age_80_89",
+   "period": 2023,
+   "source": "ons",
+   "value": 287000.0
+  },
+  {
+   "contract_target_id": "ons.population.scotland_households_3plus_children",
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/scotland_households_3plus_children",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/scotland_households_3plus_children",
+   "period": 2023,
+   "source": "ons",
+   "value": 82000.0
+  },
+  {
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/tenure_england_owned_outright",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/tenure_england_owned_outright",
+   "period": 2023,
+   "source": "ons",
+   "value": 8298342.0
+  },
+  {
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/tenure_england_owned_with_mortgage",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/tenure_england_owned_with_mortgage",
+   "period": 2023,
+   "source": "ons",
+   "value": 7597225.0
+  },
+  {
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/tenure_england_rented_privately",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/tenure_england_rented_privately",
+   "period": 2023,
+   "source": "ons",
+   "value": 5251573.0
+  },
+  {
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/tenure_england_social_rent",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/tenure_england_social_rent",
+   "period": 2023,
+   "source": "ons",
+   "value": 4247906.0
+  },
+  {
+   "entity": "household",
+   "family": "ons",
+   "measure": "ons/tenure_england_total",
+   "metadata": {
+    "fixture": "production_2023"
+   },
+   "name": "ons/tenure_england_total",
+   "period": 2023,
+   "source": "ons",
+   "value": 25395046.0
+  }
+ ],
+ "schema_version": 1
+}

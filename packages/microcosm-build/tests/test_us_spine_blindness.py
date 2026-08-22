@@ -251,6 +251,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "sources.py",
         "spine_agreement.py",
         "spine_assembly.py",
+        # Data-only live battery authority extraction; never reads or mutates Frames.
+        "stacked_battery_contract.py",
         "spm_resources.py",
         "stacked_spine.py",  # Provenance owner (#578 revision); see owners list.
         "support_provenance.py",

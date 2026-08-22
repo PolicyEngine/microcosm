@@ -1,6 +1,6 @@
 {
   "country": "be",
-  "fingerprint": "d8915ca7fca2b852036a956cf485791f87a57377629e7a79d03e591fb9818c58",
+  "fingerprint": "16c586e4599c8f1aeef05f1d91a852d0ca284f066266616cee2aaf2e9e0e0229",
   "gate_ids": [
     "calibration_per_family_fit",
     "national_and_nuts1_admin_aggregates",
@@ -28,19 +28,31 @@
     "staging_repo": "policyengine/populace-be-staging"
   },
   "resource_hashes": {
-    "country_package.json": "73c7f613e9d78e32d8f32a1e77d138071aea6d2417608ad41c13489f8cdf3ea4",
+    "country_package.json": "1dff9052dbdcdbceeb077d1212008226cf783aa5d33cbda52d07437aef69d30b",
     "gates.json": "49635a32881aec3e914e74ed1bd3a408b427caac902c8e3d01118e99e8c9d1c8",
     "geography_spine.json": "0b39217386dbc9b053a036766004f10a3a34434a293c1e956e0f4f053a08e1bf",
     "release_contract.json": "af956e05782cd2aa5df108b216f0ff2a835f2a4e87d68419239b537550082c25",
     "source_stages.json": "64e45f48b5c3bb00a710e56f805c7c8c441ddc1050cfb61d846d45e9cbbb16b2",
+    "spec/bundle.yaml": "182e2a0f0b12cef6db6a0192438721b2e041b2c72ef16fbafde8f13fd7b93021",
+    "spec/catalogs.yaml": "ef69d014852558c72029ced1472c4e788d1ec399b3dd9f38ab7eb33f541b7ec6",
+    "spec/geography.yaml": "15d947b33417cd6e8cbd241c65c5b4c7f41fd23830ab5256250d9698ee71bff6",
+    "spec/sources.yaml": "1ca516ad27ee815cb60f451901dcdc6b8989c4f1731d0f6f3f1e50714e29e35e",
+    "spec/spine.yaml": "908d99488c3905806ec6878d96b0e4a4cbb67c6ec69d53fe5f1d160246fdb513",
+    "spec/vintages.yaml": "c842490287404cf306907800b0bcadec5d954e7e9c510f4b293786c5bedd0910",
     "target_references.json": "0f49fe2cdb024607e00558dfb87655dbaad06219ba05dd5b72905efc1e2916af"
   },
   "resources": [
-    "source_stages.json",
-    "geography_spine.json",
-    "target_references.json",
+    "spec/bundle.yaml",
+    "spec/catalogs.yaml",
+    "spec/geography.yaml",
+    "spec/sources.yaml",
+    "spec/spine.yaml",
+    "spec/vintages.yaml",
     "gates.json",
-    "release_contract.json"
+    "geography_spine.json",
+    "release_contract.json",
+    "source_stages.json",
+    "target_references.json"
   ],
   "stage_names": [
     "silc_load"

@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "country": "uk",
+  "source": {
+    "citation": "NEED 2023 headline tables 5b/6b, 9b/10b, 11b/12b, 15b/16b; Ofgem Q2 2026 unit rates.",
+    "urls": [
+      "https://www.gov.uk/government/statistics/national-energy-efficiency-data-framework-need-consumption-data-tables-2025",
+      "https://www.ofgem.gov.uk/energy-price-cap"
+    ],
+    "ofgem_q2_2026": {
+      "electricity_gbp_per_kwh": 0.2467,
+      "gas_gbp_per_kwh": 0.0574
+    },
+    "chronicle_candidate": true
+  },
+  "income_bands": [
+    {"label": "under_15k", "lower": 0, "upper": 15000, "gas_kwh": 7755, "electricity_kwh": 2412},
+    {"label": "15k_20k", "lower": 15000, "upper": 20000, "gas_kwh": 9196, "electricity_kwh": 2700},
+    {"label": "20k_30k", "lower": 20000, "upper": 30000, "gas_kwh": 9886, "electricity_kwh": 2915},
+    {"label": "30k_40k", "lower": 30000, "upper": 40000, "gas_kwh": 10697, "electricity_kwh": 3114},
+    {"label": "40k_50k", "lower": 40000, "upper": 50000, "gas_kwh": 11230, "electricity_kwh": 3276},
+    {"label": "50k_60k", "lower": 50000, "upper": 60000, "gas_kwh": 11721, "electricity_kwh": 3410},
+    {"label": "60k_70k", "lower": 60000, "upper": 70000, "gas_kwh": 12200, "electricity_kwh": 3548},
+    {"label": "70k_100k", "lower": 70000, "upper": 100000, "gas_kwh": 13244, "electricity_kwh": 3872},
+    {"label": "100k_150k", "lower": 100000, "upper": 150000, "gas_kwh": 15727, "electricity_kwh": 4598},
+    {"label": "over_150k", "lower": 150000, "upper": null, "gas_kwh": 20359, "electricity_kwh": 5944}
+  ],
+  "tenure": {
+    "map": {
+      "OWNED_OUTRIGHT": "owner",
+      "OWNED_WITH_MORTGAGE": "owner",
+      "RENT_PRIVATELY": "private_rent",
+      "RENT_FROM_COUNCIL": "social",
+      "RENT_FROM_HA": "social"
+    },
+    "gas_kwh": {"owner": 12339, "private_rent": 10183, "social": 8357},
+    "electricity_kwh": {"owner": 3465, "private_rent": 3261, "social": 2896}
+  },
+  "accommodation": {
+    "map": {
+      "HOUSE_DETACHED": "detached",
+      "HOUSE_SEMI_DETACHED": "semi",
+      "HOUSE_TERRACED": "terraced",
+      "FLAT": "flat",
+      "MOBILE": "other"
+    },
+    "gas_kwh": {"detached": 15518, "semi": 11715, "terraced": 10365, "flat": 7058, "other": 11303},
+    "electricity_kwh": {"detached": 4346, "semi": 3338, "terraced": 3096, "flat": 2896, "other": 3327}
+  },
+  "region": {
+    "gas_kwh": {
+      "NORTH_EAST": 11278,
+      "NORTH_WEST": 11111,
+      "YORKSHIRE": 11552,
+      "EAST_MIDLANDS": 11234,
+      "WEST_MIDLANDS": 11485,
+      "EAST_OF_ENGLAND": 11334,
+      "LONDON": 12335,
+      "SOUTH_EAST": 11555,
+      "SOUTH_WEST": 9811,
+      "WALES": 10558
+    },
+    "electricity_kwh": {
+      "NORTH_EAST": 2822,
+      "NORTH_WEST": 3211,
+      "YORKSHIRE": 3114,
+      "EAST_MIDLANDS": 3266,
+      "WEST_MIDLANDS": 3332,
+      "EAST_OF_ENGLAND": 3543,
+      "LONDON": 3275,
+      "SOUTH_EAST": 3568,
+      "SOUTH_WEST": 3537,
+      "WALES": 3151
+    }
+  },
+  "chronicle": [
+    "E6 committed NEED/Ofgem anchors for LCFS energy raking."
+  ]
+}

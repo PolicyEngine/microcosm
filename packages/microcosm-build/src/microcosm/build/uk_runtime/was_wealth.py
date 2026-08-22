@@ -428,17 +428,22 @@ def impute_was_wealth(
 
 
 def encode_qrf_predictor_pair(
-    donor: pd.DataFrame, recipient: pd.DataFrame
+    donor: pd.DataFrame,
+    recipient: pd.DataFrame,
+    *,
+    predictors: Sequence[str] = UK_WAS_WEALTH_PREDICTORS,
 ) -> tuple[pd.DataFrame, pd.DataFrame, tuple[str, ...]]:
     """One-hot the region predictor jointly across donor and recipient.
 
     Mirrors the SPI stage's paired dummy encoding and the incumbent's
     dummy-encoded region. Donor rows with an unmapped region code (the
-    incumbent's absent GOR code 3) become all-zero dummy rows.
+    incumbent's absent GOR code 3) become all-zero dummy rows. The
+    predictor list defaults to the WAS wealth set; the E6 has-fuel bridge
+    passes its own.
     """
 
     numeric_predictors = tuple(
-        predictor for predictor in UK_WAS_WEALTH_PREDICTORS if predictor != "region"
+        predictor for predictor in predictors if predictor != "region"
     )
     combined_region = pd.concat(
         [

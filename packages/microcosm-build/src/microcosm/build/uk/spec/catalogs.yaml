@@ -1,0 +1,41 @@
+columns:
+- key: benunit.benunit_id
+  contract:
+    entity: benunit
+    dtype: int64
+    unit: count
+    definition_period: eternity
+    vintage: vintage:uk_target_2023
+    nullable: false
+    domain: frame_identity
+    public_stability: internal
+- key: household.household_id
+  contract:
+    entity: household
+    dtype: int64
+    unit: count
+    definition_period: eternity
+    vintage: vintage:uk_target_2023
+    nullable: false
+    domain: frame_identity
+    public_stability: internal
+- key: household.region
+  contract:
+    entity: household
+    dtype: category
+    unit: categorical
+    definition_period: year
+    vintage: vintage:uk_target_2023
+    nullable: false
+    domain: observed_geography
+    public_stability: internal
+- key: person.person_id
+  contract:
+    entity: person
+    dtype: int64
+    unit: count
+    definition_period: eternity
+    vintage: vintage:uk_target_2023
+    nullable: false
+    domain: frame_identity
+    public_stability: internal

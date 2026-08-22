@@ -445,6 +445,7 @@ def test_signal_gate_rejects_missing_default_invalid_and_channel_drift() -> None
 
 
 def test_all_sha_locked_asec_artifacts_carry_exact_source_signal() -> None:
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
     expected = {
         "census_cps_2022.h5": (
             "7ccca976284bb47815d84460cc4f75a0a65d26d7754ab0a0f417de351b3d474e",

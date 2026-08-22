@@ -1,0 +1,530 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "spine.schema.json",
+ "title": "Channels (ORDERED - structural), assembly, support roles",
+ "x-spec-surface": "normative",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "channels",
+  "assembly",
+  "support_roles"
+ ],
+ "properties": {
+  "pipeline_contract": {"$ref": "#/$defs/pipeline_contract"},
+  "seed_site_bindings": {
+   "type": "array",
+   "minItems": 1,
+   "items": {"$ref": "#/$defs/seed_site_binding"}
+  },
+  "channels": {
+   "type": "array",
+   "minItems": 1,
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "source",
+     "observed_geography"
+    ],
+    "properties": {
+     "id": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     },
+     "source": {
+      "oneOf": [
+       {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       },
+       {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+         "$ref": "defs.schema.json#/$defs/identifier"
+        }
+       }
+      ]
+     },
+     "observed_geography": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     }
+    }
+   }
+  },
+  "assembly": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "mass_anchor_channel",
+    "shared_dtype_policy"
+   ],
+   "properties": {
+    "mass_anchor_channel": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "shared_dtype_policy": {
+     "const": "canonical_string_storage"
+    },
+    "household_mass_shares": {
+     "type": "object",
+     "minProperties": 1,
+     "additionalProperties": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+     }
+    }
+   }
+  },
+  "sampling": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "channels",
+    "grain",
+    "fraction",
+    "seed",
+    "exact_count_rule",
+    "inventory_order",
+    "rng",
+    "full_fraction_is_noop",
+    "normalize_each_channel_to_full_source_household_mass"
+   ],
+   "properties": {
+    "channels": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     }
+    },
+    "grain": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "fraction": {
+     "$ref": "#/$defs/sampling_fraction"
+    },
+    "seed": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "surface",
+      "default",
+      "streams",
+      "same_value_new_generator_per_channel"
+     ],
+     "properties": {
+      "surface": {
+       "const": "run_request"
+      },
+      "default": {
+       "type": "integer"
+      },
+      "streams": {
+       "type": "object",
+       "additionalProperties": {
+        "$ref": "defs.schema.json#/$defs/stream_ref"
+       }
+      },
+      "same_value_new_generator_per_channel": {
+       "const": true
+      }
+     }
+    },
+    "exact_count_rule": {
+     "type": "string",
+     "minLength": 1
+    },
+    "inventory_order": {
+     "type": "string",
+     "minLength": 1
+    },
+    "rng": {
+     "type": "string",
+     "minLength": 1
+    },
+    "full_fraction_is_noop": {
+     "type": "boolean"
+    },
+    "normalize_each_channel_to_full_source_household_mass": {
+     "type": "boolean"
+    }
+   }
+  },
+  "support_roles": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "kind"
+    ],
+    "properties": {
+     "id": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     },
+     "kind": {
+      "enum": [
+       "puf_attachment",
+       "synthetic_prior_replacement",
+       "none"
+      ]
+     },
+     "clone_index": {
+      "type": "integer",
+      "minimum": 0
+     },
+     "tail_support": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "strata",
+       "policy",
+       "manifest_schema_version"
+      ],
+      "properties": {
+       "strata": {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       },
+       "policy": {
+        "const": "declared_min_support_with_receipt"
+       },
+       "manifest_schema_version": {"const": 2},
+       "legacy_contract": {
+        "$ref": "#/$defs/tail_support_contract"
+       }
+      }
+     },
+     "attachment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "fraction",
+       "seed"
+      ],
+      "properties": {
+       "fraction": {
+        "$ref": "#/$defs/run_request_number"
+       },
+       "seed": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "surface",
+         "stream",
+         "default"
+        ],
+        "properties": {
+         "surface": {
+          "const": "run_request"
+         },
+         "stream": {
+          "$ref": "defs.schema.json#/$defs/stream_ref"
+         },
+         "default": {
+          "type": "integer"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "support_source_pool_metadata": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "version",
+    "country",
+    "policy"
+   ],
+   "properties": {
+    "version": {
+     "type": "integer",
+     "minimum": 1
+    },
+    "country": {
+     "$ref": "defs.schema.json#/$defs/identifier"
+    },
+    "policy": {
+     "x-spec-surface": "documentation",
+     "type": "string"
+    }
+   }
+  },
+  "support_source_pool": {
+   "$ref": "#/$defs/support_spine_manifest_body"
+  }
+ },
+ "$defs": {
+  "pipeline_contract": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "artifact_protocol",
+    "stacked_operator_order",
+    "pre_clone_source_operator_order",
+    "post_clone_source_operator_order",
+    "derive_operator_order",
+    "auxiliary_operations",
+    "qbi_reconciliation",
+    "simulation_household_batch_size"
+   ],
+   "properties": {
+    "artifact_protocol": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "artifact_kind",
+      "schema_version",
+      "materializer_version",
+      "pipeline"
+     ],
+     "properties": {
+      "artifact_kind": {
+       "const": "populace_us_stacked_pool_checkpoint_identity"
+      },
+      "schema_version": {"const": 1},
+      "materializer_version": {"const": 11},
+      "pipeline": {"const": "us-stacked-pool"}
+     }
+    },
+    "stacked_operator_order": {"$ref": "#/$defs/operator_order"},
+    "pre_clone_source_operator_order": {"$ref": "#/$defs/operator_order"},
+    "post_clone_source_operator_order": {"$ref": "#/$defs/operator_order"},
+    "derive_operator_order": {"$ref": "#/$defs/operator_order"},
+    "auxiliary_operations": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "x-canonical-order": "set",
+     "items": {"$ref": "#/$defs/operator_id"}
+    },
+    "qbi_reconciliation": {"$ref": "#/$defs/qbi_reconciliation_contract"},
+    "simulation_household_batch_size": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "value",
+      "classification",
+      "current_identity_effect"
+     ],
+     "properties": {
+      "value": {"const": 5000},
+      "classification": {
+       "const": "normative_legacy_identity_fence"
+      },
+      "current_identity_effect": {
+       "const": "bound_into_generation_0_checkpoint_identity"
+      }
+     }
+    }
+   }
+  },
+  "operator_order": {
+   "type": "array",
+   "minItems": 1,
+   "uniqueItems": true,
+   "items": {"$ref": "#/$defs/operator_id"}
+  },
+  "operator_id": {
+   "type": "string",
+   "pattern": "^_?[a-z][a-z0-9_]*$"
+  },
+  "qbi_reconciliation_contract": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "version",
+    "operation",
+    "execution_scope",
+    "declared_person_columns",
+    "kernel_binding",
+    "live_output_binding",
+    "receipt_schema",
+    "transition_authority_metadata_key",
+    "transition_authority_schema",
+    "acs_base_self_employment_policy"
+   ],
+   "properties": {
+    "version": {"const": 2},
+    "operation": {"const": "shared_all_or_nothing_identity_reconciliation"},
+    "execution_scope": {"const": "whole_pool"},
+    "declared_person_columns": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "items": {"$ref": "defs.schema.json#/$defs/identifier"}
+    },
+    "kernel_binding": {
+     "const": "after_equals_deterministic_kernel_of_before"
+    },
+    "live_output_binding": {
+     "const": "declared_values_and_driver_surface_digests_plus_exact_live_person_inventory_universe_kernel_fixed_point_and_independent_frame_metadata_transition_authority"
+    },
+    "receipt_schema": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "x-canonical-order": "set",
+     "items": {"$ref": "defs.schema.json#/$defs/identifier"}
+    },
+    "transition_authority_metadata_key": {
+     "const": "us_qbi_reconciliation_transition_authority"
+    },
+    "transition_authority_schema": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "x-canonical-order": "set",
+     "items": {"$ref": "defs.schema.json#/$defs/identifier"}
+    },
+    "acs_base_self_employment_policy": {
+     "const": "preserve_receipted_age_under_15_universe_zero_in_every_clone_role"
+    }
+   }
+  },
+  "seed_site_binding": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": ["site", "owners"],
+   "properties": {
+    "site": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "owners": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "x-canonical-order": "set",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id"],
+      "properties": {
+       "kind": {
+        "enum": ["producer_node", "source_stage", "pipeline_operation"]
+       },
+       "id": {"type": "string", "minLength": 1}
+      }
+     }
+    }
+   }
+  },
+  "tail_support_contract": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "contract_id",
+    "version",
+    "partition",
+    "filing_statuses",
+    "agi_band_count",
+    "required_minimum",
+    "insufficient_support_action",
+    "candidate_universe",
+    "agi_band_policy"
+   ],
+   "properties": {
+    "contract_id": {"type": "string", "minLength": 1},
+    "version": {"type": "integer", "minimum": 1},
+    "partition": {"type": "string", "minLength": 1},
+    "filing_statuses": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["filing_status", "filing_status_code"],
+      "properties": {
+       "filing_status": {"type": "string", "minLength": 1},
+       "filing_status_code": {"type": "integer", "minimum": 1}
+      }
+     }
+    },
+    "agi_band_count": {"type": "integer", "minimum": 1},
+    "required_minimum": {"type": "string", "minLength": 1},
+    "insufficient_support_action": {"type": "string", "minLength": 1},
+    "candidate_universe": {"type": "string", "minLength": 1},
+    "agi_band_policy": {"type": "string", "minLength": 1}
+   }
+  },
+  "support_spine_manifest_body": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "stage",
+    "method",
+    "target_year_from_build_config",
+    "sources"
+   ],
+   "properties": {
+    "stage": {"$ref": "defs.schema.json#/$defs/identifier"},
+    "method": {"const": "pool_raw_asec_years"},
+    "target_year_from_build_config": {"const": true},
+    "sources": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "role",
+       "survey",
+       "source",
+       "source_year_offset",
+       "share"
+      ],
+      "properties": {
+       "role": {"$ref": "defs.schema.json#/$defs/identifier"},
+       "survey": {"type": "string", "minLength": 1},
+       "source": {"type": "string", "minLength": 1},
+       "source_year_offset": {"type": "integer"},
+       "share": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+       "notes": {"x-spec-surface": "documentation", "type": "string"}
+      }
+     }
+    }
+   }
+  },
+  "sampling_fraction": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "surface",
+    "default",
+    "rungs_ref"
+   ],
+   "properties": {
+    "surface": {"const": "run_request"},
+    "default": {"type": "number"},
+    "rungs_ref": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["domain", "pointer"],
+     "properties": {
+      "domain": {"const": "publication"},
+      "pointer": {"const": "/release/rung_fractions"}
+     }
+    }
+   }
+  },
+  "run_request_number": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "surface",
+    "default"
+   ],
+   "properties": {
+    "surface": {
+     "const": "run_request"
+    },
+    "default": {
+     "type": "number"
+    }
+    }
+   }
+  }
+ }

@@ -103,7 +103,8 @@ UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
             "between adjacent seeds, the same realization-variance class "
             "the archived incumbent data repo records at uk-data#448 (4.6x "
             "Wales swing across releases). Register parity at this grain "
-            "is not meaningful until the whole-spine comparison; the "
+            "is not meaningful "
+            "until the whole-spine comparison; the "
             "one-month expiry enforces the end-of-workstream revisit "
             "registered on microcosm#145 (winsorised donor or separate "
             "land imputation are the candidate remedies)."
@@ -143,13 +144,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "5ddd3da9a52b0dc19ba1c97315f0e4f8acdedf2b74ea29bff512cbdb57de1cab"
+    "47d41dc3643818e049034b4333392aeb352bed5f76fc4556c1da5ba2fe8fb86d"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "8d58fffe5e6542a7f10578076bbcc943cf587f9f22017ccc630450007b5b6166"
+    "687bb4ae4b085ac9abf2e77a7a0c8bcf11204eb9b00fdac1fd7232e16f81161f"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "b7b645deee1b15750403f98a4c7dac09d6e08440a878b8d1ff83a15e9195b809"
+    "e54e2f5880f2380854d9764dcd5482aaa51e37ca0915a3ffaa0c9897626ba656"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
@@ -165,6 +166,16 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_release_family_build_stages": ("source_coverage", "preflight", None),
+    "uk_ledger_compile_parity_production_2023": (
+        "ledger_compile_parity",
+        "preflight",
+        None,
+    ),
+    "uk_ledger_compile_parity_incumbent_2025": (
+        "ledger_compile_parity",
+        "preflight",
+        None,
+    ),
     "uk_release_input_coverage": (
         "release_input_coverage",
         "terminal",
@@ -185,9 +196,15 @@ UK_GATE_BATTERY_ENTRIES = {
         "nonnegative_columns",
     ),
     "uk_support": ("support", "terminal", "support"),
+    "uk_aggregate_admin": ("aggregate_admin", "terminal", "aggregate_vs_admin"),
     "uk_export_surface": ("export_surface", "terminal", "export_surface"),
     "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
     "uk_brma_enum_domain": ("enum_domain", "terminal", "enum_domain"),
+    "uk_calibration_reference_coverage": (
+        "calibration_reference_coverage",
+        "terminal",
+        None,
+    ),
     "uk_target_surface": ("target_surface", "terminal", "target_surface"),
     "uk_target_fit": ("target_fit", "terminal", "target_fit"),
     "uk_input_mass_parity": ("input_mass_parity", "terminal", "input_mass_parity"),
@@ -771,6 +788,8 @@ def _terminal_gate_details(name: str) -> dict:
         }
     if name == "support":
         return {"columns_checked": 13}
+    if name == "aggregate_vs_admin":
+        return {"anchors_checked": 3}
     if name == "export_surface":
         return {
             "candidate_columns": 1,
@@ -1029,6 +1048,22 @@ def _gate_battery_payload(
             details: dict = {"check": "manifest_current"}
         elif entry_id == "uk_release_family_build_stages":
             details = {"stage_names": list(stage_names)}
+        elif entry_id == "uk_ledger_compile_parity_production_2023":
+            details = {
+                "fixture": "production_2023",
+                "expected_count": 149,
+                "actual_count": 149,
+                "signed_difference_count": 0,
+            }
+        elif entry_id == "uk_ledger_compile_parity_incumbent_2025":
+            details = {
+                "fixture": "incumbent_2025",
+                "expected_count": 636,
+                "actual_count": 636,
+                "signed_difference_count": 0,
+            }
+        elif entry_id == "uk_calibration_reference_coverage":
+            details = {"activated": 388, "resolved": 388, "matrix": 388}
         else:
             details = _terminal_gate_details(detail_name)
         gates[entry_id] = {
@@ -1043,6 +1078,22 @@ def _gate_battery_payload(
     evidence = {
         "uk_release_family_build_stages": _canonical_sha256(
             {"stage_names": list(stage_names)}
+        ),
+        "uk_ledger_compile_parity_production_2023": _canonical_sha256(
+            {
+                "fixture_resource": "parity_fixture_production_2023.json",
+                "registry_count": 149,
+                "registry_version": "fixture",
+                "signed_differences": [],
+            }
+        ),
+        "uk_ledger_compile_parity_incumbent_2025": _canonical_sha256(
+            {
+                "fixture_resource": "registry_parity_fixture_2025.json",
+                "registry_count": 636,
+                "registry_version": "fixture",
+                "signed_differences": [],
+            }
         ),
         "uk_degenerate_release_surface": UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256,
         "uk_input_mass_parity": UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256,

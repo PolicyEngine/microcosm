@@ -248,6 +248,13 @@ from microcosm.build.uk_runtime.ladder_targets import (
     ladder_target_provenance,
     local_authority_household_targets,
 )
+from microcosm.build.uk_runtime.ledger_targets import (
+    UKFrameTargetAdapter,
+    UKLedgerTargetCompilation,
+    UKPolicyEngineAdapter,
+    compile_uk_target_registry,
+    materialize_uk_ledger_targets,
+)
 from microcosm.build.uk_runtime.local_doctrine import (
     UK_LOCAL_MAX_WEIGHT_RATIO,
     UK_LOCAL_SOLVE_DOCTRINE,
@@ -490,6 +497,11 @@ __all__ = [
     "UK_CGT_TARGET_SPECS",
     "UK_DIAGNOSTICS_SCHEMA_VERSION",
     "UK_FISCAL_TARGET_REGISTRY",
+    "UKFrameTargetAdapter",
+    "UKLedgerTargetCompilation",
+    "UKPolicyEngineAdapter",
+    "compile_uk_target_registry",
+    "materialize_uk_ledger_targets",
     "AGE_BANDS",
     "AREA_TYPE_TO_LEDGER_GEOGRAPHY_LEVEL",
     "AREA_TYPES",

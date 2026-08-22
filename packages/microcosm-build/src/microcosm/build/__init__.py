@@ -50,12 +50,14 @@ def _assert_frame_compatible(version: str, required: tuple[int, int]) -> None:
 _assert_frame_compatible(_frame_version, _REQUIRED_FRAME_SERIES)
 
 from microcosm.build.country_spec import (  # noqa: E402 - after the compat gate
+    CountryResourceRow,
     CountrySpec,
     GateSelectionSpec,
     GatesManifest,
     GeographySpineManifest,
     GeographySpineSpec,
     ReleaseContractManifest,
+    ResolvedCountrySpec,
     country_stage_plan,
     load_country_spec,
 )
@@ -86,6 +88,8 @@ from microcosm.build.gates import (  # noqa: E402 - after the compat gate
     formula_owned_export_gate,
     input_column_coverage_gate,
     input_mass_parity_gate,
+    ledger_compile_parity_gate,
+    ledger_compile_parity_signed_differences,
     macro_realism_gate,
     nonconstant_columns_gate,
     nonnegative_columns_gate,
@@ -107,7 +111,9 @@ from microcosm.build.holdout import (  # noqa: E402 - after the compat gate
 )
 from microcosm.build.ledger_artifact import (  # noqa: E402 - after the compat gate
     LedgerConsumerArtifact,
+    add_ledger_artifact_args,
     load_ledger_consumer_artifact,
+    resolve_ledger_artifact,
 )
 from microcosm.build.ledger_targets import (  # noqa: E402 - after the compat gate
     LedgerTargetMapping,
@@ -144,6 +150,7 @@ __version__ = "0.1.0"
 __all__ = [
     "BlockingMode",
     "CountrySpec",
+    "CountryResourceRow",
     "DonorSpec",
     "DEFAULT_STAGING_PREFIX",
     "EvidenceContext",
@@ -164,6 +171,7 @@ __all__ = [
     "GeographySpineManifest",
     "GeographySpineSpec",
     "ReleaseContractManifest",
+    "ResolvedCountrySpec",
     "Stage",
     "StagePlan",
     "StageRecord",
@@ -179,6 +187,7 @@ __all__ = [
     "LedgerConsumerArtifact",
     "LedgerTargetMapping",
     "LedgerTargetSelection",
+    "add_ledger_artifact_args",
     "aggregate_admin_gate",
     "apply_ledger_target_profile",
     "default_valued_columns_gate",
@@ -188,6 +197,8 @@ __all__ = [
     "formula_owned_export_gate",
     "input_column_coverage_gate",
     "input_mass_parity_gate",
+    "ledger_compile_parity_gate",
+    "ledger_compile_parity_signed_differences",
     "load_ledger_consumer_artifact",
     "macro_realism_gate",
     "nonconstant_columns_gate",
@@ -195,6 +206,7 @@ __all__ = [
     "parity_gate",
     "per_family_fit_gate",
     "relative_error_loss",
+    "resolve_ledger_artifact",
     "rotated_folds",
     "source_coverage_gate",
     "source_stage_input_coverage_gate",

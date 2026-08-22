@@ -1,0 +1,201 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "catalogs.schema.json",
+ "title": "Column catalog: normative contract + docs overlay; lineage is COMPILER-EMITTED, never authored",
+ "x-spec-surface": "normative",
+ "type": "object",
+ "additionalProperties": false,
+ "required": [
+  "columns"
+ ],
+ "x-forbidden-fields": [
+  "owner",
+  "lineage_class"
+ ],
+ "properties": {
+  "metadata_waivers": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "id",
+     "field",
+     "authority",
+     "public",
+     "reason",
+     "expires_on"
+    ],
+    "properties": {
+     "id": {
+      "$ref": "defs.schema.json#/$defs/identifier"
+     },
+     "field": {
+      "const": "unit"
+     },
+     "authority": {
+      "const": "PolicyEngineUSVariableMetadataIndex"
+     },
+     "public": {
+      "const": false
+     },
+     "reason": {
+      "type": "string",
+      "minLength": 1,
+      "x-spec-surface": "documentation"
+     },
+     "expires_on": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+     }
+    }
+   }
+  },
+  "columns": {
+   "type": "array",
+   "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+     "key",
+     "contract"
+    ],
+    "properties": {
+     "key": {
+      "type": "string",
+      "description": "Compiler-derived stable column key; authored rows must match a compiled key or fail."
+     },
+     "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "entity",
+       "dtype",
+       "unit",
+       "nullable",
+       "domain",
+       "public_stability"
+      ],
+      "oneOf": [
+       {
+        "required": [
+         "period"
+        ]
+       },
+       {
+        "required": [
+         "definition_period",
+         "vintage"
+        ]
+       }
+      ],
+      "properties": {
+       "entity": {
+        "$ref": "defs.schema.json#/$defs/entity"
+       },
+       "dtype": {
+        "enum": [
+         "float64",
+         "float32",
+         "int64",
+         "int32",
+         "bool",
+         "string",
+         "category"
+        ]
+       },
+       "unit": {
+        "oneOf": [
+         {
+          "enum": [
+           "usd",
+           "count",
+           "ratio",
+           "boolean",
+           "categorical"
+          ]
+         },
+       {
+          "const": "unit_not_declared_by_engine_metadata"
+         }
+        ]
+       },
+       "unit_waiver": {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       },
+       "period": {
+        "$ref": "defs.schema.json#/$defs/vintage_ref"
+       },
+       "definition_period": {
+        "enum": [
+         "year",
+         "month",
+         "eternity"
+        ]
+       },
+       "vintage": {
+        "$ref": "defs.schema.json#/$defs/vintage_ref"
+       },
+       "nullable": {
+        "type": "boolean"
+       },
+       "domain": {
+        "$ref": "defs.schema.json#/$defs/identifier"
+       },
+       "public_stability": {
+        "enum": [
+         "public_stable",
+         "public_experimental",
+         "internal"
+        ]
+       }
+      },
+      "allOf": [
+       {
+        "if": {
+         "properties": {
+          "unit": {
+           "const": "unit_not_declared_by_engine_metadata"
+          }
+         },
+         "required": [
+          "unit"
+         ]
+        },
+        "then": {
+         "required": [
+          "unit_waiver"
+         ]
+        },
+        "else": {
+         "not": {
+          "required": [
+           "unit_waiver"
+          ]
+         }
+        }
+       }
+      ]
+     },
+    "docs": {
+     "x-spec-surface": "documentation",
+     "type": "object",
+      "additionalProperties": false,
+      "description": "Non-normative; hashed into the documentation digest, NOT spec_sha256.",
+      "properties": {
+       "description": {
+        "type": "string"
+       },
+       "citations": {
+        "type": "array",
+        "items": {
+         "type": "string"
+        }
+       }
+      }
+     }
+    }
+   }
+  }
+ }
+}

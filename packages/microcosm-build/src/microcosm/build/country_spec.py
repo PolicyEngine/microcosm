@@ -1,13 +1,13 @@
 """The declarative country spec: one loader for a spec-only country package.
 
-A country package (``microcosm/build/<country>/``) is pure data — JSON specs
-validated by shared schema classes, executed only through shared runtimes.
-This module is the schema for the package as a whole: it loads
-``country_package.json`` plus every typed resource, refuses undeclared or
-malformed resources, content-hashes each resource, and compiles the source
-manifest into a :class:`~microcosm.build.plan.StagePlan` with the same
-no-fallback posture as the US plan (an implementation per declared stage or
-nothing).
+A country package (``microcosm/build/<country>/``) is pure data — JSON or YAML
+specs validated by shared schema classes, executed only through shared
+runtimes. This module is the seam for the package as a whole: it loads the
+single typed inventory in ``country_package.json``, refuses undeclared or
+malformed resources, content-hashes each resource, and retains the generation-0
+projections needed to compile a source manifest into a
+:class:`~microcosm.build.plan.StagePlan` with the same no-fallback posture as
+the US plan (an implementation per declared stage or nothing).
 
 Belgium is the first full consumer (microcosm#261, epic microcosm#259): the
 ``be/`` package declares its BE-SILC source stages, clone-and-assign commune
@@ -25,9 +25,9 @@ Typed resources, by canonical filename:
 - ``gates.json`` — :class:`GatesManifest` (this module)
 - ``release_contract.json`` — :class:`ReleaseContractManifest` (this module)
 
-Any other declared resource must still be a JSON mapping (the spec-only
-tests forbid everything else), but its interpretation belongs to the runtime
-that reads it.
+Generation-0 bare filenames are resolved to explicit ``legacy_json`` rows and
+must still hold JSON mappings. Generation-1 typed rows may point at the closed
+JSON/YAML spec-engine domains; their interpretation belongs to the compiler.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ import re
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from importlib import resources as importlib_resources
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import MappingProxyType
 from typing import Any
 
@@ -55,15 +55,47 @@ __all__ = [
     "ALLOWED_GATE_CRITICALITIES",
     "ALLOWED_GATE_PHASES",
     "ALLOWED_GEOGRAPHY_SPINE_METHODS",
+    "ALLOWED_COUNTRY_RESOURCE_KINDS",
     "CountrySpec",
+    "CountryResourceRow",
     "GateSelectionSpec",
     "GatesManifest",
     "GeographySpineManifest",
     "GeographySpineSpec",
     "ReleaseContractManifest",
+    "ResolvedCountrySpec",
     "country_stage_plan",
+    "load_country_take_up_contract_projection",
     "load_country_spec",
 ]
+
+#: Resource kinds admitted by the binding ``resource_manifest.schema.json``.
+#: ``legacy_json`` is the explicit generation-0 compatibility kind: it keeps
+#: today's filename-dispatched readers working while typed bundle resources
+#: flow to the spec-engine compiler.
+ALLOWED_COUNTRY_RESOURCE_KINDS = frozenset(
+    {
+        "bundle",
+        "sources",
+        "spine",
+        "geography",
+        "imputation",
+        "take_up",
+        "battery",
+        "calibration",
+        "selection",
+        "publication",
+        "vintages",
+        "catalogs",
+        "schema",
+        "legacy_json",
+    }
+)
+
+_LEGACY_RESOURCE_SCHEMA_ID = "legacy_json"
+_GENERATED_LOCK_FILENAMES = frozenset(
+    {"bundle.lock.json", "engine_abi.lock.json", "plan.lock.json"}
+)
 
 #: Gate functions a gates spec may select — the release-gate vocabulary of
 #: :mod:`microcosm.build.gates`. Incumbent-comparison gates (parity,
@@ -74,12 +106,14 @@ __all__ = [
 ALLOWED_GATE_FUNCTIONS = frozenset(
     {
         "aggregate_admin",
+        "calibration_reference_coverage",
         "degenerate_release_surface",
         "enum_domain",
         "export_surface",
         "exported_nonzero",
         "formula_owned_export",
         "input_mass_parity",
+        "ledger_compile_parity",
         "macro_realism",
         "nonconstant_columns",
         "nonnegative_columns",
@@ -790,34 +824,144 @@ def _validate_target_references(
 
 
 @dataclass(frozen=True)
-class CountrySpec:
+class CountryResourceRow:
+    """One row in the authoritative typed country-resource manifest.
+
+    ``path`` is a normalized POSIX path relative to the country directory;
+    ``kind`` selects the compiler domain; and ``schema_id`` names the closed
+    schema used for that domain.  The generation-0 compatibility reader turns
+    each historical bare filename into an explicit ``legacy_json`` row with
+    schema id ``legacy_json``.  That inference is deliberately visible on the
+    resolved object instead of surviving as a second, implicit inventory.
+    """
+
+    path: str
+    kind: str
+    schema_id: str
+
+    def __post_init__(self) -> None:
+        path = _require_non_empty_string(
+            self.path, field_name="path", context="country_package.json resource"
+        )
+        normalized = PurePosixPath(path)
+        if (
+            normalized.is_absolute()
+            or path == "."
+            or path != normalized.as_posix()
+            or any(part in {"", ".", ".."} for part in normalized.parts)
+        ):
+            raise ValueError(
+                "country_package.json resource: path must be a normalized "
+                f"local POSIX path, got {path!r}."
+            )
+        if not re.fullmatch(r"[a-z0-9_./-]+", path):
+            raise ValueError(
+                "country_package.json resource: path contains characters "
+                f"outside [a-z0-9_./-]: {path!r}."
+            )
+        if path == "country_package.json":
+            raise ValueError(
+                "country_package.json resource: the manifest cannot declare "
+                "itself as a resource."
+            )
+        if normalized.name in _GENERATED_LOCK_FILENAMES:
+            raise ValueError(
+                "country_package.json resource: generated locks cannot be "
+                "authored manifest resources."
+            )
+        kind = _require_non_empty_string(
+            self.kind, field_name="kind", context="country_package.json resource"
+        )
+        if kind not in ALLOWED_COUNTRY_RESOURCE_KINDS:
+            raise ValueError(
+                "country_package.json resource: unknown kind "
+                f"{kind!r}; expected one of "
+                f"{sorted(ALLOWED_COUNTRY_RESOURCE_KINDS)}."
+            )
+        _require_non_empty_string(
+            self.schema_id,
+            field_name="schema_id",
+            context="country_package.json resource",
+        )
+
+    @classmethod
+    def from_mapping(cls, raw: Mapping[str, Any]) -> CountryResourceRow:
+        """Validate and freeze one typed ``{path, kind, schema_id}`` row."""
+
+        raw = _require_mapping(raw, context="country_package.json resource")
+        unknown = sorted(set(raw) - {"path", "kind", "schema_id"})
+        if unknown:
+            raise ValueError(
+                "country_package.json resource: unknown field(s) "
+                f"{unknown}; typed rows are closed-world."
+            )
+        return cls(
+            path=raw.get("path"),
+            kind=raw.get("kind"),
+            schema_id=raw.get("schema_id"),
+        )
+
+    @classmethod
+    def from_legacy_path(cls, path: Any) -> CountryResourceRow:
+        """Make the explicit generation-0 row for one bare filename."""
+
+        return cls(
+            path=_require_non_empty_string(
+                path,
+                field_name="resource path",
+                context="country_package.json",
+            ),
+            kind="legacy_json",
+            schema_id=_LEGACY_RESOURCE_SCHEMA_ID,
+        )
+
+
+@dataclass(frozen=True)
+class ResolvedCountrySpec:
     """A loaded, validated, content-hashed country package.
 
     Attributes:
         country: Country code (directory name and every resource's
             ``country`` field).
         policy: The package's standing policy line.
-        resources: Declared resource filenames, in manifest order.
+        resource_rows: Declared typed resources, in manifest order.
+        resources: Compatibility projection of resource paths, in manifest
+            order.
         sources: The source-stage manifest, when declared.
         support_spine: The support-spine manifest, when declared.
         geography_spine: The geography-spine manifest, when declared.
         target_references: Ledger target references, when declared.
         gates: The gate selection, when declared.
         release_contract: The release contract, when declared.
+        take_up_contract: The constants-era take-up compatibility view. For a
+            generation-1 bundle this is compiled from typed YAML plus the
+            generated engine ABI lock; packaged JSON is equality-attested
+            migration evidence only.
         resource_hashes: Resource filename -> sha256 of its bytes (includes
             ``country_package.json`` itself).
+        resolved_spec: The canonical spec-engine object for a generation-1
+            bundle, when compiled. It remains ``None`` for generation-0
+            compatibility packages.
     """
 
     country: str
     policy: str
-    resources: tuple[str, ...]
+    resource_rows: tuple[CountryResourceRow, ...]
     sources: SourceManifest | None
     support_spine: SupportSpineManifest | None
     geography_spine: GeographySpineManifest | None
     target_references: tuple[LedgerTargetReference, ...]
     gates: GatesManifest | None
     release_contract: ReleaseContractManifest | None
+    take_up_contract: Mapping[str, Any] | None
     resource_hashes: Mapping[str, str]
+    resolved_spec: object | None = None
+
+    @property
+    def resources(self) -> tuple[str, ...]:
+        """Historical filename projection, derived from the typed rows."""
+
+        return tuple(row.path for row in self.resource_rows)
 
     @property
     def fingerprint(self) -> str:
@@ -830,7 +974,443 @@ class CountrySpec:
         return compute_composition_fingerprint(self.resource_hashes.values())
 
 
-def load_country_spec(country: str | Path) -> CountrySpec:
+# Compatibility is an exact alias, not a parallel representation. Existing
+# annotations and imports continue to work while every loader caller receives
+# the single resolved country object.
+CountrySpec = ResolvedCountrySpec
+
+
+def _resolve_country_resource_rows(
+    resources_field: Any,
+) -> tuple[CountryResourceRow, ...]:
+    """Resolve legacy filenames or typed rows into the one manifest shape."""
+
+    if not isinstance(resources_field, list):
+        raise ValueError("country_package.json: resources must be a list.")
+    if not resources_field:
+        raise ValueError("country_package.json: resources must not be empty.")
+
+    rows: list[CountryResourceRow] = []
+    for index, raw in enumerate(resources_field):
+        try:
+            row = (
+                CountryResourceRow.from_mapping(raw)
+                if isinstance(raw, Mapping)
+                else CountryResourceRow.from_legacy_path(raw)
+            )
+        except (TypeError, ValueError) as error:
+            raise ValueError(
+                f"country_package.json: resources[{index}] is invalid: {error}"
+            ) from error
+        rows.append(row)
+
+    paths = [row.path for row in rows]
+    duplicates = sorted({path for path in paths if paths.count(path) > 1})
+    if duplicates:
+        raise ValueError(
+            f"country_package.json: duplicate resource path(s) {duplicates}."
+        )
+    return tuple(rows)
+
+
+def _country_resource_path(root: Path, path: str) -> Path:
+    """Resolve a validated manifest path below ``root``."""
+
+    return root.joinpath(*PurePosixPath(path).parts)
+
+
+def _typed_compatibility_projection(
+    resolved_spec: object,
+    *,
+    kind: str,
+    field: str,
+) -> Mapping[str, Any] | None:
+    """Return one migration projection from the authoritative typed domain.
+
+    Compatibility JSON may coexist with a generation-1 bundle while legacy
+    consumers migrate.  The value exposed to those consumers must nevertheless
+    come from the typed domain; the JSON copy is only generated evidence that
+    is asserted below, never a second authority.
+    """
+
+    try:
+        domain = resolved_spec.domain(kind)  # type: ignore[attr-defined]
+    except KeyError:
+        return None
+    wire = domain.to_wire()
+    if not isinstance(wire, Mapping):  # pragma: no cover - typed model invariant
+        raise ValueError(f"{kind}: normalized typed domain is not an object.")
+    if kind == "sources" and field == "stage_manifest":
+        metadata = wire.get("stage_manifest")
+        stages = wire.get("stages")
+        if not isinstance(metadata, Mapping) or not isinstance(stages, list):
+            return None
+        projection = {**metadata, "stages": stages}
+    elif kind == "spine" and field == "support_source_pool":
+        metadata = wire.get("support_source_pool_metadata")
+        support_source_pool = wire.get("support_source_pool")
+        if not isinstance(metadata, Mapping) or not isinstance(
+            support_source_pool, Mapping
+        ):
+            return None
+        projection = {**metadata, "support_spine": support_source_pool}
+    else:
+        projection = wire.get(field)
+    if projection is None:
+        return None
+    if not isinstance(projection, Mapping):  # pragma: no cover - schema invariant
+        raise ValueError(f"{kind}/{field}: compatibility projection is not an object.")
+    return projection
+
+
+def _select_compatibility_payload(
+    *,
+    resolved_spec: object | None,
+    kind: str,
+    field: str,
+    legacy_name: str,
+    legacy_payload: Mapping[str, Any] | None,
+) -> Mapping[str, Any] | None:
+    """Select the typed projection and attest any packaged legacy copy."""
+
+    if resolved_spec is None:
+        return legacy_payload
+    projection = _typed_compatibility_projection(
+        resolved_spec,
+        kind=kind,
+        field=field,
+    )
+    if projection is None:
+        return legacy_payload
+    if legacy_payload is not None and projection != legacy_payload:
+        raise ValueError(
+            f"{legacy_name}: packaged compatibility JSON differs from the "
+            f"authoritative {kind}/{field} bundle projection."
+        )
+    return projection
+
+
+def _attest_be_typed_geography_compatibility(
+    *,
+    resolved_spec: object,
+    legacy_manifest: GeographySpineManifest,
+) -> None:
+    """Fail closed when typed and generation-0 geography facts drift.
+
+    The F0 Belgian bundle is deliberately minimal.  Its typed geography domain
+    can represent the assignment kernel, geography level, derived code column,
+    layer-vintage binding, and exact-vintage refusal posture, so those shared
+    facts are equality-attested here.  The generation-0 ``method``, clone count,
+    collision guard, and detailed assignment-source citation have no field in
+    the approved geography schema.  They remain read-only compatibility facts
+    in ``geography_spine.json`` until a later schema migration; this check must
+    not pretend they were compiled from YAML.
+    """
+
+    try:
+        domain = resolved_spec.domain("geography")  # type: ignore[attr-defined]
+    except KeyError:
+        return
+    geography = _require_mapping(domain.to_wire(), context="geography")
+    assignment = _require_mapping(
+        geography.get("assignment"), context="geography.assignment"
+    )
+    kernels = _require_mapping(
+        assignment.get("kernels"), context="geography.assignment.kernels"
+    )
+    layer_vintages = _require_mapping(
+        assignment.get("layer_vintages", {}),
+        context="geography.assignment.layer_vintages",
+    )
+    spine = legacy_manifest.geography_spine
+
+    mismatches: list[str] = []
+
+    def require_equal(field: str, typed: object, legacy: object) -> None:
+        if typed != legacy:
+            mismatches.append(f"{field}: typed={typed!r}, legacy={legacy!r}")
+
+    require_equal("phase", geography.get("phase"), "legacy")
+    require_equal(
+        "assignment/kernels/assign <-> geography_spine/stage",
+        kernels.get("assign"),
+        f"kernel:{spine.stage}",
+    )
+    require_equal(
+        "assignment/anchor <-> geography_spine/geography_level",
+        assignment.get("anchor"),
+        spine.geography_level,
+    )
+
+    derive = assignment.get("derive")
+    typed_derives_code = isinstance(derive, list) and spine.code_column in derive
+    require_equal(
+        "assignment/derive <-> geography_spine/code_column membership",
+        typed_derives_code,
+        True,
+    )
+
+    code_system = spine.code_system
+    country_prefix = f"{legacy_manifest.country}_"
+    qualified_code_system = (
+        code_system
+        if code_system.startswith(country_prefix)
+        else f"{legacy_manifest.country}_{code_system}"
+    )
+    expected_vintage_ref = f"vintage:{qualified_code_system}_{spine.vintage}"
+    require_equal(
+        "assignment/layer_vintages <-> geography_spine/code_system+vintage",
+        layer_vintages.get(spine.geography_level),
+        expected_vintage_ref,
+    )
+
+    assertions = assignment.get("assertions")
+    validation = assignment.get("validation")
+    typed_exact = (
+        isinstance(assertions, list) and "geography_vintage_exact" in assertions
+    )
+    typed_refuses = isinstance(validation, list) and "vintage_refusal" in validation
+    legacy_refuses = spine.vintage_policy == "error"
+    require_equal(
+        "assignment/assertions/geography_vintage_exact "
+        "<-> geography_spine/vintage_policy",
+        typed_exact,
+        legacy_refuses,
+    )
+    require_equal(
+        "assignment/validation/vintage_refusal <-> geography_spine/vintage_policy",
+        typed_refuses,
+        legacy_refuses,
+    )
+
+    draw = assignment.get("draw")
+    typed_draws_anchor = isinstance(draw, Mapping) and spine.geography_level in draw
+    require_equal(
+        "assignment/draw anchor <-> geography_spine/geography_level",
+        typed_draws_anchor,
+        True,
+    )
+    draw_row = draw.get(spine.geography_level) if isinstance(draw, Mapping) else None
+    draw_contract = draw_row if isinstance(draw_row, Mapping) else {}
+    if spine.constrain_to_column == "region_nuts1":
+        require_equal(
+            "assignment/draw/universe <-> geography_spine/constrain_to_column",
+            draw_contract.get("universe"),
+            f"{spine.geography_level}_within_nuts1",
+        )
+        typed_preserves_constraint = (
+            isinstance(assertions, list) and "source_nuts1_preserved" in assertions
+        )
+        require_equal(
+            "assignment/assertions/source_nuts1_preserved "
+            "<-> geography_spine/constrain_to_column",
+            typed_preserves_constraint,
+            True,
+        )
+    else:
+        mismatches.append(
+            "geography_spine/constrain_to_column: typed BE compatibility "
+            f"has no projection for legacy={spine.constrain_to_column!r}"
+        )
+
+    if mismatches:
+        details = "\n".join(f"- {mismatch}" for mismatch in mismatches)
+        raise ValueError(
+            "geography_spine.json: typed geography compatibility drift; "
+            "generation-1 shared facts must match generation-0 evidence:\n"
+            f"{details}"
+        )
+
+
+def _compile_typed_take_up_compatibility_projection(
+    take_up: Mapping[str, Any],
+    sources: Mapping[str, Any],
+    *,
+    root: Path,
+) -> Mapping[str, Any]:
+    """Compile normalized typed domains to the constants-era contract view."""
+
+    from microcosm.build.spec_engine import (
+        assert_engine_abi_lock_current,
+        load_schema_registry,
+        project_legacy_take_up_contract,
+        validate_take_up_semantics,
+    )
+
+    validate_take_up_semantics(take_up, sources_document=sources)
+    engine_abi_lock = assert_engine_abi_lock_current(
+        root,
+        {"take_up": take_up, "sources": sources},
+        schema_registry=load_schema_registry(),
+    )
+    if engine_abi_lock is None:  # pragma: no cover - take_up is present above
+        raise ValueError("typed take-up unexpectedly produced no engine ABI lock")
+    return project_legacy_take_up_contract(
+        take_up,
+        engine_abi_lock=engine_abi_lock,
+        sources_document=sources,
+    )
+
+
+def _typed_take_up_compatibility_projection(
+    resolved_spec: object,
+    *,
+    root: Path,
+) -> Mapping[str, Any] | None:
+    """Compile the resolved take-up domain to its constants-era contract view."""
+
+    try:
+        take_up_domain = resolved_spec.domain("take_up")  # type: ignore[attr-defined]
+    except KeyError:
+        return None
+    take_up = take_up_domain.to_wire()
+    if not isinstance(take_up, Mapping):  # pragma: no cover - typed invariant
+        raise ValueError("take_up: normalized typed domain is not an object.")
+
+    try:
+        sources_domain = resolved_spec.domain("sources")  # type: ignore[attr-defined]
+    except KeyError:
+        sources: Mapping[str, Any] = {}
+    else:
+        sources_value = sources_domain.to_wire()
+        if not isinstance(sources_value, Mapping):  # pragma: no cover
+            raise ValueError("sources: normalized typed domain is not an object.")
+        sources = sources_value
+    return _compile_typed_take_up_compatibility_projection(
+        take_up,
+        sources,
+        root=root,
+    )
+
+
+def _select_take_up_compatibility_payload(
+    *,
+    resolved_spec: object | None,
+    root: Path,
+    legacy_payload: Mapping[str, Any] | None,
+) -> Mapping[str, Any] | None:
+    """Prefer the typed projection and attest the frozen migration evidence."""
+
+    if resolved_spec is None:
+        return legacy_payload
+    projection = _typed_take_up_compatibility_projection(
+        resolved_spec,
+        root=root,
+    )
+    if projection is None:
+        return legacy_payload
+    if legacy_payload is not None and projection != legacy_payload:
+        raise ValueError(
+            "take_up_contract.json: packaged compatibility JSON differs from "
+            "the authoritative take_up bundle projection."
+        )
+    return projection
+
+
+def load_country_take_up_contract_projection(
+    country: str | Path,
+) -> Mapping[str, Any] | None:
+    """Load only the manifest-declared typed take-up compatibility surface.
+
+    Some legacy US modules construct static registries during package import.
+    Sending those imports through the complete bundle resolver would create a
+    bootstrap cycle (and make an unrelated domain edit break module import).
+    This narrow CountrySpec seam uses the same strict parser, schema defaults,
+    normalizer, semantic validator, and ABI-lock projector as the full loader,
+    but reads only ``sources`` and ``take_up``. It imports no country runtime
+    and no Python authority constants.
+
+    Generation-0 packages retain their legacy JSON reader. In generation 1,
+    packaged JSON is compared as frozen migration evidence and never selected
+    as the returned authority.
+    """
+
+    if isinstance(country, Path):
+        root = country
+    else:
+        root = Path(str(importlib_resources.files("microcosm.build").joinpath(country)))
+    package_path = root / "country_package.json"
+    package = _require_mapping(
+        json.loads(package_path.read_text(encoding="utf-8")),
+        context="country_package.json",
+    )
+    resource_rows = _resolve_country_resource_rows(package.get("resources", []))
+    typed_manifest = package.get("schema_version") == 1 and all(
+        isinstance(row, Mapping) for row in package.get("resources", ())
+    )
+    legacy_rows = [
+        row
+        for row in resource_rows
+        if row.kind == "legacy_json" and row.path == "take_up_contract.json"
+    ]
+    if len(legacy_rows) > 1:  # pragma: no cover - duplicate paths rejected above
+        raise ValueError("country_package.json: duplicate take-up evidence rows.")
+    legacy_payload = (
+        _require_mapping(
+            json.loads(
+                _country_resource_path(root, legacy_rows[0].path).read_text(
+                    encoding="utf-8"
+                )
+            ),
+            context="take_up_contract.json",
+        )
+        if legacy_rows
+        else None
+    )
+    if not typed_manifest:
+        return legacy_payload
+
+    take_up_rows = [row for row in resource_rows if row.kind == "take_up"]
+    if not take_up_rows:
+        return legacy_payload
+    if len(take_up_rows) != 1:
+        raise ValueError(
+            "country_package.json: generation-1 package must declare exactly "
+            "one take_up resource."
+        )
+    sources_rows = [row for row in resource_rows if row.kind == "sources"]
+    if len(sources_rows) > 1:
+        raise ValueError(
+            "country_package.json: generation-1 package declares multiple "
+            "sources resources."
+        )
+
+    from microcosm.build.spec_engine import load_schema_registry, load_yaml12_file
+    from microcosm.build.spec_engine.canonical import normalize_and_project
+    from microcosm.build.spec_engine.model import thaw_json
+
+    registry = load_schema_registry()
+
+    def load_normalized(row: CountryResourceRow) -> Mapping[str, Any]:
+        value = load_yaml12_file(_country_resource_path(root, row.path))
+        registry.validate(value, row.schema_id)
+        defaulted = registry.validate_and_inject_defaults(value, row.schema_id)
+        normalized, _ = normalize_and_project(
+            defaulted,
+            schema_id=row.schema_id,
+            registry=registry,
+        )
+        thawed = thaw_json(normalized)
+        if not isinstance(thawed, Mapping):  # pragma: no cover - schema invariant
+            raise ValueError(f"{row.path}: normalized resource is not an object.")
+        return thawed
+
+    take_up = load_normalized(take_up_rows[0])
+    sources = load_normalized(sources_rows[0]) if sources_rows else {}
+    projection = _compile_typed_take_up_compatibility_projection(
+        take_up,
+        sources,
+        root=root,
+    )
+    if legacy_payload is not None and projection != legacy_payload:
+        raise ValueError(
+            "take_up_contract.json: packaged compatibility JSON differs from "
+            "the authoritative take_up bundle projection."
+        )
+    return projection
+
+
+def load_country_spec(country: str | Path) -> ResolvedCountrySpec:
     """Load and validate the ``country`` package.
 
     Args:
@@ -838,7 +1418,8 @@ def load_country_spec(country: str | Path) -> CountrySpec:
             path to a country package directory.
 
     Returns:
-        The validated :class:`CountrySpec`.
+        The validated :class:`ResolvedCountrySpec` (also exported through the
+        exact compatibility alias :class:`CountrySpec`).
 
     Raises:
         FileNotFoundError: If the package or a declared resource is missing.
@@ -865,16 +1446,29 @@ def load_country_spec(country: str | Path) -> CountrySpec:
             f"country_package.json declares country {declared_country!r} but "
             f"lives in directory {root.name!r}."
         )
-    policy = _require_non_empty_string(
-        package.get("policy"), field_name="policy", context="country_package.json"
+    resource_rows = _resolve_country_resource_rows(package.get("resources", []))
+    typed_manifest = package.get("schema_version") == 1 and all(
+        isinstance(row, Mapping) for row in package.get("resources", ())
     )
-    resources_field = package.get("resources", [])
-    if not isinstance(resources_field, list):
-        raise ValueError("country_package.json: resources must be a list.")
-    resources = tuple(str(name) for name in resources_field)
+    raw_policy = package.get("policy")
+    if typed_manifest:
+        # ``policy`` belonged to the generation-0 manifest. The binding typed
+        # resource-manifest schema intentionally omits it; bundle.yaml carries
+        # generation-1 settings instead. Typed manifests may retain declared
+        # legacy_json evidence rows without reverting the manifest grammar.
+        policy = ""
+    else:
+        policy = _require_non_empty_string(
+            raw_policy, field_name="policy", context="country_package.json"
+        )
 
-    on_disk = {path.name for path in root.iterdir() if path.is_file()}
-    undeclared = sorted(on_disk - set(resources) - {"country_package.json"})
+    declared_paths = {row.path for row in resource_rows}
+    on_disk = {
+        path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file()
+    }
+    undeclared = sorted(
+        on_disk - declared_paths - {"country_package.json"} - _GENERATED_LOCK_FILENAMES
+    )
     if undeclared:
         raise ValueError(
             f"{root.name}: file(s) {undeclared} are not declared in "
@@ -884,20 +1478,50 @@ def load_country_spec(country: str | Path) -> CountrySpec:
 
     hashes: dict[str, str] = {"country_package.json": sha256_file(package_path)}
     payloads: dict[str, Mapping[str, Any]] = {}
-    for name in resources:
-        resource_path = root / name
+    for row in resource_rows:
+        name = row.path
+        resource_path = _country_resource_path(root, name)
         if not resource_path.exists():
             raise FileNotFoundError(
                 f"{root.name}: declared resource {name!r} is missing."
             )
+        if not resource_path.resolve().is_relative_to(root.resolve()):
+            raise ValueError(
+                f"{root.name}: declared resource {name!r} resolves outside "
+                "the country package."
+            )
+        if not resource_path.is_file():
+            raise ValueError(f"{root.name}: declared resource {name!r} is not a file.")
         hashes[name] = sha256_file(resource_path)
-        payloads[name] = _require_mapping(
-            json.loads(resource_path.read_text(encoding="utf-8")), context=name
-        )
+        if row.kind == "legacy_json":
+            if resource_path.suffix not in {".json", ".jsonld"}:
+                raise ValueError(
+                    f"{root.name}: legacy_json resource {name!r} must be JSON."
+                )
+            payloads[name] = _require_mapping(
+                json.loads(resource_path.read_text(encoding="utf-8")), context=name
+            )
 
+    resolved_spec: object | None = None
+    if typed_manifest:
+        # Import lazily so generation-0 CountrySpec consumers do not pay the
+        # schema/compiler import cost.  This is the single seam: a typed
+        # package returns compatibility projections derived from the exact
+        # same resolved compiler object, never a parallel spec system.
+        from microcosm.build.spec_engine import load_bundle
+
+        resolved_spec = load_bundle(root)
+
+    source_payload = _select_compatibility_payload(
+        resolved_spec=resolved_spec,
+        kind="sources",
+        field="stage_manifest",
+        legacy_name="source_stages.json",
+        legacy_payload=payloads.get("source_stages.json"),
+    )
     sources = (
-        SourceManifest.from_mapping(payloads["source_stages.json"])
-        if "source_stages.json" in payloads
+        SourceManifest.from_mapping(source_payload)
+        if source_payload is not None
         else None
     )
     if sources is not None and sources.country != declared_country:
@@ -905,9 +1529,16 @@ def load_country_spec(country: str | Path) -> CountrySpec:
             f"source_stages.json: declares country {sources.country!r} but "
             f"lives in the {declared_country!r} package."
         )
+    support_payload = _select_compatibility_payload(
+        resolved_spec=resolved_spec,
+        kind="spine",
+        field="support_source_pool",
+        legacy_name="support_spine.json",
+        legacy_payload=payloads.get("support_spine.json"),
+    )
     support_spine = (
-        SupportSpineManifest.from_mapping(payloads["support_spine.json"])
-        if "support_spine.json" in payloads
+        SupportSpineManifest.from_mapping(support_payload)
+        if support_payload is not None
         else None
     )
     if support_spine is not None and support_spine.country != declared_country:
@@ -922,6 +1553,15 @@ def load_country_spec(country: str | Path) -> CountrySpec:
         if "geography_spine.json" in payloads
         else None
     )
+    if (
+        declared_country == "be"
+        and resolved_spec is not None
+        and geography_spine is not None
+    ):
+        _attest_be_typed_geography_compatibility(
+            resolved_spec=resolved_spec,
+            legacy_manifest=geography_spine,
+        )
     target_references = (
         _validate_target_references(
             payloads["target_references.json"], country=declared_country
@@ -941,18 +1581,25 @@ def load_country_spec(country: str | Path) -> CountrySpec:
         if "release_contract.json" in payloads
         else None
     )
+    take_up_contract = _select_take_up_compatibility_payload(
+        resolved_spec=resolved_spec,
+        root=root,
+        legacy_payload=payloads.get("take_up_contract.json"),
+    )
 
-    return CountrySpec(
+    return ResolvedCountrySpec(
         country=declared_country,
         policy=policy,
-        resources=resources,
+        resource_rows=resource_rows,
         sources=sources,
         support_spine=support_spine,
         geography_spine=geography_spine,
         target_references=target_references,
         gates=gates,
         release_contract=release_contract,
+        take_up_contract=take_up_contract,
         resource_hashes=hashes,
+        resolved_spec=resolved_spec,
     )
 
 

@@ -48,10 +48,11 @@ import subprocess
 import time
 import uuid
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass, is_dataclass, replace
+from dataclasses import asdict, dataclass, fields, is_dataclass, replace
 from datetime import UTC, datetime
 from enum import Enum
 from importlib.metadata import PackageNotFoundError, version
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +63,7 @@ from microcosm.build.frame_checkpoint import (
     load_frame_checkpoint,
     write_frame_checkpoint,
 )
+from microcosm.build.frame_sampling import EXACT_COUNT_RULE
 from microcosm.build.gates import (
     FitWeightRecord,
     GateReport,
@@ -70,6 +72,14 @@ from microcosm.build.gates import (
 )
 from microcosm.build.logbook import record_build_attempt
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
+from microcosm.build.spec_engine import (
+    assert_legacy_payload_equal,
+    compile_to_legacy_payload,
+    load_bundle,
+)
+from microcosm.build.spec_engine.battery_semantics import (
+    project_battery_legacy_contract,
+)
 from microcosm.build.us_runtime.acs_income_universe import (
     acs_pums_earnings_universe_contract_identity,
 )
@@ -155,9 +165,14 @@ from microcosm.build.us_runtime.qbi_inputs import (
     us_qbi_reconciliation_contract_identity,
     validate_us_qbi_reconciliation_live_output,
 )
+from microcosm.build.us_runtime.stacked_battery_contract import (
+    build_live_stacked_battery_contract,
+)
 from microcosm.build.us_runtime.stacked_spine import (
+    ACS_STACKED_SUPPORT_CHANNEL,
     CANONICAL_STACKED_GAP_FILL_SURFACE,
     CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE,
+    DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES,
     assemble_stacked_spine,
     assert_stacked_tail_cells_preserved,
     by_origin_battery,
@@ -177,11 +192,15 @@ from microcosm.build.us_runtime.stacked_spine import (
     validate_stacked_spine_frame,
 )
 from microcosm.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
     SPINE_ASSEMBLY_MANIFEST_KEY,
     spine_provenance_counts,
     validate_assembly_provenance,
 )
 from microcosm.build.us_runtime.take_up_contract import take_up_contract_identity
+from microcosm.build.us_runtime.us_late_overlap_ownership import (
+    us_late_overlap_ownership_receipt,
+)
 from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_TRANSFER_GROUPS,
     us_late_producer_schedule_receipt,
@@ -199,6 +218,7 @@ __all__ = [
     "build_stacked_pool",
     "load_simulation_ready_us_multispine_pool_manifest",
     "main",
+    "stacked_checkpoint_artifact_protocol_identity",
 ]
 
 POOL_MANIFEST_SCHEMA_VERSION = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
@@ -281,7 +301,11 @@ _STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
     0.25: "f025",
     1.00: "f100",
 }
+_STACKED_LEGACY_RELEASE_LINE = "populace-us-2024"
 _STACKED_PIPELINE = "us-stacked-pool"
+_STACKED_CHECKPOINT_IDENTITY_ARTIFACT_KIND = (
+    "populace_us_stacked_pool_checkpoint_identity"
+)
 # Version 11 additionally binds the primary-PUF whole-pool universe semantics.
 # Earlier checkpoints must rebuild rather than resume with a nullable
 # s_corp_income leaf. Version 10 bound the complete late-resource semantics and
@@ -293,6 +317,17 @@ _STACKED_RELEASE_ID_PATTERN = re.compile(
 )
 
 type PoolOperator = Callable[[Frame], PoolStageOutput]
+
+
+def stacked_checkpoint_artifact_protocol_identity() -> dict[str, object]:
+    """Return the static generation-0 stacked checkpoint identity envelope."""
+
+    return {
+        "artifact_kind": _STACKED_CHECKPOINT_IDENTITY_ARTIFACT_KIND,
+        "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
+        "materializer_version": _STACKED_CHECKPOINT_MATERIALIZER_VERSION,
+        "pipeline": _STACKED_PIPELINE,
+    }
 
 
 @dataclass(frozen=True)
@@ -528,6 +563,16 @@ def _parser() -> argparse.ArgumentParser:
         "--legacy-two-spine",
         action="store_true",
         help="Run the byte-compatible retiring two-spine pipeline.",
+    )
+    parser.add_argument(
+        "--config-authority",
+        choices=("constants", "constants_adapter"),
+        default="constants",
+        help=(
+            "Configuration receipt mode. constants_adapter compiles and "
+            "equality-attests the packaged US bundle, then still executes "
+            "through the generation-0 constants path (default: constants)."
+        ),
     )
     return parser
 
@@ -1065,10 +1110,7 @@ def _stacked_checkpoint_base_identity(
     if stack.get("sample_seed") != sample_seed:
         raise ValueError("Live stack receipt does not match sample_seed.")
     return {
-        "artifact_kind": "populace_us_stacked_pool_checkpoint_identity",
-        "schema_version": POOL_STAGE_CHECKPOINT_SCHEMA_VERSION,
-        "materializer_version": _STACKED_CHECKPOINT_MATERIALIZER_VERSION,
-        "pipeline": _STACKED_PIPELINE,
+        **stacked_checkpoint_artifact_protocol_identity(),
         "period": POOL_TIME_PERIOD,
         "model_seed": POOL_RANDOM_SEED,
         "policyengine_us_version": (
@@ -1286,7 +1328,7 @@ def _new_stacked_release_id(
     if not re.fullmatch(r"[0-9a-f]{8}", suffix):
         raise ValueError("Stacked release nonce must be eight lowercase hex digits.")
     release_id = (
-        f"populace-us-2024-stacked-{fraction_token}-s{sample_seed}-"
+        f"{_STACKED_LEGACY_RELEASE_LINE}-stacked-{fraction_token}-s{sample_seed}-"
         f"asec{realized_asec_households}-acs{realized_acs_households}-"
         f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{suffix}"
     )
@@ -3384,6 +3426,17 @@ def _stacked_gate_payload(result: StackedPoolBuildResult) -> dict[str, object]:
     return GateReport(result.terminal_gates).to_manifest()
 
 
+def _stacked_run_config_receipt(
+    run_config: Mapping[str, object] | None,
+) -> dict[str, object]:
+    normalized = _json_ready(
+        {"config_authority": "constants"} if run_config is None else run_config
+    )
+    if not isinstance(normalized, dict):  # pragma: no cover - typed internal call
+        raise TypeError("Stacked run_config must normalize to an object.")
+    return normalized
+
+
 def _stacked_manifest_payload(
     *,
     result: StackedPoolBuildResult,
@@ -3397,6 +3450,7 @@ def _stacked_manifest_payload(
     sample_seed: int,
     clone_attachment_fraction: float,
     clone_attachment_seed: int,
+    run_config: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Build the stacked-only manifest without changing the legacy envelope."""
 
@@ -3432,6 +3486,7 @@ def _stacked_manifest_payload(
         "operator_order": list(US_STACKED_POOL_OPERATOR_ORDER),
         "period": POOL_TIME_PERIOD,
         "random_seed": POOL_RANDOM_SEED,
+        "run_config": _stacked_run_config_receipt(run_config),
         "sampling": {
             "sample_fraction": float(sample_fraction),
             "fraction_token": _stacked_rung(sample_fraction),
@@ -3673,6 +3728,7 @@ def _write_stacked_outputs(
     sample_seed: int,
     clone_attachment_fraction: float,
     clone_attachment_seed: int,
+    run_config: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     """Atomically publish the stacked input-only pool and terminal receipts."""
 
@@ -3743,6 +3799,7 @@ def _write_stacked_outputs(
             sample_seed=sample_seed,
             clone_attachment_fraction=clone_attachment_fraction,
             clone_attachment_seed=clone_attachment_seed,
+            run_config=run_config,
         )
         _atomic_write_json(outputs.manifest, manifest)
         return manifest
@@ -3778,7 +3835,13 @@ def _json_ready(value: object) -> object:
             if key != "target_regimes" or item
         }
     if is_dataclass(value) and not isinstance(value, type):
-        return _json_ready(asdict(value))
+        # Walk fields directly rather than through dataclasses.asdict(), whose
+        # recursive deepcopy cannot serialize immutable MappingProxyType
+        # fields used by the generation-0 authority records.
+        return {
+            field.name: _json_ready(getattr(value, field.name))
+            for field in fields(value)
+        }
     if isinstance(value, (list, tuple)):
         return [_json_ready(item) for item in value]
     if isinstance(value, (set, frozenset)):
@@ -3806,6 +3869,219 @@ def _json_ready(value: object) -> object:
     if value is pd.NA:
         return None
     return value
+
+
+def _packaged_us_json(filename: str) -> dict[str, object]:
+    """Read one generation-0 US compatibility object from package data."""
+
+    resource = files("microcosm.build.us").joinpath(filename)
+    payload = json.loads(resource.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(
+            f"Packaged US compatibility resource {filename!r} is not an object."
+        )
+    return payload
+
+
+def _adapter_mapping(value: object, *, location: str) -> Mapping[str, object]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"Compiled legacy payload has no {location} object.")
+    return value
+
+
+def _live_constants_adapter_gate() -> dict[str, object]:
+    """Return the live constants surfaces consumed by the stacked tool.
+
+    This is an equality oracle only.  The tool continues to call the same
+    generation-0 constructors after the assertion; F0 does not construct a
+    bundle-mode authority or alter any checkpoint identity.
+    """
+
+    checkpoint_identity = _stacked_checkpoint_base_identity(
+        {},
+        stack_receipt={"sample_fraction": 1.0, "sample_seed": 578},
+        sample_fraction=1.0,
+        sample_seed=578,
+        clone_attachment_fraction=1.0,
+        clone_attachment_seed=578,
+        policyengine_us_version=_policyengine_us_version(),
+    )
+    static_keys = (
+        "artifact_kind",
+        "schema_version",
+        "materializer_version",
+        "pipeline",
+        "period",
+        "model_seed",
+        "policyengine_us_version",
+        "stacked_authority",
+        "pool_code",
+    )
+    authority_value = _json_ready(stacked_spine_authority_receipt())
+    if not isinstance(authority_value, Mapping):  # pragma: no cover - live invariant
+        raise TypeError("Live stacked authority receipt must be an object.")
+    authority_receipt = dict(authority_value)
+    rung_rows = [
+        {
+            "fraction": float(fraction),
+            "token": token,
+            "percent_basis_points": int(round(fraction * 10_000)),
+        }
+        for fraction, token in _STACKED_SAMPLE_RUNG_TOKENS.items()
+    ]
+    parser = _parser()
+    household_mass_shares = dict(POOL_HOUSEHOLD_MASS_SHARES)
+    if household_mass_shares != dict(DEFAULT_STACKED_HOUSEHOLD_MASS_SHARES):
+        raise ValueError(
+            "Pool and stacked-spine live household mass-share authorities differ."
+        )
+    return {
+        "battery_contract": project_battery_legacy_contract(
+            build_live_stacked_battery_contract(),
+            authority_receipt=authority_receipt,
+        ),
+        "source_manifest": _packaged_us_json("source_stages.json"),
+        "spine_assembly": {
+            "mass_anchor_channel": BASE_ASEC_SUPPORT_CHANNEL,
+            "household_mass_shares": household_mass_shares,
+        },
+        "spine_sampling": {
+            "channels": [
+                BASE_ASEC_SUPPORT_CHANNEL,
+                ACS_STACKED_SUPPORT_CHANNEL,
+            ],
+            "fraction": {
+                "default": float(parser.get_default("sample_fraction")),
+                "rungs": rung_rows,
+            },
+            "seed": {"default": parser.get_default("sample_seed")},
+            "exact_count_rule": EXACT_COUNT_RULE,
+        },
+        "publication_release": {
+            "legacy_prefixes": [_STACKED_LEGACY_RELEASE_LINE],
+            "rungs": list(_STACKED_SAMPLE_RUNG_TOKENS.values()),
+            "legacy_compiled_regexes": [_STACKED_RELEASE_ID_PATTERN.pattern],
+        },
+        "support_spine": _packaged_us_json("support_spine.json"),
+        "take_up_contract": _packaged_us_json("take_up_contract.json"),
+        "take_up_contract_identity": take_up_contract_identity(),
+        "stacked_authority_receipt": authority_receipt,
+        "gap_fill_plan": _json_ready(stacked_gap_fill_plan()),
+        "gap_fill_producer_schedule_receipt": _json_ready(
+            stacked_gap_fill_producer_schedule_receipt()
+        ),
+        "late_producer_schedule_receipt": _json_ready(
+            us_late_producer_schedule_receipt()
+        ),
+        "overlap_ownership": _json_ready(us_late_overlap_ownership_receipt()),
+        "stacked_checkpoint_static_components": {
+            key: checkpoint_identity[key] for key in static_keys
+        },
+    }
+
+
+def _compiled_constants_adapter_gate(
+    payload: Mapping[str, object],
+) -> dict[str, object]:
+    """Select the corresponding named surfaces from the compiled payload."""
+
+    imputation = _adapter_mapping(payload.get("imputation"), location="imputation")
+    assembly = _adapter_mapping(
+        payload.get("spine_assembly"),
+        location="spine_assembly",
+    )
+    publication = _adapter_mapping(
+        payload.get("publication_release"),
+        location="publication_release",
+    )
+    release_line = _adapter_mapping(
+        publication.get("line"),
+        location="publication_release/line",
+    )
+    sampling = _adapter_mapping(
+        payload.get("spine_sampling"),
+        location="spine_sampling",
+    )
+    sampling_fraction = _adapter_mapping(
+        sampling.get("fraction"),
+        location="spine_sampling/fraction",
+    )
+    sampling_seed = _adapter_mapping(
+        sampling.get("seed"),
+        location="spine_sampling/seed",
+    )
+    return {
+        "battery_contract": payload.get("battery_contract"),
+        "source_manifest": payload.get("source_manifest"),
+        "spine_assembly": {
+            "mass_anchor_channel": assembly.get("mass_anchor_channel"),
+            "household_mass_shares": assembly.get("household_mass_shares"),
+        },
+        "spine_sampling": {
+            "channels": sampling.get("channels"),
+            "fraction": {
+                "default": sampling_fraction.get("default"),
+                "rungs": sampling_fraction.get("rungs"),
+            },
+            "seed": {"default": sampling_seed.get("default")},
+            "exact_count_rule": sampling.get("exact_count_rule"),
+        },
+        "publication_release": {
+            "legacy_prefixes": release_line.get("legacy_prefixes"),
+            "rungs": publication.get("rungs"),
+            "legacy_compiled_regexes": publication.get("legacy_compiled_regexes"),
+        },
+        "support_spine": payload.get("support_spine"),
+        "take_up_contract": payload.get("take_up_contract"),
+        "take_up_contract_identity": payload.get("take_up_contract_identity"),
+        "stacked_authority_receipt": payload.get("stacked_authority_receipt"),
+        "gap_fill_plan": imputation.get("gap_fill_plan"),
+        "gap_fill_producer_schedule_receipt": imputation.get(
+            "gap_fill_producer_schedule_receipt"
+        ),
+        "late_producer_schedule_receipt": imputation.get(
+            "late_producer_schedule_receipt"
+        ),
+        "overlap_ownership": imputation.get("overlap_ownership"),
+        "stacked_checkpoint_static_components": payload.get(
+            "stacked_checkpoint_static_components"
+        ),
+    }
+
+
+def _stacked_run_config(args: argparse.Namespace) -> dict[str, object]:
+    """Resolve the receipt-only configuration authority for one stacked run."""
+
+    config_authority = getattr(args, "config_authority", "constants")
+    if config_authority == "constants":
+        return {"config_authority": "constants"}
+    if config_authority != "constants_adapter":
+        raise ValueError(f"Unsupported config authority: {config_authority!r}.")
+
+    resolved = load_bundle("us")
+    compiled_payload = compile_to_legacy_payload(resolved)
+    assert_legacy_payload_equal(
+        _live_constants_adapter_gate(),
+        _compiled_constants_adapter_gate(compiled_payload),
+    )
+    binding = resolved.spec_binding.to_wire()
+    if binding.get("attestation") != "mirror-attested":  # pragma: no cover
+        raise ValueError("F0 spec binding must remain mirror-attested.")
+    return {
+        "config_authority": "constants_adapter",
+        "spec_binding_status": "resolved",
+        "spec_binding": binding,
+    }
+
+
+def _requested_stacked_run_config(args: argparse.Namespace) -> dict[str, object]:
+    """Return receipt state before any fallible adapter resolution."""
+
+    config_authority = getattr(args, "config_authority", "constants")
+    result: dict[str, object] = {"config_authority": config_authority}
+    if config_authority == "constants_adapter":
+        result["spec_binding_status"] = "resolution_pending"
+    return result
 
 
 def _atomic_write_json(path: Path, payload: Mapping[str, object]) -> None:
@@ -4074,6 +4350,7 @@ def _write_stacked_terminal_gate_receipt(
     result: StackedPoolBuildResult,
     *,
     outputs: PoolBuildOutputs,
+    run_config: Mapping[str, object] | None = None,
 ) -> Path:
     """Persist the attempt's immutable terminal-gate receipt before publish."""
 
@@ -4088,6 +4365,7 @@ def _write_stacked_terminal_gate_receipt(
             "schema_version": 1,
             "pipeline": _STACKED_PIPELINE,
             "build_id": result.release_id,
+            "run_config": _stacked_run_config_receipt(run_config),
             "terminal_gates": _stacked_gate_payload(result),
         },
     )
@@ -4151,6 +4429,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
     predecessor = args.logbook_prev_row_digest
     rung = _stacked_rung(args.sample_fraction)
     logbook_seed: int | None = None
+    run_config = _requested_stacked_run_config(args)
     preflight_digest = hashlib.sha256(
         _canonical_json_bytes(
             {
@@ -4195,6 +4474,18 @@ def _main_stacked(args: argparse.Namespace) -> int:
             realized_acs_households=0,
             timestamp=started_ts,
         )
+        # F0 resolves and equality-attests the bundle before constructing any
+        # configured/checkpoint identity, then deliberately leaves those
+        # generation-0 identities untouched.  The binding is a run receipt.
+        try:
+            run_config = _stacked_run_config(args)
+        except Exception:
+            if run_config.get("spec_binding_status") == "resolution_pending":
+                run_config = {
+                    **run_config,
+                    "spec_binding_status": "resolution_failed",
+                }
+            raise
         configured_identity = _configured_stacked_identity(args)
         state.identity_digest = hashlib.sha256(
             _canonical_json_bytes(configured_identity)
@@ -4344,6 +4635,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
         terminal_receipt_path = _write_stacked_terminal_gate_receipt(
             result,
             outputs=outputs,
+            run_config=run_config,
         )
         state.gate_verdicts = {
             gate.name: {
@@ -4371,6 +4663,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
             sample_seed=args.sample_seed,
             clone_attachment_fraction=args.clone_attachment_fraction,
             clone_attachment_seed=args.clone_attachment_seed,
+            run_config=run_config,
         )
         _append_phase(state, "publication_completed")
         state.artifact_location = _local_artifact_reference(outputs.pool_h5)
@@ -4386,6 +4679,7 @@ def _main_stacked(args: argparse.Namespace) -> int:
                 "schema_version": 1,
                 "pipeline": _STACKED_PIPELINE,
                 "build_id": state.build_id,
+                "run_config": _stacked_run_config_receipt(run_config),
                 "phases_reached": state.phases_reached,
                 "gate_verdicts": state.gate_verdicts,
                 "error_type": f"{type(error).__module__}.{type(error).__qualname__}",
@@ -4444,6 +4738,12 @@ def main(argv: list[str] | None = None) -> int:
 
     args = _parser().parse_args(argv)
     if args.legacy_two_spine:
+        if getattr(args, "config_authority", "constants") != "constants":
+            raise ValueError(
+                "--config-authority constants_adapter is available only for "
+                "the stacked pipeline and cannot be combined with "
+                "--legacy-two-spine."
+            )
         return _main_legacy(args)
     return _main_stacked(args)
 

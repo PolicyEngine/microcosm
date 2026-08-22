@@ -7,15 +7,12 @@ did not ship at 100% participation; microcosm produces almost none of them, so
 without this work H5 consumers inherit mechanical universal take-up (microcosm
 #170, #70, #312).
 
-This module owns the *inventory*: a checked-in table
-(``microcosm/build/us/take_up_contract.json``) recording, per program, the engine
-facts that decide treatment (entity, default, and the derived ``engine_class``)
-and the curated microcosm treatment (seed / count_calibrated / rate_unsourced /
-model_simulated / out_of_scope / near_universal) with the administrative
-provenance of any rate used. The engine facts are asserted against the installed engine by
-:func:`assert_take_up_contract_current`, so the classification tracks the pinned
-policyengine-us version instead of a remembered snapshot -- the same
-metadata-derivation doctrine as the #301 formula-owned guard.
+The generation-1 typed country bundle owns the inventory. ``CountrySpec``
+compiles its take-up YAML plus the generated engine ABI lock into this module's
+historical contract view, equality-attesting the frozen
+``microcosm/build/us/take_up_contract.json`` copy while migration consumers
+remain.  The old JSON has one explicit evidence reader for generator and
+mutation tests; production callers never use it as authority.
 
 The seeding stages themselves live in :mod:`microcosm.build.us_runtime.take_up`;
 this module is the contract they and the release diagnostics read.
@@ -41,6 +38,7 @@ __all__ = [
     "assert_take_up_contract_current",
     "assert_take_up_treatments_consistent",
     "count_calibrated_take_up_programs",
+    "load_legacy_take_up_contract_evidence",
     "load_take_up_contract",
     "seeded_take_up_programs",
     "take_up_contract_identity",
@@ -137,15 +135,13 @@ def _canonical_resource_sha256(resource: Mapping[str, object]) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
-@lru_cache(maxsize=1)
-def load_take_up_contract() -> TakeUpContract:
-    """Load and validate the checked-in take-up contract inventory.
+def _parse_take_up_contract(raw: object) -> TakeUpContract:
+    """Validate and materialize one constants-era compatibility mapping.
 
     Raises:
         ValueError: If the table is malformed (missing keys, unknown
             treatment, duplicate program).
     """
-    raw = json.loads(_contract_path().read_text())
     if not isinstance(raw, Mapping):
         raise ValueError("take-up contract resource must contain a JSON object.")
     resource_sha256 = _canonical_resource_sha256(raw)
@@ -207,6 +203,32 @@ def load_take_up_contract() -> TakeUpContract:
         inventory_built_against=str(asserted.get("inventory_built_against", "")),
         programs=tuple(programs),
     )
+
+
+@lru_cache(maxsize=1)
+def load_legacy_take_up_contract_evidence() -> TakeUpContract:
+    """Read the frozen generation-0 JSON for migration attestation only.
+
+    The bundle generator uses this explicit seam to prove that generated YAML
+    still reconstructs the historical payload. Runtime consumers must call
+    :func:`load_take_up_contract`, whose value comes through ``CountrySpec``.
+    """
+
+    return _parse_take_up_contract(json.loads(_contract_path().read_text()))
+
+
+@lru_cache(maxsize=1)
+def load_take_up_contract() -> TakeUpContract:
+    """Load the take-up compatibility view compiled from the typed US bundle."""
+
+    # Lazy import prevents a module cycle: CountrySpec projects take-up without
+    # importing this runtime, using only the pure spec-engine helper.
+    from microcosm.build.country_spec import load_country_take_up_contract_projection
+
+    projection = load_country_take_up_contract_projection("us")
+    if projection is None:
+        raise ValueError("US CountrySpec declares no take-up compatibility view.")
+    return _parse_take_up_contract(projection)
 
 
 def take_up_contract_identity(
@@ -324,7 +346,11 @@ def count_calibrated_take_up_programs() -> tuple[TakeUpProgram, ...]:
     )
 
 
-def assert_take_up_contract_current(engine: PolicyEngineUSEngine | None = None) -> None:
+def assert_take_up_contract_current(
+    engine: PolicyEngineUSEngine | None = None,
+    *,
+    contract: TakeUpContract | None = None,
+) -> None:
     """Fail when the checked-in inventory drifts from the installed engine.
 
     Recomputes the engine facts (entity, value_type, default, engine_class) for
@@ -350,7 +376,9 @@ def assert_take_up_contract_current(engine: PolicyEngineUSEngine | None = None) 
     """
     engine = engine or PolicyEngineUSEngine()
     engine_contract = engine.take_up_contract()
-    table = load_take_up_contract().program_map()
+    table = (
+        contract if contract is not None else load_take_up_contract()
+    ).program_map()
 
     engine_names = set(engine_contract)
     table_names = set(table)
@@ -391,7 +419,10 @@ def assert_take_up_contract_current(engine: PolicyEngineUSEngine | None = None) 
         )
 
 
-def assert_take_up_treatments_consistent() -> None:
+def assert_take_up_treatments_consistent(
+    *,
+    contract: TakeUpContract | None = None,
+) -> None:
     """Fail when a curated treatment contradicts the engine class it carries.
 
     - A ``model_simulated`` flag must not be marked ``seed`` (microcosm would
@@ -404,7 +435,8 @@ def assert_take_up_treatments_consistent() -> None:
         AssertionError: On any inconsistency.
     """
     problems: list[str] = []
-    for program in load_take_up_contract().programs:
+    resolved = contract if contract is not None else load_take_up_contract()
+    for program in resolved.programs:
         cls, treatment, name = (
             program.engine_class,
             program.populace_treatment,

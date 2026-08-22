@@ -19,6 +19,10 @@ import argparse
 from collections import Counter, defaultdict
 
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+from microcosm.build.us_runtime import (
+    default_congressional_district_vintage_crosswalk_path,
+    load_congressional_district_vintage_crosswalk,
+)
 from microcosm.build.us_runtime.fiscal_targets import (
     compile_us_fiscal_target_registry,
 )
@@ -44,6 +48,11 @@ def main() -> None:
     args = parser.parse_args()
 
     artifact = load_ledger_consumer_artifact(args.feed)
+    congressional_district_vintage_crosswalk = (
+        load_congressional_district_vintage_crosswalk(
+            default_congressional_district_vintage_crosswalk_path()
+        )
+    )
     print(
         f"feed: {artifact.path.name} rows={artifact.fact_row_count} "
         f"facts_sha256={artifact.facts_sha256[:12]}…"
@@ -53,12 +62,18 @@ def main() -> None:
         artifact.facts,
         target_period=args.period,
         allow_unaged_dollar_targets=True,
+        congressional_district_vintage_crosswalk=(
+            congressional_district_vintage_crosswalk
+        ),
     )
     aged = compile_us_fiscal_target_registry(
         artifact.facts,
         target_period=args.period,
         age_targets=True,
         allow_unaged_dollar_targets=True,
+        congressional_district_vintage_crosswalk=(
+            congressional_district_vintage_crosswalk
+        ),
     )
 
     before_by = {spec.name: spec for spec in unaged.specs}
@@ -101,7 +116,9 @@ def main() -> None:
         by_family.items(), key=lambda kv: -abs(kv[1][1] - kv[1][0])
     ):
         pct = (a / b - 1) * 100 if b else float("nan")
-        print(f"  {family:26s} n={n:5d} {b/1e9:12,.1f}B → {a/1e9:12,.1f}B ({pct:+.2f}%)")
+        print(
+            f"  {family:26s} n={n:5d} {b / 1e9:12,.1f}B → {a / 1e9:12,.1f}B ({pct:+.2f}%)"
+        )
 
     print("\n== headline rows ==")
     shown = 0
@@ -109,8 +126,8 @@ def main() -> None:
         if not any(key in r["name"] for key in HEADLINE_KEYS):
             continue
         print(
-            f"  {r['name'][:74]:76s} {r['before']/1e9:10,.1f}B → "
-            f"{r['after']/1e9:10,.1f}B ×{r['factor']:.4f} "
+            f"  {r['name'][:74]:76s} {r['before'] / 1e9:10,.1f}B → "
+            f"{r['after'] / 1e9:10,.1f}B ×{r['factor']:.4f} "
             f"[{r['source_period']}→{args.period}]"
         )
         shown += 1
@@ -134,8 +151,8 @@ def main() -> None:
     total_after = sum(r["after"] for r in aged_rows)
     if total_before:
         print(
-            f"\nTOTAL aged-dollar surface: {total_before/1e9:,.1f}B → "
-            f"{total_after/1e9:,.1f}B ({(total_after/total_before-1)*100:+.2f}%)"
+            f"\nTOTAL aged-dollar surface: {total_before / 1e9:,.1f}B → "
+            f"{total_after / 1e9:,.1f}B ({(total_after / total_before - 1) * 100:+.2f}%)"
         )
 
 

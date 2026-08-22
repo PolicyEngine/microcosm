@@ -4,13 +4,16 @@
 
 ### State
 
-In progress. This continuation is merging `origin/main` into
-`battery-pkg3-two-part`, accepting main's deletion of the superseded US
-imputation-lineage YAML, and porting the branch's post-draw calibration policy
-identity into the authored closed-world F0 US spec bundle. Earlier sections of
-this journal are historical records of their named checkpoints, not current
-instructions or branch state. The owner-provided untracked memory guard and
-1% build-failure transcript remain outside this work.
+In progress (2026-08-22 continuation after three interrupted runs). The
+`b4dfa0e7` merge is staged with every conflict resolved, and the F0 policy
+port plus its anti-rot chain were recovered in place from salvage
+`abcf7dc1`. `origin/main` has since advanced to `2aa96795` (#733 UK FRS
+2024-25 retarget plus the `d70ea39c` digest re-cut), so a second merge
+follows the first commit; its expected overlap is the UK/BE bundle-sha pin
+table and the shared `sources.schema.json`, after which every bundle
+`spec_sha256` pin and the loader golden vector are recomputed over the
+union. Earlier sections of this journal are historical records of their
+named checkpoints, not current instructions or branch state.
 
 ### Done
 
@@ -23,16 +26,50 @@ instructions or branch state. The owner-provided untracked memory guard and
   every required check is green.
 - Started independent read-only investigations of the F0 schema variant
   pattern, PR #741's anti-rot chain, and the two sides' merge intents.
+- Audited salvage commit `ea21353d` against its parent, `origin/main`, and the
+  live merge. It contains the automatic merge plus literal conflict markers,
+  but no policy-port or anti-rot implementation. Retained the live automatic
+  merge (including both pool-tool intents); discarded the salvage-only tracked
+  copies of the owner-untracked memory guard/failure transcript, its conflict
+  marker snapshots, and the obsolete lineage YAML instead of cherry-picking it.
+- Unioned and dated the branch and main root journals, and combined main's F0
+  producer-registry test with the branch's policy-identity test at the new
+  generated-bundle fixture boundary.
+- Recovered the third salvage (`abcf7dc1`) in place: staged merge resolution,
+  closed `regime_gated_qrf_model` schema variant, authored
+  `post_draw_calibration` declaration plus generator, ninth authority
+  component at binding version 11, and the walked anti-rot literals
+  (+92 fields at every count site; `imputation_models` claim 4 → 96).
+  Discarded the two salvage-only debris files.
+- Re-cut the loader semantic-hash golden vector and verified the UK
+  gate-battery contract mirrors are schema-registry-independent (all ten pin
+  tests green unchanged).
+- 2026-08-22 (this continuation): greened the affected suite on the recovered
+  tree — 83 tests across the nine spec-engine/pin/lineage/gate-battery files
+  passed in one process, exit 0. Bisected the spec-identity movement
+  mechanism by reverting each unstaged schema/semantics/tool edit one at a
+  time against a synthetic-bundle probe: none moved the golden value, proving
+  the mover is the branch's staged edits to seed-attested kernel modules
+  (`spec_engine/seeds.py` digests `us_runtime.acs_transfer` and peers into the
+  seed-protocol wire inside the spec envelope), not the shared-schema edit.
+  Corrected the earlier lane-notes claim accordingly.
+- 2026-08-22 (headless continuation): re-verified the recovered tree before
+  committing — 339 tests across the nine affected
+  spec-engine/pin/lineage/gate-battery/contract files passed in one process,
+  exit 0 — then committed the staged `b4dfa0e7` merge with the working-tree
+  F0 port, the re-cut loader golden vector, and the untracked changelog
+  fragment folded in.
 
 ### Next
 
-1. Commit this journal checkpoint before changing the merge or executable
-   surfaces.
-2. Merge `origin/main`, resolve the declared conflicts, and verify the merged
-   baseline.
-3. Port the exact policy into F0, walk every anti-rot inventory and evidence
-   site, run all required checks, update the report, and make the single final
-   push.
+1. Commit the `b4dfa0e7` merge with the port folded in (affected suite is
+   green).
+2. Merge `origin/main` at `2aa96795`; recompute the BE/UK/US bundle-sha pins
+   and the loader golden vector over the union (expected conflict:
+   `test_spec_engine_country_bundles.py` pins); green the affected suite;
+   commit.
+3. Run the full five-shard suite plus Ruff on the final tree, update this
+   journal and `FINAL_REPORT.md`, and make the single final push.
 
 ## Post-transfer receipt validation — 2026-08-21 14:48Z
 
@@ -2729,3 +2766,75 @@ but DNS is unavailable. Verification therefore uses the already-synced
 1. Host certification still requires a revision-bound off-chain 1% retry with
    a terminal verdict and final pool/manifest/gates artifacts. Do not publish or
    mutate the pending logbook chain as a side effect.
+## Historical journal imported from `origin/main` — 2026-08-22
+
+The following `one-target-surface` state/done/next record is preserved from
+the merged `origin/main` history. Its branch-state claims and remaining-next
+instructions describe that completed source lane at the time they were written;
+they are not current instructions for `battery-pkg3-two-part`.
+
+# Progress: one US target surface
+
+## State
+
+Surface unification and scale-identity enforcement are complete on
+`one-target-surface`: every US entrypoint
+now compiles one national + state + congressional-district target registry,
+and the CLI/config switches that could delete CD or JCT target rows are gone.
+Parity doctrine now protects that family as a red-line compile. Sparse and dense
+artifacts may differ in record count, never target membership.
+
+## Done
+
+- Read `CLAUDE.md`, the target-parity declaration, the fiscal compiler and its
+  never-controls doctrine, the current CD opt-in tests, and
+  [microcosm#449](https://github.com/PolicyEngine/microcosm/issues/449) /
+  [microcosm#569](https://github.com/PolicyEngine/microcosm/issues/569).
+- Attempted the required `uv sync --all-packages --extra us`. The managed
+  sandbox denied writes to the default uv cache, then its network restriction
+  prevented a clean-cache download of `pyvis`. A byte-identical-lock sibling
+  environment was cloned copy-on-write; tests use that complete environment
+  with this worktree's package sources first on `PYTHONPATH` because an offline
+  editable reinstall still requires unavailable build-isolation metadata.
+- Attempted the GitNexus refactoring impact workflow. Local indexing completed,
+  but GitNexus could not register the index because the sandbox forbids writing
+  `~/.gitnexus/registry.json`; a direct source/call-site audit is the fallback.
+- Confirmed the starting worktree was clean and no build or push was run.
+- Ran the workspace suite for 1,137 seconds with no failure before interrupting
+  it inside the unrelated PUF-QRF stale-checkpoint subprocess regression; the
+  affected US target/compiler shard is the per-commit validation boundary, with
+  a complete workspace run reserved for the final tree. Ruff is green.
+- Established a green 10-file affected-suite baseline covering target
+  compilation, parity, the release builder/scorers, CD vintage translation,
+  Ledger profiles, and the generated calibration contract (100% in 349.59s).
+- Removed the congressional-district compilation option throughout the fiscal
+  compiler, builder, fiscal scorer, state-file scorer, ACS local tool, aging
+  diff, experiments, tests, docs, and generated contract. The canonical CD
+  crosswalk is now the default at each production entrypoint.
+- Removed the diagnostic JCT target-deletion option and its release-gate bypass;
+  diagnostic tools now score the same registry as releases.
+- Removed the parity generator's CD regime switch and regenerated the pinned
+  manifest to 32 compiled / 52 reviewed families. The generated calibration
+  contract declares all three geography layers and has no default-layer split.
+- The 10-file affected suite reaches 100% with exit 0 after the runtime change;
+  Ruff, byte compilation, and `git diff --check` pass.
+- Promoted the CD family into the parity anti-rot red-line set, pinned the
+  manifest's 32/52 header counts to parsed family counts, and asserted that its
+  compiled entry carries no exclusion fields or fence.
+- Strengthened the fiscal invariant: the CD aggregate is present in the
+  compiled registry while the taxable-interest rebase still refuses it as a
+  national control. The standard 10-file affected suite reaches 100% with exit
+  0 after the parity-doctrine change.
+- Removed the compiler's per-run support-exclusion parameter, the release CLI
+  and loader that populated it, its provenance branch, both experiment callers,
+  and the obsolete sparse Build-J exclusion JSON.
+- Added exact signature locks for the compiler, release builder, fiscal scorer,
+  and state scorer; legacy membership flags are parser-rejected.
+- Added a CD-bearing registry identity test across nominal 57,240-record sparse
+  and 337,704-record dense artifacts. Specs and content-addressed registry
+  version are identical. The standard affected suite reaches 100% with exit 0.
+
+## Next
+
+- Quantify the target-row delta and existing 25% timing evidence, run final
+  verification, then write `FINAL_REPORT.md`.

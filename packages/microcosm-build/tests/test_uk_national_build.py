@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -10,16 +11,25 @@ import pytest
 
 from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.gate_battery import (
+    EvidenceContext,
     GateBatteryBlockedError,
     gate_signing_key_env,
 )
 from microcosm.build.gates import FitWeightRecord, GateResult
+from microcosm.build.ledger_targets import LedgerTargetReference
 from microcosm.build.plan import Stage, StagePlan
-from microcosm.build.uk_runtime.battery_bindings import UKGateBinding
+from microcosm.build.uk_runtime.battery_bindings import (
+    UK_GATE_REGISTRY,
+    UKGateBinding,
+    _evaluate_calibration_reference_coverage,
+)
 from microcosm.build.uk_runtime.national_build import (
     UKNationalStage,
     build_uk_national_dataset,
     load_uk_national_frame,
+)
+from microcosm.build.uk_runtime.national_calibration import (
+    UKNationalCalibrationStage,
 )
 from microcosm.build.uk_runtime.national_frame import (
     _uk_gate_surface,
@@ -205,6 +215,7 @@ def _write_two_row_h5(
     path: Path,
     *,
     employment_income: tuple[float, float] = (40_000.0, 55_000.0),
+    include_calibration_columns: bool = False,
 ) -> None:
     n = 100
     household_ids = np.arange(1, n + 1)
@@ -233,22 +244,25 @@ def _write_two_row_h5(
             format="table",
             data_columns=True,
         )
+        benunit = pd.DataFrame(
+            {
+                "benunit_id": benunit_ids,
+                "would_claim_child_benefit": flags(89),
+                "child_benefit_opts_out": flags(23),
+                "would_claim_pc": flags(70),
+                "would_claim_uc": flags(55),
+                "would_claim_tfc": flags(59),
+                "would_claim_extended_childcare": flags(81),
+                "would_claim_universal_childcare": flags(56),
+                "would_claim_targeted_childcare": flags(60),
+                "maximum_extended_childcare_hours_usage": np.linspace(1.0, 30.0, n),
+            }
+        )
+        if include_calibration_columns:
+            benunit["universal_credit"] = flags(55)
         store.put(
             "benunit",
-            pd.DataFrame(
-                {
-                    "benunit_id": benunit_ids,
-                    "would_claim_child_benefit": flags(89),
-                    "child_benefit_opts_out": flags(23),
-                    "would_claim_pc": flags(70),
-                    "would_claim_uc": flags(55),
-                    "would_claim_tfc": flags(59),
-                    "would_claim_extended_childcare": flags(81),
-                    "would_claim_universal_childcare": flags(56),
-                    "would_claim_targeted_childcare": flags(60),
-                    "maximum_extended_childcare_hours_usage": np.linspace(1.0, 30.0, n),
-                }
-            ),
+            benunit,
             format="table",
             data_columns=True,
         )
@@ -331,6 +345,49 @@ def _registry_with_coverage(gate_result_factory) -> dict[str, UKGateBinding]:
         legacy_name="uk_release_input_coverage",
     )
     return registry
+
+
+def _registry_with_calibration() -> dict[str, UKGateBinding]:
+    registry = _registry_with_coverage(_passing_gate)
+    registry["calibration_reference_coverage"] = UK_GATE_REGISTRY[
+        "calibration_reference_coverage"
+    ]
+    return registry
+
+
+def _uc_reference(**overrides) -> LedgerTargetReference:
+    values = {
+        "name": "dwp.uc.households",
+        "ledger_selector": {
+            "source_name": "dwp",
+            "source_concept": "dwp.uc_benefit_units",
+            "geography_level": "country",
+        },
+        "entity": "benunit",
+        "measure": "dwp/uc/households",
+        "family": "dwp_uc",
+        "period": 2025,
+        "metadata": {"contract_target_id": "dwp.uc.households"},
+    }
+    values.update(overrides)
+    return LedgerTargetReference(**values)
+
+
+def _calibration_fact(value: float = 60.0) -> dict:
+    return {
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:uc-build-fixture",
+        "aggregation": {"method": "sum"},
+        "assertion": "observation",
+        "geography": {"level": "country", "id": "K02000001"},
+        "observed_measure": {
+            "source_name": "dwp",
+            "source_concept": "dwp.uc_benefit_units",
+            "source_measure_id": "total_units",
+            "unit": "count",
+        },
+        "period": {"type": "month", "value": "2025-12"},
+        "value": value,
+    }
 
 
 def test_driver_validates_the_uk_residue_after_each_stage(
@@ -451,6 +508,45 @@ def test_weights_audit_details_carry_the_was_fit_records() -> None:
     resolved = result.details["resolved_weight_kinds"]
     assert resolved["uk_was_2018_20_wealth:owned_land"] == "explicit"
     assert resolved["uk_was_2018_20_wealth:cash_isa"] == "explicit"
+
+
+def test_resumed_national_calibration_feeds_reference_coverage_gate(
+    tmp_path,
+) -> None:
+    from microcosm.build.uk_runtime.national_build import (
+        _stage_calibration_evidence,
+    )
+
+    pytest.importorskip("tables")
+
+    input_h5 = tmp_path / "base.h5"
+    _write_two_row_h5(input_h5, include_calibration_columns=True)
+    frame, _provenance = load_uk_national_frame(input_h5)
+    stage = UKNationalCalibrationStage(
+        [_calibration_fact()],
+        references=[_uc_reference()],
+        epochs=1,
+    )
+    staged = stage(frame)
+    metadata = json.loads(json.dumps(stage.checkpoint_metadata()))
+    resumed = UKNationalCalibrationStage(
+        [_calibration_fact()],
+        references=[_uc_reference()],
+        epochs=1,
+    )
+
+    resumed.resume_from_checkpoint(metadata, staged)
+    evidence = _stage_calibration_evidence(
+        (SimpleNamespace(name="national_calibration", transform=resumed),)
+    )
+    result = _evaluate_calibration_reference_coverage(
+        EvidenceContext(artifacts={"national_calibration": evidence}),
+        {},
+    )
+
+    assert evidence == stage.manifest
+    assert result.passed
+    assert result.details == {"activated": 1, "resolved": 1, "matrix": 1}
 
 
 def test_national_build_runs_preflight_stages_gate_then_staging_write(
@@ -995,6 +1091,8 @@ def test_national_build_real_terminal_batch_blocks_incomplete_qrf_before_staging
     assert statuses == {
         "uk_release_input_coverage_manifest_current": "passed",
         "uk_release_family_build_stages": "passed",
+        "uk_ledger_compile_parity_production_2023": "evidence_absent",
+        "uk_ledger_compile_parity_incumbent_2025": "evidence_absent",
         "uk_release_input_coverage": "passed",
         "uk_degenerate_release_surface": "passed",
         "uk_zero_weight_strata": "passed",
@@ -1003,11 +1101,13 @@ def test_national_build_real_terminal_batch_blocks_incomplete_qrf_before_staging
         "uk_weights_audit": "passed",
         "uk_nonnegative_columns": "passed",
         "uk_support": "passed",
+        "uk_aggregate_admin": "evidence_absent",
         "uk_take_up_signal": "passed",
         "uk_brma_enum_domain": "passed",
         # The legacy report omitted unevidenced gates; the battery names
         # every gap — non-blocking off the release-candidate posture.
         "uk_export_surface": "evidence_absent",
+        "uk_calibration_reference_coverage": "evidence_absent",
         "uk_target_surface": "evidence_absent",
         "uk_target_fit": "evidence_absent",
         "uk_input_mass_parity": "evidence_absent",
@@ -1398,6 +1498,60 @@ def _counting_stage(name: str, calls: list[str] | None = None) -> UKNationalStag
     return UKNationalStage(name=name, transform=transform)
 
 
+def _counting_cleanup_stage(
+    name: str,
+    calls: list[str] | None = None,
+) -> UKNationalStage:
+    def transform(frame: Frame) -> Frame:
+        if calls is not None:
+            calls.append(name)
+        person = frame.table("person").copy()
+        person["employment_income"] = person["employment_income"] + 1.0
+        benunit = frame.table("benunit").drop(
+            columns=["dwp/uc/households"],
+            errors="ignore",
+        )
+        return uk_national_frame(
+            person=person,
+            benunit=benunit,
+            household=frame.table("household"),
+            time_period=uk_time_period(frame),
+            weight_kind=uk_household_weight_kind(frame),
+            household_weights=frame.weights_for("household").values,
+            mass_log=frame.mass_log,
+        )
+
+    return UKNationalStage(name=name, transform=transform)
+
+
+class _CountingCalibrationStage:
+    def __init__(self, calls: list[str]) -> None:
+        self.calls = calls
+        self.inner = UKNationalCalibrationStage(
+            [_calibration_fact()],
+            references=[_uc_reference()],
+            epochs=1,
+        )
+
+    @property
+    def manifest(self) -> dict[str, object] | None:
+        return self.inner.manifest
+
+    def __call__(self, frame: Frame) -> Frame:
+        self.calls.append("national_calibration")
+        return self.inner(frame)
+
+    def checkpoint_metadata(self) -> dict[str, object]:
+        return dict(self.inner.checkpoint_metadata())
+
+    def resume_from_checkpoint(
+        self,
+        metadata: dict[str, object],
+        frame: Frame,
+    ) -> None:
+        self.inner.resume_from_checkpoint(metadata, frame)
+
+
 def _assert_same_staging_payload(left: Path, right: Path) -> None:
     left_frame, _ = load_uk_national_frame(left)
     right_frame, _ = load_uk_national_frame(right)
@@ -1506,6 +1660,69 @@ def test_checkpointed_build_resumes_past_a_crash(monkeypatch, tmp_path) -> None:
     assert calls == ["two"]
 
 
+def test_checkpointed_build_resumes_completed_calibration_evidence(
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+
+    registry = _registry_with_calibration()
+    input_h5 = tmp_path / "base.h5"
+    _write_two_row_h5(input_h5, include_calibration_columns=True)
+    run_config = {"input_sha256": "a" * 64, "seed": 42}
+
+    def exploding(frame: Frame) -> Frame:
+        raise RuntimeError("boom")
+
+    calibration_calls: list[str] = []
+    with pytest.raises(RuntimeError, match="boom"):
+        _run_national_build(
+            coverage_engine=object(),
+            input_h5=input_h5,
+            staging_h5=tmp_path / "crashed.h5",
+            stages=(
+                UKNationalStage(
+                    "national_calibration",
+                    _CountingCalibrationStage(calibration_calls),
+                ),
+                UKNationalStage(name="after", transform=exploding),
+            ),
+            checkpoint_dir=tmp_path / "checkpoints",
+            run_config=run_config,
+            gate_registry=registry,
+        )
+    assert calibration_calls == ["national_calibration"]
+
+    resumed_calibration_calls: list[str] = []
+    after_calls: list[str] = []
+    result = _run_national_build(
+        coverage_engine=object(),
+        input_h5=input_h5,
+        staging_h5=tmp_path / "recovered.h5",
+        stages=(
+            UKNationalStage(
+                "national_calibration",
+                _CountingCalibrationStage(resumed_calibration_calls),
+            ),
+            _counting_cleanup_stage("after", after_calls),
+        ),
+        checkpoint_dir=tmp_path / "checkpoints",
+        run_config=run_config,
+        gate_registry=registry,
+        terminal_gate_path=tmp_path / "terminal_gates.json",
+    )
+
+    assert resumed_calibration_calls == []
+    assert after_calls == ["after"]
+    calibration_gate = result.gate_report["gates"]["uk_calibration_reference_coverage"]
+    assert calibration_gate["status"] == "passed"
+    assert calibration_gate["details"] == {
+        "activated": 1,
+        "resolved": 1,
+        "matrix": 1,
+    }
+
+
 def test_checkpointed_build_pins_the_run_config(tmp_path) -> None:
     """Resuming under a different configuration is refused, never blended."""
 
@@ -1581,8 +1798,8 @@ def test_release_candidate_blocks_on_named_evidence_gaps(tmp_path) -> None:
             gate_registry=registry,
             release_candidate=True,
         )
-    assert error.value.phase == "terminal"
-    assert "[uk_weight_ratio]" in str(error.value)
+    assert error.value.phase == "preflight"
+    assert "[uk_ledger_compile_parity_production_2023]" in str(error.value)
     assert not (tmp_path / "candidate.h5").exists()
 
 

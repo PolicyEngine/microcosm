@@ -275,6 +275,7 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
             "failing_targets",
         }
     ),
+    "aggregate_vs_admin": frozenset({"anchors_checked"}),
     "input_mass_parity": frozenset(
         {
             "candidate_name",
@@ -343,13 +344,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "5ddd3da9a52b0dc19ba1c97315f0e4f8acdedf2b74ea29bff512cbdb57de1cab"
+    "47d41dc3643818e049034b4333392aeb352bed5f76fc4556c1da5ba2fe8fb86d"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "8d58fffe5e6542a7f10578076bbcc943cf587f9f22017ccc630450007b5b6166"
+    "687bb4ae4b085ac9abf2e77a7a0c8bcf11204eb9b00fdac1fd7232e16f81161f"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "b7b645deee1b15750403f98a4c7dac09d6e08440a878b8d1ff83a15e9195b809"
+    "e54e2f5880f2380854d9764dcd5482aaa51e37ca0915a3ffaa0c9897626ba656"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -363,6 +364,7 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_weights_audit": "weights_audit",
     "uk_nonnegative_columns": "nonnegative_columns",
     "uk_support": "support",
+    "uk_aggregate_admin": "aggregate_vs_admin",
     "uk_export_surface": "export_surface",
     "uk_take_up_signal": "take_up_signal",
     "uk_brma_enum_domain": "enum_domain",
@@ -381,6 +383,14 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "preflight",
     ),
     "uk_release_family_build_stages": ("source_coverage", "preflight"),
+    "uk_ledger_compile_parity_production_2023": (
+        "ledger_compile_parity",
+        "preflight",
+    ),
+    "uk_ledger_compile_parity_incumbent_2025": (
+        "ledger_compile_parity",
+        "preflight",
+    ),
     "uk_release_input_coverage": ("release_input_coverage", "terminal"),
     "uk_degenerate_release_surface": ("degenerate_release_surface", "terminal"),
     "uk_zero_weight_strata": ("zero_weight_strata", "terminal"),
@@ -389,9 +399,14 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_weights_audit": ("weights_audit", "terminal"),
     "uk_nonnegative_columns": ("nonnegative_columns", "terminal"),
     "uk_support": ("support", "terminal"),
+    "uk_aggregate_admin": ("aggregate_admin", "terminal"),
     "uk_export_surface": ("export_surface", "terminal"),
     "uk_take_up_signal": ("take_up_signal", "terminal"),
     "uk_brma_enum_domain": ("enum_domain", "terminal"),
+    "uk_calibration_reference_coverage": (
+        "calibration_reference_coverage",
+        "terminal",
+    ),
     "uk_target_surface": ("target_surface", "terminal"),
     "uk_target_fit": ("target_fit", "terminal"),
     "uk_input_mass_parity": ("input_mass_parity", "terminal"),
@@ -404,6 +419,8 @@ _UK_GATE_BATTERY_ENTRY_IDS = frozenset(_UK_GATE_BATTERY_ENTRY_GATES)
 _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
     {
         "uk_release_family_build_stages",
+        "uk_ledger_compile_parity_production_2023",
+        "uk_ledger_compile_parity_incumbent_2025",
         "uk_degenerate_release_surface",
         "uk_input_mass_parity",
     }

@@ -1,0 +1,16 @@
+records:
+- id: uk_candidate_2023
+  kind: survey_period_ref
+  authority_ref:
+    kind: source_record
+    source: source:uk_national_candidate_2023
+    authority: uk_candidate_2023
+  compatible_with:
+  - vintage:uk_target_2023
+- id: uk_target_2023
+  kind: target_period_ref
+  authority_ref:
+    kind: dataset_run
+    pointer: /dataset_run/target_period
+  compatible_with:
+  - vintage:uk_candidate_2023

@@ -8,7 +8,7 @@ The target-side analog of ``test_release_input_coverage``. The acceptance cases:
    (#286/#337 cannot-rot);
 4. the anti-rot check rejects an undeclared feed family, a feed-surface family
    the feed no longer carries, a feed-sha mismatch, and — the red line — any
-   attempt to downgrade the core SSA SSI recipient family off ``compiled``;
+   attempt to downgrade a red-line family off ``compiled``;
 5. the shipped manifest is self-consistent with the checked-in feed inventory,
    and (when the pinned feed is present) reproduces exactly from it.
 
@@ -80,6 +80,7 @@ _CONTRACT = _manifest(
         TargetFamily("ssa_ssi_monthly.ssi_federal_payment_recipients", COMPILED_STATUS),
         TargetFamily("ssa_supplement.ssi_recipients", COMPILED_STATUS),
         TargetFamily("bea_nipa.total_wages_salaries", COMPILED_STATUS),
+        TargetFamily("irs_soi.congressional_district_2022", COMPILED_STATUS),
         TargetFamily("usda_snap.state_benefits", COMPILED_STATUS),
         TargetFamily(
             "bea_nipa.personal_income",
@@ -100,6 +101,7 @@ _CONTRACT_FEED = {
         "ssa_ssi_monthly.ssi_federal_payment_recipients": 4,
         "ssa_supplement.ssi_recipients": 52,
         "bea_nipa.total_wages_salaries": 1,
+        "irs_soi.congressional_district_2022": 436,
         "usda_snap.state_benefits": 51,
         "bea_nipa.personal_income": 1,
     },
@@ -109,6 +111,7 @@ _CONTRACT_COMPILED = (
     "ssa_ssi_monthly.ssi_federal_payment_recipients",
     "ssa_supplement.ssi_recipients",
     "bea_nipa.total_wages_salaries",
+    "irs_soi.congressional_district_2022",
     "usda_snap.state_benefits",
 )
 
@@ -150,7 +153,7 @@ class TestGate:
         result = us_release_target_parity_gate(registry, manifest=_CONTRACT)
         assert result.passed
         assert result.name == "us_release_target_parity"
-        assert result.details["compiled_families"] == 4
+        assert result.details["compiled_families"] == 5
 
     def test_missing_compiled_family_fails_named(self) -> None:
         registry = _registry(["ssa_supplement.ssi_recipients"])
@@ -283,6 +286,34 @@ class TestShippedManifest:
         manifest = load_target_parity_manifest()
         for family in RED_LINE_COMPILED_FAMILIES:
             assert manifest.by_name[family].status == COMPILED_STATUS
+
+    def test_congressional_district_family_declares_one_surface_doctrine(self) -> None:
+        family = load_target_parity_manifest().by_name[
+            "irs_soi.congressional_district_2022"
+        ]
+
+        assert family.status == COMPILED_STATUS
+        assert not family.classification
+        assert not family.reason
+        assert not family.evidence
+        assert family.fence is None
+        assert family.note is not None
+        assert "One US target surface" in family.note
+        assert "record count changes only L0" in family.note
+        assert "no local-versus-national surface" in family.note
+        assert "retain control ownership" in family.note
+
+    def test_manifest_header_counts_match_parsed_families(self) -> None:
+        manifest = load_target_parity_manifest()
+
+        assert int(manifest.reference["compiled_families"]) == len(
+            manifest.compiled_families
+        )
+        assert int(manifest.reference["reviewed_exclusions"]) == len(
+            manifest.reviewed_exclusions
+        )
+        assert len(manifest.compiled_families) == 32
+        assert len(manifest.reviewed_exclusions) == 52
 
     def test_wired_nipa_and_liheap_families_are_compiled(self) -> None:
         manifest = load_target_parity_manifest()
@@ -483,26 +514,19 @@ class TestRegeneration:
         )
 
         facts, _ = generator._load_feed(feed_path)
-        # Mirror the generator's declared regime (CD_SURFACE_REGIME): parity
-        # is declared and checked against the registry compiled the same way,
-        # so flipping the regime constant updates both sides together.
+        # Mirror the generator's one-surface registry, including canonical CD
+        # vintage translation.
         from microcosm.build.us_runtime import (
             default_congressional_district_vintage_crosswalk_path,
             load_congressional_district_vintage_crosswalk,
         )
 
-        cd_on = generator.CD_SURFACE_REGIME == "on"
         registry = compile_us_fiscal_target_registry(
             facts,
             target_period=2024,
             age_targets=True,
-            include_congressional_district_targets=cd_on,
-            congressional_district_vintage_crosswalk=(
-                load_congressional_district_vintage_crosswalk(
-                    default_congressional_district_vintage_crosswalk_path()
-                )
-                if cd_on
-                else None
+            congressional_district_vintage_crosswalk=load_congressional_district_vintage_crosswalk(
+                default_congressional_district_vintage_crosswalk_path()
             ),
         )
         registry, _ = apply_us_medicaid_enrollment_substitutions(registry)
