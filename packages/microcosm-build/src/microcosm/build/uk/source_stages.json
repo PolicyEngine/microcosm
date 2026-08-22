@@ -2399,6 +2399,353 @@
       "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, initializes FRS charity columns to zero, trains FRS-only stage 2 before redrawing base-channel dividends, and emits a sidecar-only 208-fact replay report for the spine path."
     },
     {
+      "stage": "cgt_incidence_clone",
+      "survey": "Family Resources Survey 2024-25, SPI synthetic support, and Advani-Summers capital-gains incidence",
+      "source": "Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465",
+      "grain": "household",
+      "artifacts": [
+        {
+          "role": "capital_gains_incidence_and_quantiles",
+          "kind": "public_aggregate_reference",
+          "resource": "advani_summers_capital_gains_distribution.json",
+          "format": "json",
+          "runtime_sha256_required": true
+        }
+      ],
+      "operations": [
+        {
+          "kind": "clone_records",
+          "entity": "household",
+          "copies": 2,
+          "flag_column": "household_is_capital_gains_clone",
+          "original_flag": false,
+          "clone_flag": true,
+          "mass_split": 0.5,
+          "weight_kind_out": "importance",
+          "conservation": "exact_total",
+          "id_remapping": "id_multiplier_for_values",
+          "declared_factor": 1.0,
+          "reason": "Capital-gains incidence clone splits every household's mass equally across original and clone records; total household mass is conserved."
+        },
+        {
+          "kind": "draw_capital_gains_prior_from_banded_quantiles",
+          "resource": "advani_summers_capital_gains_distribution.json",
+          "income_proxy_components": [
+            "employment_income",
+            "self_employment_income",
+            "state_pension_reported",
+            "private_pension_income",
+            "property_income",
+            "savings_interest_income",
+            "dividend_income",
+            "miscellaneous_income"
+          ],
+          "allowance_subtraction": false,
+          "carrier": "oldest adult; person_id ascending breaks age ties",
+          "adult_minimum_age": 16,
+          "quantile_points": [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95],
+          "spline_degree": 1,
+          "extrapolation": "ext=0",
+          "keep_negative_draws": true,
+          "seed": 0,
+          "salt": "cgt_prior_amount"
+        }
+      ],
+      "outputs": [
+        "household_is_capital_gains_clone",
+        "capital_gains"
+      ],
+      "rewrites": ["capital_gains"],
+      "notes": "Spine-only equal-mass incidence clone. The A&S prior fixes the gainer set and order for the following HMRC Table 3 redraw; negative extrapolated draws remain loss-makers."
+    },
+    {
+      "stage": "cgt_band_donors",
+      "survey": "HMRC Capital Gains Tax statistics Table 2.1a and Advani-Summers capital-gains incidence",
+      "source": "HMRC Capital Gains Tax statistics, July 2025, Table 2.1a",
+      "grain": "household",
+      "artifacts": [
+        {
+          "role": "hmrc_cgt_size_bands",
+          "kind": "public_aggregate_reference",
+          "resource": "hmrc_cgt_size_bands.json",
+          "format": "json",
+          "runtime_sha256_required": true
+        },
+        {
+          "role": "capital_gains_incidence",
+          "kind": "public_aggregate_reference",
+          "resource": "advani_summers_capital_gains_distribution.json",
+          "format": "json",
+          "runtime_sha256_required": true
+        }
+      ],
+      "operations": [
+        {
+          "kind": "stack_band_donor_households",
+          "size_band_resource": "hmrc_cgt_size_bands.json",
+          "incidence_resource": "advani_summers_capital_gains_distribution.json",
+          "minimum_band_lower": 12300,
+          "donors_per_band": 30,
+          "expected_band_count": 9,
+          "expected_donor_count": 270,
+          "candidate_order": "household_id ascending",
+          "draw": "weighted_without_replacement",
+          "propensity": "Advani-Summers percent_with_gains at oldest-adult component-sum income",
+          "seed": 1,
+          "flag_column": "household_is_cgt_band_donor",
+          "carrier": "oldest adult; person_id ascending breaks age ties",
+          "initial_weight": "published band taxpayers / donors_per_band",
+          "never_zero_weight": true,
+          "weight_kind_out": "importance",
+          "reason": "Stack 30 positive-weight HMRC Table 2.1a support households per retained gain band; published donor mass is added explicitly."
+        }
+      ],
+      "outputs": [
+        "household_is_cgt_band_donor",
+        "capital_gains"
+      ],
+      "rewrites": ["capital_gains"],
+      "notes": "Adds 270 positive-weight band donors. Rows below GBP 12,300 are excluded because they mix annual-exempt-amount regimes and the spline body already supplies that support."
+    },
+    {
+      "stage": "hmrc_cgt_gains_spine",
+      "survey": "HMRC Capital Gains Tax statistics table 3 (size of gain by taxable income), 2020-21 to 2023-24",
+      "source": "https://assets.publishing.service.gov.uk/media/6878ac62760bf6cedaf5bd93/Table_3_2025_Size_of_gain_by_income.ods",
+      "grain": "person",
+      "artifacts": [
+        {
+          "role": "cgt_published_fact_surface",
+          "kind": "administrative_table",
+          "format": "ods",
+          "survey": "HMRC Capital Gains Tax statistics table 3",
+          "publication": "https://www.gov.uk/government/statistics/capital-gains-tax-statistics",
+          "vintage": "2023-24",
+          "tax_year_start": 2023,
+          "locator": "https://assets.publishing.service.gov.uk/media/6878ac62760bf6cedaf5bd93/Table_3_2025_Size_of_gain_by_income.ods",
+          "sha256": "8e75c00bab949348a7238fea6d995f626c85e5d02813b46606dd7fea85e9d0c3",
+          "size_bytes": 11996,
+          "mime_type": "application/vnd.oasis.opendocument.spreadsheet",
+          "sheets": ["3_1_2023-24", "3_2_2022-23", "3_3_2021-22", "3_4_2020-21"],
+          "mapped_build_period": 2024,
+          "period_mapping": "latest_published_tax_year",
+          "runtime_sha256_required": true
+        },
+        {
+          "role": "policy_parameters",
+          "kind": "versioned_parameter_tree",
+          "dependency": "policyengine-uk>=2.88 via microcosm-build[uk]",
+          "parameters": [
+            "gov.hmrc.income_tax.allowances.personal_allowance.amount",
+            "gov.hmrc.income_tax.allowances.personal_allowance.maximum_ANI",
+            "gov.hmrc.income_tax.allowances.personal_allowance.reduction_rate",
+            "gov.hmrc.cgt.annual_exempt_amount"
+          ],
+          "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
+          "runtime_sha256_required": false,
+          "dependency_discipline": "deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time"
+        }
+      ],
+      "operations": [
+        {
+          "kind": "verify_pinned_cgt_ods",
+          "artifact_role": "cgt_published_fact_surface",
+          "require_before_source_read": true,
+          "runtime_sha256_required": true,
+          "fail_on_mismatch": true
+        },
+        {
+          "kind": "taxable_income_proxy",
+          "components": [
+            "employment_income",
+            "self_employment_income",
+            "state_pension_reported",
+            "private_pension_income",
+            "property_income",
+            "savings_interest_income",
+            "dividend_income",
+            "miscellaneous_income"
+          ],
+          "components_semantics": "Persisted leaves of the model's total_income concept (ITA 2007 s.23); state_pension_reported stands in for social_security_income, whose other taxable benefits are not persisted; reliefs such as pension contributions and Gift Aid are not deducted.",
+          "allowance": "tapered Personal Allowance from the policy_parameters artifact",
+          "fail_on_missing_component": true
+        },
+        {
+          "kind": "rank_preserving_allocation",
+          "within": "income band",
+          "ordering": "existing gains descending, person_id ascending on ties",
+          "band_order": "highest gain band first",
+          "suppressed_cell_allocation": "count implied by the cell's published gains at the band-total mean",
+          "column_reconciliation": "every income column rescales onto its published All-row taxpayer total",
+          "shortfall_policy": "proportional scale-down when the population holds less gainer mass than published taxpayers",
+          "minimum_allocation_people": 1,
+          "weights": "household_weight mapped to persons; no person splits across bands"
+        },
+        {
+          "kind": "within_band_draws",
+          "bounded_band_family": "truncated exponential matched to the cell's published mean",
+          "open_band_family": "Pareto with alpha = mean / (mean - lower bound)",
+          "mean_repair_margin": 0.02,
+          "mean_repair_reason": "Published counts round to the nearest thousand and amounts to the nearest million; four cells of the 2023-24 table imply a mean outside their own band, and repaired means clamp just inside the violated boundary.",
+          "bottom_band_floor": "annual exempt amount plus one pound",
+          "seed_base": 552,
+          "seed_mixing": "seed combined with the build period; draws ordered by allocation rank",
+          "deterministic": true
+        },
+        {
+          "kind": "sub_aea_remainder",
+          "policy": "gainers beyond the published taxpayer mass keep their existing amounts capped at the annual exempt amount",
+          "rationale": "Table 3 covers only individuals with a CGT liability; remaining gainers are treated as sub-AEA gainers rather than invented into the liability distribution or deleted."
+        },
+        {
+          "kind": "record_mass_conservation_receipt",
+          "entity": "household",
+          "reason": "Amounts-only capital gains redraw on the source spine: household weights pass through unchanged and total household mass is conserved.",
+          "declared_factor": 1.0,
+          "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this spine-specific reason."
+        },
+        {
+          "kind": "classify_cgt_band_facts_with_reviewed_fence",
+          "calibration_permitted": false,
+          "fact_fence_id": "cgt_band_facts_policy_endogenous_proxy_conditioned",
+          "fenced_fact_count": 76,
+          "fenced_fact_composition": "60 joint cells, 10 gain-band row totals, 6 income-column totals",
+          "classification_rationale": "The taxpayer count is endogenous to policy, the income conditioning is an arithmetic proxy, and the published surface needs rounding and suppression reconciliation before any per-band fact is exact.",
+          "calibrated_facts_unchanged": "The two aggregate facts in UK_CGT_TARGET_SPECS remain the only calibrated CGT facts.",
+          "promotion_path": "A separately reviewed target profile may lift specific band facts after the reconciliation and proxy adequacy are adjudicated.",
+          "adjudication": "https://github.com/PolicyEngine/microcosm/issues/552"
+        }
+      ],
+      "outputs": ["capital_gains"],
+      "rewrites": ["capital_gains"],
+      "notes": "Spine manifest projection of the merged HMRC Table 3 amounts stage. It deliberately omits base_candidate and verify_certified_candidate, which belong only to the certified-H5 path."
+    },
+    {
+      "stage": "salary_sacrifice",
+      "survey": "Family Resources Survey 2024-25 salary-sacrifice respondents and HMRC salary-sacrifice reform analysis",
+      "source": "HMRC, Salary sacrifice reform for pension contributions effective from 6 April 2029",
+      "grain": "person",
+      "artifacts": [
+        {
+          "role": "salary_sacrifice_anchor",
+          "kind": "public_aggregate_reference",
+          "resource": "salary_sacrifice_anchor.json",
+          "format": "json",
+          "runtime_sha256_required": true
+        }
+      ],
+      "operations": [
+        {
+          "kind": "fit_weighted_qrf",
+          "training_population": "support_channel == frs and not capital-gains clone and not CGT band donor and salary_sacrifice_asked == 1",
+          "target_population": "salary_sacrifice_asked != 1 frame-wide",
+          "predictors": ["age", "employment_income"],
+          "targets": ["pension_contributions_via_salary_sacrifice"],
+          "weights": "household_weight",
+          "weight_mapping": "household_to_person",
+          "seed": 42,
+          "n_estimators": 100,
+          "clamp_minimum": 0,
+          "preserve_asked_rows": true,
+          "cache": false
+        },
+        {
+          "kind": "convert_donors_to_target_stock",
+          "resource": "salary_sacrifice_anchor.json",
+          "target": 5400000,
+          "donor_pool": "employee_pension_contributions > 0 and pension_contributions_via_salary_sacrifice == 0 and employment_income > 0",
+          "rate_cap": 0.5,
+          "move": "full employee_pension_contributions to pension_contributions_via_salary_sacrifice; source zeroed",
+          "seed": 2024,
+          "salt": "salary_sacrifice_conversion",
+          "receipt": "weighted_headcount",
+          "reason": "Salary-sacrifice support stage rewrites pension columns only; household rows and typed household weights pass through and total household mass is conserved."
+        }
+      ],
+      "outputs": [
+        "pension_contributions_via_salary_sacrifice",
+        "employee_pension_contributions"
+      ],
+      "nonnegative_outputs": [
+        "pension_contributions_via_salary_sacrifice",
+        "employee_pension_contributions"
+      ],
+      "rewrites": [
+        "pension_contributions_via_salary_sacrifice",
+        "employee_pension_contributions"
+      ],
+      "notes": "The QRF trains only on the 2024-25 FRS asked subset. The second arm creates support toward the reviewed 5.4m staging target by moving contributors' full pension amounts."
+    },
+    {
+      "stage": "student_loans",
+      "survey": "Family Resources Survey 2024-25 and Student Loans Company borrower forecasts for England",
+      "source": "Explore Education Statistics Table 6a, Higher education total",
+      "grain": "person",
+      "artifacts": [
+        {
+          "role": "frs_release",
+          "kind": "public_aggregate_reference",
+          "resource": "frs_release.json",
+          "format": "json",
+          "runtime_sha256_required": true
+        },
+        {
+          "role": "slc_liable_stocks",
+          "kind": "public_aggregate_reference",
+          "resource": "slc_liable_stocks.json",
+          "format": "json",
+          "runtime_sha256_required": true
+        }
+      ],
+      "operations": [
+        {
+          "kind": "assign_student_loan_plan_cohorts",
+          "year_rule": "calibration_year",
+          "start_year_formula": "year - age + 18",
+          "reported_repayment_test": "student_loan_repayments > 0",
+          "reported_country_gate": false,
+          "plan_1_before": 2012,
+          "plan_5_from": 2023,
+          "enum_domain": ["NONE", "PLAN_1", "PLAN_2", "PLAN_5"],
+          "plan_4_imputation": false
+        },
+        {
+          "kind": "top_up_to_stock",
+          "plan": "PLAN_5",
+          "priority": 1,
+          "resource": "slc_liable_stocks.json",
+          "stock_series": "plan_5.liable",
+          "year_rule": "calibration_year",
+          "age_min": 18,
+          "age_max": 25,
+          "cohort_start_min": 2023,
+          "eligible_region_exclusions": ["SCOTLAND", "WALES", "NORTHERN_IRELAND"],
+          "highest_education": "TERTIARY",
+          "seed": 42,
+          "salt": "student_loan_plan_5"
+        },
+        {
+          "kind": "top_up_to_stock",
+          "plan": "PLAN_2",
+          "priority": 2,
+          "resource": "slc_liable_stocks.json",
+          "stock_series": "plan_2.liable",
+          "year_rule": "calibration_year",
+          "age_min": 21,
+          "age_max": 55,
+          "cohort_start_min": 2012,
+          "cohort_start_max_exclusive": 2023,
+          "eligible_region_exclusions": ["SCOTLAND", "WALES", "NORTHERN_IRELAND"],
+          "highest_education": "TERTIARY",
+          "seed": 42,
+          "salt": "student_loan_plan_2",
+          "reason": "Student-loan plan assignment writes an enum column only; household rows and typed household weights pass through and total household mass is conserved."
+        }
+      ],
+      "outputs": ["student_loan_plan"],
+      "rewrites": ["student_loan_plan"],
+      "notes": "Reported PAYE repayers are classified without a country gate. England tertiary cohorts are then topped up PLAN_5 first and PLAN_2 second to the pinned liable stocks at the FRS release calibration year; PLAN_4 is never imputed."
+    },
+    {
       "stage": "frs_hmrc_retained_leaves",
       "survey": "Family Resources Survey 2024-25",
       "source": "Department for Work and Pensions Family Resources Survey 2024-25 raw adult.tab and benefits.tab, caller-supplied local input",

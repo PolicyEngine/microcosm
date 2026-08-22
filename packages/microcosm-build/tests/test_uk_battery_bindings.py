@@ -451,9 +451,9 @@ class TestBatteryRegressions:
         ]
         # 11 as on main (uk_nonnegative_columns passes with zero required
         # columns — the scheduled stages declare none), the two E4 stochastic
-        # gates, the E5 support gate, and the E6 aggregate-admin gate; their
-        # evaluators have direct tests.
-        assert len(passed) == 15
+        # gates, the E5 support gate, the E6 aggregate-admin gate, and the E8
+        # student-loan enum gate; their evaluators have direct tests.
+        assert len(passed) == 16
         qrf = by_id["uk_qrf_tail_concentration"]
         assert qrf.status is GateStatus.FAILED
         assert "declared QRF output is absent" in qrf.result.failures[0]

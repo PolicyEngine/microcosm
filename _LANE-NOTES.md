@@ -143,6 +143,29 @@
   tests' unchanged 60-second bound. This lane will retry after contention
   falls; it does not tune the timeout or any product threshold.
 
+## Third merge: `origin/main` at `055dcfaf` — 2026-08-23
+
+- The shared remote-tracking ref advanced six commits while the complete build
+  shard ran: UK E8 CGT structure, salary sacrifice, and student-loan stages;
+  their review fixes; the US fiscal-refresh memory-canary isolation; and merge
+  `055dcfaf` (#740). This range does not touch the F0 imputation policy, its
+  anti-rot ledger, or the US spec envelope.
+- Sole textual conflict: the UK entry of `EXPECTED_RESOURCES` in
+  `packages/microcosm-build/tests/test_spec_engine_country_bundles.py`, for the
+  same two-parent reason as the prior merge. This branch's `bb711069…` omits
+  E8; main's `1f163cbf…` omits the version-11 stacked-authority binding. Fresh
+  union-tree `load_bundle` results are BE `bf022118…`, UK `8bf62b6e…`, and US
+  `d3de6760…`; the conflict is resolved with the UK union value.
+- Main's updated UK gate-battery and `microcosm-data` contract pins merged
+  cleanly. The new shared `sources.schema.json` variants remain in the grammar
+  receipt outside the hashed envelope (`spec_engine/loader.py:227-229,401`),
+  while E8's authored UK sources legitimately move only the UK envelope.
+- Newest-union verification before committing the merge:
+  `tools/spec_engine_coverage.py --check` reports 41,471/41,471 fields and
+  40/40 inventory checks; the focused policy identity, country bundle, field
+  usage, coverage, inventory, gate/data contract, serializer, authored-SHA,
+  and 66-module spine-blind graph tests all pass in one process.
+
 ## Scope and frozen boundary
 
 This lane owns 16 adjudicated FIX-CANDIDATE checks: 13 in

@@ -4,22 +4,25 @@
 
 ### State
 
-Both merges are committed (2026-08-22 headless continuation): `e66074ad`
-merges `b4dfa0e7` with the F0 policy port and its anti-rot chain folded in,
-and `e0947020` merges `origin/main` at `2aa96795` (#733 UK FRS 2024-25
-retarget plus the `d70ea39c` digest re-cut). The only second-merge conflict
-was the UK bundle `spec_sha256` pin; its union value was recomputed fresh
-(`bb711069…`) while the BE and US pins held. Repository-wide Ruff, the
-coverage attestation `--check`, the wheel-packaging gate, and the fit /
-calibrate / frame / data shards are green. A complete build-shard run then
+The branch now contains three main merges (2026-08-23 headless
+continuation): `e66074ad` merges `b4dfa0e7` with the F0 policy port and its
+anti-rot chain folded in; `e0947020` merges main at `2aa96795` (#733 UK FRS
+2024-25); and the current merge incorporates main at `055dcfaf` (#740 UK E8
+CGT/salary-sacrifice/student-loan stages). The third merge's sole conflict was
+again the UK bundle `spec_sha256` pin; its newest-union value is `8bf62b6e…`,
+while BE and US hold. Coverage `--check` and the focused policy/count/pin/
+gate/data/merge-guard suite are green on that newest union. Repository-wide
+Ruff, the wheel-packaging gate, and the fit / calibrate / frame / data shards
+were green on the preceding union. A complete build-shard run there then
 exposed three deterministic merge-union misses; all three are corrected and
 their exact tests pass. Two unrelated trade-publication crash tests timed out
 while importing their child CLI under shared-host load (the import alone took
 73.82 seconds against the unchanged 60-second test bound). Remaining:
-re-verify those unchanged tests after host load falls, run the final complete
-build shard, close `FINAL_REPORT.md`, and make the single permitted push to
-`origin/battery-pkg3-two-part`. Earlier sections of this journal are historical
-records of their named checkpoints, not current instructions or branch state.
+re-verify those unchanged tests after host load falls, run repository Ruff and
+the final complete build shard on the newest union, close `FINAL_REPORT.md`,
+and make the single permitted push to `origin/battery-pkg3-two-part`. Earlier
+sections of this journal are historical records of their named checkpoints,
+not current instructions or branch state.
 
 ### Done
 
@@ -103,13 +106,23 @@ records of their named checkpoints, not current instructions or branch state.
   a constrained import-only probe took 73.82 seconds under load 79, proving
   the fixed 60-second failures are host contention rather than a code result.
   No timeout, gate, comparator, or threshold was changed.
+- Detected that the shared `origin/main` ref advanced six commits while the
+  build shard ran, then merged `055dcfaf` (#740). The sole conflict was the UK
+  country-bundle pin (this branch's `bb711069…` vs main's `1f163cbf…`). Fresh
+  `load_bundle` calls on the union produce BE `bf022118…`, UK `8bf62b6e…`, and
+  US `d3de6760…`; resolved the pin with the third union-only value.
+- On the newest union, `tools/spec_engine_coverage.py --check` reports
+  41,471/41,471 configuration fields and 40/40 inventory checks. The focused
+  policy identity, country bundle, field usage, coverage, inventory,
+  gate-battery/data-contract, serializer, authored-SHA, and spine-blind import
+  graph suite passes in one process.
 
 ### Next
 
 1. Re-run the two unchanged trade-publication crash tests once host load is
    low enough for their child import to satisfy the existing 60-second bound.
-2. Run the complete build shard on the corrected tree, then refresh
-   `FINAL_REPORT.md` and this journal with the final receipt.
+2. Run repository-wide Ruff and the complete build shard on the newest union,
+   then refresh `FINAL_REPORT.md` and this journal with the final receipt.
 3. Make the single permitted push to `origin/battery-pkg3-two-part`; PR
    #742 then updates in place. Do not merge the PR.
 

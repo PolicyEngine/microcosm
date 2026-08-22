@@ -62,6 +62,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from microcosm.build.source_manifest import SourceStageSpec
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_GAIN_BAND_LOWER_BOUNDS,
     HMRC_CGT_INCOME_BAND_LOWER_BOUNDS,
@@ -81,6 +82,7 @@ from microcosm.frame import Frame, MassChangeRecord
 __all__ = [
     "UK_CGT_IMPUTATION_SEED",
     "UK_CGT_MASS_CONSERVATION_REASON",
+    "UK_CGT_SPINE_MASS_CONSERVATION_REASON",
     "UK_CGT_IMPUTATION_STAGE_NAME",
     "UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS",
     "UKCGTImputationSummary",
@@ -88,6 +90,7 @@ __all__ = [
     "impute_uk_capital_gains",
     "summarize_uk_cgt_imputation",
     "uk_capital_gains_imputation_stage",
+    "uk_cgt_spine_stage_transform",
     "uk_cgt_policy_parameters",
     "uk_cgt_taxable_income_proxy",
 ]
@@ -106,6 +109,16 @@ UK_CGT_MASS_CONSERVATION_REASON = (
 #: Base seed for the stage's draws. Combined with the build period so two
 #: periods draw differently while each build is reproducible.
 UK_CGT_IMPUTATION_SEED = 552
+
+#: The spine projection records the same conservation invariant under its
+#: own reason so the terminal family validator can never satisfy the
+#: certified and spine families with one shared record (adversarial-review
+#: finding on the E8 PR: reason strings are the receipt identity).
+UK_CGT_SPINE_MASS_CONSERVATION_REASON = (
+    "Amounts-only capital gains redraw on the source spine: household "
+    "weights pass through unchanged and total household mass is conserved."
+)
+
 
 #: Persisted components of the model's ``total_income`` concept (ITA 2007
 #: s.23: taxable income after tax reliefs and before allowances).
@@ -435,6 +448,7 @@ def impute_uk_capital_gains(
     parameters: UKCGTPolicyParameters,
     *,
     seed: int = UK_CGT_IMPUTATION_SEED,
+    mass_change_reason: str = UK_CGT_MASS_CONSERVATION_REASON,
 ) -> Frame:
     """Redraw gainers' amounts from the published joint distribution."""
     validate_uk_national_frame(frame)
@@ -548,7 +562,7 @@ def impute_uk_capital_gains(
         old_total=household_mass,
         new_total=household_mass,
         declared_factor=1.0,
-        reason=UK_CGT_MASS_CONSERVATION_REASON,
+        reason=mass_change_reason,
     )
     result_frame = uk_national_frame(
         person=new_person,
@@ -617,6 +631,7 @@ def uk_capital_gains_imputation_stage(
     tax_year: str = HMRC_CGT_SOURCE_VINTAGE,
     parameters: UKCGTPolicyParameters | None = None,
     seed: int = UK_CGT_IMPUTATION_SEED,
+    mass_change_reason: str = UK_CGT_MASS_CONSERVATION_REASON,
 ) -> UKNationalStage:
     """Build the national stage that redraws capital gains amounts.
 
@@ -631,6 +646,172 @@ def uk_capital_gains_imputation_stage(
             artifact_path, tax_year=tax_year
         )
         resolved = parameters or uk_cgt_policy_parameters(uk_time_period(frame))
-        return impute_uk_capital_gains(frame, distribution, resolved, seed=seed)
+        return impute_uk_capital_gains(
+            frame,
+            distribution,
+            resolved,
+            seed=seed,
+            mass_change_reason=mass_change_reason,
+        )
 
     return UKNationalStage(name=UK_CGT_IMPUTATION_STAGE_NAME, transform=transform)
+
+
+def uk_cgt_spine_stage_transform(
+    stage: SourceStageSpec,
+    ods_path: str | Path,
+):
+    """Bind the spine manifest, then reuse the reviewed merged CGT runtime.
+
+    The certified-H5 wrapper and its candidate verification remain untouched;
+    this source-plan seam deliberately delegates only the amounts transform.
+    """
+
+    _assert_cgt_spine_stage_parameters(stage)
+    return uk_capital_gains_imputation_stage(
+        ods_path,
+        mass_change_reason=UK_CGT_SPINE_MASS_CONSERVATION_REASON,
+    ).transform
+
+
+def _assert_cgt_spine_stage_parameters(stage: SourceStageSpec) -> None:
+    """Arm 1 of the #730/#684 two-arm rule for the spine projection."""
+
+    expected_kinds = (
+        "verify_pinned_cgt_ods",
+        "taxable_income_proxy",
+        "rank_preserving_allocation",
+        "within_band_draws",
+        "sub_aea_remainder",
+        "record_mass_conservation_receipt",
+        "classify_cgt_band_facts_with_reviewed_fence",
+    )
+    kinds = tuple(operation.kind for operation in stage.operations)
+    if kinds != expected_kinds:
+        raise ValueError(
+            f"CGT spine operation order drifted: expected {expected_kinds}, got {kinds}."
+        )
+    operations = {
+        operation.kind: dict(operation.parameters) for operation in stage.operations
+    }
+    # Closed-world reviewed mapping: every operation's FULL declared parameter
+    # payload must equal the reviewed constants below (adversarial-review
+    # finding on #740 — asserting a subset let lockstep manifest edits move
+    # behavioral declarations without a matching reviewed code change; whole-
+    # mapping equality also rejects extra keys).
+    expected_operations = {
+        "verify_pinned_cgt_ods": {
+            "artifact_role": "cgt_published_fact_surface",
+            "require_before_source_read": True,
+            "runtime_sha256_required": True,
+            "fail_on_mismatch": True,
+        },
+        "taxable_income_proxy": {
+            "components": list(UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS),
+            "components_semantics": (
+                "Persisted leaves of the model's total_income concept (ITA "
+                "2007 s.23); state_pension_reported stands in for "
+                "social_security_income, whose other taxable benefits are "
+                "not persisted; reliefs such as pension contributions and "
+                "Gift Aid are not deducted."
+            ),
+            "allowance": (
+                "tapered Personal Allowance from the policy_parameters artifact"
+            ),
+            "fail_on_missing_component": True,
+        },
+        "rank_preserving_allocation": {
+            "within": "income band",
+            "ordering": "existing gains descending, person_id ascending on ties",
+            "band_order": "highest gain band first",
+            "suppressed_cell_allocation": (
+                "count implied by the cell's published gains at the band-total mean"
+            ),
+            "column_reconciliation": (
+                "every income column rescales onto its published All-row taxpayer total"
+            ),
+            "shortfall_policy": (
+                "proportional scale-down when the population holds less "
+                "gainer mass than published taxpayers"
+            ),
+            "minimum_allocation_people": int(_MINIMUM_ALLOCATION_PEOPLE),
+            "weights": (
+                "household_weight mapped to persons; no person splits across bands"
+            ),
+        },
+        "within_band_draws": {
+            "bounded_band_family": (
+                "truncated exponential matched to the cell's published mean"
+            ),
+            "open_band_family": "Pareto with alpha = mean / (mean - lower bound)",
+            "mean_repair_margin": _MEAN_MARGIN,
+            "mean_repair_reason": (
+                "Published counts round to the nearest thousand and amounts "
+                "to the nearest million; four cells of the 2023-24 table "
+                "imply a mean outside their own band, and repaired means "
+                "clamp just inside the violated boundary."
+            ),
+            "bottom_band_floor": "annual exempt amount plus one pound",
+            "seed_base": UK_CGT_IMPUTATION_SEED,
+            "seed_mixing": (
+                "seed combined with the build period; draws ordered by allocation rank"
+            ),
+            "deterministic": True,
+        },
+        "sub_aea_remainder": {
+            "policy": (
+                "gainers beyond the published taxpayer mass keep their "
+                "existing amounts capped at the annual exempt amount"
+            ),
+            "rationale": (
+                "Table 3 covers only individuals with a CGT liability; "
+                "remaining gainers are treated as sub-AEA gainers rather "
+                "than invented into the liability distribution or deleted."
+            ),
+        },
+        "record_mass_conservation_receipt": {
+            "entity": "household",
+            "reason": UK_CGT_SPINE_MASS_CONSERVATION_REASON,
+            "declared_factor": 1.0,
+            "gate_coupling": (
+                "The terminal family gate requires a valid mass-conserving "
+                "MassChangeRecord carrying exactly this spine-specific reason."
+            ),
+        },
+        "classify_cgt_band_facts_with_reviewed_fence": {
+            "calibration_permitted": False,
+            "fact_fence_id": "cgt_band_facts_policy_endogenous_proxy_conditioned",
+            "fenced_fact_count": 76,
+            "fenced_fact_composition": (
+                "60 joint cells, 10 gain-band row totals, 6 income-column totals"
+            ),
+            "classification_rationale": (
+                "The taxpayer count is endogenous to policy, the income "
+                "conditioning is an arithmetic proxy, and the published "
+                "surface needs rounding and suppression reconciliation "
+                "before any per-band fact is exact."
+            ),
+            "calibrated_facts_unchanged": (
+                "The two aggregate facts in UK_CGT_TARGET_SPECS remain the "
+                "only calibrated CGT facts."
+            ),
+            "promotion_path": (
+                "A separately reviewed target profile may lift specific "
+                "band facts after the reconciliation and proxy adequacy "
+                "are adjudicated."
+            ),
+            "adjudication": "https://github.com/PolicyEngine/microcosm/issues/552",
+        },
+    }
+    for kind, expected_parameters in expected_operations.items():
+        actual = operations[kind]
+        if actual != expected_parameters:
+            drifted = sorted(
+                key
+                for key in {*actual, *expected_parameters}
+                if actual.get(key) != expected_parameters.get(key)
+            )
+            raise ValueError(
+                f"CGT spine {kind} declaration drifted from the reviewed "
+                f"mapping on parameter(s) {drifted}."
+            )
