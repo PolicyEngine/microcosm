@@ -3774,7 +3774,7 @@ def validate_stacked_post_puf_transfer_receipt(
     if not isinstance(targets, Mapping) or set(targets) != expected_target_labels:
         raise ValueError(
             f"{boundary}: stacked post-PUF transfer target surface is not the "
-            "canonical 70-target surface; production manifest emission is "
+            "canonical 73-target surface; production manifest emission is "
             "forbidden."
         )
     if any(
@@ -3789,8 +3789,8 @@ def validate_stacked_post_puf_transfer_receipt(
     completion = receipt.get("completion")
     if completion != {
         "status": "complete",
-        "group_count": 19,
-        "target_count": 70,
+        "group_count": 20,
+        "target_count": 73,
         "residual_null_rows": 0,
     }:
         raise ValueError(
@@ -9085,7 +9085,7 @@ def _aggregate_late_transfer_result(
     ],
     execution_order: Sequence[str],
 ) -> StackedPostPufTransferResult:
-    """Bind all bounded group outcomes into the canonical 70-target receipt."""
+    """Bind all bounded group outcomes into the canonical 73-target receipt."""
 
     expected_groups = tuple(group.name for group in CANONICAL_US_LATE_TRANSFER_GROUPS)
     if set(group_results) != set(expected_groups):
@@ -11336,7 +11336,7 @@ class OriginBatterySpec:
     """Test-seam grouping for per-column battery metrics.
 
     Production never accepts these specs from a caller: it consumes the
-    immutable 131-column canonical registry. The explicit test-authority seam
+    immutable 134-column canonical registry. The explicit test-authority seam
     groups its digested registry into specs so the comparison engine can reuse
     the same loop. ``clone_index`` scopes a fixture comparison to one clone
     role: 0 compares native rows and 1 compares a PUF arm.
@@ -11390,7 +11390,7 @@ def by_origin_battery(
     *,
     tail_manifest: Mapping[str, object] | None = None,
 ) -> GateResult:
-    """Run the canonical 131-target plus joint by-origin battery."""
+    """Run the canonical 134-target plus joint by-origin battery."""
 
     return _by_origin_battery_evaluate(
         frame,
