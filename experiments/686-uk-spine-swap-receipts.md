@@ -433,12 +433,16 @@ the instrument.
 
 ### Identity receipts: the determinism property holds everywhere
 
+As first run, before the ladder fix below:
+
 | check | `identical_under_permutation` | `matches_stored_columns` |
 |---|---|---|
 | e4 | **PASS** | fail |
 | e5 | **PASS** | fail |
 | e6 | **PASS** | fail |
 | e8 | **PASS** | **PASS** |
+
+All four pass both columns after the fix, on both the #686 and #723 spines.
 
 The property these receipts exist to prove — that recomputation is invariant
 to row order — holds in all four. What fails is the secondary comparison of
@@ -472,20 +476,68 @@ receipts ran at (`entity_row_counts` 16,288 / 18,850 / 34,966 with
 it. e8's own receipt passes because it recomputes the clone and donor logic
 explicitly rather than assuming unstacked rows.
 
-The e4 mismatch list is consistent with this reading throughout: it is the
-identity-keyed draw columns (`would_claim_*`, `household_owns_tv`,
-`would_evade_tv_licence_fee`, `property_purchased`, `brma`, …), which are
-precisely the columns whose values a clone inherits rather than draws. e5 and
-e6 report the failure with an empty mismatch map, which is its own small
-defect in the receipt's reporting — a fail with nothing named is not
-actionable evidence, and should name what disagreed.
+The mismatch lists are consistent with this reading throughout:
 
-**Disposition: fix the instrument, do not sign this.** The scope must exclude
-every stacked layer, not just the SPI channel, and the fix belongs with the
-e7 receipt work (W4) since both are ladder maintenance. Until then the e4/e5/e6
-`matches_stored_columns` results carry no information about the spine, and the
-L1 leg of the gate is not satisfied — the receipts must be re-run after the
-fix rather than accepted as-is.
+| check | columns reported |
+|---|---|
+| e4 | the identity-keyed draws — `would_claim_*`, `household_owns_tv`, `would_evade_tv_licence_fee`, `property_purchased`, `brma`, … — precisely those a stacked row inherits rather than draws |
+| e5 | `main_residence_value`, `property_wealth` |
+| e6 | the six NHS person columns (`a_and_e_visits`, `admitted_patient_visits`, `outpatient_visits` and their spending counterparts) |
+
+e5's and e6's are not identity-keyed draws but **population-dependent
+normalizations** — the regional uprating factor divides by a mean over the
+scoped rows (the row-order-dependent float mean fixed during E5's licensed
+acceptance), and the NHS allocation normalizes against an absolute budget.
+Widening the scope to include stacked rows changes the denominator, so those
+columns move for a different reason than e4's do but from the same cause.
+
+(An earlier draft of this receipt recorded e5 and e6 as reporting the failure
+with an empty mismatch map, and called that a reporting defect. That was
+wrong: those two checks name their columns under `stored_column_mismatches`
+while e4 uses `stored_mismatches`, and the first reading looked at the wrong
+key. The differing key names across checks are a small inconsistency worth
+tidying, but the evidence was there.)
+
+### Resolution — three mechanisms, not one
+
+The first diagnosis recorded here said one scoping fix would address all
+three. That was wrong, and the controlled experiment that settled it was
+running the **unchanged** tool against two spines: the #723 artifact (26,288
+households, only the SPI flag) passes e6; the #686 artifact (52,846, all three
+flags) fails it. Same tool, so E8's stacking is the cause — but the mechanism
+differs per check.
+
+| check | mechanism | fix |
+|---|---|---|
+| e4 | identity-keyed draws; a stacked row carries a value copied from its source, never drawn for its own id | scope to unstacked rows |
+| e5 | regional property uprating scales to a per-region **mean over owner households in the frame**; stacked rows shift the denominator | scope to unstacked rows |
+| e6 | NHS allocation normalizes against an **absolute budget**, so it needs stage-time *weights*, not just stage-time population | scope, **and** divide out the mass factors applied after E6 |
+
+e5 was confirmed by running it both ways on the same artifact: fails at
+52,846, passes at 16,288. e6 fails *both* ways, which is what disproved the
+scoping-only hypothesis: it already divided out `spi_support_channel`'s
+`share`, but E8's `cgt_incidence_clone` splits each household's weight by
+`mass_split` afterwards and that was never restored.
+
+The weight divisor now reads both factors from the declared operations rather
+than hardcoding them, so a change to either share is picked up automatically.
+A genuinely new mass-redistributing op kind still has to be registered in the
+helper, and the failure mode if it is not is a receipt silently comparing
+against the wrong grossing scale — which is precisely what happened here.
+
+**One regression caught in the fix itself.** The first implementation derived
+the mass factors from the *committed roster*, which divided out the clone's
+0.5 even for a spine built before that stage existed — skewing the comparison
+the other way. The pre-E8 artifact failed immediately and the divisor is now
+driven by which stacking flags the artifact actually carries. Both vintages
+pass: e5/e6 green on the #723 spine, e4/e5/e6/e8 green on the #686 spine.
+
+**Standing lesson.** Each increment that stacks rows or moves mass invalidates
+assumptions inside the *earlier* increments' receipts, and nothing surfaces it
+until a spine carrying every stage is built and the whole ladder is run. That
+is the argument for running the ladder before anything downstream depends on
+it, rather than treating per-increment receipts as still-valid once the roster
+grows.
 
 ### Carried consequence
 
