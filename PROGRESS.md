@@ -1,5 +1,39 @@
 # Battery package 3 progress
 
+## Main/F0 calibration-policy merge — 2026-08-22 02:09Z
+
+### State
+
+In progress. This continuation is merging `origin/main` into
+`battery-pkg3-two-part`, accepting main's deletion of the superseded US
+imputation-lineage YAML, and porting the branch's post-draw calibration policy
+identity into the authored closed-world F0 US spec bundle. Earlier sections of
+this journal are historical records of their named checkpoints, not current
+instructions or branch state. The owner-provided untracked memory guard and
+1% build-failure transcript remain outside this work.
+
+### Done
+
+- Re-read `CLAUDE.md` and confirmed the five-shard test, Ruff, no-host-build,
+  PR-CI/certification, and root-journal boundaries.
+- Inspected the clean tracked starting revision `c22e5d37` and confirmed the
+  local `origin/main` revision is `b4dfa0e7`.
+- Confirmed `FINAL_REPORT.md` is the existing report output and that the only
+  permitted push is the final update to `origin/battery-pkg3-two-part` after
+  every required check is green.
+- Started independent read-only investigations of the F0 schema variant
+  pattern, PR #741's anti-rot chain, and the two sides' merge intents.
+
+### Next
+
+1. Commit this journal checkpoint before changing the merge or executable
+   surfaces.
+2. Merge `origin/main`, resolve the declared conflicts, and verify the merged
+   baseline.
+3. Port the exact policy into F0, walk every anti-rot inventory and evidence
+   site, run all required checks, update the report, and make the single final
+   push.
+
 ## Post-transfer receipt validation — 2026-08-21 14:48Z
 
 ### State

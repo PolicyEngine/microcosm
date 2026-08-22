@@ -1,5 +1,19 @@
 # Battery package 3 lane notes
 
+## Main/F0 merge continuation — 2026-08-22 02:09Z
+
+- Starting tracked revision: `c22e5d37`; local `origin/main`: `b4dfa0e7`.
+- This continuation owns only the main merge, the F0 home for the existing
+  post-draw calibration policy declaration, its spec/code identity test, and
+  the resulting closed-world anti-rot updates. It does not run a host build,
+  change a comparator/gate/threshold, certify an artifact, publish a release,
+  or merge PR #742.
+- Main's generated F0 bundle supersedes `specs/us_imputation_lineage.yaml`, so
+  the old file will remain deleted. The policy itself must survive by becoming
+  a closed, typed exact variant at the authored imputation-model location.
+- Earlier notes below remain source-cited history. Their branch-state and
+  handoff language is not current for this continuation.
+
 ## Scope and frozen boundary
 
 This lane owns 16 adjudicated FIX-CANDIDATE checks: 13 in
