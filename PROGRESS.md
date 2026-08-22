@@ -4,16 +4,18 @@
 
 ### State
 
-In progress (2026-08-22 continuation after three interrupted runs). The
-`b4dfa0e7` merge is staged with every conflict resolved, and the F0 policy
-port plus its anti-rot chain were recovered in place from salvage
-`abcf7dc1`. `origin/main` has since advanced to `2aa96795` (#733 UK FRS
-2024-25 retarget plus the `d70ea39c` digest re-cut), so a second merge
-follows the first commit; its expected overlap is the UK/BE bundle-sha pin
-table and the shared `sources.schema.json`, after which every bundle
-`spec_sha256` pin and the loader golden vector are recomputed over the
-union. Earlier sections of this journal are historical records of their
-named checkpoints, not current instructions or branch state.
+Both merges are committed (2026-08-22 headless continuation): `e66074ad`
+merges `b4dfa0e7` with the F0 policy port and its anti-rot chain folded in,
+and `e0947020` merges `origin/main` at `2aa96795` (#733 UK FRS 2024-25
+retarget plus the `d70ea39c` digest re-cut). The only second-merge conflict
+was the UK bundle `spec_sha256` pin; its union value was recomputed fresh
+(`bb711069…`) while the BE and US pins held. Repository-wide Ruff, the
+coverage attestation `--check`, the wheel-packaging gate, and the fit /
+calibrate / frame / data shards are green; the build shard is running.
+Remaining: build-shard green, final journals/`FINAL_REPORT.md`, and the
+single permitted push to `origin/battery-pkg3-two-part`. Earlier sections
+of this journal are historical records of their named checkpoints, not
+current instructions or branch state.
 
 ### Done
 
@@ -58,18 +60,37 @@ named checkpoints, not current instructions or branch state.
   spec-engine/pin/lineage/gate-battery/contract files passed in one process,
   exit 0 — then committed the staged `b4dfa0e7` merge with the working-tree
   F0 port, the re-cut loader golden vector, and the untracked changelog
-  fragment folded in.
+  fragment folded in, as merge commit `e66074ad`.
+- Merged `origin/main` at `2aa96795`. Sole conflict: the UK bundle
+  `spec_sha256` pin in `test_spec_engine_country_bundles.py` (this branch's
+  `aa32c4c9…` vs main's `e12a2cb8…`, each computed without the other side's
+  envelope movers). Recomputed all three pins on the union tree via
+  `load_bundle`: BE `bf022118…` and US `d3de6760…` hold their committed
+  values; UK moves to `bb711069…`. Verified
+  `tools/spec_engine_coverage.py --check` (41,471/41,471 fields, 40/40
+  inventory checks, no drift) and the same 339-test affected suite green,
+  then committed merge `e0947020`.
+- Ran repository-wide `uv run ruff check .` and `git diff --check` on the
+  union tree: both pass.
+- Walked the CI wheel gate locally because the merge moves
+  `microcosm-build` packaging and authored spec data: built all five shard
+  wheels, installed them into a clean venv under the exported lock
+  constraints, proved the import boundary (all five `microcosm.*` shards
+  import from the venv prefix; `policyengine_us` absent), ran
+  `tools/spec_envelope_digests.py be uk` from the installed wheels, and
+  recomputed `load_bundle` identities from the wheels: BE `bf022118…` and
+  UK `bb711069…` match the repo pins byte-for-byte.
+- Full five-shard suite, one pytest process per shard as in CI: fit exit 0
+  (0.56 GiB peak RSS), calibrate exit 0 (0.45 GiB), frame exit 0
+  (6.09 GiB), data exit 0 (11.05 GiB). The build shard is running; its
+  receipt lands in this journal before the push.
 
 ### Next
 
-1. Commit the `b4dfa0e7` merge with the port folded in (affected suite is
-   green).
-2. Merge `origin/main` at `2aa96795`; recompute the BE/UK/US bundle-sha pins
-   and the loader golden vector over the union (expected conflict:
-   `test_spec_engine_country_bundles.py` pins); green the affected suite;
-   commit.
-3. Run the full five-shard suite plus Ruff on the final tree, update this
-   journal and `FINAL_REPORT.md`, and make the single final push.
+1. Build-shard green on the final tree (running).
+2. Refresh `FINAL_REPORT.md` and this journal with the complete receipts.
+3. Make the single permitted push to `origin/battery-pkg3-two-part`; PR
+   #742 then updates in place. Do not merge the PR.
 
 ## Post-transfer receipt validation — 2026-08-21 14:48Z
 

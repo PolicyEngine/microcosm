@@ -66,6 +66,48 @@
   pass on this tree with the imputation-schema variant present, so the
   `microcosm-data` contract pins from `b4dfa0e7` stand here without a re-cut.
 
+## Second merge: `origin/main` at `2aa96795` — 2026-08-22 headless run
+
+- The first merge (with the recovered port, the re-cut loader golden vector,
+  and the changelog fragment) is commit `e66074ad`; the second merge is
+  commit `e0947020`. `origin/main` had advanced past the staged
+  `b4dfa0e7` MERGE_HEAD by `1d066e5d` (#733 review fixes), `d70ea39c`
+  (post-#735 UK spec / gate-battery digest re-cut), and merge `2aa96795`
+  (#733 UK FRS 2024-25 retarget).
+- Sole textual conflict: the UK entry of `EXPECTED_RESOURCES` in
+  `packages/microcosm-build/tests/test_spec_engine_country_bundles.py`. Both
+  parents' pins were computed on trees missing the other side's envelope
+  movers — this branch's `aa32c4c9…` includes the stacked-authority
+  version-11 binding but not #733's UK sources/runtime retarget; main's
+  `e12a2cb8…` the reverse. `spec_sha256` hashes the spec envelope — country,
+  manifest schema version, normative projections, resolved bindings
+  (`spec_engine/loader.py:404-418`) — so the union pin was recomputed fresh
+  via `load_bundle("uk")`: `bb711069…`, a third value, as required.
+- BE (`bf022118…`) and US (`d3de6760…`) recomputed identically on the union:
+  the `b4dfa0e7..2aa96795` range touches no BE- or US-side envelope input.
+  Its only shared-schema edit, `sources.schema.json`, sits in the grammar
+  receipt outside the hashed envelope (`spec_engine/loader.py:227-229,401`),
+  the mechanism already proven when main's property additions moved no pin.
+- Main's re-cut UK gate-battery digests (`uk/gates.json`, the
+  `microcosm-data` contract pins in `contract.py`/`test_contract.py`) merged
+  clean — this branch touches neither side of them — and the ten
+  gate-battery pin tests plus `test_contract.py` pass unchanged on the
+  union, inside the 339-test affected run.
+- Union-tree receipts before the full suite: `tools/spec_engine_coverage.py
+  --check` reports 41,471/41,471 configuration fields (main's 41,379 plus
+  this branch's 92 policy fields) and 40/40 inventory checks with no drift;
+  the loader golden vector holds (main's range touches neither
+  `loader.py` nor `canonical.py`); repository-wide Ruff and
+  `git diff --check` pass.
+- Wheel gate (the merge moves `microcosm-build/pyproject.toml` and packaged
+  spec data): all five shard wheels build; a clean venv installed from those
+  wheels under the exported lock constraints imports every shard from the
+  venv prefix with `policyengine_us` absent;
+  `tools/spec_envelope_digests.py be uk` runs from the installed wheels; and
+  wheel-venv `load_bundle` identities reproduce BE `bf022118…` / UK
+  `bb711069…` byte-for-byte, proving the authored spec and schema files ship
+  in the wheel (`packages/microcosm-build/pyproject.toml` data inclusion).
+
 ## Scope and frozen boundary
 
 This lane owns 16 adjudicated FIX-CANDIDATE checks: 13 in
