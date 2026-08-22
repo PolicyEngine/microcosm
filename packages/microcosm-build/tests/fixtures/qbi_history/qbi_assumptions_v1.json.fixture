@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "qbi_simulation_version": 1,
+  "engine": "archived_source_weighted_v1",
+  "rng": {
+    "bit_generator": "PCG64",
+    "qualification_seed": 41,
+    "w2_ubia_seed": 42,
+    "investment_seed": 43,
+    "sstb_seed": 64
+  },
+  "source_order": [
+    "self_employment_income",
+    "farm_operations_income",
+    "farm_rent_income",
+    "rental_income",
+    "estate_income",
+    "partnership_s_corp_income"
+  ],
+  "qualification": {
+    "model": "flat_source_bernoulli",
+    "probabilities": {
+      "self_employment_income": 0.95,
+      "farm_operations_income": 0.98,
+      "farm_rent_income": 0.8,
+      "rental_income": 0.7,
+      "estate_income": 0.6,
+      "partnership_s_corp_income": 0.9
+    }
+  },
+  "sstb": {
+    "model": "largest_positive_qualified_source_bernoulli",
+    "source_order": [
+      "self_employment_income",
+      "partnership_s_corp_income",
+      "estate_income"
+    ],
+    "probabilities": {
+      "self_employment_income": 0.3,
+      "partnership_s_corp_income": 0.25,
+      "estate_income": 0.15
+    }
+  },
+  "w2": {
+    "model": "source_weighted_margin_receipts_logit_labor_share",
+    "profit_margin_distribution": {
+      "self_employment_income": {
+        "beta_a": 2.0,
+        "beta_b": 2.0,
+        "scale": 0.5,
+        "shift": 0.05
+      },
+      "farm_operations_income": {
+        "beta_a": 2.0,
+        "beta_b": 4.0,
+        "scale": 0.45,
+        "shift": 0.03
+      },
+      "farm_rent_income": {
+        "beta_a": 2.0,
+        "beta_b": 3.0,
+        "scale": 0.45,
+        "shift": 0.05
+      },
+      "rental_income": {
+        "beta_a": 2.5,
+        "beta_b": 3.0,
+        "scale": 0.5,
+        "shift": 0.05
+      },
+      "estate_income": {
+        "beta_a": 2.0,
+        "beta_b": 3.0,
+        "scale": 0.45,
+        "shift": 0.05
+      },
+      "partnership_s_corp_income": {
+        "beta_a": 2.0,
+        "beta_b": 3.5,
+        "scale": 0.45,
+        "shift": 0.05
+      }
+    },
+    "has_employees_logit": {
+      "slope_per_dollar": 1.2e-06,
+      "target_share_among_positive_receipts": 0.18,
+      "intercept_bisection_iterations": 100
+    },
+    "labor_ratio_distribution": {
+      "self_employment_income": {
+        "beta_a": 2.0,
+        "beta_b": 2.0,
+        "scale": 0.25,
+        "shift": 0.0
+      },
+      "farm_operations_income": {
+        "beta_a": 2.0,
+        "beta_b": 2.5,
+        "scale": 0.22,
+        "shift": 0.0
+      },
+      "farm_rent_income": {
+        "beta_a": 1.5,
+        "beta_b": 8.0,
+        "scale": 0.08,
+        "shift": 0.0
+      },
+      "rental_income": {
+        "beta_a": 1.5,
+        "beta_b": 8.0,
+        "scale": 0.08,
+        "shift": 0.0
+      },
+      "estate_income": {
+        "beta_a": 2.0,
+        "beta_b": 2.5,
+        "scale": 0.2,
+        "shift": 0.0
+      },
+      "partnership_s_corp_income": {
+        "beta_a": 2.0,
+        "beta_b": 2.0,
+        "scale": 0.22,
+        "shift": 0.0
+      }
+    }
+  },
+  "ubia": {
+    "model": "source_weighted_capital_bernoulli_lognormal",
+    "sigma": 1.0,
+    "multiple_of_qbi": {
+      "self_employment_income": 1.5,
+      "farm_operations_income": 4.0,
+      "farm_rent_income": 8.0,
+      "rental_income": 10.0,
+      "estate_income": 3.0,
+      "partnership_s_corp_income": 3.0
+    },
+    "capital_intensity_probabilities": {
+      "self_employment_income": 0.25,
+      "farm_operations_income": 0.7,
+      "farm_rent_income": 0.9,
+      "rental_income": 0.95,
+      "estate_income": 0.5,
+      "partnership_s_corp_income": 0.45
+    }
+  },
+  "investment": {
+    "model": "exposure_bernoulli_beta_carveout",
+    "reit_ptp_exposure_order": [
+      "non_qualified_dividend_income",
+      "partnership_s_corp_income"
+    ],
+    "reit_ptp_income_distribution": {
+      "non_qualified_dividend_income": {
+        "probability_of_receiving": 0.35,
+        "beta_a": 2.0,
+        "beta_b": 18.0,
+        "scale": 1.0,
+        "shift": 0.0
+      },
+      "partnership_s_corp_income": {
+        "probability_of_receiving": 0.05,
+        "beta_a": 2.0,
+        "beta_b": 8.0,
+        "scale": 0.6,
+        "shift": 0.0
+      }
+    },
+    "bdc_exposure_order": [
+      "non_qualified_dividend_income"
+    ],
+    "bdc_income_distribution": {
+      "non_qualified_dividend_income": {
+        "probability_of_receiving": 0.05,
+        "beta_a": 2.0,
+        "beta_b": 18.0,
+        "scale": 0.3,
+        "shift": 0.0
+      }
+    }
+  }
+}
