@@ -152,6 +152,32 @@
   scorecard renders rollups plus worst rows with the complete per-target
   table living in the JSON twin.
 
+## 2026-08-22 — scorer landed; incumbent probe on real bytes (resumed session)
+
+- Battery entities are `person`/`tax_unit`/`spm_unit` (114/9/8 single-column
+  comparisons plus the joint person immigration comparison) — household is
+  not a battery entity
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:3011-3025`).
+  The test fixture originally put provenance columns on household+person and
+  its two battery tests failed; the fixture now provisions channel/clone
+  columns on exactly the battery entities. The scorer needed no change.
+- Real-bytes probe of the incumbent (the scorer's own probe path run against
+  the cached `populace_us_2024.h5`, sha256 `48b9d479...`): layout
+  `entity_tables`; `read_nullable_us_h5_metadata` raises "no artifact
+  metadata" (caught → not a naked pool); CD vintage attrs both null with a
+  usable `household.congressional_district_geoid` lookup (57,240 rows, 436
+  positive unique geoids → the recorded legacy waiver path); frame loads as
+  166,321 persons / 57,240 households / 79,729 tax units / 59,900 spm units
+  with calibrated household weights. All three battery entities carry
+  provenance columns; per-entity channel counts: person asec 66,001 +
+  puf_tax_detail 100,320; tax_unit asec 30,974 + 48,755; spm_unit asec
+  23,286 + 36,614; **zero `acs` rows on every entity** → the battery payload
+  reports `inapplicable` with the observed empty-ACS-side reason. This
+  verifies the earlier journal claim and extends it to tax_unit/spm_unit.
+- Suite state at commit: head-to-head tests 7/7; state-files scorer,
+  refresh-builder, pool-h5-io, fiscal-targets, and release-target-parity
+  files all green (428 tests); ruff check + format clean.
+
 ---
 
 # Historical: one-target-surface lane notes

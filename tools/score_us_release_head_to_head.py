@@ -1,0 +1,1592 @@
+"""Score US incumbent and candidate artifacts on one replacement yardstick.
+
+The owner's publish bar for the next US artifact is a head-to-head: the live
+artifact versus the candidate on the SAME yardstick, flipped on evidence.
+This tool is that yardstick. It has two parts:
+
+* every row of one compiled fiscal target registry, evaluated under each
+  artifact's own shipped weights with production's concept-budgeted
+  amount/count loss; and
+* the terminal by-origin battery: reported from an authenticated pool
+  manifest receipt when the artifact is a pool, and reported as observed
+  inapplicability (never synthesized, never faked) when the artifact carries
+  no evaluable ASEC-vs-ACS surface.
+
+Artifacts differ only at the loading boundary. Both normalized frames pass
+through the same population repair, target materialization, constraint
+matrix, scoring, loss attribution, contract checks, and rendering path.
+Scoring is sequential and refuses a process peak at or above 20 GiB RSS.
+
+No gate, threshold, tolerance, or band is applied to the comparison: the
+output is evidence for the owner's flip decision, not a verdict.
+"""
+
+from __future__ import annotations
+
+import argparse
+import gc
+import hashlib
+import json
+import math
+import resource
+import sys
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+
+import build_us_fiscal_refresh_release as release
+import h5py
+import numpy as np
+import score_us_fiscal_targets as fiscal_scorer
+
+from microcosm.build.us_runtime.congressional_district_vintage import (
+    CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR,
+    CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR,
+)
+from microcosm.build.us_runtime.h5_io import (
+    US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
+    AuthenticatedPoolH5,
+    load_simulation_ready_us_multispine_pool,
+    read_nullable_us_h5_metadata,
+)
+from microcosm.build.us_runtime.stacked_spine import (
+    ACS_STACKED_SUPPORT_CHANNEL,
+    CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY,
+    CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY,
+)
+from microcosm.build.us_runtime.support_provenance import (
+    BASE_ASEC_SUPPORT_CHANNEL,
+    support_channel_column,
+    support_clone_index_column,
+)
+from microcosm.calibrate import TargetRegistry, score_targets
+from microcosm.calibrate._target_loss_attribution import (
+    assemble_target_loss_attribution,
+)
+from microcosm.frame import US_SCHEMA, Frame
+
+SCHEMA_VERSION = 2
+MAX_RSS_BYTES = 20 * 1024**3
+MARKDOWN_WORST_TARGET_ROWS = 50
+
+# The package resolver authority for the live US incumbent, read from
+# policyengine.py 5.0.3 (PyPI latest, tagged 2026-08-21) this lane session:
+# the bundled manifest's US entry certifies populace_us_2024 as the default
+# dataset, resolve_managed_dataset_reference(country, dataset=None) returns
+# manifest.default_dataset_uri, and dataset overlays are additive-only so
+# they can never shadow the default.
+# policyengine.py@5.0.3 src/policyengine/data/bundle/manifest.json
+#   data_releases.us.{default_dataset,certified_data_artifact,data_package}
+# policyengine.py@5.0.3 src/policyengine/provenance/manifest.py:181-187
+#   (default_dataset_uri), :270-299 (_apply_dataset_overlays no-shadow),
+#   :301-320 (get_release_manifest), :540-561
+#   (resolve_managed_dataset_reference default path)
+_POLICYENGINE_LIVE_US_INCUMBENT = {
+    "policyengine_version": "5.0.3",
+    "bundle_id": "us-5.0.3",
+    "data_producer": "populace",
+    "default_dataset": "populace_us_2024",
+    "build_id": "populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z",
+    "repo_id": "policyengine/populace-us",
+    "repo_type": "dataset",
+    "revision": "populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z",
+    "filename": "populace_us_2024.h5",
+    "sha256": "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
+    "certified_for_model_version": "1.764.6",
+}
+
+_CODE_CITATIONS = {
+    "single_registry_surface": (
+        "packages/microcosm-build/src/microcosm/build/us_runtime/"
+        "fiscal_targets.py:933-1017"
+    ),
+    "canonical_scorer_seam": "tools/score_us_fiscal_targets.py:383-528",
+    "entity_h5_loader": "tools/build_us_fiscal_refresh_release.py:2454-2471",
+    "legacy_flat_loader": "tools/score_us_fiscal_targets.py:240-333",
+    "pool_manifest_authentication": (
+        "packages/microcosm-build/src/microcosm/build/us_runtime/"
+        "h5_io.py:348-430,672-811"
+    ),
+    "materialization_drop_detection": (
+        "tools/build_us_fiscal_refresh_release.py:4323-4350"
+    ),
+    "matrix_skip_detection": (
+        "packages/microcosm-calibrate/src/microcosm/calibrate/matrix.py:286-355"
+    ),
+    "loss_weighting": (
+        "tools/build_us_fiscal_refresh_release.py:344-348,5781-5814,6214-6290"
+    ),
+    "loss_aggregate": (
+        "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:473-518"
+    ),
+    "loss_attribution": (
+        "packages/microcosm-calibrate/src/microcosm/calibrate/"
+        "_target_loss_attribution.py:103-212"
+    ),
+    "relative_error": (
+        "packages/microcosm-calibrate/src/microcosm/calibrate/score.py:25-51"
+    ),
+    "battery_registry": (
+        "packages/microcosm-build/src/microcosm/build/us_runtime/"
+        "stacked_spine.py:3011-3025"
+    ),
+    "battery_origin_masks": (
+        "packages/microcosm-build/src/microcosm/build/us_runtime/"
+        "stacked_spine.py:11523-11533,11577-11580,11695-11703"
+    ),
+    "battery_receipt_keys": (
+        "packages/microcosm-build/src/microcosm/build/us_runtime/"
+        "stacked_spine.py:11819-11973"
+    ),
+    "battery_channel_constants": (
+        "packages/microcosm-build/src/microcosm/build/us_runtime/"
+        "support_provenance.py:31,333-344; "
+        "packages/microcosm-build/src/microcosm/build/us_runtime/"
+        "stacked_spine.py:263"
+    ),
+    "pool_battery_persistence": (
+        "tools/build_us_multispine_pool.py:3533-3540,3766-3776; "
+        "packages/microcosm-build/src/microcosm/build/gates.py:690-700"
+    ),
+    "cd_provenance_check": (
+        "tools/build_us_fiscal_refresh_release.py:2519-2567,2570-2597"
+    ),
+    "incumbent_package_resolution": (
+        "policyengine.py@5.0.3 src/policyengine/data/bundle/manifest.json "
+        "data_releases.us; src/policyengine/provenance/manifest.py:181-187,"
+        "270-299,301-320,540-561"
+    ),
+}
+
+
+@dataclass(frozen=True)
+class LoadedArtifact:
+    """One role-neutral artifact normalized to a US entity frame."""
+
+    frame: Frame
+    identity: Mapping[str, object]
+    loader: Mapping[str, object]
+    h5_path: Path
+    terminal_gates: Mapping[str, object] | None = None
+    authenticated_pool_h5: AuthenticatedPoolH5 | None = None
+
+
+@dataclass(frozen=True)
+class FiscalYardstick:
+    """The single compiled registry and exact production loss basis."""
+
+    registry: TargetRegistry
+    loss_weights: np.ndarray
+    loss_basis: Mapping[str, object]
+    identity: Mapping[str, object]
+
+
+def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Score a US incumbent and optional candidate on one fiscal registry "
+            "and every artifact-computable terminal battery comparison."
+        )
+    )
+    parser.add_argument("--incumbent", type=Path, required=True)
+    parser.add_argument(
+        "--candidate",
+        type=Path,
+        help="Candidate entity H5, ready pool manifest, or pool directory.",
+    )
+    parser.add_argument(
+        "--ledger-facts",
+        type=Path,
+        required=True,
+        help="Ledger consumer facts JSONL that freezes the common target registry.",
+    )
+    parser.add_argument(
+        "--out-prefix",
+        type=Path,
+        required=True,
+        help="Write <prefix>.json and <prefix>.md.",
+    )
+    parser.add_argument(
+        "--candidate-manifest-sha256",
+        help="Optional external SHA-256 pin for a candidate pool manifest.",
+    )
+    parser.add_argument(
+        "--age-targets",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument(
+        "--allow-unaged-dollar-targets",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument(
+        "--congressional-district-vintage-crosswalk",
+        type=Path,
+        default=None,
+    )
+    parser.add_argument(
+        "--maximum-microsim-batch-size",
+        "--maximum-microsimulation-batch-size",
+        dest="maximum_microsim_batch_size",
+        type=int,
+        default=release.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    )
+    parser.add_argument(
+        "--target-materialization-cache-dir",
+        type=Path,
+        default=None,
+    )
+    return parser.parse_args(argv)
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _canonical_sha256(value: object) -> str:
+    encoded = json.dumps(
+        value,
+        allow_nan=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _peak_rss_bytes() -> int:
+    peak = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    # Darwin reports bytes; Linux and the other supported CI hosts report KiB.
+    return peak if sys.platform == "darwin" else peak * 1024
+
+
+def _assert_rss_below_limit(boundary: str) -> None:
+    observed = _peak_rss_bytes()
+    if observed >= MAX_RSS_BYTES:
+        raise MemoryError(
+            f"{boundary}: peak RSS {observed / 1024**3:.3f} GiB reached the "
+            f"{MAX_RSS_BYTES / 1024**3:.0f} GiB scoring limit."
+        )
+
+
+def _pool_manifest_from_directory(path: Path) -> Path:
+    candidates = sorted(path.glob("*.manifest.json"))
+    candidates.extend(
+        candidate
+        for candidate in (path / "manifest.json", path / "pool.manifest.json")
+        if candidate.is_file() and candidate not in candidates
+    )
+    if len(candidates) != 1:
+        raise ValueError(
+            f"Pool directory {path} must contain exactly one direct pool "
+            f"manifest; found {[candidate.name for candidate in candidates]}."
+        )
+    return candidates[0]
+
+
+def _resolved_artifact_path(path: Path) -> Path:
+    resolved = path.expanduser().resolve()
+    if resolved.is_dir():
+        return _pool_manifest_from_directory(resolved)
+    if not resolved.is_file():
+        raise FileNotFoundError(f"Scoring artifact is not a file: {resolved}")
+    return resolved
+
+
+def _h5_layout(path: Path) -> str:
+    if not h5py.is_hdf5(path):
+        raise ValueError(f"Scoring input is not an HDF5 file: {path}")
+    with h5py.File(path, "r") as root:
+        keys = set(root.keys())
+    entity_layout = set(US_SCHEMA.entities).issubset(keys)
+    legacy_layout = "person_id" in keys and "household_weight" in keys
+    if entity_layout == legacy_layout:
+        raise ValueError(
+            f"H5 {path} has an ambiguous or unsupported US layout; "
+            f"entity_layout={entity_layout}, legacy_flat_layout={legacy_layout}."
+        )
+    return "entity_tables" if entity_layout else "legacy_policyengine_flat"
+
+
+def _live_incumbent_identity_if_matched(sha256: str) -> dict[str, object] | None:
+    if sha256 != _POLICYENGINE_LIVE_US_INCUMBENT["sha256"]:
+        return None
+    return {
+        "policyengine_package_resolved": dict(_POLICYENGINE_LIVE_US_INCUMBENT),
+        "resolution_citation": _CODE_CITATIONS["incumbent_package_resolution"],
+    }
+
+
+def _load_pool_manifest(
+    manifest_path: Path,
+    *,
+    expected_manifest_sha256: str | None,
+) -> LoadedArtifact:
+    frame, manifest, authenticated = load_simulation_ready_us_multispine_pool(
+        manifest_path,
+        expected_manifest_sha256=expected_manifest_sha256,
+    )
+    terminal_gates = manifest.get("terminal_gates")
+    if not isinstance(terminal_gates, Mapping):
+        raise ValueError(
+            f"Authenticated pool manifest {manifest_path} has no terminal_gates "
+            "receipt; a simulation-ready stacked pool always seals one."
+        )
+    identity = {
+        "kind": "authenticated_pool",
+        "filename": authenticated.path.name,
+        "sha256": authenticated.sha256,
+        "size_bytes": authenticated.size_bytes,
+        "manifest_filename": manifest_path.name,
+        "manifest_sha256": authenticated.manifest_sha256,
+        "publication_run_id": authenticated.publication_run_id,
+        "release_id": manifest.get("release_id"),
+    }
+    return LoadedArtifact(
+        frame=frame,
+        identity=identity,
+        loader={
+            "kind": "authenticated_pool_manifest",
+            "weight_kind": frame.weights_for("household").kind.value,
+        },
+        h5_path=authenticated.path,
+        terminal_gates=terminal_gates,
+        authenticated_pool_h5=authenticated,
+    )
+
+
+def _load_h5(path: Path) -> LoadedArtifact:
+    layout = _h5_layout(path)
+    if layout == "entity_tables":
+        try:
+            metadata = read_nullable_us_h5_metadata(path)
+        except ValueError:
+            metadata = {}
+        if metadata.get("artifact_kind") == US_MULTISPINE_POOL_H5_ARTIFACT_KIND:
+            raise ValueError(
+                f"{path} is a naked multispine pool H5. Pass its companion "
+                "manifest so readiness, weights, diagnostics, and terminal "
+                "battery receipts are authenticated."
+            )
+        # The exact loader the canonical read-only fiscal scorer uses
+        # (tools/score_us_fiscal_targets.py:436 -> release._load_frame).
+        frame = release._load_frame(path)
+        loader: dict[str, object] = {
+            "kind": "microcosm_entity_h5",
+            "weight_kind": frame.weights_for("household").kind.value,
+        }
+    else:
+        frame, layout_receipt = fiscal_scorer._load_legacy_pe_flat_frame(path)
+        frame, formula_owned = fiscal_scorer._drop_legacy_formula_owned_inputs(frame)
+        loader = {
+            "kind": "legacy_policyengine_flat_h5",
+            "weight_kind": frame.weights_for("household").kind.value,
+            "layout_receipt": layout_receipt,
+            "formula_owned_inputs_dropped": formula_owned,
+        }
+    sha256 = _sha256(path)
+    identity: dict[str, object] = {
+        "kind": "h5",
+        "filename": path.name,
+        "sha256": sha256,
+        "size_bytes": path.stat().st_size,
+    }
+    published = _live_incumbent_identity_if_matched(sha256)
+    if published is not None:
+        identity.update(published)
+    return LoadedArtifact(
+        frame=frame,
+        identity=identity,
+        loader=loader,
+        h5_path=path,
+    )
+
+
+def load_artifact(
+    path: Path,
+    *,
+    expected_manifest_sha256: str | None = None,
+) -> LoadedArtifact:
+    """Load a role-neutral H5 or authenticated pool into the common frame API."""
+
+    resolved = _resolved_artifact_path(path)
+    if resolved.suffix.lower() == ".json":
+        artifact = _load_pool_manifest(
+            resolved,
+            expected_manifest_sha256=expected_manifest_sha256,
+        )
+    else:
+        if expected_manifest_sha256 is not None:
+            raise ValueError(
+                "--candidate-manifest-sha256 applies only to a pool manifest."
+            )
+        artifact = _load_h5(resolved)
+    _assert_rss_below_limit(f"after loading {artifact.identity['filename']}")
+    return artifact
+
+
+def compile_yardstick(
+    *,
+    ledger_facts: Path,
+    age_targets: bool,
+    allow_unaged_dollar_targets: bool,
+    congressional_district_vintage_crosswalk: Path,
+) -> FiscalYardstick:
+    """Compile the complete registry and loss vector exactly once."""
+
+    ledger_facts = ledger_facts.expanduser().resolve()
+    crosswalk = congressional_district_vintage_crosswalk.expanduser().resolve()
+    ledger = release.load_ledger_consumer_artifact(ledger_facts)
+    registry = release.compile_us_fiscal_target_registry(
+        ledger.facts,
+        target_period=release.PERIOD,
+        age_targets=age_targets,
+        allow_unaged_dollar_targets=allow_unaged_dollar_targets,
+        congressional_district_vintage_crosswalk=(
+            release.load_congressional_district_vintage_crosswalk(crosswalk)
+        ),
+    )
+    loss_weights = release._fiscal_target_loss_weights(registry)
+    loss_basis = release._fiscal_target_loss_basis(registry, loss_weights)
+    profile_gate = release.target_profile_coverage_gate(
+        registry.specs,
+        release.US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    )
+    identity = {
+        "country": registry.country,
+        "version": registry.version,
+        "target_count": len(registry.specs),
+        "ledger_facts": {
+            "filename": ledger_facts.name,
+            "sha256": _sha256(ledger_facts),
+            "size_bytes": ledger_facts.stat().st_size,
+        },
+        "congressional_district_vintage_crosswalk": {
+            "filename": crosswalk.name,
+            "sha256": _sha256(crosswalk),
+            "size_bytes": crosswalk.stat().st_size,
+        },
+        "target_period": release.PERIOD,
+        "age_targets": age_targets,
+        "allow_unaged_dollar_targets": allow_unaged_dollar_targets,
+        "target_profile_coverage": {
+            "passed": profile_gate.passed,
+            "failures": list(profile_gate.failures),
+        },
+        "environment": {
+            "microcosm_commit": release._git_output("rev-parse", "HEAD"),
+            "policyengine_us_version": release._package_or_workspace_version(
+                "policyengine-us"
+            ),
+        },
+    }
+    _assert_rss_below_limit("after compiling the fiscal yardstick")
+    return FiscalYardstick(
+        registry=registry,
+        loss_weights=loss_weights,
+        loss_basis=loss_basis,
+        identity=identity,
+    )
+
+
+def _crosswalk_metadata(yardstick: FiscalYardstick) -> dict[str, object]:
+    value = yardstick.identity["congressional_district_vintage_crosswalk"]
+    if not isinstance(value, Mapping):  # pragma: no cover - constructed above
+        raise TypeError("Yardstick crosswalk identity must be a mapping.")
+    return dict(value)
+
+
+def _validate_cd_provenance(
+    artifact: LoadedArtifact,
+    yardstick: FiscalYardstick,
+) -> dict[str, object]:
+    """Enforce the strict CD crosswalk provenance check, with one recorded
+    waiver for entity H5s that predate the provenance attributes entirely."""
+
+    if artifact.loader.get("kind") == "legacy_policyengine_flat_h5":
+        return {
+            "mode": "legacy_flat_surface_compatibility",
+            "strict_h5_attributes": False,
+            "reason": (
+                "read-only scoring of a legacy flat H5 layout that predates "
+                "Microcosm crosswalk provenance attributes and entity tables"
+            ),
+        }
+    provenance = release._read_cd_vintage_support_provenance(artifact.h5_path)
+    sha_attr = provenance.get(CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR)
+    if sha_attr:
+        release._assert_cd_vintage_support_matches(
+            artifact.h5_path,
+            _crosswalk_metadata(yardstick),
+            authenticated_pool_h5=artifact.authenticated_pool_h5,
+        )
+        return {
+            "mode": "strict_h5_provenance",
+            "strict_h5_attributes": True,
+        }
+    if artifact.authenticated_pool_h5 is not None:
+        raise ValueError(
+            f"Authenticated pool H5 {artifact.h5_path} carries no "
+            "congressional-district vintage provenance attributes; candidate "
+            "pools are provenance-strict with no legacy waiver."
+        )
+    lookup = provenance.get("household_congressional_district_geoid")
+    if (
+        not isinstance(lookup, Mapping)
+        or not lookup.get("exists")
+        or int(lookup.get("positive_unique_count") or 0) <= 0
+    ):
+        raise ValueError(
+            f"{artifact.h5_path} predates CD vintage provenance attributes AND "
+            "has no usable household congressional_district_geoid lookup "
+            f"column ({lookup!r}); it cannot stand on the current CD-bearing "
+            "target surface."
+        )
+    return {
+        "mode": "legacy_missing_cd_provenance_attrs",
+        "strict_h5_attributes": False,
+        "reason": (
+            "entity H5 predates the CD vintage crosswalk provenance "
+            "attributes; the household congressional_district_geoid lookup "
+            "surface was verified instead"
+        ),
+        "observed": {
+            CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: sha_attr,
+            CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: provenance.get(
+                CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR
+            ),
+            "household_congressional_district_geoid": dict(lookup),
+        },
+    }
+
+
+def _materialization_cache_context(
+    artifact: LoadedArtifact,
+    yardstick: FiscalYardstick,
+) -> dict[str, object]:
+    return {
+        "base_dataset_sha256": artifact.identity["sha256"],
+        "build_commit": release._git_output("rev-parse", "HEAD"),
+        "policyengine_us_version": release._package_or_workspace_version(
+            "policyengine-us"
+        ),
+        "seed": 0,
+        "target_period": release.PERIOD,
+        "target_registry_version": yardstick.registry.version,
+        # Scorer vectors declare no release materializer identity: the
+        # explicit None is identity-distinct from every release digest,
+        # so scorer and release vectors can never mix (PR #557).
+        "target_frame_materializer_identity_sha256": None,
+        "congressional_district_vintage_crosswalk_sha256": _crosswalk_metadata(
+            yardstick
+        )["sha256"],
+    }
+
+
+def _materialize_full_registry(
+    frame: Frame,
+    yardstick: FiscalYardstick,
+    *,
+    artifact: LoadedArtifact,
+    maximum_microsim_batch_size: int | None,
+    target_materialization_cache_dir: Path | None,
+):
+    return release._materialize_target_frame(
+        frame,
+        yardstick.registry.specs,
+        maximum_microsim_batch_size=maximum_microsim_batch_size,
+        target_materialization_cache_dir=target_materialization_cache_dir,
+        target_materialization_cache_context=(
+            _materialization_cache_context(artifact, yardstick)
+            if target_materialization_cache_dir is not None
+            else None
+        ),
+    )
+
+
+def _expected_target_keys(registry: TargetRegistry) -> tuple[tuple[str, object], ...]:
+    return tuple(spec.key for spec in registry.specs)
+
+
+def scored_column_contract(
+    target_frame: Frame,
+    expected_registry: TargetRegistry,
+    *,
+    artifact_name: str,
+) -> tuple[tuple[str, str, str], ...]:
+    """Return and validate every entity/column/role used by the yardstick."""
+
+    contract: set[tuple[str, str, str]] = set()
+    missing: list[str] = []
+    for spec in expected_registry.specs:
+        table = target_frame.table(spec.entity)
+        for role, column in (("measure", spec.measure), ("filter", spec.filter)):
+            if column is None:
+                continue
+            key = (spec.entity, str(column), role)
+            contract.add(key)
+            if column not in table.columns:
+                missing.append(
+                    f"{spec.name}@{spec.period}: {spec.entity}.{column} ({role})"
+                )
+    if missing:
+        raise ValueError(
+            f"{artifact_name} lacks scored column(s): " + "; ".join(missing[:20])
+        )
+    return tuple(sorted(contract))
+
+
+def _assert_nothing_dropped(
+    *,
+    artifact_name: str,
+    compilation: Mapping[str, object],
+) -> None:
+    dropped = tuple(compilation.get("dropped_target_names") or ())
+    if dropped:
+        raise ValueError(
+            f"{artifact_name} did not materialize the full fiscal registry; "
+            f"dropped {len(dropped)} target(s): {list(dropped[:20])}."
+        )
+
+
+def _assert_full_surface(
+    *,
+    artifact_name: str,
+    yardstick: FiscalYardstick,
+    materialized_registry: TargetRegistry,
+    result,
+) -> None:
+    expected = _expected_target_keys(yardstick.registry)
+    materialized = _expected_target_keys(materialized_registry)
+    if materialized != expected:
+        raise ValueError(
+            f"{artifact_name} materialized target contract differs from the "
+            f"yardstick: expected {len(expected)} ordered keys, got "
+            f"{len(materialized)}."
+        )
+    if result.skipped:
+        examples = [
+            f"{item.target.row_name}: {item.reason}" for item in result.skipped[:20]
+        ]
+        raise ValueError(
+            f"{artifact_name} skipped {len(result.skipped)} target(s) in the "
+            f"constraint matrix: {examples}."
+        )
+    problem_keys = tuple(target.key for target in result.problem.targets)
+    if problem_keys != expected:
+        raise ValueError(
+            f"{artifact_name} constraint-matrix target contract differs from "
+            "the full yardstick."
+        )
+    expected_names = tuple(spec.to_target().row_name for spec in yardstick.registry)
+    diagnostic_names = tuple(row.name for row in result.diagnostics)
+    if diagnostic_names != expected_names:
+        raise ValueError(
+            f"{artifact_name} diagnostic row contract differs from the full yardstick."
+        )
+
+
+def _fiscal_rows(
+    *,
+    yardstick: FiscalYardstick,
+    result,
+) -> list[dict[str, object]]:
+    attribution = assemble_target_loss_attribution(result)
+    rows: list[dict[str, object]] = []
+    for spec, diagnostic, loss_row in zip(
+        yardstick.registry.specs,
+        result.diagnostics,
+        attribution.rows,
+        strict=True,
+    ):
+        relative_error = float(diagnostic.relative_error)
+        rows.append(
+            {
+                "name": spec.name,
+                "period": spec.period,
+                "entity": spec.entity,
+                "family": spec.family,
+                "value_basis": release._fiscal_target_value_basis(spec),
+                "target": float(diagnostic.target),
+                "actual": float(diagnostic.final_estimate),
+                "relative_error": relative_error,
+                "absolute_relative_error": abs(relative_error),
+                "target_loss_weight": loss_row["target_loss_weight"],
+                "target_loss_weight_share": loss_row["target_loss_weight_share"],
+                "target_loss_scale": loss_row["target_loss_scale"],
+                "capped_scaled_absolute_error": loss_row["final_capped_scaled_error"],
+                "weighted_loss_contribution": loss_row["final_loss_contribution"],
+            }
+        )
+    contribution_sum = math.fsum(
+        float(row["weighted_loss_contribution"]) for row in rows
+    )
+    if not math.isclose(
+        contribution_sum,
+        float(result.final_loss),
+        rel_tol=1e-12,
+        abs_tol=1e-12,
+    ):
+        raise RuntimeError(
+            "Fiscal row contributions do not reproduce the aggregate loss."
+        )
+    return rows
+
+
+def _battery_label(target: tuple[str, str, str, int]) -> str:
+    entity, family, column, clone_index = target
+    return f"{entity}/{family}/{column}[clone_{clone_index}]"
+
+
+def _joint_battery_label(
+    target: tuple[str, str, tuple[str, ...], int],
+) -> str:
+    entity, family, columns, clone_index = target
+    return f"{entity}/{family}/joint[{','.join(columns)}][clone_{clone_index}]"
+
+
+def _metric_legs(metric: str) -> tuple[str, ...]:
+    if metric == "boolean_incidence":
+        return ("incidence_ratio_acs_over_asec",)
+    if metric == "monetary_sign_separated":
+        return (
+            "positive_incidence_ratio_acs_over_asec",
+            "positive_quantile_envelope_distance",
+            "negative_incidence_ratio_acs_over_asec",
+            "negative_quantile_envelope_distance",
+        )
+    if metric == "categorical_tvd":
+        return ("total_variation_distance",)
+    raise ValueError(f"Unknown canonical terminal-battery metric {metric!r}.")
+
+
+def _canonical_battery_contract() -> dict[str, dict[str, object]]:
+    contract: dict[str, dict[str, object]] = {}
+    for target, metric in sorted(CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY.items()):
+        contract[_battery_label(target)] = {
+            "metric": metric,
+            "metric_legs": list(_metric_legs(metric)),
+            "joint": False,
+        }
+    for target, metric in sorted(
+        CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY.items()
+    ):
+        contract[_joint_battery_label(target)] = {
+            "metric": metric,
+            "metric_legs": list(_metric_legs(metric)),
+            "joint": True,
+        }
+    return dict(sorted(contract.items()))
+
+
+def _battery_entities() -> tuple[str, ...]:
+    return tuple(
+        sorted(
+            {key[0] for key in CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY}
+            | {key[0] for key in CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY}
+        )
+    )
+
+
+def _observed_origin_receipt(frame: Frame) -> dict[str, object]:
+    """Count each battery entity's rows per support channel, from the frame."""
+
+    receipt: dict[str, object] = {}
+    entities_missing_columns: list[str] = []
+    total_acs_rows = 0
+    total_asec_rows = 0
+    for entity in _battery_entities():
+        table = frame.table(entity)
+        channel_column = support_channel_column(entity)
+        clone_column = support_clone_index_column(entity)
+        if channel_column not in table.columns or clone_column not in table.columns:
+            entities_missing_columns.append(entity)
+            receipt[entity] = {"provenance_columns_present": False}
+            continue
+        counts = {
+            str(channel): int(count)
+            for channel, count in table[channel_column]
+            .astype(str)
+            .value_counts()
+            .items()
+        }
+        asec_rows = counts.get(BASE_ASEC_SUPPORT_CHANNEL, 0)
+        acs_rows = counts.get(ACS_STACKED_SUPPORT_CHANNEL, 0)
+        receipt[entity] = {
+            "provenance_columns_present": True,
+            "origin_row_counts": dict(sorted(counts.items())),
+            "asec_rows": asec_rows,
+            "acs_rows": acs_rows,
+        }
+        total_asec_rows += asec_rows
+        total_acs_rows += acs_rows
+    return {
+        "entities": receipt,
+        "entities_missing_provenance_columns": entities_missing_columns,
+        "total_asec_rows": total_asec_rows,
+        "total_acs_rows": total_acs_rows,
+    }
+
+
+def _battery_payload_from_observed_origins(frame: Frame) -> dict[str, object]:
+    contract = _canonical_battery_contract()
+    observed = _observed_origin_receipt(frame)
+    if observed["entities_missing_provenance_columns"]:
+        reason = (
+            "artifact has no support-channel/clone-role provenance columns on "
+            f"{observed['entities_missing_provenance_columns']}; the by-origin "
+            "battery cannot scope its ASEC/ACS masks"
+        )
+    elif observed["total_acs_rows"] == 0:
+        reason = (
+            "artifact carries no ACS-stacked origin rows (observed channels "
+            "are listed in observed_origins); the ASEC-vs-ACS battery has an "
+            "empty ACS side and is definitionally inapplicable"
+        )
+    else:
+        reason = (
+            "both origins are present, but by-origin battery evidence for a "
+            "finished artifact is accepted only from an authenticated pool "
+            "manifest receipt; pass the pool manifest instead of the bare H5"
+        )
+    return {
+        "status": "inapplicable",
+        "by_origin_only": True,
+        "reason": reason,
+        "observed_origins": observed,
+        "comparison_count": len(contract),
+        "metric_leg_count": sum(len(row["metric_legs"]) for row in contract.values()),
+        "comparisons": {
+            label: {
+                **row,
+                "status": "inapplicable",
+                "reason": reason,
+            }
+            for label, row in contract.items()
+        },
+    }
+
+
+def _battery_payload_from_pool_receipt(
+    terminal_gates: Mapping[str, object],
+) -> dict[str, object]:
+    contract = _canonical_battery_contract()
+    gates = terminal_gates.get("gates")
+    if not isinstance(gates, Mapping):
+        raise ValueError("Authenticated pool terminal_gates has no gates object.")
+    battery = gates.get("us_by_origin_battery")
+    if not isinstance(battery, Mapping):
+        raise ValueError(
+            "Authenticated pool terminal receipt has no us_by_origin_battery gate."
+        )
+    details = battery.get("details")
+    comparisons = details.get("comparisons") if isinstance(details, Mapping) else None
+    if not isinstance(comparisons, Mapping):
+        raise ValueError(
+            "Authenticated pool by-origin battery has no comparisons receipt."
+        )
+    missing = sorted(set(contract) - set(comparisons))
+    extra = sorted(set(comparisons) - set(contract))
+    if missing or extra:
+        raise ValueError(
+            "Authenticated pool terminal battery does not exactly cover the "
+            f"canonical contract; missing={missing[:20]}, extra={extra[:20]}."
+        )
+    normalized: dict[str, object] = {}
+    for label, contract_row in contract.items():
+        receipt = comparisons[label]
+        if not isinstance(receipt, Mapping):
+            raise ValueError(f"Battery comparison {label!r} is not an object.")
+        if receipt.get("metric") != contract_row["metric"]:
+            raise ValueError(
+                f"Battery comparison {label!r} metric {receipt.get('metric')!r} "
+                f"does not match canonical {contract_row['metric']!r}."
+            )
+        normalized[label] = {
+            **contract_row,
+            **dict(receipt),
+        }
+    return {
+        "status": "authenticated_pool_receipt",
+        "by_origin_only": True,
+        "gate_passed": battery.get("passed"),
+        "failures": list(battery.get("failures") or ()),
+        "comparison_count": len(contract),
+        "metric_leg_count": sum(len(row["metric_legs"]) for row in contract.values()),
+        "comparisons": normalized,
+    }
+
+
+def _terminal_battery_payload(artifact: LoadedArtifact) -> dict[str, object]:
+    if artifact.terminal_gates is not None:
+        return _battery_payload_from_pool_receipt(artifact.terminal_gates)
+    return _battery_payload_from_observed_origins(artifact.frame)
+
+
+def score_loaded_artifact(
+    *,
+    artifact: LoadedArtifact,
+    artifact_name: str,
+    yardstick: FiscalYardstick,
+    maximum_microsim_batch_size: int | None,
+    target_materialization_cache_dir: Path | None,
+) -> tuple[dict[str, object], tuple[tuple[str, str, str], ...]]:
+    """Run the common scoring path for one already-normalized artifact."""
+
+    cd_provenance = _validate_cd_provenance(artifact, yardstick)
+    terminal_battery = _terminal_battery_payload(artifact)
+    base_frame, mass_repair = release._with_base_population_mass_repair(artifact.frame)
+    population_gate = release._base_population_scale_gate(
+        base_frame,
+        mass_repair=mass_repair,
+    )
+    health_gate = release._health_input_signal_gate(base_frame)
+    target_frame, materialized_registry, compilation = _materialize_full_registry(
+        base_frame,
+        yardstick,
+        artifact=artifact,
+        maximum_microsim_batch_size=maximum_microsim_batch_size,
+        target_materialization_cache_dir=target_materialization_cache_dir,
+    )
+    _assert_rss_below_limit(f"after materializing {artifact_name}")
+    _assert_nothing_dropped(artifact_name=artifact_name, compilation=compilation)
+    contract = scored_column_contract(
+        target_frame,
+        yardstick.registry,
+        artifact_name=artifact_name,
+    )
+    result = score_targets(
+        target_frame,
+        materialized_registry.to_target_set(),
+        target_loss_weights=yardstick.loss_weights,
+        target_loss_cap=release.US_FISCAL_TARGET_LOSS_CAP,
+        options={
+            "mass": "existing_weights",
+            "target_loss_weighting": release.US_FISCAL_TARGET_LOSS_WEIGHTING,
+            "maximum_microsim_batch_size": maximum_microsim_batch_size,
+        },
+    )
+    _assert_full_surface(
+        artifact_name=artifact_name,
+        yardstick=yardstick,
+        materialized_registry=materialized_registry,
+        result=result,
+    )
+    _assert_rss_below_limit(f"after scoring {artifact_name}")
+    rows = _fiscal_rows(yardstick=yardstick, result=result)
+    payload = {
+        "identity": dict(artifact.identity),
+        "loader": dict(artifact.loader),
+        "scored_column_contract": {
+            "sha256": _canonical_sha256(contract),
+            "column_count": len(contract),
+            "columns": [list(item) for item in contract],
+        },
+        "fiscal": {
+            "weighted_loss": float(result.final_loss),
+            "fraction_within_10pct": float(result.fraction_within_10pct),
+            "household_count": int(result.weights.shape[0]),
+            "nonzero_household_weight_count": int(result.n_nonzero),
+            "target_count": len(rows),
+            "targets": rows,
+        },
+        "terminal_battery": terminal_battery,
+        "normalization_receipts": {
+            "congressional_district_provenance": cd_provenance,
+            "base_population_mass_repair": dict(mass_repair),
+            "base_population_scale_gate": {
+                "passed": population_gate.passed,
+                "failures": list(population_gate.failures),
+                "details": dict(population_gate.details),
+            },
+            "health_input_signal_gate": {
+                "passed": health_gate.passed,
+                "failures": list(health_gate.failures),
+                "details": dict(health_gate.details),
+            },
+            "target_compilation": dict(compilation),
+        },
+    }
+    return payload, contract
+
+
+def _assert_identical_scored_contracts(
+    contracts: Mapping[str, tuple[tuple[str, str, str], ...]],
+) -> None:
+    items = list(contracts.items())
+    if len(items) < 2:
+        return
+    reference_name, reference = items[0]
+    for artifact_name, contract in items[1:]:
+        if contract != reference:
+            missing = sorted(set(reference) - set(contract))
+            extra = sorted(set(contract) - set(reference))
+            raise ValueError(
+                f"{artifact_name} scored-column contract differs from "
+                f"{reference_name}; missing={missing[:20]}, extra={extra[:20]}."
+            )
+
+
+def _battery_status_counts(battery: Mapping[str, object]) -> dict[str, int]:
+    comparisons = battery.get("comparisons")
+    if not isinstance(comparisons, Mapping):
+        return {}
+    counts: dict[str, int] = {}
+    for row in comparisons.values():
+        status = (
+            str(row.get("status") or "unknown")
+            if isinstance(row, Mapping)
+            else ("unknown")
+        )
+        counts[status] = counts.get(status, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _comparison_payload(
+    incumbent: Mapping[str, object],
+    candidate: Mapping[str, object],
+) -> dict[str, object]:
+    incumbent_fiscal = incumbent["fiscal"]
+    candidate_fiscal = candidate["fiscal"]
+    if not isinstance(incumbent_fiscal, Mapping) or not isinstance(
+        candidate_fiscal, Mapping
+    ):
+        raise TypeError("Artifact fiscal payloads must be mappings.")
+    incumbent_rows = incumbent_fiscal["targets"]
+    candidate_rows = candidate_fiscal["targets"]
+    if not isinstance(incumbent_rows, list) or not isinstance(candidate_rows, list):
+        raise TypeError("Artifact target payloads must be lists.")
+    if len(incumbent_rows) != len(candidate_rows):
+        raise ValueError("Fiscal target payload lengths differ after contract checks.")
+    target_comparisons: list[dict[str, object]] = []
+    candidate_lower = 0
+    equal = 0
+    incumbent_lower = 0
+    for incumbent_row, candidate_row in zip(
+        incumbent_rows,
+        candidate_rows,
+        strict=True,
+    ):
+        key = (incumbent_row["name"], incumbent_row["period"])
+        candidate_key = (candidate_row["name"], candidate_row["period"])
+        if candidate_key != key:
+            raise ValueError(
+                f"Target comparison contracts differ: {key!r} vs {candidate_key!r}."
+            )
+        incumbent_error = float(incumbent_row["absolute_relative_error"])
+        candidate_error = float(candidate_row["absolute_relative_error"])
+        if candidate_error < incumbent_error:
+            candidate_lower += 1
+            lower = "candidate"
+        elif candidate_error > incumbent_error:
+            incumbent_lower += 1
+            lower = "incumbent"
+        else:
+            equal += 1
+            lower = "equal"
+        target_comparisons.append(
+            {
+                "name": key[0],
+                "period": key[1],
+                "incumbent_absolute_relative_error": incumbent_error,
+                "candidate_absolute_relative_error": candidate_error,
+                "candidate_minus_incumbent_absolute_relative_error": (
+                    candidate_error - incumbent_error
+                ),
+                "lower_absolute_relative_error": lower,
+            }
+        )
+    incumbent_loss = float(incumbent_fiscal["weighted_loss"])
+    candidate_loss = float(candidate_fiscal["weighted_loss"])
+    incumbent_battery = incumbent["terminal_battery"]
+    candidate_battery = candidate["terminal_battery"]
+    if not isinstance(incumbent_battery, Mapping) or not isinstance(
+        candidate_battery, Mapping
+    ):
+        raise TypeError("Artifact terminal_battery payloads must be mappings.")
+    both_authenticated = (
+        incumbent_battery.get("status") == "authenticated_pool_receipt"
+        and candidate_battery.get("status") == "authenticated_pool_receipt"
+    )
+    return {
+        "decision": "owner_decides_flip",
+        "no_threshold_applied": True,
+        "fiscal_weighted_loss": {
+            "incumbent": incumbent_loss,
+            "candidate": candidate_loss,
+            "candidate_minus_incumbent": candidate_loss - incumbent_loss,
+        },
+        "per_target_absolute_relative_error": {
+            "candidate_lower_count": candidate_lower,
+            "equal_count": equal,
+            "incumbent_lower_count": incumbent_lower,
+            "targets": target_comparisons,
+        },
+        "terminal_battery": {
+            "head_to_head_comparable": both_authenticated,
+            "incumbent_status": incumbent_battery.get("status"),
+            "candidate_status": candidate_battery.get("status"),
+            "incumbent_status_counts": _battery_status_counts(incumbent_battery),
+            "candidate_status_counts": _battery_status_counts(candidate_battery),
+            "note": (
+                "each side's battery evidence is reported on its own terms; "
+                "no value is synthesized for a side whose battery is "
+                "inapplicable"
+            ),
+        },
+    }
+
+
+def score_head_to_head(
+    *,
+    incumbent: Path,
+    candidate: Path | None,
+    ledger_facts: Path,
+    age_targets: bool = False,
+    allow_unaged_dollar_targets: bool = True,
+    congressional_district_vintage_crosswalk: Path | None = None,
+    maximum_microsim_batch_size: int | None = (
+        release.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
+    ),
+    target_materialization_cache_dir: Path | None = None,
+    candidate_manifest_sha256: str | None = None,
+) -> dict[str, object]:
+    """Compile once, then score incumbent and optional candidate sequentially."""
+
+    crosswalk = congressional_district_vintage_crosswalk or (
+        release.default_congressional_district_vintage_crosswalk_path()
+    )
+    yardstick = compile_yardstick(
+        ledger_facts=ledger_facts,
+        age_targets=age_targets,
+        allow_unaged_dollar_targets=allow_unaged_dollar_targets,
+        congressional_district_vintage_crosswalk=crosswalk,
+    )
+    artifact_paths = [("incumbent", incumbent, None)]
+    if candidate is not None:
+        artifact_paths.append(("candidate", candidate, candidate_manifest_sha256))
+    artifacts: dict[str, dict[str, object]] = {}
+    contracts: dict[str, tuple[tuple[str, str, str], ...]] = {}
+    for name, path, expected_manifest_sha256 in artifact_paths:
+        loaded = load_artifact(
+            path,
+            expected_manifest_sha256=expected_manifest_sha256,
+        )
+        artifact_payload, contract = score_loaded_artifact(
+            artifact=loaded,
+            artifact_name=name,
+            yardstick=yardstick,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+            target_materialization_cache_dir=target_materialization_cache_dir,
+        )
+        artifacts[name] = artifact_payload
+        contracts[name] = contract
+        del loaded
+        gc.collect()
+        _assert_rss_below_limit(f"after releasing {name} scoring state")
+    _assert_identical_scored_contracts(contracts)
+    candidate_payload = artifacts.get("candidate")
+    comparison = (
+        _comparison_payload(artifacts["incumbent"], candidate_payload)
+        if candidate_payload is not None
+        else None
+    )
+    battery_contract = _canonical_battery_contract()
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "yardstick": {
+            "fiscal_registry": dict(yardstick.identity),
+            "fiscal_aggregate": {
+                "name": release.US_FISCAL_TARGET_LOSS_WEIGHTING,
+                "target_loss_cap": release.US_FISCAL_TARGET_LOSS_CAP,
+                "loss_basis": dict(yardstick.loss_basis),
+                "weighting_rule": (
+                    "raw weight = sqrt(max(abs(target value), 1)); "
+                    "mean-normalized within amount/count value basis; each "
+                    "semantic concept group's total weight is scaled to its "
+                    "largest row weight; the amount and count bases are then "
+                    "scaled to equal total budget; the vector is "
+                    "mean-normalized; the aggregate is the weighted mean of "
+                    "per-target |actual - target| / max(|target|, 1), each "
+                    "capped at 100%"
+                ),
+                "family_multipliers": None,
+                "code_citations": [
+                    _CODE_CITATIONS["loss_weighting"],
+                    _CODE_CITATIONS["loss_aggregate"],
+                    _CODE_CITATIONS["loss_attribution"],
+                ],
+            },
+            "relative_error": {
+                "rule": (
+                    "(actual - target) / target; when target is zero, the raw "
+                    "actual-minus-target delta"
+                ),
+                "code_citation": _CODE_CITATIONS["relative_error"],
+            },
+            "terminal_battery": {
+                "by_origin_only": True,
+                "single_column_comparison_count": len(
+                    CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
+                ),
+                "joint_comparison_count": len(
+                    CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY
+                ),
+                "comparison_count": len(battery_contract),
+                "metric_leg_count": sum(
+                    len(row["metric_legs"]) for row in battery_contract.values()
+                ),
+                "code_citations": [
+                    _CODE_CITATIONS["battery_registry"],
+                    _CODE_CITATIONS["battery_origin_masks"],
+                    _CODE_CITATIONS["battery_receipt_keys"],
+                    _CODE_CITATIONS["battery_channel_constants"],
+                    _CODE_CITATIONS["pool_battery_persistence"],
+                ],
+            },
+            "code_citations": dict(_CODE_CITATIONS),
+        },
+        "artifacts": {
+            "incumbent": artifacts["incumbent"],
+            "candidate": candidate_payload,
+        },
+        "comparison": comparison,
+    }
+
+
+def _markdown_number(value: object) -> str:
+    if value is None:
+        return "—"
+    number = float(value)
+    if number == 0:
+        return "0"
+    if abs(number) >= 1_000_000 or abs(number) < 0.0001:
+        return f"{number:.8e}"
+    return f"{number:.8f}".rstrip("0").rstrip(".")
+
+
+def _markdown_escape(value: object) -> str:
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def _family_basis_rollup(
+    rows: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    groups: dict[tuple[str, str], dict[str, object]] = {}
+    for row in rows:
+        key = (str(row["family"]), str(row["value_basis"]))
+        group = groups.setdefault(
+            key,
+            {
+                "family": key[0],
+                "value_basis": key[1],
+                "target_count": 0,
+                "weight_share": 0.0,
+                "loss_contribution": 0.0,
+                "worst_target": None,
+                "worst_contribution": -1.0,
+            },
+        )
+        group["target_count"] = int(group["target_count"]) + 1
+        group["weight_share"] = float(group["weight_share"]) + float(
+            row["target_loss_weight_share"]
+        )
+        contribution = float(row["weighted_loss_contribution"])
+        group["loss_contribution"] = float(group["loss_contribution"]) + contribution
+        if contribution > float(group["worst_contribution"]):
+            group["worst_contribution"] = contribution
+            group["worst_target"] = f"{row['name']}@{row['period']}"
+    rollup = list(groups.values())
+    for group in rollup:
+        share = float(group["weight_share"])
+        group["mean_capped_scaled_error"] = (
+            float(group["loss_contribution"]) / share if share > 0 else 0.0
+        )
+        del group["worst_contribution"]
+    rollup.sort(key=lambda group: -float(group["loss_contribution"]))
+    return rollup
+
+
+def _battery_markdown_section(
+    role: str,
+    battery: Mapping[str, object],
+) -> list[str]:
+    lines = [f"### {role}", ""]
+    status = str(battery.get("status") or "unknown")
+    counts = _battery_status_counts(battery)
+    counts_text = ", ".join(f"{name}: {count}" for name, count in counts.items())
+    if status == "inapplicable":
+        lines.append(
+            f"All {battery['comparison_count']} comparisons inapplicable — "
+            f"{battery['reason']}."
+        )
+        observed = battery.get("observed_origins")
+        if isinstance(observed, Mapping):
+            entities = observed.get("entities")
+            if isinstance(entities, Mapping):
+                for entity, receipt in sorted(entities.items()):
+                    if not isinstance(receipt, Mapping):
+                        continue
+                    if not receipt.get("provenance_columns_present"):
+                        lines.append(
+                            f"- `{entity}`: no support-channel/clone-role columns."
+                        )
+                        continue
+                    origin_counts = receipt.get("origin_row_counts")
+                    lines.append(
+                        f"- `{entity}` origin rows: "
+                        + ", ".join(
+                            f"{channel}={count:,}"
+                            for channel, count in sorted((origin_counts or {}).items())
+                        )
+                    )
+    else:
+        lines.append(
+            f"Authenticated pool receipt; gate passed: "
+            f"`{battery.get('gate_passed')}`. Status counts: {counts_text}."
+        )
+        failures = battery.get("failures")
+        if isinstance(failures, list) and failures:
+            lines.append("")
+            lines.append(f"{len(failures)} sealed failure line(s):")
+            lines.extend(f"- {_markdown_escape(line)}" for line in failures[:40])
+            if len(failures) > 40:
+                lines.append(f"- … {len(failures) - 40} more in the JSON twin.")
+    lines.append("")
+    return lines
+
+
+def render_markdown(payload: Mapping[str, object]) -> str:
+    """Render a deterministic head-to-head Markdown scorecard.
+
+    The complete per-target table (every registry row) lives in the JSON twin;
+    this scorecard renders the aggregate, family rollups, and the worst rows.
+    """
+
+    yardstick = payload["yardstick"]
+    artifacts = payload["artifacts"]
+    if not isinstance(yardstick, Mapping) or not isinstance(artifacts, Mapping):
+        raise TypeError("Scorecard payload has invalid yardstick/artifacts objects.")
+    incumbent = artifacts["incumbent"]
+    candidate = artifacts.get("candidate")
+    if not isinstance(incumbent, Mapping):
+        raise TypeError("Scorecard incumbent must be a mapping.")
+    roles: list[tuple[str, Mapping[str, object]]] = [("incumbent", incumbent)]
+    if isinstance(candidate, Mapping):
+        roles.append(("candidate", candidate))
+    registry = yardstick["fiscal_registry"]
+    aggregate = yardstick["fiscal_aggregate"]
+    battery_meta = yardstick["terminal_battery"]
+    lines = [
+        "# US release replacement scorecard",
+        "",
+        "This is evidence for the owner's flip decision, not an automatic "
+        "publication verdict. No gate, threshold, tolerance, or band is applied "
+        "by this scorecard. The complete per-target table is in the JSON twin "
+        "of this file.",
+        "",
+        "## Frozen yardstick",
+        "",
+        f"- Fiscal registry: `{registry['version']}` with "
+        f"{registry['target_count']:,} targets from Ledger facts "
+        f"`{registry['ledger_facts']['sha256']}`.",
+        f"- Weighted aggregate: `{aggregate['name']}` with cap "
+        f"`{aggregate['target_loss_cap']}` and no family multipliers.",
+        f"- Weighting rule: {aggregate['weighting_rule']}.",
+        f"- Terminal battery: {battery_meta['single_column_comparison_count']} "
+        f"single-column plus {battery_meta['joint_comparison_count']} joint "
+        "comparison(s); all are by-origin-only (ASEC vs ACS within one "
+        "artifact).",
+        "",
+        "## Artifact summary",
+        "",
+        "| role | artifact SHA-256 | loader | households | nonzero weights | "
+        "weighted loss | within 10% | terminal battery |",
+        "|---|---|---|---:|---:|---:|---:|---|",
+    ]
+    for role, artifact in roles:
+        fiscal = artifact["fiscal"]
+        battery = artifact["terminal_battery"]
+        lines.append(
+            f"| {role} | `{artifact['identity']['sha256']}` | "
+            f"{_markdown_escape(artifact['loader']['kind'])} | "
+            f"{fiscal['household_count']:,} | "
+            f"{fiscal['nonzero_household_weight_count']:,} | "
+            f"{_markdown_number(fiscal['weighted_loss'])} | "
+            f"{_markdown_number(fiscal['fraction_within_10pct'])} | "
+            f"{_markdown_escape(battery['status'])} |"
+        )
+    identity = incumbent["identity"]
+    if isinstance(identity, Mapping) and "policyengine_package_resolved" in identity:
+        resolved = identity["policyengine_package_resolved"]
+        lines.extend(
+            [
+                "",
+                "The incumbent SHA-256 matches the artifact policyengine.py "
+                f"`{resolved['policyengine_version']}` resolves as the US "
+                f"default dataset: `{resolved['repo_id']}` revision "
+                f"`{resolved['revision']}`, file `{resolved['filename']}` "
+                f"(build `{resolved['build_id']}`).",
+            ]
+        )
+    comparison = payload.get("comparison")
+    if isinstance(comparison, Mapping):
+        loss = comparison["fiscal_weighted_loss"]
+        counts = comparison["per_target_absolute_relative_error"]
+        lines.extend(
+            [
+                "",
+                "## Raw head-to-head comparison",
+                "",
+                f"Candidate minus incumbent weighted loss: "
+                f"**{_markdown_number(loss['candidate_minus_incumbent'])}** "
+                f"(incumbent {_markdown_number(loss['incumbent'])}, candidate "
+                f"{_markdown_number(loss['candidate'])}). A negative value is "
+                "a lower candidate loss; the owner decides whether the full "
+                "evidence warrants the flip.",
+                "",
+                f"Per-target absolute relative error is lower for the candidate "
+                f"on {counts['candidate_lower_count']:,} targets, equal on "
+                f"{counts['equal_count']:,}, and lower for the incumbent on "
+                f"{counts['incumbent_lower_count']:,}. No materiality threshold "
+                "is imposed.",
+            ]
+        )
+    for role, artifact in roles:
+        fiscal = artifact["fiscal"]
+        rows = fiscal["targets"]
+        if not isinstance(rows, list):
+            raise TypeError("Artifact fiscal targets must be a list.")
+        rollup = _family_basis_rollup(rows)
+        lines.extend(
+            [
+                "",
+                f"## {role}: loss by family and value basis",
+                "",
+                "| family | basis | targets | weight share | loss contribution | "
+                "weighted mean capped error | worst target |",
+                "|---|---|---:|---:|---:|---:|---|",
+            ]
+        )
+        for group in rollup:
+            lines.append(
+                f"| {_markdown_escape(group['family'])} | "
+                f"{_markdown_escape(group['value_basis'])} | "
+                f"{group['target_count']:,} | "
+                f"{_markdown_number(group['weight_share'])} | "
+                f"{_markdown_number(group['loss_contribution'])} | "
+                f"{_markdown_number(group['mean_capped_scaled_error'])} | "
+                f"{_markdown_escape(group['worst_target'])} |"
+            )
+        worst = sorted(
+            rows,
+            key=lambda row: -float(row["weighted_loss_contribution"]),
+        )[:MARKDOWN_WORST_TARGET_ROWS]
+        lines.extend(
+            [
+                "",
+                f"## {role}: worst {len(worst)} targets by loss contribution",
+                "",
+                "| target | period | family | target value | actual | "
+                "relative error | loss contribution |",
+                "|---|---:|---|---:|---:|---:|---:|",
+            ]
+        )
+        for row in worst:
+            lines.append(
+                f"| {_markdown_escape(row['name'])} | "
+                f"{_markdown_escape(row['period'])} | "
+                f"{_markdown_escape(row['family'])} | "
+                f"{_markdown_number(row['target'])} | "
+                f"{_markdown_number(row['actual'])} | "
+                f"{_markdown_number(row['relative_error'])} | "
+                f"{_markdown_number(row['weighted_loss_contribution'])} |"
+            )
+    lines.extend(
+        [
+            "",
+            "## Terminal by-origin battery",
+            "",
+        ]
+    )
+    for role, artifact in roles:
+        battery = artifact["terminal_battery"]
+        if not isinstance(battery, Mapping):
+            raise TypeError("Artifact terminal_battery must be a mapping.")
+        lines.extend(_battery_markdown_section(role, battery))
+    lines.extend(
+        [
+            "## Mechanism citations",
+            "",
+        ]
+    )
+    for name, citation in sorted(yardstick["code_citations"].items()):
+        lines.append(f"- `{name}`: `{citation}`")
+    return "\n".join(lines) + "\n"
+
+
+def write_scorecard(
+    payload: Mapping[str, object],
+    out_prefix: Path,
+) -> tuple[Path, Path]:
+    """Write deterministic JSON and Markdown bytes for one payload."""
+
+    prefix = out_prefix.expanduser().resolve()
+    prefix.parent.mkdir(parents=True, exist_ok=True)
+    json_path = prefix.with_suffix(".json")
+    markdown_path = prefix.with_suffix(".md")
+    json_text = (
+        json.dumps(
+            payload,
+            allow_nan=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    markdown_text = render_markdown(payload)
+    json_path.write_text(json_text)
+    markdown_path.write_text(markdown_text)
+    return json_path, markdown_path
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parse_args(argv)
+    payload = score_head_to_head(
+        incumbent=args.incumbent,
+        candidate=args.candidate,
+        ledger_facts=args.ledger_facts,
+        age_targets=args.age_targets,
+        allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
+        congressional_district_vintage_crosswalk=(
+            args.congressional_district_vintage_crosswalk
+        ),
+        maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+        target_materialization_cache_dir=args.target_materialization_cache_dir,
+        candidate_manifest_sha256=args.candidate_manifest_sha256,
+    )
+    json_path, markdown_path = write_scorecard(payload, args.out_prefix)
+    print(
+        json.dumps(
+            {
+                "json": str(json_path),
+                "markdown": str(markdown_path),
+                "incumbent_sha256": payload["artifacts"]["incumbent"]["identity"][
+                    "sha256"
+                ],
+                "candidate_scored": payload["artifacts"]["candidate"] is not None,
+                "peak_rss_gib": round(_peak_rss_bytes() / 1024**3, 3),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
