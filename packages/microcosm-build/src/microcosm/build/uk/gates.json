@@ -327,11 +327,11 @@
           "efrs-post-calibration": {
             "identity": {
               "filename": "enhanced_frs_2024_25.h5",
-              "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
-              "sha256": "97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e",
+              "revision": "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df",
+              "sha256": "e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712",
               "vintage": "2024_25"
             },
-            "totals_sha256": "e70a45387c6adc13df5d7eb7da3c2cada7972a2f293a9238c8c29c9e885e4659",
+            "totals_sha256": "fd41cb5f6cf6c4ef812320f21d1942173d49ce6f8725b21fbc9d9ca5423d298c",
             "scope_note": "Channel-blind post-calibration enhanced-FRS production incumbent, pinned to the 2024-25 line; its artifact carries the SPI-synthetic rows structurally but no admin-restored mass in the SPI-channel-exclusive columns, so those columns are comparable only through per-reference reviewed exclusions."
           }
         },
