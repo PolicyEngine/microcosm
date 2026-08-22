@@ -1,4 +1,36 @@
-# One-target-surface lane notes
+# Replacement-scorecard lane notes
+
+## 2026-08-22 — lane start and environment
+
+- Branch: `replacement-scorecard`, starting at `2aa96795` (post-#741
+  `origin/main`).
+- Owner ruling: publication evidence is a same-yardstick incumbent-versus-
+  candidate comparison. This lane builds that yardstick and scores only the
+  incumbent because the 25% bundle-mode candidate does not yet exist.
+- Standing constraints recorded: no pushes, no pool builds, no gate/threshold/
+  band tuning, green suite per commit, scoring below 20 GiB RSS, and a build
+  queue check before scoring.
+- Environment: the default-cache sync was denied by the managed sandbox, and a
+  task-local empty cache could not download through disabled DNS. The sibling
+  `microcosm-one-surface` checkout has the identical `uv.lock` (`895535...`)
+  and a complete environment. Its `.venv` was cloned copy-on-write, after
+  which a narrow writable cache of locked Hatch build requirements allowed
+  `uv sync --offline --all-packages --extra us` to rebuild and relink all five
+  Microcosm workspace packages to this worktree.
+- The GitNexus exploration workflow was selected for the requested execution-
+  path audit, but this session exposes no GitNexus resources or query tools.
+  Repository-wide `rg`, symbol inspection, and focused tests are the fallback.
+- The inherited one-target-surface notes below were accurate when written and
+  are historical after #741; they are not current replacement-lane state.
+- Journal-step validation: `uv run python -m pytest -q
+  packages/microcosm-build/tests/test_us_state_files_scorer.py` passed (5/5),
+  and `uv run ruff check .` passed. A complete workspace baseline is still
+  running; the direct `python -m pytest` form avoids the cloned environment's
+  stale console-script shebang.
+
+---
+
+# Historical: one-target-surface lane notes
 
 ## 2026-08-21 — baseline and doctrine
 

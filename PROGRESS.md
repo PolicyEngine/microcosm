@@ -1,65 +1,42 @@
-# Progress: one US target surface
+# Progress: replacement scorecard
 
 ## State
 
-Surface unification and scale-identity enforcement are complete on
-`one-target-surface`: every US entrypoint
-now compiles one national + state + congressional-district target registry,
-and the CLI/config switches that could delete CD or JCT target rows are gone.
-Parity doctrine now protects that family as a red-line compile. Sparse and dense
-artifacts may differ in record count, never target membership.
+The `replacement-scorecard` lane is active at `2aa96795`, based on the
+post-#741 `origin/main`. The task is to build one head-to-head scoring path for
+the live US incumbent and the not-yet-built 25% bundle-mode candidate, score
+the incumbent now, and leave the exact candidate command for the owner.
+
+The locked US-extra environment is synchronized. No pool build, scoring run,
+push, gate change, threshold change, or band change has occurred.
 
 ## Done
 
-- Read `CLAUDE.md`, the target-parity declaration, the fiscal compiler and its
-  never-controls doctrine, the current CD opt-in tests, and
-  [microcosm#449](https://github.com/PolicyEngine/microcosm/issues/449) /
-  [microcosm#569](https://github.com/PolicyEngine/microcosm/issues/569).
+- Read `CLAUDE.md` and the GitNexus exploration skill. GitNexus repository
+  resources are not exposed in this session, so the code-flow audit will use
+  direct source and call-site inspection.
 - Attempted the required `uv sync --all-packages --extra us`. The managed
-  sandbox denied writes to the default uv cache, then its network restriction
-  prevented a clean-cache download of `pyvis`. A byte-identical-lock sibling
-  environment was cloned copy-on-write; tests use that complete environment
-  with this worktree's package sources first on `PYTHONPATH` because an offline
-  editable reinstall still requires unavailable build-isolation metadata.
-- Attempted the GitNexus refactoring impact workflow. Local indexing completed,
-  but GitNexus could not register the index because the sandbox forbids writing
-  `~/.gitnexus/registry.json`; a direct source/call-site audit is the fallback.
-- Confirmed the starting worktree was clean and no build or push was run.
-- Ran the workspace suite for 1,137 seconds with no failure before interrupting
-  it inside the unrelated PUF-QRF stale-checkpoint subprocess regression; the
-  affected US target/compiler shard is the per-commit validation boundary, with
-  a complete workspace run reserved for the final tree. Ruff is green.
-- Established a green 10-file affected-suite baseline covering target
-  compilation, parity, the release builder/scorers, CD vintage translation,
-  Ledger profiles, and the generated calibration contract (100% in 349.59s).
-- Removed the congressional-district compilation option throughout the fiscal
-  compiler, builder, fiscal scorer, state-file scorer, ACS local tool, aging
-  diff, experiments, tests, docs, and generated contract. The canonical CD
-  crosswalk is now the default at each production entrypoint.
-- Removed the diagnostic JCT target-deletion option and its release-gate bypass;
-  diagnostic tools now score the same registry as releases.
-- Removed the parity generator's CD regime switch and regenerated the pinned
-  manifest to 32 compiled / 52 reviewed families. The generated calibration
-  contract declares all three geography layers and has no default-layer split.
-- The 10-file affected suite reaches 100% with exit 0 after the runtime change;
-  Ruff, byte compilation, and `git diff --check` pass.
-- Promoted the CD family into the parity anti-rot red-line set, pinned the
-  manifest's 32/52 header counts to parsed family counts, and asserted that its
-  compiled entry carries no exclusion fields or fence.
-- Strengthened the fiscal invariant: the CD aggregate is present in the
-  compiled registry while the taxable-interest rebase still refuses it as a
-  national control. The standard 10-file affected suite reaches 100% with exit
-  0 after the parity-doctrine change.
-- Removed the compiler's per-run support-exclusion parameter, the release CLI
-  and loader that populated it, its provenance branch, both experiment callers,
-  and the obsolete sparse Build-J exclusion JSON.
-- Added exact signature locks for the compiler, release builder, fiscal scorer,
-  and state scorer; legacy membership flags are parser-rejected.
-- Added a CD-bearing registry identity test across nominal 57,240-record sparse
-  and 337,704-record dense artifacts. Specs and content-addressed registry
-  version are identical. The standard affected suite reaches 100% with exit 0.
+  sandbox denied writes to the default uv cache and has no network/DNS. A
+  sibling Microcosm worktree at the identical commit and with the identical
+  `uv.lock` supplied a copy-on-write environment; a narrow writable cache of
+  the locked build requirements then allowed
+  `uv sync --offline --all-packages --extra us` to rebuild and relink all five
+  editable workspace packages to this worktree.
+- Confirmed the starting worktree was clean and the branch tracks
+  `origin/main` without any local changes.
+- Historicized the inherited one-target-surface root journal before recording
+  current state.
+- Established a green journal-step baseline: the scorer-signature suite
+  (`uv run python -m pytest -q
+  packages/microcosm-build/tests/test_us_state_files_scorer.py`) passes, and
+  `uv run ruff check .` passes. The complete workspace suite is continuing in
+  a separate read-only runner.
 
 ## Next
 
-- Quantify the target-row delta and existing 25% timing evidence, run final
-  verification, then write `FINAL_REPORT.md`.
+- Finish the complete workspace baseline (`uv run python -m pytest`).
+- Trace the fiscal scorers, compiled registry, artifact loaders, terminal
+  battery, and packaged PolicyEngine-US dataset identity.
+- Implement and test the common head-to-head scorer.
+- Check the build queue, score the incumbent, record the owner command and
+  comparison doctrine, run final verification, and update `FINAL_REPORT.md`.
