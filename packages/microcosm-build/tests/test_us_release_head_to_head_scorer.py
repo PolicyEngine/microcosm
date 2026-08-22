@@ -122,8 +122,8 @@ def _tiny_registry() -> TargetRegistry:
     )
 
 
-def _fixture_yardstick(module) -> object:
-    registry = _tiny_registry()
+def _fixture_yardstick(module, registry=None) -> object:
+    registry = registry if registry is not None else _tiny_registry()
     release = module.release
     loss_weights = release._fiscal_target_loss_weights(registry)
     loss_basis = release._fiscal_target_loss_basis(registry, loss_weights)
@@ -283,13 +283,13 @@ def test_scored_column_contract_refuses_silently_missing_columns() -> None:
     )
 
     contract = module.scored_column_contract(
-        complete, registry, artifact_name="incumbent"
+        complete, registry.specs, artifact_name="incumbent"
     )
 
     assert ("household", "m_income", "measure") in contract
     assert ("household", "n_flagged", "measure") in contract
     with pytest.raises(ValueError, match="lacks scored column"):
-        module.scored_column_contract(broken, registry, artifact_name="candidate")
+        module.scored_column_contract(broken, registry.specs, artifact_name="candidate")
     with pytest.raises(ValueError, match="differs from incumbent"):
         module._assert_identical_scored_contracts(
             {"incumbent": contract, "candidate": contract[:-1]}
@@ -395,6 +395,109 @@ def test_fixture_end_to_end_is_deterministic_and_shares_one_path(
     markdown = first[1].read_text()
     assert "US release replacement scorecard" in markdown
     assert "no ACS-stacked origin rows" in markdown
+
+
+def test_chunked_scoring_recombination_matches_one_shot(monkeypatch) -> None:
+    """Chunked materialize-and-score must reproduce a one-shot score_targets
+    + production attribution bitwise: same aggregate, same per-target rows."""
+
+    from microcosm.calibrate import score_targets
+    from microcosm.calibrate._target_loss_attribution import (
+        assemble_target_loss_attribution,
+    )
+
+    module = _load_head_to_head_module()
+    _patch_release_seams(module, monkeypatch)
+    monkeypatch.setattr(module, "MATERIALIZE_SCORE_CHUNK_SPECS", 2)
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name=name,
+                entity="household",
+                value=value,
+                measure=measure,
+                period=2024,
+                source="fixture",
+                family="fixture_family",
+                signed=value < 0,
+                metadata=(
+                    {"measure_mode": "indicator_sum"} if measure == "n_flagged" else {}
+                ),
+            )
+            for name, measure, value in (
+                ("five_income_a", "m_income", 5_000.0),
+                ("five_flagged_b", "n_flagged", 12.0),
+                ("five_income_c", "m_income", 7_100.0),
+                ("five_zero_d", "n_flagged", 0.0),
+                ("five_income_e", "m_income", -250.0),
+            )
+        ],
+        country="us",
+    )
+    yardstick = _fixture_yardstick(module, registry=registry)
+    frame = _tiny_frame(measure_values=(100.0, 300.0))
+    artifact = module.LoadedArtifact(
+        frame=frame,
+        identity={
+            "kind": "h5",
+            "filename": "five.h5",
+            "sha256": "d" * 64,
+            "size_bytes": 5,
+        },
+        loader={"kind": "microcosm_entity_h5", "weight_kind": "calibrated"},
+        h5_path=Path("/nonexistent/five.h5"),
+    )
+
+    payload, _ = module.score_loaded_artifact(
+        artifact=artifact,
+        artifact_name="incumbent",
+        yardstick=yardstick,
+        maximum_microsim_batch_size=None,
+        target_materialization_cache_dir=None,
+    )
+
+    one_shot = score_targets(
+        frame,
+        registry.to_target_set(),
+        target_loss_weights=yardstick.loss_weights,
+        target_loss_cap=module.release.US_FISCAL_TARGET_LOSS_CAP,
+    )
+    attribution = assemble_target_loss_attribution(one_shot)
+
+    chunking = payload["normalization_receipts"]["materialize_score_chunking"]
+    assert chunking["chunk_count"] == 3
+    assert [chunk["spec_range"] for chunk in chunking["chunks"]] == [
+        [0, 2],
+        [2, 4],
+        [4, 5],
+    ]
+    assert payload["fiscal"]["weighted_loss"] == float(one_shot.final_loss)
+    assert payload["fiscal"]["fraction_within_10pct"] == one_shot.fraction_within_10pct
+    rows = payload["fiscal"]["targets"]
+    assert len(rows) == 5
+    for row, diagnostic, attribution_row in zip(
+        rows,
+        one_shot.diagnostics,
+        attribution.rows,
+        strict=True,
+    ):
+        assert row["actual"] == float(diagnostic.final_estimate)
+        assert row["target"] == float(diagnostic.target)
+        assert row["relative_error"] == float(diagnostic.relative_error)
+        assert row["target_loss_weight"] == attribution_row["target_loss_weight"]
+        assert (
+            row["target_loss_weight_share"]
+            == attribution_row["target_loss_weight_share"]
+        )
+        assert row["target_loss_scale"] == attribution_row["target_loss_scale"]
+        assert (
+            row["capped_scaled_absolute_error"]
+            == attribution_row["final_capped_scaled_error"]
+        )
+        assert (
+            row["weighted_loss_contribution"]
+            == attribution_row["final_loss_contribution"]
+        )
 
 
 def test_dropped_targets_fail_loudly_before_scoring(monkeypatch) -> None:

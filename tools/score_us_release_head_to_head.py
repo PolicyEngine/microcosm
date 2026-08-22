@@ -17,6 +17,19 @@ through the same population repair, target materialization, constraint
 matrix, scoring, loss attribution, contract checks, and rendering path.
 Scoring is sequential and refuses a process peak at or above 20 GiB RSS.
 
+The production materializer writes one full-length household column per
+registry spec (32,842 distinct measures on the post-#741 surface), so a
+whole-registry materialization of even a 57k-household artifact peaks near
+2 x n_specs x n_households x 8 bytes — ~29 GiB observed. Both sides are
+therefore materialized and scored in fixed contiguous registry chunks
+through the identical canonical calls, and the per-target results are
+recombined with the exact canonical aggregate: per-target rows are
+row-independent (matrix rows and estimates never see other chunks), and
+the aggregate is one `relative_error_loss` evaluation over the full
+combined vectors — the single canonical loss definition every measurement
+imports (packages/microcosm-calibrate/src/microcosm/calibrate/
+solve.py:471-537).
+
 No gate, threshold, tolerance, or band is applied to the comparison: the
 output is evidence for the owner's flip decision, not a verdict.
 """
@@ -30,6 +43,7 @@ import json
 import math
 import resource
 import sys
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -60,14 +74,19 @@ from microcosm.build.us_runtime.support_provenance import (
     support_clone_index_column,
 )
 from microcosm.calibrate import TargetRegistry, score_targets
-from microcosm.calibrate._target_loss_attribution import (
-    assemble_target_loss_attribution,
-)
+from microcosm.calibrate.solve import relative_error_loss
 from microcosm.frame import US_SCHEMA, Frame
 
 SCHEMA_VERSION = 2
 MAX_RSS_BYTES = 20 * 1024**3
 MARKDOWN_WORST_TARGET_ROWS = 50
+# Registry chunk size for materialize-and-score. The materializer emits one
+# float64 household column per spec, so a chunk transiently costs about
+# 2 x chunk x n_households x 8 bytes of column payload on top of the live
+# microsimulation; 4,096 specs keeps a 57k-household artifact's peak well
+# under the 20 GiB scoring budget. Chunk boundaries are fixed and
+# content-independent, so output bytes are deterministic.
+MATERIALIZE_SCORE_CHUNK_SPECS = 4_096
 
 # The package resolver authority for the live US incumbent, read from
 # policyengine.py 5.0.3 (PyPI latest, tagged 2026-08-21) this lane session:
@@ -117,11 +136,25 @@ _CODE_CITATIONS = {
         "tools/build_us_fiscal_refresh_release.py:344-348,5781-5814,6214-6290"
     ),
     "loss_aggregate": (
-        "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:473-518"
+        "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:471-537 "
+        "(relative_error_loss, the single canonical loss definition)"
+    ),
+    "fraction_within_10pct": (
+        "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:249-260"
     ),
     "loss_attribution": (
         "packages/microcosm-calibrate/src/microcosm/calibrate/"
-        "_target_loss_attribution.py:103-212"
+        "_target_loss_attribution.py:143-176 (per-row capped error, weight "
+        "share, and contribution formulas, applied with whole-registry "
+        "weight normalization)"
+    ),
+    "chunked_materialize_score": (
+        "tools/score_us_release_head_to_head.py MATERIALIZE_SCORE_CHUNK_SPECS; "
+        "per-target rows are row-independent "
+        "(packages/microcosm-calibrate/src/microcosm/calibrate/"
+        "matrix.py:286-355 compiles one row per target; score.py:79-142 "
+        "evaluates estimates per row), and the aggregate is one "
+        "relative_error_loss call over the full combined vectors"
     ),
     "relative_error": (
         "packages/microcosm-calibrate/src/microcosm/calibrate/score.py:25-51"
@@ -266,6 +299,14 @@ def _peak_rss_bytes() -> int:
 
 def _assert_rss_below_limit(boundary: str) -> None:
     observed = _peak_rss_bytes()
+    # Operational receipt on stderr only; JSON/Markdown outputs stay
+    # byte-deterministic.
+    print(
+        f"[h2h {time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}] "
+        f"{boundary}: peak_rss={observed / 1024**3:.2f} GiB",
+        file=sys.stderr,
+        flush=True,
+    )
     if observed >= MAX_RSS_BYTES:
         raise MemoryError(
             f"{boundary}: peak RSS {observed / 1024**3:.3f} GiB reached the "
@@ -592,8 +633,9 @@ def _materialization_cache_context(
     }
 
 
-def _materialize_full_registry(
+def _materialize_chunk(
     frame: Frame,
+    chunk_specs: Sequence,
     yardstick: FiscalYardstick,
     *,
     artifact: LoadedArtifact,
@@ -602,7 +644,7 @@ def _materialize_full_registry(
 ):
     return release._materialize_target_frame(
         frame,
-        yardstick.registry.specs,
+        chunk_specs,
         maximum_microsim_batch_size=maximum_microsim_batch_size,
         target_materialization_cache_dir=target_materialization_cache_dir,
         target_materialization_cache_context=(
@@ -613,21 +655,21 @@ def _materialize_full_registry(
     )
 
 
-def _expected_target_keys(registry: TargetRegistry) -> tuple[tuple[str, object], ...]:
-    return tuple(spec.key for spec in registry.specs)
+def _spec_keys(specs: Sequence) -> tuple[tuple[str, object], ...]:
+    return tuple(spec.key for spec in specs)
 
 
 def scored_column_contract(
     target_frame: Frame,
-    expected_registry: TargetRegistry,
+    specs: Sequence,
     *,
     artifact_name: str,
 ) -> tuple[tuple[str, str, str], ...]:
-    """Return and validate every entity/column/role used by the yardstick."""
+    """Return and validate every entity/column/role used by the given specs."""
 
     contract: set[tuple[str, str, str]] = set()
     missing: list[str] = []
-    for spec in expected_registry.specs:
+    for spec in specs:
         table = target_frame.table(spec.entity)
         for role, column in (("measure", spec.measure), ("filter", spec.filter)):
             if column is None:
@@ -658,57 +700,93 @@ def _assert_nothing_dropped(
         )
 
 
-def _assert_full_surface(
+def _assert_full_chunk_surface(
     *,
     artifact_name: str,
-    yardstick: FiscalYardstick,
+    chunk_label: str,
+    chunk_specs: Sequence,
     materialized_registry: TargetRegistry,
     result,
 ) -> None:
-    expected = _expected_target_keys(yardstick.registry)
-    materialized = _expected_target_keys(materialized_registry)
+    expected = _spec_keys(chunk_specs)
+    materialized = _spec_keys(materialized_registry.specs)
     if materialized != expected:
         raise ValueError(
-            f"{artifact_name} materialized target contract differs from the "
-            f"yardstick: expected {len(expected)} ordered keys, got "
-            f"{len(materialized)}."
+            f"{artifact_name} {chunk_label} materialized target contract "
+            f"differs from the yardstick: expected {len(expected)} ordered "
+            f"keys, got {len(materialized)}."
         )
     if result.skipped:
         examples = [
             f"{item.target.row_name}: {item.reason}" for item in result.skipped[:20]
         ]
         raise ValueError(
-            f"{artifact_name} skipped {len(result.skipped)} target(s) in the "
-            f"constraint matrix: {examples}."
+            f"{artifact_name} {chunk_label} skipped {len(result.skipped)} "
+            f"target(s) in the constraint matrix: {examples}."
         )
     problem_keys = tuple(target.key for target in result.problem.targets)
     if problem_keys != expected:
         raise ValueError(
-            f"{artifact_name} constraint-matrix target contract differs from "
-            "the full yardstick."
+            f"{artifact_name} {chunk_label} constraint-matrix target contract "
+            "differs from the yardstick."
         )
-    expected_names = tuple(spec.to_target().row_name for spec in yardstick.registry)
+    expected_names = tuple(spec.to_target().row_name for spec in chunk_specs)
     diagnostic_names = tuple(row.name for row in result.diagnostics)
     if diagnostic_names != expected_names:
         raise ValueError(
-            f"{artifact_name} diagnostic row contract differs from the full yardstick."
+            f"{artifact_name} {chunk_label} diagnostic row contract differs "
+            "from the yardstick."
         )
 
 
-def _fiscal_rows(
+def _fiscal_rows_and_aggregate(
     *,
     yardstick: FiscalYardstick,
-    result,
-) -> list[dict[str, object]]:
-    attribution = assemble_target_loss_attribution(result)
-    rows: list[dict[str, object]] = []
-    for spec, diagnostic, loss_row in zip(
-        yardstick.registry.specs,
-        result.diagnostics,
-        attribution.rows,
-        strict=True,
+    estimates: np.ndarray,
+    targets: np.ndarray,
+    scales: np.ndarray,
+) -> tuple[list[dict[str, object]], dict[str, float]]:
+    """Build per-target rows and THE canonical aggregate over the full surface.
+
+    Per-target quantities reproduce the production attribution row formulas
+    (_target_loss_attribution.py:143-176) with whole-registry weight
+    normalization; the aggregate is one relative_error_loss evaluation — the
+    same call a one-shot score_targets would make on identical vectors.
+    """
+
+    specs = yardstick.registry.specs
+    weights = np.asarray(yardstick.loss_weights, dtype=np.float64)
+    cap = float(release.US_FISCAL_TARGET_LOSS_CAP)
+    if not (
+        len(specs)
+        == estimates.shape[0]
+        == targets.shape[0]
+        == scales.shape[0]
+        == weights.shape[0]
     ):
-        relative_error = float(diagnostic.relative_error)
+        raise RuntimeError("Combined scoring vectors do not align with the registry.")
+    aggregate_loss = relative_error_loss(
+        estimates,
+        targets,
+        target_loss_weights=weights,
+        target_loss_scales=scales,
+        target_loss_cap=cap,
+    )
+    total_weight = float(weights.sum())
+    within = 0
+    rows: list[dict[str, object]] = []
+    for index, spec in enumerate(specs):
+        target = float(targets[index])
+        estimate = float(estimates[index])
+        relative_error = (
+            (estimate - target) / target if target != 0.0 else estimate - target
+        )
+        if abs(relative_error) <= 0.10:
+            within += 1
+        scale = float(scales[index])
+        weight = float(weights[index])
+        weight_share = weight / total_weight
+        capped_error = min(abs(estimate - target) / scale, cap)
         rows.append(
             {
                 "name": spec.name,
@@ -716,15 +794,15 @@ def _fiscal_rows(
                 "entity": spec.entity,
                 "family": spec.family,
                 "value_basis": release._fiscal_target_value_basis(spec),
-                "target": float(diagnostic.target),
-                "actual": float(diagnostic.final_estimate),
-                "relative_error": relative_error,
-                "absolute_relative_error": abs(relative_error),
-                "target_loss_weight": loss_row["target_loss_weight"],
-                "target_loss_weight_share": loss_row["target_loss_weight_share"],
-                "target_loss_scale": loss_row["target_loss_scale"],
-                "capped_scaled_absolute_error": loss_row["final_capped_scaled_error"],
-                "weighted_loss_contribution": loss_row["final_loss_contribution"],
+                "target": target,
+                "actual": estimate,
+                "relative_error": float(relative_error),
+                "absolute_relative_error": abs(float(relative_error)),
+                "target_loss_weight": weight,
+                "target_loss_weight_share": weight_share,
+                "target_loss_scale": scale,
+                "capped_scaled_absolute_error": capped_error,
+                "weighted_loss_contribution": weight_share * capped_error,
             }
         )
     contribution_sum = math.fsum(
@@ -732,14 +810,17 @@ def _fiscal_rows(
     )
     if not math.isclose(
         contribution_sum,
-        float(result.final_loss),
+        float(aggregate_loss),
         rel_tol=1e-12,
         abs_tol=1e-12,
     ):
         raise RuntimeError(
             "Fiscal row contributions do not reproduce the aggregate loss."
         )
-    return rows
+    return rows, {
+        "weighted_loss": float(aggregate_loss),
+        "fraction_within_10pct": within / len(specs),
+    }
 
 
 def _battery_label(target: tuple[str, str, str, int]) -> str:
@@ -950,39 +1031,107 @@ def score_loaded_artifact(
         mass_repair=mass_repair,
     )
     health_gate = release._health_input_signal_gate(base_frame)
-    target_frame, materialized_registry, compilation = _materialize_full_registry(
-        base_frame,
-        yardstick,
-        artifact=artifact,
-        maximum_microsim_batch_size=maximum_microsim_batch_size,
-        target_materialization_cache_dir=target_materialization_cache_dir,
-    )
-    _assert_rss_below_limit(f"after materializing {artifact_name}")
-    _assert_nothing_dropped(artifact_name=artifact_name, compilation=compilation)
-    contract = scored_column_contract(
-        target_frame,
-        yardstick.registry,
-        artifact_name=artifact_name,
-    )
-    result = score_targets(
-        target_frame,
-        materialized_registry.to_target_set(),
-        target_loss_weights=yardstick.loss_weights,
-        target_loss_cap=release.US_FISCAL_TARGET_LOSS_CAP,
-        options={
-            "mass": "existing_weights",
-            "target_loss_weighting": release.US_FISCAL_TARGET_LOSS_WEIGHTING,
-            "maximum_microsim_batch_size": maximum_microsim_batch_size,
-        },
-    )
-    _assert_full_surface(
-        artifact_name=artifact_name,
+    specs = yardstick.registry.specs
+    chunk_size = MATERIALIZE_SCORE_CHUNK_SPECS
+    chunk_count = max(1, math.ceil(len(specs) / chunk_size))
+    contract_parts: set[tuple[str, str, str]] = set()
+    estimate_parts: list[np.ndarray] = []
+    target_parts: list[np.ndarray] = []
+    scale_parts: list[np.ndarray] = []
+    diagnostic_names: list[str] = []
+    chunk_receipts: list[dict[str, object]] = []
+    household_count: int | None = None
+    nonzero_count: int | None = None
+    reference_weights: np.ndarray | None = None
+    for chunk_index in range(chunk_count):
+        start = chunk_index * chunk_size
+        chunk_specs = specs[start : start + chunk_size]
+        chunk_label = f"chunk {chunk_index + 1}/{chunk_count}"
+        target_frame, materialized_registry, compilation = _materialize_chunk(
+            base_frame,
+            chunk_specs,
+            yardstick,
+            artifact=artifact,
+            maximum_microsim_batch_size=maximum_microsim_batch_size,
+            target_materialization_cache_dir=target_materialization_cache_dir,
+        )
+        _assert_nothing_dropped(
+            artifact_name=f"{artifact_name} {chunk_label}",
+            compilation=compilation,
+        )
+        contract_parts.update(
+            scored_column_contract(
+                target_frame,
+                chunk_specs,
+                artifact_name=artifact_name,
+            )
+        )
+        result = score_targets(
+            target_frame,
+            materialized_registry.to_target_set(),
+            target_loss_weights=yardstick.loss_weights[start : start + chunk_size],
+            target_loss_cap=release.US_FISCAL_TARGET_LOSS_CAP,
+            options={
+                "mass": "existing_weights",
+                "target_loss_weighting": release.US_FISCAL_TARGET_LOSS_WEIGHTING,
+                "maximum_microsim_batch_size": maximum_microsim_batch_size,
+            },
+        )
+        _assert_full_chunk_surface(
+            artifact_name=artifact_name,
+            chunk_label=chunk_label,
+            chunk_specs=chunk_specs,
+            materialized_registry=materialized_registry,
+            result=result,
+        )
+        if reference_weights is None:
+            reference_weights = np.asarray(result.weights, dtype=np.float64)
+            household_count = int(result.weights.shape[0])
+            nonzero_count = int(result.n_nonzero)
+        elif not np.array_equal(
+            reference_weights, np.asarray(result.weights, dtype=np.float64)
+        ):
+            raise RuntimeError(
+                f"{artifact_name} {chunk_label} scored a different household "
+                "weight vector than the first chunk."
+            )
+        estimate_parts.append(
+            np.asarray(
+                [row.final_estimate for row in result.diagnostics],
+                dtype=np.float64,
+            )
+        )
+        target_parts.append(
+            np.asarray(
+                [row.target for row in result.diagnostics],
+                dtype=np.float64,
+            )
+        )
+        scale_parts.append(np.asarray(result.target_loss_scales, dtype=np.float64))
+        diagnostic_names.extend(row.name for row in result.diagnostics)
+        chunk_receipts.append(
+            {
+                "chunk_index": chunk_index,
+                "spec_range": [start, start + len(chunk_specs)],
+                "target_compilation": dict(compilation),
+            }
+        )
+        del target_frame, materialized_registry, result
+        gc.collect()
+        _assert_rss_below_limit(f"after scoring {artifact_name} {chunk_label}")
+    expected_names = [spec.to_target().row_name for spec in specs]
+    if diagnostic_names != expected_names:
+        raise RuntimeError(
+            f"{artifact_name} combined diagnostic rows do not reproduce the "
+            "full ordered registry surface."
+        )
+    contract = tuple(sorted(contract_parts))
+    rows, aggregate = _fiscal_rows_and_aggregate(
         yardstick=yardstick,
-        materialized_registry=materialized_registry,
-        result=result,
+        estimates=np.concatenate(estimate_parts),
+        targets=np.concatenate(target_parts),
+        scales=np.concatenate(scale_parts),
     )
-    _assert_rss_below_limit(f"after scoring {artifact_name}")
-    rows = _fiscal_rows(yardstick=yardstick, result=result)
     payload = {
         "identity": dict(artifact.identity),
         "loader": dict(artifact.loader),
@@ -992,10 +1141,10 @@ def score_loaded_artifact(
             "columns": [list(item) for item in contract],
         },
         "fiscal": {
-            "weighted_loss": float(result.final_loss),
-            "fraction_within_10pct": float(result.fraction_within_10pct),
-            "household_count": int(result.weights.shape[0]),
-            "nonzero_household_weight_count": int(result.n_nonzero),
+            "weighted_loss": aggregate["weighted_loss"],
+            "fraction_within_10pct": aggregate["fraction_within_10pct"],
+            "household_count": household_count,
+            "nonzero_household_weight_count": nonzero_count,
             "target_count": len(rows),
             "targets": rows,
         },
@@ -1013,7 +1162,23 @@ def score_loaded_artifact(
                 "failures": list(health_gate.failures),
                 "details": dict(health_gate.details),
             },
-            "target_compilation": dict(compilation),
+            "materialize_score_chunking": {
+                "chunk_size_specs": chunk_size,
+                "chunk_count": chunk_count,
+                "reason": (
+                    "the materializer emits one household column per spec, so "
+                    "a whole-registry pass would peak near 2 x n_specs x "
+                    "n_households x 8 bytes; chunks keep the identical "
+                    "canonical calls under the 20 GiB scoring budget"
+                ),
+                "recombination": (
+                    "per-target rows are row-independent; the aggregate is "
+                    "one relative_error_loss call over the full combined "
+                    "vectors"
+                ),
+                "code_citation": _CODE_CITATIONS["chunked_materialize_score"],
+                "chunks": chunk_receipts,
+            },
         },
     }
     return payload, contract
