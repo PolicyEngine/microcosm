@@ -28,6 +28,57 @@
   running; the direct `python -m pytest` form avoids the cloned environment's
   stale console-script shebang.
 
+## 2026-08-22 — yardstick audit
+
+- One compiler surface: `compile_us_fiscal_target_registry` has no
+  artifact-membership switch
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/fiscal_targets.py:933-1017`),
+  and the existing fiscal scorer's only divergent branch is loading before the
+  common repair/materialize/score sequence
+  (`tools/score_us_fiscal_targets.py:432-489`).
+- Full-surface rule: the head-to-head must reject either
+  `target_compilation.dropped_target_names` or `CalibrationResult.skipped`;
+  both lower layers otherwise report and continue past an unmaterialized or
+  uncompileable row
+  (`tools/build_us_fiscal_refresh_release.py:4323-4347`;
+  `packages/microcosm-calibrate/src/microcosm/calibrate/matrix.py:286-355`).
+- Aggregate rule: use the production
+  `sqrt_value_concept_budget_weighted_mape_50_50_amount_count_target_scale_cap_100pct`
+  constants, with no family multipliers. Target-scale square roots are
+  normalized within amount/count basis, semantic concept groups receive one
+  concept budget, and present bases receive equal total budgets
+  (`tools/build_us_fiscal_refresh_release.py:344-348,5781-5814,6214-6290`).
+  The aggregate is the weighted mean of capped target-scaled absolute errors
+  (`packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:473-518`).
+- Incumbent identity: PolicyEngine.py 4.15.0's bundled manifest names data
+  package 1.115.5, HF model repo `policyengine/policyengine-us-data`, immutable
+  resolver revision `9531fe1d096244fe7eb45d791d52ef61b8a2a0a5`, filename
+  `enhanced_cps_2024.h5`, and SHA-256
+  `0a6b961ad363a421bde99f2c8e5d8f20370bcba45fd303050537a25bdd805b14`
+  (`policyengine/data/release_manifests/us.json@4.15.0:12-27,37-42`).
+  Microcosm's frozen parity reference pins revision `21280dca...` for the same
+  hash (`packages/microcosm-build/src/microcosm/build/us/ecps_parity_reference.json:7-14`).
+  Both cache-resolved files independently hash to `0a6b961a...`; the scorecard
+  will retain both identities and call the former the package-resolved one.
+- Terminal-battery scope: all 131 marginal comparisons and the joint
+  immigration comparison are by-origin-only. Each needs support-channel and
+  clone-role columns to build separate ASEC and ACS masks
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11366-11378,11523-11533,11577-11580,11679-11739`).
+  The incumbent has neither field, so every battery comparison is
+  **inapplicable**, not failed or zero. A finished pool publishes an input-only
+  H5 while sealing terminal results into its manifest and diagnostics
+  (`tools/build_us_multispine_pool.py:3263-3334,3533-3550,3766-3786`); the
+  manifest loader validates the H5, diagnostics, digests, run identity, and
+  passing terminal alias before returning the frame
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:348-430,672-811`).
+- Yardstick facts: the v9.4 feed at
+  `/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildn_v9_4.jsonl`
+  has SHA-256 `b3c0835631a446eb96aa84d86f3ee962d15ca356174c7114db52974f1cacc080`.
+  A read-only compile with the packaged current-vintage CD crosswalk, target
+  period 2024, no aging, and the standing scoring period waiver produced
+  32,842 specs at registry version `c4ac617743f2`. No artifact was built or
+  scored during this compile.
+
 ---
 
 # Historical: one-target-surface lane notes
