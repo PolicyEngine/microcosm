@@ -53,6 +53,49 @@ NON_ENGINE_CONSUMER_ALLOWLIST: dict[str, _ReviewedNonEngineConsumer] = {
             "Consumed by QBI reconciliation and the qualified-BDC exposure invariant."
         ),
     },
+    # Work-experience person attributes (PolicyEngine/microcosm#719): the
+    # committed county-file person schema carries a working indicator,
+    # industry, and occupation on every record for the Living Wage Institute's
+    # downstream OEWS x QCEW machinery. PolicyEngine-US carries them as input
+    # leaves without a formula consumer, exactly like detailed_occupation_recode
+    # before the FLSA flags existed; the stage's signal gate validates the
+    # recode-universe identity and plausibility bands.
+    "detailed_industry_recode": {
+        "consumer_class": NonEngineConsumerClass.CLIENT_SURFACE,
+        "consumer": (
+            "microcosm.build.us_runtime.work_experience_inputs."
+            "us_work_experience_signal_gate"
+        ),
+        "justification": (
+            "Longest-job industry (ASEC WEIND) shipped on every person record "
+            "for the Living Wage Institute county files (microcosm#719); gated "
+            "for the WKSWORK > 0 universe identity and nonzero-recode share."
+        ),
+    },
+    "major_industry_recode": {
+        "consumer_class": NonEngineConsumerClass.CLIENT_SURFACE,
+        "consumer": (
+            "microcosm.build.us_runtime.work_experience_inputs."
+            "us_work_experience_signal_gate"
+        ),
+        "justification": (
+            "Longest-job major industry group (ASEC WEMIND) shipped with the "
+            "detailed recode (microcosm#719); gated for zero-row agreement with "
+            "detailed_industry_recode."
+        ),
+    },
+    "worked_last_year": {
+        "consumer_class": NonEngineConsumerClass.CLIENT_SURFACE,
+        "consumer": (
+            "microcosm.build.us_runtime.work_experience_inputs."
+            "us_work_experience_signal_gate"
+        ),
+        "justification": (
+            "Measured worked-last-year indicator (ASEC WKSWORK > 0, the "
+            "work-experience recode universe) shipped on every person record "
+            "(microcosm#719); gated for the worker-code identity and share band."
+        ),
+    },
 }
 
 _REQUIRED_ENGINE_CONSUMER_GRAINS = {
@@ -193,6 +236,9 @@ def test_non_engine_consumer_allowlist_is_exact_and_current() -> None:
     assert set(NON_ENGINE_CONSUMER_ALLOWLIST) == {
         "previous_year_income_available",
         "qualified_bdc_income",
+        "detailed_industry_recode",
+        "major_industry_recode",
+        "worked_last_year",
     }
     _validate_allowlist(
         _POOL_INPUT_SURFACE,

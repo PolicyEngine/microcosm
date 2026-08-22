@@ -253,6 +253,22 @@ def _public_assistance_type_source() -> pd.DataFrame:
     return source
 
 
+def _work_experience_source() -> pd.DataFrame:
+    source = pd.DataFrame(
+        {
+            "source_year": [2022, 2022, 2022],
+            "PH_SEQ": [101, 101, 202],
+            "P_SEQ": [1, 2, 1],
+            "A_LINENO": [1, 2, 1],
+            "PERIDNUM": [f"{value:022d}" for value in (1, 2, 3)],
+            "WEIND": [7, 0, 23],
+            "WEMIND": [5, 0, 15],
+        }
+    )
+    source.attrs["source_audit"] = {2022: {"rows": 3}}
+    return source
+
+
 def _pooled_source_receipt(tmp_path: Path) -> dict[str, object]:
     return {
         "kind": "pooled_asec",
@@ -334,6 +350,11 @@ def _patch_raw_stage_sources(
         builder,
         "load_asec_public_assistance_type_sources",
         lambda _paths, *, income_years: _public_assistance_type_source(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "load_asec_work_experience_sources",
+        lambda _paths, *, income_years: _work_experience_source(),
     )
     monkeypatch.setattr(
         builder,
@@ -787,6 +808,7 @@ def test_reconciled_outer_pipeline_order_is_locked() -> None:
         "retirement_contributions_post_clone",
         "retirement_distributions_post_clone",
         "education_inputs_post_clone",
+        "work_experience_inputs_post_clone",
         "congressional_district_assignment",
         "block_ladder_assignment",
         "final_export",
@@ -820,6 +842,11 @@ def test_raw_stage_copy_adds_only_exact_source_mappings(
         "load_asec_public_assistance_type_sources",
         lambda _paths, *, income_years: _public_assistance_type_source(),
     )
+    monkeypatch.setattr(
+        builder,
+        "load_asec_work_experience_sources",
+        lambda _paths, *, income_years: _work_experience_source(),
+    )
 
     raw, mappings = builder._asec_raw_source_mapping_frame(
         args,
@@ -834,7 +861,9 @@ def test_raw_stage_copy_adds_only_exact_source_mappings(
     assert raw.table("person")["LKWEEKS"].tolist() == [7.0, -1.0, 12.0]
     assert raw.table("person")["ED_VAL"].tolist() == [0.0, 500.0, 1_000.0]
     assert raw.table("person")["PAW_TYP"].tolist() == [0, 1, 2]
-    assert set(mappings) == {"ED_VAL", "LKWEEKS", "PAW_TYP"}
+    assert raw.table("person")["WEIND"].tolist() == [7, 0, 23]
+    assert raw.table("person")["WEMIND"].tolist() == [5, 0, 15]
+    assert set(mappings) == {"ED_VAL", "LKWEEKS", "PAW_TYP", "WEIND", "WEMIND"}
     assert all(
         mapping["operation"] == "exact_source_join"
         and mapping["join_keys"] == ["source_year", "PERIDNUM"]

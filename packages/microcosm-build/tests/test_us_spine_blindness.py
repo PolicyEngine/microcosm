@@ -170,6 +170,7 @@ _SPINE_BLIND_OPERATOR_MODULES = (
     "voluntary_filing.py",
     "weeks_unemployed.py",
     "wic_claim.py",
+    "work_experience_inputs.py",
     "workers_compensation.py",
 )
 
@@ -264,6 +265,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "us_late_producer_registry.py",
         "validation_input_coverage.py",
         "warm_start_selection.py",
+        # Pinned-archive sidecar restore (WEIND/WEMIND); no population treatment.
+        "work_experience_source.py",
     }
 )
 _CLASSIFIED_US_RUNTIME_MODULES = frozenset(_SPINE_BLIND_OPERATOR_MODULES).union(
@@ -3278,8 +3281,8 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 65, (
-            f"{tool.name} must reach the pinned 65-module runtime graph; "
+        assert len(runtime_graph) == 67, (
+            f"{tool.name} must reach the pinned 67-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (
