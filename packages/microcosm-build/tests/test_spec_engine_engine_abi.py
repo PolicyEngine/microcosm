@@ -365,12 +365,12 @@ def test_checked_in_us_lock_is_fresh_schema_valid_and_not_authored() -> None:
     assert len(remaining["rows"]) == 997
     assert remaining["receipt"]["entry_count"] == 997
     assert remaining["receipt"]["stage_counts"] == {
-        "derive": 34,
+        "derive": 38,
         "seed": 29,
         "simulate": 930,
     }
     assert remaining["receipt"]["manifest_sha256"] == (
-        "8247a93e5f8f63d3ae71c1de681c29524d4bb8f07e3c6a50dcaf431b1377020f"
+        "4ec692e3262f396ebacd6144c900b31ef2ae3eabc1062f38e6db6d3ab6f433fa"
     )
     assert (
         remaining["receipt"]["ssi_dependency_contract"]["engine_version_ref"]
@@ -431,9 +431,7 @@ def test_engine_absent_environment_still_refuses_a_tampered_lock(
 
     monkeypatch.setattr(engine_abi, "_installed_engine_version", absent)
     registry = load_schema_registry()
-    us_root = (
-        Path(__file__).resolve().parents[1] / "src" / "microcosm" / "build" / "us"
-    )
+    us_root = Path(__file__).resolve().parents[1] / "src" / "microcosm" / "build" / "us"
     spec_dir = us_root / "spec"
     lock_path = tmp_path / engine_abi.ENGINE_ABI_LOCK_FILENAME
     parsed = json_module.loads(
