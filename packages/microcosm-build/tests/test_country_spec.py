@@ -271,6 +271,10 @@ class TestCountryStagePlan:
 
 class TestUKCountryPackage:
     def test_spi_spine_adds_no_country_package_resources(self) -> None:
+        # The name records the #717 question this was written to answer; what
+        # it does now is pin the whole legacy-JSON resource list, so any
+        # increment that ships a new country-package resource lands here.
+        # spine_swap_signed_differences.json is #686's deliberate addition.
         spec = load_country_spec("uk")
 
         legacy_rows = tuple(
@@ -304,6 +308,7 @@ class TestUKCountryPackage:
             "source_stages.json",
             "take_up_contract.json",
             "input_mass_reviewed_exclusions.json",
+            "spine_swap_signed_differences.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
             "ledger_compile_parity_production_2023_signed_differences.json",
             "national_staging_build_record.json",
@@ -375,6 +380,7 @@ class TestExistingPackagesGeneralize:
             "source_stages.json",
             "take_up_contract.json",
             "input_mass_reviewed_exclusions.json",
+            "spine_swap_signed_differences.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
             "ledger_compile_parity_production_2023_signed_differences.json",
             "national_staging_build_record.json",
