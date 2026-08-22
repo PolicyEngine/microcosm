@@ -1,0 +1,1 @@
+Add a fail-closed UK exact-k release assembler that mints the immutable release id from the certified candidate before staging, verifies signed schema-4 release-candidate provenance, and emits a contract-valid release directory with sibling H5 and calibration artifacts.

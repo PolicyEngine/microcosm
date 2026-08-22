@@ -164,3 +164,41 @@ cannot sign caller-composed gate results, and publication independently
 verifies the report from the same out-of-band key. If the key is missing or
 malformed, a full-scale build persists the unsigned report and then refuses
 to stage, and publication rejects unsigned reports.
+
+Mint a UK release id before starting the release-candidate build. `N` is the
+verified certified candidate's `/household/table` row count; the full national
+stage preserves that cardinality, so it is known in advance even though the
+assembler independently derives it again from the completed build record:
+
+```bash
+RELEASE_ID="$(uv run python tools/build_uk_release_dir.py \
+  --print-release-id \
+  --candidate-h5 /gated/populace_uk_2023.h5 \
+  --year 2023 \
+  --tier frs)"
+```
+
+Pass that exact value as `tools/build_uk_national_dataset.py --release-id`
+together with the same candidate, `--release-candidate`, and the SHA-256 of the
+exact diagnostics bytes as `--calibration-diagnostics-sha256`. The signed
+report immutably covers the id and diagnostics digest, so neither can be chosen
+or corrected after staging. Once the full run passes, assemble it with:
+
+```bash
+uv run python tools/build_uk_release_dir.py \
+  --staging-dir /gated/uk-national \
+  --calibration-diagnostics /gated/calibration_diagnostics.json \
+  --releases-root /gated/release-package/releases \
+  --year 2023 \
+  --tier frs \
+  --built-at 2026-08-20T18:00:00Z \
+  --git-commit 0123456789abcdef0123456789abcdef01234567
+```
+
+Recorded staging values take precedence over the two provenance fallbacks in
+the example. Assembly refuses a development, unsigned, blocked, non-shippable,
+incomplete, relabelled, or byte-mismatched run. It rechecks `N` against the
+staged H5, calibration diagnostics, signed report, and checkpoint run context,
+then runs `microcosm.data.contract.validate_release_dir` before installing any
+output. The emitted JSON prints the tag-only publish command and the sibling
+`artifacts/` root containing the canonical H5 and calibration receipt.
