@@ -507,3 +507,86 @@ checkpoint commits are `1da12621` and `c9e71af4`; the landed runner commits are
 `aefa83b8` and `efcf8aa7`, and the exact host handoff is `424c4998`. No pool or
 sample build, host comparator, kill/resume exercise, publication, push, or
 process above the fixture-scale lane ceiling occurred in this continuation.
+
+### F1 residual brokered-QRF repair closeout (2026-08-23)
+
+The deliverable-A brokered-QRF suite failure recorded by the r6 close is
+repaired and landed at `15ebddad`, and the full per-package suite is green at
+that tree. The repair was recovered intact from the killed lane's salvage
+(`refs/codex-salvage/spec-engine-f1-20260822-170822-45486`, `c7a52e1a`; the
+working tree at continuation start was byte-identical to it on every
+non-journal path), then independently reproduced, audited, verified, and
+completed with one additional fix the salvage still lacked.
+
+**Exact failure.** At the pre-repair committed tree,
+`test_puf_qrf_chain.py::test_brokered_in_process_chain_is_checkpoint_byte_exact`
+fails with `microcosm.build.spec_engine.brokers.AmbientAccessError: ambient
+clock access 'sleep' is prohibited for producer_node 'primary_puf_qrf'`,
+raised from Joblib 1.5.3 `parallel.py:2072 __call__` → `:1682 _get_outputs` →
+`:1800 _retrieve` → `time.sleep(0.01)` (joblib's ordered-retrieval scheduler
+yield), before the member-byte assertion could run (reproduction: 121.42 s,
+2.03 GiB RSS, journaled at `7d4a60dc`). Eight further stale-pin/census
+failures existed at that tree in `test_spec_engine_seeds.py` (2),
+`test_us_spine_blindness.py` (5), and `test_us_late_producer_dag.py` (1) —
+nine red tests in total; the loader and country-bundle pins were green
+pre-repair, so every identity movement below is a repair consequence.
+
+**Root cause and no-ruling disposition.** The 72-site ledger is unambiguous
+for `primary_qrf_fit_draw` (`SeedSequence(build_model_seed).spawn(2)`, fit
+child 0 / draw child 1, owner `primary_puf_qrf`), so no owner decision memo
+was required. The failure was an operational dependency-capability gap: the
+brokered path granted RNG capabilities but no scheduler-clock capability to
+QRF's pinned Joblib dependency.
+
+**Repair, gates intact.** The broker freezes the exact Joblib version, CPU
+topology, quantile grid, and QRF entrypoints at physical activation and
+serves the dependency runtime only through caller-authenticated, revocable,
+module-local aliases: `sleep` authenticates the caller's code object and
+refuses any wait shape other than the literal float `0.01` before delegating
+to the pre-captured original clock (`brokers.py:2518-2541`); `time` returns
+virtual-clock ticks (`brokers.py:2508-2516`); the generic ambient refusal
+stays fail-closed (`brokers.py:1529-1532`). `microcosm.fit.qrf` gains typed
+broker draw/fit/gate methods with the legacy NumPy path preserved on
+fallback. The checkpoint member-byte assertion is unchanged and strengthened
+with seven receipt requirements (`test_puf_qrf_chain.py:540-574`). The entire
+`seeds.py` diff is one line adding `joblib==<locked>` to the attested
+`_QRF_RNG_VERSION`, which legitimately moves the protocol digest to
+`f1968c11…`, the owner map to `3ccb0740…`, and the US spec to `f30af091…`
+(BE `dab60ebc…`, UK `bc6e4193…` moved via the embedded protocol). The census
+was reconciled exactly (one added binding to the existing
+`adult_care_weighted_prefix_assignment` site; no exclusion or register
+entry); the certification receipt now binds its run id to the publication
+run id at create and load and writes through a deterministic exclusive
+temporary — ambient randomness removed fail-closed.
+
+**Additional fix this continuation found.** The salvage still failed the
+ninth mapped red:
+`test_us_spine_blindness.py::test_runtime_population_operators_are_source_spine_blind`
+flags the physical executor's `sorted(rows, key=lambda row: row[0])`
+(`pool_physical_executor.py:140`, present verbatim at HEAD). The sort key is
+now `_available_input_sort_key`, which extracts the unique
+`(entity, column)` key by tuple unpacking — no subscript remains for the
+fail-closed scan, ordering is bit-identical, and the scanner is untouched.
+
+**Verification at `15ebddad`'s tree.** Every module of all five packages ran
+green in 30+ serial measured pytest processes: the repaired
+`test_puf_qrf_chain.py` module 20/20 (byte-exact chain re-run at the final
+tree: 83.14 s), build-package coverage proven closed by `diff` of the
+264-module chunk union against the live tree, fit 98, frame 294+36 skips,
+calibrate 201, data 275+1 skip; 299 files / 7,371 tests collected
+repository-wide. Repo-wide Ruff, generated coverage `--check`
+(41911/41911 fields, 40/40 inventory), generated US bundle `--check` at
+`f30af091…`, and `git diff --check` all pass. Maximum RSS across every run
+was 11.13 GiB, under the 15 GiB lane ceiling. The only reds ever observed
+were the blindness red above (repaired, then 499/499 with the executor
+module) and trade CLI/bulk tests whose spawned child interpreters exceeded
+their authored 60 s deadlines while four to eight other lanes held the host
+at load 40-117 — a faulthandler stack captured the child still inside the
+tool's import-time engine-ABI lock (identical at HEAD, untouched by this
+landing); each such test passed on solo rerun with no source or test change.
+
+No pool or sample build, Logbook operation, exclusion, publication, or push
+occurred. The salvage journals were retained verbatim and attributed, with
+one dated digest correction in place; the full per-run ledger is in
+`_F1-LANE-NOTES.md` §"F1 residual brokered-QRF salvage verification and
+landing (2026-08-22)". The implementation commit is `15ebddad`.

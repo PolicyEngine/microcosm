@@ -25,10 +25,10 @@
 
 ## Next
 
-1. Commit the implementation with the journals (verification is complete:
-   every module green at the final tree, including all five imdb_bulk
-   deadline tests on solo reruns), then append and commit the
-   `FINAL_REPORT.md` closeout.
+1. Done. The implementation and journals are committed at `15ebddad`; the
+   `FINAL_REPORT.md` closeout is committed immediately after it. The F1
+   deliverable-A brokered-QRF residual is closed; the owner pushes and
+   adjudicates.
 
 ---
 
