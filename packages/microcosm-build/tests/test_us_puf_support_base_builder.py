@@ -773,6 +773,7 @@ def test_reconciled_outer_pipeline_order_is_locked() -> None:
         "qrf_finalization",
         "capital_gains_tail_transfer",
         "capital_gain_distributions",
+        "qbi_passive_passthrough",
         "qbi_reconciliation",
         "wic_post_clone",
         "housing_assistance",
@@ -1118,7 +1119,14 @@ def test_outer_stage_resume_rejects_changed_builder_code(
         "_builder_code_identity",
         lambda: {"source_sha256": "first"},
     )
+    passive_contract = {"sha256": "a" * 64}
+    monkeypatch.setattr(
+        builder,
+        "us_qbi_passive_passthrough_contract_identity",
+        lambda: passive_contract,
+    )
     first_config = builder._stage_run_config(args)
+    assert first_config["qbi_passive_passthrough_contract"] == passive_contract
     builder.StageRuntime(
         args.checkpoint_dir,
         builder.OUTER_STAGE_PIPELINE,
@@ -1954,6 +1962,7 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     prior_year_income_reconciliation_frames: list[object] = []
     capital_gains_tail_calls: list[object] = []
     capital_gain_distributions_calls: list[object] = []
+    passive_passthrough_calls: list[tuple[object, int]] = []
     qbi_reconciliation_calls: list[object] = []
 
     monkeypatch.setattr(
@@ -2232,6 +2241,16 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
         builder,
         "_capital_gain_distributions_stage",
         fake_capital_gain_distributions,
+    )
+
+    def fake_passive_passthrough(frame, *, seed):
+        passive_passthrough_calls.append((frame, seed))
+        return "passive-passthrough"
+
+    monkeypatch.setattr(
+        builder,
+        "with_us_qbi_passive_passthrough_assignment",
+        fake_passive_passthrough,
     )
 
     def fake_qbi_reconciliation(frame):
@@ -2513,7 +2532,8 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
 
     assert capital_gains_tail_calls == [("puf-imputed", None)]
     assert capital_gain_distributions_calls == ["capital-gains-tail"]
-    assert qbi_reconciliation_calls == ["capital-gain-distributions"]
+    assert passive_passthrough_calls == [("capital-gain-distributions", 7)]
+    assert qbi_reconciliation_calls == ["passive-passthrough"]
     if failing_gate == "wic_claim":
         assert child_support_calls == [("housing-direct", 7, 2024)]
         assert prior_year_income_calls == [("cps", 7, 2024)]

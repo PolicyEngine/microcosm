@@ -74,6 +74,7 @@ _REQUIRED_POOL_RUNTIME_MODULES = frozenset(
         "late_producer_dag.py",
         "multispine_pool.py",
         "puf_support.py",
+        "qbi_passive_passthrough.py",
         "spine_agreement.py",
         "spine_assembly.py",
         "us_late_overlap_ownership.py",
@@ -161,6 +162,7 @@ _SPINE_BLIND_OPERATOR_MODULES = (
     "other_health_insurance.py",
     "prior_year_income.py",
     "qbi_inputs.py",
+    "qbi_passive_passthrough.py",
     "retirement_contributions.py",
     "retirement_distributions.py",
     "salt_refund_income.py",
@@ -228,6 +230,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "puf_qrf_worker.py",
         "puf_source_agi.py",
         "puf_support.py",
+        "qbi_passive_passthrough_evidence.py",
         "puma_ladder.py",
         "puma_ladder_sources.py",
         "reform_coverage_smoke.py",
@@ -3278,8 +3281,8 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 65, (
-            f"{tool.name} must reach the pinned 65-module runtime graph; "
+        assert len(runtime_graph) == 67, (
+            f"{tool.name} must reach the pinned 67-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

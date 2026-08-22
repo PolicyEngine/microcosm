@@ -95,6 +95,7 @@ def _us_frame(**person_extra: object) -> Frame:
             "business_is_sstb": [False, True, False],
             "qualified_bdc_income": [0.0, 20.0, 0.0],
             "qualified_reit_and_ptp_income": [100.0, 0.0, 50.0],
+            "passive_partnership_s_corp_income": [25.0, 0.0, 10.0],
             "sstb_self_employment_income_before_lsr": [0.0, 1_000.0, 0.0],
             "sstb_unadjusted_basis_qualified_property": [0.0, 5_000.0, 0.0],
             "sstb_w2_wages_from_qualified_business": [0.0, 2_000.0, 0.0],
@@ -1098,6 +1099,9 @@ def test_export_us_l0_refit_h5_records_geography_ladder_gate_when_allowed(
     assert "keogh_distributions" in summary["required_person_source_columns"]
     assert "business_is_sstb" in summary["required_person_source_columns"]
     assert "qualified_reit_and_ptp_income" in summary["required_person_source_columns"]
+    assert (
+        "passive_partnership_s_corp_income" in summary["required_person_source_columns"]
+    )
     assert "domestic_production_ald" in summary["required_source_columns"]
     assert "would_file_taxes_voluntarily" in summary["required_source_columns"]
     assert (

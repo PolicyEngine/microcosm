@@ -4289,6 +4289,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
     monkeypatch.setattr(
         builder,
+        "_with_qbi_passive_passthrough_if_missing",
+        lambda frame, *, seed: frame,
+    )
+    monkeypatch.setattr(
+        builder,
         "us_qbi_inputs_signal_gate",
         lambda frame: builder.GateResult(
             name="qbi_inputs_signal",
@@ -6819,6 +6824,39 @@ def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> 
     )
 
 
+def test_passive_passthrough_assignment_preserves_rebuilt_support(
+    monkeypatch,
+) -> None:
+    builder = _load_builder_module()
+    calls: list[tuple[object, int]] = []
+
+    class FixtureFrame:
+        def __init__(self, *, already_assigned: bool) -> None:
+            columns = (
+                {"passive_partnership_s_corp_income": [10.0]}
+                if already_assigned
+                else {}
+            )
+            self.person = pd.DataFrame(columns)
+
+        def table(self, entity: str) -> pd.DataFrame:
+            assert entity == "person"
+            return self.person
+
+    assigned = FixtureFrame(already_assigned=True)
+    monkeypatch.setattr(
+        builder,
+        "with_us_qbi_passive_passthrough_assignment",
+        lambda frame, *, seed: calls.append((frame, seed)) or assigned,
+    )
+    legacy = FixtureFrame(already_assigned=False)
+    rebuilt = FixtureFrame(already_assigned=True)
+
+    assert builder._with_qbi_passive_passthrough_if_missing(legacy, seed=42) is assigned
+    assert builder._with_qbi_passive_passthrough_if_missing(rebuilt, seed=99) is rebuilt
+    assert calls == [(legacy, 42)]
+
+
 def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> None:
     builder = _load_builder_module()
     person = pd.DataFrame(
@@ -8799,6 +8837,7 @@ def test_pool_owned_fiscal_transforms_are_guarded_for_prepared_pool_input() -> N
     assert pool_owned_call_sites == guarded_call_sites
     assert {
         "with_us_weeks_unemployed",
+        "_with_qbi_passive_passthrough_if_missing",
         "with_us_qbi_input_reconciliation",
         "with_us_childcare_inputs",
         "with_us_energy_subsidy_input",

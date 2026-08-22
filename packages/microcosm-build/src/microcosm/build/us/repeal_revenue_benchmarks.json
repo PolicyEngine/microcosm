@@ -1,0 +1,42 @@
+{
+  "_comment": "Standing diagnostics-only administrative aggregate surface. Despite the historical filename, these rows are baseline totals, not repeal simulations or neutralizations.",
+  "schema_version": 1,
+  "administrative_aggregate_diagnostics": [
+    {
+      "id": "form_8960_net_investment_income",
+      "name": "Form 8960 net investment income",
+      "variable": "net_investment_income",
+      "period": 2023,
+      "benchmark": {
+        "value": 1197238417000,
+        "year": "TY2023",
+        "source": "IRS SOI Publication 4801, Form 8960 line 12",
+        "source_url": ""
+      },
+      "comparison_role": "point_estimate",
+      "provisional": true,
+      "diagnostics_only": true,
+      "description": "Weighted baseline net investment income compared with the TY2023 Form 8960 line 12 administrative amount. The diagnostic uses the 2023 policy period on the release artifact's 2024-shaped population without a population-vintage backcast. Line 12 is net of Form 8960 deductions and modifications, while the modeled variable follows the engine's configured investment-income source list; any expense-coverage difference is part of the diagnostic interpretation. The administrative line covers Forms 8960 filed by individuals, estates, and trusts, while the household microdata do not separately represent every estate or trust return. This is therefore a provisional diagnostic rather than a release gate."
+    },
+    {
+      "id": "form_8960_line_4c_passive_flowthrough_upper_bound",
+      "name": "Form 8960 line 4c passive flow-through upper bound",
+      "variable": "passive_partnership_s_corp_income",
+      "period": 2023,
+      "benchmark": {
+        "value": 109256984000,
+        "year": "TY2023",
+        "source": "IRS SOI Publication 4801, Form 8960 line 4c",
+        "source_url": ""
+      },
+      "comparison_role": "upper_bound",
+      "bounds": {
+        "lower": 0,
+        "upper": 109256984000
+      },
+      "provisional": true,
+      "diagnostics_only": true,
+      "description": "Line 4c combines rental real estate, royalties, partnerships, S corporations, trusts, and other trade-or-business flow-through amounts after the non-section-1411 adjustment. It does not identify the passive partnership/S-corporation component. The diagnostic uses the 2023 policy period on the release artifact's 2024-shaped population without a population-vintage backcast. The lower bound assumes all line 4c income is rental or royalty income; the upper bound assumes all of it is passive pass-through income. Rental income already enters the engine NIIT base in full, so overlap remains an explicit open question and no rental treatment changes here. The passive column remains engine-inert under the locked PolicyEngine-US 1.764.6 registry; the hard release gate stays red until the pin advances past 1.764.6 to a release containing PolicyEngine-US #9306."
+    }
+  ]
+}

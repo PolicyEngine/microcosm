@@ -281,9 +281,10 @@ class TestCapitalGainDistributionsStage:
         stage_index = pipeline_names.index(
             builder.CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME
         )
-        assert pipeline_names[stage_index - 1 : stage_index + 2] == [
+        assert pipeline_names[stage_index - 1 : stage_index + 3] == [
             builder.PUF_CAPITAL_GAINS_TAIL_STAGE_NAME,
             builder.CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME,
+            "qbi_passive_passthrough",
             "qbi_reconciliation",
         ]
         assert context["completed"] == pipeline_names[: stage_index + 1]

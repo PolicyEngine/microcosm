@@ -33,8 +33,10 @@ it green. A gate that fails the current default is the point, not a bug.
 :func:`assert_release_input_coverage_manifest_current` proves the manifest against
 the pinned eCPS surface and the live PolicyEngine-US graph, so the register
 cannot silently rot: it must cover exactly the reference eCPS populated layers,
-every declared column must be a real engine input leaf, and the SSI asset inputs
-must stay hard requirements.
+every declared column must be a real engine input leaf apart from the exact
+pending-input declaration, and the SSI asset inputs must stay hard requirements.
+That declaration exception never bypasses the release gate's independent locked-
+registry requirement.
 """
 
 from __future__ import annotations
@@ -76,6 +78,9 @@ from microcosm.build.us_runtime.prior_year_income import (
     US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS,
 )
 from microcosm.build.us_runtime.qbi_inputs import US_QBI_OUTPUT_COLUMNS
+from microcosm.build.us_runtime.qbi_passive_passthrough import (
+    US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN,
+)
 from microcosm.build.us_runtime.relationship_inputs import (
     US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS,
 )
@@ -109,6 +114,7 @@ __all__ = [
     "US_CGD_ROUTE_REQUIRED_INPUTS",
     "US_RELEASE_INPUT_COVERAGE_RESOURCE",
     "POST_REFERENCE_ECPS_REQUIRED_INPUTS",
+    "PROVISIONAL_PENDING_ENGINE_INPUTS",
     "RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS",
     "ReformCoverageProbe",
     "ReleaseInputColumn",
@@ -122,6 +128,7 @@ __all__ = [
 ]
 
 US_RELEASE_INPUT_COVERAGE_RESOURCE = "release_input_coverage_manifest.json"
+_ENGINE_ABI_LOCK_RESOURCE = "engine_abi.lock.json"
 
 # The frozen reference artifact predates the retired pipeline's export of the
 # pure FLSA overtime-premium input, OBBBA's distinct qualifying passenger-
@@ -149,7 +156,17 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         "is_incapable_of_self_care",
         "health_insurance_premiums",
         "is_self_employed",
+        US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN,
     }
+)
+
+# The source column ships ahead of the engine release that consumes it. This
+# exception applies only to manifest declaration validation below; it does not
+# exempt the release gate's required=>locked-registry condition. Keep it exact
+# and short-lived: once PolicyEngine-US #9306 is in the installed registry,
+# subtracting it below is a no-op.
+PROVISIONAL_PENDING_ENGINE_INPUTS = frozenset(
+    {US_QBI_PASSIVE_PASSTHROUGH_OUTPUT_COLUMN}
 )
 
 # Populated inputs in the frozen reference that have been restored from their
@@ -420,6 +437,26 @@ def _resource_payload(resource: str) -> Mapping[str, Any]:
     return raw
 
 
+def _locked_policyengine_us_version() -> str:
+    """Read the release gate's engine version from the generated ABI lock."""
+    payload = _resource_payload(_ENGINE_ABI_LOCK_RESOURCE)
+    engine = payload.get("engine")
+    if not isinstance(engine, Mapping):
+        raise ValueError(
+            f"{_ENGINE_ABI_LOCK_RESOURCE}: 'engine' must be a JSON object."
+        )
+    if engine.get("package") != "policyengine-us":
+        raise ValueError(
+            f"{_ENGINE_ABI_LOCK_RESOURCE}: expected the policyengine-us package."
+        )
+    version = engine.get("version")
+    if not isinstance(version, str) or not version.strip():
+        raise ValueError(
+            f"{_ENGINE_ABI_LOCK_RESOURCE}: engine.version must be a nonempty string."
+        )
+    return version
+
+
 def load_release_input_coverage_manifest(
     resource: str = US_RELEASE_INPUT_COVERAGE_RESOURCE,
 ) -> ReleaseInputCoverageManifest:
@@ -552,13 +589,14 @@ def us_release_input_coverage_gate(
 ) -> GateResult:
     """Build the named US release input-column coverage gate for an export frame.
 
-    Every ``required`` manifest column must be persisted by ``frame`` as a key
-    with at least one finite/non-null, non-default value; a required column that
-    is absent or degenerate (no observations, or every value the engine default)
-    fails the gate, and a reviewed exclusion whose column now carries signal is
-    stale and fails too (#286 cannot-rot). Run on the calibrated export frame
-    just before ``write_dataset``, it hard-fails the release like the export-mass
-    parity gate.
+    Every ``required`` manifest column must exist in the locked engine registry
+    and be persisted by ``frame`` as a key with at least one finite/non-null,
+    non-default value. A required column that is absent from the registry,
+    absent from the frame, or degenerate (no observations, or every value the
+    engine default) fails the gate, and a reviewed exclusion whose column now
+    carries signal is stale and fails too (#286 cannot-rot). Run on the
+    calibrated export frame just before ``write_dataset``, it hard-fails the
+    release like the export-mass parity gate.
 
     Args:
         frame: The export :class:`microcosm.frame.Frame`.
@@ -572,6 +610,9 @@ def us_release_input_coverage_gate(
     required = manifest.required_columns
     reviewed = manifest.reviewed_exclusions
     relevant = required | set(reviewed)
+    locked_engine_version = _locked_policyengine_us_version()
+    engine_registry = {str(variable) for variable in engine.variables()}
+    missing_from_registry = sorted(required - engine_registry)
 
     present_values: dict[str, Any] = {}
     for entity in frame.entities:
@@ -590,13 +631,31 @@ def us_release_input_coverage_gate(
             present_values["household_weight"] = frame.weights_for("household").values
 
     degenerate, no_observed = _degenerate_columns(present_values, engine)
-    return input_column_coverage_gate(
+    column_result = input_column_coverage_gate(
         present_values.keys(),
         required_columns=required,
         degenerate_columns=degenerate,
         no_observed_columns=no_observed,
         reviewed_exclusions=reviewed,
         name="us_release_input_coverage",
+    )
+    registry_failures = tuple(
+        f"{column}: required release input is absent from the locked "
+        f"PolicyEngine-US {locked_engine_version} variable registry; the "
+        "adapter would silently omit it. Advance the engine pin to a version "
+        "that registers this input before release."
+        for column in missing_from_registry
+    )
+    return GateResult(
+        name=column_result.name,
+        passed=column_result.passed and not registry_failures,
+        failures=(*column_result.failures, *registry_failures),
+        details={
+            **dict(column_result.details),
+            "locked_engine_version": locked_engine_version,
+            "engine_registry_variable_count": len(engine_registry),
+            "required_missing_from_engine_registry": missing_from_registry,
+        },
     )
 
 
@@ -645,9 +704,11 @@ def assert_release_input_coverage_manifest_current(
       reflected here.
     - The three SSI countable-resource asset inputs must be ``required`` with no
       reviewed exclusion — the #368 red-gate guarantee cannot be quietly undone.
-    - Every declared column must be a real PolicyEngine-US input leaf, and every
-      probe's ``binding_inputs`` / ``budget_measure`` must resolve on the live
-      engine, so the contract cannot guard names the engine no longer has.
+    - Every declared column must be a real PolicyEngine-US input leaf, apart
+      from the exact provisional #722 input shipping ahead of its engine
+      release, and every probe's ``binding_inputs`` must resolve on the live
+      engine, so the contract cannot otherwise guard names the engine lacks.
+      This declaration-only exception does not exempt the runtime release gate.
 
     A no-op for the engine-graph half when no engine is available (the workspace
     test environment); the checked-in-facts half always runs.
@@ -704,6 +765,13 @@ def assert_release_input_coverage_manifest_current(
                 "required manifest column (#462)."
             )
 
+    for column in PROVISIONAL_PENDING_ENGINE_INPUTS:
+        if column in reviewed or column not in required:
+            failures.append(
+                f"{column}: provisional pending engine input must remain a hard "
+                "requirement with no reviewed exclusion (#722)."
+            )
+
     for column in RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS:
         if column in reviewed:
             failures.append(
@@ -723,7 +791,9 @@ def assert_release_input_coverage_manifest_current(
         except ImportError:
             input_variables = None
         if input_variables is not None:
-            non_leaves = sorted(declared - input_variables)
+            non_leaves = sorted(
+                declared - input_variables - PROVISIONAL_PENDING_ENGINE_INPUTS
+            )
             if non_leaves:
                 failures.append(
                     "manifest declares column(s) that are not PolicyEngine-US "

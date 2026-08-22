@@ -21,6 +21,9 @@ from microcosm.build.us_runtime.multispine_pool import (
 from microcosm.build.us_runtime.qbi_inputs import (
     us_qbi_reconciliation_contract_identity,
 )
+from microcosm.build.us_runtime.qbi_passive_passthrough import (
+    us_qbi_passive_passthrough_contract_identity,
+)
 from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_TRANSFER_GROUPS,
 )
@@ -48,6 +51,9 @@ def build_pipeline_contract() -> dict[str, object]:
         "post_clone_source_operator_order": list(POOL_POST_CLONE_SOURCE_OPERATOR_ORDER),
         "derive_operator_order": list(POOL_DERIVE_OPERATOR_ORDER),
         "auxiliary_operations": list(_AUXILIARY_OPERATIONS),
+        "qbi_passive_passthrough": (
+            us_qbi_passive_passthrough_contract_identity()
+        ),
         "qbi_reconciliation": us_qbi_reconciliation_contract_identity(),
         "simulation_household_batch_size": {
             "value": POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE,

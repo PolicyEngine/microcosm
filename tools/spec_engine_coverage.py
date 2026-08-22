@@ -41,7 +41,7 @@ from microcosm.build.spec_engine.model import ResolvedSpec
 
 REPORT_SCHEMA_VERSION = 3
 EXPECTED_POINTER_INVENTORY_SHA256 = (
-    "b9d2932e0ae5efb6637be7b5d90e33b2e159ffb807ee50ff36ee2b51296cfdc4"
+    "a773fd257a2a9e3e961fcfca6b82d5e64274c4e2c04dcd93df3874d8aa80dadf"
 )
 DEFAULT_REPORT_PATH = (
     Path(__file__).resolve().parents[1]
@@ -202,9 +202,10 @@ def assert_coverage_complete(report: Mapping[str, object]) -> None:
     if not isinstance(compiler_abi, Mapping):
         failures.append("compiler_ir_abi is missing")
     else:
-        if set(compiler_abi) != {"version", "sha256"} or compiler_abi.get(
-            "version"
-        ) != COMPILER_IR_ABI_VERSION:
+        if (
+            set(compiler_abi) != {"version", "sha256"}
+            or compiler_abi.get("version") != COMPILER_IR_ABI_VERSION
+        ):
             failures.append("compiler_ir_abi contract differs")
         if not valid_sha256(compiler_abi.get("sha256")):
             failures.append("compiler_ir_abi/sha256 is invalid")
@@ -249,9 +250,9 @@ def assert_coverage_complete(report: Mapping[str, object]) -> None:
         if not isinstance(claims, list):
             failures.append("field_usage claim receipts are incomplete")
             claims = []
-        if field_usage.get("claim_count") != len(definitions) or len(
-            claims
-        ) != len(definitions):
+        if field_usage.get("claim_count") != len(definitions) or len(claims) != len(
+            definitions
+        ):
             failures.append(
                 "field_usage claim count differs from the closed claim registry"
             )

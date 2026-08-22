@@ -90,7 +90,7 @@ EXPECTED_COUNTS = {
     "source_operators": 16,
     "source_stages": 37,
     "stacked_checkpoint_full_components": 12,
-    "stacked_checkpoint_pool_code_components": 19,
+    "stacked_checkpoint_pool_code_components": 20,
     "stacked_checkpoint_static_components": 9,
     "tail_control_fields": 934,
     "take_up_pipeline_steps": 24,

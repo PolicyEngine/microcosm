@@ -93,7 +93,22 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "qbi_passive_passthrough_assumptions_v1.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "qbi_passive_passthrough_v1.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "release_input_coverage_manifest.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "repeal_revenue_benchmarks.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

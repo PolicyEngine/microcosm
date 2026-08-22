@@ -13,7 +13,9 @@ import pytest
 import microcosm.build.us_runtime.reform_validation as reform_validation_module
 from microcosm.build.us_runtime.reform_validation import (
     REFORM_VALIDATION_SCHEMA_VERSION,
+    AdministrativeAggregateDiagnosticSpec,
     ReformValidationSpec,
+    administrative_aggregate_diagnostic_specs,
     in_sample_reform_specs,
     out_of_sample_reform_specs,
     reform_validation_payload,
@@ -527,6 +529,184 @@ def test_write_round_trips(tmp_path):
     assert json.loads(path.read_text())["reforms"][0]["id"] == "obbba_salt"
 
 
+def test_shipped_form_8960_aggregate_diagnostics_are_explicitly_non_gating():
+    specs = administrative_aggregate_diagnostic_specs()
+    assert [spec.id for spec in specs] == [
+        "form_8960_net_investment_income",
+        "form_8960_line_4c_passive_flowthrough_upper_bound",
+    ]
+    assert all(spec.period == 2023 for spec in specs)
+    assert all(spec.provisional for spec in specs)
+    assert all(spec.diagnostics_only for spec in specs)
+
+    nii, passive = specs
+    assert nii.variable == "net_investment_income"
+    assert nii.benchmark_value == pytest.approx(1_197_238_417_000)
+    assert nii.comparison_role == "point_estimate"
+    assert nii.lower_bound is None
+    assert nii.upper_bound is None
+
+    assert passive.variable == "passive_partnership_s_corp_income"
+    assert passive.benchmark_value == pytest.approx(109_256_984_000)
+    assert passive.comparison_role == "upper_bound"
+    assert passive.lower_bound == 0
+    assert passive.upper_bound == pytest.approx(109_256_984_000)
+    assert "rental" in passive.description.lower()
+    assert "upper bound" in passive.description.lower()
+
+
+def test_administrative_aggregate_loader_rejects_a_gating_row(tmp_path):
+    path = tmp_path / "repeal_revenue_benchmarks.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "administrative_aggregate_diagnostics": [
+                    {
+                        "id": "bad_gate",
+                        "name": "Bad gate",
+                        "variable": "net_investment_income",
+                        "period": 2023,
+                        "benchmark": {
+                            "value": 1,
+                            "year": "TY2023",
+                            "source": "Synthetic",
+                            "source_url": "",
+                        },
+                        "comparison_role": "point_estimate",
+                        "provisional": True,
+                        "diagnostics_only": False,
+                        "description": "Must remain diagnostic-only.",
+                    }
+                ],
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="diagnostics_only must be true"):
+        administrative_aggregate_diagnostic_specs(path)
+
+
+def test_administrative_aggregate_diagnostics_share_baseline_and_emit_table():
+    calls = []
+
+    def simulate(reform):
+        calls.append(reform)
+        return _FakeSim(
+            {
+                "net_investment_income": 1_100_000_000_000,
+                "passive_partnership_s_corp_income": 55_000_000_000,
+            }
+        )
+
+    payload = reform_validation_payload(
+        (),
+        period=2024,
+        simulate=simulate,
+        administrative_aggregate_diagnostics=(
+            AdministrativeAggregateDiagnosticSpec(
+                id="nii",
+                name="NII",
+                variable="net_investment_income",
+                period=2023,
+                benchmark_value=1_197_238_417_000,
+                benchmark_year="TY2023",
+                source="Form 8960 line 12",
+                source_url="",
+                description="Synthetic point comparison.",
+                comparison_role="point_estimate",
+                provisional=True,
+                diagnostics_only=True,
+            ),
+            AdministrativeAggregateDiagnosticSpec(
+                id="passive",
+                name="Passive",
+                variable="passive_partnership_s_corp_income",
+                period=2023,
+                benchmark_value=109_256_984_000,
+                benchmark_year="TY2023",
+                source="Form 8960 line 4c",
+                source_url="",
+                description="Synthetic upper-bound comparison.",
+                comparison_role="upper_bound",
+                provisional=True,
+                diagnostics_only=True,
+                lower_bound=0,
+                upper_bound=109_256_984_000,
+            ),
+        ),
+    )
+
+    # Both rows are plain totals from one shared baseline. No reform is built.
+    assert calls == [None]
+    table = payload["administrative_aggregate_diagnostics"]
+    assert table["diagnostics_only"] is True
+    assert table["simulated"] is True
+    assert payload["out_of_sample_simulated"] is True
+    assert payload["reforms"] == []
+
+    nii, passive = table["rows"]
+    assert nii["diagnostics_only"] is True
+    assert nii["provisional"] is True
+    assert nii["modeled_total"] == pytest.approx(1_100_000_000_000)
+    assert "neutralized_variable" not in nii
+    assert "parameter_changes" not in nii
+    assert nii["relative_gap"] == pytest.approx(
+        1_100_000_000_000 / 1_197_238_417_000 - 1
+    )
+    assert nii["within_bounds"] is None
+    assert passive["modeled_total"] == pytest.approx(55_000_000_000)
+    assert passive["comparison_role"] == "upper_bound"
+    assert passive["within_bounds"] is True
+
+
+def test_administrative_aggregate_error_is_contained_and_not_a_release_gate():
+    specs = (
+        AdministrativeAggregateDiagnosticSpec(
+            id="missing",
+            name="Missing",
+            variable="missing_measure",
+            period=2023,
+            benchmark_value=1,
+            benchmark_year="TY2023",
+            source="Synthetic",
+            source_url="",
+            description="Deliberately missing measure.",
+            comparison_role="point_estimate",
+            provisional=True,
+            diagnostics_only=True,
+        ),
+        AdministrativeAggregateDiagnosticSpec(
+            id="present",
+            name="Present",
+            variable="present_measure",
+            period=2023,
+            benchmark_value=50,
+            benchmark_year="TY2023",
+            source="Synthetic",
+            source_url="",
+            description="Present measure.",
+            comparison_role="point_estimate",
+            provisional=True,
+            diagnostics_only=True,
+        ),
+    )
+    payload = reform_validation_payload(
+        (),
+        period=2024,
+        simulate=lambda reform: _FakeSim({"present_measure": 45}),
+        administrative_aggregate_diagnostics=specs,
+    )
+    missing, present = payload["administrative_aggregate_diagnostics"]["rows"]
+    assert missing["status"] == "error"
+    assert missing["message"].startswith("KeyError:")
+    assert missing["modeled_total"] is None
+    assert missing["relative_gap"] is None
+    assert present["modeled_total"] == pytest.approx(45)
+    # This pre-existing field controls the publish guard. The contained
+    # diagnostics failure does not alter it.
+    assert payload["out_of_sample_simulated"] is True
+
+
 def test_soi_baseline_levels_load_from_default_config():
     from microcosm.build.us_runtime.reform_validation import soi_baseline_level_specs
 
@@ -893,14 +1073,12 @@ def test_state_reform_specs_shipped_config_loads():
     )
     # Federal rows score federal income tax against JCT/CBO published figures.
     assert all(
-        spec.budget_measure == "income_tax"
-        for spec in by_category["Federal reform"]
+        spec.budget_measure == "income_tax" for spec in by_category["Federal reform"]
     )
     # Mechanical rows measure the reform's own spending variable, so the
     # benchmark is an exact external anchor (population x amount).
     assert all(
-        spec.jct_score_type == "mechanical"
-        for spec in by_category["Mechanical check"]
+        spec.jct_score_type == "mechanical" for spec in by_category["Mechanical check"]
     )
 
 

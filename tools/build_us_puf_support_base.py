@@ -115,6 +115,7 @@ from microcosm.build.us_runtime import (
     us_prior_year_income_signal_gate,
     us_prior_year_income_source_reconciliation_gate,
     us_qbi_inputs_signal_gate,
+    us_qbi_passive_passthrough_contract_identity,
     us_relationship_inputs_signal_gate,
     us_retirement_contributions_signal_gate,
     us_retirement_distributions_signal_gate,
@@ -139,6 +140,7 @@ from microcosm.build.us_runtime import (
     with_us_pregnancy_inputs,
     with_us_prior_year_income_inputs,
     with_us_qbi_input_reconciliation,
+    with_us_qbi_passive_passthrough_assignment,
     with_us_relationship_inputs,
     with_us_retirement_contribution_inputs,
     with_us_retirement_distribution_inputs,
@@ -171,6 +173,7 @@ PIPELINE_STEPS = (
     "qrf_finalization",
     PUF_CAPITAL_GAINS_TAIL_STAGE_NAME,
     CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME,
+    "qbi_passive_passthrough",
     "qbi_reconciliation",
     "wic_post_clone",
     "housing_assistance",
@@ -233,6 +236,10 @@ STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME,
         ("run_source_stage[capital_gain_distributions]",),
+    ),
+    (
+        "qbi_passive_passthrough",
+        ("with_us_qbi_passive_passthrough_assignment",),
     ),
     ("qbi_reconciliation", ("with_us_qbi_input_reconciliation",)),
     ("wic_post_clone", ("with_us_wic_claim_input",)),
@@ -720,6 +727,9 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
             if args.puf_source_year_csv is not None
             else None
         ),
+        "qbi_passive_passthrough_contract": (
+            us_qbi_passive_passthrough_contract_identity()
+        ),
         "seed": args.seed,
         "support_spine_spec": path(args.support_spine_spec),
         "target_year": args.target_year,
@@ -1083,6 +1093,8 @@ def _run_all(
         CAPITAL_GAIN_DISTRIBUTIONS_STAGE_NAME,
         imputed,
     )
+    imputed = with_us_qbi_passive_passthrough_assignment(imputed, seed=args.seed)
+    _observe_frame_boundary(boundary_observer, "qbi_passive_passthrough", imputed)
     imputed = with_us_qbi_input_reconciliation(imputed)
     _observe_frame_boundary(boundary_observer, "qbi_reconciliation", imputed)
     imputed = with_us_wic_claim_input(
@@ -2473,7 +2485,9 @@ def _post_qrf_frame_stage(
 ) -> tuple[Frame, dict[str, object]]:
     signals: dict[str, object] = {}
     metadata: dict[str, object] = {"signals": signals}
-    if stage == "qbi_reconciliation":
+    if stage == "qbi_passive_passthrough":
+        frame = with_us_qbi_passive_passthrough_assignment(frame, seed=args.seed)
+    elif stage == "qbi_reconciliation":
         frame = with_us_qbi_input_reconciliation(frame)
     elif stage == "wic_post_clone":
         frame = with_us_wic_claim_input(

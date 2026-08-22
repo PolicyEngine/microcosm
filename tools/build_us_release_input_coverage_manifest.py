@@ -80,12 +80,22 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "is_self_employed",
     "pre_subsidy_care_expenses",
     "is_incapable_of_self_care",
+    "passive_partnership_s_corp_income",
 )
 
 # Per-column annotations for post-reference hard requirements whose absence
 # from today's artifacts is the intended red gate (the #368 SSI-asset
 # pattern, extended by #462 to the capital-gain-distributions route).
 POST_REFERENCE_COLUMN_NOTES = {
+    "passive_partnership_s_corp_income": (
+        "Section 469 passive subset of partnership and S-corporation income, "
+        "assigned by the provisional SCF-shaped sibling stage for the NIIT "
+        "base. Required with no reviewed exclusion so release publication "
+        "cannot silently drop the new engine input. The locked PolicyEngine-US "
+        "1.764.6 registry does not expose this variable, so the column remains "
+        "engine-inert and the release gate stays red until the engine pin "
+        "advances past 1.764.6 to a release containing PolicyEngine-US #9306."
+    ),
     "schedule_d_capital_gain_distributions": (
         "Schedule D line 13 route leg of the #282 capital-gain-distributions "
         "split (memo component of long_term_capital_gains, written by the "
@@ -1506,7 +1516,8 @@ def build_manifest() -> dict:
             "qualified_passenger_vehicle_loan_interest, five desired "
             "retirement-contribution inputs, "
             "meets_ssi_disability_criteria required by shipped validation "
-            "probes, and the #282 Schedule-D capital-gain-distributions "
+            "probes, the #722 passive pass-through NIIT input, and the #282 "
+            "Schedule-D capital-gain-distributions "
             "route leg schedule_d_capital_gain_distributions "
             "(PolicyEngine/microcosm#462). "
             "status='reviewed_exclusion' for ecps_parity_known_gaps.json entries "
