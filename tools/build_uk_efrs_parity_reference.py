@@ -45,12 +45,22 @@ REFERENCE_PATH = UK_PACKAGE_DIR / "efrs_parity_reference.json"
 
 # The immutable enhanced-FRS reference recorded by the certified UK bundle's
 # adjudication inputs.  The licensed data lives in a private HF *model* repo.
+#
+# Pinned at policyengine-uk-data 1.56.16 (#686).  The previous pin, 1.56.14
+# (revision a2039519..., sha 97a07f9c...), carried policyengine-uk-data#461:
+# from the 2024-25 FRS release the raw benunit table is no longer ordered by
+# sernum, so every benunit-level variable landed on the wrong benefit unit
+# relative to the model's sorted-id entity order.  Nonzero-share screens are
+# permutation-blind to that defect, so parity signed against the 1.56.14
+# reference would have frozen it into the contract.  1.56.16 carries the
+# upstream fix (uk-data 6591b70).
 SOURCE_REPO_ID = "policyengine/policyengine-uk-data-private"
 SOURCE_REPO_TYPE = "model"
 SOURCE_FILENAME = "enhanced_frs_2024_25.h5"
-SOURCE_REVISION = "a2039519d3b92aecc06c66dfd175cb46ac24cada"
-SOURCE_SHA256 = "97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e"
-SOURCE_SIZE_BYTES = 126_579_434
+SOURCE_VERSION = "1.56.16"
+SOURCE_REVISION = "a9e52499b6a6cca100a5ce4f36ca27b2e8a213df"
+SOURCE_SHA256 = "e433e532b17bd8ce76030156285816e33d44e93edabd2204adbef71d19a68712"
+SOURCE_SIZE_BYTES = 126_553_300
 SOURCE_VINTAGE = "2024_25"
 SOURCE_PERIOD = "2024"
 SOURCE_URL = (
@@ -341,6 +351,7 @@ def build_reference(source_h5: Path) -> dict[str, Any]:
             "repo_id": SOURCE_REPO_ID,
             "repo_type": SOURCE_REPO_TYPE,
             "filename": SOURCE_FILENAME,
+            "version": SOURCE_VERSION,
             "revision": SOURCE_REVISION,
             "sha256": SOURCE_SHA256,
             "size_bytes": SOURCE_SIZE_BYTES,
@@ -461,6 +472,7 @@ def build_weighted_totals(source_h5: Path) -> dict[str, Any]:
             "repo_id": SOURCE_REPO_ID,
             "repo_type": SOURCE_REPO_TYPE,
             "filename": SOURCE_FILENAME,
+            "version": SOURCE_VERSION,
             "revision": SOURCE_REVISION,
             "sha256": SOURCE_SHA256,
             "size_bytes": SOURCE_SIZE_BYTES,
