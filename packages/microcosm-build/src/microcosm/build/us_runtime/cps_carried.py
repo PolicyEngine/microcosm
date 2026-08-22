@@ -13,6 +13,7 @@ from collections.abc import Mapping
 import numpy as np
 import pandas as pd
 
+from microcosm.build.gates import GateResult
 from microcosm.build.us_runtime.alimony import (
     US_ASEC_OTHER_INCOME_OUTPUT_COLUMNS,
     derive_us_alimony_from_asec,
@@ -31,11 +32,14 @@ __all__ = [
     "CPS_REPORTED_TANF_AMOUNT_RAW_COLUMN",
     "CPS_REPORTED_TANF_TYPE_RAW_COLUMN",
     "CPS_REPORTED_WIC_RAW_COLUMN",
+    "US_REPORTED_COVERAGE_PERSON_INPUTS",
+    "US_REPORTED_COVERAGE_VINTAGE_GATE_MIN_ROWS",
     "WIC_CARRIER_ADJUDICATION_URL",
     "derive_us_cps_carried_inputs",
     "reported_snap_receipt_by_spm_unit",
     "reported_tanf_enrollment_by_spm_unit",
     "reported_wic_receipt_carrier",
+    "us_reported_coverage_vintage_signal_gate",
 ]
 
 TAXABLE_INTEREST_FRACTION = 0.680
@@ -49,6 +53,26 @@ CPS_REPORTED_WIC_RAW_COLUMN = "WICYN"
 WIC_CARRIER_ADJUDICATION_URL = (
     "https://github.com/PolicyEngine/microcosm/issues/591#issuecomment-5160668979"
 )
+
+# The nine reported-coverage person inputs _fill_health_coverage_inputs derives
+# from the ASEC NOW_* at-interview recodes (microcosm #720).
+US_REPORTED_COVERAGE_PERSON_INPUTS: tuple[str, ...] = (
+    "has_champva_health_coverage_at_interview",
+    "has_esi",
+    "has_indian_health_service_coverage_at_interview",
+    "has_marketplace_health_coverage_at_interview",
+    "has_medicaid_health_coverage_at_interview",
+    "has_non_marketplace_direct_purchase_health_coverage_at_interview",
+    "has_other_means_tested_health_coverage_at_interview",
+    "has_tricare_health_coverage_at_interview",
+    "has_va_health_coverage_at_interview",
+)
+
+# Below this row count a vintage is a smoke pool and zero reporters for a rare
+# flag is sampling noise; at or above it, a zero is a missing-source symptom
+# (the rarest flag, CHAMPVA at ~0.3% of persons, is expected ~15 times in
+# 5,000 rows).
+US_REPORTED_COVERAGE_VINTAGE_GATE_MIN_ROWS = 5_000
 
 CPS_CARRIED_FORMULA_OWNED_COLUMNS = frozenset(
     {
@@ -502,3 +526,79 @@ def _integer_source(person: pd.DataFrame, column: str) -> np.ndarray:
 
 def _yes_code(person: pd.DataFrame, column: str) -> np.ndarray:
     return _integer_source(person, column) == 1
+
+
+def us_reported_coverage_vintage_signal_gate(
+    frame: Frame,
+    *,
+    min_vintage_rows: int = US_REPORTED_COVERAGE_VINTAGE_GATE_MIN_ROWS,
+) -> GateResult:
+    """Require every pooled ASEC vintage to carry reported-coverage signal.
+
+    Microcosm #720: the pooled 2022/2023 ASEC source inputs lacked the
+    ``NOW_*`` at-interview recodes (except ``NOW_GRP``/``NOW_MRK``), so
+    :func:`derive_us_cps_carried_inputs` silently mapped every 2022/2023
+    -vintage person to ``False`` for seven of the nine reported-coverage
+    flags and the certified Build P artifact reported 24.6M under-65
+    Medicaid at interview against ~58M survey. A flag populated for one
+    vintage passes the presence-style checks (``release_input_coverage``,
+    ``degenerate_input_signal``); this gate enforces the per-vintage
+    invariant those checks cannot see: every ``source_year`` with at least
+    ``min_vintage_rows`` person rows must have at least one reporter for
+    every reported-coverage input.
+
+    Vintages below ``min_vintage_rows`` (smoke pools) are recorded in the
+    details but not enforced. A frame without a ``source_year`` column is
+    checked as a single vintage.
+    """
+
+    person = frame.table("person")
+    missing = [
+        column
+        for column in US_REPORTED_COVERAGE_PERSON_INPUTS
+        if column not in person.columns
+    ]
+    if missing:
+        return GateResult(
+            name="reported_coverage_vintage_signal",
+            passed=False,
+            failures=tuple(f"person column missing: {column}." for column in missing),
+            details={"missing": missing},
+        )
+    if "source_year" in person.columns:
+        vintage_labels = person["source_year"]
+    else:
+        vintage_labels = pd.Series("all", index=person.index)
+    failures: list[str] = []
+    vintages: dict[str, dict[str, object]] = {}
+    for vintage, group in person.groupby(vintage_labels, sort=True, dropna=False):
+        label = str(vintage)
+        rows = int(len(group))
+        reporter_counts = {
+            column: int(group[column].fillna(False).astype(bool).sum())
+            for column in US_REPORTED_COVERAGE_PERSON_INPUTS
+        }
+        enforced = rows >= min_vintage_rows
+        vintages[label] = {
+            "rows": rows,
+            "enforced": enforced,
+            "reporter_counts": reporter_counts,
+        }
+        if not enforced:
+            continue
+        for column, count in reporter_counts.items():
+            if count == 0:
+                failures.append(
+                    f"{column}: source_year {label} has 0 reporters over "
+                    f"{rows} person rows — the vintage source lacks the "
+                    "at-interview recode (microcosm #720)."
+                )
+    return GateResult(
+        name="reported_coverage_vintage_signal",
+        passed=not failures,
+        failures=tuple(failures),
+        details={
+            "min_vintage_rows": int(min_vintage_rows),
+            "vintages": vintages,
+        },
+    )

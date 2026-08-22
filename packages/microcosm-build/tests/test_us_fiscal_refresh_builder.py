@@ -2326,6 +2326,36 @@ def test_release_gate_failures_include_health_input_signal() -> None:
     ]
 
 
+def test_release_gate_failures_include_reported_coverage_vintage_signal() -> None:
+    builder = _load_builder_module()
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    reported_coverage_vintage_gate = builder.GateResult(
+        name="reported_coverage_vintage_signal",
+        passed=False,
+        failures=(
+            "has_medicaid_health_coverage_at_interview: source_year 2022 has 0 "
+            "reporters over 54464 person rows — the vintage source lacks the "
+            "at-interview recode (microcosm #720).",
+        ),
+    )
+
+    assert builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        reported_coverage_vintage_gate=reported_coverage_vintage_gate,
+    ) == [
+        "Reported-coverage vintage signal failed: "
+        "has_medicaid_health_coverage_at_interview: source_year 2022 has 0 "
+        "reporters over 54464 person rows — the vintage source lacks the "
+        "at-interview recode (microcosm #720).",
+    ]
+
+
 def test_base_population_scale_gate_rejects_underweighted_base(small_frame) -> None:
     builder = _load_builder_module()
 
