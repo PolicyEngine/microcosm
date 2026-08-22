@@ -595,8 +595,8 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
         "targets": aggregate_targets,
         "completion": {
             "status": "complete",
-            "group_count": 19,
-            "target_count": 70,
+            "group_count": 20,
+            "target_count": 73,
             "residual_null_rows": 0,
         },
     }
