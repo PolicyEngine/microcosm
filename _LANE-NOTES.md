@@ -213,6 +213,17 @@
   wording, after which that corrected test reran green. Ruff check/format,
   Python byte compilation, and `git diff --check` pass. No pool build, push,
   gate edit, threshold edit, or band edit occurred.
+- Mainline reconciliation: merged the six newer `origin/main` commits at
+  `34d93846` with no conflict; the only US change among them isolates the
+  fiscal-refresh memory canary. Post-merge validation passed all 13 scorecard
+  tests and all 8 fiscal-memory tests (21/21).
+- Required pre-score process check: `ps ax | grep
+  build_us_multispine_pool` was attempted and denied by the managed macOS
+  sandbox; `pgrep` and `top` are denied as well. The permitted `lsof -d cwd`
+  process scan found no build-runtime working directory, and a full permitted
+  file-descriptor scan found no open `build_us_multispine_pool`, pool H5,
+  checkpoint, or pool-manifest path. The incumbent score may therefore start;
+  no pool build was launched by this lane.
 
 ---
 

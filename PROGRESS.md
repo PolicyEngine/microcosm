@@ -58,14 +58,16 @@ scoring step.
   focused run reached 18/19; its sole test-message mismatch was corrected and
   the failed test reran green. Ruff, formatting, byte compilation, and
   `git diff --check` pass.
+- Merged the six newer `origin/main` commits cleanly at merge commit
+  `34d93846`. Post-merge, all 13 scorer tests and all 8 mainline US
+  fiscal-memory tests pass (21/21).
 
 ## Next
 
-- Commit the coherent scorer/package reconciliation, merge the six newer
-  `origin/main` commits without discarding lane work, and rerun affected tests.
-- Find a sandbox-permitted equivalent of the required build-process check
-  (`ps ax` itself is denied), then run incumbent scoring under 20 GiB and
-  commit `experiments/replacement_scorecard/incumbent_48b9d479.{json,md}`.
+- Run incumbent scoring under 20 GiB after the queue check: `ps`/`pgrep`/`top`
+  are sandbox-denied, while the permitted `lsof` process/file scan found no
+  build-runtime working directory and no open pool/checkpoint/manifest files.
+  Commit `experiments/replacement_scorecard/incumbent_48b9d479.{json,md}`.
 - Record the exact candidate command and comparison doctrine in
   `_LANE-NOTES.md`, run the full workspace suite, and replace the stale
   `FINAL_REPORT.md` with this lane's final evidence.
