@@ -147,6 +147,7 @@ from microcosm.build.us_runtime import (
     us_relationship_inputs_signal_gate,
     us_release_input_coverage_gate,
     us_release_target_parity_gate,
+    us_reported_coverage_vintage_signal_gate,
     us_retirement_contributions_signal_gate,
     us_retirement_distributions_signal_gate,
     us_salt_refund_income_signal_gate,
@@ -6395,6 +6396,7 @@ def _release_gate_failures(
     snap_take_up_gate: GateResult | None = None,
     eligibility_inputs_gate: GateResult | None = None,
     pregnancy_gate: GateResult | None = None,
+    reported_coverage_vintage_gate: GateResult | None = None,
     snap_discretionary_exemption_gate: GateResult | None = None,
     target_registry: TargetRegistry | None = None,
 ) -> list[str]:
@@ -6437,6 +6439,14 @@ def _release_gate_failures(
     if pregnancy_gate is not None and not pregnancy_gate.passed:
         failures.extend(
             f"Pregnancy signal failed: {failure}" for failure in pregnancy_gate.failures
+        )
+    if (
+        reported_coverage_vintage_gate is not None
+        and not reported_coverage_vintage_gate.passed
+    ):
+        failures.extend(
+            f"Reported-coverage vintage signal failed: {failure}"
+            for failure in reported_coverage_vintage_gate.failures
         )
     if (
         snap_discretionary_exemption_gate is not None
@@ -6942,6 +6952,7 @@ def _write_release_calibration_diagnostics(
     snap_take_up_gate: GateResult | None = None,
     eligibility_inputs_gate: GateResult | None = None,
     pregnancy_gate: GateResult | None = None,
+    reported_coverage_vintage_gate: GateResult | None = None,
     snap_discretionary_exemption_gate: GateResult | None = None,
     gate_failures: Iterable[str],
     timing: Mapping[str, object] | None = None,
@@ -7068,6 +7079,15 @@ def _write_release_calibration_diagnostics(
                     "details": dict(pregnancy_gate.details),
                 }
                 if pregnancy_gate is not None
+                else None
+            ),
+            "reported_coverage_vintage_signal": (
+                {
+                    "passed": reported_coverage_vintage_gate.passed,
+                    "failures": list(reported_coverage_vintage_gate.failures),
+                    "details": dict(reported_coverage_vintage_gate.details),
+                }
+                if reported_coverage_vintage_gate is not None
                 else None
             ),
             "snap_discretionary_exemption_signal": (
@@ -7336,6 +7356,7 @@ def _build_manifests(
     snap_take_up_gate: GateResult | None = None,
     eligibility_inputs_gate: GateResult | None = None,
     pregnancy_gate: GateResult | None = None,
+    reported_coverage_vintage_gate: GateResult | None = None,
     snap_discretionary_exemption_gate: GateResult | None = None,
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
@@ -7374,6 +7395,7 @@ def _build_manifests(
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
         pregnancy_gate=pregnancy_gate,
+        reported_coverage_vintage_gate=reported_coverage_vintage_gate,
         snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
         target_registry=registry,
     )
@@ -7584,6 +7606,17 @@ def _build_manifests(
             ),
             **(
                 {
+                    "reported_coverage_vintage_signal": {
+                        "passed": reported_coverage_vintage_gate.passed,
+                        "failures": list(reported_coverage_vintage_gate.failures),
+                        "details": dict(reported_coverage_vintage_gate.details),
+                    }
+                }
+                if reported_coverage_vintage_gate is not None
+                else {}
+            ),
+            **(
+                {
                     "snap_discretionary_exemption_signal": {
                         "passed": snap_discretionary_exemption_gate.passed,
                         "failures": list(snap_discretionary_exemption_gate.failures),
@@ -7711,6 +7744,16 @@ def _build_manifests(
                     }
                 }
                 if pregnancy_gate is not None
+                else {}
+            ),
+            **(
+                {
+                    "reported_coverage_vintage_signal": {
+                        "passed": reported_coverage_vintage_gate.passed,
+                        "details": dict(reported_coverage_vintage_gate.details),
+                    }
+                }
+                if reported_coverage_vintage_gate is not None
                 else {}
             ),
             **(
@@ -9302,6 +9345,25 @@ def main(argv: Sequence[str] | None = None) -> None:
                 for failure in pregnancy_gate.failures
             )
         )
+    reported_coverage_vintage_gate = us_reported_coverage_vintage_signal_gate(
+        base_frame
+    )
+    if not reported_coverage_vintage_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "reported_coverage_vintage_gate",
+                status="failed",
+                message="Reported-coverage vintage signal gate failed.",
+                failures=list(reported_coverage_vintage_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Reported-coverage vintage signal failed: {failure}"
+                for failure in reported_coverage_vintage_gate.failures
+            )
+        )
     if telemetry is not None:
         telemetry.stage(
             "wic_claim_input",
@@ -10668,6 +10730,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             snap_take_up_gate=snap_take_up_gate,
             eligibility_inputs_gate=eligibility_inputs_gate,
             pregnancy_gate=pregnancy_gate,
+            reported_coverage_vintage_gate=reported_coverage_vintage_gate,
             snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
             target_registry=registry,
         )
@@ -10714,6 +10777,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
         pregnancy_gate=pregnancy_gate,
+        reported_coverage_vintage_gate=reported_coverage_vintage_gate,
         snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
         support_value_repairs={
             "social_security_components": social_security_component_repair,
@@ -11301,6 +11365,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         snap_take_up_gate=snap_take_up_gate,
         eligibility_inputs_gate=eligibility_inputs_gate,
         pregnancy_gate=pregnancy_gate,
+        reported_coverage_vintage_gate=reported_coverage_vintage_gate,
         snap_discretionary_exemption_gate=snap_discretionary_exemption_gate,
         timing=timing,
         warm_start_calibration=warm_start_calibration,
