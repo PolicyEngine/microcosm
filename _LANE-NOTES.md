@@ -60,6 +60,10 @@
   hash (`packages/microcosm-build/src/microcosm/build/us/ecps_parity_reference.json:7-14`).
   Both cache-resolved files independently hash to `0a6b961a...`; the scorecard
   will retain both identities and call the former the package-resolved one.
+  **[Superseded 2026-08-22, later session: 4.15.0 was tagged 2026-06-10 and is
+  not the live package. See "incumbent identity corrected" below — the live
+  policyengine.py 5.0.3 default US dataset is the buildp sparse artifact, not
+  enhanced_cps_2024.]**
 - Terminal-battery scope: all 131 marginal comparisons and the joint
   immigration comparison are by-origin-only. Each needs support-channel and
   clone-role columns to build separate ASEC and ACS masks
@@ -71,6 +75,11 @@
   manifest loader validates the H5, diagnostics, digests, run identity, and
   passing terminal alias before returning the frame
   (`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:348-430,672-811`).
+  **[Partially superseded 2026-08-22, later session: the by-origin-only
+  classification and the pool-manifest receipt path stand, but the "incumbent
+  has neither field" premise described the eCPS. The actual live incumbent
+  (buildp sparse) carries both provenance columns; what it lacks is any
+  ACS-origin row — see "incumbent identity corrected" below.]**
 - Yardstick facts: the v9.4 feed at
   `/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_buildn_v9_4.jsonl`
   has SHA-256 `b3c0835631a446eb96aa84d86f3ee962d15ca356174c7114db52974f1cacc080`.
@@ -78,6 +87,70 @@
   period 2024, no aging, and the standing scoring period waiver produced
   32,842 specs at registry version `c4ac617743f2`. No artifact was built or
   scored during this compile.
+
+## 2026-08-22 — incumbent identity corrected (fresh session, post-salvage)
+
+- Environment: this session's `uv sync --all-packages --extra us` completed
+  normally (network available; the earlier codex-sandbox venv cloning is
+  historical).
+- **The live policyengine.py US dataset is the microcosm buildp sparse
+  artifact, not enhanced_cps_2024.** PyPI's latest `policyengine` is 5.0.3
+  (tagged 2026-08-21; 4.15.0, the version the earlier audit read, was tagged
+  2026-06-10). The 5.x bundle replaced the per-country release manifests:
+  `get_release_manifest` reads the bundled
+  `src/policyengine/data/bundle/manifest.json`, and
+  `resolve_managed_dataset_reference(country, dataset=None)` returns
+  `manifest.default_dataset_uri`
+  (`policyengine.py@5.0.3 src/policyengine/provenance/manifest.py:301-320,540-561`);
+  `default_dataset_uri` returns the certified artifact URI when
+  `certified_data_artifact.dataset == default_dataset`
+  (`.../provenance/manifest.py:181-187`), and dataset overlays are additive
+  only — an overlay that shadows the default raises
+  (`.../provenance/manifest.py:270-299`).
+- The 5.0.3 bundle's US entry: `default_dataset: populace_us_2024`,
+  `data_producer: populace`, build id
+  `populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z`,
+  HF repo `policyengine/populace-us` (repo_type `dataset`), revision equal to
+  the build id, filename `populace_us_2024.h5`, SHA-256
+  `48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e`,
+  certified for policyengine-us 1.764.6 — the same engine version this
+  workspace's `uv.lock` pins
+  (`policyengine.py@5.0.3 src/policyengine/data/bundle/manifest.json`
+  `data_releases.us.{default_dataset,certified_data_artifact,data_package,model_package}`).
+- Local bytes verified: the HF cache ref for that revision points at commit
+  `26dcad66867687f15735dc4926523e3741920836`, whose snapshot
+  `populace_us_2024.h5` (462,915,783 bytes) hashes to `48b9d479...` exactly.
+- Observed incumbent shape (read from those bytes this session): entity-table
+  layout (six US entities + `_time_period` 2024), 57,240 households, all
+  household weights positive; provenance columns present
+  (`household_support_channel`, `household_support_clone_index`, person
+  equivalents); channel counts `asec` 22,200 (clone 0) and `puf_tax_detail`
+  35,040 (clone 1); **zero `acs`-channel rows**. The by-origin battery
+  compares `asec` vs `acs` channels
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11577-11580,11695-11703`;
+  channel constants `support_provenance.py:31` and `stacked_spine.py:263`),
+  so every comparison is **inapplicable on observed evidence** — the
+  incumbent predates the ACS stack and has no ACS origin to compare, which
+  is a different (and observed) reason than the eCPS "no provenance columns"
+  premise.
+- CD provenance: the buildp H5 root attrs are PyTables boilerplate only — it
+  predates the CD vintage crosswalk attributes, so
+  `_assert_cd_vintage_support_matches` would fail on the attr comparison
+  (`tools/build_us_fiscal_refresh_release.py:2519-2567,2570-2597`). The
+  head-to-head scorer probes the attrs: strict when present, and otherwise
+  records an explicit legacy waiver receipt while still requiring the
+  household `congressional_district_geoid` lookup column to exist with
+  positive values (observed present on the incumbent).
+- Salvage adoption: the 1306-line sol draft was adopted after verifying every
+  imported symbol and cited mechanism against the code this session. Rewrites
+  beyond the identity block: entity H5s load through the canonical scorer's
+  `release._load_frame` seam (`tools/score_us_fiscal_targets.py:436`,
+  `tools/build_us_fiscal_refresh_release.py:2454-2471`), the
+  dropped-target check now runs before scoring (clear failure instead of a
+  loss-weight shape error), the battery inapplicability receipt is computed
+  from observed origin-channel counts instead of asserted, and the Markdown
+  scorecard renders rollups plus worst rows with the complete per-target
+  table living in the JSON twin.
 
 ---
 

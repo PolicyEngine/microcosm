@@ -2,68 +2,50 @@
 
 ## State
 
-The `replacement-scorecard` lane is active at `2aa96795`, based on the
-post-#741 `origin/main`. The task is to build one head-to-head scoring path for
-the live US incumbent and the not-yet-built 25% bundle-mode candidate, score
-the incumbent now, and leave the exact candidate command for the owner.
+The `replacement-scorecard` lane is active on top of `de5ca6aa` (post-#741
+`origin/main` plus two lane journal commits). The task: one head-to-head
+scoring path for the live US incumbent and the not-yet-built 25% bundle-mode
+candidate, score the incumbent now, and leave the owner the exact candidate
+command. Three earlier attempts died (network loss / codex quota); their
+salvage refs all reduce to one 1306-line scorer draft, which this session
+verified mechanism-by-mechanism and is rewriting where its premises were
+stale.
 
-The locked US-extra environment is synchronized. No pool build, scoring run,
-push, gate change, threshold change, or band change has occurred.
+No pool build, push, gate change, threshold change, or band change has
+occurred. `ps ax | grep build_us_multispine_pool` showed no live build before
+any scoring step.
 
 ## Done
 
-- Read `CLAUDE.md` and the GitNexus exploration skill. GitNexus repository
-  resources are not exposed in this session, so the code-flow audit will use
-  direct source and call-site inspection.
-- Attempted the required `uv sync --all-packages --extra us`. The managed
-  sandbox denied writes to the default uv cache and has no network/DNS. A
-  sibling Microcosm worktree at the identical commit and with the identical
-  `uv.lock` supplied a copy-on-write environment; a narrow writable cache of
-  the locked build requirements then allowed
-  `uv sync --offline --all-packages --extra us` to rebuild and relink all five
-  editable workspace packages to this worktree.
-- Confirmed the starting worktree was clean and the branch tracks
-  `origin/main` without any local changes.
-- Historicized the inherited one-target-surface root journal before recording
-  current state.
-- Established a green journal-step baseline: the scorer-signature suite
-  (`uv run python -m pytest -q
-  packages/microcosm-build/tests/test_us_state_files_scorer.py`) passes, and
-  `uv run ruff check .` passes. The complete workspace suite is continuing in
-  a separate read-only runner.
-- Audited the canonical scoring seam. The existing fiscal scorer already
-  normalizes a legacy PolicyEngine flat H5 and a Microcosm entity H5 before a
-  shared population-repair, materialization, weighting, and scoring path
-  (`tools/score_us_fiscal_targets.py:240-365,432-489`). The new scorer will
-  compile the registry once and fail if materialization or the constraint
-  matrix omits any row (`tools/build_us_fiscal_refresh_release.py:4323-4347`;
-  `packages/microcosm-calibrate/src/microcosm/calibrate/matrix.py:286-355`).
-- Pinned the loss yardstick to the production concept-budget weighting: square
-  root of target scale within amount/count basis, concept-group budget caps,
-  equal total budget across present bases, mean normalization, and the existing
-  100% capped target-scaled loss
-  (`tools/build_us_fiscal_refresh_release.py:5781-5814,6214-6290`;
-  `packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:473-518`).
-- Verified the eCPS incumbent bytes and identity. PolicyEngine.py 4.15.0's
-  bundled US manifest resolves
-  `policyengine/policyengine-us-data@9531fe1d.../enhanced_cps_2024.h5` with
-  SHA-256 `0a6b961a...`; Microcosm's frozen parity pin uses immutable revision
-  `21280dca...` for the same bytes
-  (`policyengine/data/release_manifests/us.json@4.15.0:12-27,37-42`;
-  `packages/microcosm-build/src/microcosm/build/us/ecps_parity_reference.json:7-14`).
-- Classified the terminal battery. Its 131 marginal comparisons plus one joint
-  comparison require ASEC/ACS support-channel and clone-role provenance
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:11366-11378,11523-11533,11577-11580`).
-  A finished pool's input-only H5 cannot replay them; the authenticated
-  companion manifest carries the sealed receipt
-  (`tools/build_us_multispine_pool.py:3533-3550,3766-3786`;
-  `packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:348-430,672-811`).
-- Compiled the superseding v9.4 Ledger feed (`b3c08356...`) without scoring:
-  the one surface has 32,842 specs and registry version `c4ac617743f2`.
+- `uv sync --all-packages --extra us` completed normally in this session
+  (earlier sandbox venv-cloning notes are historical).
+- Verified every symbol the salvaged draft imports and every cited mechanism
+  against the code this session: compile surface (five inputs, no membership
+  flags), dropped/skipped detection, sqrt–concept-budget–50/50 loss weights,
+  capped weighted-MAPE aggregate, relative-error rule, attribution row keys,
+  battery registries (131 + 1 joint) and receipt keys, pool-manifest
+  authentication chain, `terminal_gates` manifest shape.
+- **Corrected the incumbent identity** (see `_LANE-NOTES.md` "incumbent
+  identity corrected"): live policyengine.py is 5.0.3 (2026-08-21), whose
+  bundled manifest resolves the US default dataset to
+  `policyengine/populace-us` revision
+  `populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z`,
+  filename `populace_us_2024.h5`, SHA-256 `48b9d479...` — microcosm's own
+  buildp sparse artifact, not enhanced_cps_2024 (that was 4.15.0-era). Local
+  cached bytes hash-verified.
+- Re-classified the terminal battery for the real incumbent: provenance
+  columns present, but zero `acs`-channel rows (channels: asec 22,200 @ clone
+  0, puf_tax_detail 35,040 @ clone 1), so ASEC-vs-ACS comparisons are
+  inapplicable on observed evidence.
+- Established that the incumbent H5 predates CD vintage provenance attrs, so
+  the scorer needs a recorded legacy waiver path for entity H5s missing the
+  attrs (strict when present).
 
 ## Next
 
-- Finish the complete workspace baseline (`uv run python -m pytest`).
-- Implement and test the common head-to-head scorer.
-- Check the build queue, score the incumbent, record the owner command and
-  comparison doctrine, run final verification, and update `FINAL_REPORT.md`.
+- Rewrite `tools/score_us_release_head_to_head.py` accordingly; add the
+  contract/determinism/fixture tests; ruff + affected suites green; commit.
+- Re-check the build queue, run the incumbent scoring (RSS < 20 GiB), commit
+  `experiments/replacement_scorecard/incumbent_48b9d479.{json,md}`.
+- Record the owner's candidate command and the comparison doctrine in
+  `_LANE-NOTES.md`; run the full workspace suite; update `FINAL_REPORT.md`.
