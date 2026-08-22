@@ -1,4 +1,50 @@
-# Battery package 3 progress
+# Battery residual-fixes progress
+
+## Residual FIX packages — 2026-08-22 15:50Z
+
+### State
+
+In progress on branch `battery-residual-fixes` from starting revision
+`bb94f789`, stacked on `battery-pkg3-two-part`. This lane owns only the
+post-pkg3 residual FIX candidates named by the owner: adult-care post-
+reconciliation, model-required targeted calibration, Schedule D joint-parent
+reconciliation, and any still-red pkg3-scope SSI or weeks-unemployed incidence
+checks. No pool build, gate/band/ceiling/fold/seed tuning, exclusion change,
+push, certification, or publication is authorized. Earlier sections of this
+journal describe prior pkg3 work and are historical, not current state.
+
+### Done
+
+- Read `CLAUDE.md` and the complete GitNexus debugging skill instructions.
+  The graph query/context tools are unavailable in this session, so direct
+  source, call-site, history, and checkpoint tracing is the documented
+  fallback.
+- Confirmed the tracked worktree was clean at `bb94f789` and that
+  `FINAL_REPORT.md` is the established final-report output file.
+- Attempted the required `uv sync --all-packages --extra us` before any
+  repository edit. The default cache is outside the sandbox; a writable-cache
+  retry then failed because network access is disabled. Copied the complete,
+  lock-compatible pkg3 environment, attempted an offline reconciliation, and
+  repointed its five editable workspace packages to this worktree. Import
+  checks resolve every `microcosm.*` shard here and `quantile-forest==1.4.2`.
+- Preserved the owner-only build boundary: the baseline and pkg3 gate files
+  will be read only, and no pool command has run.
+- Ran `uv run --no-sync pytest` separately for the final startup tree's
+  `microcosm-frame`, `microcosm-fit`, `microcosm-calibrate`,
+  `microcosm-data`, and `microcosm-build` test roots; every command exited
+  zero with only established skips and warnings. Repository-wide
+  `uv run --no-sync ruff check .` and `git diff --check` also pass.
+
+### Next
+
+1. Commit this startup journal before changing executable code.
+2. Read the adjudication sources and pkg3 evidence, recompute the 114-failure
+   pkg3 universe directly from `pkg3/pool.gates.json`, mirror-deduplicate it,
+   and identify only the named in-scope red checks.
+3. Trace each owned residual to code-cited generating mechanisms; implement
+   the smallest fixes with regressions and green per-commit verification.
+4. Record exact serial-host 1% rerun requests in `_LANE-NOTES.md` and replace
+   `FINAL_REPORT.md` with the completed handoff.
 
 ## Main/F0 calibration-policy merge — 2026-08-22 02:09Z
 

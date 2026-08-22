@@ -1,4 +1,26 @@
-# Battery package 3 lane notes
+# Battery residual-fixes lane notes
+
+## Residual lane boundary — 2026-08-22 15:50Z
+
+- Starting tracked revision: `bb94f789` on `battery-residual-fixes`, stacked
+  on `battery-pkg3-two-part`.
+- Owned checks are limited to adult-care post-reconciliation, model-required
+  targeted calibration, Schedule D joint-parent reconciliation, and any
+  still-red post-pkg3 SSI or weeks-unemployed incidence checks. PUF tax, QBI,
+  rare tails, health labels, retirement, exclusions, and all gate policy are
+  owned elsewhere.
+- This lane will not run a pool build. It will read the baseline and pkg3 gate
+  artifacts, create code/tests/journals only on this branch, and hand exact
+  checkpoint-based 1% rerun commands to the serial host owner.
+- Normal GitNexus graph queries are unavailable. Mechanisms will be established
+  by direct adjudication, source, call-site, history, regression, and read-only
+  checkpoint tracing, with module-and-line citations in the final record.
+- The mandated US-extra sync was attempted before repository edits. Sandbox
+  cache and network restrictions prevented resolution; the complete pkg3
+  environment was copied locally and its five editable shards were repointed
+  to this worktree for `uv run --no-sync` verification.
+- Earlier pkg3 notes below are retained as source-cited history and do not
+  describe this lane's current state or authority.
 
 ## Main/F0 merge continuation — 2026-08-22 02:09Z
 
