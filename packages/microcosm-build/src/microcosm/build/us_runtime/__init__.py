@@ -2391,6 +2391,17 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "educational assistance carries directly from ASEC ED_VAL."
         ),
     ),
+    US_WORK_EXPERIENCE_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "Industry of the longest job (WEIND detailed groups, WEMIND major "
+            "groups) restores from the three SHA-pinned official ASEC person "
+            "archives by exact PERIDNUM join and carries directly; "
+            "worked_last_year is WKSWORK > 0, the work-experience recode "
+            "universe. Nothing is imputed (microcosm#719)."
+        ),
+    ),
     US_RETIREMENT_CONTRIBUTION_STAGE_NAME: DonorSpec(
         survey="Census CPS ASEC + published retirement-contribution shares",
         source="https://www.census.gov/programs-surveys/cps.html",
@@ -2473,6 +2484,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_WORKERS_COMPENSATION_STAGE_NAME,
     US_WEEKS_UNEMPLOYED_STAGE_NAME,
     US_EDUCATION_INPUTS_STAGE_NAME,
+    US_WORK_EXPERIENCE_STAGE_NAME,
     "capital_gain_distributions",
     "scf_wealth",
     US_SSI_DISABILITY_CRITERIA_STAGE_NAME,
