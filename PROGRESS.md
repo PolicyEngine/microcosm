@@ -23,16 +23,41 @@
 - Confirmed no `build_us_multispine_pool` process is live before any heavy
   work; `uv sync --all-packages --extra us` resolved 123 / checked 100
   packages cleanly.
+- Reproduced the deliverable-A failure exactly at committed HEAD with every
+  salvaged path restored:
+  `test_puf_qrf_chain.py::test_brokered_in_process_chain_is_checkpoint_byte_exact`
+  fails in 121.42 s (2.03 GiB RSS) with `AmbientAccessError: ambient clock
+  access 'sleep' is prohibited for producer_node 'primary_puf_qrf'` at
+  `brokers.py:1372`, reached from Joblib 1.5.3 `parallel.py:2072 __call__ →
+  :1682 _get_outputs → :1800 _retrieve → time.sleep(0.01)`, before the
+  member-byte assertion at `test_puf_qrf_chain.py:538-540`.
+- Mapped the complete committed-HEAD red set: eight additional failures in
+  `test_spec_engine_seeds.py` (census + uuid4 exemption),
+  `test_us_spine_blindness.py` (five classification/metadata/blindness/graph
+  pins), and `test_us_late_producer_dag.py` (boolean QBI value-kind) — 573
+  run, 565 passed, 8 failed; `test_spec_engine_loader.py` and
+  `test_spec_engine_country_bundles.py` are green at HEAD, so the salvage's
+  identity movements are repair consequences, not pre-existing breaks. Nine
+  failing tests at HEAD in total.
+- Completed the independent no-weakening audit of the salvaged diff: the
+  checkpoint member-byte assertion is unchanged and strengthened with receipt
+  requirements; no ledger site changed (joblib joins the attested QRF RNG
+  version); census reconciliation adds one binding to an existing site and
+  matches hand-verified current hash callsites with no exclusions; the
+  comparator changes remove ambient UUID/tmp-name randomness fail-closed; the
+  ambient clock guard still refuses every `time` primitive, with the joblib
+  yield served only by a caller-authenticated, revocable, module-local alias
+  restricted to the literal 0.01 s scheduler wait under a virtual clock and
+  sealed-topology CPU counts, re-verified on scope exit.
 
 ## Next
 
-1. Re-reproduce the recorded deliverable-A failure at committed HEAD
-   (`test_puf_qrf_chain.py::test_brokered_in_process_chain_is_checkpoint_byte_exact`).
-2. Audit the salvaged diff against the no-weakening constraints (byte-identity
-   gate, seed-ledger binding, fail-closed comparator; no gate/band/seed tuning;
-   no exclusions).
-3. Re-run the full per-package suites + Ruff below the 15 GiB ceiling, then
-   commit the implementation, journals, and the FINAL_REPORT.md closeout.
+1. Finish the serial full verification now running (six measured
+   microcosm-build chunks with the brokered-QRF chunk first, then fit, frame,
+   calibrate, data, Ruff, coverage `--check`, bundle `--check`), each stage
+   under the 15 GiB ceiling.
+2. Commit the implementation with the journals, then the FINAL_REPORT.md
+   closeout.
 
 ---
 
