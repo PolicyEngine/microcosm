@@ -20,6 +20,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from microcosm.build.us_runtime.h5_io import write_nullable_us_h5
 from microcosm.calibrate import TargetRegistry
 from microcosm.calibrate.registry import TargetSpec
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
@@ -206,6 +207,46 @@ def _patch_release_seams(module, monkeypatch) -> None:
     monkeypatch.setattr(release, "_read_cd_vintage_support_provenance", _stub_cd_probe)
 
 
+def _complete_battery_comparisons(module) -> dict[str, dict[str, object]]:
+    comparisons: dict[str, dict[str, object]] = {}
+    for label, row in module._canonical_battery_contract().items():
+        metric = row["metric"]
+        if metric == "boolean_incidence":
+            receipt = {
+                "status": "tested",
+                "metric": metric,
+                "asec_incidence": 0.5,
+                "acs_incidence": 0.5,
+                "incidence_ratio_acs_over_asec": 1.0,
+            }
+        elif metric == "categorical_tvd":
+            receipt = {
+                "status": "tested",
+                "metric": metric,
+                "total_variation_distance": 0.0,
+                "category_shares": {
+                    "asec": {"fixture": 1.0},
+                    "acs": {"fixture": 1.0},
+                },
+            }
+        else:
+            receipt = {
+                "status": "tested",
+                "metric": metric,
+                "legs": {
+                    sign: {
+                        "asec_incidence": 0.5,
+                        "acs_incidence": 0.5,
+                        "incidence_ratio_acs_over_asec": 1.0,
+                        "quantile_envelope_distance": 0.0,
+                    }
+                    for sign in ("positive", "negative")
+                },
+            }
+        comparisons[label] = receipt
+    return comparisons
+
+
 def test_head_to_head_signature_has_no_target_membership_switches() -> None:
     module = _load_head_to_head_module()
 
@@ -217,9 +258,28 @@ def test_head_to_head_signature_has_no_target_membership_switches() -> None:
         "allow_unaged_dollar_targets",
         "congressional_district_vintage_crosswalk",
         "maximum_microsim_batch_size",
-        "target_materialization_cache_dir",
         "candidate_manifest_sha256",
     }
+
+
+def test_dense_candidate_streaming_plan_is_independent_of_total_pool_size() -> None:
+    module = _load_head_to_head_module()
+    dense_25pct_households = 918_350
+
+    planned = module._streaming_target_column_payload_upper_bound_bytes(
+        total_households=dense_25pct_households,
+        household_slice_size=5_000,
+        chunk_spec_count=module.MATERIALIZE_SCORE_CHUNK_SPECS,
+    )
+    one_dense_copy = (
+        dense_25pct_households
+        * module.MATERIALIZE_SCORE_CHUNK_SPECS
+        * np.dtype(np.float64).itemsize
+    )
+
+    assert planned < 1024**3
+    assert planned < module.MAX_RSS_BYTES
+    assert one_dense_copy > module.MAX_RSS_BYTES
 
 
 def test_canonical_battery_contract_matches_production_registries() -> None:
@@ -232,6 +292,13 @@ def test_canonical_battery_contract_matches_production_registries() -> None:
     assert single == 131
     assert joint == 1
     assert len(contract) == single + joint
+    assert sum(len(row["metric_legs"]) for row in contract.values()) == 369
+    assert (
+        sum(row["metric"] == "monetary_sign_separated" for row in contract.values())
+        == 79
+    )
+    assert sum(row["metric"] == "boolean_incidence" for row in contract.values()) == 48
+    assert sum(row["metric"] == "categorical_tvd" for row in contract.values()) == 5
     assert (
         "person/source_operator_immigration/"
         "joint[ssn_card_type,immigration_status_str][clone_0]" in contract
@@ -240,8 +307,26 @@ def test_canonical_battery_contract_matches_production_registries() -> None:
         assert row["metric_legs"] == list(module._metric_legs(row["metric"]))
 
 
-def test_observed_origin_battery_is_evidence_not_assertion() -> None:
+def test_observed_origin_battery_is_evidence_not_assertion(monkeypatch) -> None:
     module = _load_head_to_head_module()
+
+    monkeypatch.setattr(
+        module,
+        "materialize_multispine_agreement_outputs",
+        lambda frame: SimpleNamespace(
+            frame=frame,
+            receipt={"persisted_to_artifact": False},
+        ),
+    )
+    monkeypatch.setattr(
+        module,
+        "by_origin_battery_artifact_evidence",
+        lambda frame: SimpleNamespace(
+            passed=True,
+            failures=(),
+            details={"comparisons": _complete_battery_comparisons(module)},
+        ),
+    )
 
     no_columns = module._battery_payload_from_observed_origins(
         _tiny_frame(measure_values=(1.0, 2.0), channels=None)
@@ -256,16 +341,75 @@ def test_observed_origin_battery_is_evidence_not_assertion() -> None:
     assert no_columns["status"] == "inapplicable"
     assert "no support-channel" in no_columns["reason"]
     assert asec_only["status"] == "inapplicable"
-    assert "no ACS-stacked origin rows" in asec_only["reason"]
+    assert "empty ACS side" in asec_only["reason"]
     assert asec_only["observed_origins"]["total_acs_rows"] == 0
     assert asec_only["observed_origins"]["entities"]["person"]["asec_rows"] == 2
-    assert both_origins["status"] == "inapplicable"
-    assert "authenticated pool manifest" in both_origins["reason"]
-    for payload in (no_columns, asec_only, both_origins):
+    assert both_origins["status"] == "computed_finished_h5"
+    assert both_origins["production_receipt_authenticated"] is False
+    assert both_origins["metric_leg_count"] == 369
+    assert both_origins["scalar_leg_status_counts"] == {"computed": 369}
+    for payload in (no_columns, asec_only):
         assert payload["comparison_count"] == 132
         assert all(
             row["status"] == "inapplicable" for row in payload["comparisons"].values()
         )
+
+
+def test_pool_battery_receipt_refuses_a_silently_missing_scalar_leg() -> None:
+    module = _load_head_to_head_module()
+    comparisons = _complete_battery_comparisons(module)
+    label = next(
+        label
+        for label, row in comparisons.items()
+        if row["metric"] == "boolean_incidence"
+    )
+    del comparisons[label]["incidence_ratio_acs_over_asec"]
+    terminal_gates = {
+        "gates": {
+            "us_by_origin_battery": {
+                "passed": True,
+                "failures": [],
+                "details": {"comparisons": comparisons},
+            }
+        }
+    }
+
+    with pytest.raises(ValueError, match="omits computed leg"):
+        module._battery_payload_from_pool_receipt(terminal_gates)
+
+
+def test_origin_probe_uses_clone_zero_positive_weight_scope() -> None:
+    module = _load_head_to_head_module()
+    frame = _tiny_frame(measure_values=(1.0, 2.0), channels=("acs", "asec"))
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    for entity in ("person", "tax_unit", "spm_unit"):
+        tables[entity].loc[tables[entity].index[0], f"{entity}_support_clone_index"] = 1
+    clone_scoped = Frame(
+        tables,
+        US_SCHEMA,
+        {"household": frame.weights_for("household")},
+    )
+    zero_weight_scoped = Frame(
+        {entity: frame.table(entity).copy() for entity in frame.entities},
+        US_SCHEMA,
+        {
+            "household": Weights(
+                np.asarray([0.0, 20.0], dtype="float64"),
+                WeightKind.CALIBRATED,
+            )
+        },
+    )
+
+    observed_by_clone = module._observed_origin_receipt(clone_scoped)
+    observed_by_weight = module._observed_origin_receipt(zero_weight_scoped)
+
+    for observed in (observed_by_clone, observed_by_weight):
+        assert observed["total_acs_rows"] == 0
+        assert observed["total_asec_rows"] == 3
+        for entity in ("person", "tax_unit", "spm_unit"):
+            receipt = observed["entities"][entity]
+            assert receipt["raw_origin_row_counts"] == {"acs": 1, "asec": 1}
+            assert receipt["origin_row_counts"] == {"asec": 1}
 
 
 def test_scored_column_contract_refuses_silently_missing_columns() -> None:
@@ -296,6 +440,65 @@ def test_scored_column_contract_refuses_silently_missing_columns() -> None:
         )
 
 
+def test_incumbent_and_candidate_h5_loaders_preserve_scored_contract(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("tables")
+    module = _load_head_to_head_module()
+    registry = _tiny_registry()
+    incumbent_path = tmp_path / "incumbent.h5"
+    candidate_path = tmp_path / "candidate.h5"
+    broken_path = tmp_path / "candidate_missing_measure.h5"
+    incumbent_frame = _tiny_frame(measure_values=(1.0, 2.0))
+    candidate_frame = _tiny_frame(measure_values=(3.0, 4.0))
+    broken_tables = {
+        entity: candidate_frame.table(entity).copy()
+        for entity in candidate_frame.entities
+    }
+    broken_tables["household"] = broken_tables["household"].drop(columns=["n_flagged"])
+    broken_frame = Frame(
+        broken_tables,
+        US_SCHEMA,
+        {"household": candidate_frame.weights_for("household")},
+    )
+    for path, frame in (
+        (incumbent_path, incumbent_frame),
+        (candidate_path, candidate_frame),
+        (broken_path, broken_frame),
+    ):
+        write_nullable_us_h5(
+            frame,
+            path,
+            period=2024,
+            artifact_kind="replacement_scorecard_fixture",
+        )
+
+    incumbent = module.load_artifact(incumbent_path)
+    candidate = module.load_artifact(candidate_path)
+    broken = module.load_artifact(broken_path)
+    incumbent_contract = module.scored_column_contract(
+        incumbent.frame,
+        registry.specs,
+        artifact_name="incumbent",
+    )
+    candidate_contract = module.scored_column_contract(
+        candidate.frame,
+        registry.specs,
+        artifact_name="candidate",
+    )
+
+    module._assert_identical_scored_contracts(
+        {"incumbent": incumbent_contract, "candidate": candidate_contract}
+    )
+    assert incumbent.loader["kind"] == candidate.loader["kind"]
+    with pytest.raises(ValueError, match="lacks scored column"):
+        module.scored_column_contract(
+            broken.frame,
+            registry.specs,
+            artifact_name="candidate",
+        )
+
+
 def test_fixture_end_to_end_is_deterministic_and_shares_one_path(
     monkeypatch, tmp_path
 ) -> None:
@@ -308,52 +511,24 @@ def test_fixture_end_to_end_is_deterministic_and_shares_one_path(
     candidate = _fixture_artifact(
         module, sha256="b" * 64, measure_values=(200.0, 290.0)
     )
+    incumbent_path = Path("/fixture/incumbent.h5")
+    candidate_path = Path("/fixture/candidate.h5")
+    artifacts = {incumbent_path: incumbent, candidate_path: candidate}
+    monkeypatch.setattr(module, "compile_yardstick", lambda **kwargs: yardstick)
+    monkeypatch.setattr(
+        module,
+        "load_artifact",
+        lambda path, **kwargs: artifacts[path],
+    )
 
     def _score_both() -> dict[str, object]:
-        artifacts: dict[str, dict[str, object]] = {}
-        contracts: dict[str, tuple] = {}
-        for name, artifact in (("incumbent", incumbent), ("candidate", candidate)):
-            payload, contract = module.score_loaded_artifact(
-                artifact=artifact,
-                artifact_name=name,
-                yardstick=yardstick,
-                maximum_microsim_batch_size=None,
-                target_materialization_cache_dir=None,
-            )
-            artifacts[name] = payload
-            contracts[name] = contract
-        module._assert_identical_scored_contracts(contracts)
-        return {
-            "schema_version": module.SCHEMA_VERSION,
-            "yardstick": {
-                "fiscal_registry": dict(yardstick.identity),
-                "fiscal_aggregate": {
-                    "name": module.release.US_FISCAL_TARGET_LOSS_WEIGHTING,
-                    "target_loss_cap": module.release.US_FISCAL_TARGET_LOSS_CAP,
-                    "loss_basis": dict(yardstick.loss_basis),
-                    "weighting_rule": "fixture",
-                    "family_multipliers": None,
-                    "code_citations": [],
-                },
-                "relative_error": {"rule": "fixture", "code_citation": "fixture"},
-                "terminal_battery": {
-                    "by_origin_only": True,
-                    "single_column_comparison_count": 131,
-                    "joint_comparison_count": 1,
-                    "comparison_count": 132,
-                    "metric_leg_count": 0,
-                    "code_citations": [],
-                },
-                "code_citations": dict(module._CODE_CITATIONS),
-            },
-            "artifacts": {
-                "incumbent": artifacts["incumbent"],
-                "candidate": artifacts["candidate"],
-            },
-            "comparison": module._comparison_payload(
-                artifacts["incumbent"], artifacts["candidate"]
-            ),
-        }
+        return module.score_head_to_head(
+            incumbent=incumbent_path,
+            candidate=candidate_path,
+            ledger_facts=Path("/fixture/facts.jsonl"),
+            congressional_district_vintage_crosswalk=Path("/fixture/crosswalk.parquet"),
+            maximum_microsim_batch_size=1,
+        )
 
     payload_one = _score_both()
     payload_two = _score_both()
@@ -394,7 +569,7 @@ def test_fixture_end_to_end_is_deterministic_and_shares_one_path(
         assert path_one.read_bytes() == path_two.read_bytes()
     markdown = first[1].read_text()
     assert "US release replacement scorecard" in markdown
-    assert "no ACS-stacked origin rows" in markdown
+    assert "empty ACS side" in markdown
 
 
 def test_chunked_scoring_recombination_matches_one_shot(monkeypatch) -> None:
@@ -452,8 +627,7 @@ def test_chunked_scoring_recombination_matches_one_shot(monkeypatch) -> None:
         artifact=artifact,
         artifact_name="incumbent",
         yardstick=yardstick,
-        maximum_microsim_batch_size=None,
-        target_materialization_cache_dir=None,
+        maximum_microsim_batch_size=1,
     )
 
     one_shot = score_targets(
@@ -471,6 +645,10 @@ def test_chunked_scoring_recombination_matches_one_shot(monkeypatch) -> None:
         [2, 4],
         [4, 5],
     ]
+    assert all(
+        chunk["target_compilation"]["household_slices"] == 2
+        for chunk in chunking["chunks"]
+    )
     assert payload["fiscal"]["weighted_loss"] == float(one_shot.final_loss)
     assert payload["fiscal"]["fraction_within_10pct"] == one_shot.fraction_within_10pct
     rows = payload["fiscal"]["targets"]
@@ -528,7 +706,6 @@ def test_dropped_targets_fail_loudly_before_scoring(monkeypatch) -> None:
             artifact_name="incumbent",
             yardstick=_fixture_yardstick(module),
             maximum_microsim_batch_size=None,
-            target_materialization_cache_dir=None,
         )
 
 

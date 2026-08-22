@@ -178,6 +178,42 @@
   refresh-builder, pool-h5-io, fiscal-targets, and release-target-parity
   files all green (428 tests); ruff check + format clean.
 
+## 2026-08-22 — newest salvage reconciled; candidate boundary made scoreable
+
+- Inspected `refs/claude-salvage/replacement-scorecard-20260822-220105-73402`
+  (`5577ee4c`) and verified that its scorer blob exactly matched the inherited
+  uncommitted file. The salvage's household slicing was retained deliberately,
+  but its full-pool measure-array assembly was replaced: a 25% dense pool at
+  roughly 918,350 households would require about 56 GiB for one
+  8,192-column float64 copy. The scorer now materializes and scores one fixed
+  household slice at a time, checks weights plus target/scale/name/column
+  contracts on every slice, accumulates the additive matrix/weight products in
+  fixed order, frees the slice, and checks RSS before continuing
+  (`tools/score_us_release_head_to_head.py:654-852,1399-1477`;
+  `tools/build_us_fiscal_refresh_release.py:3730-3750`;
+  `packages/microcosm-calibrate/src/microcosm/calibrate/score.py:79-142`).
+- The production pool loader remains a readiness boundary. A separate
+  scorecard-evidence loader accepts the exact current stacked
+  `status=gate_failed` / `simulation_ready=false` pair without weakening any
+  manifest/diagnostics/H5 digest, schema, run-ID, materializer, terminal-alias,
+  transition-authority, weight-kind, or row-count authentication
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py:371-588,719-869`).
+  This implements the owner's head-to-head ruling without relabeling a failed
+  candidate as simulation-ready.
+- Finished entity H5s do not retain the stacked assembly/tail manifests. Their
+  battery path therefore evaluates the canonical authority, 132 comparisons,
+  369 nominal scalar legs, clone-0 positive-weight scopes, metrics, support
+  rules, and tolerances as artifact evidence, while explicitly reporting
+  `production_receipt_authenticated=false`. The one structural ACS
+  group-quarters scope is derived from retained origin/clone/`TYPEHUGQ`/
+  membership/tenure columns and marks assembly authentication false
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7808-7897,11474-11492,11530-11898`).
+- Validation: the combined focused run covered 19 scorer/pool/battery cases.
+  Eighteen passed; the only failure was an assertion matching the wrong error
+  wording, after which that corrected test reran green. Ruff check/format,
+  Python byte compilation, and `git diff --check` pass. No pool build, push,
+  gate edit, threshold edit, or band edit occurred.
+
 ---
 
 # Historical: one-target-surface lane notes

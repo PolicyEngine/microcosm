@@ -2,12 +2,13 @@
 
 ## State
 
-The `replacement-scorecard` lane is active. The task: one head-to-head
-scoring path for the live US incumbent and the not-yet-built 25% bundle-mode
-candidate, score the incumbent now, and leave the owner the exact candidate
-command. The scorer (`tools/score_us_release_head_to_head.py`) and its test
-file are committed with green affected suites; the incumbent scoring run is
-the current step.
+The `replacement-scorecard` lane is active. The scorer now has one role-neutral
+path for the live US incumbent and either a finished-H5 or authenticated-pool
+candidate. Fiscal scoring streams fixed registry chunks across fixed household
+slices, and a gate-failed current stacked publication remains authenticated
+scorecard evidence without being promoted to simulation-ready. The incumbent
+scoring run, result artifacts, owner handoff, final suite, and final report
+remain.
 
 No pool build, push, gate change, threshold change, or band change has
 occurred. `ps ax | grep build_us_multispine_pool` is checked before every
@@ -15,7 +16,13 @@ scoring step.
 
 ## Done
 
-- `uv sync --all-packages --extra us` complete; environment normal.
+- `UV_CACHE_DIR=/tmp/microcosm-scorecard-uv-cache uv sync --all-packages
+  --extra us` complete (the sandbox forbids the default user cache).
+- Inspected all four salvage snapshots. The newest snapshot `5577ee4c` exactly
+  matched the inherited uncommitted scorer; its household-slicing direction
+  was retained deliberately, then replaced with slice-local scoring because
+  assembling 8,192 full-pool measure arrays would exceed 20 GiB on a 25%
+  dense pool.
 - Verified every symbol the salvaged draft imports and every cited mechanism
   against the code: compile surface (five inputs, no membership flags),
   dropped/skipped detection, sqrt–concept-budget–50/50 loss weights, capped
@@ -35,17 +42,30 @@ scoring step.
   columns present on all three battery entities (person/tax_unit/spm_unit),
   **zero `acs` rows anywhere** → battery inapplicable with the observed
   empty-ACS-side reason.
-- `tools/score_us_release_head_to_head.py` + 7 contract/determinism/fixture
-  tests committed; head-to-head, state-files scorer, refresh-builder,
-  pool-h5-io, fiscal-targets, release-target-parity files green (428 tests);
-  ruff clean. `test_us_stacked_spine.py` runs long in the background as part
-  of full-suite validation (no package code was touched by this lane).
+- Added an authenticated scoring-only pool loader. It accepts only the exact
+  current stacked `status=gate_failed` / `simulation_ready=false` pair while
+  retaining all manifest/diagnostics/H5 digest, schema, run-ID, materializer,
+  gate-alias, weight-kind, transition-authority, and row-count checks. The
+  production simulation-ready loader remains strict.
+- Added a finished-artifact battery evaluator that retains the canonical
+  authority, 132-comparison surface, 369 scalar-leg contract, formulas,
+  support rules, and tolerances, but explicitly does not claim an assembly or
+  tail receipt. The one structural ACS group-quarters scope is reconstructed
+  from retained artifact columns and marked unauthenticated.
+- Added loader-contract, missing-column, deterministic top-level fixture,
+  streaming-vs-one-shot, dense memory-plan, scalar-leg completeness,
+  origin-scope, pool-status, and metadata-free battery tests. The combined
+  focused run reached 18/19; its sole test-message mismatch was corrected and
+  the failed test reran green. Ruff, formatting, byte compilation, and
+  `git diff --check` pass.
 
 ## Next
 
-- Check the build queue, then run the incumbent scoring (RSS < 20 GiB) with a
-  persistent `--target-materialization-cache-dir` so repeated bounded
-  invocations resume the 11 JCT reform vectors; commit
-  `experiments/replacement_scorecard/incumbent_48b9d479.{json,md}`.
-- Record the owner's candidate command and the comparison doctrine in
-  `_LANE-NOTES.md`; finish full workspace suite; update `FINAL_REPORT.md`.
+- Commit the coherent scorer/package reconciliation, merge the six newer
+  `origin/main` commits without discarding lane work, and rerun affected tests.
+- Find a sandbox-permitted equivalent of the required build-process check
+  (`ps ax` itself is denied), then run incumbent scoring under 20 GiB and
+  commit `experiments/replacement_scorecard/incumbent_48b9d479.{json,md}`.
+- Record the exact candidate command and comparison doctrine in
+  `_LANE-NOTES.md`, run the full workspace suite, and replace the stale
+  `FINAL_REPORT.md` with this lane's final evidence.

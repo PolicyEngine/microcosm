@@ -8,27 +8,41 @@ This tool is that yardstick. It has two parts:
   artifact's own shipped weights with production's concept-budgeted
   amount/count loss; and
 * the terminal by-origin battery: reported from an authenticated pool
-  manifest receipt when the artifact is a pool, and reported as observed
-  inapplicability (never synthesized, never faked) when the artifact carries
-  no evaluable ASEC-vs-ACS surface.
+  manifest receipt when the artifact is a pool, computed on an ephemeral
+  terminal gate view for a finished H5 carrying both origins, and reported as
+  observed inapplicability (never synthesized, never faked) when the artifact
+  carries no evaluable ASEC-vs-ACS surface.
 
 Artifacts differ only at the loading boundary. Both normalized frames pass
 through the same population repair, target materialization, constraint
 matrix, scoring, loss attribution, contract checks, and rendering path.
 Scoring is sequential and refuses a process peak at or above 20 GiB RSS.
 
-The production materializer writes one full-length household column per
-registry spec (32,842 distinct measures on the post-#741 surface), so a
-whole-registry materialization of even a 57k-household artifact peaks near
-2 x n_specs x n_households x 8 bytes — ~29 GiB observed. Both sides are
-therefore materialized and scored in fixed contiguous registry chunks
-through the identical canonical calls, and the per-target results are
-recombined with the exact canonical aggregate: per-target rows are
-row-independent (matrix rows and estimates never see other chunks), and
-the aggregate is one `relative_error_loss` evaluation over the full
-combined vectors — the single canonical loss definition every measurement
-imports (packages/microcosm-calibrate/src/microcosm/calibrate/
-solve.py:471-537).
+Memory design, from measurements on the live incumbent (57,240 households,
+166,321 persons): the unbatched full-frame base microsimulation alone peaks
+at ~31 GiB (the federal income-tax DAG holds every intermediate array), and
+the materializer additionally emits one full-length float64 household
+column per registry spec (32,842 distinct measures post-#741, ~15 GB
+whole-registry). Neither fits the 20 GiB scoring budget, so both sides run
+the same two-axis decomposition through unmodified canonical calls:
+
+* households are sliced with the production reform-sweep batching machinery
+  (`_household_position_batches` + `_select_households_by_position`,
+  tools/build_us_fiscal_refresh_release.py:3730-3750), and each slice is
+  materialized and scored through the canonical calls before it is freed;
+* registry specs are scored in fixed contiguous chunks. A chunk's estimates
+  are additive matrix products, so slice estimates are accumulated in fixed
+  household order; targets, scales, names, and scored-column contracts must
+  be identical on every slice. No chunk-wide dense household-by-measure table
+  is assembled. The aggregate is one `relative_error_loss` evaluation over
+  the full combined vectors — the single canonical loss definition every
+  measurement imports (packages/microcosm-calibrate/src/microcosm/calibrate/
+  solve.py:471-537).
+
+The per-measure reform-vector cache is refused under household slicing:
+its identity is (context, measure, n_households), so equal-sized slices of
+one artifact would collide into one cache entry and poison each other
+(tools/build_us_fiscal_refresh_release.py:1717-1739).
 
 No gate, threshold, tolerance, or band is applied to the comparison: the
 output is evidence for the owner's flip decision, not a verdict.
@@ -51,6 +65,7 @@ from pathlib import Path
 import build_us_fiscal_refresh_release as release
 import h5py
 import numpy as np
+import pandas as pd
 import score_us_fiscal_targets as fiscal_scorer
 
 from microcosm.build.us_runtime.congressional_district_vintage import (
@@ -60,13 +75,17 @@ from microcosm.build.us_runtime.congressional_district_vintage import (
 from microcosm.build.us_runtime.h5_io import (
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
     AuthenticatedPoolH5,
-    load_simulation_ready_us_multispine_pool,
+    load_authenticated_us_multispine_pool_for_scoring,
     read_nullable_us_h5_metadata,
+)
+from microcosm.build.us_runtime.multispine_pool import (
+    materialize_multispine_agreement_outputs,
 )
 from microcosm.build.us_runtime.stacked_spine import (
     ACS_STACKED_SUPPORT_CHANNEL,
     CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY,
     CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY,
+    by_origin_battery_artifact_evidence,
 )
 from microcosm.build.us_runtime.support_provenance import (
     BASE_ASEC_SUPPORT_CHANNEL,
@@ -80,13 +99,15 @@ from microcosm.frame import US_SCHEMA, Frame
 SCHEMA_VERSION = 2
 MAX_RSS_BYTES = 20 * 1024**3
 MARKDOWN_WORST_TARGET_ROWS = 50
-# Registry chunk size for materialize-and-score. The materializer emits one
-# float64 household column per spec, so a chunk transiently costs about
-# 2 x chunk x n_households x 8 bytes of column payload on top of the live
-# microsimulation; 4,096 specs keeps a 57k-household artifact's peak well
-# under the 20 GiB scoring budget. Chunk boundaries are fixed and
-# content-independent, so output bytes are deterministic.
-MATERIALIZE_SCORE_CHUNK_SPECS = 4_096
+# Registry chunk size for streaming materialize-and-score. The target-column
+# payload is bounded by the household slice, never total artifact size. Three
+# float64-sized copies per cell conservatively cover materialized columns,
+# matrix storage, and scoring temporaries: 8,192 x 5,000 x 8 x 3 is under
+# 1 GiB, on top of one live household-slice microsimulation. Chunk and slice
+# boundaries are fixed and content-independent, so output bytes are
+# deterministic.
+MATERIALIZE_SCORE_CHUNK_SPECS = 8_192
+_STREAMING_TARGET_COLUMN_COPIES = 3
 
 # The package resolver authority for the live US incumbent, read from
 # policyengine.py 5.0.3 (PyPI latest, tagged 2026-08-21) this lane session:
@@ -94,14 +115,15 @@ MATERIALIZE_SCORE_CHUNK_SPECS = 4_096
 # dataset, resolve_managed_dataset_reference(country, dataset=None) returns
 # manifest.default_dataset_uri, and dataset overlays are additive-only so
 # they can never shadow the default.
-# policyengine.py@5.0.3 src/policyengine/data/bundle/manifest.json
-#   data_releases.us.{default_dataset,certified_data_artifact,data_package}
-# policyengine.py@5.0.3 src/policyengine/provenance/manifest.py:181-187
-#   (default_dataset_uri), :270-299 (_apply_dataset_overlays no-shadow),
-#   :301-320 (get_release_manifest), :540-561
+# policyengine.py@5.0.3 src/policyengine/data/bundle/manifest.json:113-140,
+#   156-160,181-189 (US artifact, default, and model pins)
+# policyengine.py@5.0.3 src/policyengine/provenance/manifest.py:180-187
+#   (default_dataset_uri), :270-299 (overlay no-shadow), :301-318
+#   (get_release_manifest), :540-560
 #   (resolve_managed_dataset_reference default path)
 _POLICYENGINE_LIVE_US_INCUMBENT = {
     "policyengine_version": "5.0.3",
+    "policyengine_source_commit": "cfdd128fc316e07ef54c182f2149fac217e8706f",
     "bundle_id": "us-5.0.3",
     "data_producer": "populace",
     "default_dataset": "populace_us_2024",
@@ -111,6 +133,7 @@ _POLICYENGINE_LIVE_US_INCUMBENT = {
     "revision": "populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z",
     "filename": "populace_us_2024.h5",
     "sha256": "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
+    "resolved_hf_commit": "26dcad66867687f15735dc4926523e3741920836",
     "certified_for_model_version": "1.764.6",
 }
 
@@ -124,7 +147,7 @@ _CODE_CITATIONS = {
     "legacy_flat_loader": "tools/score_us_fiscal_targets.py:240-333",
     "pool_manifest_authentication": (
         "packages/microcosm-build/src/microcosm/build/us_runtime/"
-        "h5_io.py:348-430,672-811"
+        "h5_io.py:371-588,719-869"
     ),
     "materialization_drop_detection": (
         "tools/build_us_fiscal_refresh_release.py:4323-4350"
@@ -133,10 +156,11 @@ _CODE_CITATIONS = {
         "packages/microcosm-calibrate/src/microcosm/calibrate/matrix.py:286-355"
     ),
     "loss_weighting": (
-        "tools/build_us_fiscal_refresh_release.py:344-348,5781-5814,6214-6290"
+        "tools/build_us_fiscal_refresh_release.py:344-348,481-516,5781-5814,6214-6290"
     ),
     "loss_aggregate": (
-        "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:471-537 "
+        "packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:"
+        "471-537,576-600 "
         "(relative_error_loss, the single canonical loss definition)"
     ),
     "fraction_within_10pct": (
@@ -149,12 +173,10 @@ _CODE_CITATIONS = {
         "weight normalization)"
     ),
     "chunked_materialize_score": (
-        "tools/score_us_release_head_to_head.py MATERIALIZE_SCORE_CHUNK_SPECS; "
-        "per-target rows are row-independent "
-        "(packages/microcosm-calibrate/src/microcosm/calibrate/"
-        "matrix.py:286-355 compiles one row per target; score.py:79-142 "
-        "evaluates estimates per row), and the aggregate is one "
-        "relative_error_loss call over the full combined vectors"
+        "tools/score_us_release_head_to_head.py:654-852,1399-1477; "
+        "tools/build_us_fiscal_refresh_release.py:3730-3750; "
+        "packages/microcosm-calibrate/src/microcosm/calibrate/"
+        "matrix.py:286-355; score.py:79-142"
     ),
     "relative_error": (
         "packages/microcosm-calibrate/src/microcosm/calibrate/score.py:25-51"
@@ -165,11 +187,18 @@ _CODE_CITATIONS = {
     ),
     "battery_origin_masks": (
         "packages/microcosm-build/src/microcosm/build/us_runtime/"
-        "stacked_spine.py:11523-11533,11577-11580,11695-11703"
+        "stacked_spine.py:11644-11709,11824-11832"
     ),
     "battery_receipt_keys": (
         "packages/microcosm-build/src/microcosm/build/us_runtime/"
-        "stacked_spine.py:11819-11973"
+        "stacked_spine.py:11948-12154"
+    ),
+    "battery_finished_h5_materialization": (
+        "packages/microcosm-build/src/microcosm/build/us_runtime/"
+        "multispine_pool.py:3137-3215 (ephemeral SSI gate view); "
+        "packages/microcosm-build/src/microcosm/build/us_runtime/"
+        "stacked_spine.py:7808-7897,11474-11492,11530-11898 "
+        "(finished-artifact evidence seam and canonical evaluator)"
     ),
     "battery_channel_constants": (
         "packages/microcosm-build/src/microcosm/build/us_runtime/"
@@ -178,16 +207,18 @@ _CODE_CITATIONS = {
         "stacked_spine.py:263"
     ),
     "pool_battery_persistence": (
-        "tools/build_us_multispine_pool.py:3533-3540,3766-3776; "
+        "tools/build_us_multispine_pool.py:3263-3334,3533-3550,3766-3786; "
         "packages/microcosm-build/src/microcosm/build/gates.py:690-700"
     ),
     "cd_provenance_check": (
         "tools/build_us_fiscal_refresh_release.py:2519-2567,2570-2597"
     ),
     "incumbent_package_resolution": (
-        "policyengine.py@5.0.3 src/policyengine/data/bundle/manifest.json "
-        "data_releases.us; src/policyengine/provenance/manifest.py:181-187,"
-        "270-299,301-320,540-561"
+        "policyengine.py@5.0.3 src/policyengine/data/bundle/manifest.json:"
+        "113-140,156-160,181-189; src/policyengine/provenance/manifest.py:"
+        "180-187,270-299,301-318,540-560; src/policyengine/provenance/"
+        "dataset_sources.py:57-74,77-117; src/policyengine/"
+        "tax_benefit_models/us/model.py:423-462"
     ),
 }
 
@@ -212,6 +243,18 @@ class FiscalYardstick:
     loss_weights: np.ndarray
     loss_basis: Mapping[str, object]
     identity: Mapping[str, object]
+
+
+@dataclass(frozen=True)
+class ScoredChunk:
+    """One fixed registry chunk reduced across fixed household slices."""
+
+    estimates: np.ndarray
+    targets: np.ndarray
+    scales: np.ndarray
+    diagnostic_names: tuple[str, ...]
+    scored_contract: tuple[tuple[str, str, str], ...]
+    compilation: Mapping[str, object]
 
 
 def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -264,11 +307,6 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         dest="maximum_microsim_batch_size",
         type=int,
         default=release.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
-    )
-    parser.add_argument(
-        "--target-materialization-cache-dir",
-        type=Path,
-        default=None,
     )
     return parser.parse_args(argv)
 
@@ -372,7 +410,7 @@ def _load_pool_manifest(
     *,
     expected_manifest_sha256: str | None,
 ) -> LoadedArtifact:
-    frame, manifest, authenticated = load_simulation_ready_us_multispine_pool(
+    frame, manifest, authenticated = load_authenticated_us_multispine_pool_for_scoring(
         manifest_path,
         expected_manifest_sha256=expected_manifest_sha256,
     )
@@ -380,7 +418,7 @@ def _load_pool_manifest(
     if not isinstance(terminal_gates, Mapping):
         raise ValueError(
             f"Authenticated pool manifest {manifest_path} has no terminal_gates "
-            "receipt; a simulation-ready stacked pool always seals one."
+            "receipt; a current stacked publication always seals one."
         )
     identity = {
         "kind": "authenticated_pool",
@@ -396,8 +434,10 @@ def _load_pool_manifest(
         frame=frame,
         identity=identity,
         loader={
-            "kind": "authenticated_pool_manifest",
+            "kind": "authenticated_pool_manifest_for_scoring",
             "weight_kind": frame.weights_for("household").kind.value,
+            "publication_status": manifest.get("status"),
+            "simulation_ready": manifest.get("simulation_ready"),
         },
         h5_path=authenticated.path,
         terminal_gates=terminal_gates,
@@ -610,48 +650,204 @@ def _validate_cd_provenance(
     }
 
 
-def _materialization_cache_context(
-    artifact: LoadedArtifact,
-    yardstick: FiscalYardstick,
-) -> dict[str, object]:
-    return {
-        "base_dataset_sha256": artifact.identity["sha256"],
-        "build_commit": release._git_output("rev-parse", "HEAD"),
-        "policyengine_us_version": release._package_or_workspace_version(
-            "policyengine-us"
-        ),
-        "seed": 0,
-        "target_period": release.PERIOD,
-        "target_registry_version": yardstick.registry.version,
-        # Scorer vectors declare no release materializer identity: the
-        # explicit None is identity-distinct from every release digest,
-        # so scorer and release vectors can never mix (PR #557).
-        "target_frame_materializer_identity_sha256": None,
-        "congressional_district_vintage_crosswalk_sha256": _crosswalk_metadata(
-            yardstick
-        )["sha256"],
-    }
-
-
-def _materialize_chunk(
-    frame: Frame,
-    chunk_specs: Sequence,
-    yardstick: FiscalYardstick,
+def _streaming_target_column_payload_upper_bound_bytes(
     *,
-    artifact: LoadedArtifact,
+    total_households: int,
+    household_slice_size: int | None,
+    chunk_spec_count: int,
+) -> int:
+    """Conservative dense target-column payload bound for one live slice."""
+
+    if total_households < 0 or chunk_spec_count < 0:
+        raise ValueError("Streaming memory dimensions must be non-negative.")
+    if household_slice_size is None or household_slice_size <= 0:
+        live_households = total_households
+    else:
+        live_households = min(total_households, household_slice_size)
+    return (
+        live_households
+        * chunk_spec_count
+        * np.dtype(np.float64).itemsize
+        * _STREAMING_TARGET_COLUMN_COPIES
+    )
+
+
+def _score_chunk_household_sliced(
+    base_frame: Frame,
+    chunk_specs: Sequence,
+    *,
+    chunk_loss_weights: np.ndarray,
+    artifact_name: str,
+    chunk_label: str,
     maximum_microsim_batch_size: int | None,
-    target_materialization_cache_dir: Path | None,
-):
-    return release._materialize_target_frame(
-        frame,
-        chunk_specs,
-        maximum_microsim_batch_size=maximum_microsim_batch_size,
-        target_materialization_cache_dir=target_materialization_cache_dir,
-        target_materialization_cache_context=(
-            _materialization_cache_context(artifact, yardstick)
-            if target_materialization_cache_dir is not None
-            else None
-        ),
+) -> ScoredChunk:
+    """Materialize, score, and reduce one chunk without a dense full-pool table.
+
+    Each household slice runs the unmodified canonical materializer and
+    scorer. A target estimate is a matrix-row/weight dot product, so the full
+    artifact estimate is the fixed-order sum of slice estimates. Every slice
+    must reproduce the exact target, scale, diagnostic-name, and scored-column
+    contracts before its estimates may enter that sum.
+    """
+
+    n_households = base_frame.n("household")
+    expected_keys = _spec_keys(chunk_specs)
+    slice_batches = tuple(
+        release._household_position_batches(
+            n_households,
+            maximum_microsim_batch_size,
+        )
+    )
+    if not slice_batches:
+        raise ValueError(f"{artifact_name} has no households to score.")
+    accumulated_estimates: np.ndarray | None = None
+    reference_targets: np.ndarray | None = None
+    reference_scales: np.ndarray | None = None
+    reference_names: tuple[str, ...] | None = None
+    reference_contract: tuple[tuple[str, str, str], ...] | None = None
+    first_compilation: dict[str, object] | None = None
+    compilation_digests: list[str] = []
+    slice_sizes: list[int] = []
+    for slice_index, positions in enumerate(slice_batches):
+        slice_label = f"{chunk_label} slice {slice_index + 1}/{len(slice_batches)}"
+        full_slice = len(positions) == n_households
+        slice_frame = (
+            base_frame
+            if full_slice
+            else release._select_households_by_position(base_frame, positions)
+        )
+        slice_target_frame, slice_registry, slice_compilation = (
+            release._materialize_target_frame(
+                slice_frame,
+                chunk_specs,
+                maximum_microsim_batch_size=maximum_microsim_batch_size,
+                target_materialization_cache_dir=None,
+                target_materialization_cache_context=None,
+            )
+        )
+        _assert_nothing_dropped(
+            artifact_name=f"{artifact_name} {slice_label}",
+            compilation=slice_compilation,
+        )
+        if first_compilation is None:
+            first_compilation = dict(slice_compilation)
+        compilation_digests.append(_canonical_sha256(dict(slice_compilation)))
+        slice_sizes.append(len(positions))
+        if _spec_keys(slice_registry.specs) != expected_keys:
+            raise ValueError(
+                f"{artifact_name} {slice_label} compiled a different target "
+                "contract than the chunk."
+            )
+        if slice_target_frame.n("household") != len(positions):
+            raise RuntimeError(
+                f"{artifact_name} {slice_label} returned "
+                f"{slice_target_frame.n('household')} households for {len(positions)} "
+                "positions."
+            )
+        slice_contract = scored_column_contract(
+            slice_target_frame,
+            chunk_specs,
+            artifact_name=f"{artifact_name} {slice_label}",
+        )
+        result = score_targets(
+            slice_target_frame,
+            slice_registry.to_target_set(),
+            target_loss_weights=chunk_loss_weights,
+            target_loss_cap=release.US_FISCAL_TARGET_LOSS_CAP,
+            options={
+                "mass": "existing_weights",
+                "target_loss_weighting": release.US_FISCAL_TARGET_LOSS_WEIGHTING,
+                "maximum_microsim_batch_size": maximum_microsim_batch_size,
+            },
+        )
+        _assert_full_chunk_surface(
+            artifact_name=artifact_name,
+            chunk_label=slice_label,
+            chunk_specs=chunk_specs,
+            materialized_registry=slice_registry,
+            result=result,
+        )
+        expected_slice_weights = np.asarray(
+            slice_frame.weights_for("household").values,
+            dtype=np.float64,
+        )
+        if not np.array_equal(
+            expected_slice_weights,
+            np.asarray(result.weights, dtype=np.float64),
+        ):
+            raise RuntimeError(
+                f"{artifact_name} {slice_label} scorer changed the shipped "
+                "household weight vector."
+            )
+        estimates = np.asarray(
+            [row.final_estimate for row in result.diagnostics],
+            dtype=np.float64,
+        )
+        targets = np.asarray(
+            [row.target for row in result.diagnostics],
+            dtype=np.float64,
+        )
+        scales = np.asarray(result.target_loss_scales, dtype=np.float64)
+        names = tuple(row.name for row in result.diagnostics)
+        if accumulated_estimates is None:
+            accumulated_estimates = estimates.copy()
+            reference_targets = targets.copy()
+            reference_scales = scales.copy()
+            reference_names = names
+            reference_contract = slice_contract
+        else:
+            if not np.array_equal(reference_targets, targets):
+                raise RuntimeError(
+                    f"{artifact_name} {slice_label} target vector differs from "
+                    "the first household slice."
+                )
+            if not np.array_equal(reference_scales, scales):
+                raise RuntimeError(
+                    f"{artifact_name} {slice_label} loss-scale vector differs "
+                    "from the first household slice."
+                )
+            if reference_names != names:
+                raise RuntimeError(
+                    f"{artifact_name} {slice_label} diagnostic names differ "
+                    "from the first household slice."
+                )
+            if reference_contract != slice_contract:
+                raise RuntimeError(
+                    f"{artifact_name} {slice_label} scored-column contract "
+                    "differs from the first household slice."
+                )
+            np.add(accumulated_estimates, estimates, out=accumulated_estimates)
+        del slice_target_frame, slice_registry, result
+        if not full_slice:
+            del slice_frame
+        gc.collect()
+        _assert_rss_below_limit(f"after scoring {artifact_name} {slice_label}")
+    if any(
+        value is None
+        for value in (
+            accumulated_estimates,
+            reference_targets,
+            reference_scales,
+            reference_names,
+            reference_contract,
+            first_compilation,
+        )
+    ):  # pragma: no cover - non-empty batches are enforced above
+        raise RuntimeError(f"{artifact_name} {chunk_label} produced no slice result.")
+    compilation = {
+        **first_compilation,
+        "household_slices": len(slice_batches),
+        "household_slice_size": maximum_microsim_batch_size,
+        "household_slice_row_counts": slice_sizes,
+        "slice_compilation_sha256s": compilation_digests,
+    }
+    return ScoredChunk(
+        estimates=accumulated_estimates,
+        targets=reference_targets,
+        scales=reference_scales,
+        diagnostic_names=reference_names,
+        scored_contract=reference_contract,
+        compilation=compilation,
     )
 
 
@@ -879,7 +1075,7 @@ def _battery_entities() -> tuple[str, ...]:
 
 
 def _observed_origin_receipt(frame: Frame) -> dict[str, object]:
-    """Count each battery entity's rows per support channel, from the frame."""
+    """Count battery-origin rows in the canonical clone-0/positive-weight scope."""
 
     receipt: dict[str, object] = {}
     entities_missing_columns: list[str] = []
@@ -893,18 +1089,30 @@ def _observed_origin_receipt(frame: Frame) -> dict[str, object]:
             entities_missing_columns.append(entity)
             receipt[entity] = {"provenance_columns_present": False}
             continue
-        counts = {
+        raw_counts = {
             str(channel): int(count)
             for channel, count in table[channel_column]
             .astype(str)
             .value_counts()
             .items()
         }
-        asec_rows = counts.get(BASE_ASEC_SUPPORT_CHANNEL, 0)
-        acs_rows = counts.get(ACS_STACKED_SUPPORT_CHANNEL, 0)
+        clone_index = pd.to_numeric(table[clone_column], errors="raise").astype("int64")
+        weights = np.asarray(frame.resolve_weights(entity).values, dtype=np.float64)
+        scope = clone_index.eq(0).to_numpy() & (weights > 0.0)
+        scoped_counts = {
+            str(channel): int(count)
+            for channel, count in table.loc[scope, channel_column]
+            .astype(str)
+            .value_counts()
+            .items()
+        }
+        asec_rows = scoped_counts.get(BASE_ASEC_SUPPORT_CHANNEL, 0)
+        acs_rows = scoped_counts.get(ACS_STACKED_SUPPORT_CHANNEL, 0)
         receipt[entity] = {
             "provenance_columns_present": True,
-            "origin_row_counts": dict(sorted(counts.items())),
+            "scope": {"clone_index": 0, "positive_weight_only": True},
+            "origin_row_counts": dict(sorted(scoped_counts.items())),
+            "raw_origin_row_counts": dict(sorted(raw_counts.items())),
             "asec_rows": asec_rows,
             "acs_rows": acs_rows,
         }
@@ -918,8 +1126,182 @@ def _observed_origin_receipt(frame: Frame) -> dict[str, object]:
     }
 
 
-def _battery_payload_from_observed_origins(frame: Frame) -> dict[str, object]:
+def _unavailable_scalar_legs(
+    contract_row: Mapping[str, object],
+    *,
+    status: str,
+) -> list[dict[str, object]]:
+    return [
+        {"name": name, "status": status, "value": None}
+        for name in contract_row["metric_legs"]
+    ]
+
+
+def _normalized_scalar_legs(
+    *,
+    label: str,
+    contract_row: Mapping[str, object],
+    receipt: Mapping[str, object],
+) -> list[dict[str, object]]:
+    """Validate and flatten every nominal terminal-battery scalar leg."""
+
+    metric = str(contract_row["metric"])
+    status = str(receipt.get("status") or "missing_status")
+    if status != "tested":
+        return _unavailable_scalar_legs(contract_row, status=status)
+    if metric == "boolean_incidence":
+        key = "incidence_ratio_acs_over_asec"
+        if key not in receipt:
+            raise ValueError(
+                f"Battery comparison {label!r} omits computed leg {key!r}."
+            )
+        return [{"name": key, "status": "computed", "value": receipt[key]}]
+    if metric == "categorical_tvd":
+        key = "total_variation_distance"
+        if key not in receipt:
+            raise ValueError(
+                f"Battery comparison {label!r} omits computed leg {key!r}."
+            )
+        return [{"name": key, "status": "computed", "value": receipt[key]}]
+    if metric != "monetary_sign_separated":  # pragma: no cover - contract guards
+        raise ValueError(f"Unknown canonical terminal-battery metric {metric!r}.")
+    sign_receipts = receipt.get("legs")
+    if not isinstance(sign_receipts, Mapping) or set(sign_receipts) != {
+        "positive",
+        "negative",
+    }:
+        raise ValueError(
+            f"Battery comparison {label!r} must carry exact positive/negative "
+            "monetary leg receipts."
+        )
+    scalar_legs: list[dict[str, object]] = []
+    for sign in ("positive", "negative"):
+        sign_receipt = sign_receipts[sign]
+        if not isinstance(sign_receipt, Mapping):
+            raise ValueError(f"Battery comparison {label!r}/{sign} is not an object.")
+        incidence_name = f"{sign}_incidence_ratio_acs_over_asec"
+        quantile_name = f"{sign}_quantile_envelope_distance"
+        sign_status = str(sign_receipt.get("status") or "computed")
+        if sign_status == "absent_on_both_origins":
+            scalar_legs.extend(
+                (
+                    {"name": incidence_name, "status": sign_status, "value": None},
+                    {"name": quantile_name, "status": sign_status, "value": None},
+                )
+            )
+            continue
+        incidence_key = "incidence_ratio_acs_over_asec"
+        if incidence_key not in sign_receipt:
+            raise ValueError(
+                f"Battery comparison {label!r}/{sign} omits computed incidence leg."
+            )
+        scalar_legs.append(
+            {
+                "name": incidence_name,
+                "status": "computed",
+                "value": sign_receipt[incidence_key],
+            }
+        )
+        if "quantile_envelope_distance" in sign_receipt:
+            scalar_legs.append(
+                {
+                    "name": quantile_name,
+                    "status": "computed",
+                    "value": sign_receipt["quantile_envelope_distance"],
+                }
+            )
+        elif sign_receipt.get("quantile_envelope") == "leg_insufficient_support":
+            scalar_legs.append(
+                {
+                    "name": quantile_name,
+                    "status": "insufficient_support",
+                    "value": None,
+                }
+            )
+        else:
+            raise ValueError(
+                f"Battery comparison {label!r}/{sign} omits its quantile leg "
+                "value or explicit insufficient-support status."
+            )
+    expected = list(contract_row["metric_legs"])
+    if [row["name"] for row in scalar_legs] != expected:
+        raise RuntimeError(f"Battery comparison {label!r} scalar-leg order drifted.")
+    return scalar_legs
+
+
+def _normalize_battery_comparisons(
+    comparisons: Mapping[str, object],
+) -> dict[str, dict[str, object]]:
     contract = _canonical_battery_contract()
+    missing = sorted(set(contract) - set(comparisons))
+    extra = sorted(set(comparisons) - set(contract))
+    if missing or extra:
+        raise ValueError(
+            "Terminal battery does not exactly cover the canonical contract; "
+            f"missing={missing[:20]}, extra={extra[:20]}."
+        )
+    normalized: dict[str, dict[str, object]] = {}
+    for label, contract_row in contract.items():
+        receipt = comparisons[label]
+        if not isinstance(receipt, Mapping):
+            raise ValueError(f"Battery comparison {label!r} is not an object.")
+        if receipt.get("metric") != contract_row["metric"]:
+            raise ValueError(
+                f"Battery comparison {label!r} metric {receipt.get('metric')!r} "
+                f"does not match canonical {contract_row['metric']!r}."
+            )
+        normalized[label] = {
+            **contract_row,
+            **dict(receipt),
+            "scalar_legs": _normalized_scalar_legs(
+                label=label,
+                contract_row=contract_row,
+                receipt=receipt,
+            ),
+        }
+    return normalized
+
+
+def _scalar_leg_status_counts(
+    comparisons: Mapping[str, Mapping[str, object]],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for comparison in comparisons.values():
+        for leg in comparison["scalar_legs"]:
+            status = str(leg["status"])
+            counts[status] = counts.get(status, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _inapplicable_battery_payload(
+    *,
+    reason: str,
+    observed: Mapping[str, object],
+) -> dict[str, object]:
+    contract = _canonical_battery_contract()
+    comparisons = _normalize_battery_comparisons(
+        {
+            label: {
+                **row,
+                "status": "inapplicable",
+                "reason": reason,
+            }
+            for label, row in contract.items()
+        }
+    )
+    return {
+        "status": "inapplicable",
+        "by_origin_only": True,
+        "reason": reason,
+        "observed_origins": dict(observed),
+        "comparison_count": len(contract),
+        "metric_leg_count": sum(len(row["metric_legs"]) for row in contract.values()),
+        "scalar_leg_status_counts": _scalar_leg_status_counts(comparisons),
+        "comparisons": comparisons,
+    }
+
+
+def _battery_payload_from_observed_origins(frame: Frame) -> dict[str, object]:
     observed = _observed_origin_receipt(frame)
     if observed["entities_missing_provenance_columns"]:
         reason = (
@@ -927,40 +1309,58 @@ def _battery_payload_from_observed_origins(frame: Frame) -> dict[str, object]:
             f"{observed['entities_missing_provenance_columns']}; the by-origin "
             "battery cannot scope its ASEC/ACS masks"
         )
+        return _inapplicable_battery_payload(reason=reason, observed=observed)
+    if observed["total_asec_rows"] == 0:
+        reason = (
+            "artifact carries no positive-weight clone-0 ASEC origin rows "
+            "(observed channels are listed in observed_origins); the "
+            "ASEC-vs-ACS battery has an empty ASEC side and is definitionally "
+            "inapplicable"
+        )
+        return _inapplicable_battery_payload(reason=reason, observed=observed)
     elif observed["total_acs_rows"] == 0:
         reason = (
-            "artifact carries no ACS-stacked origin rows (observed channels "
-            "are listed in observed_origins); the ASEC-vs-ACS battery has an "
-            "empty ACS side and is definitionally inapplicable"
+            "artifact carries no positive-weight clone-0 ACS-stacked origin "
+            "rows (observed channels are listed in observed_origins); the "
+            "ASEC-vs-ACS battery has an empty ACS side and is definitionally "
+            "inapplicable"
         )
+        return _inapplicable_battery_payload(reason=reason, observed=observed)
+
+    if "ssi" in frame.table("person"):
+        evaluation_frame = frame
+        materialization_receipt: Mapping[str, object] = {
+            "mode": "artifact_already_carried_ssi"
+        }
     else:
-        reason = (
-            "both origins are present, but by-origin battery evidence for a "
-            "finished artifact is accepted only from an authenticated pool "
-            "manifest receipt; pass the pool manifest instead of the bare H5"
-        )
+        materialized = materialize_multispine_agreement_outputs(frame)
+        evaluation_frame = materialized.frame
+        materialization_receipt = dict(materialized.receipt)
+    gate = by_origin_battery_artifact_evidence(evaluation_frame)
+    raw_comparisons = gate.details.get("comparisons")
+    if not isinstance(raw_comparisons, Mapping):
+        raise ValueError("Computed by-origin battery has no comparisons receipt.")
+    comparisons = _normalize_battery_comparisons(raw_comparisons)
     return {
-        "status": "inapplicable",
+        "status": "computed_finished_h5",
         "by_origin_only": True,
-        "reason": reason,
+        "production_receipt_authenticated": False,
+        "gate_passed": gate.passed,
+        "failures": list(gate.failures),
         "observed_origins": observed,
-        "comparison_count": len(contract),
-        "metric_leg_count": sum(len(row["metric_legs"]) for row in contract.values()),
-        "comparisons": {
-            label: {
-                **row,
-                "status": "inapplicable",
-                "reason": reason,
-            }
-            for label, row in contract.items()
-        },
+        "ephemeral_gate_view_materialization": dict(materialization_receipt),
+        "comparison_count": len(comparisons),
+        "metric_leg_count": sum(
+            len(row["scalar_legs"]) for row in comparisons.values()
+        ),
+        "scalar_leg_status_counts": _scalar_leg_status_counts(comparisons),
+        "comparisons": comparisons,
     }
 
 
 def _battery_payload_from_pool_receipt(
     terminal_gates: Mapping[str, object],
 ) -> dict[str, object]:
-    contract = _canonical_battery_contract()
     gates = terminal_gates.get("gates")
     if not isinstance(gates, Mapping):
         raise ValueError("Authenticated pool terminal_gates has no gates object.")
@@ -975,34 +1375,16 @@ def _battery_payload_from_pool_receipt(
         raise ValueError(
             "Authenticated pool by-origin battery has no comparisons receipt."
         )
-    missing = sorted(set(contract) - set(comparisons))
-    extra = sorted(set(comparisons) - set(contract))
-    if missing or extra:
-        raise ValueError(
-            "Authenticated pool terminal battery does not exactly cover the "
-            f"canonical contract; missing={missing[:20]}, extra={extra[:20]}."
-        )
-    normalized: dict[str, object] = {}
-    for label, contract_row in contract.items():
-        receipt = comparisons[label]
-        if not isinstance(receipt, Mapping):
-            raise ValueError(f"Battery comparison {label!r} is not an object.")
-        if receipt.get("metric") != contract_row["metric"]:
-            raise ValueError(
-                f"Battery comparison {label!r} metric {receipt.get('metric')!r} "
-                f"does not match canonical {contract_row['metric']!r}."
-            )
-        normalized[label] = {
-            **contract_row,
-            **dict(receipt),
-        }
+    normalized = _normalize_battery_comparisons(comparisons)
     return {
         "status": "authenticated_pool_receipt",
         "by_origin_only": True,
+        "production_receipt_authenticated": True,
         "gate_passed": battery.get("passed"),
         "failures": list(battery.get("failures") or ()),
-        "comparison_count": len(contract),
-        "metric_leg_count": sum(len(row["metric_legs"]) for row in contract.values()),
+        "comparison_count": len(normalized),
+        "metric_leg_count": sum(len(row["scalar_legs"]) for row in normalized.values()),
+        "scalar_leg_status_counts": _scalar_leg_status_counts(normalized),
         "comparisons": normalized,
     }
 
@@ -1019,7 +1401,6 @@ def score_loaded_artifact(
     artifact_name: str,
     yardstick: FiscalYardstick,
     maximum_microsim_batch_size: int | None,
-    target_materialization_cache_dir: Path | None,
 ) -> tuple[dict[str, object], tuple[tuple[str, str, str], ...]]:
     """Run the common scoring path for one already-normalized artifact."""
 
@@ -1040,83 +1421,44 @@ def score_loaded_artifact(
     scale_parts: list[np.ndarray] = []
     diagnostic_names: list[str] = []
     chunk_receipts: list[dict[str, object]] = []
-    household_count: int | None = None
-    nonzero_count: int | None = None
-    reference_weights: np.ndarray | None = None
+    base_weights = np.asarray(
+        base_frame.weights_for("household").values,
+        dtype=np.float64,
+    )
+    household_count = int(base_weights.shape[0])
+    nonzero_count = int(np.count_nonzero(base_weights))
     for chunk_index in range(chunk_count):
         start = chunk_index * chunk_size
         chunk_specs = specs[start : start + chunk_size]
         chunk_label = f"chunk {chunk_index + 1}/{chunk_count}"
-        target_frame, materialized_registry, compilation = _materialize_chunk(
+        scored_chunk = _score_chunk_household_sliced(
             base_frame,
             chunk_specs,
-            yardstick,
-            artifact=artifact,
+            chunk_loss_weights=np.asarray(
+                yardstick.loss_weights[start : start + len(chunk_specs)],
+                dtype=np.float64,
+            ),
+            artifact_name=artifact_name,
+            chunk_label=chunk_label,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
-            target_materialization_cache_dir=target_materialization_cache_dir,
         )
         _assert_nothing_dropped(
             artifact_name=f"{artifact_name} {chunk_label}",
-            compilation=compilation,
+            compilation=scored_chunk.compilation,
         )
-        contract_parts.update(
-            scored_column_contract(
-                target_frame,
-                chunk_specs,
-                artifact_name=artifact_name,
-            )
-        )
-        result = score_targets(
-            target_frame,
-            materialized_registry.to_target_set(),
-            target_loss_weights=yardstick.loss_weights[start : start + chunk_size],
-            target_loss_cap=release.US_FISCAL_TARGET_LOSS_CAP,
-            options={
-                "mass": "existing_weights",
-                "target_loss_weighting": release.US_FISCAL_TARGET_LOSS_WEIGHTING,
-                "maximum_microsim_batch_size": maximum_microsim_batch_size,
-            },
-        )
-        _assert_full_chunk_surface(
-            artifact_name=artifact_name,
-            chunk_label=chunk_label,
-            chunk_specs=chunk_specs,
-            materialized_registry=materialized_registry,
-            result=result,
-        )
-        if reference_weights is None:
-            reference_weights = np.asarray(result.weights, dtype=np.float64)
-            household_count = int(result.weights.shape[0])
-            nonzero_count = int(result.n_nonzero)
-        elif not np.array_equal(
-            reference_weights, np.asarray(result.weights, dtype=np.float64)
-        ):
-            raise RuntimeError(
-                f"{artifact_name} {chunk_label} scored a different household "
-                "weight vector than the first chunk."
-            )
-        estimate_parts.append(
-            np.asarray(
-                [row.final_estimate for row in result.diagnostics],
-                dtype=np.float64,
-            )
-        )
-        target_parts.append(
-            np.asarray(
-                [row.target for row in result.diagnostics],
-                dtype=np.float64,
-            )
-        )
-        scale_parts.append(np.asarray(result.target_loss_scales, dtype=np.float64))
-        diagnostic_names.extend(row.name for row in result.diagnostics)
+        contract_parts.update(scored_chunk.scored_contract)
+        estimate_parts.append(scored_chunk.estimates)
+        target_parts.append(scored_chunk.targets)
+        scale_parts.append(scored_chunk.scales)
+        diagnostic_names.extend(scored_chunk.diagnostic_names)
         chunk_receipts.append(
             {
                 "chunk_index": chunk_index,
                 "spec_range": [start, start + len(chunk_specs)],
-                "target_compilation": dict(compilation),
+                "target_compilation": dict(scored_chunk.compilation),
             }
         )
-        del target_frame, materialized_registry, result
+        del scored_chunk
         gc.collect()
         _assert_rss_below_limit(f"after scoring {artifact_name} {chunk_label}")
     expected_names = [spec.to_target().row_name for spec in specs]
@@ -1165,16 +1507,26 @@ def score_loaded_artifact(
             "materialize_score_chunking": {
                 "chunk_size_specs": chunk_size,
                 "chunk_count": chunk_count,
+                "household_count": household_count,
+                "household_slice_size": maximum_microsim_batch_size,
+                "target_column_payload_upper_bound_bytes": (
+                    _streaming_target_column_payload_upper_bound_bytes(
+                        total_households=household_count,
+                        household_slice_size=maximum_microsim_batch_size,
+                        chunk_spec_count=min(chunk_size, len(specs)),
+                    )
+                ),
                 "reason": (
-                    "the materializer emits one household column per spec, so "
-                    "a whole-registry pass would peak near 2 x n_specs x "
-                    "n_households x 8 bytes; chunks keep the identical "
-                    "canonical calls under the 20 GiB scoring budget"
+                    "the full-frame microsimulation and whole-registry target "
+                    "columns can exceed the scoring budget; fixed household "
+                    "slices are materialized and scored before being freed, "
+                    "so no dense full-pool household-by-measure table exists"
                 ),
                 "recombination": (
-                    "per-target rows are row-independent; the aggregate is "
-                    "one relative_error_loss call over the full combined "
-                    "vectors"
+                    "fixed-order slice estimates are additive matrix/weight "
+                    "products; target, scale, name, and column contracts match "
+                    "on every slice; the aggregate is one relative_error_loss "
+                    "call over the full combined vectors"
                 ),
                 "code_citation": _CODE_CITATIONS["chunked_materialize_score"],
                 "chunks": chunk_receipts,
@@ -1278,9 +1630,13 @@ def _comparison_payload(
         candidate_battery, Mapping
     ):
         raise TypeError("Artifact terminal_battery payloads must be mappings.")
-    both_authenticated = (
-        incumbent_battery.get("status") == "authenticated_pool_receipt"
-        and candidate_battery.get("status") == "authenticated_pool_receipt"
+    computable_statuses = {
+        "authenticated_pool_receipt",
+        "computed_finished_h5",
+    }
+    both_computable = (
+        incumbent_battery.get("status") in computable_statuses
+        and candidate_battery.get("status") in computable_statuses
     )
     return {
         "decision": "owner_decides_flip",
@@ -1297,7 +1653,7 @@ def _comparison_payload(
             "targets": target_comparisons,
         },
         "terminal_battery": {
-            "head_to_head_comparable": both_authenticated,
+            "head_to_head_comparable": both_computable,
             "incumbent_status": incumbent_battery.get("status"),
             "candidate_status": candidate_battery.get("status"),
             "incumbent_status_counts": _battery_status_counts(incumbent_battery),
@@ -1322,7 +1678,6 @@ def score_head_to_head(
     maximum_microsim_batch_size: int | None = (
         release.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
     ),
-    target_materialization_cache_dir: Path | None = None,
     candidate_manifest_sha256: str | None = None,
 ) -> dict[str, object]:
     """Compile once, then score incumbent and optional candidate sequentially."""
@@ -1351,7 +1706,6 @@ def score_head_to_head(
             artifact_name=name,
             yardstick=yardstick,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
-            target_materialization_cache_dir=target_materialization_cache_dir,
         )
         artifacts[name] = artifact_payload
         contracts[name] = contract
@@ -1489,6 +1843,12 @@ def _battery_markdown_section(
     status = str(battery.get("status") or "unknown")
     counts = _battery_status_counts(battery)
     counts_text = ", ".join(f"{name}: {count}" for name, count in counts.items())
+    leg_counts = battery.get("scalar_leg_status_counts")
+    leg_counts_text = (
+        ", ".join(f"{name}: {count}" for name, count in sorted(leg_counts.items()))
+        if isinstance(leg_counts, Mapping)
+        else "unavailable"
+    )
     if status == "inapplicable":
         lines.append(
             f"All {battery['comparison_count']} comparisons inapplicable — "
@@ -1514,11 +1874,23 @@ def _battery_markdown_section(
                             for channel, count in sorted((origin_counts or {}).items())
                         )
                     )
-    else:
+    elif status == "authenticated_pool_receipt":
         lines.append(
             f"Authenticated pool receipt; gate passed: "
-            f"`{battery.get('gate_passed')}`. Status counts: {counts_text}."
+            f"`{battery.get('gate_passed')}`. Comparison statuses: {counts_text}. "
+            f"Scalar-leg statuses: {leg_counts_text}."
         )
+    elif status == "computed_finished_h5":
+        lines.append(
+            "Computed from the finished H5's shipped weights on an ephemeral "
+            f"terminal gate view; gate passed: `{battery.get('gate_passed')}`. "
+            f"Comparison statuses: {counts_text}. Scalar-leg statuses: "
+            f"{leg_counts_text}. This is computed evidence, not an authenticated "
+            "pool-build receipt."
+        )
+    else:
+        lines.append(f"Unknown battery evidence status `{_markdown_escape(status)}`.")
+    if status != "inapplicable":
         failures = battery.get("failures")
         if isinstance(failures, list) and failures:
             lines.append("")
@@ -1526,6 +1898,37 @@ def _battery_markdown_section(
             lines.extend(f"- {_markdown_escape(line)}" for line in failures[:40])
             if len(failures) > 40:
                 lines.append(f"- … {len(failures) - 40} more in the JSON twin.")
+        comparisons = battery.get("comparisons")
+        if isinstance(comparisons, Mapping):
+            lines.extend(
+                [
+                    "",
+                    "| comparison | scalar leg | status | value |",
+                    "|---|---|---|---:|",
+                ]
+            )
+            for label, comparison in sorted(comparisons.items()):
+                if not isinstance(comparison, Mapping):
+                    continue
+                scalar_legs = comparison.get("scalar_legs")
+                if not isinstance(scalar_legs, list):
+                    continue
+                for leg in scalar_legs:
+                    if not isinstance(leg, Mapping):
+                        continue
+                    value = leg.get("value")
+                    rendered_value = (
+                        _markdown_number(value)
+                        if isinstance(value, (int, float, np.integer, np.floating))
+                        and not isinstance(value, bool)
+                        else _markdown_escape("—" if value is None else value)
+                    )
+                    lines.append(
+                        f"| {_markdown_escape(label)} | "
+                        f"{_markdown_escape(leg.get('name'))} | "
+                        f"{_markdown_escape(leg.get('status'))} | "
+                        f"{rendered_value} |"
+                    )
     lines.append("")
     return lines
 
@@ -1736,7 +2139,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.congressional_district_vintage_crosswalk
         ),
         maximum_microsim_batch_size=args.maximum_microsim_batch_size,
-        target_materialization_cache_dir=args.target_materialization_cache_dir,
         candidate_manifest_sha256=args.candidate_manifest_sha256,
     )
     json_path, markdown_path = write_scorecard(payload, args.out_prefix)

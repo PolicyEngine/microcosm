@@ -80,6 +80,7 @@ from microcosm.build.us_runtime.stacked_spine import (
     OriginBatterySpec,
     assemble_stacked_spine,
     by_origin_battery,
+    by_origin_battery_artifact_evidence,
     gap_fill_stacked_spine,
     run_stacked_puf_pass,
     sample_acs_households,
@@ -6923,6 +6924,46 @@ def test_completeness_receipts_bind_live_authority_per_target() -> None:
     forged_result = replace(custom, details={"authority": forged_receipt})
     with pytest.raises(ValueError, match="production manifest emission is forbidden"):
         GateReport((forged_result,)).to_manifest()
+
+
+def test_artifact_battery_uses_canonical_formulas_without_assembly_metadata() -> None:
+    frame = _battery_frame(
+        {
+            "taxable_interest_income": (
+                np.asarray([100.0] * 8),
+                np.asarray([100.0] * 11),
+            )
+        }
+    )
+    canonical = by_origin_battery(frame)
+    assert canonical.passed, canonical.failures
+    metadata_free = Frame(
+        {entity: frame.table(entity) for entity in frame.entities},
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+    )
+
+    with pytest.raises(ValueError, match="assembly manifest"):
+        by_origin_battery(metadata_free)
+
+    evidence = by_origin_battery_artifact_evidence(metadata_free)
+
+    assert evidence.passed == canonical.passed
+    assert evidence.failures == canonical.failures
+    assert evidence.details["authority"] == canonical.details["authority"]
+    assert evidence.details["tolerances"] == canonical.details["tolerances"]
+    canonical_comparisons = deepcopy(canonical.details["comparisons"])
+    evidence_comparisons = deepcopy(evidence.details["comparisons"])
+    artifact_absence_receipts = []
+    for comparisons in (canonical_comparisons, evidence_comparisons):
+        for comparison in comparisons.values():
+            receipt = comparison.pop("recipient_absence_authority", None)
+            if comparisons is evidence_comparisons and isinstance(receipt, Mapping):
+                artifact_absence_receipts.append(receipt)
+    assert evidence_comparisons == canonical_comparisons
+    assert len(artifact_absence_receipts) == 1
+    assert artifact_absence_receipts[0]["assembly_manifest_authenticated"] is False
 
 
 def test_self_digested_partial_authority_cannot_forge_production_identity() -> None:
