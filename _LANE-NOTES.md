@@ -108,6 +108,41 @@
   `bb711069…` byte-for-byte, proving the authored spec and schema files ship
   in the wheel (`packages/microcosm-build/pyproject.toml` data inclusion).
 
+## Build-shard merge-union guards — 2026-08-23 headless continuation
+
+- The first complete build-shard run reached 100% and exposed three
+  deterministic union misses. The branch-side serializer omitted an empty
+  opt-in `target_regimes` field by routing dataclasses through mappings; main
+  replaced `dataclasses.asdict()` with direct field walking so immutable
+  `MappingProxyType` authority records serialize. The merged mapping path had
+  the omission filter, but the direct dataclass path did not. The union now
+  applies the same filter during direct walking
+  (`tools/build_us_multispine_pool.py:3826-3847`), preserving both intents.
+- Main's authored-imputation SHA audit treated every `*sha256` field as an
+  external-asset pin. The F0 port legitimately authors one derived policy
+  identity digest. The audit now remains closed: its only non-asset allowance
+  is the exact
+  `models/regime_gated_qrf/post_draw_calibration/sha256` path, while the two
+  existing asset pins remain exact
+  (`packages/microcosm-build/tests/test_us_spec_bundle.py:707-770`).
+- Direct import-graph enumeration reaches 66 classified US runtime modules;
+  the delta from main's 65 is exactly the branch-added
+  `post_transfer_calibration.py`. The cardinality pin now says 66, while the
+  existing required-module, retired-module, unclassified-module, and
+  source-spine-blind checks remain unchanged and pass
+  (`packages/microcosm-build/tests/test_us_spine_blindness.py:3270-3315`).
+- All three exact deterministic tests pass, as do touched-file Ruff,
+  formatting, and whitespace checks. GitNexus query/context tools were not
+  exposed in this session, so parent-source comparison, direct import-graph
+  enumeration, and exact source reads supplied the debugging evidence.
+- Two unrelated `test_us_trade_imdb_bulk.py` crash-publication cases timed out
+  while their child process imported `build_us_import_entry_margins.py`, before
+  reaching publication logic. They failed both in the complete shard and in
+  unchanged isolation under shared-host load. A one-thread, import-only probe
+  completed in 73.82 seconds while load was about 79, already beyond the
+  tests' unchanged 60-second bound. This lane will retry after contention
+  falls; it does not tune the timeout or any product threshold.
+
 ## Scope and frozen boundary
 
 This lane owns 16 adjudicated FIX-CANDIDATE checks: 13 in

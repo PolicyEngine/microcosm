@@ -704,7 +704,7 @@ def test_typed_imputation_reconstructs_all_constants_authority_components(
     )
 
 
-def test_authored_imputation_contains_only_external_asset_sha256_pins(
+def test_authored_imputation_sha256_fields_are_assets_or_policy_identity(
     generated_documents: dict[str, dict[str, object]],
 ) -> None:
     imputation = generated_documents["imputation.yaml"]
@@ -713,19 +713,38 @@ def test_authored_imputation_contains_only_external_asset_sha256_pins(
     assert "source_stage_asset" not in graph["resource_semantics"]
 
     asset_pins: list[tuple[str, str]] = []
+    identity_digests: list[tuple[tuple[str, ...], str]] = []
 
-    def collect_sha256(value: object) -> None:
+    def collect_sha256(value: object, path: tuple[str, ...] = ()) -> None:
         if isinstance(value, dict):
             for key, child in value.items():
+                child_path = (*path, key)
                 if key.endswith("sha256"):
-                    assert key == "asset_sha256"
-                    asset_pins.append((str(value["asset"]), str(child)))
-                collect_sha256(child)
+                    if key == "asset_sha256":
+                        asset_pins.append((str(value["asset"]), str(child)))
+                    else:
+                        identity_digests.append((child_path, str(child)))
+                collect_sha256(child, child_path)
         elif isinstance(value, list):
             for child in value:
-                collect_sha256(child)
+                collect_sha256(child, (*path, "[]"))
 
     collect_sha256(imputation)
+    assert identity_digests == [
+        (
+            (
+                "models",
+                "regime_gated_qrf",
+                "post_draw_calibration",
+                "sha256",
+            ),
+            str(
+                imputation["models"]["regime_gated_qrf"]["post_draw_calibration"][
+                    "sha256"
+                ]
+            ),
+        )
+    ]
     assert len(asset_pins) == 2
     assert set(asset_pins) == {
         (

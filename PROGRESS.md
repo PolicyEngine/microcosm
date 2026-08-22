@@ -11,11 +11,15 @@ retarget plus the `d70ea39c` digest re-cut). The only second-merge conflict
 was the UK bundle `spec_sha256` pin; its union value was recomputed fresh
 (`bb711069…`) while the BE and US pins held. Repository-wide Ruff, the
 coverage attestation `--check`, the wheel-packaging gate, and the fit /
-calibrate / frame / data shards are green; the build shard is running.
-Remaining: build-shard green, final journals/`FINAL_REPORT.md`, and the
-single permitted push to `origin/battery-pkg3-two-part`. Earlier sections
-of this journal are historical records of their named checkpoints, not
-current instructions or branch state.
+calibrate / frame / data shards are green. A complete build-shard run then
+exposed three deterministic merge-union misses; all three are corrected and
+their exact tests pass. Two unrelated trade-publication crash tests timed out
+while importing their child CLI under shared-host load (the import alone took
+73.82 seconds against the unchanged 60-second test bound). Remaining:
+re-verify those unchanged tests after host load falls, run the final complete
+build shard, close `FINAL_REPORT.md`, and make the single permitted push to
+`origin/battery-pkg3-two-part`. Earlier sections of this journal are historical
+records of their named checkpoints, not current instructions or branch state.
 
 ### Done
 
@@ -82,13 +86,30 @@ current instructions or branch state.
   UK `bb711069…` match the repo pins byte-for-byte.
 - Full five-shard suite, one pytest process per shard as in CI: fit exit 0
   (0.56 GiB peak RSS), calibrate exit 0 (0.45 GiB), frame exit 0
-  (6.09 GiB), data exit 0 (11.05 GiB). The build shard is running; its
-  receipt lands in this journal before the push.
+  (6.09 GiB), data exit 0 (11.05 GiB).
+- Ran the complete build shard to 100%. It exposed three deterministic merge
+  omissions: direct dataclass walking bypassed the branch's empty
+  `target_regimes` filter; main's authored-SHA audit did not classify the new
+  policy-identity digest; and the runtime-graph cardinality pin remained 65
+  after `post_transfer_calibration.py` became the 66th reachable module.
+- Combined both serializer intents by filtering the opt-in field in the
+  immutable-safe dataclass path, made the SHA audit allow only the exact
+  `models/regime_gated_qrf/post_draw_calibration/sha256` identity path in
+  addition to two external-asset pins, and re-pinned the classified runtime
+  graph at 66. The three exact failing tests, touched-file Ruff, formatting,
+  and whitespace checks pass.
+- Isolated the build run's other two failures unchanged. Both time out before
+  publication logic while a child imports `build_us_import_entry_margins.py`;
+  a constrained import-only probe took 73.82 seconds under load 79, proving
+  the fixed 60-second failures are host contention rather than a code result.
+  No timeout, gate, comparator, or threshold was changed.
 
 ### Next
 
-1. Build-shard green on the final tree (running).
-2. Refresh `FINAL_REPORT.md` and this journal with the complete receipts.
+1. Re-run the two unchanged trade-publication crash tests once host load is
+   low enough for their child import to satisfy the existing 60-second bound.
+2. Run the complete build shard on the corrected tree, then refresh
+   `FINAL_REPORT.md` and this journal with the final receipt.
 3. Make the single permitted push to `origin/battery-pkg3-two-part`; PR
    #742 then updates in place. Do not merge the PR.
 

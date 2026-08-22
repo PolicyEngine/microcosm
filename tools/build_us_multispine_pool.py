@@ -3841,6 +3841,9 @@ def _json_ready(value: object) -> object:
         return {
             field.name: _json_ready(getattr(value, field.name))
             for field in fields(value)
+            # Match the mapping path above while avoiding dataclasses.asdict()
+            # for immutable authority records.
+            if field.name != "target_regimes" or getattr(value, field.name)
         }
     if isinstance(value, (list, tuple)):
         return [_json_ready(item) for item in value]
