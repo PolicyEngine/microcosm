@@ -7515,12 +7515,12 @@ _canonical_full_transfer_keys = set(
     _surface_target_keys(_freeze_target_families(pool_transfer_target_families()))
 )
 if (
-    len(_canonical_surface_keys) != 131
-    or len(set(_canonical_surface_keys)) != 131
+    len(_canonical_surface_keys) != 134
+    or len(set(_canonical_surface_keys)) != 134
     or len(_canonical_early_transfer_keys) != 48
-    or len(_canonical_late_transfer_keys) != 70
+    or len(_canonical_late_transfer_keys) != 73
     or len(_canonical_late_puf_producer_keys) != 43
-    or len(_canonical_late_source_producer_keys) != 29
+    or len(_canonical_late_source_producer_keys) != 32
     or len(_canonical_late_puf_producer_keys & _canonical_late_source_producer_keys)
     != 2
     or _canonical_late_puf_producer_keys | _canonical_late_source_producer_keys
@@ -7528,7 +7528,7 @@ if (
     or _canonical_early_transfer_keys & _canonical_late_transfer_keys
     or _canonical_early_transfer_keys | _canonical_late_transfer_keys
     != _canonical_full_transfer_keys
-    or len(_canonical_full_transfer_keys) != 118
+    or len(_canonical_full_transfer_keys) != 121
     or set(_plan_target_keys(_CANONICAL_STACKED_GAP_FILL_PLAN_ANCHOR))
     != _canonical_early_transfer_keys
     or not _canonical_full_transfer_keys.issubset(_canonical_surface_keys)
@@ -7548,10 +7548,10 @@ if (
     )
 ):
     raise RuntimeError(
-        "Canonical stacked authority must partition the exact 118-target "
-        "transfer surface into 48 early gap-fill and 70 post-PUF targets "
-        "inside an exact 131-target terminal surface and metric registry; "
-        "the late surface must be exactly covered by 43 PUF-clone and 29 "
+        "Canonical stacked authority must partition the exact 121-target "
+        "transfer surface into 48 early gap-fill and 73 post-PUF targets "
+        "inside an exact 134-target terminal surface and metric registry; "
+        "the late surface must be exactly covered by 43 PUF-clone and 32 "
         "ASEC-source producer targets with their declared two-target overlap."
     )
 
