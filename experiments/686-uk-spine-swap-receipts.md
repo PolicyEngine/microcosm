@@ -418,6 +418,75 @@ classification alone.
    incumbent's own national restoration, so the spine is ahead of the pinned
    artifact rather than behind it.
 
+---
+
+## R4 — determinism, and a stale scope in the identity ladder
+
+### Twin determinism: PASS
+
+Two independent full builds compared with `compare_uk_h5_payload.py`:
+**payload-identical** across all four store keys, no differing root
+attributes, entity rows equal (52,846 / 61,211 / 113,649). The two files
+differ in bytes, which is correct — `HDFStore` stamps object-header write
+times, which is exactly why payload comparison rather than byte comparison is
+the instrument.
+
+### Identity receipts: the determinism property holds everywhere
+
+| check | `identical_under_permutation` | `matches_stored_columns` |
+|---|---|---|
+| e4 | **PASS** | fail |
+| e5 | **PASS** | fail |
+| e6 | **PASS** | fail |
+| e8 | **PASS** | **PASS** |
+
+The property these receipts exist to prove — that recomputation is invariant
+to row order — holds in all four. What fails is the secondary comparison of
+the recomputation against the columns stored in the artifact, and the cause is
+in the instrument rather than the spine.
+
+### Why, and the measurement that shows it
+
+`_frs_only_frame` (`tools/verify_uk_identity_stability.py`) scopes the frame
+to the survey channel by excluding `household_is_spi_synthetic`. It was
+written for the post-#717 artifact, where the SPI channel was the only layer
+stacking rows. **E8 added two more**: the capital-gains incidence clone (×2)
+and the 270 CGT band donors. Those rows carry values *copied from their source
+rows*, so recomputing an identity-keyed draw for a clone's own household id
+legitimately disagrees with the stored value — the stored value was never
+drawn for that id.
+
+Measured on `spine-a.h5`:
+
+| scope | households |
+|---|---|
+| all rows | 52,846 |
+| `~spi_synthetic` — what the tool currently uses | 32,761 |
+| `~spi_synthetic & ~capital_gains_clone` | 16,381 |
+| `~spi_synthetic & ~capital_gains_clone & ~cgt_band_donor` | **16,288** |
+
+16,288 is the raw FRS household count, and it is exactly the scope the #723
+receipts ran at (`entity_row_counts` 16,288 / 18,850 / 34,966 with
+`matches_stored_columns: true`). The #723 spine predates E8, so its
+`~spi_synthetic` scope *was* the raw-FRS scope; E8's stacking silently widened
+it. e8's own receipt passes because it recomputes the clone and donor logic
+explicitly rather than assuming unstacked rows.
+
+The e4 mismatch list is consistent with this reading throughout: it is the
+identity-keyed draw columns (`would_claim_*`, `household_owns_tv`,
+`would_evade_tv_licence_fee`, `property_purchased`, `brma`, …), which are
+precisely the columns whose values a clone inherits rather than draws. e5 and
+e6 report the failure with an empty mismatch map, which is its own small
+defect in the receipt's reporting — a fail with nothing named is not
+actionable evidence, and should name what disagreed.
+
+**Disposition: fix the instrument, do not sign this.** The scope must exclude
+every stacked layer, not just the SPI channel, and the fix belongs with the
+e7 receipt work (W4) since both are ladder maintenance. Until then the e4/e5/e6
+`matches_stored_columns` results carry no information about the spine, and the
+L1 leg of the gate is not satisfied — the receipts must be re-run after the
+fix rather than accepted as-is.
+
 ### Carried consequence
 
 The re-pin does not by itself re-validate the #723 acceptance screen: the
