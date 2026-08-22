@@ -586,6 +586,7 @@ def _frs_only_frame(frame):
         time_period=uk_time_period(frame),
         weight_kind=uk_household_weight_kind(frame),
         household_weights=weights,
+        mass_log=frame.mass_log,
     )
 
 

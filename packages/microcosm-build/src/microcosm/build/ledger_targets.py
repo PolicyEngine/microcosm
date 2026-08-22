@@ -522,7 +522,6 @@ def target_spec_from_ledger_reference(
             "require an aggregating value_operation, got "
             f"{reference.value_operation!r}."
         )
-    fact = facts[0]
     numeric_values = []
     for member in facts:
         numeric_values.append(_numeric_fact_value(member, reference))
@@ -536,6 +535,10 @@ def target_spec_from_ledger_reference(
         numeric_value = sum(numeric_values)
     else:
         numeric_value = numeric_values[0]
+    representative_fact = _value_representative_fact(
+        facts,
+        operation=reference.value_operation,
+    )
 
     if not reference.measure:
         raise ValueError(
@@ -546,7 +549,7 @@ def target_spec_from_ledger_reference(
     period = (
         reference.period
         if reference.period is not None
-        else _at(fact, "period", "value")
+        else _at(representative_fact, "period", "value")
     )
     if period is None:
         raise ValueError(f"Ledger fact for {reference.name!r} is missing period.")
@@ -559,18 +562,31 @@ def target_spec_from_ledger_reference(
         filter=reference.filter,
         period=period,
         se=reference.se,
-        source=_source_citation(fact),
+        source=_source_citation(representative_fact),
         family=reference.family,
         signed=reference.signed,
         tolerance=reference.tolerance,
         notes=reference.notes,
         metadata={
-            **_ledger_metadata(fact, fact_key=_fact_key(fact)),
+            **_ledger_metadata(
+                representative_fact,
+                fact_key=_fact_key(representative_fact),
+            ),
             **_multi_fact_reference_metadata(facts),
-            "ledger_resolved_assertion": _fact_assertion(fact),
+            "ledger_resolved_assertion": _fact_assertion(representative_fact),
             **_reference_metadata(reference),
         },
     )
+
+
+def _value_representative_fact(
+    facts: tuple[object, ...],
+    *,
+    operation: str,
+) -> object:
+    if len(facts) == 1 or operation not in MULTI_FACT_VALUE_OPERATIONS:
+        return facts[0]
+    return max(enumerate(facts), key=lambda item: (_period_key(item[1]), item[0]))[1]
 
 
 def _numeric_fact_value(fact: object, reference: LedgerTargetReference) -> float:
@@ -614,12 +630,11 @@ def _validate_fact_aggregation(
 def _multi_fact_reference_metadata(facts: tuple[object, ...]) -> dict[str, str]:
     if len(facts) == 1:
         return {}
-    member_keys = tuple(
-        sorted(_fact_key(fact) or _source_record_id(fact) for fact in facts)
-    )
+    member_keys = tuple(_fact_key(fact) or _source_record_id(fact) for fact in facts)
     payload = json.dumps(member_keys, separators=(",", ":"))
     return {
         "ledger_member_fact_count": str(len(facts)),
+        "ledger_member_aggregate_fact_keys": payload,
         "ledger_member_fact_keys": payload,
         "ledger_member_fact_digest": hashlib.sha256(
             payload.encode("utf-8")
@@ -1418,6 +1433,8 @@ def _selector_candidates(fact: object, key: str) -> tuple[str, ...]:
         return (_str_at(fact, "layout", "measure_id"),)
     if key == "domain":
         return (_domain(fact),)
+    if key == "assertion":
+        return (_fact_assertion(fact),)
     raise ValueError(f"Unsupported Ledger fact selector field {key!r}.")
 
 

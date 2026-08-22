@@ -32,7 +32,7 @@ from microcosm.build.uk_runtime.national_frame import validate_uk_national_frame
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
-ACTIVE_REFERENCE_COUNT = 387
+ACTIVE_REFERENCE_COUNT = 388
 
 
 def _uc_reference(**overrides) -> LedgerTargetReference:
@@ -138,6 +138,81 @@ def _nested_frame() -> Frame:
     )
 
 
+def _reference_by_name(name: str) -> LedgerTargetReference:
+    from microcosm.build.country_spec import load_country_spec
+
+    return next(
+        reference
+        for reference in load_country_spec("uk").target_references
+        if reference.name == name
+    )
+
+
+def _fact_for_reference(
+    reference: LedgerTargetReference,
+    value: float,
+) -> dict:
+    selector = dict(reference.ledger_selector)
+    dimensions = dict(selector.get("dimension_values", {}))
+    return {
+        "aggregate_fact_key": f"ledger.aggregate_fact.v2:{reference.name}",
+        "aggregation": {"method": "sum"},
+        "assertion": "observation",
+        "dimensions": dimensions,
+        "geography": {
+            "level": selector.get("geography_level", "country"),
+            "id": selector.get("geography_id", "K02000001"),
+        },
+        "observed_measure": {
+            "source_name": selector["source_name"],
+            "source_concept": selector["source_concept"],
+            "source_measure_id": "value",
+            "unit": "gbp",
+        },
+        "period": {"type": "month", "value": f"{reference.period}-12"},
+        "value": value,
+    }
+
+
+def _materialization_binding_frame(
+    *,
+    include_counterfactual_delta: bool = True,
+) -> Frame:
+    household = pd.DataFrame(
+        {
+            "household_id": np.arange(3, dtype="int64"),
+            "esa_income": [10.0, 20.0, 0.0],
+            "esa_contrib": [1.0, 2.0, 0.0],
+            "uc_is_child_limit_affected": [1.0, 0.0, 1.0],
+            "children_count": [2.0, 1.0, 3.0],
+        }
+    )
+    salary_sacrifice_metric = "hmrc/salary_sacrifice_it_relief_basic_rate"
+    person_columns = {
+        "person_id": np.arange(4, dtype="int64"),
+        "person_benunit_id": [0, 0, 1, 2],
+        "person_household_id": [0, 0, 1, 2],
+        "capital_gains": [0.0, 7_000.0, 12_000.0, 500.0],
+    }
+    if include_counterfactual_delta:
+        person_columns[salary_sacrifice_metric] = [1.0, 2.0, 0.0, 0.0]
+    return Frame(
+        {
+            "person": pd.DataFrame(person_columns),
+            "benunit": pd.DataFrame(
+                {
+                    "benunit_id": np.arange(3, dtype="int64"),
+                    "universal_credit": [1.0, 0.0, 1.0],
+                }
+            ),
+            "household": household,
+        },
+        EntitySchema(group_entities=("benunit", "household")),
+        {"household": Weights(np.full(3, 10.0), WeightKind.DESIGN)},
+        metadata={"time_period": "2025"},
+    )
+
+
 def test_uc_calibration_compiles_and_moves_weighted_count_towards_fact() -> None:
     frame = _frame()
     stage = UKNationalCalibrationStage(
@@ -216,16 +291,20 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
     assert len(spec.target_references) == ACTIVE_REFERENCE_COUNT
     reference_names = {reference.name for reference in spec.target_references}
     assert "obr.universal_credit_in_cap" in reference_names
-    assert "dwp.uc.households" not in reference_names
+    assert "dwp.uc.households" in reference_names
 
     membership = json.loads(
         importlib_resources.files("microcosm.build.uk")
         .joinpath("target_reference_membership.json")
         .read_text()
     )
-    assert membership["targets"]["dwp.uc.households"]["status"] == (
-        "no_fact_at_or_before_period"
+    assert membership["targets"]["dwp.uc.households"]["status"] == "active"
+    uc_reference = next(
+        reference
+        for reference in spec.target_references
+        if reference.name == "dwp.uc.households"
     )
+    assert uc_reference.value_operation == "calendar_year_average"
 
     references = tuple(
         reference
@@ -245,6 +324,91 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
     )
 
     assert {spec.name for spec in registry.specs} == {"obr.universal_credit_in_cap"}
+
+
+def test_packaged_binding_classes_materialize_through_national_stage() -> None:
+    selected_names = (
+        "dwp.uc.households",
+        "obr.esa",
+        "hmrc.cgt.taxpayers_total",
+        "dwp.uc.two_child_limit.children_affected",
+        "hmrc.salary_sacrifice.it_relief_basic_rate",
+    )
+    references = tuple(_reference_by_name(name) for name in selected_names)
+    facts = [
+        _fact_for_reference(reference, value)
+        for reference, value in zip(
+            references,
+            (20.0, 33.0, 2.0, 5.0, 3.0),
+            strict=True,
+        )
+    ]
+    from microcosm.build.ledger_targets import compile_ledger_target_references
+    from microcosm.build.uk_runtime.ledger_targets import (
+        UKFrameTargetAdapter,
+        materialize_uk_ledger_targets,
+    )
+
+    registry = compile_ledger_target_references(facts, references, country="uk")
+    stage = UKNationalCalibrationStage(
+        registry,
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=1, learning_rate=0.01),
+    )
+
+    input_frame = _materialization_binding_frame()
+    original_columns = {
+        entity: set(input_frame.table(entity).columns)
+        for entity in input_frame.entities
+    }
+
+    result = stage(input_frame)
+
+    assert stage.manifest["activated_reference_count"] == len(selected_names)
+    assert stage.manifest["resolved_reference_count"] == len(selected_names)
+    assert stage.manifest["matrix_target_count"] == len(selected_names)
+    # The staged frame stays writer-clean: no prepared scratch column survives
+    # onto the returned tables (adjudicated lifecycle; slash-named scratch
+    # crashes the HDFStore staging writer). Original input columns — including
+    # the fixture's precomputed counterfactual delta — are exactly preserved.
+    for entity in input_frame.entities:
+        assert set(result.table(entity).columns) == original_columns[entity]
+    # The binding classes produce the right prepared values on the adapter…
+    adapter = UKFrameTargetAdapter(_materialization_binding_frame())
+    materialize_uk_ledger_targets(adapter, registry, period=2025)
+    materialized = {
+        ("benunit", "dwp/uc/households"): [1.0, 0.0, 1.0],
+        ("household", "obr/esa"): [11.0, 22.0, 0.0],
+        ("person", "hmrc/cgt_taxpayers"): [0.0, 1.0, 1.0, 0.0],
+        ("household", "dwp/uc/two_child_limit/children_affected"): [2.0, 0.0, 3.0],
+        ("person", "hmrc/salary_sacrifice_it_relief_basic_rate"): [
+            1.0,
+            2.0,
+            0.0,
+            0.0,
+        ],
+    }
+    for (entity, measure), expected in materialized.items():
+        assert adapter.tables[entity][measure].tolist() == expected
+
+
+def test_packaged_materialization_skip_aborts_national_stage() -> None:
+    from microcosm.build.ledger_targets import compile_ledger_target_references
+
+    reference = _reference_by_name("hmrc.salary_sacrifice.it_relief_basic_rate")
+    registry = compile_ledger_target_references(
+        [_fact_for_reference(reference, 3.0)],
+        [reference],
+        country="uk",
+    )
+    stage = UKNationalCalibrationStage(
+        registry,
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=1),
+    )
+
+    with pytest.raises(RuntimeError, match="could not materialize every"):
+        stage(_materialization_binding_frame(include_counterfactual_delta=False))
 
 
 def test_calibration_preserves_entity_ids_and_national_integrity() -> None:

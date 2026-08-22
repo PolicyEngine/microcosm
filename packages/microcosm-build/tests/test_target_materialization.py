@@ -20,6 +20,11 @@ class StubAdapter:
         }
 
     def column(self, entity, variable):
+        # Counts are adapter concerns (the UK adapter's convention): a
+        # *_count variable is the all-ones indicator over the entity.
+        if variable in {"person_count", "household_count", f"{entity}_count"}:
+            first = next(iter(self.tables[entity].values()))
+            return np.ones(len(first), dtype=float)
         return self.tables[entity][variable]
 
     def set_column(self, entity, variable, values):

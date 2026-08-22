@@ -6,11 +6,11 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 import numpy as np
-import pandas as pd
 
 from microcosm.build.plan import Stage
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
 from microcosm.build.uk_runtime.ledger_targets import (
+    UKFrameTargetAdapter,
     UKLedgerTargetCompilation,
     materialize_uk_ledger_targets,
 )
@@ -72,7 +72,7 @@ class UKNationalCalibrationStage:
                 f"{resolved} of {declared} activated target references; "
                 f"unsupported={self.compilation.unsupported!r}."
             )
-        adapter = _FrameTargetAdapter(frame)
+        adapter = _CalibrationFrameAdapter(frame)
         materialized = materialize_uk_ledger_targets(
             adapter,
             self.registry,
@@ -84,7 +84,7 @@ class UKNationalCalibrationStage:
                 "UK national calibration could not materialize every activated "
                 f"target reference: skipped={skipped}."
             )
-        prepared = adapter.frame()
+        prepared = adapter.prepared_frame()
         mass_reason = national_calibration_mass_reason(
             spec.family for spec in self.registry.specs
         )
@@ -283,86 +283,38 @@ def _doctrine_bounds(doctrine: UKNationalSolveDoctrine) -> dict[str, object]:
     }
 
 
-class _FrameTargetAdapter:
+class _CalibrationFrameAdapter(UKFrameTargetAdapter):
+    """The shared UK adapter plus the prepared-frame/restore lifecycle.
+
+    Prepared measure columns are scratch state: they exist for constraint
+    compilation only, and ``restore`` rebuilds pristine entity tables around
+    the calibrated weights so the staged frame survives the HDFStore writer
+    (slash-named scratch columns crash it).
+    """
+
     def __init__(self, frame: Frame) -> None:
-        self._frame = frame
-        self.tables = {entity: frame.table(entity).copy() for entity in frame.entities}
-        self.tables.update({name: frame.link(name).copy() for name in frame.links})
+        super().__init__(frame)
+        self._source_frame = frame
         self._original_tables = {
             name: table.copy() for name, table in self.tables.items()
         }
-        self._scratch_columns: dict[str, set[str]] = {
-            name: set() for name in self.tables
-        }
 
-    def entity_length(self, entity: str) -> int:
-        return len(self.tables[entity])
-
-    def column(self, entity: str, variable: str) -> np.ndarray:
-        if variable not in self.tables[entity]:
-            raise KeyError(variable)
-        return np.asarray(self.tables[entity][variable])
-
-    def set_column(self, entity: str, variable: str, values: object) -> None:
-        table = self.tables[entity]
-        if variable not in self._original_tables[entity]:
-            self._scratch_columns[entity].add(variable)
-        table[variable] = np.asarray(values, dtype=float)
-
-    def parameter(self, parameter: str, period: int | str) -> float:
-        from microcosm.build.uk_runtime.ledger_targets import UKPolicyEngineAdapter
-
-        return UKPolicyEngineAdapter(None).parameter(parameter, period)
-
-    def household_condition_mask(
-        self,
-        target_entity: str,
-        condition: Mapping[str, Any],
-    ) -> np.ndarray:
-        if target_entity != "household":
-            raise ValueError(
-                "household_conditions can only gate household-grain targets, "
-                f"got {target_entity!r}."
-            )
-        entity = str(condition.get("entity") or "household")
-        source = self.tables[entity]
-        if entity == "household":
-            household_ids = source["household_id"]
-        else:
-            household_ids = self._group_household_ids(entity)
-        reduce = str(condition.get("reduce") or "any")
-        if reduce in {"any", "any_child_under"}:
-            matched = _compare_series(source[str(condition["variable"])], condition)
-            aggregate = matched.groupby(household_ids).any().astype(float)
-            comparison = {"operator": "==", "value": True}
-        elif reduce == "sum":
-            aggregate = source[str(condition["variable"])].groupby(household_ids).sum()
-            comparison = condition
-        elif reduce == "count":
-            aggregate = (
-                source[str(condition["variable"])].groupby(household_ids).count()
-            )
-            comparison = condition
-        else:
-            raise ValueError(f"Unsupported UK household reduction {reduce!r}.")
-        values = self.tables["household"]["household_id"].map(aggregate).fillna(0.0)
-        return np.asarray(_compare_series(values, comparison), dtype=bool)
-
-    def frame(self) -> Frame:
+    def prepared_frame(self) -> Frame:
         return Frame(
-            self.tables,
-            self._frame.schema,
+            {**self.tables, **self.link_tables},
+            self._source_frame.schema,
             {
-                entity: self._frame.weights_for(entity)
-                for entity in self._frame.weighted_entities
+                entity: self._source_frame.weights_for(entity)
+                for entity in self._source_frame.weighted_entities
             },
-            self._frame.strata,
-            mass_log=self._frame.mass_log,
-            metadata=self._frame.metadata,
+            self._source_frame.strata,
+            mass_log=self._source_frame.mass_log,
+            metadata=self._source_frame.metadata,
         )
 
     def restore(self, calibrated: Frame) -> Frame:
         tables = {name: table.copy() for name, table in self._original_tables.items()}
+        tables.update({name: table.copy() for name, table in self.link_tables.items()})
         return Frame(
             tables,
             calibrated.schema,
@@ -377,40 +329,3 @@ class _FrameTargetAdapter:
             mass_log=calibrated.mass_log,
             metadata=calibrated.metadata,
         )
-
-    def _group_household_ids(self, entity: str) -> pd.Series:
-        people = self.tables["person"]
-        entity_membership = f"person_{entity}_id"
-        if entity_membership not in people:
-            raise ValueError(f"UK person table is missing {entity_membership!r}.")
-        group_to_household = (
-            people[[entity_membership, "person_household_id"]]
-            .drop_duplicates()
-            .set_index(entity_membership)["person_household_id"]
-        )
-        if group_to_household.index.has_duplicates:
-            raise ValueError(f"UK {entity} groups span multiple households.")
-        return self.tables[entity][f"{entity}_id"].map(group_to_household)
-
-
-def _compare_series(values: pd.Series, condition: Mapping[str, Any]) -> pd.Series:
-    operator = condition.get("operator")
-    if operator is None:
-        operator, expected = "==", condition["equals"]
-    else:
-        expected = condition["value"]
-    if operator == "==":
-        return values.eq(expected)
-    if operator == "!=":
-        return values.ne(expected)
-    if operator == "in":
-        return values.isin(expected)
-    operations = {
-        ">": values.gt,
-        ">=": values.ge,
-        "<": values.lt,
-        "<=": values.le,
-    }
-    if operator not in operations:
-        raise ValueError(f"Unsupported UK target condition operator {operator!r}.")
-    return operations[operator](expected)

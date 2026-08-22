@@ -383,8 +383,11 @@ class TestExistingPackagesGeneralize:
         spec = load_country_spec("uk")
 
         references = {reference.name: reference for reference in spec.target_references}
-        assert len(references) == 387
+        assert len(references) == 388
         assert references["obr.esa"].value_operation == "sum"
+        assert references["dwp.uc.households"].value_operation == (
+            "calendar_year_average"
+        )
         assert (
             references["obr.income_tax"].assertion_policy
             == "allow_source_projection"

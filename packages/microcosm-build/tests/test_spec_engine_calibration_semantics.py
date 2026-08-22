@@ -28,8 +28,8 @@ from microcosm.build.spec_engine.canonical import canonical_json_bytes
 
 ROOT = Path(__file__).resolve().parents[3]
 US_ROOT = ROOT / "packages/microcosm-build/src/microcosm/build/us"
-LEGACY_CANONICAL_SHA256 = (
-    "8cc14b405d775640123eafeda89405ab0cb28455c554df8e9bf0eb950d78a806"
+CANONICAL_LEGACY_PROJECTION_SHA256 = (
+    "05cb099ee8bd0234ae94586b76dc20ab8a5bd0735c00d4e82e67f912e0b33823"
 )
 
 
@@ -82,13 +82,13 @@ def test_normalized_calibration_is_closed_and_has_no_summary_aliases(
     assert not CALIBRATION_SUMMARY_ALIASES.intersection(solver)
 
 
-def test_normalized_contract_reconstructs_the_prior_canonical_object(
+def test_normalized_contract_has_the_canonical_legacy_projection(
     calibration: dict[str, object],
 ) -> None:
     projected = project_legacy_calibration_contract(calibration)
 
     assert hashlib.sha256(canonical_json_bytes(projected)).hexdigest() == (
-        LEGACY_CANONICAL_SHA256
+        CANONICAL_LEGACY_PROJECTION_SHA256
     )
     assert CALIBRATION_SUMMARY_ALIASES <= projected["solver"].keys()
 

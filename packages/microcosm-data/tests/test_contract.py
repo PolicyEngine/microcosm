@@ -1064,7 +1064,7 @@ def _gate_battery_payload(
                 "signed_difference_count": 0,
             }
         elif entry_id == "uk_calibration_reference_coverage":
-            details = {"activated": 387, "resolved": 387, "matrix": 387}
+            details = {"activated": 388, "resolved": 388, "matrix": 388}
         else:
             details = _terminal_gate_details(detail_name)
         gates[entry_id] = {

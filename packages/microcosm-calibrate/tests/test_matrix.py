@@ -210,9 +210,7 @@ def test_group_sum_target_collapses_onto_weighted_parent_group() -> None:
                     "uc_receipt": [1.0, 0.0, 1.0, 1.0],
                 }
             ),
-            "household": pd.DataFrame(
-                {"household_id": np.arange(3, dtype="int64")}
-            ),
+            "household": pd.DataFrame({"household_id": np.arange(3, dtype="int64")}),
         },
         EntitySchema(group_entities=("benunit", "household")),
         {"household": Weights(weights, WeightKind.DESIGN)},
@@ -234,6 +232,62 @@ def test_group_sum_target_collapses_onto_weighted_parent_group() -> None:
     assert problem.skipped == ()
     np.testing.assert_allclose(problem.matrix.toarray()[0], [1.0, 1.0, 1.0])
     np.testing.assert_allclose(problem.estimates(weights), [60.0])
+
+
+def test_group_sum_target_collapses_with_unsorted_weight_entity_ids() -> None:
+    """Collapse uses id lookup, not sorted-position assumptions."""
+
+    weights = np.array([11.0, 3.0, 13.0])
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.arange(3, dtype="int64"),
+                    "person_benunit_id": [100, 101, 102],
+                    "person_household_id": [10, 20, 30],
+                }
+            ),
+            "benunit": pd.DataFrame(
+                {
+                    "benunit_id": [100, 101, 102],
+                    "uc_receipt": [2.0, 5.0, 7.0],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": [10, 20, 30]}),
+        },
+        EntitySchema(group_entities=("benunit", "household")),
+        {"household": Weights(weights, WeightKind.DESIGN)},
+    )
+    frame.table("household").sort_values(
+        "household_id",
+        ascending=False,
+        inplace=True,
+        ignore_index=True,
+    )
+    frame._weights["household"] = Weights(
+        np.array([13.0, 3.0, 11.0]),
+        WeightKind.DESIGN,
+    )
+    targets = TargetSet(
+        (
+            Target(
+                name="uc_benunits",
+                entity="benunit",
+                value=128.0,
+                measure="uc_receipt",
+                period=2025,
+            ),
+        )
+    )
+
+    problem = build_constraint_matrix(frame, targets, "household")
+
+    assert problem.skipped == ()
+    np.testing.assert_allclose(problem.matrix.toarray()[0], [7.0, 5.0, 2.0])
+    np.testing.assert_allclose(
+        problem.estimates(frame.resolve_weights("household").values),
+        [128.0],
+    )
 
 
 def test_uncompilable_target_is_skipped_and_reported(feasible_frame) -> None:

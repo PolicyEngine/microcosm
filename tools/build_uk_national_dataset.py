@@ -1202,6 +1202,7 @@ def _aggregate_build_record(
     source_vintages["frs"] = load_uk_frs_release().vintage
     if ledger_artifact_provenance is not None:
         source_vintages["ledger_facts"] = ledger_artifact_provenance
+    source_vintages["frs"] = load_uk_frs_release().vintage
     return {
         "schema_version": 3,
         "build_kind": "uk_national_staging_dataset",

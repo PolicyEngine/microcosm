@@ -41,7 +41,6 @@
     "cd_policy",
     "facts_sha256",
     "manifest_sha256",
-    "default_geography_layers",
     "congressional_district",
     "county",
     "negative_target_policy",
@@ -54,17 +53,16 @@
     "cd_policy": {"const": "always_present_report_attainment"},
     "facts_sha256": {"$ref": "#/$defs/run_request"},
     "manifest_sha256": {"$ref": "#/$defs/run_request"},
-    "default_geography_layers": {"$ref": "#/$defs/geography_layers"},
     "congressional_district": {
      "type": "object",
      "additionalProperties": false,
      "required": [
-      "included_by_default",
+      "included",
       "gate_by_default",
       "requires_vintage_crosswalk"
      ],
      "properties": {
-      "included_by_default": {"type": "boolean"},
+      "included": {"const": true},
       "gate_by_default": {"type": "boolean"},
       "requires_vintage_crosswalk": {"type": "boolean"}
      }
