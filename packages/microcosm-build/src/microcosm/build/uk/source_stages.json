@@ -5,8 +5,8 @@
   "stages": [
     {
       "stage": "frs_spine",
-      "survey": "Family Resources Survey 2023-24",
-      "source": "Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9367, DOI 10.5255/UKDA-SN-9367-2; local licensed 2023_24 tabs.",
+      "survey": "Family Resources Survey 2024-25",
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs.",
       "grain": "household",
       "artifacts": [
         {
@@ -14,154 +14,196 @@
           "table": "accounts",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "accounts.tab",
-          "sha256": "c5e31932bfd06087f835d2c83c0984c85a93409bf5ef85b699cb0958abcba1ea",
-          "size_bytes": 1807921,
-          "runtime_sha256_required": true
+          "sha256": "fa7871eb45cad0db5fd05ede454ced60405d2f9c598651ea5acea5c91a6ff52f",
+          "size_bytes": 1812923,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         },
         {
           "role": "frs_table",
           "table": "adult",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "adult.tab",
-          "sha256": "e09f9647d03585c81a528636028b2ed495f8f1fbcf64c5e7b4fe521b67367e06",
-          "size_bytes": 35323384,
-          "runtime_sha256_required": true
+          "sha256": "4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d",
+          "size_bytes": 34885825,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         },
         {
           "role": "frs_table",
           "table": "benefits",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "benefits.tab",
-          "sha256": "ff30d054cc659bcf23b44c492d98cfd701c0bfdb63e8e9aa9769b490ba9d636b",
-          "size_bytes": 4460292,
-          "runtime_sha256_required": true
+          "sha256": "f6ad22b408a13e2239c04b0d076a36418dcf5dd89a8c60daa792c4d735b911d3",
+          "size_bytes": 2362329,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         },
         {
           "role": "frs_table",
           "table": "benunit",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "benunit.tab",
-          "sha256": "88946815eace8561516d5cbb442c27e319c1e90abc381fb2338f0126e3b9e05b",
-          "size_bytes": 21213867,
-          "runtime_sha256_required": true
+          "sha256": "66b894624498316d19b6259e287a607e98ed3daacc9be3d3e9067d32b8e09a5a",
+          "size_bytes": 13986782,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         },
         {
           "role": "frs_table",
           "table": "child",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "child.tab",
-          "sha256": "b5dc84fe8b002ee925e61fae23fed27b11537af9fb174f1d07d9cc1748b9702e",
-          "size_bytes": 2913156,
-          "runtime_sha256_required": true
+          "sha256": "88ec53fc52eea4374864bbc74219d551f4b4c5f54a220bf9607c7a6289719aa5",
+          "size_bytes": 2753961,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         },
         {
           "role": "frs_table",
           "table": "chldcare",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "chldcare.tab",
-          "sha256": "566e0ebca1d5e2f3e424e556c91f4cb583d17dadfdfa59feb3841eda7e5976a3",
-          "size_bytes": 273837,
-          "runtime_sha256_required": true
+          "sha256": "7ccd3f92f299a1f49b24063188177cdb8a958d8bcd753fc3d74dadda6ad04023",
+          "size_bytes": 275878,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         },
         {
           "role": "frs_table",
           "table": "extchild",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "extchild.tab",
-          "sha256": "8d358d7ee66ee4a7ceab87b4f24fbbf21ac86dc038dc7831e51fb271f96a57ec",
-          "size_bytes": 18677,
-          "runtime_sha256_required": true
+          "sha256": "c661379a4aa5079ce482b1f98f0bfb9157ad9b3ba4eb10739b61846f9c9548e4",
+          "size_bytes": 15150,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         },
         {
           "role": "frs_table",
           "table": "househol",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "househol.tab",
-          "sha256": "5fd26b8b675f33b3b30c9ac789a18da17de734790f77e00ded287d1c3a187b30",
-          "size_bytes": 12387117,
-          "runtime_sha256_required": true
+          "sha256": "2b93b6aed49e1591d6f5360736b4aee3a11ef506b276435f4d2c011a8afbb6a5",
+          "size_bytes": 12108606,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         },
         {
           "role": "frs_table",
           "table": "job",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "job.tab",
-          "sha256": "88b77ffe06865f029f713bb1d55ff12bdea8a1234de5bc293e72458fe64f3a74",
-          "size_bytes": 10934873,
-          "runtime_sha256_required": true
+          "sha256": "eb7faf7ada3a3851cb2afb83e2983f8907ffeec897cfbe01e56cb0dfefa853e2",
+          "size_bytes": 10518760,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         },
         {
           "role": "frs_table",
           "table": "maint",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "maint.tab",
-          "sha256": "f2dc924eb5a51b0c357791693d15b431327dc39c6421011efb313d88bf839695",
-          "size_bytes": 15440,
-          "runtime_sha256_required": true
+          "sha256": "e7a8d6f47cab7bf9db9bfd7b3ad5ebe5830ec75245d065dcf8654c7c20b97a7d",
+          "size_bytes": 13993,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         },
         {
           "role": "frs_table",
           "table": "mortgage",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "mortgage.tab",
-          "sha256": "ce36b477d67837c469608a0d68f7ef269ac04758974235f1157d2f6b92cdbfdc",
-          "size_bytes": 631783,
-          "runtime_sha256_required": true
+          "sha256": "6a08f6846970dfdc544a7efc8a93fed4f3210d872cd2d160dfb14ca8d92d5ed0",
+          "size_bytes": 600552,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         },
         {
           "role": "frs_table",
           "table": "oddjob",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "oddjob.tab",
-          "sha256": "b4ba3dd3151f73a01422983c60514a3e38458ddfa4fb33ae4ed0326873406305",
-          "size_bytes": 5165,
-          "runtime_sha256_required": true
+          "sha256": "dfff1baf71a3de05f3a2fcf0c01a3995df5657f242cd7846aa61f6cc27a1cead",
+          "size_bytes": 5339,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         },
         {
           "role": "frs_table",
           "table": "penprov",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "penprov.tab",
-          "sha256": "ee001461c40306ec24b38b2881e1774121114266a2ee449d606cd0a811c37731",
-          "size_bytes": 522313,
-          "runtime_sha256_required": true
+          "sha256": "9e53de0dc969baec000b3cd68387f0f2dfb3f678732e408de175e0a1d6e3fdc1",
+          "size_bytes": 513614,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         },
         {
           "role": "frs_table",
           "table": "pension",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "pension.tab",
-          "sha256": "150d6fad1fce81254fb7aea1526fbb00b63d4027d6e2ac4c26bb90aea3127eb7",
-          "size_bytes": 1225838,
-          "runtime_sha256_required": true
+          "sha256": "2b9be1eb6583cc8916fc06294be27e6217f2aea73da24b97b3226293f6a6ec24",
+          "size_bytes": 1232411,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         }
       ],
       "operations": [
@@ -306,12 +348,12 @@
         "housing_service_charges",
         "external_child_payments"
       ],
-      "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage."
+      "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity."
     },
     {
       "stage": "frs_employment",
-      "survey": "Family Resources Survey 2023-24",
-      "source": "Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9252 local licensed tabs.",
+      "survey": "Family Resources Survey 2024-25",
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs.",
       "grain": "person",
       "artifacts": [
         {
@@ -319,11 +361,14 @@
           "table": "adult",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "adult.tab",
-          "sha256": "e09f9647d03585c81a528636028b2ed495f8f1fbcf64c5e7b4fe521b67367e06",
-          "size_bytes": 35323384,
-          "runtime_sha256_required": true
+          "sha256": "4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d",
+          "size_bytes": 34885825,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         }
       ],
       "operations": [
@@ -352,8 +397,8 @@
     },
     {
       "stage": "frs_council_tax",
-      "survey": "Family Resources Survey 2023-24",
-      "source": "Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9252 local licensed tabs.",
+      "survey": "Family Resources Survey 2024-25",
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs.",
       "grain": "household",
       "artifacts": [
         {
@@ -361,11 +406,14 @@
           "table": "househol",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "househol.tab",
-          "sha256": "5fd26b8b675f33b3b30c9ac789a18da17de734790f77e00ded287d1c3a187b30",
-          "size_bytes": 12387117,
-          "runtime_sha256_required": true
+          "sha256": "2b93b6aed49e1591d6f5360736b4aee3a11ef506b276435f4d2c011a8afbb6a5",
+          "size_bytes": 12108606,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         }
       ],
       "operations": [
@@ -399,8 +447,8 @@
     },
     {
       "stage": "frs_disability",
-      "survey": "Family Resources Survey 2023-24",
-      "source": "Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9252 local licensed tabs plus policyengine-uk DWP parameters.",
+      "survey": "Family Resources Survey 2024-25",
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs. plus policyengine-uk DWP parameters.",
       "grain": "person",
       "artifacts": [],
       "operations": [
@@ -427,8 +475,8 @@
     },
     {
       "stage": "frs_education",
-      "survey": "Family Resources Survey 2023-24",
-      "source": "Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9252 local licensed tabs.",
+      "survey": "Family Resources Survey 2024-25",
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs.",
       "grain": "person",
       "artifacts": [
         {
@@ -436,22 +484,28 @@
           "table": "adult",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "adult.tab",
-          "sha256": "e09f9647d03585c81a528636028b2ed495f8f1fbcf64c5e7b4fe521b67367e06",
-          "size_bytes": 35323384,
-          "runtime_sha256_required": true
+          "sha256": "4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d",
+          "size_bytes": 34885825,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         },
         {
           "role": "frs_table",
           "table": "child",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "child.tab",
-          "sha256": "b5dc84fe8b002ee925e61fae23fed27b11537af9fb174f1d07d9cc1748b9702e",
-          "size_bytes": 2913156,
-          "runtime_sha256_required": true
+          "sha256": "88ec53fc52eea4374864bbc74219d551f4b4c5f54a220bf9607c7a6289719aa5",
+          "size_bytes": 2753961,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         }
       ],
       "operations": [
@@ -493,12 +547,12 @@
         "child_ema",
         "age_started_or_accepted_current_education_or_training"
       ],
-      "notes": "Ports the incumbent education cascade including its unreachable POST_SECONDARY branch order. EDUCQUAL_MAP carries the corrected highest-qualification codeframe (1 = Doctorate, descending) per the FRS 2023-24 data dictionary (UK Data Service SN 9367, DOI 10.5255/UKDA-SN-9367-2, adult table), corroborated against the raw aggregates and adopted as a signed difference (PR #703); an upstream defect report records the incumbent inversion. Code 87 is undocumented in the dictionary and falls to the default. EMA uses the shared weeks-in-year constant."
+      "notes": "Ports the incumbent education cascade including its unreachable POST_SECONDARY branch order. EDUCQUAL_MAP carries the corrected highest-qualification codeframe (1 = Doctorate, descending) per the FRS 2024-25 data dictionary (UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1, adult table), corroborated against the raw aggregates and adopted as a signed difference (PR #703); an upstream defect report records the incumbent inversion. Codes 1-87 are empirically present at 2024-25; code 87 remains undocumented in the SN 9563 dictionary and falls to the default. EMA uses the shared weeks-in-year constant."
     },
     {
       "stage": "frs_legacy_proxies",
-      "survey": "Family Resources Survey 2023-24",
-      "source": "Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9252 local licensed tabs plus policyengine-uk DWP parameters.",
+      "survey": "Family Resources Survey 2024-25",
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs. plus policyengine-uk DWP parameters.",
       "grain": "person",
       "artifacts": [
         {
@@ -506,11 +560,14 @@
           "table": "adult",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "adult.tab",
-          "sha256": "e09f9647d03585c81a528636028b2ed495f8f1fbcf64c5e7b4fe521b67367e06",
-          "size_bytes": 35323384,
-          "runtime_sha256_required": true
+          "sha256": "4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d",
+          "size_bytes": 34885825,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         }
       ],
       "operations": [
@@ -543,8 +600,8 @@
     },
     {
       "stage": "frs_education_grant_split",
-      "survey": "Family Resources Survey 2023-24",
-      "source": "Department for Work and Pensions Family Resources Survey 2023-24, UK Data Service SN 9252 local licensed tabs plus policyengine-uk DfE grant parameters.",
+      "survey": "Family Resources Survey 2024-25",
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs. plus policyengine-uk DfE grant parameters.",
       "grain": "person",
       "artifacts": [],
       "operations": [
@@ -571,12 +628,12 @@
       "nonnegative_outputs": [
         "disabled_students_allowance_eligible_expenses"
       ],
-      "notes": "Runs before BRMA and always runs; both are signed inert differences for 2023-24. Pre-2025 DSA capacity is an aligned zero vector rather than an engine shape-sizing read."
+      "notes": "Runs before BRMA and always runs; both are signed inert differences for 2023-24. Pre-2025 DSA capacity is an aligned zero vector rather than an engine shape-sizing read. EDUCQUAL grant-split compatibility is re-cited to the FRS 2024-25 SN 9563 dictionary; codes 1-87 are empirically present and code 87 remains undocumented/defaulted."
     },
     {
       "stage": "frs_take_up",
-      "survey": "Family Resources Survey 2023-24",
-      "source": "Family Resources Survey 2023-24 reported receipt anchors plus sourced UK take-up contract rates.",
+      "survey": "Family Resources Survey 2024-25",
+      "source": "Family Resources Survey 2024-25 reported receipt anchors plus sourced UK take-up contract rates.",
       "grain": "benunit",
       "artifacts": [],
       "operations": [
@@ -675,7 +732,7 @@
     },
     {
       "stage": "frs_person_draws",
-      "survey": "Family Resources Survey 2023-24",
+      "survey": "Family Resources Survey 2024-25",
       "source": "Sourced UK take-up contract rates and identity-keyed deterministic draws.",
       "grain": "person",
       "artifacts": [],
@@ -721,7 +778,7 @@
     },
     {
       "stage": "frs_household_draws",
-      "survey": "Family Resources Survey 2023-24",
+      "survey": "Family Resources Survey 2024-25",
       "source": "Sourced UK stochastic contract rates and identity-keyed deterministic draws.",
       "grain": "household",
       "artifacts": [],
@@ -765,7 +822,7 @@
     },
     {
       "stage": "frs_brma",
-      "survey": "Family Resources Survey 2023-24",
+      "survey": "Family Resources Survey 2024-25",
       "source": "Valuation Office Agency LHA list-of-rents count table and policyengine-uk LHA_category predictor.",
       "grain": "household",
       "artifacts": [
@@ -1048,7 +1105,7 @@
           "kind": "private_microdata",
           "format": "tab",
           "vintage": "2018_20",
-          "locator": "was_round_8_hhold_eul_may_2025_230525.tab",
+          "locator": "caller-supplied local input",
           "sha256": "18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374",
           "size_bytes": 39073613,
           "runtime_sha256_required": true,
@@ -1457,8 +1514,8 @@
     },
     {
       "stage": "frs_hmrc_spine_leaves",
-      "survey": "Family Resources Survey 2023-24",
-      "source": "Department for Work and Pensions Family Resources Survey 2023-24 raw adult.tab and benefits.tab, caller-supplied local input",
+      "survey": "Family Resources Survey 2024-25",
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25 raw adult.tab and benefits.tab, caller-supplied local input",
       "grain": "person",
       "artifacts": [
         {
@@ -1466,30 +1523,36 @@
           "table": "adult",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "adult.tab",
-          "sha256": "e09f9647d03585c81a528636028b2ed495f8f1fbcf64c5e7b4fe521b67367e06",
-          "size_bytes": 35323384,
-          "runtime_sha256_required": true
+          "sha256": "4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d",
+          "size_bytes": 34885825,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         },
         {
           "role": "frs_table",
           "table": "benefits",
           "kind": "licensed_microdata",
           "format": "tab",
-          "vintage": "2023_24",
+          "vintage": "2024_25",
           "locator": "benefits.tab",
-          "sha256": "ff30d054cc659bcf23b44c492d98cfd701c0bfdb63e8e9aa9769b490ba9d636b",
-          "size_bytes": 4460292,
-          "runtime_sha256_required": true
+          "sha256": "f6ad22b408a13e2239c04b0d076a36418dcf5dd89a8c60daa792c4d735b911d3",
+          "size_bytes": 2362329,
+          "runtime_sha256_required": true,
+          "tax_year_start": 2024,
+          "ukds_study_number": 9563,
+          "doi": "10.5255/UKDA-SN-9563-1"
         }
       ],
       "operations": [
         {
           "kind": "retain_adjudicated_frs_hmrc_leaves",
           "population": "uk_frs_raw_spine",
-          "source_vintage": "2023-24",
-          "mapped_build_period": 2023,
+          "source_vintage": "2024-25",
+          "mapped_build_period": 2024,
           "annualization": "weekly raw FRS amounts * (365.25 / 7)",
           "status": "adjudicated_partial_replay",
           "retained_full_constituents": {
@@ -1589,7 +1652,7 @@
     },
     {
       "stage": "spi_support_channel",
-      "survey": "Family Resources Survey 2023-24",
+      "survey": "Family Resources Survey 2024-25",
       "source": "Synthetic SPI support channel sampled uniformly without replacement from the raw FRS spine before cloning.",
       "grain": "household",
       "artifacts": [],
@@ -1695,8 +1758,8 @@
             "Table_3_6",
             "Table_3_7"
           ],
-          "mapped_build_period": 2023,
-          "period_mapping": "tax_year_start",
+          "mapped_build_period": 2024,
+          "period_mapping": "latest_published_tax_year",
           "runtime_sha256_required": true
         }
       ],
@@ -1902,8 +1965,8 @@
           "require_all_predictors": true,
           "require_all_outputs": true,
           "initialize_frs_channel_columns": {
-            "gift_aid": 0.0,
-            "charitable_investment_gifts": 0.0
+            "gift_aid": 0,
+            "charitable_investment_gifts": 0
           },
           "n_estimators": 100,
           "seed": 42
@@ -2000,8 +2063,8 @@
         {
           "kind": "materialize_hmrc_income_bands_fail_closed",
           "artifact_role": "published_fact_surface",
-          "mapped_build_period": 2023,
-          "period_mapping": "tax_year_start",
+          "mapped_build_period": 2024,
+          "period_mapping": "latest_published_tax_year",
           "column_index_base": 0,
           "data_row_start_index": 5,
           "stop_label": "All ranges",
@@ -2258,7 +2321,7 @@
           "support_channel_column": "person_support_channel",
           "required_support_channel": "spi",
           "mass_share_denominator": "all_person_effective_mass",
-          "minimum_nondefault_mass_share": 1e-06,
+          "minimum_nondefault_mass_share": 0.000001,
           "fail_below_floor": true
         }
       ],
@@ -2337,8 +2400,8 @@
     },
     {
       "stage": "frs_hmrc_retained_leaves",
-      "survey": "Family Resources Survey 2023-24",
-      "source": "Department for Work and Pensions Family Resources Survey 2023-24 raw adult.tab and benefits.tab, caller-supplied local input",
+      "survey": "Family Resources Survey 2024-25",
+      "source": "Department for Work and Pensions Family Resources Survey 2024-25 raw adult.tab and benefits.tab, caller-supplied local input",
       "grain": "person",
       "artifacts": [],
       "operations": [
@@ -2351,8 +2414,8 @@
         {
           "kind": "retain_adjudicated_frs_hmrc_leaves",
           "population": "certified_microcosm_uk_candidate_base_channel",
-          "source_vintage": "2023-24",
-          "mapped_build_period": 2023,
+          "source_vintage": "2024-25",
+          "mapped_build_period": 2024,
           "annualization": "weekly raw FRS amounts * (365.25 / 7)",
           "status": "adjudicated_partial_replay",
           "retained_full_constituents": {
@@ -2474,8 +2537,8 @@
             "Table_3_6",
             "Table_3_7"
           ],
-          "mapped_build_period": 2023,
-          "period_mapping": "tax_year_start",
+          "mapped_build_period": 2024,
+          "period_mapping": "latest_published_tax_year",
           "runtime_sha256_required": true
         }
       ],
@@ -2778,8 +2841,8 @@
         {
           "kind": "materialize_hmrc_income_bands_fail_closed",
           "artifact_role": "published_fact_surface",
-          "mapped_build_period": 2023,
-          "period_mapping": "tax_year_start",
+          "mapped_build_period": 2024,
+          "period_mapping": "latest_published_tax_year",
           "column_index_base": 0,
           "data_row_start_index": 5,
           "stop_label": "All ranges",
@@ -3036,7 +3099,7 @@
           "support_channel_column": "person_support_channel",
           "required_support_channel": "spi",
           "mass_share_denominator": "all_person_effective_mass",
-          "minimum_nondefault_mass_share": 1e-06,
+          "minimum_nondefault_mass_share": 0.000001,
           "fail_below_floor": true
         }
       ],

@@ -59,7 +59,7 @@ HMRC_SPI_COLLATED_ODS_MIME_TYPE = "application/vnd.oasis.opendocument.spreadshee
 HMRC_SPI_SOURCE_VINTAGE = "2023-24"
 HMRC_SPI_SOURCE_TAX_YEAR = HMRC_SPI_SOURCE_VINTAGE
 HMRC_SPI_SOURCE_TAX_YEAR_START = 2023
-HMRC_SPI_BUILD_PERIOD = "2023"
+HMRC_SPI_BUILD_PERIOD = "2024"
 HMRC_SPI_ASSESSABLE_INCOME_COLUMN = "hmrc_spi_assessable_income"
 
 HMRC_SPI_INCOME_BAND_LOWER_BOUNDS = (
@@ -357,16 +357,16 @@ def materialize_hmrc_spi_income_band_targets(
 ) -> HMRCIncomeTargetSet:
     """Parse the complete 2023-24 HMRC SPI income-band target surface.
 
-    The source tax year is mapped by its tax-year start, so 2023-24 is valid
-    only for the Microcosm build period ``"2023"``.  Any missing, duplicate, or
-    malformed source record raises; this function never narrows the family.
+    The latest published tax year 2023-24 is replayed against build period
+    ``"2024"`` (signed, microcosm#723). Any missing, duplicate, or malformed
+    source record raises; this function never narrows the family.
     """
 
     period = str(build_period)
     if period != HMRC_SPI_BUILD_PERIOD:
         raise ValueError(
-            f"HMRC SPI source tax year {HMRC_SPI_SOURCE_TAX_YEAR} starts in "
-            f"{HMRC_SPI_SOURCE_TAX_YEAR_START} and maps to build period "
+            f"HMRC SPI source tax year {HMRC_SPI_SOURCE_TAX_YEAR} is the "
+            "latest published tax year 2023-24 replayed against build period "
             f"{HMRC_SPI_BUILD_PERIOD!r}; got {period!r}."
         )
 

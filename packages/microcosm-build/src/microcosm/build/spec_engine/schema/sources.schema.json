@@ -5309,6 +5309,15 @@
       },
       "runtime_sha256_required": {
        "type": "boolean"
+      },
+      "tax_year_start": {
+       "type": "integer"
+      },
+      "ukds_study_number": {
+       "type": "integer"
+      },
+      "doi": {
+       "type": "string"
       }
      }
     },

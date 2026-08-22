@@ -24,7 +24,7 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
     contract = load_uk_take_up_contract()
 
     assert contract.country == "uk"
-    assert contract.build_year == 2023
+    assert contract.build_year == 2024
     assert [entry.key for entry in contract.programs] == [
         "child_benefit",
         "child_benefit_opts_out_rate",
@@ -44,7 +44,7 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         0.7,
         0.55,
         0.5,
-        0.586,
+        0.88,
         0.812,
         0.563,
         0.597,
@@ -53,7 +53,7 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
     ]
     assert [contract.rate(entry.key) for entry in contract.stochastic] == [
         0.95,
-        0.1058,
+        0.1252,
         0.384,
         0.0385,
     ]

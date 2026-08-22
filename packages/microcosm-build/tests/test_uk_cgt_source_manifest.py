@@ -121,7 +121,7 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
     )
     compliant = SimpleNamespace(
         household_weight_kind=WeightKind.IMPORTANCE,
-        time_period="2023",
+        time_period="2024",
         mass_log=(
             MassChangeRecord(
                 entity="household",
@@ -152,7 +152,7 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
 
     missing_receipt = SimpleNamespace(
         household_weight_kind=WeightKind.IMPORTANCE,
-        time_period="2023",
+        time_period="2024",
         mass_log=compliant.mass_log[:1],
     )
     _, failures = _family_build_state_diagnostics(missing_receipt, manifest)
@@ -160,7 +160,7 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
 
     wrong_kind = SimpleNamespace(
         household_weight_kind=WeightKind.DESIGN,
-        time_period="2023",
+        time_period="2024",
         mass_log=compliant.mass_log,
     )
     _, failures = _family_build_state_diagnostics(wrong_kind, manifest)
