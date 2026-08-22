@@ -35,8 +35,8 @@
             "3_3_2021-22",
             "3_4_2020-21"
           ],
-          "mapped_build_period": 2023,
-          "period_mapping": "tax_year_start",
+          "mapped_build_period": 2024,
+          "period_mapping": "latest_published_tax_year",
           "basis": "Individuals with a CGT liability only; gains after losses and attributed gains but before the annual exempt amount; taxable income after reliefs and the Personal Allowance; trusts excluded; counts publish in thousands and amounts in GBP millions.",
           "runtime_sha256_required": true
         },
@@ -93,7 +93,7 @@
           "suppressed_cell_allocation": "count implied by the cell's published gains at the band-total mean",
           "column_reconciliation": "every income column rescales onto its published All-row taxpayer total",
           "shortfall_policy": "proportional scale-down when the population holds less gainer mass than published taxpayers",
-          "minimum_allocation_people": 1.0,
+          "minimum_allocation_people": 1,
           "weights": "household_weight mapped to persons; no person splits across bands"
         },
         {
@@ -116,7 +116,7 @@
           "kind": "record_mass_conservation_receipt",
           "entity": "household",
           "reason": "Amounts-only capital gains redraw: household weights pass through unchanged and total household mass is conserved.",
-          "declared_factor": 1.0,
+          "declared_factor": 1,
           "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this reason."
         },
         {

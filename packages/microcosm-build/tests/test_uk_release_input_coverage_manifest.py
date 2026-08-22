@@ -126,6 +126,55 @@ def test_cached_candidate_regeneration_matches_committed_evidence() -> None:
     assert regenerated == committed
 
 
+def test_hmrc_family_period_fields_come_from_the_bytes_their_hash_names() -> None:
+    # Adversarial-review finding (2026-08-20): the family block renders the
+    # #723 re-mapped period fields from the CANONICAL manifest while the
+    # frozen mirror keeps its June bytes; each field set must bind to the
+    # sha256 of the file it actually came from.
+    import hashlib
+
+    manifest = _resource("release_input_coverage_manifest.json")
+    family = manifest["family_coverage"]["hmrc_spi_income"]
+
+    frozen_bytes = (
+        files(_UK_PACKAGE).joinpath("hmrc_income_source_stages.json").read_bytes()
+    )
+    canonical_bytes = files(_UK_PACKAGE).joinpath("source_stages.json").read_bytes()
+    assert family["source_manifest_sha256"] == hashlib.sha256(frozen_bytes).hexdigest()
+    assert (
+        family["canonical_source_manifest_sha256"]
+        == hashlib.sha256(canonical_bytes).hexdigest()
+    )
+
+    frozen_stage = json.loads(frozen_bytes)["stages"][0]
+    frozen_surface = next(
+        artifact
+        for artifact in frozen_stage["artifacts"]
+        if artifact.get("role") == "published_fact_surface"
+    )
+    canonical_stage = next(
+        stage
+        for stage in json.loads(canonical_bytes)["stages"]
+        if stage.get("stage") == "hmrc_spi_income"
+    )
+    canonical_surface = next(
+        artifact
+        for artifact in canonical_stage["artifacts"]
+        if artifact.get("role") == "published_fact_surface"
+    )
+    # The re-mapped fields equal the canonical declaration; the frozen mirror
+    # still declares the June mapping (its bytes are pinned elsewhere).
+    assert family["source_vintages"]["mapped_build_period"] == str(
+        canonical_surface["mapped_build_period"]
+    )
+    assert (
+        family["source_vintages"]["period_mapping"]
+        == canonical_surface["period_mapping"]
+    )
+    assert str(frozen_surface["mapped_build_period"]) == "2023"
+    assert frozen_surface["period_mapping"] == "tax_year_start"
+
+
 def test_promoted_manifest_requires_the_full_reference_surface() -> None:
     reference = _resource("efrs_parity_reference.json")
     manifest = _resource("release_input_coverage_manifest.json")
@@ -168,9 +217,12 @@ def test_hmrc_stage_is_required_while_the_208_fact_replay_remains_fenced() -> No
     assert family["source_vintages"] == {
         "spi_donor": "2022-23",
         "hmrc_surface": "2023-24",
-        "mapped_build_period": "2023",
+        "mapped_build_period": "2024",
+        "period_mapping": "latest_published_tax_year",
     }
     assert family["spi_prior_national_household_mass_share"] == 0.5
+    assert family["canonical_source_manifest"] == "source_stages.json"
+    assert len(family["canonical_source_manifest_sha256"]) == 64
     assert family["required_mass_change_reason"] == (
         "Allocate 50% of certified UK national household prior mass to the "
         "rebuilt 2022-23 SPI support channel; total national mass is conserved."

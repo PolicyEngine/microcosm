@@ -181,6 +181,28 @@ def test_spine_leaves_fail_closed_on_unknown_raw_person(tmp_path: Path) -> None:
         UKFRSHMRCSpineLeavesStageTransform(tmp_path, stage=stage)(_base_frame())
 
 
+def test_spine_leaves_sampled_rung_restricts_to_surviving_people(
+    tmp_path: Path,
+) -> None:
+    # A #627 rung subsamples households after frs_spine, so raw-tab person
+    # coverage legitimately exceeds the frame; the sampled posture restricts
+    # the raw surface to the survivors while f100 keeps the strict fence.
+    stage = _leaves_stage(
+        tmp_path,
+        extra_adult_rows=({"sernum": 9, "person": 1, "inearns": 1.0},),
+    )
+
+    result = UKFRSHMRCSpineLeavesStageTransform(
+        tmp_path, stage=stage, sampled_rung=True
+    )(_base_frame())
+    person = result.table("person")
+
+    assert person["person_id"].tolist() == [2001, 1001]
+    assert person["hmrc_spi_pay"].tolist() == pytest.approx(
+        [5.0 * 365.25 / 7.0, 4.0 * 365.25 / 7.0]
+    )
+
+
 def _support_stage() -> SourceStageSpec:
     return SourceStageSpec.from_mapping(
         {

@@ -91,10 +91,10 @@ def _frame(
 
 def _reference(totals, **overrides) -> UKInputMassReference:
     fields = {
-        "filename": "enhanced_frs_2023_24.h5",
-        "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
-        "sha256": ("584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d"),
-        "vintage": "2023_24",
+        "filename": "enhanced_frs_2024_25.h5",
+        "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
+        "sha256": ("97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e"),
+        "vintage": "2024_25",
     }
     fields.update(overrides)
     return UKInputMassReference(totals=totals, **fields)
@@ -103,10 +103,10 @@ def _reference(totals, **overrides) -> UKInputMassReference:
 def _descriptor(**overrides) -> UKInputMassReferenceDescriptor:
     fields = {
         "name": "efrs-post-calibration",
-        "filename": "enhanced_frs_2023_24.h5",
-        "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
-        "sha256": "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d",
-        "vintage": "2023_24",
+        "filename": "enhanced_frs_2024_25.h5",
+        "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
+        "sha256": "97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e",
+        "vintage": "2024_25",
         "totals_sha256": UK_INPUT_MASS_REFERENCE_EVIDENCE_SHA256,
         "scope_note": "Seeded scoped-reference note.",
     }
@@ -272,10 +272,10 @@ def test_input_mass_reference_identity_is_recorded() -> None:
     )
 
     assert gate.details["reference_identity"] == {
-        "filename": "enhanced_frs_2023_24.h5",
-        "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
-        "sha256": ("584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d"),
-        "vintage": "2023_24",
+        "filename": "enhanced_frs_2024_25.h5",
+        "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
+        "sha256": ("97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e"),
+        "vintage": "2024_25",
     }
 
 
@@ -1001,12 +1001,12 @@ def test_input_mass_reference_round_trips_the_measurement_schema(tmp_path) -> No
             {
                 "schema_version": 1,
                 "identity": {
-                    "filename": "enhanced_frs_2023_24.h5",
-                    "revision": "655dd07e4bb9c777b00dac044949611f1feb824f",
+                    "filename": "enhanced_frs_2024_25.h5",
+                    "revision": "a2039519d3b92aecc06c66dfd175cb46ac24cada",
                     "sha256": (
-                        "584ae33d80ca0431254610a3f8254d132da73477d31966d6446282861ecae50d"
+                        "97a07f9ccb54019e4550e70980c561c985523e6bbc43d21938d01536e37d6c3e"
                     ),
-                    "vintage": "2023_24",
+                    "vintage": "2024_25",
                 },
                 "totals": {"employment_income": 10.5},
             }
@@ -1023,7 +1023,7 @@ def test_input_mass_reference_round_trips_the_measurement_schema(tmp_path) -> No
     ):
         reference = load_uk_input_mass_reference(path)
 
-    assert reference.filename == "enhanced_frs_2023_24.h5"
+    assert reference.filename == "enhanced_frs_2024_25.h5"
     assert dict(reference.totals) == {"employment_income": 10.5}
     with pytest.raises(ValueError, match="schema_version"):
         path.write_text(json.dumps({"schema_version": 9}))

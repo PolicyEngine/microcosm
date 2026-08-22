@@ -19,6 +19,14 @@ _MANIFEST_PATH = (
     / "uk"
     / "hmrc_income_source_stages.json"
 )
+_CANONICAL_SOURCE_STAGES_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "src"
+    / "microcosm"
+    / "build"
+    / "uk"
+    / "source_stages.json"
+)
 _COLLATED_ODS_URL = (
     "https://assets.publishing.service.gov.uk/media/"
     "69f1f12d2fae53a03709682f/Collated_Tables_3_1_to_3_11_2324.ods"
@@ -103,6 +111,29 @@ _COMPONENT_COLUMNS = {
 
 def _manifest() -> dict[str, object]:
     return json.loads(_MANIFEST_PATH.read_text(encoding="utf-8"))
+
+
+def _runtime_manifest() -> dict[str, object]:
+    payload = json.loads(_CANONICAL_SOURCE_STAGES_PATH.read_text(encoding="utf-8"))
+    retained = [
+        stage
+        for stage in payload["stages"]
+        if stage["stage"] == "frs_hmrc_retained_leaves"
+    ]
+    hmrc = [stage for stage in payload["stages"] if stage["stage"] == "hmrc_spi_income"]
+    assert len(retained) == 1
+    assert len(hmrc) == 1
+    stage = dict(hmrc[0])
+    stage["base_candidate"] = dict(_manifest()["stages"][0]["base_candidate"])
+    stage["operations"] = [
+        *retained[0]["operations"],
+        *hmrc[0]["operations"],
+    ]
+    return {
+        "country": payload["country"],
+        "version": payload["version"],
+        "stages": [stage],
+    }
 
 
 def _stage(payload: dict[str, object]) -> dict[str, object]:
@@ -638,7 +669,7 @@ def test_runtime_source_contract_rejects_manifest_drift(
     replacement,
     match,
 ) -> None:
-    payload = _manifest()
+    payload = _runtime_manifest()
     cursor = payload
     for segment in path[:-1]:
         cursor = cursor[segment]
@@ -658,7 +689,7 @@ def test_runtime_source_contract_rejects_duplicate_keys(
     collection,
     key,
 ) -> None:
-    payload = _manifest()
+    payload = _runtime_manifest()
     values = payload["stages"][0][collection]
     values.append(dict(values[0]))
     tampered = tmp_path / f"duplicate_{key}.json"

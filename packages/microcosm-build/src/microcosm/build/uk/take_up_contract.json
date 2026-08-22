@@ -1,8 +1,8 @@
 {
   "version": 1,
   "country": "uk",
-  "build_year": 2023,
-  "policy": "UK stochastic assignment contract for the FRS 2023-24 source spine. Date-keyed values use the incumbent parameter loader semantics: choose the latest value with year less than or equal to the build year. Reported-receipt anchors use an unweighted full-population target denominator, target = int(rate * n_units), and accept anchor overshoot. Random streams are intentionally identity-keyed by seed, output variable name, and entity id; this is a signed difference from the incumbent UK pipeline sequential RNG stream. Incumbent provenance: ebf733c.",
+  "build_year": 2024,
+  "policy": "UK stochastic assignment contract for the FRS 2024-25 source spine. Date-keyed values use the incumbent parameter loader semantics: choose the latest value with year less than or equal to the build year. Reported-receipt anchors use an unweighted full-population target denominator, target = int(rate * n_units), and accept anchor overshoot. Random streams are intentionally identity-keyed by seed, output variable name, and entity id; this is a signed difference from the incumbent UK pipeline sequential RNG stream. Incumbent provenance: ebf733c.",
   "incumbent_provenance": {
     "commit": "ebf733c",
     "description": "incumbent UK pipeline stochastic layer",

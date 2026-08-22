@@ -121,6 +121,22 @@ def test_real_replay_binds_sources_identity_and_positive_mass() -> None:
     }
     assert sources["hmrc_surface"]["sha256"] == HMRC_SPI_COLLATED_ODS_SHA256
     assert sources["hmrc_surface"]["mapped_build_period"] == "2023"
+    # June-freeze partition, made self-describing (adversarial-review
+    # disposition, microcosm#723): this report is evidence for the
+    # grandfathered June release and binds to the FROZEN manifest's period
+    # mapping - it deliberately does NOT follow the live build period, which
+    # moved to "2024" with the #723 signed re-map. It retires with the frozen
+    # manifest after #686 (#687's disposition), never regenerates against a
+    # different vintage.
+    frozen_stage = _resource("hmrc_income_source_stages.json")["stages"][0]
+    frozen_surface = next(
+        artifact
+        for artifact in frozen_stage["artifacts"]
+        if artifact.get("role") == "published_fact_surface"
+    )
+    assert sources["hmrc_surface"]["mapped_build_period"] == str(
+        frozen_surface["mapped_build_period"]
+    )
     assert qrf["fits"] == {
         "uk_frs_only_spi_fill": {"weight_kind": "importance"},
         "uk_spi_2022_23_income": {"weight_kind": "design"},
