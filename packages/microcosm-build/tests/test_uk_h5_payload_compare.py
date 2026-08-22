@@ -263,3 +263,192 @@ def test_structural_differences_reported_by_name_only(tmp_path: Path) -> None:
     assert report["payload_identical"] is False
     assert report["tables"]["household"]["column_order_equal"] is False
     assert report["tables"]["person"]["payload_equal"] is True
+
+
+def _register(tmp_path: Path, *entries: dict) -> Path:
+    path = tmp_path / "register.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "scope_note": "test register",
+                "differences": list(entries),
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def _entry(identifier: str, *, surface: str, columns: list[str]) -> dict:
+    return {
+        "id": identifier,
+        "class": "mechanism_change",
+        "scope": {"surface": surface, "columns": columns, "entities": ["household"]},
+        "expectation": "column_differs",
+        "magnitude_evidence": "disclosure-safe magnitude statement",
+        "evidence": "experiments/686-uk-spine-swap-receipts.md#r0",
+        "adjudicator": "juaristi22",
+        "adjudicated_on": "2026-08-22",
+    }
+
+
+class TestStructureOnlyVerdict:
+    """The #686 swap posture: same surface, differences only where signed."""
+
+    def test_signed_value_difference_passes(self, tmp_path: Path) -> None:
+        pytest.importorskip("tables")
+        left = _write(tmp_path / "left.h5", _tables())
+        right = _write(tmp_path / "right.h5", _tables(weight_two=SENTINEL_VALUE))
+        register = _register(
+            tmp_path,
+            _entry(
+                "weights-differ",
+                surface="payload_column",
+                columns=["household_weight"],
+            ),
+        )
+        out = tmp_path / "report.json"
+
+        code = COMPARATOR.main(
+            [
+                str(left),
+                str(right),
+                "--structure-only",
+                "--signed-differences",
+                str(register),
+                "--json-out",
+                str(out),
+            ]
+        )
+
+        report = json.loads(out.read_text(encoding="utf-8"))
+        assert code == 0
+        assert report["verdict_mode"] == "structure_only"
+        assert report["structure_equal"] is True
+        assert report["structure_only_ok"] is True
+        assert report["signed"]["matched_ids"] == ["weights-differ"]
+        # The full-payload verdict is still reported, unchanged.
+        assert report["payload_identical"] is False
+        assert str(SENTINEL_VALUE) not in json.dumps(report)
+
+    def test_unsigned_value_difference_fails(self, tmp_path: Path) -> None:
+        pytest.importorskip("tables")
+        left = _write(tmp_path / "left.h5", _tables())
+        right = _write(tmp_path / "right.h5", _tables(weight_two=SENTINEL_VALUE))
+        out = tmp_path / "report.json"
+
+        code = COMPARATOR.main(
+            [
+                str(left),
+                str(right),
+                "--structure-only",
+                "--signed-differences",
+                str(_register(tmp_path)),
+                "--json-out",
+                str(out),
+            ]
+        )
+
+        report = json.loads(out.read_text(encoding="utf-8"))
+        assert code == 1
+        assert report["structure_equal"] is True
+        assert report["structure_only_ok"] is False
+        assert report["signed"]["unsigned_columns"] == ["household.household_weight"]
+
+    def test_structural_difference_fails_even_when_signed(self, tmp_path: Path) -> None:
+        # A signature excuses differing values, never a differing surface.
+        pytest.importorskip("tables")
+        left = _write(tmp_path / "left.h5", _tables())
+        extra = _tables()
+        extra["household"] = extra["household"].assign(surprise_column=[1.0, 2.0])
+        right = _write(tmp_path / "right.h5", extra)
+        register = _register(
+            tmp_path,
+            _entry("surprise", surface="payload_column", columns=["surprise_column"]),
+        )
+        out = tmp_path / "report.json"
+
+        code = COMPARATOR.main(
+            [
+                str(left),
+                str(right),
+                "--structure-only",
+                "--signed-differences",
+                str(register),
+                "--json-out",
+                str(out),
+            ]
+        )
+
+        report = json.loads(out.read_text(encoding="utf-8"))
+        assert code == 1
+        assert report["structure_equal"] is False
+
+    def test_identical_artifacts_pass_with_no_signatures_used(
+        self, tmp_path: Path
+    ) -> None:
+        pytest.importorskip("tables")
+        left = _write(tmp_path / "left.h5", _tables())
+        right = _write(tmp_path / "right.h5", _tables())
+        out = tmp_path / "report.json"
+
+        code = COMPARATOR.main(
+            [
+                str(left),
+                str(right),
+                "--structure-only",
+                "--signed-differences",
+                str(_register(tmp_path)),
+                "--json-out",
+                str(out),
+            ]
+        )
+
+        report = json.loads(out.read_text(encoding="utf-8"))
+        assert code == 0
+        assert report["structure_only_ok"] is True
+        assert report["signed"]["matched_ids"] == []
+
+    def test_signed_differences_without_structure_only_is_refused(
+        self, tmp_path: Path
+    ) -> None:
+        pytest.importorskip("tables")
+        left = _write(tmp_path / "left.h5", _tables())
+        right = _write(tmp_path / "right.h5", _tables())
+
+        assert (
+            COMPARATOR.main(
+                [
+                    str(left),
+                    str(right),
+                    "--signed-differences",
+                    str(_register(tmp_path)),
+                ]
+            )
+            == 2
+        )
+
+    def test_root_attr_difference_must_be_signed(self, tmp_path: Path) -> None:
+        pytest.importorskip("tables")
+        left = _write(tmp_path / "left.h5", _tables())
+        right = _write(tmp_path / "right.h5", _tables(), attr="importance")
+        out = tmp_path / "report.json"
+
+        code = COMPARATOR.main(
+            [
+                str(left),
+                str(right),
+                "--structure-only",
+                "--signed-differences",
+                str(_register(tmp_path)),
+                "--json-out",
+                str(out),
+            ]
+        )
+
+        report = json.loads(out.read_text(encoding="utf-8"))
+        assert code == 1
+        assert report["signed"]["unsigned_root_attrs"] == [
+            "populace_household_weight_kind"
+        ]
