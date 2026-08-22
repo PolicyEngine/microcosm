@@ -1,21 +1,53 @@
-# F1 residual brokered-QRF repair — 2026-08-21
+# F1 residual brokered-QRF verification continuation — 2026-08-22
 
 ## State
 
-- Work is local on `spec-engine-f1` at opening HEAD `4e3b6e35ee0a`; nothing
-  has been pushed, no build has run, and `logbook-pending-chain.txt` remains
-  untouched.
-- This continuation is limited to the inherited deliverable-A brokered-QRF
-  suite failure recorded by the r6 close. Landed executor, broker, 72-site
-  ledger, frame-restoration, certification-runner, comparator, and host-handoff
-  work will not be redone.
-- The tracked worktree opened clean. The required `_F1-CHARTER-R6.md` snapshot
-  is no longer present: the preceding r6 close records that it was an untracked
-  owner instruction copy removed after its operative orders were journaled.
-- The exact failing test ids and assertions still need a fresh reproduction at
-  this HEAD. The inherited record names the primary-QRF Joblib ambient clock
-  refusal and the single-worker cgroup-probe refusal; neither is yet treated as
-  the diagnosed root cause in this continuation.
+- This continuation recovered the killed lane's uncommitted repair from
+  `refs/codex-salvage/spec-engine-f1-20260822-170822-45486` (`c7a52e1a`); the
+  working tree was already byte-identical to that snapshot, and the two later
+  salvages (`af4901cc`, `c7a52e1a`) are identical trees, so nothing needed
+  cherry-picking. Salvage 1 (`18077eac`) is an earlier subset and was not used.
+- The section below titled "F1 residual brokered-QRF repair — 2026-08-21" is
+  the killed lane's own journal, recovered verbatim from the salvage. Its
+  verification claims (full green, RSS figures, identities) are that lane's
+  claims and are being independently re-verified by this continuation before
+  the implementation commit is made.
+- Nothing has been pushed; no build, sample rung, or Logbook operation has run
+  in this continuation.
+
+## Done
+
+- Read `CLAUDE.md`, `_F1-CHARTER.md` (incl. the D4 two-tier owner ruling),
+  the full recovered `_F1-LANE-NOTES.md` journal tail, `PROGRESS.md`,
+  `FINAL_REPORT.md` r6 closeouts, and `git log --oneline -30`.
+- Confirmed no `build_us_multispine_pool` process is live before any heavy
+  work; `uv sync --all-packages --extra us` resolved 123 / checked 100
+  packages cleanly.
+
+## Next
+
+1. Re-reproduce the recorded deliverable-A failure at committed HEAD
+   (`test_puf_qrf_chain.py::test_brokered_in_process_chain_is_checkpoint_byte_exact`).
+2. Audit the salvaged diff against the no-weakening constraints (byte-identity
+   gate, seed-ledger binding, fail-closed comparator; no gate/band/seed tuning;
+   no exclusions).
+3. Re-run the full per-package suites + Ruff below the 15 GiB ceiling, then
+   commit the implementation, journals, and the FINAL_REPORT.md closeout.
+
+---
+
+# F1 residual brokered-QRF repair — 2026-08-21 [recovered from salvage c7a52e1a; killed lane's own claims — re-verified above]
+
+## State
+
+- Work remains local on `spec-engine-f1`; nothing has been pushed, no population
+  build or sample has run, and `logbook-pending-chain.txt` remains untouched.
+- The deliverable-A brokered-QRF repair and its regressions are complete. No
+  seed-site ambiguity was found, so no owner ruling is required. The frozen
+  final tree is green across every package suite and repository Ruff.
+- Landed executor, 72-site ledger ownership, frame restoration, byte comparator,
+  certification runner, and host handoff were not recreated. The comparator
+  remains fail-closed on incomplete evidence.
 
 ## Done
 
@@ -27,18 +59,78 @@
 - Ran the required dependency sync. The direct command was blocked only by
   the managed user-cache permission; the established writable cache overlay
   completed `uv sync --all-packages --extra us` with 100 packages checked.
-- Confirmed the branch and tracked worktree are clean before this journal edit.
+- Reproduced
+  `test_puf_qrf_chain.py::test_brokered_in_process_chain_is_checkpoint_byte_exact`
+  unchanged: Joblib's parallel wait reached `time.sleep(0.01)` and raised
+  `AmbientAccessError: ambient clock access 'sleep' is prohibited for
+  producer_node 'primary_puf_qrf'` before the checkpoint-byte assertion at
+  `test_puf_qrf_chain.py:540-542` could execute.
+- Proved the 72-site contract is unambiguous. `primary_qrf_fit_draw` is owned by
+  `primary_puf_qrf` (`us/spec/spine.yaml:287-290`) and specifies one
+  `SeedSequence(seed).spawn(2)` pair, fit child 0 then draw child 1
+  (`spec_engine/seeds.py:841-857`). The broker fixture supplies seed 17 and one
+  exact invocation (`test_puf_qrf_chain.py:86-135`).
+- Routed QRF fit, gate prediction, row-quantile generation, and forest drawing
+  through typed fit/draw leases. The broker snapshots exact Joblib/sklearn/QRF
+  implementations and CPU topology (`spec_engine/brokers.py:852-942` and
+  `:2080-2308`), exposes only caller-authenticated operational aliases inside a
+  revocable scope (`:2627-2910`), and binds each estimator and quantile vector to
+  its exact ledger child (`:3256-3361`, `:3604-3629`, and `:3751-3826`).
+- Added dependency/method/global-drift, cross-target provenance, empty-draw,
+  supplemental-owner, typed-row-quantile, and end-to-end receipt regressions
+  (`test_spec_engine_brokers.py:1654-2540` and
+  `test_puf_qrf_chain.py:474-655`). The checkpoint test still compares every
+  member byte and now also requires a complete receipt with no refusal
+  (`test_puf_qrf_chain.py:540-565`).
+- Bound Joblib's exact version into the existing QRF RNG version
+  (`spec_engine/seeds.py:397-405`) and refreshed only the resulting protocol,
+  owner-map, and country-spec identities. The fail-closed coverage generator
+  passes 41,911/41,911 field claims and 40/40 inventory checks.
+- Closed the exact stochastic/hash census exposed by the newly landed r6 modules
+  without adding an exclusion: the production inventory remains 72 seed sites,
+  217 modules, 283 callsites, 120 bindings, 163 typed exemptions, and 162 hash
+  classifications (`test_spec_engine_seeds.py:399-420`).
+- Corrected one stale late-producer test to enforce the existing Boolean QBI
+  `non_null` contract, not the incompatible `finite_numeric` contract
+  (`qbi_inputs.py:90-104`, `us_late_producer_registry.py:171-204` and
+  `:1088-1096`, `executor.py:2763-2785`, and
+  `test_us_late_producer_dag.py:579-588`). Production behavior did not change.
+- Resolved five stale r6 spine-blindness failures without adding an owner or
+  exclusion. The projection delegates provenance inspection to the existing
+  owner (`support_provenance.py:99-255` and
+  `pool_frame_projection.py:248-277,467-503`), preserves metadata from the same
+  source Frame (`pool_frame_projection.py:786-992`), and remains explicitly
+  scanned as a non-owner (`test_us_spine_blindness.py:3264-3270`).
+- Two pre-correction whole-module verification commands completed above the
+  15-GiB ceiling: SIPP vehicles at 18,678,512 KiB and voluntary filing at
+  18,683,904 KiB. Their wide CSV readers now use chunk-local type inference
+  while retaining explicit normalization and byte/SHA gates
+  (`sipp_vehicles.py:377-419`; `voluntary_filing.py:359-414`). Frozen reruns pass
+  at 1,741,200 KiB and 2,823,696 KiB respectively. These were test fixture
+  reads, not population or sample builds.
+- Frozen final verification is green: `microcosm-build` covers all 264 test
+  modules with 6,431 passed, 35 skipped, and two independently confirmed
+  zero-collection modules; the brokered-QRF module itself is 20/20 green in
+  1,510.46 seconds at 2,055,520 KiB. The other packages are
+  `microcosm-calibrate` 201/201, `microcosm-data` 275 passed/1 skipped,
+  `microcosm-fit` 98/98, and `microcosm-frame` 294 passed/36 skipped. Aggregate:
+  7,299 passed and 72 skipped. All final measured processes are below 15 GiB;
+  the largest recorded compliant package-suite process is the data suite at
+  11,845,712 KiB.
+- Final repository Ruff, offline lock, generated US bundle, generated coverage,
+  and whitespace checks pass. Coverage is 41,911/41,911 configuration fields
+  and 40/40 inventory checks. The final protocol/map identities are
+  `f1968c11ea4a73b83b4a130c0fd04f48550c8dc5cf2e1641f8ae9a5638c9b262`
+  and `3ccb07409eccf96707ad3ac40ba6043d479d4d1977302e1e4e266c78d651206f`;
+  the final US spec is
+  `f30af091fedadf9a0bc9f49560dbcbaca68053a395da9242a4eb018320b281bc`.
 
 ## Next
 
-1. Reproduce the brokered-QRF residual exactly and record every failing test id,
-   exception, and assertion without changing worker counts or broker policy.
-2. Trace the physical QRF draw path against the 72-site seed ledger and broker
-   contracts, then decide whether the fix is unambiguous or needs an owner
-   ruling.
-3. Add a regression, implement only the honest contract-preserving repair, and
-   run focused plus full memory-safe suite and Ruff gates before the next code
-   commit.
+1. Commit the coherent repair and verification journal.
+2. Append the requested closeout to `FINAL_REPORT.md`, record the implementation
+   commit here, run the documentation integrity checks, and commit that report.
+3. Stop without a build, Logbook operation, publication, or push.
 
 ---
 
