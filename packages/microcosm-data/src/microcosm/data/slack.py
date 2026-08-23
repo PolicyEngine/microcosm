@@ -49,6 +49,7 @@ def notify_release(
     webhook: str | None = None,
     post: Callable[[str, dict[str, Any]], None] | None = None,
     warn_if_unset: bool = False,
+    tier: str = "certified",
 ) -> bool:
     """Announce a published release to the country's Slack channel.
 
@@ -56,7 +57,9 @@ def notify_release(
     env var is unset. Never raises — a failed post is logged, not fatal. When
     ``warn_if_unset`` is set, an unset webhook logs a warning instead of
     returning silently, so a release that publishes without an alert is visible
-    in the log rather than a mystery.
+    in the log rather than a mystery. ``tier="evidence"`` labels the alert as
+    an evidence-tier publish (microcosm#506) so it can never read as a new
+    certified release; the certified message is unchanged.
     """
     country = country_for_repo(repo_id)
     url = webhook or os.environ.get(CHANNEL_ENV[country])
@@ -69,23 +72,35 @@ def notify_release(
         return False
 
     label = "🇬🇧 UK" if country == "uk" else "🇺🇸 US"
+    is_evidence = tier == "evidence"
     context = " · ".join(
         part
         for part in (
             repo_id,
+            (
+                "evidence tier — known failures recorded in the release manifest"
+                if is_evidence
+                else ""
+            ),
             f"published {updated_at}" if updated_at else "",
             f"<{DASHBOARD_URL}|calibration diagnostics>",
         )
         if part
     )
+    if is_evidence:
+        text = f"New Microcosm {country.upper()} EVIDENCE release: {release_id}"
+        header = f":warning: *New Microcosm {label} EVIDENCE release*\n`{release_id}`"
+    else:
+        text = f"New Microcosm {country.upper()} release: {release_id}"
+        header = f":rocket: *New Microcosm {label} release*\n`{release_id}`"
     payload = {
-        "text": f"New Microcosm {country.upper()} release: {release_id}",
+        "text": text,
         "blocks": [
             {
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f":rocket: *New Microcosm {label} release*\n`{release_id}`",
+                    "text": header,
                 },
             },
             {
