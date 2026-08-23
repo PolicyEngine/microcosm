@@ -3,11 +3,11 @@
   "target_period": 2025,
   "candidate_count": 417,
   "contract_target_count": 189,
-  "active_reference_count": 388,
+  "active_reference_count": 397,
   "status_counts": {
-    "active": 388,
+    "active": 397,
     "multi_fact": 1,
-    "no_fact_at_or_before_period": 27,
+    "no_fact_at_or_before_period": 18,
     "signed_excluded": 1
   },
   "geography_pins": {
@@ -609,7 +609,7 @@
     },
     "scotgov.council_tax_stock.band_a": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "S92000003"
     },
     "voa.council_tax_stock.band_b": {
       "geography_level": "country",
@@ -617,7 +617,7 @@
     },
     "scotgov.council_tax_stock.band_b": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "S92000003"
     },
     "voa.council_tax_stock.band_c": {
       "geography_level": "country",
@@ -625,7 +625,7 @@
     },
     "scotgov.council_tax_stock.band_c": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "S92000003"
     },
     "voa.council_tax_stock.band_d": {
       "geography_level": "country",
@@ -633,7 +633,7 @@
     },
     "scotgov.council_tax_stock.band_d": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "S92000003"
     },
     "voa.council_tax_stock.band_e": {
       "geography_level": "country",
@@ -641,7 +641,7 @@
     },
     "scotgov.council_tax_stock.band_e": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "S92000003"
     },
     "voa.council_tax_stock.band_f": {
       "geography_level": "country",
@@ -649,7 +649,7 @@
     },
     "scotgov.council_tax_stock.band_f": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "S92000003"
     },
     "voa.council_tax_stock.band_g": {
       "geography_level": "country",
@@ -657,7 +657,7 @@
     },
     "scotgov.council_tax_stock.band_g": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "S92000003"
     },
     "voa.council_tax_stock.band_h": {
       "geography_level": "country",
@@ -665,7 +665,7 @@
     },
     "scotgov.council_tax_stock.band_h": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "S92000003"
     },
     "voa.council_tax_stock.total": {
       "geography_level": "country",
@@ -673,7 +673,7 @@
     },
     "scotgov.council_tax_stock.total": {
       "geography_level": "country",
-      "geography_id": "K02000001"
+      "geography_id": "S92000003"
     },
     "scotgov.scottish_child_payment_spending": {
       "geography_level": "country",
@@ -2488,8 +2488,18 @@
       "to": "2025"
     },
     {
+      "name": "scotgov.council_tax_stock.band_a",
+      "from": "2025-09",
+      "to": "2025"
+    },
+    {
       "name": "voa.council_tax_stock.band_b",
       "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "scotgov.council_tax_stock.band_b",
+      "from": "2025-09",
       "to": "2025"
     },
     {
@@ -2498,8 +2508,18 @@
       "to": "2025"
     },
     {
+      "name": "scotgov.council_tax_stock.band_c",
+      "from": "2025-09",
+      "to": "2025"
+    },
+    {
       "name": "voa.council_tax_stock.band_d",
       "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "scotgov.council_tax_stock.band_d",
+      "from": "2025-09",
       "to": "2025"
     },
     {
@@ -2508,8 +2528,18 @@
       "to": "2025"
     },
     {
+      "name": "scotgov.council_tax_stock.band_e",
+      "from": "2025-09",
+      "to": "2025"
+    },
+    {
       "name": "voa.council_tax_stock.band_f",
       "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "scotgov.council_tax_stock.band_f",
+      "from": "2025-09",
       "to": "2025"
     },
     {
@@ -2518,13 +2548,28 @@
       "to": "2025"
     },
     {
+      "name": "scotgov.council_tax_stock.band_g",
+      "from": "2025-09",
+      "to": "2025"
+    },
+    {
       "name": "voa.council_tax_stock.band_h",
       "from": "2025-03",
       "to": "2025"
     },
     {
+      "name": "scotgov.council_tax_stock.band_h",
+      "from": "2025-09",
+      "to": "2025"
+    },
+    {
       "name": "voa.council_tax_stock.total",
       "from": "2025-03",
+      "to": "2025"
+    },
+    {
+      "name": "scotgov.council_tax_stock.total",
+      "from": "2025-09",
       "to": "2025"
     },
     {
@@ -7071,14 +7116,17 @@
       ]
     },
     "scotgov.council_tax_stock.band_a": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "scotgov.council_tax_stock.band_a",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 498707.0,
+          "resolved_fact_period": "2025-09",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_d16c53fe6a1c8f4f5886b7e5"
         }
       ]
     },
@@ -7098,14 +7146,17 @@
       ]
     },
     "scotgov.council_tax_stock.band_b": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "scotgov.council_tax_stock.band_b",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 583705.0,
+          "resolved_fact_period": "2025-09",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_2f95ec98ae61f9898bd47ed9"
         }
       ]
     },
@@ -7125,14 +7176,17 @@
       ]
     },
     "scotgov.council_tax_stock.band_c": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "scotgov.council_tax_stock.band_c",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 426388.0,
+          "resolved_fact_period": "2025-09",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c9781708df55dc5d197e6623"
         }
       ]
     },
@@ -7152,14 +7206,17 @@
       ]
     },
     "scotgov.council_tax_stock.band_d": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "scotgov.council_tax_stock.band_d",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 369621.0,
+          "resolved_fact_period": "2025-09",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ae1fe03809a505b820479598"
         }
       ]
     },
@@ -7179,14 +7236,17 @@
       ]
     },
     "scotgov.council_tax_stock.band_e": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "scotgov.council_tax_stock.band_e",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 366881.0,
+          "resolved_fact_period": "2025-09",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_e83153e0de40fb74471c805f"
         }
       ]
     },
@@ -7206,14 +7266,17 @@
       ]
     },
     "scotgov.council_tax_stock.band_f": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "scotgov.council_tax_stock.band_f",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 221282.0,
+          "resolved_fact_period": "2025-09",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_b24b6409c1473600c03999ec"
         }
       ]
     },
@@ -7233,14 +7296,17 @@
       ]
     },
     "scotgov.council_tax_stock.band_g": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "scotgov.council_tax_stock.band_g",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 142084.0,
+          "resolved_fact_period": "2025-09",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_c86494a855b00998122989d6"
         }
       ]
     },
@@ -7260,14 +7326,17 @@
       ]
     },
     "scotgov.council_tax_stock.band_h": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "scotgov.council_tax_stock.band_h",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 14481.0,
+          "resolved_fact_period": "2025-09",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_60d9ae638eff29fc1c88907e"
         }
       ]
     },
@@ -7287,14 +7356,17 @@
       ]
     },
     "scotgov.council_tax_stock.total": {
-      "status": "no_fact_at_or_before_period",
+      "status": "active",
       "candidates": [
         {
           "name": "scotgov.council_tax_stock.total",
-          "status": "no_fact_at_or_before_period",
-          "matched_fact_count_overall": 0,
-          "matched_fact_count_at_or_before_period": 0,
-          "error": "ledger_reference_compile_status_no_fact_at_or_before_period"
+          "status": "active",
+          "matched_fact_count_overall": 1,
+          "matched_fact_count_at_or_before_period": 1,
+          "resolved_period": 2025,
+          "resolved_value": 2623149.0,
+          "resolved_fact_period": "2025-09",
+          "resolved_fact_key": "ledger_aggregate_fact_v2_ca77a0f0a777ccba05e4bef9"
         }
       ]
     },
@@ -7625,8 +7697,8 @@
     {
       "family": "council_tax_stock",
       "status": "active_declared_rows",
-      "active_reference_count": 9,
-      "signed_rationale": "VOA council-tax stock bands are declared as nine explicit target rows, including total, and each resolves with its country-level geography and band pin."
+      "active_reference_count": 18,
+      "signed_rationale": "VOA (England and Wales) and Scottish Government CTAXBASE (Scotland) council-tax stock bands are declared as nine explicit target rows each, including total, and each resolves with its country-level geography and band pin."
     }
   ],
   "signed_exclusion_rationales": [

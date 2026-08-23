@@ -33,7 +33,7 @@ from tools.generate_uk_target_references import (
     _value_operation_by_target_id,
 )
 
-ACTIVE_REFERENCE_COUNT = 388
+ACTIVE_REFERENCE_COUNT = 397
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
 FIXTURE_REFERENCE_NAMES = {
@@ -184,15 +184,67 @@ def test_ons_age_total_targets_pin_exact_age_dimension_set() -> None:
     ]["dimensions"] == ["age"]
 
 
+def test_scotgov_council_tax_stock_pins_are_scotland_and_the_rule_is_scoped() -> None:
+    """The CTAXBASE stock facts are stamped S92000003 in Chronicle.
+
+    The substring pin rule sees no "scotland" in "scotgov" and used to pin the
+    nine stock targets to the UK, so they could never match. The fix is scoped
+    to the stock family: every other Scotland pin still comes from the
+    substring rule, and the unrelated scotgov child-payment target keeps the
+    UK pin it had.
+    """
+    contract = _load_uk_resource("uk_national_targets.json")
+    pins = _geography_pins(contract)
+    stock_ids = {
+        str(target["target_id"])
+        for target in contract["targets"]
+        if str(target["target_id"]).startswith("scotgov.council_tax_stock.")
+    }
+    assert stock_ids == {f"scotgov.council_tax_stock.band_{band}" for band in "abcdefgh"} | {
+        "scotgov.council_tax_stock.total"
+    }
+    assert {pins[target_id]["geography_id"] for target_id in stock_ids} == {"S92000003"}
+    assert pins["scotgov.scottish_child_payment_spending"]["geography_id"] == "K02000001"
+
+    def haystack(target: dict) -> str:
+        selector = target.get("ledger_selector") or {}
+        return " ".join(
+            (
+                str(target["target_id"]).lower(),
+                str(selector.get("source_concept", "")).lower(),
+                str(selector.get("source_measure_id", "")).lower(),
+            )
+        )
+
+    substring_scotland = {
+        str(target["target_id"])
+        for target in contract["targets"]
+        if "scotland" in haystack(target)
+        and "northern" not in haystack(target)
+        and "domestic_rates" not in haystack(target)
+    }
+    scotland_pinned = {
+        target_id
+        for target_id, pin in pins.items()
+        if pin["geography_id"] == "S92000003"
+    }
+    assert scotland_pinned == stock_ids | substring_scotland
+
+    membership = _load_uk_resource("target_reference_membership.json")
+    for target_id in stock_ids:
+        assert membership["geography_pins"][target_id]["geography_id"] == "S92000003"
+        assert membership["targets"][target_id]["status"] == "active"
+
+
 def test_uk_target_reference_membership_report_is_packaged() -> None:
     membership = _load_uk_resource("target_reference_membership.json")
 
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 388,
+        "active": 397,
         "multi_fact": 1,
-        "no_fact_at_or_before_period": 27,
+        "no_fact_at_or_before_period": 18,
         "signed_excluded": 1,
     }
     assert membership["genuine_sum_residue"]
@@ -230,11 +282,12 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
         {
             "family": "council_tax_stock",
             "status": "active_declared_rows",
-            "active_reference_count": 9,
+            "active_reference_count": 18,
             "signed_rationale": (
-                "VOA council-tax stock bands are declared as nine explicit "
-                "target rows, including total, and each resolves with its "
-                "country-level geography and band pin."
+                "VOA (England and Wales) and Scottish Government CTAXBASE "
+                "(Scotland) council-tax stock bands are declared as nine "
+                "explicit target rows each, including total, and each resolves "
+                "with its country-level geography and band pin."
             ),
         },
     ]
