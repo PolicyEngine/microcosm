@@ -50,8 +50,8 @@
   (`tools/build_us_fiscal_refresh_release.py:344-348,5781-5814,6214-6290`).
   The aggregate is the weighted mean of capped target-scaled absolute errors
   (`packages/microcosm-calibrate/src/microcosm/calibrate/solve.py:473-518`).
-- Incumbent identity: PolicyEngine.py 4.15.0's bundled manifest names data
-  package 1.115.5, HF model repo `policyengine/policyengine-us-data`, immutable
+- Incumbent identity: PolicyEngine.py 4.15.0's bundled manifest names retired
+  data package 1.115.5 and its historical HF model repo, immutable
   resolver revision `9531fe1d096244fe7eb45d791d52ef61b8a2a0a5`, filename
   `enhanced_cps_2024.h5`, and SHA-256
   `0a6b961ad363a421bde99f2c8e5d8f20370bcba45fd303050537a25bdd805b14`
