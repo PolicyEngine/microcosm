@@ -2,14 +2,15 @@
 
 ## State
 
-The `replacement-scorecard` implementation and incumbent evidence are complete.
-The scorer has one role-neutral
+The `replacement-scorecard` implementation, incumbent evidence, validation,
+and owner handoff are complete. The scorer has one role-neutral
 path for the live US incumbent and either a finished-H5 or authenticated-pool
 candidate. Fiscal scoring streams fixed registry chunks across fixed household
 slices, and a gate-failed current stacked publication remains authenticated
 scorecard evidence without being promoted to simulation-ready. The incumbent
-side and its identity-pinned evidence are committed. The owner handoff is
-recorded; the final workspace suite and committed final report remain.
+side and its identity-pinned evidence are committed. The exact future candidate
+commands are recorded in `_LANE-NOTES.md`, and this lane's evidence report is
+in `FINAL_REPORT.md`.
 
 No pool build, push, gate change, threshold change, or band change has
 occurred. The sandbox denied `ps`/`pgrep`; before scoring, the permitted `lsof`
@@ -74,10 +75,17 @@ checkpoint, manifest, or build file. The owner command retains the required
 - Committed the incumbent result and run receipt at `d876c971`; recorded the
   exact future dense-pool and sparse-57k scoring commands and the comparison
   doctrine in `_LANE-NOTES.md`.
+- Completed the full workspace suite after correcting one documentation-only
+  source-hygiene hit: 7,028 passed, 76 skipped, zero failed in 1:39:56. The
+  earlier run had 7,027 passes and only that journal-string failure; the
+  corrected guard also passed independently before the full green rerun.
+- Repository-wide Ruff lint, format checks on all six branch-touched Python
+  files, scorer byte compilation, and `git diff --check` pass. Replaced the
+  unrelated stale `FINAL_REPORT.md` with this lane's evidence and receipts.
 
 ## Next
 
-- Run the full workspace suite and final static checks. Replace the stale
-  `FINAL_REPORT.md` with this lane's final evidence, mark this journal complete,
-  and commit the handoff. The only external next step is the owner's scoring of
-  the not-yet-built 25% candidate followed by the owner's flip decision.
+- The host queue builds the not-yet-existing 25% candidate. The owner then runs
+  the exact dense-pool and sparse-57k commands in `_LANE-NOTES.md`, reviews the
+  head-to-head evidence, and decides whether to flip. This lane has no remaining
+  implementation, scoring, build, publication, or push step.

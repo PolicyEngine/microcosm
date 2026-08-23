@@ -307,6 +307,33 @@ definitionally inapplicable, the candidate’s battery is standalone evidence—
 is not compared with a fabricated incumbent zero, pass, or failure. The owner
 decides whether the dense and sparse evidence justifies the flip.
 
+## Final validation and completion
+
+- The prescribed full workspace suite was run through the current worktree
+  interpreter because the copied `.venv/bin/pytest` console script retained a
+  stale sibling-worktree shebang. The first correctly routed run reached 7,027
+  passes and 76 skips; its only failure was the source-hygiene guard finding a
+  retired-package literal in this journal. Commit `6847d245` removed that
+  documentation-only literal, and the guard passed independently.
+- Final full-suite receipt:
+
+  ```text
+  UV_CACHE_DIR=/tmp/microcosm-scorecard-uv-cache uv run python -m pytest
+  7028 passed, 76 skipped, 1922 warnings in 5996.15s (1:39:56)
+  ```
+
+- Final static receipts: repository-wide `ruff check .` passed; all six Python
+  files changed on this branch passed `ruff format --check`; scorer
+  `py_compile` and `git diff --check` passed. A whole-tree format audit listed
+  69 pre-existing mainline files, which this lane deliberately did not rewrite.
+- Independent final audit found no deliverable-level gap. The implementation,
+  incumbent JSON/Markdown, exact candidate commands, comparison doctrine,
+  `PROGRESS.md`, and `FINAL_REPORT.md` are complete. The only next action is
+  external: the host builds the candidate, then the owner scores its dense and
+  sparse views and decides the flip.
+- No pool build, publication, push, gate edit, threshold edit, tolerance edit,
+  or band edit occurred in this lane.
+
 ---
 
 # Historical: one-target-surface lane notes
