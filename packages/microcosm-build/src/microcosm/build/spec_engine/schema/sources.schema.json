@@ -5872,7 +5872,13 @@
       "targets": {"type": "array", "items": {"type": "string"}},
       "weights": {"type": "string"},
       "n_estimators": {"type": "integer", "minimum": 1},
-      "seed": {"type": "integer"}
+      "seed": {"type": "integer"},
+      "training_population": {"type": "string"},
+      "target_population": {"type": "string"},
+      "weight_mapping": {"type": "string"},
+      "clamp_minimum": {"type": "number"},
+      "preserve_asked_rows": {"type": "boolean"},
+      "cache": {"type": "boolean"}
      }
     },
     {
@@ -6557,6 +6563,123 @@
     {
      "type": "object",
      "additionalProperties": false,
+     "required": ["kind", "entity", "copies", "flag_column", "mass_split", "weight_kind_out", "conservation", "id_remapping", "declared_factor", "reason"],
+     "properties": {
+      "kind": {"const": "clone_records"},
+      "entity": {"type": "string"},
+      "copies": {"type": "integer", "minimum": 2},
+      "flag_column": {"type": "string"},
+      "original_flag": {"type": "boolean"},
+      "clone_flag": {"type": "boolean"},
+      "mass_split": {"type": "number"},
+      "weight_kind_out": {"type": "string"},
+      "conservation": {"type": "string"},
+      "id_remapping": {"type": "string"},
+      "declared_factor": {"type": "number"},
+      "reason": {"type": "string"}
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["kind", "resource", "income_proxy_components", "allowance_subtraction", "carrier", "adult_minimum_age", "quantile_points", "spline_degree", "extrapolation", "keep_negative_draws", "seed", "salt"],
+     "properties": {
+      "kind": {"const": "draw_capital_gains_prior_from_banded_quantiles"},
+      "resource": {"type": "string"},
+      "income_proxy_components": {"type": "array", "items": {"type": "string"}},
+      "allowance_subtraction": {"type": "boolean"},
+      "carrier": {"type": "string"},
+      "adult_minimum_age": {"type": "integer"},
+      "quantile_points": {"type": "array", "items": {"type": "number"}},
+      "spline_degree": {"type": "integer"},
+      "extrapolation": {"type": "string"},
+      "keep_negative_draws": {"type": "boolean"},
+      "seed": {"type": "integer"},
+      "salt": {"type": "string"}
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["kind", "size_band_resource", "incidence_resource", "minimum_band_lower", "donors_per_band", "expected_band_count", "expected_donor_count", "candidate_order", "draw", "propensity", "seed", "flag_column", "carrier", "initial_weight", "never_zero_weight", "weight_kind_out", "reason"],
+     "properties": {
+      "kind": {"const": "stack_band_donor_households"},
+      "size_band_resource": {"type": "string"},
+      "incidence_resource": {"type": "string"},
+      "minimum_band_lower": {"type": "number"},
+      "donors_per_band": {"type": "integer", "minimum": 1},
+      "expected_band_count": {"type": "integer", "minimum": 1},
+      "expected_donor_count": {"type": "integer", "minimum": 1},
+      "candidate_order": {"type": "string"},
+      "draw": {"type": "string"},
+      "propensity": {"type": "string"},
+      "seed": {"type": "integer"},
+      "flag_column": {"type": "string"},
+      "carrier": {"type": "string"},
+      "initial_weight": {"type": "string"},
+      "never_zero_weight": {"type": "boolean"},
+      "weight_kind_out": {"type": "string"},
+      "reason": {"type": "string"}
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["kind", "resource", "target", "donor_pool", "rate_cap", "move", "seed", "salt", "receipt"],
+     "properties": {
+      "kind": {"const": "convert_donors_to_target_stock"},
+      "reason": {"type": "string"},
+      "resource": {"type": "string"},
+      "target": {"type": "number"},
+      "donor_pool": {"type": "string"},
+      "rate_cap": {"type": "number"},
+      "move": {"type": "string"},
+      "seed": {"type": "integer"},
+      "salt": {"type": "string"},
+      "receipt": {"type": "string"}
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["kind", "year_rule", "start_year_formula", "reported_repayment_test", "reported_country_gate", "plan_1_before", "plan_5_from", "enum_domain", "plan_4_imputation"],
+     "properties": {
+      "kind": {"const": "assign_student_loan_plan_cohorts"},
+      "year_rule": {"type": "string"},
+      "start_year_formula": {"type": "string"},
+      "reported_repayment_test": {"type": "string"},
+      "reported_country_gate": {"type": "boolean"},
+      "plan_1_before": {"type": "integer"},
+      "plan_5_from": {"type": "integer"},
+      "enum_domain": {"type": "array", "items": {"type": "string"}},
+      "plan_4_imputation": {"type": "boolean"}
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": ["kind", "plan", "priority", "resource", "stock_series", "year_rule", "age_min", "age_max", "cohort_start_min", "eligible_region_exclusions", "highest_education", "seed", "salt"],
+     "properties": {
+      "kind": {"const": "top_up_to_stock"},
+      "reason": {"type": "string"},
+      "plan": {"type": "string"},
+      "priority": {"type": "integer"},
+      "resource": {"type": "string"},
+      "stock_series": {"type": "string"},
+      "year_rule": {"type": "string"},
+      "age_min": {"type": "integer"},
+      "age_max": {"type": "integer"},
+      "cohort_start_min": {"type": "integer"},
+      "cohort_start_max_exclusive": {"type": "integer"},
+      "eligible_region_exclusions": {"type": "array", "items": {"type": "string"}},
+      "highest_education": {"type": "string"},
+      "seed": {"type": "integer"},
+      "salt": {"type": "string"}
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
      "required": [
       "kind",
       "role",
@@ -6625,6 +6748,9 @@
       },
       "format": {
        "type": "string"
+      },
+      "runtime_sha256_required": {
+       "type": "boolean"
       }
      }
     }

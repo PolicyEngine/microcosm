@@ -65,43 +65,11 @@
     "$ref": "defs.schema.json#/$defs/identifier"
    },
    "additionalProperties": {
-    "type": "object",
-    "additionalProperties": false,
-    "required": [
-     "kernel",
-     "params"
-    ],
-    "properties": {
-     "kernel": {
-      "$ref": "defs.schema.json#/$defs/kernel_ref"
-     },
-     "params": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-       "n_estimators",
-       "max_samples_leaf",
-       "zero_atol"
-      ],
-      "properties": {
-       "n_estimators": {
-        "type": "integer",
-        "minimum": 1
-       },
-       "max_samples_leaf": {
-        "type": [
-         "integer",
-         "null"
-        ],
-        "minimum": 1
-       },
-       "zero_atol": {
-        "type": "number",
-        "exclusiveMinimum": 0
-       }
-      }
+    "oneOf": [
+     {
+      "$ref": "#/$defs/regime_gated_qrf_model"
      }
-    }
+    ]
    }
   },
   "chaining": {
@@ -775,6 +743,260 @@
   }
  },
  "$defs": {
+  "regime_gated_qrf_model": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "kernel",
+    "params",
+    "post_draw_calibration"
+   ],
+   "properties": {
+    "kernel": {
+     "const": "kernel:regime_gated_qrf"
+    },
+    "params": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "n_estimators",
+      "max_samples_leaf",
+      "zero_atol"
+     ],
+     "properties": {
+      "n_estimators": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "max_samples_leaf": {
+       "type": [
+        "integer",
+        "null"
+       ],
+       "minimum": 1
+      },
+      "zero_atol": {
+       "type": "number",
+       "exclusiveMinimum": 0
+      }
+     }
+    },
+    "post_draw_calibration": {
+     "$ref": "#/$defs/post_draw_calibration_policy"
+    }
+   }
+  },
+  "post_draw_calibration_policy": {
+   "oneOf": [
+    {
+     "$ref": "#/$defs/post_transfer_calibration_policy_v1"
+    }
+   ]
+  },
+  "post_transfer_calibration_policy_v1": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "artifact_kind",
+    "schema_version",
+    "scope",
+    "quantiles",
+    "carrier_selection",
+    "amount_mapping",
+    "targets",
+    "sha256"
+   ],
+   "properties": {
+    "artifact_kind": {
+     "const": "microcosm_us_post_transfer_calibration_policy"
+    },
+    "schema_version": {
+     "const": 1
+    },
+    "scope": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "reference",
+      "recipient",
+      "mutable",
+      "provenance_masks",
+      "constraint_masks",
+      "value_dtype",
+      "zero_weight_rows"
+     ],
+     "properties": {
+      "reference": {
+       "type": "string",
+       "minLength": 1
+      },
+      "recipient": {
+       "type": "string",
+       "minLength": 1
+      },
+      "mutable": {
+       "type": "string",
+       "minLength": 1
+      },
+      "provenance_masks": {
+       "type": "string",
+       "minLength": 1
+      },
+      "constraint_masks": {
+       "type": "string",
+       "minLength": 1
+      },
+      "value_dtype": {
+       "type": "string",
+       "minLength": 1
+      },
+      "zero_weight_rows": {
+       "type": "string",
+       "minLength": 1
+      }
+     }
+    },
+    "quantiles": {
+     "type": "array",
+     "items": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+     },
+     "minItems": 1,
+     "uniqueItems": true
+    },
+    "carrier_selection": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "match_reference",
+      "removal_order",
+      "addition_order",
+      "equal_distance"
+     ],
+     "properties": {
+      "match_reference": {
+       "type": "string",
+       "minLength": 1
+      },
+      "removal_order": {
+       "type": "string",
+       "minLength": 1
+      },
+      "addition_order": {
+       "type": "string",
+       "minLength": 1
+      },
+      "equal_distance": {
+       "type": "string",
+       "minLength": 1
+      }
+     }
+    },
+    "amount_mapping": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "leg",
+      "recipient_rank",
+      "inverse_cdf",
+      "exact_quantile_anchors",
+      "infeasible_anchor_handling",
+      "output_support"
+     ],
+     "properties": {
+      "leg": {
+       "type": "string",
+       "minLength": 1
+      },
+      "recipient_rank": {
+       "type": "string",
+       "minLength": 1
+      },
+      "inverse_cdf": {
+       "type": "string",
+       "minLength": 1
+      },
+      "exact_quantile_anchors": {
+       "type": "array",
+       "items": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1
+       },
+       "minItems": 1,
+       "uniqueItems": true
+      },
+      "infeasible_anchor_handling": {
+       "type": "string",
+       "minLength": 1
+      },
+      "output_support": {
+       "type": "string",
+       "minLength": 1
+      }
+     }
+    },
+    "targets": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+       "entity",
+       "family",
+       "target",
+       "stage",
+       "carrier_mode",
+       "negative_leg",
+       "special_constraint"
+      ],
+      "properties": {
+       "entity": {
+        "type": "string",
+        "minLength": 1
+       },
+       "family": {
+        "type": "string",
+        "minLength": 1
+       },
+       "target": {
+        "type": "string",
+        "minLength": 1
+       },
+       "stage": {
+        "enum": [
+         "early_gap_fill",
+         "late_transfer"
+        ]
+       },
+       "carrier_mode": {
+        "enum": [
+         "match_reference",
+         "preserve_recipient"
+        ]
+       },
+       "negative_leg": {
+        "const": "byte_exact"
+       },
+       "special_constraint": {
+        "enum": [
+         "none",
+         "adult_care_qualifying_one_per_tax_unit",
+         "weeks_requires_positive_unemployment_compensation"
+        ]
+       }
+      }
+     },
+     "minItems": 1,
+     "uniqueItems": true
+    },
+    "sha256": {
+     "$ref": "defs.schema.json#/$defs/sha256"
+    }
+   }
+  },
   "node_capabilities": {
    "type": "object",
    "additionalProperties": false,

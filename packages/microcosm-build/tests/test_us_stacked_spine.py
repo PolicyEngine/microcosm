@@ -27,6 +27,7 @@ from pandas.testing import assert_frame_equal
 import microcosm.build.us_runtime.acs_income_universe as universe_module
 import microcosm.build.us_runtime.acs_transfer as acs_transfer_module
 import microcosm.build.us_runtime.multispine_pool as multispine_pool_module
+import microcosm.build.us_runtime.post_transfer_calibration as post_transfer_calibration_runtime
 import microcosm.build.us_runtime.puf_capital_gains_tail as tail_module
 import microcosm.build.us_runtime.puf_support as puf_support_module
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
@@ -39,7 +40,11 @@ from microcosm.build.serialization_dtypes import CANONICAL_STRING_DTYPE
 from microcosm.build.us_runtime.acs_income_universe import (
     apply_acs_pums_earnings_universe_zeros,
 )
-from microcosm.build.us_runtime.acs_transfer import AcsTransferResult
+from microcosm.build.us_runtime.acs_transfer import (
+    AcsImputedInput,
+    AcsTransferPattern,
+    AcsTransferResult,
+)
 from microcosm.build.us_runtime.acs_transfer_bank import AcsTransferTargetBankStore
 from microcosm.build.us_runtime.late_producer_dag import (
     ProducerContract,
@@ -80,6 +85,7 @@ from microcosm.build.us_runtime.stacked_spine import (
     OriginBatterySpec,
     assemble_stacked_spine,
     by_origin_battery,
+    by_origin_battery_artifact_evidence,
     gap_fill_stacked_spine,
     run_stacked_puf_pass,
     sample_acs_households,
@@ -1680,6 +1686,17 @@ def test_production_entrypoints_take_no_authority_parameters() -> None:
         )
 
 
+def test_canonical_gap_fill_rejects_nondefault_target_fit_width() -> None:
+    with pytest.raises(
+        ValueError,
+        match="Canonical stacked gap fill requires max_targets_per_fit=8",
+    ):
+        gap_fill_stacked_spine(
+            _stacked_gap_fixture(),
+            max_targets_per_fit=1,
+        )
+
+
 def test_canonical_authority_objects_are_deeply_immutable() -> None:
     plan = stacked_spine_module.CANONICAL_STACKED_GAP_FILL_PLAN
     post_puf_surface = stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE
@@ -1693,6 +1710,9 @@ def test_canonical_authority_objects_are_deeply_immutable() -> None:
     registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_METRIC_REGISTRY
     joint_registry = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_JOINT_METRIC_REGISTRY
     profile = stacked_spine_module.CANONICAL_ORIGIN_BATTERY_SUPPORT_PROFILE
+    calibration = (
+        stacked_spine_module._CANONICAL_STACKED_AUTHORITY.post_transfer_calibration
+    )
 
     assert isinstance(plan, tuple)
     with pytest.raises(TypeError):
@@ -1720,6 +1740,10 @@ def test_canonical_authority_objects_are_deeply_immutable() -> None:
         ] = "categorical_tvd"
     with pytest.raises(FrozenInstanceError):
         profile.min_effective_support = 50
+    with pytest.raises(TypeError):
+        calibration["scope"] = {}
+    with pytest.raises(TypeError):
+        calibration["scope"]["reference"] = "forged"
 
 
 def test_canonical_metric_registry_covers_the_declared_131_target_split() -> None:
@@ -2515,6 +2539,484 @@ def test_gap_fill_plan_covers_declared_families_exactly() -> None:
     assert early_keys | late_keys == full_keys
 
 
+def _canonical_gap_fill_calibration_receipt() -> dict[str, object]:
+    policy = (
+        post_transfer_calibration_runtime.post_transfer_calibration_policy_identity()
+    )
+    early_specs = {
+        spec.key: spec
+        for spec in post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values()
+        if spec.stage == "early_gap_fill"
+    }
+    values = np.asarray(
+        [10.0, 20.0, 30.0, 40.0, 50.0, 100.0, 200.0, 300.0, 400.0, 500.0]
+    )
+    weights = np.asarray([2.0, 3.0, 5.0, 5.0, 5.0, 4.0, 4.0, 4.0, 4.0, 4.0])
+    reference = np.asarray([True] * 5 + [False] * 5)
+    recipient = ~reference
+    directions: dict[str, object] = {}
+    for direction in stacked_spine_module.CANONICAL_STACKED_GAP_FILL_PLAN:
+        target_keys = {
+            f"{entity}/{family}/{target}"
+            for entity, families in direction.target_families.items()
+            for family, targets in families.items()
+            for target in targets
+        }
+        calibrated_keys = sorted(target_keys & set(early_specs))
+        target_receipts: dict[str, dict[str, object]] = {
+            key: {
+                "authorized_null_rows": 0,
+                "imputed_rows": 0,
+                "unmodeled_rows": 0,
+                "residual_null_rows": 0,
+            }
+            for key in target_keys
+        }
+        for key in calibrated_keys:
+            spec = early_specs[key]
+            calibration_result = (
+                post_transfer_calibration_runtime.calibrate_post_transfer_values(
+                    values,
+                    weights,
+                    np.arange(1, len(values) + 1),
+                    spec=spec,
+                    reference_rows=reference,
+                    recipient_rows=recipient,
+                    mutable_rows=recipient,
+                )
+            )
+            calibration = calibration_result.receipt
+            scope = calibration["scope"]
+            target_receipts[key]["post_transfer_calibration"] = {
+                "stage": "early_gap_fill",
+                "reference_selection": "asec_origin_clone_0",
+                "recipient_selection": "acs_origin_clone_0",
+                "mutable_selection": "recipient_null_before_nonnull_after",
+                "reference_rows": scope["reference_rows"],
+                "recipient_rows": scope["recipient_rows"],
+                "mutable_rows": scope["mutable_rows"],
+                "constraint": {"constraint": "none"},
+                "context_binding": {
+                    "scope": dict(scope),
+                    "weights_sha256": calibration["weights"]["sha256"],
+                    "live_output": {
+                        "reference_rows": int(reference.sum()),
+                        "recipient_rows": int(recipient.sum()),
+                        "reference_entity_ids_sha256": (
+                            stacked_spine_module._post_transfer_entity_ids_sha256(
+                                np.arange(1, len(values) + 1)[reference]
+                            )
+                        ),
+                        "recipient_entity_ids_sha256": (
+                            stacked_spine_module._post_transfer_entity_ids_sha256(
+                                np.arange(1, len(values) + 1)[recipient]
+                            )
+                        ),
+                        "reference_output_values_sha256": (
+                            stacked_spine_module._post_transfer_float64_sha256(
+                                calibration_result.values[reference],
+                                boundary="synthetic reference calibration output",
+                            )
+                        ),
+                        "recipient_output_values_sha256": (
+                            stacked_spine_module._post_transfer_float64_sha256(
+                                calibration_result.values[recipient],
+                                boundary="synthetic recipient calibration output",
+                            )
+                        ),
+                        "reference_weights_sha256": (
+                            stacked_spine_module._post_transfer_float64_sha256(
+                                weights[reference],
+                                boundary="synthetic reference calibration weights",
+                            )
+                        ),
+                        "recipient_weights_sha256": (
+                            stacked_spine_module._post_transfer_float64_sha256(
+                                weights[recipient],
+                                boundary="synthetic recipient calibration weights",
+                            )
+                        ),
+                    },
+                },
+                "calibration": calibration,
+            }
+        directions[direction.name] = {
+            "targets": target_receipts,
+            "post_transfer_calibration": {
+                "policy_sha256": policy["sha256"],
+                "target_count": len(calibrated_keys),
+                "targets": calibrated_keys,
+            },
+        }
+    return {
+        "authority": stacked_spine_module.stacked_spine_authority_receipt(),
+        "directions": directions,
+    }
+
+
+def _canonical_gap_fill_receipt_with_pattern_evidence() -> tuple[
+    dict[str, object],
+    str,
+    str,
+    str,
+    str,
+    tuple[str, ...],
+]:
+    receipt = _canonical_gap_fill_calibration_receipt()
+    early_keys = {
+        spec.key
+        for spec in post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values()
+        if spec.stage == "early_gap_fill"
+    }
+    selected: tuple[str, str, str, str, str, tuple[str, ...]] | None = None
+    for direction in stacked_spine_module.CANONICAL_STACKED_GAP_FILL_PLAN:
+        for entity, families in direction.target_families.items():
+            for family, targets in families.items():
+                for target in targets:
+                    key = f"{entity}/{family}/{target}"
+                    if key in early_keys:
+                        selected = (
+                            direction.name,
+                            key,
+                            entity,
+                            family,
+                            target,
+                            targets,
+                        )
+                        break
+                if selected is not None:
+                    break
+            if selected is not None:
+                break
+        if selected is not None:
+            break
+    assert selected is not None
+    direction_name, key, entity, family, target, family_targets = selected
+    evidence_targets = tuple(
+        family_target
+        for family_target in family_targets
+        if f"{entity}/{family}/{family_target}" in early_keys
+    )
+    model_targets = acs_transfer_module._model_target_names(evidence_targets)
+    required_predictors, optional_predictors = (
+        stacked_spine_module._acs_pattern_predictor_authority(
+            entity=entity,
+            family_targets=family_targets,
+        )
+    )
+    selected_optional = optional_predictors[:1]
+    patterns = tuple(
+        AcsTransferPattern(
+            name=acs_transfer_module._pattern_name(index, observed_optional),
+            observed_optional_predictors=observed_optional,
+            predictors=(*required_predictors, *observed_optional),
+            seed=index,
+            weight_kind="design",
+            donor_rows=1,
+            recipient_rows=1,
+            target_regimes=tuple(
+                (model_target, "positive_only") for model_target in model_targets
+            ),
+        )
+        for index, observed_optional in enumerate(((), selected_optional))
+    )
+    record = AcsImputedInput(
+        column=target,
+        entity=entity,
+        family=family,
+        donor_spine="synthetic_gap_validator_fixture",
+        donor_channel=None,
+        predictors=(*required_predictors, *selected_optional),
+        seed=0,
+        weight_kind="design",
+        patterns=patterns,
+        imputed_recipient_rows=2,
+    )
+    target_receipt = receipt["directions"][direction_name]["targets"][key]
+    target_receipt.update(
+        {
+            "authorized_null_rows": 2,
+            "imputed_rows": 2,
+            "unmodeled_rows": 0,
+            "residual_null_rows": 0,
+            "qrf_pattern_evidence": (
+                stacked_spine_module._acs_imputed_pattern_evidence(record)
+            ),
+        }
+    )
+    return receipt, direction_name, key, entity, family, family_targets
+
+
+def test_gap_fill_validator_accepts_canonical_calibration_evidence() -> None:
+    stacked_spine_module.validate_stacked_gap_fill_receipt(
+        _canonical_gap_fill_calibration_receipt(),
+        boundary="canonical early calibration evidence control",
+    )
+
+
+def test_gap_fill_qrf_binding_excludes_unassigned_batched_targets() -> None:
+    receipt = _canonical_gap_fill_calibration_receipt()
+    direction = next(
+        item
+        for item in stacked_spine_module.CANONICAL_STACKED_GAP_FILL_PLAN
+        if item.name == "asec_survey_to_acs"
+    )
+    family = "puf_tax_itemization"
+    targets = direction.target_families["person"][family]
+    target = "taxable_interest_income"
+    key = f"person/{family}/{target}"
+    target_receipt = receipt["directions"][direction.name]["targets"][key]
+    legacy_counts = {
+        "authorized_null_rows": 1,
+        "imputed_rows": 1,
+        "unmodeled_rows": 0,
+        "residual_null_rows": 0,
+    }
+    target_receipt.update(legacy_counts)
+
+    batch_targets = targets[
+        : acs_transfer_module.DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT
+    ]
+    required_predictors, _optional_predictors = (
+        stacked_spine_module._acs_pattern_predictor_authority(
+            entity="person",
+            family_targets=batch_targets,
+        )
+    )
+    record = AcsImputedInput(
+        column=target,
+        entity="person",
+        family=f"{family}__batch_1",
+        donor_spine="synthetic_batched_gap_validator_fixture",
+        donor_channel=None,
+        predictors=required_predictors,
+        seed=0,
+        weight_kind="design",
+        patterns=(
+            AcsTransferPattern(
+                name=acs_transfer_module._pattern_name(0, ()),
+                observed_optional_predictors=(),
+                predictors=required_predictors,
+                seed=0,
+                weight_kind="design",
+                donor_rows=1,
+                recipient_rows=1,
+                target_regimes=tuple(
+                    (model_target, "positive_only")
+                    for model_target in acs_transfer_module._model_target_names(
+                        batch_targets
+                    )
+                ),
+            ),
+        ),
+        imputed_recipient_rows=1,
+    )
+    target_receipt["qrf_pattern_evidence"] = (
+        stacked_spine_module._acs_imputed_pattern_evidence(record)
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="undeclared ACS QRF pattern evidence.*taxable_interest_income",
+    ):
+        stacked_spine_module.validate_stacked_gap_fill_receipt(
+            receipt,
+            boundary="unassigned batched QRF evidence",
+        )
+
+    target_receipt.pop("qrf_pattern_evidence")
+    stacked_spine_module.validate_stacked_gap_fill_receipt(
+        receipt,
+        boundary="unassigned legacy target receipt",
+    )
+    assert target_receipt == legacy_counts
+
+
+def test_gap_fill_validator_rejects_unassigned_legacy_count_tampering() -> None:
+    receipt = _canonical_gap_fill_calibration_receipt()
+    target_receipt = receipt["directions"]["asec_survey_to_acs"]["targets"][
+        "person/puf_tax_itemization/taxable_interest_income"
+    ]
+    target_receipt.update(
+        {
+            "authorized_null_rows": 0,
+            "imputed_rows": 1,
+            "unmodeled_rows": 0,
+            "residual_null_rows": 99,
+        }
+    )
+
+    with pytest.raises(ValueError, match="ACS transfer row-count"):
+        stacked_spine_module.validate_stacked_gap_fill_receipt(
+            receipt,
+            boundary="forged unassigned early transfer counts",
+        )
+
+
+def test_gap_fill_validator_rejects_unassigned_legacy_count_stripping() -> None:
+    receipt = _canonical_gap_fill_calibration_receipt()
+    target_receipt = receipt["directions"]["asec_survey_to_acs"]["targets"][
+        "person/puf_tax_itemization/taxable_interest_income"
+    ]
+    for field in stacked_spine_module._ACS_TRANSFER_ROW_COUNT_FIELDS:
+        target_receipt.pop(field)
+
+    with pytest.raises(ValueError, match="ACS transfer row-count schema is invalid"):
+        stacked_spine_module.validate_stacked_gap_fill_receipt(
+            receipt,
+            boundary="stripped unassigned early transfer counts",
+        )
+
+
+def test_gap_fill_validator_rejects_qrf_regime_evidence_tampering() -> None:
+    receipt, direction_name, key, _entity, _family, _targets = (
+        _canonical_gap_fill_receipt_with_pattern_evidence()
+    )
+    stacked_spine_module.validate_stacked_gap_fill_receipt(
+        receipt,
+        boundary="signed early QRF pattern evidence control",
+    )
+
+    forged = deepcopy(receipt)
+    forged["directions"][direction_name]["targets"][key]["qrf_pattern_evidence"][
+        "patterns"
+    ][0]["target_regimes"][0]["regime"] = "negative_only"
+    with pytest.raises(ValueError, match="QRF pattern evidence SHA-256 mismatch"):
+        stacked_spine_module.validate_stacked_gap_fill_receipt(
+            forged,
+            boundary="tampered signed early QRF pattern evidence",
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error_match"),
+    (
+        ("pattern_count", "evidence header is invalid"),
+        ("pattern_order", "name is not derived"),
+        ("recipient_rows", "recipient-row accounting is invalid"),
+        ("donor_rows", "metadata is invalid"),
+        ("weight_kind", "record binding is invalid"),
+        ("predictors", "outside canonical transfer authority"),
+        ("pattern_name", "name is not derived"),
+        ("model_target", "target order"),
+        ("record_family", "record binding is invalid"),
+        ("record_family_in_range", "record binding is invalid"),
+        ("record_family_out_of_range", "record binding is invalid"),
+        ("record_target", "record binding is invalid"),
+    ),
+)
+def test_gap_fill_validator_rejects_rehashed_qrf_pattern_structure_mutations(
+    mutation: str,
+    error_match: str,
+) -> None:
+    receipt, direction_name, key, _entity, family, _targets = (
+        _canonical_gap_fill_receipt_with_pattern_evidence()
+    )
+    evidence = receipt["directions"][direction_name]["targets"][key][
+        "qrf_pattern_evidence"
+    ]
+    patterns = evidence["patterns"]
+    if mutation == "pattern_count":
+        evidence["pattern_count"] += 1
+    elif mutation == "pattern_order":
+        patterns.reverse()
+    elif mutation == "recipient_rows":
+        patterns[0]["recipient_rows"] += 1
+    elif mutation == "donor_rows":
+        patterns[0]["donor_rows"] = 0
+    elif mutation == "weight_kind":
+        evidence["record"]["weight_kind"] = "fabricated"
+        for pattern in patterns:
+            pattern["weight_kind"] = "fabricated"
+    elif mutation == "predictors":
+        patterns[0]["predictors"].append("fabricated_predictor")
+    elif mutation == "pattern_name":
+        patterns[0]["name"] = "pattern_00_00000000"
+    elif mutation == "model_target":
+        patterns[0]["target_regimes"][0]["model_target"] = "fabricated_target"
+    elif mutation == "record_family":
+        evidence["record"]["family"] = f"{family}__batch_forged"
+    elif mutation == "record_family_in_range":
+        evidence["record"]["family"] = f"{family}__batch_1"
+    elif mutation == "record_family_out_of_range":
+        evidence["record"]["family"] = f"{family}__batch_99"
+    else:
+        assert mutation == "record_target"
+        evidence["record"]["column"] = "fabricated_target"
+    unsigned = dict(evidence)
+    unsigned.pop("sha256")
+    evidence["sha256"] = stacked_spine_module._canonical_sha256(unsigned)
+
+    with pytest.raises(ValueError, match=error_match):
+        stacked_spine_module.validate_stacked_gap_fill_receipt(
+            receipt,
+            boundary=f"rehashed {mutation} QRF evidence",
+        )
+
+
+def test_receipt_only_qrf_validation_does_not_claim_seed_or_regime_replay() -> None:
+    receipt, direction_name, key, _entity, _family, _targets = (
+        _canonical_gap_fill_receipt_with_pattern_evidence()
+    )
+    evidence = receipt["directions"][direction_name]["targets"][key][
+        "qrf_pattern_evidence"
+    ]
+    evidence["record"]["seed"] = 123
+    for pattern in evidence["patterns"]:
+        pattern["seed"] += 123
+        pattern["target_regimes"][0]["regime"] = "negative_only"
+    unsigned = dict(evidence)
+    unsigned.pop("sha256")
+    evidence["sha256"] = stacked_spine_module._canonical_sha256(unsigned)
+
+    # Donor values and the top-level transfer seed are deliberately absent at
+    # this boundary. The receipt-only validator checks placement/vocabulary;
+    # the enclosing persisted manifest or late execution signature authenticates
+    # the reported values, as the late-signature mutation test below proves.
+    stacked_spine_module.validate_stacked_gap_fill_receipt(
+        receipt,
+        boundary="receipt-only reported seed and regime scope",
+    )
+
+
+@pytest.mark.parametrize(
+    ("mutation", "error_match"),
+    (
+        (
+            "stripped_direction_summary",
+            "stripped or misbound calibration summary evidence",
+        ),
+        ("stripped_target_evidence", "owner selection is misbound"),
+        ("deleted_target_receipt", "target surface is non-canonical"),
+    ),
+)
+def test_gap_fill_validator_rejects_stripped_calibration_evidence(
+    mutation: str,
+    error_match: str,
+) -> None:
+    receipt = _canonical_gap_fill_calibration_receipt()
+    forged = deepcopy(receipt)
+    direction = next(
+        value
+        for value in forged["directions"].values()
+        if value["post_transfer_calibration"]["target_count"] > 0
+    )
+    if mutation == "stripped_direction_summary":
+        direction.pop("post_transfer_calibration")
+    else:
+        target_key = direction["post_transfer_calibration"]["targets"][0]
+        if mutation == "deleted_target_receipt":
+            direction["targets"].pop(target_key)
+        else:
+            direction["targets"][target_key].pop("post_transfer_calibration")
+
+    with pytest.raises(ValueError, match=error_match):
+        stacked_spine_module.validate_stacked_gap_fill_receipt(
+            forged,
+            boundary=f"{mutation} regression",
+        )
+
+
 def test_every_declared_direction_producer_precedes_its_activation_check() -> None:
     receipt = stacked_gap_fill_producer_schedule_receipt()
     assert receipt["status"] == "all_producers_precede_activation"
@@ -2675,6 +3177,39 @@ def test_gap_fill_fills_both_directions_with_authority_receipts() -> None:
     assert unemployment["authorized_null_rows"] == int(acs_rows.sum())
     assert unemployment["imputed_rows"] == int(acs_rows.sum())
     assert unemployment["residual_null_rows"] == 0
+    qrf_evidence = unemployment["qrf_pattern_evidence"]
+    assert qrf_evidence["pattern_count"] == len(qrf_evidence["patterns"])
+    assert [pattern["name"] for pattern in qrf_evidence["patterns"]] == [
+        f"pattern_{index:02d}_{pattern['name'].rsplit('_', 1)[1]}"
+        for index, pattern in enumerate(qrf_evidence["patterns"])
+    ]
+    assert all(
+        pattern["target_regimes"]
+        == [
+            {
+                "model_target": "unemployment_compensation",
+                "regime": "zero_inflated_positive",
+            }
+        ]
+        for pattern in qrf_evidence["patterns"]
+    )
+    qrf_payload = dict(qrf_evidence)
+    assert qrf_payload.pop("sha256") == stacked_spine_module._canonical_sha256(
+        qrf_payload
+    )
+    forged_unemployment = deepcopy(unemployment)
+    forged_unemployment["qrf_pattern_evidence"]["patterns"][0]["target_regimes"][0][
+        "regime"
+    ] = "negative_only"
+    with pytest.raises(ValueError, match="QRF pattern evidence SHA-256 mismatch"):
+        stacked_spine_module._validate_acs_imputed_pattern_evidence(
+            forged_unemployment,
+            expected_entity="person",
+            expected_family="model_required_numeric",
+            expected_target="unemployment_compensation",
+            expected_family_targets=("unemployment_compensation",),
+            boundary="tampered ordinary early transfer receipt",
+        )
     housing = directions["asec_housing_to_acs"]
     rent = housing["targets"]["person/housing/pre_subsidy_rent"]
     assert rent["imputed_rows"] == int((acs_rows & ~acs_gq_rows).sum())
@@ -4739,6 +5274,35 @@ def _run_real_late_executor_fixture(
             contracts=tuple(registry.values()),
             include_outputs=True,
         )
+        completed_person = completed.table("person")
+        completed_person["unemployment_compensation"] = np.ones(
+            len(completed_person),
+            dtype=np.float64,
+        )
+        completed_person["is_incapable_of_self_care"] = pd.Series(
+            True,
+            index=completed_person.index,
+            dtype="boolean",
+        )
+        completed_person["tax_unit_role_input"] = pd.Series(
+            "DEPENDENT",
+            index=completed_person.index,
+            dtype="string",
+        )
+        adult_recipient = completed_person[support_channel_column("person")].eq(
+            "acs"
+        ) & completed_person[support_clone_index_column("person")].eq(0)
+        completed_person.loc[
+            adult_recipient,
+            "pre_subsidy_care_expenses",
+        ] = 0.0
+        adult_carriers = (
+            completed_person.loc[adult_recipient]
+            .groupby("person_tax_unit_id", sort=False, dropna=False)
+            .head(1)
+            .index
+        )
+        completed_person.loc[adult_carriers, "pre_subsidy_care_expenses"] = 1.0
         return stacked_spine_module.StackedPufPassResult(
             completed,
             {
@@ -4809,26 +5373,194 @@ def _run_real_late_executor_fixture(
                 derive_schedule_d=False,
             )
         )
+        required_predictors, _optional_predictors = (
+            stacked_spine_module._acs_pattern_predictor_authority(
+                entity=group.entity,
+                family_targets=group.targets,
+            )
+        )
+        late_specs = {
+            spec.key: spec
+            for spec in post_transfer_calibration_runtime.POST_TRANSFER_CALIBRATION_SPECS.values()
+            if spec.stage == "late_transfer"
+        }
+        evidence_targets = tuple(
+            target
+            for target in group.targets
+            if f"{group.entity}/{group.family}/{target}" in late_specs
+        )
+        model_targets = acs_transfer_module._model_target_names(evidence_targets)
+        pattern = AcsTransferPattern(
+            name="pattern_00_e3b0c442",
+            observed_optional_predictors=(),
+            predictors=required_predictors,
+            seed=0,
+            weight_kind="design",
+            donor_rows=1,
+            recipient_rows=1,
+            target_regimes=tuple((target, "positive_only") for target in model_targets),
+        )
+        plain_pattern = replace(pattern, target_regimes=())
+        synthetic_imputed_inputs = tuple(
+            AcsImputedInput(
+                column=target,
+                entity=group.entity,
+                family=group.family,
+                donor_spine="synthetic_late_executor_fixture",
+                donor_channel="asec",
+                predictors=pattern.predictors,
+                seed=pattern.seed,
+                weight_kind=pattern.weight_kind,
+                patterns=(pattern if target in evidence_targets else plain_pattern,),
+                imputed_recipient_rows=1,
+            )
+            for target in group.targets
+        )
         transfer_result = AcsTransferResult(
             frame=frame,
-            imputed_inputs=(),
+            imputed_inputs=synthetic_imputed_inputs,
             fit_records=(),
             deferred_inputs=(),
             resolved_donor_channel="asec",
         )
+        policy_sha256 = post_transfer_calibration_runtime.post_transfer_calibration_policy_identity()[
+            "sha256"
+        ]
+        target_receipts: dict[str, dict[str, object]] = {}
+        for target, record in zip(
+            group.targets,
+            synthetic_imputed_inputs,
+            strict=True,
+        ):
+            key = f"{group.entity}/{group.family}/{target}"
+            target_receipt: dict[str, object] = {
+                "authorized_null_rows": 1,
+                "imputed_rows": 1,
+                "unmodeled_rows": 0,
+                "residual_null_rows": 0,
+            }
+            if key in late_specs:
+                target_receipt["qrf_pattern_evidence"] = (
+                    stacked_spine_module._acs_imputed_pattern_evidence(record)
+                )
+            target_receipts[key] = target_receipt
+        calibrated_keys = sorted(set(target_receipts) & set(late_specs))
+        for key in calibrated_keys:
+            spec = late_specs[key]
+            constrained = spec.special_constraint != "none"
+            live_table = frame.table(spec.entity)
+            live_channel = live_table[support_channel_column(spec.entity)].astype(str)
+            live_clone = pd.to_numeric(
+                live_table[support_clone_index_column(spec.entity)],
+                errors="raise",
+            )
+            live_reference = (live_channel.eq("asec") & live_clone.eq(0)).to_numpy(
+                dtype=bool
+            )
+            live_recipient = (live_channel.eq("acs") & live_clone.eq(0)).to_numpy(
+                dtype=bool
+            )
+            allowed_rows: np.ndarray | None = None
+            addition_rows: np.ndarray | None = None
+            if spec.special_constraint == ("adult_care_qualifying_one_per_tax_unit"):
+                mutable_series = pd.Series(
+                    live_recipient,
+                    index=live_table.index,
+                    dtype=bool,
+                )
+                allowed_series = (
+                    mutable_series
+                    & acs_transfer_module.acs_adult_care_qualifying_rows(live_table)
+                )
+                addition_series = (
+                    stacked_spine_module._one_candidate_per_adult_care_tax_unit(
+                        frame,
+                        mutable_rows=mutable_series,
+                        allowed_rows=allowed_series,
+                    )
+                )
+                allowed_rows = allowed_series.to_numpy(dtype=bool)
+                addition_rows = addition_series.to_numpy(dtype=bool)
+            elif spec.special_constraint == (
+                "weeks_requires_positive_unemployment_compensation"
+            ):
+                allowed_rows = live_recipient & pd.to_numeric(
+                    live_table["unemployment_compensation"],
+                    errors="raise",
+                ).gt(0.0).to_numpy(dtype=bool)
+                addition_rows = allowed_rows.copy()
+            application = (
+                post_transfer_calibration_runtime.apply_post_transfer_calibration(
+                    frame,
+                    entity=spec.entity,
+                    family=spec.family,
+                    target=spec.target,
+                    reference_rows=live_reference,
+                    recipient_rows=live_recipient,
+                    mutable_rows=live_recipient,
+                    allowed_carrier_rows=allowed_rows if constrained else None,
+                    addition_candidate_rows=addition_rows if constrained else None,
+                )
+            )
+            frame = application.frame
+            calibration = application.receipt
+            scope = calibration["scope"]
+            constraint: dict[str, object] = {"constraint": spec.special_constraint}
+            if spec.special_constraint == ("adult_care_qualifying_one_per_tax_unit"):
+                constraint.update(
+                    {
+                        "qualifying_mutable_rows": scope["allowed_carrier_rows"],
+                        "one_per_empty_tax_unit_addition_candidates": scope[
+                            "addition_candidate_rows"
+                        ],
+                    }
+                )
+            elif spec.special_constraint == (
+                "weeks_requires_positive_unemployment_compensation"
+            ):
+                constraint["positive_unemployment_mutable_rows"] = scope[
+                    "allowed_carrier_rows"
+                ]
+            owner: dict[str, object] = {
+                "stage": "late_transfer",
+                "reference_selection": "asec_origin_clone_0",
+                "recipient_selection": "acs_origin_clone_0",
+                "mutable_selection": "recipient_null_before_nonnull_after",
+                "reference_rows": scope["reference_rows"],
+                "recipient_rows": scope["recipient_rows"],
+                "mutable_rows": scope["mutable_rows"],
+                "constraint": constraint,
+                "context_binding": {
+                    "scope": dict(scope),
+                    "weights_sha256": calibration["weights"]["sha256"],
+                    "live_output": (
+                        stacked_spine_module._post_transfer_selected_output_binding(
+                            frame,
+                            entity=spec.entity,
+                            target=spec.target,
+                            reference_rows=live_reference,
+                            recipient_rows=live_recipient,
+                        )
+                    ),
+                },
+                "calibration": calibration,
+            }
+            if spec.special_constraint == ("adult_care_qualifying_one_per_tax_unit"):
+                owner["post_reconciliation"] = {"status": "verified_no_op"}
+            target_receipts[key]["post_transfer_calibration"] = owner
         return stacked_spine_module.StackedPostPufTransferResult(
             frame,
             {
                 "producer": group.name,
                 "ordered_targets": list(group.targets),
-                "targets": {
-                    f"{group.entity}/{group.family}/{target}": {
-                        "residual_null_rows": 0,
-                    }
-                    for target in group.targets
+                "targets": target_receipts,
+                "post_transfer_calibration": {
+                    "policy_sha256": policy_sha256,
+                    "target_count": len(calibrated_keys),
+                    "targets": calibrated_keys,
                 },
             },
-            transfer_result,
+            replace(transfer_result, frame=frame),
         )
 
     monkeypatch.setattr(
@@ -4926,6 +5658,204 @@ def test_real_late_executor_follows_canonical_order_and_finalizes_sources_once(
         frame=result.frame,
         expected_transition_authority_sha256=result.transition_authority_sha256,
     )
+
+
+def test_late_executor_signature_rejects_qrf_regime_evidence_tampering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    forged = deepcopy(dict(result.receipt))
+    target_receipt = next(
+        target
+        for row in forged["execution"]
+        if row["kind"] == "late_transfer"
+        for target in row["producer_receipt"]["targets"].values()
+        if "qrf_pattern_evidence" in target
+    )
+    target_receipt["qrf_pattern_evidence"]["patterns"][0]["target_regimes"][0][
+        "regime"
+    ] = "negative_only"
+
+    with pytest.raises(ValueError, match="callback-receipt SHA-256 mismatch"):
+        stacked_spine_module.validate_stacked_late_producer_receipt(
+            forged,
+            boundary="tampered signed QRF regime evidence",
+        )
+
+
+def test_post_puf_validator_rejects_unassigned_legacy_count_tampering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    transfer = deepcopy(dict(result.receipt["post_puf_transfer"]))
+    target_key, target_receipt = next(
+        (key, target)
+        for group in transfer["groups"].values()
+        for key, target in group["targets"].items()
+        if "qrf_pattern_evidence" not in target
+    )
+    target = target_key.rsplit("/", 1)[1]
+    aggregate_receipt = next(
+        receipt
+        for key, receipt in transfer["targets"].items()
+        if key.rsplit("/", 1)[1] == target
+    )
+    for receipt in (target_receipt, aggregate_receipt):
+        receipt["imputed_rows"] = "forged"
+
+    with pytest.raises(ValueError, match="ACS transfer row-count"):
+        stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+            transfer,
+            boundary="forged unassigned late transfer counts",
+            frame=result.frame,
+        )
+
+
+def test_late_executor_signature_rejects_generation_only_calibration_tampering(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    forged = deepcopy(dict(result.receipt))
+    owner = next(
+        target_receipt["post_transfer_calibration"]
+        for row in forged["execution"]
+        if row["kind"] == "late_transfer"
+        for target_receipt in row["producer_receipt"]["targets"].values()
+        if target_receipt.get("post_transfer_calibration") is not None
+    )
+    calibration = owner["calibration"]
+    calibration["scope"]["input_values_sha256"] = "0" * 64
+    unsigned = dict(calibration)
+    unsigned.pop("sha256")
+    calibration["sha256"] = stacked_spine_module._canonical_sha256(unsigned)
+
+    with pytest.raises(ValueError, match="callback-receipt SHA-256 mismatch"):
+        stacked_spine_module.validate_stacked_late_producer_receipt(
+            forged,
+            boundary="tampered generation-only calibration evidence",
+            frame=result.frame,
+            expected_transition_authority_sha256=(result.transition_authority_sha256),
+        )
+
+
+@pytest.mark.parametrize("mutation", ("carrier", "amount"))
+def test_late_transfer_rejects_rehashed_diagnostics_detached_from_live_output(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    transfer = deepcopy(dict(result.receipt["post_puf_transfer"]))
+    group_receipt = next(
+        group
+        for group in transfer["groups"].values()
+        if any(key.endswith("/disability_benefits") for key in group["targets"])
+    )
+    group_key = next(
+        key for key in group_receipt["targets"] if key.endswith("/disability_benefits")
+    )
+    aggregate_key = next(
+        key for key in transfer["targets"] if key.endswith("/disability_benefits")
+    )
+    target_receipts = (
+        group_receipt["targets"][group_key],
+        transfer["targets"][aggregate_key],
+    )
+    for target_receipt in target_receipts:
+        calibration = target_receipt["post_transfer_calibration"]["calibration"]
+        if mutation == "carrier":
+            carrier = calibration["carrier"]
+            recipient_total = calibration["weights"]["recipient_total"]
+            forged_mass = carrier["after_positive_mass"] / 2.0
+            carrier["before_positive_mass"] = forged_mass
+            carrier["after_positive_mass"] = forged_mass
+            carrier["before_positive_share"] = forged_mass / recipient_total
+            carrier["after_positive_share"] = forged_mass / recipient_total
+            carrier["residual_after_minus_target"] = (
+                forged_mass - carrier["target_positive_mass"]
+            )
+            carrier["absolute_residual"] = abs(carrier["residual_after_minus_target"])
+        else:
+            amount = calibration["amount"]
+            forged_quantiles = [
+                value + 100.0 for value in amount["reference_quantiles"]
+            ]
+            amount["reference_quantiles"] = forged_quantiles
+            amount["recipient_before_quantiles"] = forged_quantiles.copy()
+            amount["recipient_after_quantiles"] = forged_quantiles.copy()
+            amount["qed_before"] = 0.0
+            amount["qed_after"] = 0.0
+            for anchor, value in zip(
+                amount["anchor_rows"], forged_quantiles, strict=True
+            ):
+                anchor["reference_value"] = value
+        unsigned = dict(calibration)
+        unsigned.pop("sha256")
+        calibration["sha256"] = stacked_spine_module._canonical_sha256(unsigned)
+
+    with pytest.raises(ValueError, match="diagnostics do not match the live output"):
+        stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+            transfer,
+            boundary=f"rehashed {mutation} live-diagnostic forgery",
+            frame=result.frame,
+        )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ("reference_scope", "output_values", "weights"),
+)
+def test_late_transfer_rejects_rehashed_context_detached_from_live_output(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    transfer = deepcopy(dict(result.receipt["post_puf_transfer"]))
+    group_receipt = next(
+        group
+        for group in transfer["groups"].values()
+        if any(key.endswith("/disability_benefits") for key in group["targets"])
+    )
+    group_key = next(
+        key for key in group_receipt["targets"] if key.endswith("/disability_benefits")
+    )
+    aggregate_key = next(
+        key for key in transfer["targets"] if key.endswith("/disability_benefits")
+    )
+    owners = [
+        group_receipt["targets"][group_key]["post_transfer_calibration"],
+        transfer["targets"][aggregate_key]["post_transfer_calibration"],
+    ]
+    seen: set[int] = set()
+    for owner in owners:
+        if id(owner) in seen:
+            continue
+        seen.add(id(owner))
+        calibration = owner["calibration"]
+        context = owner["context_binding"]
+        if mutation == "reference_scope":
+            forged_count = owner["reference_rows"] + 1
+            owner["reference_rows"] = forged_count
+            calibration["scope"]["reference_rows"] = forged_count
+            calibration["scope"]["reference_rows_sha256"] = "0" * 64
+            context["scope"]["reference_rows"] = forged_count
+            context["scope"]["reference_rows_sha256"] = "0" * 64
+            context["live_output"]["reference_rows"] = forged_count
+        elif mutation == "output_values":
+            calibration["scope"]["output_values_sha256"] = "0" * 64
+            context["scope"]["output_values_sha256"] = "0" * 64
+        else:
+            calibration["weights"]["sha256"] = "0" * 64
+            context["weights_sha256"] = "0" * 64
+        unsigned = dict(calibration)
+        unsigned.pop("sha256")
+        calibration["sha256"] = stacked_spine_module._canonical_sha256(unsigned)
+
+    with pytest.raises(ValueError, match="match the live output"):
+        stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+            transfer,
+            boundary=f"rehashed {mutation} live-context forgery",
+            frame=result.frame,
+        )
 
 
 def test_late_executor_authority_binds_every_transfer_bank_identity(
@@ -5376,6 +6306,77 @@ def test_post_puf_transfer_preserves_complete_asec_source_producers() -> None:
     assert receipt["imputed_rows"] == int((~producer_rows).sum())
     assert receipt["unmodeled_rows"] == 0
     assert receipt["residual_null_rows"] == 0
+    assert "qrf_pattern_evidence" not in receipt
+    record = next(
+        item
+        for item in result.transfer_result.imputed_inputs
+        if item.column == "is_pregnant"
+    )
+    assert all(not pattern.target_regimes for pattern in record.patterns)
+
+
+def test_late_calibration_owner_mutates_only_acs_clone_zero_transfer_cells() -> None:
+    frame = _post_puf_transfer_fixture()
+    person = frame.table("person")
+    channel = person[support_channel_column("person")].astype(str)
+    clone_index = pd.to_numeric(
+        person[support_clone_index_column("person")],
+        errors="raise",
+    )
+    reference_rows = channel.eq("asec") & clone_index.eq(0)
+    recipient_rows = channel.eq("acs") & clone_index.eq(0)
+    target = "child_support_received"
+
+    transferred_person = person.copy(deep=True)
+    transferred_person[target] = 0.0
+    transferred_person.loc[reference_rows, target] = np.resize(
+        np.asarray([0.0, 100.0, 250.0]),
+        int(reference_rows.sum()),
+    )
+    transferred_person.loc[recipient_rows, target] = np.resize(
+        np.asarray([0.0, 10.0, 20.0, 30.0]),
+        int(recipient_rows.sum()),
+    )
+    before_person = transferred_person.copy(deep=True)
+    before_person.loc[recipient_rows, target] = np.nan
+
+    def rebuild(person_table: pd.DataFrame) -> Frame:
+        tables = {entity: frame.table(entity) for entity in frame.entities}
+        tables["person"] = person_table
+        return Frame(
+            tables,
+            frame.schema,
+            {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+            frame.strata,
+            mass_log=frame.mass_log,
+            metadata=frame.metadata,
+        )
+
+    transferred = rebuild(transferred_person)
+    calibrated, receipts = (
+        stacked_spine_module._apply_stacked_post_transfer_calibrations(
+            rebuild(before_person),
+            transferred,
+            target_families={
+                "person": {
+                    "source_operator_child_support": (target,),
+                }
+            },
+            stage="late_transfer",
+        )
+    )
+    calibrated_person = calibrated.table("person")
+    pd.testing.assert_series_equal(
+        calibrated_person.loc[~recipient_rows, target],
+        transferred_person.loc[~recipient_rows, target],
+        check_exact=True,
+    )
+    receipt = receipts[f"person/source_operator_child_support/{target}"]
+    assert receipt["stage"] == "late_transfer"
+    assert receipt["reference_rows"] == int(reference_rows.sum())
+    assert receipt["recipient_rows"] == int(recipient_rows.sum())
+    assert receipt["mutable_rows"] == int(recipient_rows.sum())
+    assert receipt["calibration"]["invariants"]["immutable_bytes_preserved"]
 
 
 @pytest.mark.parametrize(
@@ -5569,6 +6570,102 @@ def test_gap_fill_banks_per_target_via_608_store(tmp_path) -> None:
         )
     survey_receipt = resumed_banks["asec_survey_to_acs"].receipt()
     assert survey_receipt["targets"]
+
+
+@pytest.mark.parametrize(
+    "use_target_bank",
+    [False, True],
+    ids=("ordinary", "banked"),
+)
+def test_gap_fill_scopes_qrf_evidence_off_wide_unassigned_family(
+    tmp_path: Path,
+    use_target_bank: bool,
+) -> None:
+    stacked = _stacked_gap_fixture()
+    canonical_direction = next(
+        direction
+        for direction in stacked_spine_module.CANONICAL_STACKED_GAP_FILL_PLAN
+        if direction.name == "asec_survey_to_acs"
+    )
+    puf_targets = canonical_direction.target_families["person"]["puf_tax_itemization"]
+    person = stacked.table("person").copy()
+    channel = person[support_channel_column("person")].astype(str)
+    donor_rows = channel.eq("asec")
+    for position, target in enumerate(puf_targets, start=1):
+        values = pd.Series(np.nan, index=person.index, dtype=np.float64)
+        values.loc[donor_rows] = np.arange(1, int(donor_rows.sum()) + 1) + position
+        person[target] = values
+    tables = {entity: stacked.table(entity) for entity in stacked.entities}
+    tables["person"] = person
+    frame = Frame(
+        tables,
+        stacked.schema,
+        {entity: stacked.weights_for(entity) for entity in stacked.weighted_entities},
+        stacked.strata,
+        mass_log=stacked.mass_log,
+        metadata=stacked.metadata,
+    )
+    direction = GapFillDirection(
+        name="asec_survey_to_acs",
+        recipient_channel="acs",
+        donor_channel="asec",
+        target_families={
+            "person": {
+                "model_required_numeric": ("unemployment_compensation",),
+                "puf_tax_itemization": puf_targets,
+            }
+        },
+    )
+    target_banks = (
+        {
+            direction.name: AcsTransferTargetBankStore(
+                tmp_path / "survey",
+                identity={"regression": "scoped-wide-gap-fill"},
+            )
+        }
+        if use_target_bank
+        else None
+    )
+
+    result = _gap_fill_with_test_authority(
+        frame,
+        plan=(direction,),
+        seed=578,
+        n_estimators=1,
+        target_banks=target_banks,
+    )
+
+    receipts = result.receipt["directions"][direction.name]["targets"]
+    taxable_key = "person/puf_tax_itemization/taxable_interest_income"
+    canonical_receipt = _canonical_gap_fill_calibration_receipt()
+    canonical_targets = canonical_receipt["directions"][direction.name]["targets"]
+    canonical_targets[taxable_key] = deepcopy(receipts[taxable_key])
+    stacked_spine_module.validate_stacked_gap_fill_receipt(
+        canonical_receipt,
+        boundary=(
+            f"{'banked' if use_target_bank else 'ordinary'} generated "
+            "wide-family receipt"
+        ),
+    )
+
+    records = {
+        record.column: record
+        for record in result.transfer_results[direction.name].imputed_inputs
+    }
+    taxable = records["taxable_interest_income"]
+    unemployment = records["unemployment_compensation"]
+    assert taxable.family == "puf_tax_itemization__batch_1"
+    assert all(not pattern.target_regimes for pattern in taxable.patterns)
+    assert all(
+        tuple(target for target, _regime in pattern.target_regimes)
+        == ("unemployment_compensation",)
+        for pattern in unemployment.patterns
+    )
+    assert "qrf_pattern_evidence" not in receipts[taxable_key]
+    assert (
+        "qrf_pattern_evidence"
+        in receipts["person/model_required_numeric/unemployment_compensation"]
+    )
 
 
 def test_clone_attachment_is_seeded_exact_and_pair_weighted() -> None:
@@ -6925,6 +8022,46 @@ def test_completeness_receipts_bind_live_authority_per_target() -> None:
         GateReport((forged_result,)).to_manifest()
 
 
+def test_artifact_battery_uses_canonical_formulas_without_assembly_metadata() -> None:
+    frame = _battery_frame(
+        {
+            "taxable_interest_income": (
+                np.asarray([100.0] * 8),
+                np.asarray([100.0] * 11),
+            )
+        }
+    )
+    canonical = by_origin_battery(frame)
+    assert canonical.passed, canonical.failures
+    metadata_free = Frame(
+        {entity: frame.table(entity) for entity in frame.entities},
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+    )
+
+    with pytest.raises(ValueError, match="assembly manifest"):
+        by_origin_battery(metadata_free)
+
+    evidence = by_origin_battery_artifact_evidence(metadata_free)
+
+    assert evidence.passed == canonical.passed
+    assert evidence.failures == canonical.failures
+    assert evidence.details["authority"] == canonical.details["authority"]
+    assert evidence.details["tolerances"] == canonical.details["tolerances"]
+    canonical_comparisons = deepcopy(canonical.details["comparisons"])
+    evidence_comparisons = deepcopy(evidence.details["comparisons"])
+    artifact_absence_receipts = []
+    for comparisons in (canonical_comparisons, evidence_comparisons):
+        for comparison in comparisons.values():
+            receipt = comparison.pop("recipient_absence_authority", None)
+            if comparisons is evidence_comparisons and isinstance(receipt, Mapping):
+                artifact_absence_receipts.append(receipt)
+    assert evidence_comparisons == canonical_comparisons
+    assert len(artifact_absence_receipts) == 1
+    assert artifact_absence_receipts[0]["assembly_manifest_authenticated"] is False
+
+
 def test_self_digested_partial_authority_cannot_forge_production_identity() -> None:
     surface = {"person": {"test_only": ("unemployment_compensation",)}}
     forged = stacked_spine_module._make_stacked_authority(
@@ -6961,7 +8098,7 @@ def test_self_digested_partial_authority_cannot_forge_production_identity() -> N
         GateReport((result,)).to_manifest()
 
 
-@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6, 7, 8, 9))
+@pytest.mark.parametrize("stale_version", (1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
 def test_self_consistent_stale_stacked_authority_versions_are_rejected(
     stale_version: int,
 ) -> None:
@@ -6977,11 +8114,12 @@ def test_self_consistent_stale_stacked_authority_versions_are_rejected(
         metric_registry=canonical.metric_registry,
         joint_metric_registry=canonical.joint_metric_registry,
         support_profile=canonical.support_profile,
+        post_transfer_calibration=canonical.post_transfer_calibration,
         declared_form="CANONICAL",
     )
     stale_receipt = stacked_spine_module._authority_receipt(stale)
 
-    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 10
+    assert stacked_spine_module.stacked_spine_authority_receipt()["version"] == 11
     assert stale_receipt["version"] == stale_version
     assert stale_receipt["integrity_valid"] is True
     assert stale_receipt["digest_matches_declared"] is True
@@ -7000,12 +8138,23 @@ def test_stacked_authority_binds_import_validated_late_producer_schedule() -> No
     receipt = stacked_spine_module.stacked_spine_authority_receipt()
     component = receipt["components"]["late_producer_schedule"]
 
-    assert receipt["version"] == 10
+    assert receipt["version"] == 11
     assert component["producer_count"] == 38
     assert component["schedule_sha256"] == (
         stacked_spine_module.CANONICAL_US_LATE_PRODUCER_SCHEDULE.sha256
     )
     assert component["identity"]["status"] == "derived_and_import_validated"
+    assert component["digest_matches_declared"] is True
+
+
+def test_stacked_authority_binds_post_transfer_calibration_policy() -> None:
+    receipt = stacked_spine_module.stacked_spine_authority_receipt()
+    component = receipt["components"]["post_transfer_calibration"]
+
+    assert component["target_count"] == 9
+    assert component["identity"] == (
+        stacked_spine_module.post_transfer_calibration_policy_identity()
+    )
     assert component["digest_matches_declared"] is True
 
 
@@ -7032,6 +8181,62 @@ def test_rebound_late_producer_schedule_invalidates_production_authority(
         stacked_spine_module._validate_production_authority_receipt(
             receipt,
             boundary="rebound late producer schedule",
+        )
+
+
+def test_rebound_post_transfer_calibration_invalidates_production_authority(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    live = dict(stacked_spine_module.post_transfer_calibration_policy_identity())
+    live["tampered"] = True
+    monkeypatch.setattr(
+        stacked_spine_module,
+        "post_transfer_calibration_policy_identity",
+        lambda: live,
+    )
+
+    authority = stacked_spine_module._production_stacked_authority()
+    receipt = stacked_spine_module._authority_receipt(authority)
+
+    assert receipt["canonical"] is False
+    assert (
+        receipt["components"]["post_transfer_calibration"]["digest_matches_declared"]
+        is False
+    )
+    with pytest.raises(ValueError, match="non-canonical stacked authority"):
+        stacked_spine_module._validate_production_authority_receipt(
+            receipt,
+            boundary="rebound post-transfer calibration",
+        )
+
+
+def test_rebound_live_calibration_registry_is_noncanonical_and_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    canonical_policy = (
+        post_transfer_calibration_runtime.post_transfer_calibration_policy_identity()
+    )
+    monkeypatch.setattr(
+        post_transfer_calibration_runtime,
+        "POST_TRANSFER_CALIBRATION_SPECS",
+        {},
+    )
+
+    live_policy = (
+        post_transfer_calibration_runtime.post_transfer_calibration_policy_identity()
+    )
+    assert live_policy["targets"] == []
+    assert live_policy["sha256"] != canonical_policy["sha256"]
+
+    authority = stacked_spine_module._production_stacked_authority()
+    receipt = stacked_spine_module._authority_receipt(authority)
+    assert receipt["canonical"] is False
+    assert receipt["production_manifest_permitted"] is False
+    assert receipt["components"]["post_transfer_calibration"]["target_count"] == 0
+    with pytest.raises(ValueError, match="non-canonical stacked authority"):
+        stacked_spine_module._validate_production_authority_receipt(
+            receipt,
+            boundary="rebound empty post-transfer calibration registry",
         )
 
 
@@ -7433,9 +8638,7 @@ def test_stripped_noncanonical_receipt_cannot_escape_under_a_renamed_gate(
         GateReport((stripped,)).to_manifest()
 
 
-def test_stripped_eight_component_authority_cannot_escape_under_a_renamed_gate() -> (
-    None
-):
+def test_stripped_nine_component_authority_cannot_escape_under_a_renamed_gate() -> None:
     authority = stacked_spine_module.stacked_spine_authority_receipt()
     components = deepcopy(dict(authority["components"]))
     assert set(components) == {
@@ -7447,6 +8650,7 @@ def test_stripped_eight_component_authority_cannot_escape_under_a_renamed_gate()
         "support_profile",
         "puf_capital_gains_tail_support_contract",
         "late_producer_schedule",
+        "post_transfer_calibration",
     }
     stripped = GateResult(
         name="renamed_stacked_battery",

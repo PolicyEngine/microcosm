@@ -115,6 +115,30 @@ def test_brma_enum_domain_binding_fails_off_domain() -> None:
     assert "OFF_DOMAIN" in result.failures[0]
 
 
+def test_student_loan_enum_domain_binding_resolves_person_column() -> None:
+    frame = _frame()
+    frame.table("person")["student_loan_plan"] = ["NONE"] * 9 + ["PLAN_4"]
+    binding = UK_GATE_REGISTRY["enum_domain"]
+
+    result = binding.evaluate(
+        EvidenceContext(
+            frame=frame,
+            artifacts={
+                "student_loan_plan_enum_domain": (
+                    "NONE",
+                    "PLAN_1",
+                    "PLAN_2",
+                    "PLAN_5",
+                )
+            },
+        ),
+        {"columns": ("student_loan_plan",)},
+    )
+
+    assert result.passed is False
+    assert "PLAN_4" in result.failures[0]
+
+
 def test_gate_registry_vocabulary_round_trip() -> None:
     assert "take_up_signal" in UK_GATE_REGISTRY
     assert "enum_domain" in UK_GATE_REGISTRY

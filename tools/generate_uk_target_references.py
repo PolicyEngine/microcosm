@@ -160,8 +160,17 @@ def _geography_pins(contract: Mapping[str, Any]) -> dict[str, dict[str, str]]:
     }
 
 
+SCOTGOV_COUNCIL_TAX_STOCK_PREFIX = "scotgov.council_tax_stock."
+
+
 def _geography_id_for_target(target: Mapping[str, Any]) -> str:
     target_id = str(target["target_id"]).lower()
+    if target_id.startswith(SCOTGOV_COUNCIL_TAX_STOCK_PREFIX):
+        # The Scottish Government CTAXBASE chargeable-dwelling facts are
+        # stamped S92000003 in Chronicle; the substring rule below sees no
+        # "scotland" in "scotgov" and would fall through to the UK pin, which
+        # never matches a Scotland-stamped fact.
+        return UK_GEOGRAPHY_IDS["scotland"]
     selector = target.get("ledger_selector") or {}
     concept = str(selector.get("source_concept", "")).lower()
     measure = str(selector.get("source_measure_id", "")).lower()
@@ -314,7 +323,7 @@ def _add_uk_membership_accounting(
         1
         for reference in references
         if reference["metadata"]["contract_target_id"].startswith(
-            "voa.council_tax_stock."
+            ("voa.council_tax_stock.", SCOTGOV_COUNCIL_TAX_STOCK_PREFIX)
         )
     )
     report["fanout_family_outcomes"] = [
@@ -352,9 +361,10 @@ def _add_uk_membership_accounting(
             "status": "active_declared_rows",
             "active_reference_count": council_tax_count,
             "signed_rationale": (
-                "VOA council-tax stock bands are declared as nine explicit "
-                "target rows, including total, and each resolves with its "
-                "country-level geography and band pin."
+                "VOA (England and Wales) and Scottish Government CTAXBASE "
+                "(Scotland) council-tax stock bands are declared as nine "
+                "explicit target rows each, including total, and each resolves "
+                "with its country-level geography and band pin."
             ),
         },
     ]

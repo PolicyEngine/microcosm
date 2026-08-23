@@ -162,7 +162,10 @@ UK_SPI_INCOME_SPINE_REWRITE_COLUMNS = (
 # Reviewed constants for every load-bearing manifest parameter the spine
 # transforms consume. The drift asserts below fail closed on any manifest-only
 # edit (adversarial-review finding on #717): a manifest change to these values
-# requires a matching reviewed code change here.
+# requires a matching reviewed code change here. The #730/#684 two-arm rule
+# applies to every declared parameter: it needs (1) a drift assert and (2) an
+# executed-effect receipt, or an explicit absence statement. Seeded draws use
+# twin-build determinism as their executed-effect receipt.
 SPI_SPINE_STAGE1_PREDICTORS = ("age", "gender", "region")
 SPI_SPINE_STAGE2_PREDICTORS = (
     "age",

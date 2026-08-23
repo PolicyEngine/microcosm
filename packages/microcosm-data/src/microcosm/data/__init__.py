@@ -23,11 +23,14 @@ constructs that engine-native dataset.
 """
 
 from microcosm.data.contract import (
+    EVIDENCE_RELEASE_ID_SEGMENT,
+    EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
     RELEASE_MANIFEST_SCHEMA_VERSION,
     REQUIRED_RELEASE_FILES,
     US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
     ReleaseContractError,
     required_release_files,
+    validate_evidence_release_dir,
     validate_release_dir,
 )
 from microcosm.data.loader import (
@@ -40,9 +43,14 @@ from microcosm.data.loader import (
 )
 from microcosm.data.registry import DEFAULT_VARIANT, REGISTRY, DatasetSpec, register
 from microcosm.data.release import (
+    LATEST_EVIDENCE_POINTER_PATH,
     LATEST_POINTER_PATH,
     LATEST_POINTER_SCHEMA_VERSION,
+    RELEASE_TIER_CERTIFIED,
+    RELEASE_TIER_EVIDENCE,
     LatestPointer,
+    latest_evidence_pointer_payload,
+    latest_evidence_release,
     latest_pointer_payload,
     latest_release,
     publish_release,
@@ -59,15 +67,23 @@ __all__ = [
     "DEFAULT_VARIANT",
     "REGISTRY",
     "register",
+    "EVIDENCE_RELEASE_ID_SEGMENT",
+    "EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION",
     "RELEASE_MANIFEST_SCHEMA_VERSION",
     "REQUIRED_RELEASE_FILES",
     "US_SOURCE_COVERAGE_DIAGNOSTICS_FILE",
     "ReleaseContractError",
     "required_release_files",
+    "validate_evidence_release_dir",
     "validate_release_dir",
+    "LATEST_EVIDENCE_POINTER_PATH",
     "LATEST_POINTER_PATH",
     "LATEST_POINTER_SCHEMA_VERSION",
+    "RELEASE_TIER_CERTIFIED",
+    "RELEASE_TIER_EVIDENCE",
     "LatestPointer",
+    "latest_evidence_pointer_payload",
+    "latest_evidence_release",
     "latest_pointer_payload",
     "latest_release",
     "publish_release",

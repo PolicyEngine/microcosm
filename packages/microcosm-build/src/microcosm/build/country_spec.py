@@ -1644,11 +1644,12 @@ def country_stage_plan(
             f"Country {spec.country!r} declares no source_stages.json; there "
             "is no stage plan to assemble."
         )
-    declared: list[tuple[str, DonorSpec | None, tuple[str, ...]]] = [
+    declared: list[tuple[str, DonorSpec | None, tuple[str, ...], tuple[str, ...]]] = [
         (
             stage.stage,
             DonorSpec(survey=stage.survey, source=stage.source, notes=stage.notes),
             stage.outputs,
+            stage.rewrites,
         )
         for stage in spec.sources.stages
     ]
@@ -1663,9 +1664,10 @@ def country_stage_plan(
                     notes=spine.assignment_source.notes,
                 ),
                 (spine.code_column,),
+                (),
             )
         )
-    declared_names = [name for name, _, _ in declared]
+    declared_names = [name for name, _, _, _ in declared]
     selected_names: tuple[str, ...]
     if stage_names is None:
         selected_names = tuple(declared_names)
@@ -1702,8 +1704,8 @@ def country_stage_plan(
             f"{declared_names}."
         )
     selected = [
-        (name, donor, outputs)
-        for name, donor, outputs in declared
+        (name, donor, outputs, rewrites)
+        for name, donor, outputs, rewrites in declared
         if name in set(selected_names)
     ]
     return StagePlan(
@@ -1711,7 +1713,8 @@ def country_stage_plan(
             name=name,
             transform=implementations[name],
             produces=outputs,
+            rewrites=rewrites,
             donor=donor,
         )
-        for name, donor, outputs in selected
+        for name, donor, outputs, rewrites in selected
     )

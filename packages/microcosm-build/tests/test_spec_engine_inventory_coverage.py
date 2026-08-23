@@ -65,7 +65,7 @@ EXPECTED_CHECKS = {
 
 EXPECTED_COUNTS = {
     "adapter_surfaces": 13,
-    "authority_components": 8,
+    "authority_components": 9,
     "early_families": 13,
     "early_targets": 48,
     "itemization_batches": 5,

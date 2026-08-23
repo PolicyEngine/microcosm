@@ -31,6 +31,8 @@ __all__ = [
     "CPS_REPORTED_TANF_AMOUNT_RAW_COLUMN",
     "CPS_REPORTED_TANF_TYPE_RAW_COLUMN",
     "CPS_REPORTED_WIC_RAW_COLUMN",
+    "US_REPORTED_COVERAGE_PERSON_INPUTS",
+    "US_REPORTED_COVERAGE_VINTAGE_GATE_MIN_ROWS",
     "WIC_CARRIER_ADJUDICATION_URL",
     "derive_us_cps_carried_inputs",
     "reported_snap_receipt_by_spm_unit",
@@ -49,6 +51,26 @@ CPS_REPORTED_WIC_RAW_COLUMN = "WICYN"
 WIC_CARRIER_ADJUDICATION_URL = (
     "https://github.com/PolicyEngine/microcosm/issues/591#issuecomment-5160668979"
 )
+
+# The nine reported-coverage person inputs _fill_health_coverage_inputs derives
+# from the ASEC NOW_* at-interview recodes (microcosm #720).
+US_REPORTED_COVERAGE_PERSON_INPUTS: tuple[str, ...] = (
+    "has_champva_health_coverage_at_interview",
+    "has_esi",
+    "has_indian_health_service_coverage_at_interview",
+    "has_marketplace_health_coverage_at_interview",
+    "has_medicaid_health_coverage_at_interview",
+    "has_non_marketplace_direct_purchase_health_coverage_at_interview",
+    "has_other_means_tested_health_coverage_at_interview",
+    "has_tricare_health_coverage_at_interview",
+    "has_va_health_coverage_at_interview",
+)
+
+# Below this row count a vintage is a smoke pool and zero reporters for a rare
+# flag is sampling noise; at or above it, a zero is a missing-source symptom
+# (the rarest flag, CHAMPVA at ~0.3% of persons, is expected ~15 times in
+# 5,000 rows).
+US_REPORTED_COVERAGE_VINTAGE_GATE_MIN_ROWS = 5_000
 
 CPS_CARRIED_FORMULA_OWNED_COLUMNS = frozenset(
     {

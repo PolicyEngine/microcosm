@@ -137,6 +137,17 @@ def main(argv: list[str] | None = None) -> int:
             "without this flag."
         ),
     )
+    parser.add_argument(
+        "--evidence",
+        action="store_true",
+        help=(
+            "Publish at the EVIDENCE tier (microcosm#506): validate against the "
+            "evidence release contract (which requires a non-empty "
+            "known_failures block) and move latest-evidence.json instead of "
+            "latest.json. Structurally never touches the certified pointer; a "
+            "certified-shape release is refused under this flag."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.tag_only and not args.no_latest:
@@ -182,6 +193,7 @@ def main(argv: list[str] | None = None) -> int:
         updated_at=args.updated_at,
         update_latest=not args.no_latest,
         tag_only=args.tag_only,
+        evidence=args.evidence,
     )
     print(json.dumps(pointer, indent=2))
 

@@ -168,6 +168,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.gas_consumption",
     "household.has_fuel_consumption",
     "household.household_is_capital_gains_clone",
+    "household.household_is_cgt_band_donor",
     "household.household_is_spi_synthetic",
     "household.la_code_oa",
     "household.lsoa_code",

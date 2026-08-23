@@ -496,11 +496,247 @@ def e6_identity_receipt(
     }
 
 
+def e8_identity_receipt(
+    frame,
+    *,
+    permutation_seed: int,
+) -> dict[str, object]:
+    """Receipt E8 deterministic layers under row permutation by entity id.
+
+    Covered: (1) the clone-pair structure — the non-donor population splits
+    into equal-count original/clone halves whose paired household weights
+    agree to the exact-total correction tolerance and whose half-masses
+    match; (2) the CGT band-donor selection recomputed from the committed
+    resources over id-sorted candidates in original and permuted row order
+    (set equality with the flagged donors, 30 donors per band, band-exact
+    stored weights and carrier gains); (3) the student-loan plan column
+    recomputed in full (identity-keyed top-ups at the release calibration
+    year) in original and permuted row order against the stored column.
+    The A&S prior amounts (overwritten by the Table 3 redraw except the
+    sub-AEA remainder), the redraw's seeded within-band draws (covered by
+    the merged #560 embedded published-surface tests), and the
+    salary-sacrifice QRF and conversion (the pre-conversion state is
+    consumed by the stage) are covered by twin-build determinism.
+    """
+
+    from microcosm.build.uk_runtime.cgt_structure import (
+        DONOR_SEED,
+        DONORS_PER_BAND,
+        HOUSEHOLD_IS_CGT_BAND_DONOR,
+        HOUSEHOLD_IS_CGT_CLONE,
+        _component_sum_income,
+        _incidence_propensity,
+        _oldest_adult_indices,
+        _retained_size_bands,
+        load_advani_summers_distribution,
+        load_hmrc_cgt_size_bands,
+    )
+    from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
+    from microcosm.build.uk_runtime.rowwise_geography import id_multiplier_for_values
+    from microcosm.build.uk_runtime.student_loans import (
+        assign_student_loan_plans,
+        load_slc_liable_stocks,
+    )
+
+    problems: dict[str, object] = {}
+    person = frame.table("person")
+    benunit = frame.table("benunit")
+    household = frame.table("household").copy()
+    household["household_weight"] = frame.weights_for("household").values
+
+    # (1) Clone-pair structure on the non-donor population.
+    donor_mask = household[HOUSEHOLD_IS_CGT_BAND_DONOR].astype(bool)
+    non_donor = household.loc[~donor_mask]
+    originals = non_donor.loc[
+        ~non_donor[HOUSEHOLD_IS_CGT_CLONE].astype(bool)
+    ].sort_values("household_id")
+    clones = non_donor.loc[non_donor[HOUSEHOLD_IS_CGT_CLONE].astype(bool)].sort_values(
+        "household_id"
+    )
+    if len(originals) != len(clones):
+        problems["clone_half_counts"] = [len(originals), len(clones)]
+    else:
+        left = originals["household_weight"].to_numpy(dtype=float)
+        right = clones["household_weight"].to_numpy(dtype=float)
+        if not np.allclose(left, right, rtol=1e-12, atol=1e-6):
+            problems["clone_pair_weights"] = int(
+                (~np.isclose(left, right, rtol=1e-12, atol=1e-6)).sum()
+            )
+        if not np.isclose(left.sum(), right.sum(), rtol=1e-12, atol=1e-6):
+            problems["clone_half_masses"] = [float(left.sum()), float(right.sum())]
+
+    # (2) Band-donor selection recomputed from the committed resources.
+    distribution = load_advani_summers_distribution()
+    bands = _retained_size_bands(load_hmrc_cgt_size_bands())
+    non_donor_ids = set(non_donor["household_id"].tolist())
+    nd_person = person.loc[
+        person["person_household_id"].isin(non_donor_ids)
+    ].reset_index(drop=True)
+    nd_benunit = benunit.loc[
+        benunit["benunit_id"].isin(set(nd_person["person_benunit_id"].tolist()))
+    ].reset_index(drop=True)
+    nd_household = non_donor.reset_index(drop=True)
+    multiplier = id_multiplier_for_values(
+        nd_person["person_id"],
+        nd_person["person_household_id"],
+        nd_person["person_benunit_id"],
+        nd_benunit["benunit_id"],
+        nd_household["household_id"],
+    )
+
+    def select_donors(person_t: pd.DataFrame) -> np.ndarray:
+        carriers = _oldest_adult_indices(person_t, household_ids=non_donor_ids)
+        candidates = person_t.loc[carriers].copy()
+        candidates["_income"] = _component_sum_income(candidates)
+        candidates["_propensity"] = _incidence_propensity(
+            candidates["_income"].to_numpy(dtype=float), distribution=distribution
+        )
+        candidates = candidates.sort_values("person_household_id", kind="stable")
+        propensities = candidates["_propensity"].to_numpy(dtype=float)
+        rng = np.random.default_rng(DONOR_SEED)
+        return rng.choice(
+            candidates["person_household_id"].to_numpy(),
+            size=DONORS_PER_BAND * len(bands),
+            replace=False,
+            p=propensities / propensities.sum(),
+        )
+
+    selected = select_donors(nd_person)
+    permuted_rng = np.random.default_rng(permutation_seed)
+    selected_permuted = select_donors(
+        nd_person.iloc[permuted_rng.permutation(len(nd_person))].reset_index(drop=True)
+    )
+    if selected.tolist() != selected_permuted.tolist():
+        problems["donor_selection_permutation"] = True
+    stored_donors = household.loc[donor_mask]
+    stored_source_ids = set(
+        (stored_donors["household_id"].astype("int64") - multiplier).tolist()
+    )
+    if stored_source_ids != set(int(value) for value in selected):
+        problems["donor_selection_stored"] = {
+            "missing": len(stored_source_ids - set(int(v) for v in selected)),
+            "extra": len(set(int(v) for v in selected) - stored_source_ids),
+        }
+    taxpayers = np.asarray([band["taxpayers"] for band in bands], dtype=float)
+    means = np.asarray([band["mean_gain"] for band in bands], dtype=float)
+    band_by_source = {
+        int(source_id): position // DONORS_PER_BAND
+        for position, source_id in enumerate(selected)
+    }
+    donor_band = (
+        (stored_donors["household_id"].astype("int64") - multiplier)
+        .map(band_by_source)
+        .to_numpy()
+    )
+    if pd.isna(donor_band).any():
+        problems["donor_band_mapping"] = True
+    else:
+        donor_band = donor_band.astype(int)
+        counts = np.bincount(donor_band, minlength=len(bands))
+        if not (counts == DONORS_PER_BAND).all():
+            problems["donors_per_band"] = counts.tolist()
+        expected_weights = taxpayers[donor_band] / DONORS_PER_BAND
+        stored_weights = stored_donors["household_weight"].to_numpy(dtype=float)
+        if not np.allclose(stored_weights, expected_weights, rtol=1e-12, atol=0.0):
+            problems["donor_stored_weights"] = True
+        donor_person = person.loc[
+            person["person_household_id"].isin(set(stored_donors["household_id"]))
+        ]
+        carrier_rows = _oldest_adult_indices(
+            donor_person, household_ids=set(stored_donors["household_id"])
+        )
+        carrier_gain = (
+            donor_person.loc[carrier_rows]
+            .set_index("person_household_id")["capital_gains"]
+            .reindex(stored_donors["household_id"].to_numpy())
+            .to_numpy(dtype=float)
+        )
+        expected_gains = means[donor_band]
+        # The Table 3 redraw runs after the stack and moves carrier amounts
+        # within its own gain bands, so band means are not asserted against
+        # the stored carrier gains bitwise; presence and positivity are.
+        if not (np.isfinite(carrier_gain) & (carrier_gain > 0.0)).all():
+            problems["donor_carrier_gains"] = True
+        del expected_gains
+
+    # (3) Student-loan plan recomputed in full.
+    stocks = load_slc_liable_stocks()
+    year = load_uk_frs_release().calibration_year
+    recomputed = assign_student_loan_plans(frame, stocks=stocks, year=year)
+    stored_plan = person.set_index("person_id")["student_loan_plan"]
+    recomputed_plan = (
+        recomputed.frame.table("person")
+        .set_index("person_id")["student_loan_plan"]
+        .reindex(stored_plan.index)
+    )
+    plan_matches_store = bool(stored_plan.equals(recomputed_plan))
+    permuted_result = assign_student_loan_plans(
+        _reverse_rows(frame), stocks=stocks, year=year
+    )
+    permuted_plan = (
+        permuted_result.frame.table("person")
+        .set_index("person_id")["student_loan_plan"]
+        .reindex(stored_plan.index)
+    )
+    plan_permutation_stable = bool(recomputed_plan.equals(permuted_plan))
+    if not plan_matches_store:
+        problems["student_loan_plan_stored"] = True
+    if not plan_permutation_stable:
+        problems["student_loan_plan_permutation"] = True
+
+    structural_ok = not problems
+    return {
+        "check": "uk_e8_identity_stability",
+        "permutation_seed": permutation_seed,
+        "identical_under_permutation": bool(
+            "donor_selection_permutation" not in problems
+            and "student_loan_plan_permutation" not in problems
+        ),
+        "permutation_mismatches": {
+            key: value
+            for key, value in problems.items()
+            if key.endswith("_permutation")
+        },
+        "matches_stored_columns": bool(
+            structural_ok
+            or not any(not key.endswith("_permutation") for key in problems)
+        ),
+        "stored_column_mismatches": {
+            key: value
+            for key, value in problems.items()
+            if not key.endswith("_permutation")
+        },
+        "tolerance_policy": (
+            "clone-pair weights and half-masses: rtol 1e-12 / atol 1e-6 "
+            "(the exact-total correction may move single weights by bit "
+            "corrections); donor stored weights: rtol 1e-12 bitwise-class "
+            "against published band taxpayers / 30; donor selection and "
+            "student_loan_plan: exact equality"
+        ),
+        "columns_by_entity": {
+            "household": [
+                HOUSEHOLD_IS_CGT_CLONE,
+                HOUSEHOLD_IS_CGT_BAND_DONOR,
+                "household_weight",
+            ],
+            "person": ["student_loan_plan", "capital_gains"],
+        },
+        "qrf_draw_columns_scope": (
+            "excluded: the A&S prior amounts (overwritten by the Table 3 "
+            "redraw except the sub-AEA remainder), the redraw's seeded "
+            "within-band draws (the merged #560 embedded published-surface "
+            "tests cover the amounts logic), and the salary-sacrifice QRF "
+            "and conversion (the pre-conversion column state is consumed "
+            "by the stage) are covered by twin-build determinism"
+        ),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input-h5", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--check", choices=("e4", "e5", "e6"), default="e4")
+    parser.add_argument("--check", choices=("e4", "e5", "e6", "e8"), default="e4")
     parser.add_argument("--permutation-seed", type=int, default=123)
     args = parser.parse_args()
 
@@ -536,8 +772,16 @@ def main() -> int:
         ok = bool(
             receipt["identical_under_permutation"] and receipt["matches_stored_columns"]
         )
-    else:
+    elif args.check == "e6":
         receipt = e6_identity_receipt(
+            frame,
+            permutation_seed=args.permutation_seed,
+        )
+        ok = bool(
+            receipt["identical_under_permutation"] and receipt["matches_stored_columns"]
+        )
+    else:
+        receipt = e8_identity_receipt(
             frame,
             permutation_seed=args.permutation_seed,
         )

@@ -16,12 +16,16 @@ import pytest
 
 from microcosm.data import ReleaseContractError
 from microcosm.data.contract import (
+    EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
     US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
     required_release_files,
 )
 from microcosm.data.release import (
+    LATEST_EVIDENCE_POINTER_PATH,
     LATEST_POINTER_PATH,
     LATEST_POINTER_SCHEMA_VERSION,
+    latest_evidence_pointer_payload,
+    latest_evidence_release,
     latest_pointer_payload,
     latest_release,
     publish_release,
@@ -1214,3 +1218,343 @@ def test_pointer_with_swapped_contract_path_is_refused(hub: FakeHub) -> None:
 
     with pytest.raises(ValueError, match="malformed=\\['build_manifest'\\]"):
         latest_release("policyengine/populace-us", api=hub)
+
+
+# ---------------------------------------------------------------------------
+# Evidence-tier publishing (microcosm#506)
+# ---------------------------------------------------------------------------
+#
+# Evidence releases publish exactly like certified ones — contract-gated,
+# immutable tag first — except the pointer: they move latest-evidence.json,
+# and are structurally incapable of touching latest.json (the certified
+# pointer pe.py certification reads).
+
+EVIDENCE_RELEASE_ID = "populace-us-2024-evidence-9f1260b-20260611"
+
+EVIDENCE_KNOWN_FAILURE = (
+    "SOI Table 1.4 national dollar fit failed: target "
+    "'irs_soi.ty2023.table_1_4.all.capital_gain_distributions_"
+    "amount@2024' has relative_error=-0.302, exceeding 0.25."
+)
+
+
+@pytest.fixture
+def evidence_release_dir(release_dir: Path) -> Path:
+    """The certified fixture re-tiered: evidence id, evidence schema marker,
+    a non-empty known_failures block, and the recorded gate results the
+    known_failures binding reads back (build gates.calibration and
+    diagnostics build.release_gates)."""
+    directory = release_dir.parent / EVIDENCE_RELEASE_ID
+    directory.mkdir()
+    (directory / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).write_text(
+        (release_dir / US_SOURCE_COVERAGE_DIAGNOSTICS_FILE).read_text()
+    )
+    diagnostics = json.loads((release_dir / "calibration_diagnostics.json").read_text())
+    diagnostics["build"] = {
+        "release_gates": {"passed": False, "failures": [EVIDENCE_KNOWN_FAILURE]}
+    }
+    (directory / "calibration_diagnostics.json").write_text(json.dumps(diagnostics))
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    build_manifest["build_id"] = EVIDENCE_RELEASE_ID
+    build_manifest["gates"]["calibration"] = {
+        "passed": False,
+        "failures": [EVIDENCE_KNOWN_FAILURE],
+    }
+    (directory / "build_manifest.json").write_text(json.dumps(build_manifest))
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    manifest["schema_version"] = EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION
+    manifest["tier"] = "evidence"
+    manifest["known_failures"] = [
+        {
+            "failure": EVIDENCE_KNOWN_FAILURE,
+            "owner": "PolicyEngine/microcosm#487",
+        }
+    ]
+    manifest["build"]["build_id"] = EVIDENCE_RELEASE_ID
+    manifest["artifacts"]["calibration_diagnostics"]["sha256"] = _sha256(
+        directory / "calibration_diagnostics.json"
+    )
+    for artifact in manifest["artifacts"].values():
+        artifact["revision"] = EVIDENCE_RELEASE_ID
+    (directory / "release_manifest.json").write_text(json.dumps(manifest))
+    return directory
+
+
+def test_evidence_pointer_payload_mirrors_the_certified_payload() -> None:
+    updated_at = "2026-07-22T13:53:15+00:00"
+    certified_shape = latest_pointer_payload(EVIDENCE_RELEASE_ID, updated_at=updated_at)
+    payload = latest_evidence_pointer_payload(
+        EVIDENCE_RELEASE_ID, updated_at=updated_at
+    )
+    assert payload == {**certified_shape, "tier": "evidence"}
+
+
+def test_publish_evidence_release_never_touches_the_certified_pointer(
+    hub: FakeHub, evidence_release_dir: Path, artifact_root: Path
+) -> None:
+    payload = publish_release(
+        evidence_release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        updated_at="2026-07-22T13:53:15+00:00",
+        evidence=True,
+    )
+    assert payload["tier"] == "evidence"
+    assert payload["release_id"] == EVIDENCE_RELEASE_ID
+    # Immutable tag flow unchanged: the tag is the evidence release id.
+    assert [tag["tag"] for tag in hub.tags] == [EVIDENCE_RELEASE_ID]
+    # The evidence pointer lands last, in the final main commit.
+    final_event, final_commit = hub.events[-1]
+    assert final_event == "create_commit"
+    assert final_commit["paths"][-1] == LATEST_EVIDENCE_POINTER_PATH
+    # The certified pointer is never written, anywhere in the flow.
+    assert all(path != LATEST_POINTER_PATH for path, _ in hub.uploads)
+    published = json.loads(dict(hub.uploads)[LATEST_EVIDENCE_POINTER_PATH])
+    assert published["tier"] == "evidence"
+    assert published["release_id"] == EVIDENCE_RELEASE_ID
+
+
+def test_publish_evidence_release_refuses_a_certified_release_dir(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
+    """--evidence on a certified-shape release: refused, nothing uploaded.
+    The tier must be declared by the artifact, not chosen at publish time."""
+    with pytest.raises(ReleaseContractError):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+            evidence=True,
+        )
+    assert hub.uploads == []
+
+
+def test_certified_publish_refuses_an_evidence_release_dir(
+    hub: FakeHub, evidence_release_dir: Path, artifact_root: Path
+) -> None:
+    with pytest.raises(ReleaseContractError):
+        publish_release(
+            evidence_release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+        )
+    assert hub.uploads == []
+
+
+def test_publish_evidence_no_latest_skips_the_evidence_pointer(
+    hub: FakeHub, evidence_release_dir: Path, artifact_root: Path
+) -> None:
+    publish_release(
+        evidence_release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        update_latest=False,
+        evidence=True,
+    )
+    final_event, final_commit = hub.events[-1]
+    assert final_event == "create_commit"
+    assert LATEST_EVIDENCE_POINTER_PATH not in final_commit["paths"]
+    assert all(path != LATEST_POINTER_PATH for path, _ in hub.uploads)
+    assert (
+        final_commit["message"]
+        == f"Publish non-default evidence release {EVIDENCE_RELEASE_ID}"
+    )
+
+
+def test_publish_evidence_release_announces_the_tier(
+    hub: FakeHub, evidence_release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    calls: list = []
+    monkeypatch.setattr(
+        "microcosm.data.release.notify_release",
+        lambda repo_id, release_id, updated_at, **kw: calls.append(
+            (repo_id, release_id, updated_at, kw)
+        ),
+    )
+    publish_release(
+        evidence_release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        updated_at="2026-07-22T13:53:15+00:00",
+        evidence=True,
+    )
+    assert calls == [
+        (
+            "policyengine/populace-us",
+            EVIDENCE_RELEASE_ID,
+            "2026-07-22T13:53:15+00:00",
+            {"warn_if_unset": True, "tier": "evidence"},
+        )
+    ]
+
+
+def test_publish_then_latest_evidence_release_round_trips(
+    hub: FakeHub, evidence_release_dir: Path, artifact_root: Path
+) -> None:
+    publish_release(
+        evidence_release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        updated_at="2026-07-22T13:53:15+00:00",
+        evidence=True,
+    )
+    pointer = latest_evidence_release("policyengine/populace-us", api=hub)
+    assert pointer.release_id == EVIDENCE_RELEASE_ID
+    assert pointer.tier == "evidence"
+    assert pointer.updated_at == "2026-07-22T13:53:15+00:00"
+    assert (
+        pointer.paths["build_manifest"]
+        == f"releases/{EVIDENCE_RELEASE_ID}/build_manifest.json"
+    )
+
+
+def test_latest_release_refuses_an_evidence_tier_pointer(hub: FakeHub) -> None:
+    """Tier defense on the certified consumer: if an evidence payload ever
+    lands in latest.json, readers refuse it rather than certify it."""
+    payload = latest_evidence_pointer_payload(EVIDENCE_RELEASE_ID)
+    hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(payload).encode())
+
+    with pytest.raises(ValueError, match="tier"):
+        latest_release("policyengine/populace-us", api=hub)
+
+
+def test_latest_evidence_release_requires_the_evidence_tier(hub: FakeHub) -> None:
+    payload = latest_pointer_payload(EVIDENCE_RELEASE_ID)
+    hub.seed_main_file(LATEST_EVIDENCE_POINTER_PATH, json.dumps(payload).encode())
+
+    with pytest.raises(ValueError, match="tier"):
+        latest_evidence_release("policyengine/populace-us", api=hub)
+
+
+def test_latest_evidence_release_requires_the_id_segment(hub: FakeHub) -> None:
+    payload = latest_evidence_pointer_payload(RELEASE_ID)
+    hub.seed_main_file(LATEST_EVIDENCE_POINTER_PATH, json.dumps(payload).encode())
+
+    with pytest.raises(ValueError, match="-evidence-"):
+        latest_evidence_release("policyengine/populace-us", api=hub)
+
+
+def test_certified_latest_pointer_keeps_its_certified_shape(hub: FakeHub) -> None:
+    """The certified pointer payload gains no tier field — its bytes are the
+    pre-#506 shape, so existing consumers see no drift."""
+    payload = latest_pointer_payload(RELEASE_ID, updated_at="2026-06-11T00:00:00+00:00")
+    assert "tier" not in payload
+    hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(payload).encode())
+    pointer = latest_release("policyengine/populace-us", api=hub)
+    assert pointer.tier == "certified"
+
+
+def test_certified_publish_never_touches_the_evidence_pointer(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
+    """The converse of the evidence-pointer isolation: a certified publish
+    moves latest.json only, never latest-evidence.json."""
+    publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        updated_at="2026-06-11T13:53:15+00:00",
+    )
+    assert any(path == LATEST_POINTER_PATH for path, _ in hub.uploads)
+    assert all(path != LATEST_EVIDENCE_POINTER_PATH for path, _ in hub.uploads)
+
+
+def test_latest_release_refuses_any_tier_field(hub: FakeHub) -> None:
+    """No certified producer writes a tier field; even 'certified' or null is
+    foreign and refused rather than consumed as the default."""
+    for tier_value in ("certified", None):
+        payload = latest_pointer_payload(RELEASE_ID)
+        payload["tier"] = tier_value
+        hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(payload).encode())
+        with pytest.raises(ValueError, match="tier"):
+            latest_release("policyengine/populace-us", api=hub)
+
+
+def _declare_root_artifact(release_dir: Path, *, key: str, path: str) -> None:
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"][key] = {
+        "kind": "diagnostics",
+        "path": path,
+        "repo_id": "policyengine/populace-us",
+        "revision": release_dir.name,
+        "sha256": "1" * 64,
+    }
+    manifest_path.write_text(json.dumps(manifest))
+
+
+def test_publish_refuses_root_artifacts_at_pointer_paths(
+    hub: FakeHub, release_dir: Path, evidence_release_dir: Path, artifact_root: Path
+) -> None:
+    """A manifest-declared root artifact must not be able to smuggle a
+    pointer write past the tier's pointer selection — in either direction."""
+    _declare_root_artifact(
+        evidence_release_dir, key="smuggled_pointer", path=LATEST_POINTER_PATH
+    )
+    with pytest.raises(ValueError, match="reserved"):
+        publish_release(
+            evidence_release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+            update_latest=False,
+            evidence=True,
+        )
+    assert hub.uploads == []
+
+    _declare_root_artifact(
+        release_dir, key="smuggled_pointer", path=LATEST_EVIDENCE_POINTER_PATH
+    )
+    with pytest.raises(ValueError, match="reserved"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+        )
+    assert hub.uploads == []
+
+
+def test_publish_refuses_unclean_root_artifact_paths(
+    hub: FakeHub, evidence_release_dir: Path, artifact_root: Path
+) -> None:
+    """'./latest.json' must not dodge the reserved-path comparison and get
+    canonicalized to the pointer by the Hub afterwards (sol round-2)."""
+    _declare_root_artifact(
+        evidence_release_dir, key="smuggled_pointer", path=f"./{LATEST_POINTER_PATH}"
+    )
+    with pytest.raises(ValueError, match="clean relative POSIX path"):
+        publish_release(
+            evidence_release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+            update_latest=False,
+            evidence=True,
+        )
+    assert hub.uploads == []
+
+
+def test_publish_refuses_path_components_in_extra_files(
+    hub: FakeHub, release_dir: Path, artifact_root: Path
+) -> None:
+    """extra_files land under releases/<id>/ — a traversal name could escape
+    that prefix once the service canonicalizes the path."""
+    outside = release_dir.parent / "escape.json"
+    outside.write_text("{}")
+    with pytest.raises(ValueError, match="bare file name"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+            extra_files=("../escape.json",),
+        )
+    assert hub.uploads == []
