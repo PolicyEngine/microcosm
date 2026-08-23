@@ -1,111 +1,97 @@
-# Final report: microcosm #462 register alignment
+# Final report: retirement model and data audit
 
 ## Outcome
 
-Completed the split-PR remediation on `loss-contract-alignment`, based on
-`origin/main` at `7b6e10b`. The change is now register alignment only: one
-shared critical-target register, one shared congressional-district classifier,
-two consumers, builder contract-row gating, and behavioral containment of the
-publish contract.
+Completed the adjudicated retirement blocker audit for all 16 failed criteria
+across 11 physical legs. The result is **6 concept mismatches, 5 dense-rung
+refits, and 0 derivation defects**. Every current ASEC source equation exactly
+reproduces frozen clone 0, so there was no safe 1%-verifiable production
+derivation fix to implement. No exclusion, pool build, gate/band/ceiling/fold/
+seed change, push, publication, or chain operation occurred.
 
-The critical-row loss multiplier was removed entirely per
-[microcosm#492](https://github.com/PolicyEngine/microcosm/issues/492). There is no
-constant, CLI option, validation, loss overlay, telemetry, diagnostics/scorer
-provenance, or historical replay pin left. `_fiscal_target_loss_weights` is
-source-identical to `origin/main`, and its output therefore preserves main's
-bit-level behavior for the same registry and family multipliers.
+The detailed human audit is
+[`experiments/retirement_model_and_data/AUDIT.md`](experiments/retirement_model_and_data/AUDIT.md),
+the canonical machine proof is
+[`f001_audit.json`](experiments/retirement_model_and_data/f001_audit.json), and
+the blocked serial-host charter is
+[`HOST_25PCT_PLAN.md`](experiments/retirement_model_and_data/HOST_25PCT_PLAN.md).
 
-## Sol round-1 findings
+## Evidence delivered
 
-1. **Table 1.4 selector parity:** removed the builder-only
-   `accepted_name_prefixes=("irs_soi.",)` constraint. The adapter now has
-   exactly the shared requirement's substring and suffix selectors. The
-   outside-prefix reproduction is builder-rejected.
-2. **Congressional-district parity:** added exported, stdlib-only
-   `is_congressional_district_target(name, metadata)` and made the publisher
-   and builder classifiers thin wrappers. It ORs layout dimension, source-id
-   token, geography level, geography scope, truthy CD GEOID, and name token.
-   The builder's exact/semantic, Table 1.4, and zero-support paths now see the
-   same registry metadata.
-3. **Recorded relative-error shape:** a matched row with missing/`None`
-   `relative_error` now fails with the publish-contract message instead of
-   silently passing after recomputation. Existing non-numeric and stale-value
-   checks remain.
-4. **Behavioral anti-drift:** the load-bearing test now runs adversarial rows
-   through both consumers for exact-name, family+role, Table pattern,
-   missing/non-finite values, and a disallowed incumbent escape at the 0.25
-   hard stop. A production Ledger compile supplies six separate CD evidence
-   rows; builder and publisher exclude identical six-name sets and counts.
-   Field comparisons remain as fast checks, and any added conjunctive prefix
-   is proven to trip the guard.
+`audit_frozen_artifacts.py` authenticates the raw ASEC, assembled/transferred,
+baseline/pkg3, adjudication, and 11 target-bank artifacts before decoding. It
+then proves:
 
-The [#490](https://github.com/PolicyEngine/microcosm/issues/490) medical 0.25
-adjudication tolerance and its adjacent comment in `us_critical_targets.py`
-remain byte-for-byte unchanged, as required.
+- all 16 retirement source columns match across a unique, fully resolved
+  4,311-row raw ASEC → assembled clone-0 → transferred clone-0 join;
+- all 11 source equations bit-match the terminal ASEC clone-0 values;
+- the actual early clone-0 and late clone-1 donor roles, carrier counts by
+  sign, amounts, and QRF regimes are recomputed from frozen support;
+- all selected baseline/pkg3 target arrays and gate records are identical;
+- every ASEC-versus-ACS disagreement entry is exposed, including native
+  combined `RETP`/`SSP` versus unobserved modeled leaves.
 
-## Reproduction receipts
+The canonical JSON SHA-256 is
+`37e92f7358119c44670c104335d9452a8a4e9e22f28627a70c589691e4dc92bf`.
+The source and transfer mechanisms are code-cited leg by leg in `AUDIT.md` and
+inside the machine sidecar.
 
-The Table 1.4 prefix reproduction now returns:
+## Classification and action
 
-```text
-SOI Table 1.4 national dollar fit failed: other.table_1_4.all.bad_amount@2024: relative_error=1 exceeds 0.25 for SOI Pub 1304 Table 1.4 national dollar rows (soi_table_1_4_national_dollar_rows); target=100.0, final_estimate=200.0.
-```
+| Classification | Legs | Required next action |
+|---|---|---|
+| Concept mismatch | taxable and tax-exempt private pension | Owner adjudicates private/public/annuity/railroad/mixed roles and the exact declared-absence equation before any model or derivation change. |
+| Concept mismatch | Social Security retirement, disability, dependents, survivors | Owner adjudicates codes 7/8 and multi-reason rows using the exact declared-absence equation before any component refit. |
+| Dense-rung refit | taxable IRA | Through the required typed post-compatibility overlay executor, add a single-target two-part overlay from exact clone-0 code-4 labels. Keep the current early bank and every other early output byte-identical. |
+| Dense-rung refit | Keogh, taxable 401(k), taxable 403(b), taxable SEP | Through the same executor, add a four-output overlay from exact clone-0 labels: standalone Keogh, then 401(k)/403(b)/SEP with refit Keogh and the unchanged compatibility-pass tax-exempt IRA raw draw as fixed prefixes. Require that passing target's bank and terminal output remain byte-identical. |
+| Derivation defect | none | No production patch. |
 
-The missing-relative-error reproduction now returns:
+The pension owner equation marks 56 f001 rows/$1,804,558 ambiguous. The Social
+Security owner equation marks 35 positive rows/$744,734 ambiguous. These are
+declared-absence proposals for adjudication, not exclusions, and were not
+implemented.
 
-```text
-SOI Table 1.4 national dollar fit failed: irs_soi.ty2023.table_1_4.all.adversarial_amount@2024: missing recorded relative_error; the publish contract requires a numeric value.
-```
+## Host handoff
 
-The CD reproduction has the owner-mandated exclusion result:
+The f025 charter pins the five-leg refit, removal commit
+`1a8ad451c6eff17d405ef75cbdd014de72447153`, broad commit
+`539e415defb27bf103a40081239f123ce9d76c6d`, all input and authority hashes,
+the literal Darwin `lockf` entry, the no-extra-argument build argv, atomic
+all-exit status requirements, refit/factorial 16-row ledgers, and exact Phase-P
+runner recovery and checks.
 
-```text
-builder_excluded=True
-publisher_excluded=True
-builder_failures=[]
-```
-
-Calling that row "rejected" would contradict the required OR-union exclusion
-semantics. The two malformed critical rows are rejected; the CD row is
-symmetrically excluded by both consumers.
+Execution is deliberately blocked. Historical f025/f001 paths reached about
+81/85 GB RSS, while this lane is bound below 15 GiB. Neither a reviewed
+sub-14-GiB cold implementation nor an exact authenticated candidate resume
+exists; `REFIT_SHA` and the six concept-owner decisions also do not exist. The
+charter therefore records exact commands and prerequisites without falsely
+authorizing a cold run that the memory guard would terminate.
 
 ## Verification
 
-The requested suite ran with `UV_NO_SYNC=1` to use the already-synced workspace
-environment in the network-restricted sandbox:
+The corrected machine proof and an independent `--check` both returned zero.
+Their guarded aggregate/individual RSS peaks were
+`457,834,496/436,682,752` and `453,787,648/432,586,752` bytes; no descendant
+escaped and both process groups were empty. The proof uses the battery's pinned
+five-carrier QED minimum and independently reproduces the f001 Social Security
+dependents/survivors distances `0.917093391855645` and
+`0.2780886784330607`
+(`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:3026-3030,11912-11930`).
 
-```text
-uv run --package microcosm-build --extra us --group dev python -m pytest packages/microcosm-data/tests packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py packages/microcosm-build/tests/test_us_state_files_scorer.py -q
-264 passed, 3 skipped (267 collected)
-```
+The whole frame, data, calibrate, and fit package suites returned zero. Peak
+aggregate RSS was 6,995,214,336; 11,917,328,384; 498,696,192; and 863,649,792
+bytes, respectively. The 259 tracked build test files ran exactly once across
+six disjoint direct-pytest ranges; every accepted range returned zero, with a
+maximum aggregate peak of 10,281,369,600 bytes. Accepted-command count, unique
+count, and tracked file count are all 259 with an empty set difference. Every
+final process group was empty.
 
-Additional receipts:
+The build suite intentionally exercises detached sessions. The initial
+host-default range-1 supervisor therefore stopped at the expected escape; that
+discarded receipt is not pytest evidence. The unchanged range passed with the
+guard's explicit test-only escape tracking. Every disclosed escaped PID was
+included in RSS and shutdown accounting and was independently verified gone.
+No accepted command reached the 14 GiB fail-closed stop.
 
-- Complete `test_gates.py`: passed.
-- Required multiplier grep: zero Python hits.
-- Ruff check: clean on all ten touched Python files.
-- Ruff format check: clean on the eight non-exempt touched Python files; the
-  two historical experiment files were not reformatted, as instructed.
-- `git diff --check`: clean.
-- The medical adjudication block compares byte-for-byte equal to pre-fix
-  commit `068854d`.
-- Pytest emitted non-failing macOS temporary-directory cleanup warnings; no
-  test failed.
-
-## Remediation commits
-
-- `5077f95` — start microcosm#462 Sol remediation progress.
-- `c48ba37` — remove the microcosm#462 loss multiplier per microcosm#492.
-- `afa910a` — fix Sol finding 1 selector parity.
-- `89f74f4` — fix Sol finding 2 CD classifier parity.
-- `77040fb` — fix Sol finding 3 relative-error shape.
-- `bad7145` — fix Sol finding 4 behavioral containment.
-- `3c96514` — apply the finding-2 classifier's required Ruff formatting.
-
-Nothing was pushed at the time of this report; the branch was subsequently
-pushed and merged as #491 (2026-07-22).
-
-The sandbox rejected writing
-`/Users/maxghenis/PolicyEngine/_reviews/sol-491-fix-out.md` with `Operation not
-permitted`; the full completion report is therefore committed here and will be
-printed to stdout as the requested fallback.
+Final Ruff and staged whitespace checks pass. No pool build or network action
+was used for this verification.

@@ -1,0 +1,5094 @@
+{
+  "acs_native_disagreement": {
+    "acs_source_mapping": {
+      "code_citations": [
+        "packages/microcosm-build/src/microcosm/build/us_runtime/acs_inputs.py:133",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/acs_inputs.py:177",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/acs_inputs.py:307"
+      ],
+      "retirement": "RETP * ADJINC / 1_000_000",
+      "social_security": "SSP * ADJINC / 1_000_000"
+    },
+    "pension_and_ira_bundle_vs_native_RETP": {
+      "modeled": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 300500.0,
+          "min": 4.92,
+          "sum": 127178539.49999502
+        },
+        "row_count": 34293,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 4966,
+          "zero": 29327
+        },
+        "sum": 127178539.49999502,
+        "values_sha256": "24f82e894d98e4902fd1ab993258f467c4efc7556a4ccd0103ec4fa5d3b485de"
+      },
+      "modeled_59_41_split_mismatch_rows": 3922,
+      "modeled_only_positive_rows": 2,
+      "modeled_private_pension_total": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 180000.0,
+          "min": 4.92,
+          "sum": 116413245.20905961
+        },
+        "row_count": 34293,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 4867,
+          "zero": 29426
+        },
+        "sum": 116413245.20905961,
+        "values_sha256": "e8fef8fba39c15d2eeec8d9c6f3484ad97933e6836536630e37e3e6b4d347fde"
+      },
+      "modeled_taxable_ira": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 150000.0,
+          "min": 411.0,
+          "sum": 10765294.290935397
+        },
+        "row_count": 34293,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 741,
+          "zero": 33552
+        },
+        "sum": 10765294.290935397,
+        "values_sha256": "0274c5992cc7e52b32cc1938eb93b73a711bf07e0caddedf8d0c4d4e8fc9cf61"
+      },
+      "native": {
+        "missing_rows": 5294,
+        "observed_rows": 28999,
+        "positive_rows": 4974,
+        "positive_sum": 139384817.70200002
+      },
+      "native_only_positive_rows": 10,
+      "observed_amount_mismatch_rows": 4976
+    },
+    "social_security_components_vs_native_SSP": {
+      "modeled": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 98000.0,
+          "min": 1.0,
+          "sum": 140103058.10452682
+        },
+        "row_count": 34293,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 7231,
+          "zero": 27062
+        },
+        "sum": 140103058.10452682,
+        "values_sha256": "0df9abe471e454e84ad936981315fbdaca4e54695d1a33f2e7640896153a7d16"
+      },
+      "modeled_only_positive_rows": 1,
+      "native": {
+        "missing_rows": 5294,
+        "observed_rows": 28999,
+        "positive_rows": 7546,
+        "positive_sum": 141172197.815
+      },
+      "native_only_positive_rows": 316,
+      "observed_amount_mismatch_rows": 7547
+    },
+    "unobserved_leaf_labels": {
+      "ACS_RETP": [
+        "tax_exempt_private_pension_income",
+        "taxable_private_pension_income",
+        "taxable_ira_distributions",
+        "keogh_distributions",
+        "taxable_401k_distributions",
+        "taxable_403b_distributions",
+        "taxable_sep_distributions"
+      ],
+      "ACS_SSP": [
+        "social_security_retirement",
+        "social_security_disability",
+        "social_security_dependents",
+        "social_security_survivors"
+      ],
+      "interpretation": "ACS supplies only combined RETP and SSP amounts; the named target leaves are modeled labels, not separately observed ACS columns"
+    }
+  },
+  "adjudication": {
+    "action_group": "retirement_model_and_data",
+    "failed_checks": 16,
+    "physical_leg_ids": [
+      "person/model_required_numeric/tax_exempt_private_pension_income[clone_0]/positive",
+      "person/puf_tax_itemization/social_security_dependents[clone_0]/positive",
+      "person/puf_tax_itemization/social_security_disability[clone_0]/positive",
+      "person/puf_tax_itemization/social_security_retirement[clone_0]/positive",
+      "person/puf_tax_itemization/social_security_survivors[clone_0]/positive",
+      "person/puf_tax_itemization/taxable_ira_distributions[clone_0]/positive",
+      "person/puf_tax_itemization/taxable_private_pension_income[clone_0]/positive",
+      "person/source_operator_retirement_distributions/keogh_distributions[clone_0]/positive",
+      "person/source_operator_retirement_distributions/taxable_401k_distributions[clone_0]/positive",
+      "person/source_operator_retirement_distributions/taxable_403b_distributions[clone_0]/positive",
+      "person/source_operator_retirement_distributions/taxable_sep_distributions[clone_0]/positive"
+    ],
+    "physical_legs": 11,
+    "rows": [
+      {
+        "baseline": {
+          "acs_incidence": 0.10265552975380765,
+          "asec_incidence": 0.06605645354737383,
+          "criterion_status": "FAIL",
+          "criterion_value": 1.5540575408000976,
+          "nonzero_rows": {
+            "acs": 110336,
+            "asec": 6406
+          },
+          "quantile_envelope_distance": 0.1042830540037244,
+          "ratio_acs_over_asec": 1.5540575408000976,
+          "ratio_band_status": "out_of_band"
+        },
+        "best_arm_movement": {
+          "arms": [
+            "order"
+          ],
+          "baseline_value": 1.5540575408000976,
+          "candidate_qed": 0.1042830540037244,
+          "candidate_ratio_band_status": "out_of_band",
+          "candidate_value": 1.5540575408000976,
+          "criterion_result": "still_red",
+          "direction": "unchanged"
+        },
+        "check_id": "person/model_required_numeric/tax_exempt_private_pension_income[clone_0]/positive#incidence",
+        "classification": "BLOCKER",
+        "criterion": "incidence",
+        "leg_id": "person/model_required_numeric/tax_exempt_private_pension_income[clone_0]/positive",
+        "ordinal": 7
+      },
+      {
+        "baseline": {
+          "acs_incidence": 0.10326697674827831,
+          "asec_incidence": 0.06605645354737383,
+          "criterion_status": "FAIL",
+          "criterion_value": 1.5633139716502966,
+          "nonzero_rows": {
+            "acs": 111027,
+            "asec": 6406
+          },
+          "quantile_envelope_distance": 0.12389380530973454,
+          "ratio_acs_over_asec": 1.5633139716502966,
+          "ratio_band_status": "out_of_band"
+        },
+        "best_arm_movement": {
+          "arms": [
+            "order",
+            "investment"
+          ],
+          "baseline_value": 1.5633139716502966,
+          "candidate_qed": 0.12389380530973454,
+          "candidate_ratio_band_status": "out_of_band",
+          "candidate_value": 1.5633139716502966,
+          "criterion_result": "still_red",
+          "direction": "unchanged"
+        },
+        "check_id": "person/puf_tax_itemization/taxable_private_pension_income[clone_0]/positive#incidence",
+        "classification": "BLOCKER",
+        "criterion": "incidence",
+        "leg_id": "person/puf_tax_itemization/taxable_private_pension_income[clone_0]/positive",
+        "ordinal": 19
+      },
+      {
+        "baseline": {
+          "acs_incidence": 0.022371208873826987,
+          "asec_incidence": 0.016338573555624365,
+          "criterion_status": "FAIL",
+          "criterion_value": 1.3692265605479346,
+          "nonzero_rows": {
+            "acs": 24373,
+            "asec": 1556
+          },
+          "quantile_envelope_distance": 0.19679633867276888,
+          "ratio_acs_over_asec": 1.3692265605479346,
+          "ratio_band_status": "out_of_band"
+        },
+        "best_arm_movement": {
+          "arms": [
+            "order",
+            "investment"
+          ],
+          "baseline_value": 1.3692265605479346,
+          "candidate_qed": 0.19679633867276888,
+          "candidate_ratio_band_status": "out_of_band",
+          "candidate_value": 1.3692265605479346,
+          "criterion_result": "still_red",
+          "direction": "unchanged"
+        },
+        "check_id": "person/puf_tax_itemization/taxable_ira_distributions[clone_0]/positive#incidence",
+        "classification": "BLOCKER",
+        "criterion": "incidence",
+        "leg_id": "person/puf_tax_itemization/taxable_ira_distributions[clone_0]/positive",
+        "ordinal": 20
+      },
+      {
+        "baseline": {
+          "acs_incidence": 0.1540459706672324,
+          "asec_incidence": 0.15247001254769427,
+          "criterion_status": "FAIL",
+          "criterion_value": 0.5399065173295705,
+          "nonzero_rows": {
+            "acs": 170783,
+            "asec": 15440
+          },
+          "quantile_envelope_distance": 0.5399065173295705,
+          "ratio_acs_over_asec": 1.0103361841007599,
+          "ratio_band_status": "in_band"
+        },
+        "best_arm_movement": {
+          "arms": [
+            "eligibility"
+          ],
+          "baseline_value": 0.5399065173295705,
+          "candidate_qed": 0.5157232704402516,
+          "candidate_ratio_band_status": "in_band",
+          "candidate_value": 0.5157232704402516,
+          "criterion_result": "still_red",
+          "direction": "toward_green"
+        },
+        "check_id": "person/puf_tax_itemization/social_security_retirement[clone_0]/positive#quantile",
+        "classification": "BLOCKER",
+        "criterion": "quantile",
+        "leg_id": "person/puf_tax_itemization/social_security_retirement[clone_0]/positive",
+        "ordinal": 21
+      },
+      {
+        "baseline": {
+          "acs_incidence": 0.014013168733764516,
+          "asec_incidence": 0.018028942069815028,
+          "criterion_status": "FAIL",
+          "criterion_value": 0.777259623970176,
+          "nonzero_rows": {
+            "acs": 13616,
+            "asec": 1935
+          },
+          "quantile_envelope_distance": 1.3265580996694013,
+          "ratio_acs_over_asec": 0.777259623970176,
+          "ratio_band_status": "out_of_band"
+        },
+        "best_arm_movement": {
+          "arms": [
+            "eligibility"
+          ],
+          "baseline_value": 0.777259623970176,
+          "candidate_qed": 1.1576011157601116,
+          "candidate_ratio_band_status": "in_band",
+          "candidate_value": 0.8326474987808791,
+          "criterion_result": "GREEN",
+          "direction": "to_green"
+        },
+        "check_id": "person/puf_tax_itemization/social_security_disability[clone_0]/positive#incidence",
+        "classification": "BLOCKER",
+        "criterion": "incidence",
+        "leg_id": "person/puf_tax_itemization/social_security_disability[clone_0]/positive",
+        "ordinal": 22
+      },
+      {
+        "baseline": {
+          "acs_incidence": 0.014013168733764516,
+          "asec_incidence": 0.018028942069815028,
+          "criterion_status": "FAIL",
+          "criterion_value": 1.3265580996694013,
+          "nonzero_rows": {
+            "acs": 13616,
+            "asec": 1935
+          },
+          "quantile_envelope_distance": 1.3265580996694013,
+          "ratio_acs_over_asec": 0.777259623970176,
+          "ratio_band_status": "out_of_band"
+        },
+        "best_arm_movement": {
+          "arms": [
+            "eligibility"
+          ],
+          "baseline_value": 1.3265580996694013,
+          "candidate_qed": 1.1576011157601116,
+          "candidate_ratio_band_status": "in_band",
+          "candidate_value": 1.1576011157601116,
+          "criterion_result": "still_red",
+          "direction": "toward_green"
+        },
+        "check_id": "person/puf_tax_itemization/social_security_disability[clone_0]/positive#quantile",
+        "classification": "BLOCKER",
+        "criterion": "quantile",
+        "leg_id": "person/puf_tax_itemization/social_security_disability[clone_0]/positive",
+        "ordinal": 23
+      },
+      {
+        "baseline": {
+          "acs_incidence": 0.003478000017835715,
+          "asec_incidence": 0.002137667908376034,
+          "criterion_status": "FAIL",
+          "criterion_value": 1.6270067039916964,
+          "nonzero_rows": {
+            "acs": 3180,
+            "asec": 263
+          },
+          "quantile_envelope_distance": 1.255813953488372,
+          "ratio_acs_over_asec": 1.6270067039916964,
+          "ratio_band_status": "out_of_band"
+        },
+        "best_arm_movement": {
+          "arms": [
+            "order",
+            "investment"
+          ],
+          "baseline_value": 1.6270067039916964,
+          "candidate_qed": 1.255813953488372,
+          "candidate_ratio_band_status": "out_of_band",
+          "candidate_value": 1.6270067039916964,
+          "criterion_result": "still_red",
+          "direction": "unchanged"
+        },
+        "check_id": "person/puf_tax_itemization/social_security_dependents[clone_0]/positive#incidence",
+        "classification": "BLOCKER",
+        "criterion": "incidence",
+        "leg_id": "person/puf_tax_itemization/social_security_dependents[clone_0]/positive",
+        "ordinal": 24
+      },
+      {
+        "baseline": {
+          "acs_incidence": 0.003478000017835715,
+          "asec_incidence": 0.002137667908376034,
+          "criterion_status": "FAIL",
+          "criterion_value": 1.255813953488372,
+          "nonzero_rows": {
+            "acs": 3180,
+            "asec": 263
+          },
+          "quantile_envelope_distance": 1.255813953488372,
+          "ratio_acs_over_asec": 1.6270067039916964,
+          "ratio_band_status": "out_of_band"
+        },
+        "best_arm_movement": {
+          "arms": [
+            "order",
+            "investment"
+          ],
+          "baseline_value": 1.255813953488372,
+          "candidate_qed": 1.255813953488372,
+          "candidate_ratio_band_status": "out_of_band",
+          "candidate_value": 1.255813953488372,
+          "criterion_result": "still_red",
+          "direction": "unchanged"
+        },
+        "check_id": "person/puf_tax_itemization/social_security_dependents[clone_0]/positive#quantile",
+        "classification": "BLOCKER",
+        "criterion": "quantile",
+        "leg_id": "person/puf_tax_itemization/social_security_dependents[clone_0]/positive",
+        "ordinal": 25
+      },
+      {
+        "baseline": {
+          "acs_incidence": 0.0031566702711862886,
+          "asec_incidence": 0.003714438292128042,
+          "criterion_status": "FAIL",
+          "criterion_value": 0.9842613410924481,
+          "nonzero_rows": {
+            "acs": 3094,
+            "asec": 398
+          },
+          "quantile_envelope_distance": 0.9842613410924481,
+          "ratio_acs_over_asec": 0.849837855127699,
+          "ratio_band_status": "in_band"
+        },
+        "best_arm_movement": {
+          "arms": [
+            "order",
+            "investment"
+          ],
+          "baseline_value": 0.9842613410924481,
+          "candidate_qed": 0.9842613410924481,
+          "candidate_ratio_band_status": "in_band",
+          "candidate_value": 0.9842613410924481,
+          "criterion_result": "still_red",
+          "direction": "unchanged"
+        },
+        "check_id": "person/puf_tax_itemization/social_security_survivors[clone_0]/positive#quantile",
+        "classification": "BLOCKER",
+        "criterion": "quantile",
+        "leg_id": "person/puf_tax_itemization/social_security_survivors[clone_0]/positive",
+        "ordinal": 26
+      },
+      {
+        "baseline": {
+          "acs_incidence": 0.0,
+          "asec_incidence": 1.4357302720622315e-05,
+          "criterion_status": "FAIL",
+          "criterion_value": 0.0,
+          "nonzero_rows": {
+            "acs": 0,
+            "asec": 2
+          },
+          "quantile_envelope_distance": null,
+          "ratio_acs_over_asec": 0.0,
+          "ratio_band_status": "out_of_band"
+        },
+        "best_arm_movement": {
+          "arms": [
+            "order",
+            "eligibility",
+            "investment"
+          ],
+          "baseline_value": 0.0,
+          "candidate_qed": null,
+          "candidate_ratio_band_status": "out_of_band",
+          "candidate_value": 0.0,
+          "criterion_result": "still_red",
+          "direction": "unchanged"
+        },
+        "check_id": "person/source_operator_retirement_distributions/keogh_distributions[clone_0]/positive#incidence",
+        "classification": "BLOCKER",
+        "criterion": "incidence",
+        "leg_id": "person/source_operator_retirement_distributions/keogh_distributions[clone_0]/positive",
+        "ordinal": 76
+      },
+      {
+        "baseline": {
+          "acs_incidence": 0.016687784613818434,
+          "asec_incidence": 0.021047631434205676,
+          "criterion_status": "FAIL",
+          "criterion_value": 0.7928580784010778,
+          "nonzero_rows": {
+            "acs": 16979,
+            "asec": 2057
+          },
+          "quantile_envelope_distance": 0.46153846153846156,
+          "ratio_acs_over_asec": 0.7928580784010778,
+          "ratio_band_status": "out_of_band"
+        },
+        "best_arm_movement": {
+          "arms": [
+            "eligibility"
+          ],
+          "baseline_value": 0.7928580784010778,
+          "candidate_qed": 0.44627239393814416,
+          "candidate_ratio_band_status": "in_band",
+          "candidate_value": 0.8040497478924599,
+          "criterion_result": "GREEN",
+          "direction": "to_green"
+        },
+        "check_id": "person/source_operator_retirement_distributions/taxable_401k_distributions[clone_0]/positive#incidence",
+        "classification": "BLOCKER",
+        "criterion": "incidence",
+        "leg_id": "person/source_operator_retirement_distributions/taxable_401k_distributions[clone_0]/positive",
+        "ordinal": 77
+      },
+      {
+        "baseline": {
+          "acs_incidence": 0.016687784613818434,
+          "asec_incidence": 0.021047631434205676,
+          "criterion_status": "FAIL",
+          "criterion_value": 0.46153846153846156,
+          "nonzero_rows": {
+            "acs": 16979,
+            "asec": 2057
+          },
+          "quantile_envelope_distance": 0.46153846153846156,
+          "ratio_acs_over_asec": 0.7928580784010778,
+          "ratio_band_status": "out_of_band"
+        },
+        "best_arm_movement": {
+          "arms": [
+            "eligibility"
+          ],
+          "baseline_value": 0.46153846153846156,
+          "candidate_qed": 0.44627239393814416,
+          "candidate_ratio_band_status": "in_band",
+          "candidate_value": 0.44627239393814416,
+          "criterion_result": "still_red",
+          "direction": "toward_green"
+        },
+        "check_id": "person/source_operator_retirement_distributions/taxable_401k_distributions[clone_0]/positive#quantile",
+        "classification": "BLOCKER",
+        "criterion": "quantile",
+        "leg_id": "person/source_operator_retirement_distributions/taxable_401k_distributions[clone_0]/positive",
+        "ordinal": 78
+      },
+      {
+        "baseline": {
+          "acs_incidence": 0.0011694466192512434,
+          "asec_incidence": 0.0016107958211948464,
+          "criterion_status": "FAIL",
+          "criterion_value": 0.7260054960806753,
+          "nonzero_rows": {
+            "acs": 1371,
+            "asec": 161
+          },
+          "quantile_envelope_distance": 1.4639175257731958,
+          "ratio_acs_over_asec": 0.7260054960806753,
+          "ratio_band_status": "out_of_band"
+        },
+        "best_arm_movement": {
+          "arms": [
+            "eligibility"
+          ],
+          "baseline_value": 0.7260054960806753,
+          "candidate_qed": 1.4639175257731958,
+          "candidate_ratio_band_status": "in_band",
+          "candidate_value": 1.0545176582599016,
+          "criterion_result": "GREEN",
+          "direction": "to_green"
+        },
+        "check_id": "person/source_operator_retirement_distributions/taxable_403b_distributions[clone_0]/positive#incidence",
+        "classification": "BLOCKER",
+        "criterion": "incidence",
+        "leg_id": "person/source_operator_retirement_distributions/taxable_403b_distributions[clone_0]/positive",
+        "ordinal": 79
+      },
+      {
+        "baseline": {
+          "acs_incidence": 0.0011694466192512434,
+          "asec_incidence": 0.0016107958211948464,
+          "criterion_status": "FAIL",
+          "criterion_value": 1.4639175257731958,
+          "nonzero_rows": {
+            "acs": 1371,
+            "asec": 161
+          },
+          "quantile_envelope_distance": 1.4639175257731958,
+          "ratio_acs_over_asec": 0.7260054960806753,
+          "ratio_band_status": "out_of_band"
+        },
+        "best_arm_movement": {
+          "arms": [
+            "order",
+            "eligibility",
+            "investment"
+          ],
+          "auxiliary_by_arm": {
+            "eligibility": {
+              "incidence_ratio_acs_over_asec": 1.0545176582599016,
+              "quantile_envelope_distance": 1.4639175257731958,
+              "ratio_band_status": "in_band"
+            },
+            "investment": {
+              "incidence_ratio_acs_over_asec": 0.7260054960806753,
+              "quantile_envelope_distance": 1.4639175257731958,
+              "ratio_band_status": "out_of_band"
+            },
+            "order": {
+              "incidence_ratio_acs_over_asec": 0.7260054960806753,
+              "quantile_envelope_distance": 1.4639175257731958,
+              "ratio_band_status": "out_of_band"
+            }
+          },
+          "baseline_value": 1.4639175257731958,
+          "candidate_qed": 1.4639175257731958,
+          "candidate_ratio_band_status": "mixed_by_arm",
+          "candidate_value": 1.4639175257731958,
+          "criterion_result": "still_red",
+          "direction": "unchanged"
+        },
+        "check_id": "person/source_operator_retirement_distributions/taxable_403b_distributions[clone_0]/positive#quantile",
+        "classification": "BLOCKER",
+        "criterion": "quantile",
+        "leg_id": "person/source_operator_retirement_distributions/taxable_403b_distributions[clone_0]/positive",
+        "ordinal": 80
+      },
+      {
+        "baseline": {
+          "acs_incidence": 0.011626781332931739,
+          "asec_incidence": 0.0006809676849103125,
+          "criterion_status": "FAIL",
+          "criterion_value": 17.073910540208754,
+          "nonzero_rows": {
+            "acs": 9406,
+            "asec": 61
+          },
+          "quantile_envelope_distance": 1.7696335078534031,
+          "ratio_acs_over_asec": 17.073910540208754,
+          "ratio_band_status": "out_of_band"
+        },
+        "best_arm_movement": {
+          "arms": [
+            "eligibility"
+          ],
+          "baseline_value": 17.073910540208754,
+          "candidate_qed": 1.7696335078534031,
+          "candidate_ratio_band_status": "out_of_band",
+          "candidate_value": 17.03625555679432,
+          "criterion_result": "still_red",
+          "direction": "toward_green"
+        },
+        "check_id": "person/source_operator_retirement_distributions/taxable_sep_distributions[clone_0]/positive#incidence",
+        "classification": "BLOCKER",
+        "criterion": "incidence",
+        "leg_id": "person/source_operator_retirement_distributions/taxable_sep_distributions[clone_0]/positive",
+        "ordinal": 81
+      },
+      {
+        "baseline": {
+          "acs_incidence": 0.011626781332931739,
+          "asec_incidence": 0.0006809676849103125,
+          "criterion_status": "FAIL",
+          "criterion_value": 1.7696335078534031,
+          "nonzero_rows": {
+            "acs": 9406,
+            "asec": 61
+          },
+          "quantile_envelope_distance": 1.7696335078534031,
+          "ratio_acs_over_asec": 17.073910540208754,
+          "ratio_band_status": "out_of_band"
+        },
+        "best_arm_movement": {
+          "arms": [
+            "order",
+            "eligibility",
+            "investment"
+          ],
+          "baseline_value": 1.7696335078534031,
+          "candidate_qed": 1.7696335078534031,
+          "candidate_ratio_band_status": "out_of_band",
+          "candidate_value": 1.7696335078534031,
+          "criterion_result": "still_red",
+          "direction": "unchanged"
+        },
+        "check_id": "person/source_operator_retirement_distributions/taxable_sep_distributions[clone_0]/positive#quantile",
+        "classification": "BLOCKER",
+        "criterion": "quantile",
+        "leg_id": "person/source_operator_retirement_distributions/taxable_sep_distributions[clone_0]/positive",
+        "ordinal": 82
+      }
+    ],
+    "source_base_commit": "7d6749990933ac072ac257ae76d666aa16b84d25"
+  },
+  "artifacts": {
+    "adjudication": {
+      "path": "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-arm-split/experiments/battery_burndown/adjudication.json",
+      "sha256": "1c1597c8080cf4e0db0079c2a3e1bc345001525bc3ec6c296aa7575b47136c32",
+      "size_bytes": 273539
+    },
+    "asec_raw_stage": {
+      "path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/591-pawtyp-pool/asec-producer-checkpoints/asec_raw_stage.checkpoint.h5",
+      "sha256": "51e9fafcd6f16140018fa90c7afbeb6d79008bfc8c122e437d23a399b30553fe",
+      "size_bytes": 653410492
+    },
+    "assembled_checkpoint": {
+      "path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/baseline1pct/pool.checkpoints/stacked/2e45c4d60f66b4321bc00ffa22816470bf162c59fd91956514832f97e066ed3c/assembled.checkpoint.h5",
+      "sha256": "754ceb74fc737a41b588003912ce58cdfe29a7f3c114c9aba26cd2e6ae9956bd",
+      "size_bytes": 81436524
+    },
+    "baseline_gates": {
+      "path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/baseline1pct/pool.gates.json",
+      "sha256": "1d6059868680f872fe04d452a536bcc3c215bafabb4c50d7740a469fe6a8b56a",
+      "size_bytes": 4794248
+    },
+    "baseline_pool": {
+      "path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/baseline1pct/pool.h5",
+      "sha256": "8ed64a03fdad77f7f1d3f9eea8e800a5f35b88bb7bb2a28c7d7b10b0632037f0",
+      "size_bytes": 154846429
+    },
+    "pkg3_gates": {
+      "path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/pkg3/pool.gates.json",
+      "sha256": "3ace0af0fd9e2ed6cb37cb110280f0c5cade182118c62737635c7ad177050ac3",
+      "size_bytes": 4813850
+    },
+    "pkg3_pool": {
+      "path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/pkg3/pool.h5",
+      "sha256": "2892596de1148711dc74da777b08e5fffec138ebc42253e34b32baf9d73886b9",
+      "size_bytes": 153333644
+    },
+    "target_checkpoints": {
+      "keogh_distributions": {
+        "path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/baseline1pct/pool.checkpoints/stacked/2e45c4d60f66b4321bc00ffa22816470bf162c59fd91956514832f97e066ed3c/acs-transfer/091dc2effbe638687de621f3ed4312f738489a58923bf1a7172ac5da8e3c6eb7/late_producer_dag/person/source_operator_retirement_distributions/targets/000__keogh_distributions.h5",
+        "sha256": "ccf2710a82c7078a0a6bfdbe39c17e7e39f57cc57c9b53573575b39854585708",
+        "size_bytes": 1584366
+      },
+      "social_security_dependents": {
+        "path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/baseline1pct/pool.checkpoints/stacked/2e45c4d60f66b4321bc00ffa22816470bf162c59fd91956514832f97e066ed3c/acs-transfer/091dc2effbe638687de621f3ed4312f738489a58923bf1a7172ac5da8e3c6eb7/asec_survey_to_acs/targets/030__social_security_dependents.h5",
+        "sha256": "c9b2f2870694ddc33f53979596d1d31dda4715a02481b3214fd470babebc25ea",
+        "size_bytes": 1249641
+      },
+      "social_security_disability": {
+        "path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/baseline1pct/pool.checkpoints/stacked/2e45c4d60f66b4321bc00ffa22816470bf162c59fd91956514832f97e066ed3c/acs-transfer/091dc2effbe638687de621f3ed4312f738489a58923bf1a7172ac5da8e3c6eb7/asec_survey_to_acs/targets/029__social_security_disability.h5",
+        "sha256": "e4841f0ba3c986d69469edc27e50065db4e3ad76a4abde9b7494d048a2c4e6b4",
+        "size_bytes": 1249526
+      },
+      "social_security_retirement": {
+        "path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/baseline1pct/pool.checkpoints/stacked/2e45c4d60f66b4321bc00ffa22816470bf162c59fd91956514832f97e066ed3c/acs-transfer/091dc2effbe638687de621f3ed4312f738489a58923bf1a7172ac5da8e3c6eb7/asec_survey_to_acs/targets/028__social_security_retirement.h5",
+        "sha256": "f13ede064316e51c1977a15088cc6e9a11bafe50cd69df0698315099ae1e39cc",
+        "size_bytes": 1250853
+      },
+      "social_security_survivors": {
+        "path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/baseline1pct/pool.checkpoints/stacked/2e45c4d60f66b4321bc00ffa22816470bf162c59fd91956514832f97e066ed3c/acs-transfer/091dc2effbe638687de621f3ed4312f738489a58923bf1a7172ac5da8e3c6eb7/asec_survey_to_acs/targets/031__social_security_survivors.h5",
+        "sha256": "d7e58ed45d1a7aa1aecaae34188b884f8c3715af8e47863109df2d36655e6a5b",
+        "size_bytes": 1249748
+      },
+      "tax_exempt_private_pension_income": {
+        "path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/baseline1pct/pool.checkpoints/stacked/2e45c4d60f66b4321bc00ffa22816470bf162c59fd91956514832f97e066ed3c/acs-transfer/091dc2effbe638687de621f3ed4312f738489a58923bf1a7172ac5da8e3c6eb7/asec_survey_to_acs/targets/018__tax_exempt_private_pension_income.h5",
+        "sha256": "bfaf519f1a7ba32b378a61a49a6f23ac621e98c8c49fae874902f44b5d0d7a82",
+        "size_bytes": 1250429
+      },
+      "taxable_401k_distributions": {
+        "path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/baseline1pct/pool.checkpoints/stacked/2e45c4d60f66b4321bc00ffa22816470bf162c59fd91956514832f97e066ed3c/acs-transfer/091dc2effbe638687de621f3ed4312f738489a58923bf1a7172ac5da8e3c6eb7/late_producer_dag/person/source_operator_retirement_distributions/targets/002__taxable_401k_distributions.h5",
+        "sha256": "dcaea8920d9fbcfeecd46b2c6576d46e90625aad1a9b54781cd91f193333db86",
+        "size_bytes": 1584657
+      },
+      "taxable_403b_distributions": {
+        "path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/baseline1pct/pool.checkpoints/stacked/2e45c4d60f66b4321bc00ffa22816470bf162c59fd91956514832f97e066ed3c/acs-transfer/091dc2effbe638687de621f3ed4312f738489a58923bf1a7172ac5da8e3c6eb7/late_producer_dag/person/source_operator_retirement_distributions/targets/003__taxable_403b_distributions.h5",
+        "sha256": "f43088f26bbb24032d754f11931c58b875cd216436fbd3d43faa23737f52fce2",
+        "size_bytes": 1584772
+      },
+      "taxable_ira_distributions": {
+        "path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/baseline1pct/pool.checkpoints/stacked/2e45c4d60f66b4321bc00ffa22816470bf162c59fd91956514832f97e066ed3c/acs-transfer/091dc2effbe638687de621f3ed4312f738489a58923bf1a7172ac5da8e3c6eb7/asec_survey_to_acs/targets/027__taxable_ira_distributions.h5",
+        "sha256": "eb8e38ecc77504b3301329f3619f02d6fcd42e6dfc8c56aee61759a4d99ae3e4",
+        "size_bytes": 1250739
+      },
+      "taxable_private_pension_income": {
+        "path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/baseline1pct/pool.checkpoints/stacked/2e45c4d60f66b4321bc00ffa22816470bf162c59fd91956514832f97e066ed3c/acs-transfer/091dc2effbe638687de621f3ed4312f738489a58923bf1a7172ac5da8e3c6eb7/asec_survey_to_acs/targets/026__taxable_private_pension_income.h5",
+        "sha256": "62f37d15cba851779e5f066c5248c3f4b0f0e3390646e5922c840c0ad38e6b93",
+        "size_bytes": 1250638
+      },
+      "taxable_sep_distributions": {
+        "path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/baseline1pct/pool.checkpoints/stacked/2e45c4d60f66b4321bc00ffa22816470bf162c59fd91956514832f97e066ed3c/acs-transfer/091dc2effbe638687de621f3ed4312f738489a58923bf1a7172ac5da8e3c6eb7/late_producer_dag/person/source_operator_retirement_distributions/targets/004__taxable_sep_distributions.h5",
+        "sha256": "5827b9ff27091276b1ff4102f446f4dffc420e574164a95f3f855621f9e7e4b2",
+        "size_bytes": 1584881
+      }
+    },
+    "transferred_checkpoint": {
+      "path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/baseline1pct/pool.checkpoints/stacked/2e45c4d60f66b4321bc00ffa22816470bf162c59fd91956514832f97e066ed3c/transferred.checkpoint.h5",
+      "sha256": "5ff70151a9ea9c9707e794995bb739abcd76ddc1401aea37299da41314a91d68",
+      "size_bytes": 258230475
+    }
+  },
+  "baseline_vs_pkg3": {
+    "pool_row_count": 80395,
+    "selected_gate_records_equal": true,
+    "selected_gate_records_sha256": "9f350b4efa9fb229c7e8bdc775f19e9e4d1a586199bb17361a6352cab1ead5ca",
+    "selected_pool_columns_bitwise_equal": true,
+    "selected_pool_columns_sha256": {
+      "keogh_distributions": "a9c9d1552d17fded2b698d036eef0debd8c8091db0d568b0a528d4bd2eea2004",
+      "person_household_id": "1975f7892a5a7cb835b7cc60e3f0e74c5c198bb3aeefcf996c579876187630fe",
+      "person_id": "e52736da3b420482e3f0a36761fa6191b5528460ef71d4b82b1ed28d288e1721",
+      "person_support_clone_index": "e5702d00c8a3060040f5d86a058d387ab79fa1c6bfc60cd9ea6f633e4ecad660",
+      "social_security_dependents": "4f439bf324748300202c33078fd95c3af649be15917d6aa7fa888c75290c119b",
+      "social_security_disability": "0a21d29e3251e4605af6952a3646c7b59f363c42026fc2dc3b485f856908dd61",
+      "social_security_retirement": "671ea9c564fadb8fd6a36451fb23ad1bf1f53abcd50fbb3f9e3cee13dffd5b69",
+      "social_security_survivors": "b642c9dd5e09c725ce4feb6f3444b54d36a80df00b9e3c8c7b99e9da5789b40a",
+      "tax_exempt_private_pension_income": "942daaf70467f88bb5d8bcf6d4bde342045b235d4486def7e47ca9e45670e575",
+      "taxable_401k_distributions": "26f762c23bb2bd6102a19b4b46dd6139be0904ed109da1945cbd14e7d727a915",
+      "taxable_403b_distributions": "853885450f7d60780e9aef989703b6449d3c60acbabf517a35c31a8925d6bcf4",
+      "taxable_ira_distributions": "167686c4ced3d795c1d6f35b3e65cbd127ed3b69a19c85cb01d89741f395b779",
+      "taxable_private_pension_income": "b0131a97486ecf600ad8a96c332a971945b38bee9c7cb9eaee5fc11f5676823d",
+      "taxable_sep_distributions": "ec6fc3641ee0ca12a19b5adfdd6fc83bdc426b3410c145e04ccfd293d52350f1"
+    },
+    "transferred_to_final_columns_bitwise_equal": true
+  },
+  "classifications": {
+    "concept_mismatch": [
+      "social_security_dependents",
+      "social_security_disability",
+      "social_security_retirement",
+      "social_security_survivors",
+      "tax_exempt_private_pension_income",
+      "taxable_private_pension_income"
+    ],
+    "dense_rung_refit_required": [
+      "keogh_distributions",
+      "taxable_401k_distributions",
+      "taxable_403b_distributions",
+      "taxable_ira_distributions",
+      "taxable_sep_distributions"
+    ],
+    "derivation_defect": [],
+    "owner_exclusions_added": []
+  },
+  "donor_support": {
+    "keogh_distributions": {
+      "donor_channel": "asec",
+      "donor_clone_index": 1,
+      "donor_index": {
+        "class_name": "Index",
+        "dtype": "int64",
+        "length": 4311,
+        "names_repr": "(None,)",
+        "sha256": "58b9edf0e1779a0e47534e0b385f5332e45b1f607ab93147cf8916c9a06a6a00"
+      },
+      "patterns": {
+        "pattern_00_36785ebf": {
+          "regime": "degenerate_zero",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 0,
+            "zero": 4311
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_01_c6777728": {
+          "regime": "degenerate_zero",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 0,
+            "zero": 4311
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_02_5e7dd311": {
+          "regime": "degenerate_zero",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 0,
+            "zero": 4311
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_03_76a0101a": {
+          "regime": "degenerate_zero",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 0,
+            "zero": 4311
+          },
+          "zero_atol": 1e-06
+        }
+      },
+      "regime": "degenerate_zero",
+      "sign_counts": {
+        "negative": 0,
+        "positive": 0,
+        "zero": 4311
+      },
+      "zero_atol": 1e-06
+    },
+    "social_security_dependents": {
+      "donor_channel": "asec",
+      "donor_clone_index": 0,
+      "donor_index": {
+        "class_name": "Index",
+        "dtype": "int64",
+        "length": 4311,
+        "names_repr": "(None,)",
+        "sha256": "58b9edf0e1779a0e47534e0b385f5332e45b1f607ab93147cf8916c9a06a6a00"
+      },
+      "patterns": {
+        "pattern_00_677f6490": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 14,
+            "zero": 4297
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_01_5874881e": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 14,
+            "zero": 4297
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_02_7c3bceda": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 14,
+            "zero": 4297
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_03_04f75638": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 14,
+            "zero": 4297
+          },
+          "zero_atol": 1e-06
+        }
+      },
+      "regime": "zero_inflated_positive",
+      "sign_counts": {
+        "negative": 0,
+        "positive": 14,
+        "zero": 4297
+      },
+      "zero_atol": 1e-06
+    },
+    "social_security_disability": {
+      "donor_channel": "asec",
+      "donor_clone_index": 0,
+      "donor_index": {
+        "class_name": "Index",
+        "dtype": "int64",
+        "length": 4311,
+        "names_repr": "(None,)",
+        "sha256": "58b9edf0e1779a0e47534e0b385f5332e45b1f607ab93147cf8916c9a06a6a00"
+      },
+      "patterns": {
+        "pattern_00_677f6490": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 64,
+            "zero": 4247
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_01_5874881e": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 64,
+            "zero": 4247
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_02_7c3bceda": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 64,
+            "zero": 4247
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_03_04f75638": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 64,
+            "zero": 4247
+          },
+          "zero_atol": 1e-06
+        }
+      },
+      "regime": "zero_inflated_positive",
+      "sign_counts": {
+        "negative": 0,
+        "positive": 64,
+        "zero": 4247
+      },
+      "zero_atol": 1e-06
+    },
+    "social_security_retirement": {
+      "donor_channel": "asec",
+      "donor_clone_index": 0,
+      "donor_index": {
+        "class_name": "Index",
+        "dtype": "int64",
+        "length": 4311,
+        "names_repr": "(None,)",
+        "sha256": "58b9edf0e1779a0e47534e0b385f5332e45b1f607ab93147cf8916c9a06a6a00"
+      },
+      "patterns": {
+        "pattern_00_677f6490": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 650,
+            "zero": 3661
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_01_5874881e": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 650,
+            "zero": 3661
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_02_7c3bceda": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 650,
+            "zero": 3661
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_03_04f75638": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 650,
+            "zero": 3661
+          },
+          "zero_atol": 1e-06
+        }
+      },
+      "regime": "zero_inflated_positive",
+      "sign_counts": {
+        "negative": 0,
+        "positive": 650,
+        "zero": 3661
+      },
+      "zero_atol": 1e-06
+    },
+    "social_security_survivors": {
+      "donor_channel": "asec",
+      "donor_clone_index": 0,
+      "donor_index": {
+        "class_name": "Index",
+        "dtype": "int64",
+        "length": 4311,
+        "names_repr": "(None,)",
+        "sha256": "58b9edf0e1779a0e47534e0b385f5332e45b1f607ab93147cf8916c9a06a6a00"
+      },
+      "patterns": {
+        "pattern_00_677f6490": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 12,
+            "zero": 4299
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_01_5874881e": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 12,
+            "zero": 4299
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_02_7c3bceda": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 12,
+            "zero": 4299
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_03_04f75638": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 12,
+            "zero": 4299
+          },
+          "zero_atol": 1e-06
+        }
+      },
+      "regime": "zero_inflated_positive",
+      "sign_counts": {
+        "negative": 0,
+        "positive": 12,
+        "zero": 4299
+      },
+      "zero_atol": 1e-06
+    },
+    "tax_exempt_private_pension_income": {
+      "donor_channel": "asec",
+      "donor_clone_index": 0,
+      "donor_index": {
+        "class_name": "Index",
+        "dtype": "int64",
+        "length": 4311,
+        "names_repr": "(None,)",
+        "sha256": "58b9edf0e1779a0e47534e0b385f5332e45b1f607ab93147cf8916c9a06a6a00"
+      },
+      "patterns": {
+        "pattern_00_677f6490": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 261,
+            "zero": 4050
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_01_5874881e": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 261,
+            "zero": 4050
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_02_7c3bceda": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 261,
+            "zero": 4050
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_03_04f75638": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 261,
+            "zero": 4050
+          },
+          "zero_atol": 1e-06
+        }
+      },
+      "regime": "zero_inflated_positive",
+      "sign_counts": {
+        "negative": 0,
+        "positive": 261,
+        "zero": 4050
+      },
+      "zero_atol": 1e-06
+    },
+    "taxable_401k_distributions": {
+      "donor_channel": "asec",
+      "donor_clone_index": 1,
+      "donor_index": {
+        "class_name": "Index",
+        "dtype": "int64",
+        "length": 4311,
+        "names_repr": "(None,)",
+        "sha256": "58b9edf0e1779a0e47534e0b385f5332e45b1f607ab93147cf8916c9a06a6a00"
+      },
+      "patterns": {
+        "pattern_00_36785ebf": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 62,
+            "zero": 4249
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_01_c6777728": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 62,
+            "zero": 4249
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_02_5e7dd311": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 62,
+            "zero": 4249
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_03_76a0101a": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 62,
+            "zero": 4249
+          },
+          "zero_atol": 1e-06
+        }
+      },
+      "regime": "zero_inflated_positive",
+      "sign_counts": {
+        "negative": 0,
+        "positive": 62,
+        "zero": 4249
+      },
+      "zero_atol": 1e-06
+    },
+    "taxable_403b_distributions": {
+      "donor_channel": "asec",
+      "donor_clone_index": 1,
+      "donor_index": {
+        "class_name": "Index",
+        "dtype": "int64",
+        "length": 4311,
+        "names_repr": "(None,)",
+        "sha256": "58b9edf0e1779a0e47534e0b385f5332e45b1f607ab93147cf8916c9a06a6a00"
+      },
+      "patterns": {
+        "pattern_00_36785ebf": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 1,
+            "zero": 4310
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_01_c6777728": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 1,
+            "zero": 4310
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_02_5e7dd311": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 1,
+            "zero": 4310
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_03_76a0101a": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 1,
+            "zero": 4310
+          },
+          "zero_atol": 1e-06
+        }
+      },
+      "regime": "zero_inflated_positive",
+      "sign_counts": {
+        "negative": 0,
+        "positive": 1,
+        "zero": 4310
+      },
+      "zero_atol": 1e-06
+    },
+    "taxable_ira_distributions": {
+      "donor_channel": "asec",
+      "donor_clone_index": 0,
+      "donor_index": {
+        "class_name": "Index",
+        "dtype": "int64",
+        "length": 4311,
+        "names_repr": "(None,)",
+        "sha256": "58b9edf0e1779a0e47534e0b385f5332e45b1f607ab93147cf8916c9a06a6a00"
+      },
+      "patterns": {
+        "pattern_00_677f6490": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 59,
+            "zero": 4252
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_01_5874881e": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 59,
+            "zero": 4252
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_02_7c3bceda": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 59,
+            "zero": 4252
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_03_04f75638": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 59,
+            "zero": 4252
+          },
+          "zero_atol": 1e-06
+        }
+      },
+      "regime": "zero_inflated_positive",
+      "sign_counts": {
+        "negative": 0,
+        "positive": 59,
+        "zero": 4252
+      },
+      "zero_atol": 1e-06
+    },
+    "taxable_private_pension_income": {
+      "donor_channel": "asec",
+      "donor_clone_index": 0,
+      "donor_index": {
+        "class_name": "Index",
+        "dtype": "int64",
+        "length": 4311,
+        "names_repr": "(None,)",
+        "sha256": "58b9edf0e1779a0e47534e0b385f5332e45b1f607ab93147cf8916c9a06a6a00"
+      },
+      "patterns": {
+        "pattern_00_677f6490": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 261,
+            "zero": 4050
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_01_5874881e": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 261,
+            "zero": 4050
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_02_7c3bceda": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 261,
+            "zero": 4050
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_03_04f75638": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 261,
+            "zero": 4050
+          },
+          "zero_atol": 1e-06
+        }
+      },
+      "regime": "zero_inflated_positive",
+      "sign_counts": {
+        "negative": 0,
+        "positive": 261,
+        "zero": 4050
+      },
+      "zero_atol": 1e-06
+    },
+    "taxable_sep_distributions": {
+      "donor_channel": "asec",
+      "donor_clone_index": 1,
+      "donor_index": {
+        "class_name": "Index",
+        "dtype": "int64",
+        "length": 4311,
+        "names_repr": "(None,)",
+        "sha256": "58b9edf0e1779a0e47534e0b385f5332e45b1f607ab93147cf8916c9a06a6a00"
+      },
+      "patterns": {
+        "pattern_00_36785ebf": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 2,
+            "zero": 4309
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_01_c6777728": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 2,
+            "zero": 4309
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_02_5e7dd311": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 2,
+            "zero": 4309
+          },
+          "zero_atol": 1e-06
+        },
+        "pattern_03_76a0101a": {
+          "regime": "zero_inflated_positive",
+          "sign_counts": {
+            "negative": 0,
+            "positive": 2,
+            "zero": 4309
+          },
+          "zero_atol": 1e-06
+        }
+      },
+      "regime": "zero_inflated_positive",
+      "sign_counts": {
+        "negative": 0,
+        "positive": 2,
+        "zero": 4309
+      },
+      "zero_atol": 1e-06
+    }
+  },
+  "legs": {
+    "keogh_distributions": {
+      "classification": "dense_rung_refit_required",
+      "code_citations": [
+        "packages/microcosm-build/src/microcosm/build/us_runtime/retirement_distributions.py:97-112,210-269,336-473",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8340-8483,8518-8538,8631-8729",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:186-212,1247-1380,1411-1648"
+      ],
+      "equation": "sum_s(1[DST_SC_s == 5] * DST_VAL_s), s in {1,2,1_YNG,2_YNG}",
+      "family": "source_operator_retirement_distributions",
+      "source_columns": [
+        "DST_SC1",
+        "DST_VAL1",
+        "DST_SC2",
+        "DST_VAL2",
+        "DST_SC1_YNG",
+        "DST_VAL1_YNG",
+        "DST_SC2_YNG",
+        "DST_VAL2_YNG"
+      ],
+      "stage": "late_producer_dag",
+      "where_asec_vs_acs_disagreement_enters": "ACS supplies only combined RETP, and the late fit uses ASEC-origin clone-1 output from the internal CPS-trained PUF-role QRF instead of the exact ASEC clone-0 account label"
+    },
+    "social_security_dependents": {
+      "classification": "concept_mismatch",
+      "code_citations": [
+        "packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:355-410",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7581-7698,7808-7820",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:148-164,186-212,1891-1966"
+      ],
+      "equation": "SS_VAL assigned by precedence retirement > disability > survivors > dependents; unclassified uses age 62",
+      "family": "puf_tax_itemization__batch_2",
+      "source_columns": [
+        "SS_VAL",
+        "RESNSS1",
+        "RESNSS2",
+        "A_AGE"
+      ],
+      "stage": "early_asec_survey_to_acs",
+      "where_asec_vs_acs_disagreement_enters": "ASEC partitions SS_VAL by RESNSS1/RESNSS2 precedence, while ACS supplies only combined SSP; the four component labels are unobserved"
+    },
+    "social_security_disability": {
+      "classification": "concept_mismatch",
+      "code_citations": [
+        "packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:355-410",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7581-7698,7808-7820",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:148-164,186-212,1891-1966"
+      ],
+      "equation": "SS_VAL assigned by precedence retirement > disability > survivors > dependents; unclassified uses age 62",
+      "family": "puf_tax_itemization__batch_2",
+      "source_columns": [
+        "SS_VAL",
+        "RESNSS1",
+        "RESNSS2",
+        "A_AGE"
+      ],
+      "stage": "early_asec_survey_to_acs",
+      "where_asec_vs_acs_disagreement_enters": "ASEC partitions SS_VAL by RESNSS1/RESNSS2 precedence, while ACS supplies only combined SSP; the four component labels are unobserved"
+    },
+    "social_security_retirement": {
+      "classification": "concept_mismatch",
+      "code_citations": [
+        "packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:355-410",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7581-7698,7808-7820",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:148-164,186-212,1891-1966"
+      ],
+      "equation": "SS_VAL assigned by precedence retirement > disability > survivors > dependents; unclassified uses age 62",
+      "family": "puf_tax_itemization__batch_1",
+      "source_columns": [
+        "SS_VAL",
+        "RESNSS1",
+        "RESNSS2",
+        "A_AGE"
+      ],
+      "stage": "early_asec_survey_to_acs",
+      "where_asec_vs_acs_disagreement_enters": "ASEC partitions SS_VAL by RESNSS1/RESNSS2 precedence, while ACS supplies only combined SSP; the four component labels are unobserved"
+    },
+    "social_security_survivors": {
+      "classification": "concept_mismatch",
+      "code_citations": [
+        "packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:355-410",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7581-7698,7808-7820",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:148-164,186-212,1891-1966"
+      ],
+      "equation": "SS_VAL assigned by precedence retirement > disability > survivors > dependents; unclassified uses age 62",
+      "family": "puf_tax_itemization__batch_2",
+      "source_columns": [
+        "SS_VAL",
+        "RESNSS1",
+        "RESNSS2",
+        "A_AGE"
+      ],
+      "stage": "early_asec_survey_to_acs",
+      "where_asec_vs_acs_disagreement_enters": "ASEC partitions SS_VAL by RESNSS1/RESNSS2 precedence, while ACS supplies only combined SSP; the four component labels are unobserved"
+    },
+    "tax_exempt_private_pension_income": {
+      "classification": "concept_mismatch",
+      "code_citations": [
+        "packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:41-43",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:188-200",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:345-362",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:148-164,186-212,1891-1966"
+      ],
+      "equation": "(PNSN_VAL + ANN_VAL) * (1 - 0.590), missing sources := 0",
+      "family": "model_required_numeric",
+      "source_columns": [
+        "PNSN_VAL",
+        "ANN_VAL",
+        "PEN_SC1",
+        "PEN_SC2"
+      ],
+      "stage": "early_asec_survey_to_acs",
+      "where_asec_vs_acs_disagreement_enters": "ASEC turns one PNSN_VAL-plus-ANN_VAL total into this 59/41 leaf, while ACS supplies only combined RETP and the pension leaves are predicted in independent transfer chains"
+    },
+    "taxable_401k_distributions": {
+      "classification": "dense_rung_refit_required",
+      "code_citations": [
+        "packages/microcosm-build/src/microcosm/build/us_runtime/retirement_distributions.py:97-112,210-269,336-473",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8340-8483,8518-8538,8631-8729",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:186-212,1247-1380,1411-1648"
+      ],
+      "equation": "sum_s(1[DST_SC_s == 1] * DST_VAL_s), s in {1,2,1_YNG,2_YNG}",
+      "family": "source_operator_retirement_distributions",
+      "source_columns": [
+        "DST_SC1",
+        "DST_VAL1",
+        "DST_SC2",
+        "DST_VAL2",
+        "DST_SC1_YNG",
+        "DST_VAL1_YNG",
+        "DST_SC2_YNG",
+        "DST_VAL2_YNG"
+      ],
+      "stage": "late_producer_dag",
+      "where_asec_vs_acs_disagreement_enters": "ACS supplies only combined RETP, and the late fit uses ASEC-origin clone-1 output from the internal CPS-trained PUF-role QRF instead of the exact ASEC clone-0 account label"
+    },
+    "taxable_403b_distributions": {
+      "classification": "dense_rung_refit_required",
+      "code_citations": [
+        "packages/microcosm-build/src/microcosm/build/us_runtime/retirement_distributions.py:97-112,210-269,336-473",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8340-8483,8518-8538,8631-8729",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:186-212,1247-1380,1411-1648"
+      ],
+      "equation": "sum_s(1[DST_SC_s == 2] * DST_VAL_s), s in {1,2,1_YNG,2_YNG}",
+      "family": "source_operator_retirement_distributions",
+      "source_columns": [
+        "DST_SC1",
+        "DST_VAL1",
+        "DST_SC2",
+        "DST_VAL2",
+        "DST_SC1_YNG",
+        "DST_VAL1_YNG",
+        "DST_SC2_YNG",
+        "DST_VAL2_YNG"
+      ],
+      "stage": "late_producer_dag",
+      "where_asec_vs_acs_disagreement_enters": "ACS supplies only combined RETP, and the late fit uses ASEC-origin clone-1 output from the internal CPS-trained PUF-role QRF instead of the exact ASEC clone-0 account label"
+    },
+    "taxable_ira_distributions": {
+      "classification": "dense_rung_refit_required",
+      "code_citations": [
+        "packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:490-500",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/retirement_distributions.py:97-112,210-333",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/multispine_pool.py:582-586,1936-1942,1959-1988,2095-2164",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:186-212,1891-1966"
+      ],
+      "equation": "sum_s(1[DST_SC_s == 4] * DST_VAL_s), s in {1,2,1_YNG,2_YNG}",
+      "family": "puf_tax_itemization__batch_1",
+      "source_columns": [
+        "DST_SC1",
+        "DST_VAL1",
+        "DST_SC2",
+        "DST_VAL2",
+        "DST_SC1_YNG",
+        "DST_VAL1_YNG",
+        "DST_SC2_YNG",
+        "DST_VAL2_YNG"
+      ],
+      "stage": "early_asec_survey_to_acs",
+      "where_asec_vs_acs_disagreement_enters": "ASEC supplies the exact code-4 account label, while ACS has no IRA leaf and supplies only combined RETP as an optional predictor"
+    },
+    "taxable_private_pension_income": {
+      "classification": "concept_mismatch",
+      "code_citations": [
+        "packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:41-43",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:188-200",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:345-362",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:148-164,186-212,1891-1966"
+      ],
+      "equation": "(PNSN_VAL + ANN_VAL) * 0.590, missing sources := 0",
+      "family": "puf_tax_itemization__batch_1",
+      "source_columns": [
+        "PNSN_VAL",
+        "ANN_VAL",
+        "PEN_SC1",
+        "PEN_SC2"
+      ],
+      "stage": "early_asec_survey_to_acs",
+      "where_asec_vs_acs_disagreement_enters": "ASEC turns one PNSN_VAL-plus-ANN_VAL total into this 59/41 leaf, while ACS supplies only combined RETP and the pension leaves are predicted in independent transfer chains"
+    },
+    "taxable_sep_distributions": {
+      "classification": "dense_rung_refit_required",
+      "code_citations": [
+        "packages/microcosm-build/src/microcosm/build/us_runtime/retirement_distributions.py:97-112,210-269,336-473",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8340-8483,8518-8538,8631-8729",
+        "packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:186-212,1247-1380,1411-1648"
+      ],
+      "equation": "sum_s(1[DST_SC_s == 6] * DST_VAL_s), s in {1,2,1_YNG,2_YNG}",
+      "family": "source_operator_retirement_distributions",
+      "source_columns": [
+        "DST_SC1",
+        "DST_VAL1",
+        "DST_SC2",
+        "DST_VAL2",
+        "DST_SC1_YNG",
+        "DST_VAL1_YNG",
+        "DST_SC2_YNG",
+        "DST_VAL2_YNG"
+      ],
+      "stage": "late_producer_dag",
+      "where_asec_vs_acs_disagreement_enters": "ACS supplies only combined RETP, and the late fit uses ASEC-origin clone-1 output from the internal CPS-trained PUF-role QRF instead of the exact ASEC clone-0 account label"
+    }
+  },
+  "schema_version": 1,
+  "scope": {
+    "battery_min_effective_support": 5,
+    "builds_run": 0,
+    "frozen_sample_fraction": 0.01,
+    "frozen_sample_seed": 578,
+    "model_seed": 0,
+    "negative_sign_carriers_total": 0,
+    "retirement_failed_checks_at_f025": 16,
+    "retirement_physical_legs": 11,
+    "stacked_checkpoint_directory_identity": "2e45c4d60f66b4321bc00ffa22816470bf162c59fd91956514832f97e066ed3c",
+    "stacked_checkpoint_directory_path": "/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/baseline1pct/pool.checkpoints/stacked/2e45c4d60f66b4321bc00ffa22816470bf162c59fd91956514832f97e066ed3c"
+  },
+  "source_detail": {
+    "distribution_slots": {
+      "1": {
+        "account_code_carriers": {
+          "1": 58,
+          "2": 4,
+          "3": 7,
+          "4": 47,
+          "5": 0,
+          "6": 4
+        },
+        "positive_amount_rows": 130
+      },
+      "1_YNG": {
+        "account_code_carriers": {
+          "1": 28,
+          "2": 1,
+          "3": 1,
+          "4": 6,
+          "5": 0,
+          "6": 0
+        },
+        "positive_amount_rows": 38
+      },
+      "2": {
+        "account_code_carriers": {
+          "1": 0,
+          "2": 1,
+          "3": 2,
+          "4": 6,
+          "5": 0,
+          "6": 0
+        },
+        "positive_amount_rows": 10
+      },
+      "2_YNG": {
+        "account_code_carriers": {
+          "1": 0,
+          "2": 0,
+          "3": 1,
+          "4": 0,
+          "5": 0,
+          "6": 0
+        },
+        "positive_amount_rows": 1
+      }
+    },
+    "pension_sources": {
+      "ANN_VAL_positive": 45,
+      "ANN_VAL_positive_sum": 731384.0,
+      "PNSN_VAL_and_ANN_VAL_positive": 18,
+      "PNSN_VAL_positive": 234,
+      "PNSN_VAL_positive_sum": 6100418.0,
+      "combined": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 180000.0,
+          "min": 12.0,
+          "sum": 6831802.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 261,
+          "zero": 4050
+        },
+        "sum": 6831802.0,
+        "values_sha256": "acb01e9e4ac7ee9e47933bd805dc59814144c10a1b471676d677f2e3885a174a"
+      },
+      "current_derivation": "private_taxable=0.590*(PNSN_VAL+ANN_VAL); private_tax_exempt=0.410*(PNSN_VAL+ANN_VAL); PEN_SC1/PEN_SC2 are ignored",
+      "deterministic_government_to_private_misclassification": {
+        "PNSN_VAL_sum": 3361227.0,
+        "current_private_tax_exempt_amount": 1378103.07,
+        "current_private_taxable_amount": 1983123.93,
+        "rows": 83
+      },
+      "owner_declared_absence_proposal": {
+        "ambiguous_combined_amount": 1804558.0,
+        "ambiguous_rows": 56,
+        "equation": "P=nz(PNSN_VAL), N=nz(ANN_VAL), R={nonzero PEN_SC1,PEN_SC2}, Rpriv=R intersect {1,2}, Rpub=R intersect {3,4,5,6}; A=1[N>0 or (P>0 and (R intersects {7,8} or Rpriv and Rpub or |Rpriv union Rpub|=0))]; if P=N=0 all four pension leaves=0; if A=0 and R subset {1,2}, private taxable/exempt=(.590P,.410P) and public=(0,0); if A=0 and R subset {3,4,5,6}, public taxable/exempt=(.590P,.410P) and private=(0,0); if A=1 all four leaves=NA (declared absent)",
+        "owner_action": "adjudication_required; no exclusion implemented"
+      },
+      "persisted_source_limitation": "PEN_VAL1/PEN_VAL2 source-specific amounts are not present in the frozen raw, assembled, or transferred checkpoints",
+      "source_categories": {
+        "government_only_codes_3_to_6": {
+          "ANN_VAL_positive_rows": 12,
+          "ANN_VAL_sum": 235220.0,
+          "PNSN_VAL_sum": 3361227.0,
+          "combined_sum": 3596447.0,
+          "rows": 83
+        },
+        "mixed_private_and_government": {
+          "ANN_VAL_positive_rows": 0,
+          "ANN_VAL_sum": 0.0,
+          "PNSN_VAL_sum": 90214.0,
+          "combined_sum": 90214.0,
+          "rows": 4
+        },
+        "private_only_codes_1_or_2": {
+          "ANN_VAL_positive_rows": 6,
+          "ANN_VAL_sum": 88284.0,
+          "PNSN_VAL_sum": 2535409.0,
+          "combined_sum": 2623693.0,
+          "rows": 140
+        },
+        "unresolved_code_7_8_or_no_recognized_code": {
+          "ANN_VAL_positive_rows": 0,
+          "ANN_VAL_sum": 0.0,
+          "PNSN_VAL_sum": 113568.0,
+          "combined_sum": 113568.0,
+          "rows": 7
+        }
+      },
+      "source_code_pairs_on_positive_PNSN_VAL": {
+        "(1,0)": 111,
+        "(1,2)": 1,
+        "(1,4)": 2,
+        "(1,6)": 1,
+        "(2,0)": 28,
+        "(2,4)": 1,
+        "(3,0)": 13,
+        "(3,6)": 1,
+        "(4,0)": 40,
+        "(4,5)": 1,
+        "(4,8)": 1,
+        "(5,0)": 22,
+        "(6,0)": 6,
+        "(8,0)": 6
+      }
+    },
+    "social_security_declared_absence_proposal": {
+      "ambiguous_positive_amount": 744734.0,
+      "ambiguous_positive_rows": 35,
+      "equation": "C(0)=empty,C(1)={R},C(2)={D},C(3)=C(5)={S},C(4)=C(6)={P}; U=C(RESNSS1) union C(RESNSS2); A=1[SS_VAL>0 and (RESNSS1 or RESNSS2 in {7,8} or |U|!=1)]; Y_k=0 if SS_VAL=0; Y_k=SS_VAL*1[U={k}] if A=0; Y_k=NA (declared absent) if A=1",
+      "owner_action": "adjudication_required; no exclusion implemented",
+      "positive_reason_pairs": {
+        "(1,0)": 623,
+        "(1,2)": 4,
+        "(1,3)": 6,
+        "(1,4)": 1,
+        "(1,8)": 1,
+        "(2,0)": 63,
+        "(3,0)": 9,
+        "(4,0)": 5,
+        "(5,0)": 3,
+        "(6,0)": 2,
+        "(7,0)": 7,
+        "(8,0)": 16
+      },
+      "reason_7_or_8_amount": 495214.0,
+      "reason_7_or_8_rows": 24,
+      "recognized_cardinality_not_one_amount": 249520.0,
+      "recognized_cardinality_not_one_rows": 11
+    }
+  },
+  "source_schema_and_carriage": {
+    "assembled_to_transferred_asec_clone0": {
+      "person_rows": 4311,
+      "source_columns": [
+        "ANN_VAL",
+        "A_AGE",
+        "DST_SC1",
+        "DST_SC1_YNG",
+        "DST_SC2",
+        "DST_SC2_YNG",
+        "DST_VAL1",
+        "DST_VAL1_YNG",
+        "DST_VAL2",
+        "DST_VAL2_YNG",
+        "PEN_SC1",
+        "PEN_SC2",
+        "PNSN_VAL",
+        "RESNSS1",
+        "RESNSS2",
+        "SS_VAL"
+      ],
+      "values_equal_with_missing_preserved": true
+    },
+    "checkpoint_schema_versions": {
+      "asec_raw_stage": 2,
+      "assembled": 2,
+      "transferred": 3
+    },
+    "pension_source_specific_amount_columns": {
+      "absent_columns": [
+        "PEN_VAL1",
+        "PEN_VAL2"
+      ],
+      "absent_from": [
+        "asec_raw_stage",
+        "assembled",
+        "transferred"
+      ]
+    },
+    "raw_to_assembled_asec_clone0": {
+      "join": "raw.person_id == assembled.person_source_id",
+      "person_rows": 4311,
+      "source_columns": [
+        "ANN_VAL",
+        "A_AGE",
+        "DST_SC1",
+        "DST_SC1_YNG",
+        "DST_SC2",
+        "DST_SC2_YNG",
+        "DST_VAL1",
+        "DST_VAL1_YNG",
+        "DST_VAL2",
+        "DST_VAL2_YNG",
+        "PEN_SC1",
+        "PEN_SC2",
+        "PNSN_VAL",
+        "RESNSS1",
+        "RESNSS2",
+        "SS_VAL"
+      ],
+      "source_person_ids_unique_and_resolved": true,
+      "values_equal_with_missing_preserved": true
+    }
+  },
+  "source_to_clone0_reconciliation": {
+    "keogh_distributions": {
+      "bitwise_equal": true,
+      "clone0_target": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": null,
+          "min": null,
+          "sum": 0.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "zero": 4311
+        },
+        "sum": 0.0,
+        "values_sha256": "7d97e0737ee98853d3be9cec5f006d90b0e3a58d89eae523ff72240ade48c83d"
+      },
+      "max_absolute_error": 0.0,
+      "source_derived": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": null,
+          "min": null,
+          "sum": 0.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "zero": 4311
+        },
+        "sum": 0.0,
+        "values_sha256": "7d97e0737ee98853d3be9cec5f006d90b0e3a58d89eae523ff72240ade48c83d"
+      }
+    },
+    "social_security_dependents": {
+      "bitwise_equal": true,
+      "clone0_target": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 30779.0,
+          "min": 2640.0,
+          "sum": 214420.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 14,
+          "zero": 4297
+        },
+        "sum": 214420.0,
+        "values_sha256": "737b4bb46d6c592ecbe47e20ae912959a8c56dfdafb0ceb0f0d4f1110d5e9d2e"
+      },
+      "max_absolute_error": 0.0,
+      "source_derived": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 30779.0,
+          "min": 2640.0,
+          "sum": 214420.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 14,
+          "zero": 4297
+        },
+        "sum": 214420.0,
+        "values_sha256": "737b4bb46d6c592ecbe47e20ae912959a8c56dfdafb0ceb0f0d4f1110d5e9d2e"
+      }
+    },
+    "social_security_disability": {
+      "bitwise_equal": true,
+      "clone0_target": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 50000.0,
+          "min": 2622.0,
+          "sum": 967357.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 64,
+          "zero": 4247
+        },
+        "sum": 967357.0,
+        "values_sha256": "f392b5d377cf7ad289638bb6d4a9ab1ddd0a4eec1333aad5cc8f69e86ddcd8d5"
+      },
+      "max_absolute_error": 0.0,
+      "source_derived": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 50000.0,
+          "min": 2622.0,
+          "sum": 967357.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 64,
+          "zero": 4247
+        },
+        "sum": 967357.0,
+        "values_sha256": "f392b5d377cf7ad289638bb6d4a9ab1ddd0a4eec1333aad5cc8f69e86ddcd8d5"
+      }
+    },
+    "social_security_retirement": {
+      "bitwise_equal": true,
+      "clone0_target": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 60000.0,
+          "min": 1.0,
+          "sum": 12947542.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 650,
+          "zero": 3661
+        },
+        "sum": 12947542.0,
+        "values_sha256": "8ef0e3786aa8f8a6fa7c69f6e4f37d5198c52315a1085189ba0110fdbd0a43a6"
+      },
+      "max_absolute_error": 0.0,
+      "source_derived": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 60000.0,
+          "min": 1.0,
+          "sum": 12947542.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 650,
+          "zero": 3661
+        },
+        "sum": 12947542.0,
+        "values_sha256": "8ef0e3786aa8f8a6fa7c69f6e4f37d5198c52315a1085189ba0110fdbd0a43a6"
+      }
+    },
+    "social_security_survivors": {
+      "bitwise_equal": true,
+      "clone0_target": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 26832.0,
+          "min": 4948.0,
+          "sum": 197443.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 12,
+          "zero": 4299
+        },
+        "sum": 197443.0,
+        "values_sha256": "2333a600b544a6d8517056cf3380f3c1d346333b876521579754b68777fd8f90"
+      },
+      "max_absolute_error": 0.0,
+      "source_derived": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 26832.0,
+          "min": 4948.0,
+          "sum": 197443.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 12,
+          "zero": 4299
+        },
+        "sum": 197443.0,
+        "values_sha256": "2333a600b544a6d8517056cf3380f3c1d346333b876521579754b68777fd8f90"
+      }
+    },
+    "tax_exempt_private_pension_income": {
+      "bitwise_equal": true,
+      "clone0_target": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 73800.0,
+          "min": 4.92,
+          "sum": 2801038.8200000003
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 261,
+          "zero": 4050
+        },
+        "sum": 2801038.8200000003,
+        "values_sha256": "22535df1ccc6edb20660228e04611238851b4a9f1941c9a30cfbaef743d23fff"
+      },
+      "max_absolute_error": 0.0,
+      "source_derived": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 73800.0,
+          "min": 4.92,
+          "sum": 2801038.8200000003
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 261,
+          "zero": 4050
+        },
+        "sum": 2801038.8200000003,
+        "values_sha256": "22535df1ccc6edb20660228e04611238851b4a9f1941c9a30cfbaef743d23fff"
+      }
+    },
+    "taxable_401k_distributions": {
+      "bitwise_equal": true,
+      "clone0_target": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 360000.0,
+          "min": 36.0,
+          "sum": 1654192.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 86,
+          "zero": 4225
+        },
+        "sum": 1654192.0,
+        "values_sha256": "b384db0102d2713eeaaa8f4022e902c1391703e59f342225eb2a437f227faea0"
+      },
+      "max_absolute_error": 0.0,
+      "source_derived": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 360000.0,
+          "min": 36.0,
+          "sum": 1654192.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 86,
+          "zero": 4225
+        },
+        "sum": 1654192.0,
+        "values_sha256": "b384db0102d2713eeaaa8f4022e902c1391703e59f342225eb2a437f227faea0"
+      }
+    },
+    "taxable_403b_distributions": {
+      "bitwise_equal": true,
+      "clone0_target": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 19000.0,
+          "min": 3000.0,
+          "sum": 58512.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 6,
+          "zero": 4305
+        },
+        "sum": 58512.0,
+        "values_sha256": "9eb6c91fd9ba80d4c5705c39b152c45a1ee69a272c252ffdaa22c952519f3f7b"
+      },
+      "max_absolute_error": 0.0,
+      "source_derived": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 19000.0,
+          "min": 3000.0,
+          "sum": 58512.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 6,
+          "zero": 4305
+        },
+        "sum": 58512.0,
+        "values_sha256": "9eb6c91fd9ba80d4c5705c39b152c45a1ee69a272c252ffdaa22c952519f3f7b"
+      }
+    },
+    "taxable_ira_distributions": {
+      "bitwise_equal": true,
+      "clone0_target": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 150000.0,
+          "min": 400.0,
+          "sum": 1253493.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 59,
+          "zero": 4252
+        },
+        "sum": 1253493.0,
+        "values_sha256": "378d7c80c1fdf7a2d45390740d6f3b4178bf773a0e7820c545d0ab520f8d5b44"
+      },
+      "max_absolute_error": 0.0,
+      "source_derived": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 150000.0,
+          "min": 400.0,
+          "sum": 1253493.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 59,
+          "zero": 4252
+        },
+        "sum": 1253493.0,
+        "values_sha256": "378d7c80c1fdf7a2d45390740d6f3b4178bf773a0e7820c545d0ab520f8d5b44"
+      }
+    },
+    "taxable_private_pension_income": {
+      "bitwise_equal": true,
+      "clone0_target": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 106200.0,
+          "min": 7.08,
+          "sum": 4030763.18
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 261,
+          "zero": 4050
+        },
+        "sum": 4030763.1799999997,
+        "values_sha256": "1933c3dc8fc4f222a0f21e3fd8341fa201046edddade9ffc835d6629d0b9c23f"
+      },
+      "max_absolute_error": 0.0,
+      "source_derived": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 106200.0,
+          "min": 7.08,
+          "sum": 4030763.18
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 261,
+          "zero": 4050
+        },
+        "sum": 4030763.1799999997,
+        "values_sha256": "1933c3dc8fc4f222a0f21e3fd8341fa201046edddade9ffc835d6629d0b9c23f"
+      }
+    },
+    "taxable_sep_distributions": {
+      "bitwise_equal": true,
+      "clone0_target": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 17000.0,
+          "min": 200.0,
+          "sum": 22630.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 4,
+          "zero": 4307
+        },
+        "sum": 22630.0,
+        "values_sha256": "fa92b41f34c02a9d0c2318a08b1fa2c56bb66437c10984ceb81c28fd46754e8a"
+      },
+      "max_absolute_error": 0.0,
+      "source_derived": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 17000.0,
+          "min": 200.0,
+          "sum": 22630.0
+        },
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 4,
+          "zero": 4307
+        },
+        "sum": 22630.0,
+        "values_sha256": "fa92b41f34c02a9d0c2318a08b1fa2c56bb66437c10984ceb81c28fd46754e8a"
+      }
+    }
+  },
+  "target_bank": {
+    "keogh_distributions": {
+      "checkpoint_sha256": "ccf2710a82c7078a0a6bfdbe39c17e7e39f57cc57c9b53573575b39854585708",
+      "content_metadata_sha256": "f1ac5b21e04b12b1ec9d5b7c5bad7e2e3850ba36413609834c57af5cc2be9308",
+      "identity_sha256": "663ce01c1b8cb65f181ea06a625685d521d6901a57a88daac57fd6a1cb6f231d",
+      "patterns": [
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 2593627294,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_00_36785ebf",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 36,
+            "names_repr": "(None,)",
+            "sha256": "b1e5617182773b43207b63a4b84587ea24de2efcdfb8e6c44b469f6da22b0180"
+          },
+          "state_before_sha256": "c04898daef1cdaa522ec13e63f3c712ec21aa29ff64d20500f4427ce45e595a5",
+          "weight_kind": "importance",
+          "weight_sha256": "141adbb2d200be00b34fd7a3660f2f769cdec3b7ea168757c7fa931729e18c52"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 1021650046,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_01_c6777728",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_interest_dividend_rental_income",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 4073,
+            "names_repr": "(None,)",
+            "sha256": "e1e8710dccdb6152ca1e6543e3d138ab6442140f50ace1f59c52442967c5e800"
+          },
+          "state_before_sha256": "4fcef12867034826b59dd7547a9c400ca28b110f8bc900e5dea56e6a20be2991",
+          "weight_kind": "importance",
+          "weight_sha256": "141adbb2d200be00b34fd7a3660f2f769cdec3b7ea168757c7fa931729e18c52"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 1130471859,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_02_5e7dd311",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 10850,
+            "names_repr": "(None,)",
+            "sha256": "b0e52a65d1c8e1a8865ae19286ca32ff95e62ca95eebd8b80f0a617aa4f40312"
+          },
+          "state_before_sha256": "d0687785f47d0011f803b5831411a59820d68bfa014cee96833d2856162fcc92",
+          "weight_kind": "importance",
+          "weight_sha256": "141adbb2d200be00b34fd7a3660f2f769cdec3b7ea168757c7fa931729e18c52"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 954292944,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_03_76a0101a",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_interest_dividend_rental_income",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 56469,
+            "names_repr": "(None,)",
+            "sha256": "991604b9b8a9c82c8126cb053e51e3f2839d109da6bd3b62b76f3a20c3f4ab62"
+          },
+          "state_before_sha256": "3ad9c557414c226e9f3a751ab95e1b488269dff704a030a76321c6186486092d",
+          "weight_kind": "importance",
+          "weight_sha256": "141adbb2d200be00b34fd7a3660f2f769cdec3b7ea168757c7fa931729e18c52"
+        }
+      ],
+      "raw_draw_finite_modeled_rows": 71428,
+      "raw_draw_rows": 80395,
+      "raw_draw_sha256": "74a5ba958dad1499e160092240730191c5241594db19816db6c0a857987edd61",
+      "raw_draw_structural_nan_rows": 8967,
+      "target_descriptor": {
+        "entity": "person",
+        "exported_targets": [
+          "keogh_distributions"
+        ],
+        "family": "source_operator_retirement_distributions",
+        "family_targets": [
+          "keogh_distributions",
+          "tax_exempt_ira_distributions",
+          "taxable_401k_distributions",
+          "taxable_403b_distributions",
+          "taxable_sep_distributions"
+        ],
+        "model_target": "keogh_distributions",
+        "model_targets": [
+          "keogh_distributions",
+          "tax_exempt_ira_distributions",
+          "taxable_401k_distributions",
+          "taxable_403b_distributions",
+          "taxable_sep_distributions"
+        ],
+        "target_index": 0,
+        "total_targets": 5
+      }
+    },
+    "social_security_dependents": {
+      "checkpoint_sha256": "c9b2f2870694ddc33f53979596d1d31dda4715a02481b3214fd470babebc25ea",
+      "content_metadata_sha256": "0c5b42e3f5249bbb7069f9c478a1dbad83908633bc929438584d4bfd4a66dd1e",
+      "identity_sha256": "9ff5b38fbb18a8adab4a7ffbf6e3851b42c5f2741c8b0fa46192e7309ca05b94",
+      "patterns": [
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 1288835733,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_00_677f6490",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 18,
+            "names_repr": "(None,)",
+            "sha256": "01666b75c7b5331eca6d3d56893cddfc3dc16da0c68c0370cd861417a4f24054"
+          },
+          "state_before_sha256": "06aeaecd3b9c1936260d0639584025db7bddc5c19b6fd350db5aeaea24d1868d",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 156295273,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_01_5874881e",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 1877,
+            "names_repr": "(None,)",
+            "sha256": "4335654e53eea8698f2ec60f3a0a56ee5c103aeb34990c8d623de775bed0adfd"
+          },
+          "state_before_sha256": "6420623e2636e4ab18b44da6fe566ed456bbe0d7e6112b54355315e3dbed9d79",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 3083463362,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_02_7c3bceda",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 5276,
+            "names_repr": "(None,)",
+            "sha256": "364d34a5ad062ea151f8ef8a065d4e4fe8b7a2b11cd35318bf6320151c969187"
+          },
+          "state_before_sha256": "d5e099da0bf98e99953c53dec370148487268f09d04b3a511e3a23a5b56e7dde",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 1471048381,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_03_04f75638",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 27122,
+            "names_repr": "(None,)",
+            "sha256": "267eb5ffc7bd6e9946283a7b1d1d31af4a49593ddf075a8dc2d4ce5f0e593d9d"
+          },
+          "state_before_sha256": "23cbb2ca9918e1b0342c30e4cb2a9ec654a91c6375a94321dfb26a5896222d52",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        }
+      ],
+      "raw_draw_finite_modeled_rows": 34293,
+      "raw_draw_rows": 38604,
+      "raw_draw_sha256": "27570eb8d8dfc95b6dfa715dbc392cb807f024227dbf6568f0f2191d1bcb11a9",
+      "raw_draw_structural_nan_rows": 4311,
+      "target_descriptor": {
+        "entity": "person",
+        "exported_targets": [
+          "social_security_dependents"
+        ],
+        "family": "puf_tax_itemization__batch_2",
+        "family_targets": [
+          "social_security_disability",
+          "social_security_dependents",
+          "social_security_survivors",
+          "alimony_income",
+          "rental_income",
+          "farm_operations_income",
+          "miscellaneous_income"
+        ],
+        "model_target": "social_security_dependents",
+        "model_targets": [
+          "social_security_disability",
+          "social_security_dependents",
+          "social_security_survivors",
+          "alimony_income",
+          "rental_income",
+          "farm_operations_income",
+          "miscellaneous_income"
+        ],
+        "target_index": 30,
+        "total_targets": 47
+      }
+    },
+    "social_security_disability": {
+      "checkpoint_sha256": "e4841f0ba3c986d69469edc27e50065db4e3ad76a4abde9b7494d048a2c4e6b4",
+      "content_metadata_sha256": "61d7128bc39401063fa633c3486f43c2a564ab95884b3f2b853fb6c5a896c84f",
+      "identity_sha256": "9ff5b38fbb18a8adab4a7ffbf6e3851b42c5f2741c8b0fa46192e7309ca05b94",
+      "patterns": [
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 1288835733,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_00_677f6490",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 18,
+            "names_repr": "(None,)",
+            "sha256": "01666b75c7b5331eca6d3d56893cddfc3dc16da0c68c0370cd861417a4f24054"
+          },
+          "state_before_sha256": "15942ebe7326a058a9911df9281de617d7f1ab15b16ed70cbf7dc8fa9ee1c3c2",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 156295273,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_01_5874881e",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 1877,
+            "names_repr": "(None,)",
+            "sha256": "4335654e53eea8698f2ec60f3a0a56ee5c103aeb34990c8d623de775bed0adfd"
+          },
+          "state_before_sha256": "704f08333e839f14b0e4cb2dcaf4cd4c9838170e95bff4647f0b0be8c65df654",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 3083463362,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_02_7c3bceda",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 5276,
+            "names_repr": "(None,)",
+            "sha256": "364d34a5ad062ea151f8ef8a065d4e4fe8b7a2b11cd35318bf6320151c969187"
+          },
+          "state_before_sha256": "e2050390da66d8835072a7b4199a7b8cf78ee20c5aa3f6a3ea9bde5ad788ec84",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 1471048381,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_03_04f75638",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 27122,
+            "names_repr": "(None,)",
+            "sha256": "267eb5ffc7bd6e9946283a7b1d1d31af4a49593ddf075a8dc2d4ce5f0e593d9d"
+          },
+          "state_before_sha256": "fda2b1c955efdd30c44a6474c2d1b717dbbf3b663c83205af02bb1f3b556b1d5",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        }
+      ],
+      "raw_draw_finite_modeled_rows": 34293,
+      "raw_draw_rows": 38604,
+      "raw_draw_sha256": "ec8dc95c6e6905b939880a9d894fe1bf140d9b4ed247df1bb01d8f742bfa955e",
+      "raw_draw_structural_nan_rows": 4311,
+      "target_descriptor": {
+        "entity": "person",
+        "exported_targets": [
+          "social_security_disability"
+        ],
+        "family": "puf_tax_itemization__batch_2",
+        "family_targets": [
+          "social_security_disability",
+          "social_security_dependents",
+          "social_security_survivors",
+          "alimony_income",
+          "rental_income",
+          "farm_operations_income",
+          "miscellaneous_income"
+        ],
+        "model_target": "social_security_disability",
+        "model_targets": [
+          "social_security_disability",
+          "social_security_dependents",
+          "social_security_survivors",
+          "alimony_income",
+          "rental_income",
+          "farm_operations_income",
+          "miscellaneous_income"
+        ],
+        "target_index": 29,
+        "total_targets": 47
+      }
+    },
+    "social_security_retirement": {
+      "checkpoint_sha256": "f13ede064316e51c1977a15088cc6e9a11bafe50cd69df0698315099ae1e39cc",
+      "content_metadata_sha256": "4d0d79560e7d340cfeae4039bde85941072df98b3ff74213828174414d2e07f4",
+      "identity_sha256": "9ff5b38fbb18a8adab4a7ffbf6e3851b42c5f2741c8b0fa46192e7309ca05b94",
+      "patterns": [
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 3923138593,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_00_677f6490",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 18,
+            "names_repr": "(None,)",
+            "sha256": "01666b75c7b5331eca6d3d56893cddfc3dc16da0c68c0370cd861417a4f24054"
+          },
+          "state_before_sha256": "268c1c9464d011f6572aebf8a2e0a91d6d3414bc263590b42ba49d8ba70dde65",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 2301314375,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_01_5874881e",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 1877,
+            "names_repr": "(None,)",
+            "sha256": "4335654e53eea8698f2ec60f3a0a56ee5c103aeb34990c8d623de775bed0adfd"
+          },
+          "state_before_sha256": "6d25c3f796b23e5c212d72df3d85bfd7707933733958dcbd74a58a4566137db4",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 2642943411,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_02_7c3bceda",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 5276,
+            "names_repr": "(None,)",
+            "sha256": "364d34a5ad062ea151f8ef8a065d4e4fe8b7a2b11cd35318bf6320151c969187"
+          },
+          "state_before_sha256": "98891a248f729547d47d0fed7647cf2997c6ba38e5553e71b60532297495f93e",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 1810485691,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_03_04f75638",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 27122,
+            "names_repr": "(None,)",
+            "sha256": "267eb5ffc7bd6e9946283a7b1d1d31af4a49593ddf075a8dc2d4ce5f0e593d9d"
+          },
+          "state_before_sha256": "d656e07b6ad071da861cb647b0b49ae9268f17b895714fdae1d3484aefb2b739",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        }
+      ],
+      "raw_draw_finite_modeled_rows": 34293,
+      "raw_draw_rows": 38604,
+      "raw_draw_sha256": "9a8565dd071ff94bfd0d8d856ee1de06722d50d64e28e8d091b5073481ece32b",
+      "raw_draw_structural_nan_rows": 4311,
+      "target_descriptor": {
+        "entity": "person",
+        "exported_targets": [
+          "social_security_retirement"
+        ],
+        "family": "puf_tax_itemization__batch_1",
+        "family_targets": [
+          "taxable_interest_income",
+          "qualified_dividend_income",
+          "non_qualified_dividend_income",
+          "short_term_capital_gains",
+          "long_term_capital_gains_before_response",
+          "taxable_private_pension_income",
+          "taxable_ira_distributions",
+          "social_security_retirement"
+        ],
+        "model_target": "social_security_retirement",
+        "model_targets": [
+          "taxable_interest_income",
+          "qualified_dividend_income",
+          "non_qualified_dividend_income",
+          "short_term_capital_gains",
+          "long_term_capital_gains_before_response",
+          "taxable_private_pension_income",
+          "taxable_ira_distributions",
+          "social_security_retirement"
+        ],
+        "target_index": 28,
+        "total_targets": 47
+      }
+    },
+    "social_security_survivors": {
+      "checkpoint_sha256": "d7e58ed45d1a7aa1aecaae34188b884f8c3715af8e47863109df2d36655e6a5b",
+      "content_metadata_sha256": "d2ab800075c52414136281d753289d0060edbab73c1a4e83eae3bf11d7be479f",
+      "identity_sha256": "9ff5b38fbb18a8adab4a7ffbf6e3851b42c5f2741c8b0fa46192e7309ca05b94",
+      "patterns": [
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 1288835733,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_00_677f6490",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 18,
+            "names_repr": "(None,)",
+            "sha256": "01666b75c7b5331eca6d3d56893cddfc3dc16da0c68c0370cd861417a4f24054"
+          },
+          "state_before_sha256": "d45257f6cfbaba8221607ea351e3f24747c4cb7e38061978f653ddbda5954697",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 156295273,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_01_5874881e",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 1877,
+            "names_repr": "(None,)",
+            "sha256": "4335654e53eea8698f2ec60f3a0a56ee5c103aeb34990c8d623de775bed0adfd"
+          },
+          "state_before_sha256": "d394b13531836bb491e4314bbef8d6e81396f1d16d6cc1afdd1bd7a78a388ba0",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 3083463362,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_02_7c3bceda",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 5276,
+            "names_repr": "(None,)",
+            "sha256": "364d34a5ad062ea151f8ef8a065d4e4fe8b7a2b11cd35318bf6320151c969187"
+          },
+          "state_before_sha256": "bd1d63a119756d552d0a824f1ef99ba08b87a453177c781ba99ed0924b0b35b9",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 1471048381,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_03_04f75638",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 27122,
+            "names_repr": "(None,)",
+            "sha256": "267eb5ffc7bd6e9946283a7b1d1d31af4a49593ddf075a8dc2d4ce5f0e593d9d"
+          },
+          "state_before_sha256": "b3803793d9de1425ac25c128d3e426ed2218fd8a41a29594c75d0b4a08d20b63",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        }
+      ],
+      "raw_draw_finite_modeled_rows": 34293,
+      "raw_draw_rows": 38604,
+      "raw_draw_sha256": "04850fd4563274d0d9842fbfc7b795eac2b0b4333ef84e910387ebd4718e56ca",
+      "raw_draw_structural_nan_rows": 4311,
+      "target_descriptor": {
+        "entity": "person",
+        "exported_targets": [
+          "social_security_survivors"
+        ],
+        "family": "puf_tax_itemization__batch_2",
+        "family_targets": [
+          "social_security_disability",
+          "social_security_dependents",
+          "social_security_survivors",
+          "alimony_income",
+          "rental_income",
+          "farm_operations_income",
+          "miscellaneous_income"
+        ],
+        "model_target": "social_security_survivors",
+        "model_targets": [
+          "social_security_disability",
+          "social_security_dependents",
+          "social_security_survivors",
+          "alimony_income",
+          "rental_income",
+          "farm_operations_income",
+          "miscellaneous_income"
+        ],
+        "target_index": 31,
+        "total_targets": 47
+      }
+    },
+    "tax_exempt_private_pension_income": {
+      "checkpoint_sha256": "bfaf519f1a7ba32b378a61a49a6f23ac621e98c8c49fae874902f44b5d0d7a82",
+      "content_metadata_sha256": "93073aafefcab190a7c0c9bcb67af0c558f3f77c077912969017a327ccf70a14",
+      "identity_sha256": "9ff5b38fbb18a8adab4a7ffbf6e3851b42c5f2741c8b0fa46192e7309ca05b94",
+      "patterns": [
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 4223074724,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_00_677f6490",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 18,
+            "names_repr": "(None,)",
+            "sha256": "01666b75c7b5331eca6d3d56893cddfc3dc16da0c68c0370cd861417a4f24054"
+          },
+          "state_before_sha256": "d18e8b5ebadc1b97034da1beea9e7e658d9d6be43dde9c98c94c9cd6c1fae526",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 525991705,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_01_5874881e",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 1877,
+            "names_repr": "(None,)",
+            "sha256": "4335654e53eea8698f2ec60f3a0a56ee5c103aeb34990c8d623de775bed0adfd"
+          },
+          "state_before_sha256": "94018d9c697bdb94c9775c6cb25301e23f9addf70eb8776db088d8555558f308",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 631826395,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_02_7c3bceda",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 5276,
+            "names_repr": "(None,)",
+            "sha256": "364d34a5ad062ea151f8ef8a065d4e4fe8b7a2b11cd35318bf6320151c969187"
+          },
+          "state_before_sha256": "dd56db09cc8f8cff64e429528a328e2aa507259c2ba5704a2f5becf8214d21ee",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 2422673074,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_03_04f75638",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 27122,
+            "names_repr": "(None,)",
+            "sha256": "267eb5ffc7bd6e9946283a7b1d1d31af4a49593ddf075a8dc2d4ce5f0e593d9d"
+          },
+          "state_before_sha256": "be5481466948c3c03e343ac43d18e8535a35a3a9a04da2482f5bc3507774769f",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        }
+      ],
+      "raw_draw_finite_modeled_rows": 34293,
+      "raw_draw_rows": 38604,
+      "raw_draw_sha256": "bee9b66005382ec505380bd52ba621ed38c89b8b25c84a2dc642394c79bfcdec",
+      "raw_draw_structural_nan_rows": 4311,
+      "target_descriptor": {
+        "entity": "person",
+        "exported_targets": [
+          "tax_exempt_private_pension_income"
+        ],
+        "family": "model_required_numeric",
+        "family_targets": [
+          "health_insurance_premiums_without_medicare_part_b",
+          "hours_worked_last_week",
+          "other_medical_expenses",
+          "over_the_counter_health_expenses",
+          "tax_exempt_private_pension_income",
+          "unemployment_compensation",
+          "veterans_benefits"
+        ],
+        "model_target": "tax_exempt_private_pension_income",
+        "model_targets": [
+          "health_insurance_premiums_without_medicare_part_b",
+          "hours_worked_last_week",
+          "other_medical_expenses",
+          "over_the_counter_health_expenses",
+          "tax_exempt_private_pension_income",
+          "unemployment_compensation",
+          "veterans_benefits"
+        ],
+        "target_index": 18,
+        "total_targets": 47
+      }
+    },
+    "taxable_401k_distributions": {
+      "checkpoint_sha256": "dcaea8920d9fbcfeecd46b2c6576d46e90625aad1a9b54781cd91f193333db86",
+      "content_metadata_sha256": "e64523a37415634f2530a4fb18fbf881b3db85330e385d215fad5c05287a4dc8",
+      "identity_sha256": "663ce01c1b8cb65f181ea06a625685d521d6901a57a88daac57fd6a1cb6f231d",
+      "patterns": [
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 2593627294,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_00_36785ebf",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 36,
+            "names_repr": "(None,)",
+            "sha256": "b1e5617182773b43207b63a4b84587ea24de2efcdfb8e6c44b469f6da22b0180"
+          },
+          "state_before_sha256": "9458ea1275f510388449d6182b6ac08ec84f777bbb978b24243bf41e0f3dfbbe",
+          "weight_kind": "importance",
+          "weight_sha256": "141adbb2d200be00b34fd7a3660f2f769cdec3b7ea168757c7fa931729e18c52"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 1021650046,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_01_c6777728",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_interest_dividend_rental_income",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 4073,
+            "names_repr": "(None,)",
+            "sha256": "e1e8710dccdb6152ca1e6543e3d138ab6442140f50ace1f59c52442967c5e800"
+          },
+          "state_before_sha256": "70d86b4ed940cb111ac0f8d45a06d3c0ada844c749417cac1feb9b39a909bd41",
+          "weight_kind": "importance",
+          "weight_sha256": "141adbb2d200be00b34fd7a3660f2f769cdec3b7ea168757c7fa931729e18c52"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 1130471859,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_02_5e7dd311",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 10850,
+            "names_repr": "(None,)",
+            "sha256": "b0e52a65d1c8e1a8865ae19286ca32ff95e62ca95eebd8b80f0a617aa4f40312"
+          },
+          "state_before_sha256": "f904ed9be0e8a3e90cee37d183b9c21b3285bb3b0693cada3756a83cb9ca65ef",
+          "weight_kind": "importance",
+          "weight_sha256": "141adbb2d200be00b34fd7a3660f2f769cdec3b7ea168757c7fa931729e18c52"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 954292944,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_03_76a0101a",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_interest_dividend_rental_income",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 56469,
+            "names_repr": "(None,)",
+            "sha256": "991604b9b8a9c82c8126cb053e51e3f2839d109da6bd3b62b76f3a20c3f4ab62"
+          },
+          "state_before_sha256": "4e217164b13f0abece49a2653fc5592349872576d7443acec20c948db5feaf91",
+          "weight_kind": "importance",
+          "weight_sha256": "141adbb2d200be00b34fd7a3660f2f769cdec3b7ea168757c7fa931729e18c52"
+        }
+      ],
+      "raw_draw_finite_modeled_rows": 71428,
+      "raw_draw_rows": 80395,
+      "raw_draw_sha256": "f69ce5b357300d056f38348045a021959bec919e6a746f92bf2af9df2ca15758",
+      "raw_draw_structural_nan_rows": 8967,
+      "target_descriptor": {
+        "entity": "person",
+        "exported_targets": [
+          "taxable_401k_distributions"
+        ],
+        "family": "source_operator_retirement_distributions",
+        "family_targets": [
+          "keogh_distributions",
+          "tax_exempt_ira_distributions",
+          "taxable_401k_distributions",
+          "taxable_403b_distributions",
+          "taxable_sep_distributions"
+        ],
+        "model_target": "taxable_401k_distributions",
+        "model_targets": [
+          "keogh_distributions",
+          "tax_exempt_ira_distributions",
+          "taxable_401k_distributions",
+          "taxable_403b_distributions",
+          "taxable_sep_distributions"
+        ],
+        "target_index": 2,
+        "total_targets": 5
+      }
+    },
+    "taxable_403b_distributions": {
+      "checkpoint_sha256": "f43088f26bbb24032d754f11931c58b875cd216436fbd3d43faa23737f52fce2",
+      "content_metadata_sha256": "1d05e8812629995509359e7f0d8660cf65cf995b3d389a27132d3927187736f6",
+      "identity_sha256": "663ce01c1b8cb65f181ea06a625685d521d6901a57a88daac57fd6a1cb6f231d",
+      "patterns": [
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 2593627294,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_00_36785ebf",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 36,
+            "names_repr": "(None,)",
+            "sha256": "b1e5617182773b43207b63a4b84587ea24de2efcdfb8e6c44b469f6da22b0180"
+          },
+          "state_before_sha256": "affd9a41c8508401520fa26dd1467fbcf45f35b1ef3f201336b9fc00e7b9d403",
+          "weight_kind": "importance",
+          "weight_sha256": "141adbb2d200be00b34fd7a3660f2f769cdec3b7ea168757c7fa931729e18c52"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 1021650046,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_01_c6777728",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_interest_dividend_rental_income",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 4073,
+            "names_repr": "(None,)",
+            "sha256": "e1e8710dccdb6152ca1e6543e3d138ab6442140f50ace1f59c52442967c5e800"
+          },
+          "state_before_sha256": "305da9bafaa2ad78a60e5eb438ad9da079e9528bd76549fc9dec63fa7e2f6698",
+          "weight_kind": "importance",
+          "weight_sha256": "141adbb2d200be00b34fd7a3660f2f769cdec3b7ea168757c7fa931729e18c52"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 1130471859,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_02_5e7dd311",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 10850,
+            "names_repr": "(None,)",
+            "sha256": "b0e52a65d1c8e1a8865ae19286ca32ff95e62ca95eebd8b80f0a617aa4f40312"
+          },
+          "state_before_sha256": "a364124163dbdbe88644b18170b9819e216dd01ec8d72fc234107021bc8f7439",
+          "weight_kind": "importance",
+          "weight_sha256": "141adbb2d200be00b34fd7a3660f2f769cdec3b7ea168757c7fa931729e18c52"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 954292944,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_03_76a0101a",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_interest_dividend_rental_income",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 56469,
+            "names_repr": "(None,)",
+            "sha256": "991604b9b8a9c82c8126cb053e51e3f2839d109da6bd3b62b76f3a20c3f4ab62"
+          },
+          "state_before_sha256": "107b005b34947d5563d1153bc79893d1183d49049d24861bb7ec83d1541e645a",
+          "weight_kind": "importance",
+          "weight_sha256": "141adbb2d200be00b34fd7a3660f2f769cdec3b7ea168757c7fa931729e18c52"
+        }
+      ],
+      "raw_draw_finite_modeled_rows": 71428,
+      "raw_draw_rows": 80395,
+      "raw_draw_sha256": "2712e4e36f42407bc67b511e3c73f119d7da5cf7fa81b71d22149b9089cc304f",
+      "raw_draw_structural_nan_rows": 8967,
+      "target_descriptor": {
+        "entity": "person",
+        "exported_targets": [
+          "taxable_403b_distributions"
+        ],
+        "family": "source_operator_retirement_distributions",
+        "family_targets": [
+          "keogh_distributions",
+          "tax_exempt_ira_distributions",
+          "taxable_401k_distributions",
+          "taxable_403b_distributions",
+          "taxable_sep_distributions"
+        ],
+        "model_target": "taxable_403b_distributions",
+        "model_targets": [
+          "keogh_distributions",
+          "tax_exempt_ira_distributions",
+          "taxable_401k_distributions",
+          "taxable_403b_distributions",
+          "taxable_sep_distributions"
+        ],
+        "target_index": 3,
+        "total_targets": 5
+      }
+    },
+    "taxable_ira_distributions": {
+      "checkpoint_sha256": "eb8e38ecc77504b3301329f3619f02d6fcd42e6dfc8c56aee61759a4d99ae3e4",
+      "content_metadata_sha256": "7bfed64a3fc3ee8a3aa1644ecd3eb2eb6cc17ae8fc2ed54aff2fb1204b137a83",
+      "identity_sha256": "9ff5b38fbb18a8adab4a7ffbf6e3851b42c5f2741c8b0fa46192e7309ca05b94",
+      "patterns": [
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 3923138593,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_00_677f6490",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 18,
+            "names_repr": "(None,)",
+            "sha256": "01666b75c7b5331eca6d3d56893cddfc3dc16da0c68c0370cd861417a4f24054"
+          },
+          "state_before_sha256": "332b881f4c362b8a4ee9971e70f257a6c154ba698fb4ef6040428407ab93e4b4",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 2301314375,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_01_5874881e",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 1877,
+            "names_repr": "(None,)",
+            "sha256": "4335654e53eea8698f2ec60f3a0a56ee5c103aeb34990c8d623de775bed0adfd"
+          },
+          "state_before_sha256": "2aa099aa63ecb30e692963f38455dabe8a63af9cb7cf1fc65181d4dc451b899b",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 2642943411,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_02_7c3bceda",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 5276,
+            "names_repr": "(None,)",
+            "sha256": "364d34a5ad062ea151f8ef8a065d4e4fe8b7a2b11cd35318bf6320151c969187"
+          },
+          "state_before_sha256": "0511d173debbab7ee8fda1718c68937713413aec353d7d4afafba283aaefedf8",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 1810485691,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_03_04f75638",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 27122,
+            "names_repr": "(None,)",
+            "sha256": "267eb5ffc7bd6e9946283a7b1d1d31af4a49593ddf075a8dc2d4ce5f0e593d9d"
+          },
+          "state_before_sha256": "0426752e40c854bb697cad2e25fc3b6fcf6139e58fa8b7cefa99b009347aa781",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        }
+      ],
+      "raw_draw_finite_modeled_rows": 34293,
+      "raw_draw_rows": 38604,
+      "raw_draw_sha256": "edf2d13aaa6b8525af22cf03ce3e22776b4543047d55b2660096f72514af4df4",
+      "raw_draw_structural_nan_rows": 4311,
+      "target_descriptor": {
+        "entity": "person",
+        "exported_targets": [
+          "taxable_ira_distributions"
+        ],
+        "family": "puf_tax_itemization__batch_1",
+        "family_targets": [
+          "taxable_interest_income",
+          "qualified_dividend_income",
+          "non_qualified_dividend_income",
+          "short_term_capital_gains",
+          "long_term_capital_gains_before_response",
+          "taxable_private_pension_income",
+          "taxable_ira_distributions",
+          "social_security_retirement"
+        ],
+        "model_target": "taxable_ira_distributions",
+        "model_targets": [
+          "taxable_interest_income",
+          "qualified_dividend_income",
+          "non_qualified_dividend_income",
+          "short_term_capital_gains",
+          "long_term_capital_gains_before_response",
+          "taxable_private_pension_income",
+          "taxable_ira_distributions",
+          "social_security_retirement"
+        ],
+        "target_index": 27,
+        "total_targets": 47
+      }
+    },
+    "taxable_private_pension_income": {
+      "checkpoint_sha256": "62f37d15cba851779e5f066c5248c3f4b0f0e3390646e5922c840c0ad38e6b93",
+      "content_metadata_sha256": "6ab75ef72f70b6f4766f820628e1755e39799ac2f80083a0ddabe2229a06e766",
+      "identity_sha256": "9ff5b38fbb18a8adab4a7ffbf6e3851b42c5f2741c8b0fa46192e7309ca05b94",
+      "patterns": [
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 3923138593,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_00_677f6490",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 18,
+            "names_repr": "(None,)",
+            "sha256": "01666b75c7b5331eca6d3d56893cddfc3dc16da0c68c0370cd861417a4f24054"
+          },
+          "state_before_sha256": "207fac3c4881ae205289927e5fca676f2265916f70a020e286abc757b589d4ff",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 2301314375,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_01_5874881e",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 1877,
+            "names_repr": "(None,)",
+            "sha256": "4335654e53eea8698f2ec60f3a0a56ee5c103aeb34990c8d623de775bed0adfd"
+          },
+          "state_before_sha256": "b28d24f9d7a89501cf44055a0c79d77eb0ae24931df66baac9cc3f1cb84f8614",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 2642943411,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_02_7c3bceda",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 5276,
+            "names_repr": "(None,)",
+            "sha256": "364d34a5ad062ea151f8ef8a065d4e4fe8b7a2b11cd35318bf6320151c969187"
+          },
+          "state_before_sha256": "ca738af882269fb62473907f9e92725520dc381aaa8cf0be05288dc4abcd9cb5",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 1810485691,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_03_04f75638",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 27122,
+            "names_repr": "(None,)",
+            "sha256": "267eb5ffc7bd6e9946283a7b1d1d31af4a49593ddf075a8dc2d4ce5f0e593d9d"
+          },
+          "state_before_sha256": "75103bad87b6cc8ca9e4f4f041960ca31577ef67f4302808274346ba08831fa6",
+          "weight_kind": "importance",
+          "weight_sha256": "a8abd2b1c1dcea332c375f790753a6accfe677aea8b4f38d9b79d6098c3ddfe9"
+        }
+      ],
+      "raw_draw_finite_modeled_rows": 34293,
+      "raw_draw_rows": 38604,
+      "raw_draw_sha256": "07efb34b153a025fa375fd10956c4217959b005efd28b96ac65e035314d7d7d0",
+      "raw_draw_structural_nan_rows": 4311,
+      "target_descriptor": {
+        "entity": "person",
+        "exported_targets": [
+          "taxable_private_pension_income"
+        ],
+        "family": "puf_tax_itemization__batch_1",
+        "family_targets": [
+          "taxable_interest_income",
+          "qualified_dividend_income",
+          "non_qualified_dividend_income",
+          "short_term_capital_gains",
+          "long_term_capital_gains_before_response",
+          "taxable_private_pension_income",
+          "taxable_ira_distributions",
+          "social_security_retirement"
+        ],
+        "model_target": "taxable_private_pension_income",
+        "model_targets": [
+          "taxable_interest_income",
+          "qualified_dividend_income",
+          "non_qualified_dividend_income",
+          "short_term_capital_gains",
+          "long_term_capital_gains_before_response",
+          "taxable_private_pension_income",
+          "taxable_ira_distributions",
+          "social_security_retirement"
+        ],
+        "target_index": 26,
+        "total_targets": 47
+      }
+    },
+    "taxable_sep_distributions": {
+      "checkpoint_sha256": "5827b9ff27091276b1ff4102f446f4dffc420e574164a95f3f855621f9e7e4b2",
+      "content_metadata_sha256": "3b79671cd141c0773aca4008afba341aea007533a8f417f26c09752c8111922c",
+      "identity_sha256": "663ce01c1b8cb65f181ea06a625685d521d6901a57a88daac57fd6a1cb6f231d",
+      "patterns": [
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 2593627294,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_00_36785ebf",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 36,
+            "names_repr": "(None,)",
+            "sha256": "b1e5617182773b43207b63a4b84587ea24de2efcdfb8e6c44b469f6da22b0180"
+          },
+          "state_before_sha256": "dc5636501fe58b54545eb41fef8466b628178d00ad5ecf4ec3420412bb9060e0",
+          "weight_kind": "importance",
+          "weight_sha256": "141adbb2d200be00b34fd7a3660f2f769cdec3b7ea168757c7fa931729e18c52"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 1021650046,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_01_c6777728",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_interest_dividend_rental_income",
+            "__acs_transfer_is_household_head"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 4073,
+            "names_repr": "(None,)",
+            "sha256": "e1e8710dccdb6152ca1e6543e3d138ab6442140f50ace1f59c52442967c5e800"
+          },
+          "state_before_sha256": "6d47f70dc1c924757949e559383fdb1a79ab6da9d21b949fa2f81d75838f0698",
+          "weight_kind": "importance",
+          "weight_sha256": "141adbb2d200be00b34fd7a3660f2f769cdec3b7ea168757c7fa931729e18c52"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 1130471859,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_02_5e7dd311",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 10850,
+            "names_repr": "(None,)",
+            "sha256": "b0e52a65d1c8e1a8865ae19286ca32ff95e62ca95eebd8b80f0a617aa4f40312"
+          },
+          "state_before_sha256": "3498785b0d8f0892fe816a77f5ad714aff13da1d2f81556b3e98871516372b92",
+          "weight_kind": "importance",
+          "weight_sha256": "141adbb2d200be00b34fd7a3660f2f769cdec3b7ea168757c7fa931729e18c52"
+        },
+        {
+          "model_config": {
+            "fit_n_jobs": -1,
+            "max_samples_leaf": null,
+            "max_samples_leaf_kind": "none",
+            "n_estimators": 100,
+            "seed": 954292944,
+            "zero_atol": 1e-06
+          },
+          "pattern": "pattern_03_76a0101a",
+          "predictors": [
+            "age",
+            "is_female",
+            "__acs_transfer_state_fips",
+            "__acs_transfer_employment_income",
+            "__acs_transfer_self_employment_income",
+            "__acs_transfer_social_security_income",
+            "__acs_transfer_retirement_income",
+            "__acs_transfer_interest_dividend_rental_income",
+            "__acs_transfer_is_household_head",
+            "__acs_transfer_tenure_code"
+          ],
+          "recipient_index": {
+            "class_name": "Index",
+            "dtype": "int64",
+            "length": 56469,
+            "names_repr": "(None,)",
+            "sha256": "991604b9b8a9c82c8126cb053e51e3f2839d109da6bd3b62b76f3a20c3f4ab62"
+          },
+          "state_before_sha256": "19fa5b3867c65c41e94c08a14743bc0979b09b4619b6940c5930fb7b2ffd795d",
+          "weight_kind": "importance",
+          "weight_sha256": "141adbb2d200be00b34fd7a3660f2f769cdec3b7ea168757c7fa931729e18c52"
+        }
+      ],
+      "raw_draw_finite_modeled_rows": 71428,
+      "raw_draw_rows": 80395,
+      "raw_draw_sha256": "28f63d4cab4cf68c3ef323d70f149df23b47442744a097abba281f4c484a1e0c",
+      "raw_draw_structural_nan_rows": 8967,
+      "target_descriptor": {
+        "entity": "person",
+        "exported_targets": [
+          "taxable_sep_distributions"
+        ],
+        "family": "source_operator_retirement_distributions",
+        "family_targets": [
+          "keogh_distributions",
+          "tax_exempt_ira_distributions",
+          "taxable_401k_distributions",
+          "taxable_403b_distributions",
+          "taxable_sep_distributions"
+        ],
+        "model_target": "taxable_sep_distributions",
+        "model_targets": [
+          "keogh_distributions",
+          "tax_exempt_ira_distributions",
+          "taxable_401k_distributions",
+          "taxable_403b_distributions",
+          "taxable_sep_distributions"
+        ],
+        "target_index": 4,
+        "total_targets": 5
+      }
+    }
+  },
+  "terminal_f001": {
+    "keogh_distributions": {
+      "acs": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": null,
+          "min": null,
+          "sum": 0.0
+        },
+        "positive_weighted_quantiles": null,
+        "row_count": 34293,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "zero": 34293
+        },
+        "sum": 0.0,
+        "values_sha256": "acd8da2055f1bfb907826cfb2d56b471bd71345eed2f1ff515094caa30c6e486",
+        "weight_sum": 79926522.10879111,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.0
+        }
+      },
+      "asec": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": null,
+          "min": null,
+          "sum": 0.0
+        },
+        "positive_weighted_quantiles": null,
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "zero": 4311
+        },
+        "sum": 0.0,
+        "values_sha256": "7d97e0737ee98853d3be9cec5f006d90b0e3a58d89eae523ff72240ade48c83d",
+        "weight_sum": 80851529.27715749,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.0
+        }
+      },
+      "gate_label": "person/source_operator_retirement_distributions/keogh_distributions[clone_0]",
+      "incidence_ratio_acs_over_asec": null,
+      "positive_quantile_envelope_distance": null,
+      "selected_gate_record": {
+        "legs": {
+          "negative": {
+            "acs_incidence": 0.0,
+            "asec_incidence": 0.0,
+            "nonzero_rows": {
+              "acs": 0,
+              "asec": 0
+            },
+            "status": "absent_on_both_origins"
+          },
+          "positive": {
+            "acs_incidence": 0.0,
+            "asec_incidence": 0.0,
+            "nonzero_rows": {
+              "acs": 0,
+              "asec": 0
+            },
+            "status": "absent_on_both_origins"
+          }
+        },
+        "metric": "monetary_sign_separated",
+        "status": "tested"
+      }
+    },
+    "social_security_dependents": {
+      "acs": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 30779.0,
+          "min": 4441.0,
+          "sum": 428634.23120635794
+        },
+        "positive_weighted_quantiles": [
+          11963.0,
+          14041.0,
+          22548.0,
+          22548.0,
+          30352.23120635796
+        ],
+        "row_count": 34293,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 22,
+          "zero": 34271
+        },
+        "sum": 428634.23120635794,
+        "values_sha256": "ed86dda52680cf572985e6c825a1199a2dbaafdea32cfe250fedb6cba67c1f92",
+        "weight_sum": 79926522.10879111,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.0004687293152598497
+        }
+      },
+      "asec": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 30779.0,
+          "min": 2640.0,
+          "sum": 214420.0
+        },
+        "positive_weighted_quantiles": [
+          4441.0,
+          10560.0,
+          14041.0,
+          18164.0,
+          25764.0
+        ],
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 14,
+          "zero": 4297
+        },
+        "sum": 214420.0,
+        "values_sha256": "737b4bb46d6c592ecbe47e20ae912959a8c56dfdafb0ceb0f0d4f1110d5e9d2e",
+        "weight_sum": 80851529.27715749,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.00321316204953602
+        }
+      },
+      "gate_label": "person/puf_tax_itemization/social_security_dependents[clone_0]",
+      "incidence_ratio_acs_over_asec": 0.14587789474469057,
+      "positive_quantile_envelope_distance": 0.917093391855645,
+      "selected_gate_record": {
+        "legs": {
+          "negative": {
+            "acs_incidence": 0.0,
+            "asec_incidence": 0.0,
+            "nonzero_rows": {
+              "acs": 0,
+              "asec": 0
+            },
+            "status": "absent_on_both_origins"
+          },
+          "positive": {
+            "acs_incidence": 0.0004687293152598497,
+            "asec_incidence": 0.00321316204953602,
+            "incidence_ratio_acs_over_asec": 0.14587789474469057,
+            "nonzero_rows": {
+              "acs": 22,
+              "asec": 14
+            },
+            "quantile_envelope_distance": 0.917093391855645
+          }
+        },
+        "metric": "monetary_sign_separated",
+        "status": "tested"
+      }
+    },
+    "social_security_disability": {
+      "acs": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 50000.0,
+          "min": 4380.0,
+          "sum": 3731806.097634959
+        },
+        "positive_weighted_quantiles": [
+          7160.0,
+          9241.0,
+          12041.0,
+          17696.0,
+          21179.0
+        ],
+        "row_count": 34293,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 263,
+          "zero": 34030
+        },
+        "sum": 3731806.09763496,
+        "values_sha256": "69acbe1c497580a1f9178e45654442dcb0ed3d482a229b46fd67ff151212f85e",
+        "weight_sum": 79926522.10879111,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.006506801516945839
+        }
+      },
+      "asec": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 50000.0,
+          "min": 2622.0,
+          "sum": 967357.0
+        },
+        "positive_weighted_quantiles": [
+          7796.0,
+          11760.0,
+          13979.0,
+          17696.0,
+          21179.0
+        ],
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 64,
+          "zero": 4247
+        },
+        "sum": 967357.0,
+        "values_sha256": "f392b5d377cf7ad289638bb6d4a9ab1ddd0a4eec1333aad5cc8f69e86ddcd8d5",
+        "weight_sum": 80851529.27715749,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.015508056417459037
+        }
+      },
+      "gate_label": "person/puf_tax_itemization/social_security_disability[clone_0]",
+      "incidence_ratio_acs_over_asec": 0.41957556393852513,
+      "positive_quantile_envelope_distance": 0.23989333841245655,
+      "selected_gate_record": {
+        "legs": {
+          "negative": {
+            "acs_incidence": 0.0,
+            "asec_incidence": 0.0,
+            "nonzero_rows": {
+              "acs": 0,
+              "asec": 0
+            },
+            "status": "absent_on_both_origins"
+          },
+          "positive": {
+            "acs_incidence": 0.006506801516945839,
+            "asec_incidence": 0.015508056417459037,
+            "incidence_ratio_acs_over_asec": 0.41957556393852513,
+            "nonzero_rows": {
+              "acs": 263,
+              "asec": 64
+            },
+            "quantile_envelope_distance": 0.23989333841245655
+          }
+        },
+        "metric": "monetary_sign_separated",
+        "status": "tested"
+      }
+    },
+    "social_security_retirement": {
+      "acs": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 60000.0,
+          "min": 1.0,
+          "sum": 135155624.58864343
+        },
+        "positive_weighted_quantiles": [
+          4879.0,
+          11905.0,
+          18360.0,
+          25200.0,
+          33600.0
+        ],
+        "row_count": 34293,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 7036,
+          "zero": 27257
+        },
+        "sum": 135155624.58864343,
+        "values_sha256": "a8be080b68c869933c673f620927c7759b28f4a91d2ebb0baddf8a53c850001f",
+        "weight_sum": 79926522.10879111,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.16141510129045825
+        }
+      },
+      "asec": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 60000.0,
+          "min": 1.0,
+          "sum": 12947542.0
+        },
+        "positive_weighted_quantiles": [
+          7979.0,
+          12720.0,
+          18840.0,
+          26400.0,
+          33000.0
+        ],
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 650,
+          "zero": 3661
+        },
+        "sum": 12947542.0,
+        "values_sha256": "8ef0e3786aa8f8a6fa7c69f6e4f37d5198c52315a1085189ba0110fdbd0a43a6",
+        "weight_sum": 80851529.27715749,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.16394881881787843
+        }
+      },
+      "gate_label": "person/puf_tax_itemization/social_security_retirement[clone_0]",
+      "incidence_ratio_acs_over_asec": 0.9845456798915109,
+      "positive_quantile_envelope_distance": 0.4821900762171411,
+      "selected_gate_record": {
+        "legs": {
+          "negative": {
+            "acs_incidence": 0.0,
+            "asec_incidence": 0.0,
+            "nonzero_rows": {
+              "acs": 0,
+              "asec": 0
+            },
+            "status": "absent_on_both_origins"
+          },
+          "positive": {
+            "acs_incidence": 0.16141510129045825,
+            "asec_incidence": 0.16394881881787843,
+            "incidence_ratio_acs_over_asec": 0.9845456798915109,
+            "nonzero_rows": {
+              "acs": 7036,
+              "asec": 650
+            },
+            "quantile_envelope_distance": 0.4821900762171411
+          }
+        },
+        "metric": "monetary_sign_separated",
+        "status": "tested"
+      }
+    },
+    "social_security_survivors": {
+      "acs": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 26832.0,
+          "min": 4948.0,
+          "sum": 786993.1870420744
+        },
+        "positive_weighted_quantiles": [
+          12000.0,
+          12000.0,
+          22968.0,
+          22968.0,
+          26400.0
+        ],
+        "row_count": 34293,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 39,
+          "zero": 34254
+        },
+        "sum": 786993.1870420744,
+        "values_sha256": "60cf5172f7378533335bcad56becae40738046e44dcc05d1852a3a3119f8ad29",
+        "weight_sum": 79926522.10879111,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.0006795826302393605
+        }
+      },
+      "asec": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 26832.0,
+          "min": 4948.0,
+          "sum": 197443.0
+        },
+        "positive_weighted_quantiles": [
+          12000.0,
+          15876.0,
+          22000.0,
+          26400.0,
+          26832.0
+        ],
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 12,
+          "zero": 4299
+        },
+        "sum": 197443.0,
+        "values_sha256": "2333a600b544a6d8517056cf3380f3c1d346333b876521579754b68777fd8f90",
+        "weight_sum": 80851529.27715749,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.002136467088187391
+        }
+      },
+      "gate_label": "person/puf_tax_itemization/social_security_survivors[clone_0]",
+      "incidence_ratio_acs_over_asec": 0.318087104639617,
+      "positive_quantile_envelope_distance": 0.2780886784330607,
+      "selected_gate_record": {
+        "legs": {
+          "negative": {
+            "acs_incidence": 0.0,
+            "asec_incidence": 0.0,
+            "nonzero_rows": {
+              "acs": 0,
+              "asec": 0
+            },
+            "status": "absent_on_both_origins"
+          },
+          "positive": {
+            "acs_incidence": 0.0006795826302393605,
+            "asec_incidence": 0.002136467088187391,
+            "incidence_ratio_acs_over_asec": 0.318087104639617,
+            "nonzero_rows": {
+              "acs": 39,
+              "asec": 12
+            },
+            "quantile_envelope_distance": 0.2780886784330607
+          }
+        },
+        "metric": "monetary_sign_separated",
+        "status": "tested"
+      }
+    },
+    "tax_exempt_private_pension_income": {
+      "acs": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 73800.0,
+          "min": 4.92,
+          "sum": 45925810.690453246
+        },
+        "positive_weighted_quantiles": [
+          934.8000000000001,
+          2460.0,
+          6277.92,
+          13403.837899500139,
+          24600.000000000004
+        ],
+        "row_count": 34293,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 4559,
+          "zero": 29734
+        },
+        "sum": 45925810.69045325,
+        "values_sha256": "33b8b33ffc7d4963ff5c38489cd07283f5dacf2a540415fb841e171527fe0521",
+        "weight_sum": 79926522.10879111,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.10548356392419585
+        }
+      },
+      "asec": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 73800.0,
+          "min": 4.92,
+          "sum": 2801038.8200000003
+        },
+        "positive_weighted_quantiles": [
+          1175.88,
+          2460.0,
+          6396.000000000001,
+          15472.990000000002,
+          28700.000000000004
+        ],
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 261,
+          "zero": 4050
+        },
+        "sum": 2801038.8200000003,
+        "values_sha256": "22535df1ccc6edb20660228e04611238851b4a9f1941c9a30cfbaef743d23fff",
+        "weight_sum": 80851529.27715749,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.0638012585589181
+        }
+      },
+      "gate_label": "person/model_required_numeric/tax_exempt_private_pension_income[clone_0]",
+      "incidence_ratio_acs_over_asec": 1.6533147826039463,
+      "positive_quantile_envelope_distance": 0.22843822843822845,
+      "selected_gate_record": {
+        "legs": {
+          "negative": {
+            "acs_incidence": 0.0,
+            "asec_incidence": 0.0,
+            "nonzero_rows": {
+              "acs": 0,
+              "asec": 0
+            },
+            "status": "absent_on_both_origins"
+          },
+          "positive": {
+            "acs_incidence": 0.10548356392419585,
+            "asec_incidence": 0.0638012585589181,
+            "incidence_ratio_acs_over_asec": 1.6533147826039463,
+            "nonzero_rows": {
+              "acs": 4559,
+              "asec": 261
+            },
+            "quantile_envelope_distance": 0.22843822843822845
+          }
+        },
+        "metric": "monetary_sign_separated",
+        "status": "tested"
+      }
+    },
+    "taxable_401k_distributions": {
+      "acs": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 79000.0,
+          "min": 300.0,
+          "sum": 3254676.109307359
+        },
+        "positive_weighted_quantiles": [
+          827.4439095824636,
+          1000.0,
+          1000.0,
+          10000.0,
+          79000.0
+        ],
+        "row_count": 34293,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 235,
+          "zero": 34058
+        },
+        "sum": 3254676.109307359,
+        "values_sha256": "08e9156eed65b7d30ba84e924c39827bcc6d25db584551ff0005af01c39bb293",
+        "weight_sum": 79926522.10879111,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.0066586518446370485
+        }
+      },
+      "asec": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 360000.0,
+          "min": 36.0,
+          "sum": 1654192.0
+        },
+        "positive_weighted_quantiles": [
+          750.0,
+          1800.0,
+          5000.0,
+          14520.0,
+          50000.0
+        ],
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 86,
+          "zero": 4225
+        },
+        "sum": 1654192.0,
+        "values_sha256": "b384db0102d2713eeaaa8f4022e902c1391703e59f342225eb2a437f227faea0",
+        "weight_sum": 80851529.27715749,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.02059786182332094
+        }
+      },
+      "gate_label": "person/source_operator_retirement_distributions/taxable_401k_distributions[clone_0]",
+      "incidence_ratio_acs_over_asec": 0.3232690801478292,
+      "positive_quantile_envelope_distance": 1.3333333333333333,
+      "selected_gate_record": {
+        "legs": {
+          "negative": {
+            "acs_incidence": 0.0,
+            "asec_incidence": 0.0,
+            "nonzero_rows": {
+              "acs": 0,
+              "asec": 0
+            },
+            "status": "absent_on_both_origins"
+          },
+          "positive": {
+            "acs_incidence": 0.0066586518446370485,
+            "asec_incidence": 0.02059786182332094,
+            "incidence_ratio_acs_over_asec": 0.3232690801478292,
+            "nonzero_rows": {
+              "acs": 235,
+              "asec": 86
+            },
+            "quantile_envelope_distance": 1.3333333333333333
+          }
+        },
+        "metric": "monetary_sign_separated",
+        "status": "tested"
+      }
+    },
+    "taxable_403b_distributions": {
+      "acs": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": null,
+          "min": null,
+          "sum": 0.0
+        },
+        "positive_weighted_quantiles": null,
+        "row_count": 34293,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 0,
+          "zero": 34293
+        },
+        "sum": 0.0,
+        "values_sha256": "acd8da2055f1bfb907826cfb2d56b471bd71345eed2f1ff515094caa30c6e486",
+        "weight_sum": 79926522.10879111,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.0
+        }
+      },
+      "asec": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 19000.0,
+          "min": 3000.0,
+          "sum": 58512.0
+        },
+        "positive_weighted_quantiles": [
+          3000.0,
+          4593.0,
+          6000.0,
+          7919.0,
+          18000.0
+        ],
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 6,
+          "zero": 4305
+        },
+        "sum": 58512.0,
+        "values_sha256": "9eb6c91fd9ba80d4c5705c39b152c45a1ee69a272c252ffdaa22c952519f3f7b",
+        "weight_sum": 80851529.27715749,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.0016973977691315096
+        }
+      },
+      "gate_label": "person/source_operator_retirement_distributions/taxable_403b_distributions[clone_0]",
+      "incidence_ratio_acs_over_asec": 0.0,
+      "positive_quantile_envelope_distance": null,
+      "selected_gate_record": {
+        "legs": {
+          "negative": {
+            "acs_incidence": 0.0,
+            "asec_incidence": 0.0,
+            "nonzero_rows": {
+              "acs": 0,
+              "asec": 0
+            },
+            "status": "absent_on_both_origins"
+          },
+          "positive": {
+            "acs_incidence": 0.0,
+            "asec_incidence": 0.0016973977691315096,
+            "incidence_ratio_acs_over_asec": 0.0,
+            "nonzero_rows": {
+              "acs": 0,
+              "asec": 6
+            },
+            "quantile_envelope": "leg_insufficient_support"
+          }
+        },
+        "metric": "monetary_sign_separated",
+        "status": "tested"
+      }
+    },
+    "taxable_ira_distributions": {
+      "acs": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 150000.0,
+          "min": 411.0,
+          "sum": 10765294.290935397
+        },
+        "positive_weighted_quantiles": [
+          1699.0,
+          3600.0,
+          8400.0,
+          13264.281996002608,
+          20000.0
+        ],
+        "row_count": 34293,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 741,
+          "zero": 33552
+        },
+        "sum": 10765294.290935397,
+        "values_sha256": "0274c5992cc7e52b32cc1938eb93b73a711bf07e0caddedf8d0c4d4e8fc9cf61",
+        "weight_sum": 79926522.10879111,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.01710397763996437
+        }
+      },
+      "asec": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 150000.0,
+          "min": 400.0,
+          "sum": 1253493.0
+        },
+        "positive_weighted_quantiles": [
+          1699.0,
+          4272.0,
+          11000.0,
+          19200.0,
+          105336.0
+        ],
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 59,
+          "zero": 4252
+        },
+        "sum": 1253493.0,
+        "values_sha256": "378d7c80c1fdf7a2d45390740d6f3b4178bf773a0e7820c545d0ab520f8d5b44",
+        "weight_sum": 80851529.27715749,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.01526428950738002
+        }
+      },
+      "gate_label": "person/puf_tax_itemization/taxable_ira_distributions[clone_0]",
+      "incidence_ratio_acs_over_asec": 1.1205223559009996,
+      "positive_quantile_envelope_distance": 1.3617157081764217,
+      "selected_gate_record": {
+        "legs": {
+          "negative": {
+            "acs_incidence": 0.0,
+            "asec_incidence": 0.0,
+            "nonzero_rows": {
+              "acs": 0,
+              "asec": 0
+            },
+            "status": "absent_on_both_origins"
+          },
+          "positive": {
+            "acs_incidence": 0.01710397763996437,
+            "asec_incidence": 0.01526428950738002,
+            "incidence_ratio_acs_over_asec": 1.1205223559009996,
+            "nonzero_rows": {
+              "acs": 741,
+              "asec": 59
+            },
+            "quantile_envelope_distance": 1.3617157081764217
+          }
+        },
+        "metric": "monetary_sign_separated",
+        "status": "tested"
+      }
+    },
+    "taxable_private_pension_income": {
+      "acs": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 106200.0,
+          "min": 7.08,
+          "sum": 70487434.51860636
+        },
+        "positive_weighted_quantiles": [
+          1416.0,
+          4354.2,
+          10266.0,
+          21240.0,
+          37524.0
+        ],
+        "row_count": 34293,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 4410,
+          "zero": 29883
+        },
+        "sum": 70487434.51860636,
+        "values_sha256": "f2d0cab054ecfdf0c730081329ef6a6aa2785621574c6f2db83027ba2b627a82",
+        "weight_sum": 79926522.10879111,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.10174271462860765
+        }
+      },
+      "asec": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 106200.0,
+          "min": 7.08,
+          "sum": 4030763.18
+        },
+        "positive_weighted_quantiles": [
+          1692.12,
+          3540.0,
+          9204.0,
+          22266.01,
+          41300.0
+        ],
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 261,
+          "zero": 4050
+        },
+        "sum": 4030763.1799999997,
+        "values_sha256": "1933c3dc8fc4f222a0f21e3fd8341fa201046edddade9ffc835d6629d0b9c23f",
+        "weight_sum": 80851529.27715749,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.0638012585589181
+        }
+      },
+      "gate_label": "person/puf_tax_itemization/taxable_private_pension_income[clone_0]",
+      "incidence_ratio_acs_over_asec": 1.5946819377340653,
+      "positive_quantile_envelope_distance": 0.20627802690582955,
+      "selected_gate_record": {
+        "legs": {
+          "negative": {
+            "acs_incidence": 0.0,
+            "asec_incidence": 0.0,
+            "nonzero_rows": {
+              "acs": 0,
+              "asec": 0
+            },
+            "status": "absent_on_both_origins"
+          },
+          "positive": {
+            "acs_incidence": 0.10174271462860765,
+            "asec_incidence": 0.0638012585589181,
+            "incidence_ratio_acs_over_asec": 1.5946819377340653,
+            "nonzero_rows": {
+              "acs": 4410,
+              "asec": 261
+            },
+            "quantile_envelope_distance": 0.20627802690582955
+          }
+        },
+        "metric": "monetary_sign_separated",
+        "status": "tested"
+      }
+    },
+    "taxable_sep_distributions": {
+      "acs": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 17000.0,
+          "min": 17000.0,
+          "sum": 34000.0
+        },
+        "positive_weighted_quantiles": [
+          17000.0,
+          17000.0,
+          17000.0,
+          17000.0,
+          17000.0
+        ],
+        "row_count": 34293,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 2,
+          "zero": 34291
+        },
+        "sum": 34000.0,
+        "values_sha256": "40b93e3879e68dc7bd705bb3e65e713857040ed60de570542b86ed1e945832b3",
+        "weight_sum": 79926522.10879111,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 3.1448292717114525e-05
+        }
+      },
+      "asec": {
+        "negative_amount": {
+          "max_absolute": null,
+          "sum": 0.0
+        },
+        "positive_amount": {
+          "max": 17000.0,
+          "min": 200.0,
+          "sum": 22630.0
+        },
+        "positive_weighted_quantiles": [
+          430.0,
+          430.0,
+          430.0,
+          5000.0,
+          17000.0
+        ],
+        "row_count": 4311,
+        "sign_counts": {
+          "negative": 0,
+          "positive": 4,
+          "zero": 4307
+        },
+        "sum": 22630.0,
+        "values_sha256": "fa92b41f34c02a9d0c2318a08b1fa2c56bb66437c10984ceb81c28fd46754e8a",
+        "weight_sum": 80851529.27715749,
+        "weighted_incidence": {
+          "negative": 0.0,
+          "positive": 0.0008341177573390039
+        }
+      },
+      "gate_label": "person/source_operator_retirement_distributions/taxable_sep_distributions[clone_0]",
+      "incidence_ratio_acs_over_asec": 0.03770246160139382,
+      "positive_quantile_envelope_distance": null,
+      "selected_gate_record": {
+        "legs": {
+          "negative": {
+            "acs_incidence": 0.0,
+            "asec_incidence": 0.0,
+            "nonzero_rows": {
+              "acs": 0,
+              "asec": 0
+            },
+            "status": "absent_on_both_origins"
+          },
+          "positive": {
+            "acs_incidence": 3.1448292717114525e-05,
+            "asec_incidence": 0.0008341177573390039,
+            "incidence_ratio_acs_over_asec": 0.03770246160139382,
+            "nonzero_rows": {
+              "acs": 2,
+              "asec": 4
+            },
+            "quantile_envelope": "leg_insufficient_support"
+          }
+        },
+        "metric": "monetary_sign_separated",
+        "status": "tested"
+      }
+    }
+  }
+}

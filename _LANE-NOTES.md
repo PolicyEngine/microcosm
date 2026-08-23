@@ -78,7 +78,7 @@
   predicate was changed.
 - The repaired package boundary keeps all ten names in `__all__`, declares the
   lazy surface, and resolves/caches each name on access
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/__init__.py:1072-1085,1989-2001`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/__init__.py:1072-1085,1940-1949,1989-2001`).
   The agreement module separately caches the typed canonical registry on first
   use, and the default gate uses that same accessor
   (`packages/microcosm-build/src/microcosm/build/us_runtime/spine_agreement.py:312-328,953-980`).
@@ -104,9 +104,11 @@
   survivor; rapid subprocess PID reuse exposed an unrelated protected process,
   and the attempted group stop raised `EPERM` before a final receipt was
   written. This run is discarded, not green evidence.
-- The lane-local guard keeps the 13 GiB limit, 5 ms sampling, process-group and
-  descendant enumeration, host-default escape refusal, and fail-closed exit
-  (`experiments/retirement_model_and_data/rss_guard.py:81-104,210-260,348-351`).
+- At this point the lane-local guard used a 13 GiB limit; the later fixed 14 GiB
+  reconciliation is recorded below. Its current implementation preserves 5 ms
+  sampling, process-group and descendant enumeration, host-default escape
+  refusal, and fail-closed exit
+  (`experiments/retirement_model_and_data/rss_guard.py:16-18,81-104,203-260,310-350`).
   It reports monitor errors before shutdown, ignores recycled historical PIDs
   outside the owned group at the final postcondition, waits for group teardown,
   and treats an already-reused/unowned PID as non-killable instead of crashing
@@ -132,9 +134,9 @@
   This is an abort receipt, not green suite or gate evidence.
 - The progress position coincided with the mounted 3.73 GB SIPP vehicle donor
   regression, which loads only required columns in chunks and retains December
-  rows (`packages/microcosm-build/src/microcosm/build/us_runtime/sipp_vehicles.py:368-413`),
+  rows (`packages/microcosm-build/src/microcosm/build/us_runtime/sipp_vehicles.py:368-424`),
   then reduces them to household donors
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/sipp_vehicles.py:415-505`).
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/sipp_vehicles.py:425-505`).
   Running that exact regression alone under the unchanged 13 GiB guard passed:
   peak aggregate RSS was 13,064,765,440 bytes, peak individual RSS was
   13,043,515,392 bytes, maximum sample gap was 0.155 seconds, and the process
@@ -143,8 +145,8 @@
 - The retirement-factorial owner charter already requires stopping the full
   process tree when either individual or aggregate RSS reaches 14 GiB, expressly
   to preserve margin below the 15 GiB lane ceiling
-  (`experiments/retirement_factorial/OWNER_25PCT_CHARTER.md:111-131` in the
-  retirement-factorial worktree). The lane guard now uses that one fixed 14 GiB
+  (`/Users/maxghenis/PolicyEngine/_worktrees/microcosm-retirement-factorial/experiments/retirement_factorial/OWNER_25PCT_CHARTER.md:111-131`).
+  The lane guard now uses that one fixed 14 GiB
   stop (`experiments/retirement_model_and_data/rss_guard.py:16,229-253`), has no
   runtime limit override, and will not be raised again. This resource-supervisor
   reconciliation does not alter any frozen scientific gate, band, ceiling,
@@ -170,17 +172,18 @@
   it at 15,056,240,640 aggregate bytes and 15,035,039,744 individual bytes,
   with a 0.051-second maximum sample gap and an empty process group. That
   receipt proves the source-slice cleanup alone is insufficient.
-- The remaining large allocation is the pandas parser batch over a 3.73 GB,
-  very wide source. The loader still selects the same 20 columns and retains
-  `low_memory=False`, but its default chunk is now bounded at 25,000 rather than
-  100,000 rows
-  (`packages/microcosm-build/src/microcosm/build/us_runtime/sipp_vehicles.py:368-408`).
+- The remaining large allocation was the pandas parser batch over a 3.73 GB,
+  very wide source. The final loader keeps the same pinned source-column
+  contract, omits only the contract-only `PNUM` from parsed columns, uses
+  `low_memory=True`, and bounds the default chunk at 25,000 rather than 100,000
+  rows
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/sipp_vehicles.py:368-424`).
   Chunk size is an execution-memory control, not a sampling operation: every
   physical row is still read once, the same December predicate is applied, and
   all selected slices are concatenated in source order. A regression compares
   the complete frame—including dtype and row order—across 1-row, 10-row, and
   default chunks
-  (`packages/microcosm-build/tests/test_us_sipp_vehicles.py:395-413`). No test,
+  (`packages/microcosm-build/tests/test_us_sipp_vehicles.py:395-422`). No test,
   source value, scientific gate/band/ceiling/fold/seed, or RSS stop changed.
 - The exact mounted-donor regression then passed under the unchanged 14 GiB
   guard with all pinned support assertions intact. Its final receipt records a
@@ -326,7 +329,7 @@
   allocator was already resident. It now streams the SHA-256 from the file,
   opens the ZIP path directly, scans each member once, verifies the complete
   declared line count, and retains only the manifest-selected raw records
-  (`packages/microcosm-build/tests/test_us_trade_imdb_goldens.py:88-105,209-235`).
+  (`packages/microcosm-build/tests/test_us_trade_imdb_goldens.py:88-105,209-238`).
   This preserves and strengthens archive fidelity: size, whole-archive hash,
   all member line counts, selected raw lines, and layout bytes are checked.
 - Both cached IMDB archive parameters pass after the streaming change in 2.50
@@ -418,3 +421,249 @@
 
 - Commit this baseline-enabling step, then add the reproducible frozen-artifact
   audit and all 11 classifications as a separate coherent step.
+
+## 2026-08-23 — retirement source/model/data audit
+
+### Frozen proof and exact command
+
+- Added `experiments/retirement_model_and_data/audit_frozen_artifacts.py` and
+  its canonical `f001_audit.json`. Before decoding, the proof checks SHA-256 for
+  the raw ASEC checkpoint, assembled/transferred checkpoints, baseline/pkg3
+  pools and gates, adjudication JSON, and all 11 target-bank H5 files. It then
+  resolves 4,311 unique raw `person_id` values through assembled
+  `person_source_id` and proves all 16 retirement source columns equal, with
+  missingness preserved, raw → assembled → transferred
+  (`experiments/retirement_model_and_data/audit_frozen_artifacts.py:1764-1851`).
+- The proof recomputes each target from the frozen source columns, requires an
+  exact bit match to ASEC clone 0, selects the actual early clone-0 or late
+  clone-1 donor role, and recomputes the QRF regime from that selected support
+  (`experiments/retirement_model_and_data/audit_frozen_artifacts.py:1111-1335,1919-1975`).
+  QRF regime selection is based on realized sign support, with weighted gate
+  and conditional-amount fits for zero-inflated outcomes
+  (`packages/microcosm-fit/src/microcosm/fit/qrf.py:83-150,950-1003,1333-1442`).
+- This lane ran no pool build. The exact generation command was:
+
+  ```bash
+  PYTHONPATH="$PWD/packages/microcosm-build/src:$PWD/packages/microcosm-calibrate/src:$PWD/packages/microcosm-data/src:$PWD/packages/microcosm-fit/src:$PWD/packages/microcosm-frame/src" \
+  UV_NO_SYNC=1 \
+  UV_CACHE_DIR=/private/tmp/microcosm-retirement-audit-uv-cache \
+  uv run python experiments/retirement_model_and_data/rss_guard.py \
+    --trace /private/tmp/retirement-f001-final5-generate.trace.jsonl \
+    --log /private/tmp/retirement-f001-final5-generate.log \
+    -- uv run python \
+      experiments/retirement_model_and_data/audit_frozen_artifacts.py
+  ```
+
+  It returned zero, peaked at 457,834,496 aggregate and 436,682,752 individual
+  RSS bytes, observed no escaped descendants, and left its process group empty.
+  The resulting JSON SHA-256 is
+  `37e92f7358119c44670c104335d9452a8a4e9e22f28627a70c589691e4dc92bf`.
+  The final freshness check uses the identical command with a fresh trace/log
+  and `--check` appended to the audit script argv. It returned zero at
+  453,787,648 aggregate / 432,586,752 individual bytes, with no escape and an
+  empty group. The proof pins the battery's five-carrier QED minimum and now
+  independently reproduces the f001 Social Security dependents/survivors QEDs
+  `0.917093391855645` and `0.2780886784330607`
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:3026-3030,11912-11930`).
+
+### Eleven-leg source, carrier, amount, and regime result
+
+All source, terminal, target-bank, and gate details are in
+`experiments/retirement_model_and_data/AUDIT.md` and the canonical JSON. The
+compact carrier ledger is:
+
+| Leg | Frozen ASEC source equation | Exact source sign rows `(−,0,+)` | Actual QRF donor role and sign rows | Realized regime | Classification |
+|---|---|---:|---|---|---|
+| tax-exempt private pension | `0.410*(nz(PNSN_VAL)+nz(ANN_VAL))` | `(0,4050,261)` | ASEC clone 0, `(0,4050,261)` | zero-inflated positive | concept mismatch |
+| taxable private pension | `0.590*(nz(PNSN_VAL)+nz(ANN_VAL))` | `(0,4050,261)` | ASEC clone 0, `(0,4050,261)` | zero-inflated positive | concept mismatch |
+| taxable IRA | `Σs 1[DST_SCs=4]*DST_VALs` | `(0,4252,59)` | ASEC clone 0, `(0,4252,59)` | zero-inflated positive | dense-rung refit |
+| SS retirement | current `SS_VAL` reason precedence | `(0,3661,650)` | ASEC clone 0, `(0,3661,650)` | zero-inflated positive | concept mismatch |
+| SS disability | current `SS_VAL` reason precedence | `(0,4247,64)` | ASEC clone 0, `(0,4247,64)` | zero-inflated positive | concept mismatch |
+| SS dependents | current `SS_VAL` reason precedence | `(0,4297,14)` | ASEC clone 0, `(0,4297,14)` | zero-inflated positive | concept mismatch |
+| SS survivors | current `SS_VAL` reason precedence | `(0,4299,12)` | ASEC clone 0, `(0,4299,12)` | zero-inflated positive | concept mismatch |
+| Keogh | `Σs 1[DST_SCs=5]*DST_VALs` | `(0,4311,0)` | ASEC-origin clone 1, `(0,4311,0)` | degenerate zero | dense-rung refit |
+| taxable 401(k) | `Σs 1[DST_SCs=1]*DST_VALs` | `(0,4225,86)` | ASEC-origin clone 1, `(0,4249,62)` | zero-inflated positive | dense-rung refit |
+| taxable 403(b) | `Σs 1[DST_SCs=2]*DST_VALs` | `(0,4305,6)` | ASEC-origin clone 1, `(0,4310,1)` | zero-inflated positive | dense-rung refit |
+| taxable SEP | `Σs 1[DST_SCs=6]*DST_VALs` | `(0,4307,4)` | ASEC-origin clone 1, `(0,4309,2)` | zero-inflated positive | dense-rung refit |
+
+The 59/41 pension equation is implemented before cloning
+(`packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:41-43,188-200,345-362`).
+The account-code sums and strict source contract are implemented at
+`packages/microcosm-build/src/microcosm/build/us_runtime/retirement_distributions.py:97-112,210-269`;
+taxable IRA also has the pre-clone CPS-carried code-4 producer
+(`packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:490-500`).
+The four Social Security equations use the current reason precedence at
+`packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py:365-410`.
+Early transfer preserves ASEC donor cells before clone expansion
+(`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:7581-7698,7808-7820`),
+whereas the late account transfer selects ASEC-origin clone 1 after the
+internal CPS-trained PUF-role QRF
+(`packages/microcosm-build/src/microcosm/build/us_runtime/retirement_distributions.py:336-473`;
+`packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8340-8483,8518-8538,8631-8729`).
+
+### Classification and implementation boundary
+
+- **Pensions — two concept mismatches.** Frozen ASEC has 83 government-only
+  pension carriers totaling $3,361,227 that the current equation puts wholly
+  in private leaves. Four rows mix private/government codes, seven have an
+  unresolved source, and `ANN_VAL` has no ownership label; `PEN_VAL1/2` are
+  absent from every frozen checkpoint. The owner equation in `AUDIT.md` routes
+  unambiguous pure-source pensions and declares annuity, mixed, railroad/other,
+  and unclassified evidence absent. It marks 56 f001 rows/$1,804,558 ambiguous.
+  It is not implemented and no exclusion was added. A narrow public-leaf patch
+  is unsafe because clone expansion copies pre-clone leaves and the PUF role
+  maps its aggregate pension amount to the private leaf before selective
+  overwrite
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/puf_support.py:208-224,1993-2047,2083-2143,3990-4008`).
+- **Social Security — four concept mismatches.** Current precedence conserves
+  `SS_VAL` but cannot identify a unique component for 35 of 740 positive f001
+  rows/$744,734: 24 code-7/8 rows/$495,214 and 11 distinct recognized
+  multi-category rows/$249,520. `AUDIT.md` gives the exact owner-only
+  declared-absence equation. ACS supplies only adjusted combined `SSP`, not the
+  four leaf labels
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_inputs.py:133-144,177-195,307-331`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:148-164,186-212,1891-1966`).
+- **Taxable IRA — dense-rung refit.** Run/bank the current early family first,
+  then apply a single-target weighted two-part overlay trained on the exact
+  ASEC clone-0 code-4 label, pattern by pattern, with ACS `RETP` only as a
+  predictor. Keep the compatibility bank and every non-IRA early output
+  byte-identical, and apply only the original IRA complement. The frozen family
+  string is `puf_tax_itemization__clone0_taxable_ira_overlay`; neither its name
+  nor derived seeds may be selected after observing f025. This avoids changing
+  Social Security retirement, which follows IRA in the same current batch
+  (`packages/microcosm-build/src/microcosm/build/us/spec/imputation.yaml:371-514`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:2338-2379,2902-2916`;
+  `packages/microcosm-fit/src/microcosm/fit/qrf.py:649-662,1151-1230`).
+- **Keogh/401(k)/403(b)/SEP — four dense-rung refits.** Keep the internal
+  PUF-role QRF for its intended PUF output. The candidate must run the current
+  clone-1 family first, then use a source-ID-keyed hybrid donor that replaces
+  only these four target labels with clone-0 evidence. Fit/draw Keogh over the
+  union of all four recipient complements; then fit `[401(k), 403(b), SEP]`
+  over that union with refit Keogh and the unchanged
+  compatibility-pass tax-exempt IRA raw draw as fixed prefixes. Both the
+  passing target's bank and terminal output must be byte-identical. Apply only
+  the four declared recipient masks, preserve producer cells and all controls,
+  and persist exact donor masks/sign counts/regimes. Recompute Keogh's regime
+  from realized support, retain the existing QRF behavior, and abort only on
+  existing validation errors; never add, synthesize, or reweight carriers. The
+  frozen family strings are
+  `source_operator_retirement_distributions__clone0_keogh_overlay` and
+  `source_operator_retirement_distributions__clone0_accounts_overlay`; their
+  names may not be selected after observing f025
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/puf_support.py:2121-2143`;
+  `packages/microcosm-build/src/microcosm/build/us_runtime/stacked_spine.py:8405-8440,8477-8483,8518-8538,8631-8729`;
+  `packages/microcosm-fit/src/microcosm/fit/qrf.py:118-150,649-662,1151-1230,1333-1407`).
+- Both refits require the future `REFIT_SHA` to add a typed
+  post-compatibility overlay executor. The current transfer derives draw scope
+  from target nulls, writes only nulls, starts an empty-prefix chain, and
+  rejects duplicate target declarations; it cannot express authenticated
+  non-null overlay masks, a wider Keogh draw scope, or the two fixed late raw
+  prefixes
+  (`packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py:967-1043,1461-1523,2283-2334`;
+  `packages/microcosm-fit/src/microcosm/fit/qrf.py:1110-1230`).
+  `HOST_25PCT_PLAN.md` freezes a separate ordered overlay registry, typed
+  `{family_id, draw_scope, write_masks, fixed prefixes, separate bank}`
+  contract, bank schema, exact prefix order, and required resume/mask/identity
+  regressions. Compatibility declarations and banks remain untouched.
+- **Zero derivation defects.** Every current source equation bit-matches frozen
+  clone 0, so there is no 1%-verifiable derivation patch to implement. Fixing
+  pension or Social Security without owner decisions would change concepts;
+  changing the other five is model fitting that requires f025 evidence.
+
+### Blocked serial-host f025 plan and exact entry points
+
+`experiments/retirement_model_and_data/HOST_25PCT_PLAN.md` is the complete
+fail-closed charter. Cold execution is currently blocked: historical f025 and
+f001 stages reached 81,026,367,488 and 84,729,479,168 RSS bytes, respectively,
+and neither a reviewed sub-14-GiB cold implementation nor an authenticated
+candidate resume bundle exists. `REFIT_SHA` and the owner decisions for the
+six concept legs also do not exist. Consequently there is no truthful,
+authorized executable f025 build command yet.
+
+Once those prerequisites exist, the exact outer command is one literal Darwin
+lock held across the refit, removal, and broad runs:
+
+```bash
+/usr/bin/lockf -t 0 -k \
+  /private/tmp/microcosm-retirement-f025.serial.lock \
+  /ABSOLUTE/REVIEWED/retirement-f025-supervisor \
+  /ABSOLUTE/REVIEWED/run-authority.json
+```
+
+The reviewed supervisor must execute the no-extra-argument f025 argv printed
+verbatim in `HOST_25PCT_PLAN.md`, through the fixed 14 GiB guard, after exact
+revision/input/authority/checkpoint authentication. It must run in this order:
+
+1. reviewed five-leg `REFIT_SHA`;
+2. frozen removal commit `1a8ad451c6eff17d405ef75cbdd014de72447153`;
+3. frozen broad commit `539e415defb27bf103a40081239f123ce9d76c6d`.
+
+The exact standalone Phase-P reference recovery and candidate invocation are:
+
+```bash
+git -C /Users/maxghenis/PolicyEngine/_worktrees/microcosm-arm-split \
+  show 9d6eecb4:tools/predictor_set_oos_gate.py \
+  > "$PHASE_P_REFERENCE_RUNNER"
+test "$(/sbin/sha256sum "$PHASE_P_REFERENCE_RUNNER" | awk '{print $1}')" = \
+  319cd4292577c5c88322fcfe6205e176a354094950b98ca45047f7f2bb320ca1
+
+"$WORKTREE/.venv/bin/python" "$PHASE_P_CANDIDATE_RUNNER" \
+  --baseline /Users/maxghenis/PolicyEngine/_buildo-runtime/out/stacked-f025-r1 \
+  --candidate "$OUT_DIR" \
+  --output "$OUT_DIR/phase_p/verdict.json" \
+  --markdown-output "$OUT_DIR/phase_p/report.md"
+```
+
+These commands remain blocked with the build. The host charter requires an
+atomic all-exit/signal status writer, full artifact/authority/target-bank
+authentication, baseline-versus-refit and baseline/removal/broad 16-row
+ledgers, unchanged Phase-P controls and exact 32/118/74/211 completeness. It
+does not authorize an exclusion, control tuning, a cold build above the memory
+limit, or acceptance based only on a process exit code.
+
+### Final exact-tree validation
+
+- Frame, data, calibrate, and fit package-directory suites returned zero. Their
+  guarded aggregate/individual peaks were respectively
+  `6,995,214,336/6,974,128,128`,
+  `11,917,328,384/11,896,111,104`,
+  `498,696,192/477,511,680`, and
+  `863,649,792/821,182,464` bytes. No descendant escaped and every process
+  group was empty.
+- The 259 tracked build test files were sorted once and partitioned into the
+  six accepted direct-pytest ranges below. Raw accepted command count, unique
+  accepted command count, and tracked file count are all exactly 259; the set
+  difference is empty.
+
+  | Files | Trace | Return | Aggregate / individual peak bytes | Escaped test sessions | Empty group |
+  |---|---|---:|---:|---|---|
+  | 1–50 | `/private/tmp/retirement-final-build-batch1-allow.trace.jsonl` | 0 | 4,941,611,008 / 4,908,285,952 | 96949, 98572, 99070 | yes |
+  | 51–100 | `/private/tmp/retirement-final-build-batch2.trace.jsonl` | 0 | 2,194,948,096 / 2,173,763,584 | none | yes |
+  | 101–139 | `/private/tmp/retirement-final-build-batch3.trace.jsonl` | 0 | 726,106,112 / 695,779,328 | none | yes |
+  | 140–180 | `/private/tmp/retirement-final-build-batch4.trace.jsonl` | 0 | 10,059,890,688 / 10,017,013,760 | 43150 | yes |
+  | 181–220 | `/private/tmp/retirement-final-build-batch5.trace.jsonl` | 0 | 7,517,306,880 / 7,474,413,568 | 53856, 54306 | yes |
+  | 221–259 | `/private/tmp/retirement-final-build-batch6.trace.jsonl` | 0 | 10,281,369,600 / 10,238,705,664 | none | yes |
+
+- All disclosed escaped test-session PIDs were included in the guard's RSS and
+  kill set; direct `kill -0` checks after completion report every one gone. The
+  first range-1 host-default attempt correctly stopped the intentional escape
+  PID 89150 (`monitor_error`, return `-9`, 2,293,039,104-byte aggregate peak,
+  empty group). That discarded supervisor receipt is not pytest evidence. The
+  identical range passed under the guard's explicit test-only escape tracking.
+- The canonical audit generation and independent freshness check both returned
+  zero, reproduced the two small-support QED failures, and left empty process
+  groups. The JSON SHA-256 is
+  `37e92f7358119c44670c104335d9452a8a4e9e22f28627a70c589691e4dc92bf`;
+  the script SHA-256 is
+  `a12a8f3192017a74738f5344b4c25dd6174363f834f25de9ef28ca12be781378`.
+- Final repository-wide `uv run ruff check .` returned zero. Its fixed-guard
+  trace records a 46,776,320-byte aggregate peak, a 25,559,040-byte individual
+  peak, no escaped descendant, and an empty process group.
+
+### Next
+
+- Owner adjudication, a reviewed five-leg `REFIT_SHA`, and a demonstrated
+  memory-safe cold path or authenticated exact resume are required before the
+  serial host queue can run the blocked f025 charter.
+- No push, pool build, exclusion, control tuning, publication, or chain
+  operation is authorized from this lane.

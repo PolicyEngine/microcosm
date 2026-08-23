@@ -2,12 +2,15 @@
 
 ## State
 
-The `battery-retirement-model-data` lane is auditing the adjudicated 16 red
-checks / 11 retirement legs. No pool build has run. Mandatory baseline
-validation is green across all five package shards plus Ruff under the fixed
-14 GiB guard. It required four unrelated baseline-enabling repairs:
+The `battery-retirement-model-data` lane has completed the frozen
+source/label/carrier/amount audit for the adjudicated 16 red checks / 11
+retirement legs. No pool build has run. The machine proof classifies 6 concept
+mismatches, 5 dense-rung refits, and 0 derivation defects; therefore no safe
+production derivation fix or exclusion was made. Mandatory baseline validation
+is green across all five package shards plus Ruff under the fixed 14 GiB guard.
+It required four unrelated baseline-enabling repairs:
 fresh-interpreter imports are lazy and identity preserving
-(`packages/microcosm-build/src/microcosm/build/us_runtime/__init__.py:1069-1083,1986-2000`;
+(`packages/microcosm-build/src/microcosm/build/us_runtime/__init__.py:1072-1085,1989-2001`;
 `packages/microcosm-build/src/microcosm/build/us_runtime/spine_agreement.py:325-328,953-980`),
 the mounted SIPP vehicle and voluntary-filing parsers are bounded
 (`packages/microcosm-build/src/microcosm/build/us_runtime/sipp_vehicles.py:368-430`;
@@ -15,9 +18,14 @@ the mounted SIPP vehicle and voluntary-filing parsers are bounded
 and the IMDB archive fidelity test streams its source
 (`packages/microcosm-build/tests/test_us_trade_imdb_goldens.py:209-238`).
 Exact full-donor and archive regressions preserve the prior values and
-identities. The retirement source/label/carrier/amount audit, frozen-donor
-regime proof, classification ledger, and 25% host handoff are the next coherent
-step; no retirement defect classification is claimed in this baseline commit.
+identities. The reproducible f001 proof now verifies all 16 raw ASEC source
+columns through assembly and transfer, all 11 clone-0 equations, actual donor
+roles/sign support/regimes, final pool/gate equality, and ACS disagreement
+entry points. The serial-host f025 charter is complete but explicitly blocked
+pending a reviewed sub-14-GiB cold implementation or exact resume authority,
+the five-leg refit commit, and owner decisions for pension/Social Security.
+Final exact-tree validation is green. The audit/handoff is complete; no further
+lane action is authorized beyond its required local commit.
 
 ## Done
 
@@ -203,14 +211,63 @@ step; no retirement defect classification is claimed in this baseline commit.
   `2aa96795`. No merge was performed because the supplied f001 artifacts and
   source audit are bound to the lane base; no push, pool build, gate tuning,
   exclusion, publication, or chain operation occurred.
+- Added a deterministic, hash-bound frozen-artifact proof at
+  `experiments/retirement_model_and_data/audit_frozen_artifacts.py`. It verifies
+  the 16-check/11-leg adjudication; exact raw→assembled→transferred carriage of
+  all 16 ASEC source columns; bitwise source→clone-0 equality; actual donor
+  clone, sign counts, and recomputed regime; baseline/pkg3 gate and target-array
+  equality; target-bank identities/raw draws; terminal amount/carrier/quantile
+  facts; and native ACS `RETP`/`SSP` disagreement.
+- The canonical `f001_audit.json` classifies tax-exempt/taxable private pension
+  and four Social Security components as 6 concept mismatches; taxable IRA,
+  Keogh, 401(k), 403(b), and SEP as 5 dense-rung refits; and exactly 0
+  derivation defects / exclusions. All 11 current equations reproduce clone 0,
+  so no 1%-verifiable production derivation patch exists.
+- Wrote the exact owner-only declared-absence equations for pension and Social
+  Security. The pension proposal marks 56 rows/$1,804,558 ambiguous; the
+  Social Security proposal marks 35 positive rows/$744,734 ambiguous. Neither
+  equation nor an exclusion was implemented.
+- Wrote `HOST_25PCT_PLAN.md` with the exact five-leg refit, frozen removal/broad
+  revisions, immutable input/authority bindings, literal Darwin lock entry,
+  atomic all-exit status prerequisite, standard no-extra-argument build argv,
+  refit/factorial 16-row ledgers, and exact Phase-P runner recovery/invocation
+  and completeness checks. Execution is explicitly blocked because historical
+  RSS is over 80 GB and no reviewed memory-safe cold path or exact candidate
+  resume bundle exists; the refit commit and concept-owner decisions also do
+  not yet exist.
+- The corrected final audit generation returned zero under the guard at
+  457,834,496 aggregate / 436,682,752 individual RSS bytes. Its independent
+  freshness check also returned zero at 453,787,648 / 432,586,752 bytes. Both
+  observed no escaped descendants and left empty process groups. The proof
+  uses the battery's pinned five-carrier QED minimum, so it independently
+  reproduces the f001 dependent/survivor distances `0.917093391855645` and
+  `0.2780886784330607`. The canonical JSON SHA-256 is
+  `37e92f7358119c44670c104335d9452a8a4e9e22f28627a70c589691e4dc92bf`.
+- Final exact-tree frame, data, calibrate, and fit package suites returned zero
+  under the fixed guard at peak aggregate RSS of 6,995,214,336,
+  11,917,328,384, 498,696,192, and 863,649,792 bytes, respectively. Every
+  process group was empty and no descendant escaped.
+- All 259 tracked build test files were run exactly once across six accepted,
+  disjoint direct-pytest ranges. Their return codes were all zero and aggregate
+  peaks were 4,941,611,008, 2,194,948,096, 726,106,112, 10,059,890,688,
+  7,517,306,880, and 10,281,369,600 bytes. Every group was empty. Intentional
+  test-session escapes in ranges 1, 4, and 5 were included in RSS, disclosed,
+  killed, and independently verified gone.
+- The first range-1 attempt used the host-default escape refusal and therefore
+  stopped at the suite's intentional detached-session regression (return `-9`,
+  2,293,039,104-byte aggregate peak). It is a discarded process-control receipt,
+  not a pytest failure. The unchanged range then passed with the explicit test
+  validation opt-in. Exact accepted-command union, unique union, and tracked
+  build file set are all 259 with an empty set difference.
+- Final repository-wide `uv run ruff check .` returned zero under the fixed
+  guard at 46,776,320 aggregate / 25,559,040 individual RSS bytes, with no
+  escape and an empty process group.
 
 ## Next
 
-- Materialize the exact 16-check / 11-leg ledger from the frozen adjudication
-  and baseline gate receipts.
-- Trace every leg from ASEC and ACS physical sources through transfer or
-  derivation into clone 0; recompute realized regimes from frozen donor support.
-- Classify each leg as derivation defect, concept mismatch, or dense-rung refit;
-  implement and regress every 1%-verifiable derivation fix.
-- Record exact serial 25% host commands for all artifact-dependent work, then
-  run the full per-package tests and Ruff after each coherent step.
+- The owner must adjudicate the six declared concept absences, review a
+  five-leg `REFIT_SHA`, and provide either a demonstrated sub-14-GiB cold path
+  or an authenticated exact candidate resume before the serial host queue may
+  execute `HOST_25PCT_PLAN.md`.
+- Do not push, build a pool from this lane, add an exclusion, or change any
+  frozen gate, band, ceiling, fold, seed, or comparator.
