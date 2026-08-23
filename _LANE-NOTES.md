@@ -54,6 +54,13 @@
   rows, and every computable candidate terminal-battery leg. The committed
   incumbent evidence remains
   `experiments/replacement_scorecard/incumbent_48b9d479.md`.
+- Final verification: `ruff check .` and `git diff --check` pass. `ruff format
+  --check .` reports 64 inherited files; none is a lane change and no bulk
+  rewrite was made. A focused pytest selection remained in schema-registry
+  validation during collection and was interrupted to avoid overlapping
+  resource-heavy diagnostics. Script syntax/dry-run validation is correctly
+  absent because the required-input stop prevented an honest script from
+  existing. The complete handoff is `FINAL_REPORT.md`.
 
 ## 2026-08-23 — lane start and binding boundary
 

@@ -1,7 +1,9 @@
 # Candidate 25% current-main input audit
 
-Date: 2026-08-23  
-Code: `d69131a3` (`origin/main` at lane start)  
+Date: 2026-08-23
+
+Code: `d69131a3` (`origin/main` at lane start)
+
 Result: **STOPPED — a required stage-2 Ledger artifact is absent**
 
 This is a read-only host audit. No pool or release builder was run, no release

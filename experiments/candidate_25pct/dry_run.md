@@ -1,6 +1,7 @@
 # Candidate 25% dry-run receipt
 
-Date: 2026-08-23  
+Date: 2026-08-23
+
 Status: **NOT RUN — stopped at a missing required stage-2 input**
 
 The requested dry-run did not run because current exact-k stage 2 requires a

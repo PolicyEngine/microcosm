@@ -29,6 +29,10 @@ one as dry-run-valid, or run either builder.
   incumbent calibration diagnostics, and no local full SCF `p22i6.dta`.
 - Preserved the no-build, no-publish, no-promote, no-push, no-tuning,
   under-15-GiB lane boundary. The pending logbook chain was not touched.
+- Wrote the final handoff to `FINAL_REPORT.md`. `ruff check .` and
+  `git diff --check` pass; the whole-tree formatter reports 64 inherited files,
+  and focused pytest collection was interrupted during schema-registry
+  validation rather than allowing redundant diagnostics to consume the host.
 
 ## Next
 
