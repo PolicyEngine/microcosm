@@ -6,8 +6,10 @@ Branch: `candidate-25pct-runbook`
 
 ## State
 
-**In progress: auditing the owner-ruled legacy release arm before authorizing
-the guarded runbook.** The first replacement is now explicitly
+**In progress: enumerating every owner-ruled legacy release-arm input before
+authorizing the guarded runbook.** The target-surface gate passed: legacy dense
+and exact-k reach the same unconditional unified compiler and materialization
+path. The first replacement is explicitly
 `one-surface + pkg3, legacy release arm, not exact-k certified`, using the bare
 v9.4 Ledger facts pin, `--dense-default-dataset`, and seed `0`. The exact-k
 artifact/feed re-pin and `pi_hi` decision are deferred to the next candidate.
@@ -26,19 +28,25 @@ legacy-arm input is a hard stop.
   `candidate-25pct-runbook`, seven commits ahead of the local `origin/main`
   reference.
 - Read the GitNexus exploration workflow for the required compiler-path trace.
+- GitNexus graph resources were not exposed in this session, so completed the
+  trace directly from current-main source and PR #741 history.
 - Recorded the owner ruling that supersedes round 2's exact-k stop for this
   first replacement only.
+- Proved that post-#741 there is one unconditional
+  `compile_us_fiscal_target_registry` call and no per-run target-membership
+  flags; both exact-k and dense consume the same materialized registry.
+- Recorded the qualification that dense mode also changes the post-calibration
+  SSI delivery fence, not target membership.
+- Began the code-cited evidence in
+  `experiments/candidate_25pct/input_audit_r3.md`.
 
 ## Next
 
-1. Prove from checked-out current-main code that legacy and exact-k reach the
-   same `compile_us_fiscal_target_registry` target surface, and isolate the
-   effects of `--dense-default-dataset`.
-2. Enumerate and hash every legacy-arm stage-2 input from the July 28 incumbent
+1. Enumerate and hash every legacy-arm stage-2 input from the July 28 incumbent
    invocation through parser and loader code; stop without substitution if any
    input is absent.
-3. If both gates pass, write the guarded off-chain two-stage host script,
+2. If the input gate passes, write the guarded off-chain two-stage host script,
    validate it with `bash -n`, execute its real `--dry-run`, and commit the
    receipt plus updated audit/journals.
-4. Write the final outcome to `FINAL_REPORT.md`. Do not run either builder and
+3. Write the final outcome to `FINAL_REPORT.md`. Do not run either builder and
    do not publish, promote, push, or touch pending logbook-chain state.
