@@ -42,3 +42,47 @@
 - No pool build has run. A read-only, aggregate-only 2025 council-tax
   diagnostic used the locally cached SHA-pinned enhanced-FRS artifact; it did
   not write an artifact, calibrate weights, or expose record-level values.
+
+## 2026-08-22 — diagnosis and handoff
+
+- Exact initial-journal validation completed in one invocation: build 6,033
+  passed / 38 skipped; calibrate 203 passed; data 275 passed / 1 skipped; fit 93
+  passed; frame 294 passed / 36 skipped; Ruff passed. The journal was committed
+  as `e1c36b58` only after that green result.
+- Exact-lock aggregate diagnostic: aligned GB final-award caseload is 6.1795
+  million against 6.7589 million in administration (-0.5794 million, -8.6%). A
+  separate 2.91.0 run reproduced the displayed UC counts despite its changed
+  final formula
+  (`policyengine-uk@2.89.0:policyengine_uk/variables/gov/dwp/universal_credit/universal_credit.py:4-15`;
+  `policyengine-uk@c93e1a05:policyengine_uk/variables/gov/dwp/universal_credit/universal_credit.py:4-36`).
+  The aligned GB reporter bridge, four element gaps, family-type gaps, and
+  child-count gaps are recorded in `experiments/uk_diagnosis/uc_caseload_452.md`.
+- UC causal boundary: the report labels the code-confirmed take-up, reporting,
+  eligibility, and weighting paths, measured associations, and required
+  counterfactuals separately rather than assigning additive shares; the full
+  module-and-line citations live beside each path in the UC report.
+- Council-tax diagnostic: the Scottish/Welsh result changes materially with
+  gross/net and official/fixture comparators. Correct use of the household net
+  floor raises England from the original raw £40.927 billion to £41.440 billion;
+  nominal CTR exceeds gross by £0.512 billion on 462 records
+  (`policyengine-uk@2.89.0:policyengine_uk/variables/household/consumption/council_tax_less_benefit.py:16-21`).
+  The active national reference and inactive country facts require signed
+  definition reconciliation in #736.
+- `owned_land` is downstream of gross council tax, but it predicts later wealth
+  outputs including savings
+  (`packages/microcosm-build/src/microcosm/build/uk_runtime/was_wealth.py:333-339,398-423`),
+  so the reports preserve a possible savings → CTR → net interaction rather
+  than claiming full independence. The #733 71.4% national / 112.9%
+  maximum-region values are explicitly marked task-supplied because the named
+  receipt was absent; no seed experiment or imputation change was run here.
+- Exact-lock diagnostics used writable temporary copies of the two cached,
+  SHA-pinned licensed artifacts because the HDF loader requests write access.
+  They emitted aggregate values only; all temporary copies were deleted and no
+  licensed rows or artifacts were added to the worktree.
+- Deliverables: `experiments/uk_diagnosis/uc_caseload_452.md`,
+  `experiments/uk_diagnosis/council_tax_448.md`,
+  `experiments/uk_diagnosis/comment_drafts.md`, and `FINAL_REPORT.md`. Draft
+  comments remain unposted and owner-controlled.
+- Closing validation policy: the deliverable commit is created only after the
+  exact `packages/*/tests` shard loop and Ruff exit successfully on the complete
+  tree. No file is edited between that gate and commit.
