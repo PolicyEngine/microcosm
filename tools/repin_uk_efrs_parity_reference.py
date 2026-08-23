@@ -720,6 +720,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     mode.add_argument(
         "--skip-tests", action="store_true", help="do not run the lockstep tests"
     )
+    mode.add_argument(
+        "--allow-engine-change",
+        action="store_true",
+        help=(
+            "permit the regenerated reference to record a different policyengine-uk "
+            "version than the committed one (a data-only re-pin must hold the engine "
+            "fixed so the artifact is the only thing that moved)"
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -804,6 +813,15 @@ def main(argv: list[str] | None = None) -> int:
     new_totals = tool.build_weighted_totals(artifact)
     new_totals_digest = canonical_totals_digest(new_totals)
     old_reference = _load_json(REFERENCE_PATH)
+    old_engine = str(old_reference["engine"]["version"])
+    new_engine = str(new_reference["engine"]["version"])
+    if old_engine != new_engine and not args.allow_engine_change:
+        raise SystemExit(
+            f"installed policyengine-uk {new_engine} differs from the committed "
+            f"reference's engine {old_engine}; a data-only re-pin must hold the "
+            "engine fixed (uv.lock) so the artifact is the only thing that moved. "
+            "Pass --allow-engine-change only for a deliberate, reviewed engine move."
+        )
     new_manifest = build_coverage_manifest(new_reference)
     old_manifest = _load_json(MANIFEST_PATH)
 
