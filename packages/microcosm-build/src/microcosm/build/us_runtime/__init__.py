@@ -162,6 +162,8 @@ from microcosm.build.us_runtime.cps_carried import (
     CPS_REPORTED_TANF_AMOUNT_RAW_COLUMN,
     CPS_REPORTED_TANF_TYPE_RAW_COLUMN,
     CPS_REPORTED_WIC_RAW_COLUMN,
+    US_REPORTED_COVERAGE_PERSON_INPUTS,
+    US_REPORTED_COVERAGE_VINTAGE_GATE_MIN_ROWS,
     WIC_CARRIER_ADJUDICATION_URL,
     derive_us_cps_carried_inputs,
     reported_tanf_enrollment_by_spm_unit,
@@ -964,6 +966,9 @@ from microcosm.build.us_runtime.ssi_take_up import (
     with_us_ssi_take_up,
     write_us_ssi_take_up_diagnostics,
 )
+from microcosm.build.us_runtime.support_provenance import (
+    us_reported_coverage_vintage_signal_gate,
+)
 from microcosm.build.us_runtime.take_up import (
     US_TAKE_UP_SHARE_BAND,
     SeededTakeUpResult,
@@ -1095,6 +1100,8 @@ __all__ = [
     "CPS_REPORTED_TANF_AMOUNT_RAW_COLUMN",
     "CPS_REPORTED_TANF_TYPE_RAW_COLUMN",
     "CPS_REPORTED_WIC_RAW_COLUMN",
+    "US_REPORTED_COVERAGE_PERSON_INPUTS",
+    "US_REPORTED_COVERAGE_VINTAGE_GATE_MIN_ROWS",
     "WIC_CARRIER_ADJUDICATION_URL",
     "SimpleTaxExpenditureReform",
     "ReformValidationSpec",
@@ -1852,6 +1859,7 @@ __all__ = [
     "derive_us_cps_carried_inputs",
     "reported_tanf_enrollment_by_spm_unit",
     "reported_wic_receipt_carrier",
+    "us_reported_coverage_vintage_signal_gate",
     "disaggregate_us_puf_aggregate_records_from_manifest",
     "finalize_us_puf_tax_detail_predictions",
     "hard_target_package_aliases",
