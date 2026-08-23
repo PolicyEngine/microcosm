@@ -166,6 +166,47 @@
   usage, coverage, inventory, gate/data contract, serializer, authored-SHA,
   and 66-module spine-blind graph tests all pass in one process.
 
+## Final newest-union verification — 2026-08-23
+
+- Re-ran the two unchanged `test_us_trade_imdb_bulk.py` crash-publication
+  cases after shared-host load fell. Both pass with the existing 60-second
+  child-process bound and one-thread numerical-library environment. The
+  earlier failures were confined to child CLI import under contention; no
+  timeout, comparator, gate, or product threshold changed.
+- Repository-wide `ruff check .` and `git diff --check` pass on the final
+  `055dcfaf` union.
+- Four shard receipts, each in one pytest process with peak child RSS from
+  `resource.getrusage`: fit 93 passed, exit 0, 925,466,624 bytes (0.862 GiB);
+  calibrate 203 passed, exit 0, 481,968,128 bytes (0.449 GiB); frame 294
+  passed / 36 skipped, exit 0, 6,971,260,928 bytes (6.492 GiB); data 275
+  passed / one skipped, exit 0, 11,867,324,416 bytes (11.052 GiB).
+- The complete build root first passed behaviorally in one process (6,248
+  passed / 39 skipped) but reached 17,167,810,560 bytes (15.989 GiB). That
+  receipt violates this lane's `<15 GiB` constraint and is explicitly
+  rejected; it is not the resource evidence for completion.
+- The authoritative build rerun enumerated all 262 `test_*.py` files and ran
+  them in 17 fresh pytest processes under a 12 GiB/20 ms hard guard. Every
+  batch passed without a split or guard intervention. The exact aggregate is
+  6,248 passed / 39 skipped, exit 0, elapsed 6,966.45 seconds; maximum observed
+  RSS is 11,042,193,408 bytes (10.284 GiB). This reproduces the complete
+  single-process inventory while keeping the accepted receipt below 15 GiB.
+- Refreshed the packaging boundary on the newest union. All five wheels built
+  offline using the writable cache. A brand-new offline venv was created but
+  could not resolve uncached third-party packages (`pytest`, then
+  `huggingface-hub`), so it was not used as evidence. The five new local
+  wheels were instead reinstalled without dependency resolution into the
+  existing clean, lock-constrained wheel venv from the earlier gate. With
+  `PYTHONPATH` removed and isolated mode enabled, all five `microcosm.*`
+  shards import from that venv, `policyengine_us` is absent,
+  `tools/spec_envelope_digests.py be uk` passes, and installed-wheel
+  identities are BE `bf0221184046428782e7628dfad9b1a420bcc90c76ee88f4df373abecabff9d9`,
+  UK `8bf62b6e47583da1bdad1b71be1e705f424e6e245880e90f4411aba57fa5eb93`,
+  and US `d3de6760727cfcb6800209670d37e02b373d8dcda19f8ad054aa9d410e0efbb0`.
+- A fresh `git fetch origin main battery-pkg3-two-part` remains blocked before
+  transport by sandbox DNS (`Could not resolve host: github.com`). The shared
+  local `origin/main` ref is `055dcfaf` and is an ancestor of HEAD. No push has
+  been attempted; the sole permitted push remains the final transport step.
+
 ## Scope and frozen boundary
 
 This lane owns 16 adjudicated FIX-CANDIDATE checks: 13 in

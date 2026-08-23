@@ -4,25 +4,22 @@
 
 ### State
 
-The branch now contains three main merges (2026-08-23 headless
-continuation): `e66074ad` merges `b4dfa0e7` with the F0 policy port and its
-anti-rot chain folded in; `e0947020` merges main at `2aa96795` (#733 UK FRS
-2024-25); and the current merge incorporates main at `055dcfaf` (#740 UK E8
-CGT/salary-sacrifice/student-loan stages). The third merge's sole conflict was
-again the UK bundle `spec_sha256` pin; its newest-union value is `8bf62b6e…`,
-while BE and US hold. Coverage `--check` and the focused policy/count/pin/
-gate/data/merge-guard suite are green on that newest union. Repository-wide
-Ruff, the wheel-packaging gate, and the fit / calibrate / frame / data shards
-were green on the preceding union. A complete build-shard run there then
-exposed three deterministic merge-union misses; all three are corrected and
-their exact tests pass. Two unrelated trade-publication crash tests timed out
-while importing their child CLI under shared-host load (the import alone took
-73.82 seconds against the unchanged 60-second test bound). Remaining:
-re-verify those unchanged tests after host load falls, run repository Ruff and
-the final complete build shard on the newest union, close `FINAL_REPORT.md`,
-and make the single permitted push to `origin/battery-pkg3-two-part`. Earlier
-sections of this journal are historical records of their named checkpoints,
-not current instructions or branch state.
+Implementation and verification are complete on the three-main-merge union:
+`e66074ad` merges `b4dfa0e7` with the F0 policy port and anti-rot chain folded
+in; `e0947020` merges main at `2aa96795` (#733); and `1fc9055e` merges main at
+`055dcfaf` (#740). Commit `87e638bd` closes the three deterministic
+merge-union guards exposed by the first complete build run. Coverage reports
+41,471/41,471 fields and 40/40 inventory checks. The final focused suite,
+both unchanged trade-publication tests, repository-wide Ruff, all five test
+shards, and the refreshed wheel boundary are green. The authoritative build
+receipt covers all 262 files in 17 fresh processes: 6,248 passed, 39 skipped,
+exit 0, peak 10.284 GiB. Every accepted shard receipt is below 15 GiB; the
+green single-process build attempt that reached 15.989 GiB was rejected and
+replaced by the capped receipt. No host pool build, threshold change,
+publication, or PR merge occurred. This report-closing commit is the sole
+final-push payload; transport to `origin/battery-pkg3-two-part` is the only
+remaining step. Earlier sections of this journal are historical records of
+their named checkpoints, not current instructions or branch state.
 
 ### Done
 
@@ -116,15 +113,33 @@ not current instructions or branch state.
   policy identity, country bundle, field usage, coverage, inventory,
   gate-battery/data-contract, serializer, authored-SHA, and spine-blind import
   graph suite passes in one process.
+- Re-ran the two unchanged trade-publication crash tests under lower host load;
+  both pass with their existing 60-second subprocess bound. The earlier
+  failures were import-time host contention, not publication behavior, and no
+  timeout or product threshold changed.
+- Re-ran repository-wide Ruff and whitespace checks on the newest union: both
+  pass.
+- Completed the final five-shard suite with measured RSS. Fit: 93 passed,
+  0.862 GiB. Calibrate: 203 passed, 0.449 GiB. Frame: 294 passed / 36 skipped,
+  6.492 GiB. Data: 275 passed / one skipped, 11.052 GiB. A green build-root
+  run reached 15.989 GiB and was not accepted; the authoritative rerun covered
+  every one of its 262 test files across 17 fresh pytest processes, reproduced
+  6,248 passed / 39 skipped with exit 0, and peaked at 10.284 GiB under a
+  12 GiB guard without intervention.
+- Refreshed all five wheels on the newest union. Reinstalled into the existing
+  clean, lock-constrained wheel venv, every namespace imports from the venv
+  prefix with `policyengine_us` absent; installed-wheel bundle identities are
+  BE `bf022118…`, UK `8bf62b6e…`, and US `d3de6760…`. A newly created offline
+  venv stopped at uncached third-party resolution, so no network-dependent
+  install claim is made.
+- Wrote the completed r4 handoff and exact verification receipts to
+  `FINAL_REPORT.md`.
 
 ### Next
 
-1. Re-run the two unchanged trade-publication crash tests once host load is
-   low enough for their child import to satisfy the existing 60-second bound.
-2. Run repository-wide Ruff and the complete build shard on the newest union,
-   then refresh `FINAL_REPORT.md` and this journal with the final receipt.
-3. Make the single permitted push to `origin/battery-pkg3-two-part`; PR
-   #742 then updates in place. Do not merge the PR.
+1. Push this report-closing commit once to
+   `origin/battery-pkg3-two-part`; PR #742 then updates in place. Do not merge
+   the PR. No implementation or verification work remains.
 
 ## Post-transfer receipt validation — 2026-08-21 14:48Z
 

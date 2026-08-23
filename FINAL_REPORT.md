@@ -1,4 +1,161 @@
-# Final report: pkg3 post-transfer receipt validation failure #2
+# Final report: pkg3 r4 — main merge resolved by porting the calibration policy into the F0 spec
+
+2026-08-23. This section reports the r4 continuation (the `origin/main`
+merges and the F0 home for the post-transfer calibration policy). The
+receipt-validation report it supersedes as the branch's latest result
+remains below as history.
+
+## Outcome
+
+PR #742's source conflict against the locally available `origin/main` is
+resolved by three merge commits: `e66074ad` (main at `b4dfa0e7`, carrying the
+F0 policy port), `e0947020` (main at `2aa96795`, #733), and `1fc9055e` (main at
+`055dcfaf`, #740). `origin/main` at `055dcfaf` is an ancestor of the final
+tree. Commit `87e638bd` closes the three deterministic merge-union guards
+exposed by the complete build shard. The full five-shard inventory,
+repository-wide Ruff, coverage attestation, and final wheel boundary are
+green.
+
+The branch's post-transfer calibration policy declaration — formerly in
+`specs/us_imputation_lineage.yaml`, which main's F0 migration deleted —
+now lives where imputation models are authored:
+
+- a closed, typed exact variant of `regime_gated_qrf_model` carrying the
+  `post_transfer_calibration_policy_v1` payload
+  (`packages/microcosm-build/src/microcosm/build/spec_engine/schema/imputation.schema.json:746-807`);
+- the authored declaration in
+  `packages/microcosm-build/src/microcosm/build/us/spec/imputation.yaml:94-192`,
+  with its generator in `tools/us_bundle_generation/imputation.py:269,2337`;
+- a ninth `post_transfer_calibration` stacked-authority component projected
+  at authority binding version 11
+  (`spec_engine/stacked_authority_semantics.py:414,466,618-622`;
+  `us/spec/battery.yaml:824-826`);
+- the spec-matches-code identity test re-ported to the generated-bundle
+  boundary in
+  `packages/microcosm-build/tests/test_imputation_lineage_spec.py:99-103`,
+  combined with main's producer-registry test, holding the authored payload
+  byte-equal to `post_transfer_calibration_policy_identity`
+  (`us_runtime/post_transfer_calibration.py:301`) in code.
+
+No comparator, band, threshold, seed, fold, gate, or sample contract
+changed. No host pool build ran. Nothing was published and PR #742 was not
+merged. This report-closing commit is the payload for the single permitted
+push to `origin/battery-pkg3-two-part`.
+
+## Anti-rot chain
+
+The port adds 92 authored configuration fields. Every count, sha, and pin
+site the chain covers was walked and is test-green on the final tree:
+
+- `EXPECTED_CONFIGURATION_FIELD_COUNT = 41_471`
+  (= 32,252 authored + 9,219 resolved;
+  `spec_engine/field_usage.py:29-31`), with the mode/effect counts at their
+  matching literals and the `imputation_models` usage claim moving from 4
+  fields to 96 with claim SHA-256
+  `e4d6b6b747fcec1c027e0f1c2d1905274c0426217a61383b02e75baadb93db4d`
+  (`field_usage.py:359-362`).
+- The pointer-inventory sha and the regenerated
+  `docs/evidence/spec-engine/us-f0-coverage.json`:
+  `tools/spec_engine_coverage.py --check` reports 41,471/41,471
+  configuration fields and 40/40 inventory checks with no drift. The pinned
+  inventory SHA-256 is
+  `2daa3ee07ac2e5d5ab731348edbca8c7a58438e9819d1ac3707070c7500a1c63`
+  (`tools/spec_engine_coverage.py:42-45`).
+- Test literals in `test_spec_engine_field_usage.py` and
+  `test_spec_engine_coverage_tool.py`.
+- Bundle identity pins. The US pin
+  `d3de6760727cfcb6800209670d37e02b373d8dcda19f8ad054aa9d410e0efbb0` in
+  `test_us_multispine_pool_tool.py` was recomputed via
+  `load_bundle("us").spec_sha256`. The loader golden vector moved to
+  `b1ab6ab000689cc03e1088d422d7b6328b9bff2878f39448a529e5513c03ed14`
+  (`test_spec_engine_loader.py:237-239`); single-edit bisection proved the
+  mover is the branch's edits to seed-attested kernel modules (the seed
+  protocol digests attested kernel bytes into the resolved bindings inside
+  the hashed envelope, `spec_engine/loader.py:404-418`), not the shared
+  schema edit — the legitimate identity movement `CLAUDE.md` documents.
+
+## Merge resolutions
+
+Merge 1 (`e66074ad`, main at `b4dfa0e7`): `specs/us_imputation_lineage.yaml`
+stays deleted (lineage derives from the authored US bundle);
+`tools/build_us_multispine_pool.py` keeps main's immutable-safe direct
+dataclass walk plus this branch's omission of empty `target_regimes` in both
+the mapping and dataclass paths (`tools/build_us_multispine_pool.py:3826-3847`);
+root journals are unioned and historicized; the port and chain above are
+folded in. `test_imputation_lineage_spec.py` combines main's generated
+producer-registry assertion with the branch's policy-identity assertion.
+
+Merge 2 (`e0947020`, main at `2aa96795`): sole conflict was the UK entry in
+`test_spec_engine_country_bundles.py`. Both parents' pins were computed on
+trees missing the other side's envelope movers (this branch's
+stacked-authority version-11 binding vs #733's UK sources/runtime
+retarget), so the union pin was recomputed fresh via `load_bundle("uk")`:
+`bb7110699a9cb7a346ecd478f55b7a1c57bdc0c3f3283705b8a9b51830207193`. BE
+(`bf022118…`) and US (`d3de6760…`) recomputed identically on the union —
+the `b4dfa0e7..2aa96795` range touches no BE- or US-side envelope input,
+and its `sources.schema.json` edit sits in the grammar receipt outside the
+hashed envelope (`spec_engine/loader.py:227-229,401`). Main's re-cut UK
+gate-battery digests and `microcosm-data` contract pins merged clean and
+pass unchanged.
+
+Merge 3 (`1fc9055e`, main at `055dcfaf`): the sole conflict was again the UK
+country-bundle identity after #740 added the E8 UK spec stages. Fresh
+union-tree `load_bundle` calls produced BE `bf022118…`, UK `8bf62b6e…`, and
+US `d3de6760…`; the UK test pin was resolved with the exact union value
+`8bf62b6e47583da1bdad1b71be1e705f424e6e245880e90f4411aba57fa5eb93`.
+Main's UK gate/data pins merged cleanly.
+
+The complete build shard then exposed three exact union misses, fixed in
+`87e638bd`: the direct dataclass serializer now applies the empty
+`target_regimes` omission (`build_us_multispine_pool.py:3841-3847`); the
+authored-SHA audit allows only the exact policy-identity SHA path in addition
+to the two external-asset pins (`test_us_spec_bundle.py:707-770`); and the
+closed runtime import graph is pinned at 66 after the branch-added
+`post_transfer_calibration.py` module (`test_us_spine_blindness.py:3270-3315`).
+
+## Verification on the final tree
+
+- The final focused policy/count/pin/gate/data/serializer/SHA/import-graph
+  suite passes, as do the two unchanged trade-publication crash tests after
+  shared-host load fell below the point where their child CLI import exceeded
+  the existing 60-second bound. No timeout was changed.
+- Full five-shard suite on the final union. Fit, calibrate, frame, and data ran
+  in one pytest process each. The build root's single-process behavioral run
+  was green (6,248 passed, 39 skipped) but reached 15.989 GiB, so that resource
+  receipt was rejected. The authoritative capped rerun covered all 262 build
+  test files in 17 fresh pytest processes, reproduced the exact 6,248/39
+  aggregate with exit 0, and peaked at 10.284 GiB; no guard split or
+  intervention was needed.
+
+  | Shard | Result | Peak RSS |
+  | --- | --- | ---: |
+  | `microcosm-fit` | 93 passed, exit 0 | 0.862 GiB |
+  | `microcosm-calibrate` | 203 passed, exit 0 | 0.449 GiB |
+  | `microcosm-frame` | 294 passed, 36 skipped, exit 0 | 6.492 GiB |
+  | `microcosm-data` | 275 passed, 1 skipped, exit 0 | 11.052 GiB |
+  | `microcosm-build` | 6,248 passed, 39 skipped, exit 0 | 10.284 GiB |
+
+  Build authoritative receipt: `files=262 batches=17 passed=6248 skipped=39
+  exit=0 max_rss_bytes=11042193408 guard_gib=12.0`.
+- Repository-wide `uv run ruff check .` and `git diff --check`: pass.
+- Final wheel boundary: all five shard wheels build offline. Reinstalled into
+  the existing clean, lock-constrained wheel venv, all five namespaces import
+  from its site-packages prefix with `policyengine_us` absent;
+  `tools/spec_envelope_digests.py be uk` runs there; and installed-wheel
+  `load_bundle` reproduces exact BE `bf022118…`, UK `8bf62b6e…`, and US
+  `d3de6760…` identities. A second brand-new offline venv could not resolve
+  uncached third-party packages, so no network-dependent claim is made.
+
+## Boundaries
+
+This lane ran no pool build (the host queue owns those builds; the 1% baseline
+at `_buildo-runtime/out/battery-verify/baseline1pct/` stands for
+before/after diffs). Certification, publication, and release-chain
+mutation remain with their existing owners. PR #742 is not merged.
+
+---
+
+# Final report (historical): pkg3 post-transfer receipt validation failure #2
 
 ## Outcome
 
