@@ -20,10 +20,16 @@ from microcosm.build.us_runtime.acs_transfer import (
     AcsTransferBankPatternStep,
     AcsTransferTargetCheckpoint,
 )
-from microcosm.fit import QRFChainState
+from microcosm.fit import QRFChainState, Regime
 
-ACS_TRANSFER_TARGET_BANK_SCHEMA_VERSION = 1
+ACS_TRANSFER_TARGET_BANK_SCHEMA_VERSION = 2
 """Serialization contract for one ACS-transfer target checkpoint."""
+
+# ACS-transfer target-bank serialization ledger.
+#
+# 1: Initial identity-bound per-target checkpoint format.
+# 2: Every target transition persists its realized QRF regime by availability
+#    pattern and validates it against the current frozen donor support.
 
 # ACS-transfer target-bank semantic-invalidation ledger.
 #
@@ -44,6 +50,17 @@ _METADATA_DATASET = "metadata_json"
 _RAW_DRAW_BITS_DATASET = "raw_draw_bits"
 _TARGETS_DIRNAME = "targets"
 _LOWERCASE_SHA256_LENGTH = 64
+_REALIZED_QRF_REGIMES = frozenset(
+    {
+        Regime.THREE_SIGN,
+        Regime.ZERO_INFLATED_POSITIVE,
+        Regime.ZERO_INFLATED_NEGATIVE,
+        Regime.SIGN_ONLY,
+        Regime.POSITIVE_ONLY,
+        Regime.NEGATIVE_ONLY,
+        Regime.DEGENERATE_ZERO,
+    }
+)
 
 __all__ = [
     "ACS_TRANSFER_TARGET_BANK_ARTIFACT_KIND",
@@ -75,6 +92,7 @@ class AcsTransferTargetBankStore:
         self._attempts: dict[int, dict[str, object]] = {}
         self._writes: dict[int, dict[str, object]] = {}
         self._descriptors: dict[int, dict[str, object]] = {}
+        self._expected_regimes: dict[int, dict[str, str]] = {}
 
     @property
     def identity_sha256(self) -> str:
@@ -117,6 +135,7 @@ class AcsTransferTargetBankStore:
         exported_targets: tuple[str, ...],
         recipient_rows: int,
         expected_states: Mapping[str, QRFChainState],
+        expected_regimes: Mapping[str, str],
     ) -> AcsTransferTargetCheckpoint | None:
         """Load one valid target, returning ``None`` for rebuildable artifacts."""
 
@@ -136,7 +155,12 @@ class AcsTransferTargetBankStore:
             model_targets=model_targets,
             model_target=model_target,
         )
+        _validate_expected_regimes(
+            expected_regimes,
+            expected_patterns=tuple(expected_states),
+        )
         self._remember_descriptor(descriptor)
+        self._remember_expected_regimes(target_index, expected_regimes)
         path = self.target_path(target_index, model_target)
 
         if not path.exists():
@@ -196,6 +220,7 @@ class AcsTransferTargetBankStore:
             pattern_steps = _load_pattern_steps(
                 metadata.get("pattern_steps"),
                 expected_states=expected_states,
+                expected_regimes=expected_regimes,
                 model_target=model_target,
             )
             raw_draw = raw_bits.view("<f8").astype(np.float64, copy=False)
@@ -219,6 +244,9 @@ class AcsTransferTargetBankStore:
                 "size_bytes": path.stat().st_size,
                 "raw_draw_sha256": actual_raw_sha256,
                 "content_metadata_sha256": metadata["content_metadata_sha256"],
+                "realized_regimes_by_pattern": _realized_regimes_by_pattern(
+                    pattern_steps
+                ),
             }
             print(
                 "Resumed ACS transfer target "
@@ -252,8 +280,17 @@ class AcsTransferTargetBankStore:
             model_target=checkpoint.model_target,
             exported_targets=checkpoint.exported_targets,
         )
-        _validate_pattern_steps_for_write(checkpoint)
+        expected_regimes = self._expected_regimes.get(checkpoint.target_index)
+        if expected_regimes is None:
+            raise ValueError(
+                "ACS transfer target checkpoint cannot be written before its "
+                "frozen-support regimes are registered by load_target."
+            )
         self._remember_descriptor(descriptor)
+        _validate_pattern_steps_for_write(
+            checkpoint,
+            expected_regimes=expected_regimes,
+        )
 
         draw = np.ascontiguousarray(checkpoint.raw_draw, dtype="<f8")
         raw_bits = draw.view("<u8")
@@ -270,6 +307,7 @@ class AcsTransferTargetBankStore:
             "pattern_steps": [
                 {
                     "pattern": step.pattern,
+                    "regime": step.regime,
                     "state_before_sha256": _mapping_sha256(step.state_before.to_dict()),
                     "state_after": step.state_after.to_dict(),
                 }
@@ -325,6 +363,9 @@ class AcsTransferTargetBankStore:
             "size_bytes": path.stat().st_size,
             "raw_draw_sha256": raw_draw_sha256,
             "content_metadata_sha256": metadata["content_metadata_sha256"],
+            "realized_regimes_by_pattern": _realized_regimes_by_pattern(
+                checkpoint.pattern_steps
+            ),
             "write_seconds": time.perf_counter() - started_at,
         }
         print(
@@ -361,6 +402,13 @@ class AcsTransferTargetBankStore:
             }
             if written is not None:
                 record.update(written)
+            if source in {"checkpoint", "rebuilt"} and not isinstance(
+                record.get("realized_regimes_by_pattern"), Mapping
+            ):
+                raise RuntimeError(
+                    "Completed ACS transfer target-bank receipts require "
+                    "realized_regimes_by_pattern."
+                )
             targets[str(target_index)] = record
         payload = {
             "artifact_kind": ACS_TRANSFER_TARGET_BANK_RECEIPT_ARTIFACT_KIND,
@@ -390,6 +438,20 @@ class AcsTransferTargetBankStore:
                 "different descriptor."
             )
         self._descriptors[target_index] = normalized
+
+    def _remember_expected_regimes(
+        self,
+        target_index: int,
+        expected_regimes: Mapping[str, str],
+    ) -> None:
+        normalized = dict(expected_regimes)
+        previous = self._expected_regimes.get(target_index)
+        if previous is not None and previous != normalized:
+            raise ValueError(
+                f"ACS transfer target index {target_index} was reused with "
+                "different frozen-support regimes."
+            )
+        self._expected_regimes[target_index] = normalized
 
     def _identity_mismatch(
         self,
@@ -551,6 +613,7 @@ def _load_pattern_steps(
     value: object,
     *,
     expected_states: Mapping[str, QRFChainState],
+    expected_regimes: Mapping[str, str],
     model_target: str,
 ) -> tuple[AcsTransferBankPatternStep, ...]:
     if not isinstance(value, list):
@@ -563,7 +626,7 @@ def _load_pattern_steps(
             raise ValueError(
                 f"ACS transfer target pattern_steps[{index}] must be an object."
             )
-        expected_keys = {"pattern", "state_before_sha256", "state_after"}
+        expected_keys = {"pattern", "regime", "state_before_sha256", "state_after"}
         if set(raw_step) != expected_keys:
             raise ValueError(
                 f"ACS transfer target pattern_steps[{index}] keys changed."
@@ -577,6 +640,16 @@ def _load_pattern_steps(
         if pattern not in expected_states:
             raise ValueError(
                 f"ACS transfer target carries unexpected pattern {pattern!r}."
+            )
+        regime = _validated_realized_regime(
+            raw_step.get("regime"),
+            boundary=f"ACS transfer target pattern {pattern!r}",
+        )
+        expected_regime = expected_regimes[pattern]
+        if regime != expected_regime:
+            raise ValueError(
+                f"ACS transfer target pattern {pattern!r} realized regime "
+                f"changed: got {regime!r}, expected {expected_regime!r}."
             )
         state_before = expected_states[pattern]
         expected_before_sha256 = _mapping_sha256(state_before.to_dict())
@@ -600,6 +673,7 @@ def _load_pattern_steps(
         steps.append(
             AcsTransferBankPatternStep(
                 pattern=pattern,
+                regime=regime,
                 state_before=state_before,
                 state_after=state_after,
             )
@@ -614,6 +688,8 @@ def _load_pattern_steps(
 
 def _validate_pattern_steps_for_write(
     checkpoint: AcsTransferTargetCheckpoint,
+    *,
+    expected_regimes: Mapping[str, str],
 ) -> None:
     if not checkpoint.pattern_steps:
         raise ValueError("ACS transfer target checkpoint requires pattern steps.")
@@ -628,7 +704,22 @@ def _validate_pattern_steps_for_write(
         raise ValueError(
             "ACS transfer target checkpoint pattern names must be non-empty and unique."
         )
+    if patterns != tuple(expected_regimes):
+        raise ValueError(
+            "ACS transfer target checkpoint pattern order/membership differs from "
+            "the frozen donor support."
+        )
     for step in checkpoint.pattern_steps:
+        regime = _validated_realized_regime(
+            step.regime,
+            boundary=f"ACS transfer target pattern {step.pattern!r}",
+        )
+        if regime != expected_regimes[step.pattern]:
+            raise ValueError(
+                f"ACS transfer target pattern {step.pattern!r} realized regime "
+                f"changed: got {regime!r}, expected "
+                f"{expected_regimes[step.pattern]!r}."
+            )
         if tuple(step.state_before.targets) != checkpoint.model_targets:
             raise ValueError(
                 f"ACS transfer pattern {step.pattern!r} target order differs from "
@@ -640,6 +731,53 @@ def _validate_pattern_steps_for_write(
             model_target=checkpoint.model_target,
             pattern=step.pattern,
         )
+
+
+def _validated_realized_regime(value: object, *, boundary: str) -> str:
+    if not isinstance(value, str) or value not in _REALIZED_QRF_REGIMES:
+        raise ValueError(
+            f"{boundary} has unsupported realized QRF regime {value!r}; "
+            f"expected one of {sorted(_REALIZED_QRF_REGIMES)}."
+        )
+    return value
+
+
+def _validate_expected_regimes(
+    expected_regimes: Mapping[str, str],
+    *,
+    expected_patterns: tuple[str, ...],
+) -> None:
+    if not isinstance(expected_regimes, Mapping) or not expected_regimes:
+        raise ValueError("ACS transfer expected_regimes must be a non-empty mapping.")
+    if tuple(expected_regimes) != expected_patterns:
+        raise ValueError(
+            "ACS transfer expected-regime pattern order/membership changed: got "
+            f"{list(expected_regimes)}, expected {list(expected_patterns)}."
+        )
+    for pattern, regime in expected_regimes.items():
+        _validated_realized_regime(
+            regime,
+            boundary=f"ACS transfer expected pattern {pattern!r}",
+        )
+
+
+def _realized_regimes_by_pattern(
+    steps: Sequence[AcsTransferBankPatternStep],
+) -> dict[str, str]:
+    if not steps:
+        raise ValueError("ACS transfer target checkpoint requires pattern regimes.")
+    regimes = {
+        step.pattern: _validated_realized_regime(
+            step.regime,
+            boundary=f"ACS transfer target pattern {step.pattern!r}",
+        )
+        for step in steps
+    }
+    if len(regimes) != len(steps):
+        raise ValueError(
+            "ACS transfer target checkpoint pattern regimes contain duplicates."
+        )
+    return regimes
 
 
 def _validate_state_transition(

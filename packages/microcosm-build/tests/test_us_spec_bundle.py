@@ -380,7 +380,7 @@ def test_constant_derived_domain_counts_are_complete(
     )
     assert (
         compiled_schedule["payload_sha256"]
-        == "7766f2e94476cceb93d9730a74afb2ca6fed836068053f96fa4141bcc2f6154e"
+        == "d62fe2141de6bb13304e827e371e2b1302e2c32c13cc217ff08e138accdacd8e"
     )
 
     assert len(take_up["programs"]) == 13

@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import os
 import stat
+from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
+import h5py
 import numpy as np
 import pandas as pd
 import pytest
@@ -20,6 +23,7 @@ from microcosm.build.us_runtime.acs_transfer import (
     ACS_NATIVE_PERSON_INPUTS,
     ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS,
     ACS_PERSON_TRANSFER_PREDICTORS,
+    AcsTransferPattern,
     AcsTransferResult,
     declared_acs_transfer_target_families,
     default_acs_transfer_target_families,
@@ -30,6 +34,8 @@ from microcosm.build.us_runtime.acs_transfer_bank import (
 )
 from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
+from microcosm.fit import DEFAULT_ZERO_ATOL, Regime
+from microcosm.fit.qrf import detect_regime
 from microcosm.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSVariableMetadataIndex,
@@ -43,6 +49,15 @@ _BANK_TARGETS = (
     "pre_subsidy_rent",
     "takes_up_medicaid_if_eligible",
 )
+_REALIZED_REGIMES = {
+    Regime.THREE_SIGN,
+    Regime.ZERO_INFLATED_POSITIVE,
+    Regime.ZERO_INFLATED_NEGATIVE,
+    Regime.SIGN_ONLY,
+    Regime.POSITIVE_ONLY,
+    Regime.NEGATIVE_ONLY,
+    Regime.DEGENERATE_ZERO,
+}
 
 
 def _bank_identity(name: str = "current") -> dict[str, object]:
@@ -68,6 +83,149 @@ def _bank_paths(bank: AcsTransferTargetBankStore) -> tuple[Path, ...]:
     return tuple(
         bank.target_path(index, target) for index, target in enumerate(_BANK_TARGETS)
     )
+
+
+def _rewrite_bank_metadata(
+    path: Path,
+    mutate: Callable[[dict[str, object]], None],
+) -> None:
+    metadata, _raw_bits = acs_transfer_bank_module._read_checkpoint(path)
+    mutate(metadata)
+    metadata.pop("content_metadata_sha256", None)
+    metadata["content_metadata_sha256"] = acs_transfer_bank_module._mapping_sha256(
+        metadata
+    )
+    payload = np.frombuffer(
+        acs_transfer_bank_module._canonical_json(metadata).encode("utf-8"),
+        dtype=np.uint8,
+    )
+    with h5py.File(path, mode="r+") as h5:
+        del h5["metadata_json"]
+        h5.create_dataset(
+            "metadata_json",
+            data=payload,
+            dtype=np.uint8,
+            track_times=False,
+        )
+
+
+def _result_regimes_by_model_target(
+    result: AcsTransferResult,
+) -> dict[str, dict[str, str]]:
+    patterns = result.imputed_inputs[0].patterns
+    model_targets = tuple(patterns[0].realized_regimes_by_target)
+    return {
+        model_target: {
+            pattern.name: pattern.realized_regimes_by_target[model_target]
+            for pattern in patterns
+        }
+        for model_target in model_targets
+    }
+
+
+def test_transfer_pattern_regimes_are_copied_and_immutable() -> None:
+    source = {"target": Regime.POSITIVE_ONLY}
+    pattern = AcsTransferPattern(
+        name="pattern_00_required_only",
+        observed_optional_predictors=(),
+        predictors=("age",),
+        seed=1,
+        weight_kind="design",
+        donor_rows=2,
+        recipient_rows=1,
+        realized_regimes_by_target=source,
+    )
+
+    source["target"] = Regime.DEGENERATE_ZERO
+    assert pattern.realized_regimes_by_target == {"target": Regime.POSITIVE_ONLY}
+    with pytest.raises(TypeError):
+        pattern.realized_regimes_by_target["target"] = Regime.DEGENERATE_ZERO
+
+
+def _qrf_origin_receipt_with_two_patterns() -> dict[str, object]:
+    observed_optional_predictors = (
+        (),
+        (ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS[0],),
+    )
+    patterns = tuple(
+        AcsTransferPattern(
+            name=acs_transfer_module._pattern_name(position, observed_optional),
+            observed_optional_predictors=observed_optional,
+            predictors=("age", *observed_optional),
+            seed=position + 1,
+            weight_kind="design",
+            donor_rows=2,
+            recipient_rows=1,
+            realized_regimes_by_target={"target": Regime.POSITIVE_ONLY},
+        )
+        for position, observed_optional in enumerate(observed_optional_predictors)
+    )
+    record = acs_transfer_module.AcsImputedInput(
+        column="target",
+        entity="person",
+        family="fixture",
+        donor_spine="puf",
+        donor_channel=None,
+        predictors=("age",),
+        seed=1,
+        weight_kind="design",
+        patterns=patterns,
+        model_target="target",
+    )
+    return acs_transfer_module.acs_transfer_input_origin_receipt(record)
+
+
+def test_qrf_origin_receipt_records_ordered_availability_pattern_catalog() -> None:
+    receipt = _qrf_origin_receipt_with_two_patterns()
+
+    assert receipt["availability_patterns"] == [
+        {
+            "name": acs_transfer_module._pattern_name(0, ()),
+            "observed_optional_predictors": [],
+        },
+        {
+            "name": acs_transfer_module._pattern_name(
+                1,
+                (ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS[0],),
+            ),
+            "observed_optional_predictors": [
+                ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS[0]
+            ],
+        },
+    ]
+
+
+def test_qrf_origin_receipt_rejects_deleted_regime_pattern() -> None:
+    receipt = _qrf_origin_receipt_with_two_patterns()
+    regimes = receipt["realized_regimes_by_pattern"]
+    assert isinstance(regimes, dict)
+    regimes.pop(next(reversed(regimes)))
+
+    with pytest.raises(ValueError, match="regime order/membership differs"):
+        acs_transfer_module.validate_acs_transfer_input_origin_receipt(
+            receipt,
+            boundary="fixture QRF origin",
+        )
+
+
+def test_qrf_origin_receipt_rejects_renamed_pattern() -> None:
+    receipt = _qrf_origin_receipt_with_two_patterns()
+    catalog = receipt["availability_patterns"]
+    regimes = receipt["realized_regimes_by_pattern"]
+    assert isinstance(catalog, list)
+    assert isinstance(catalog[-1], dict)
+    assert isinstance(regimes, dict)
+    old_name = catalog[-1]["name"]
+    assert isinstance(old_name, str)
+    renamed = "pattern_01_deadbeef"
+    catalog[-1]["name"] = renamed
+    regimes[renamed] = regimes.pop(old_name)
+
+    with pytest.raises(ValueError, match="name .* is not deterministic"):
+        acs_transfer_module.validate_acs_transfer_input_origin_receipt(
+            receipt,
+            boundary="fixture QRF origin",
+        )
 
 
 def _donor_frame() -> Frame:
@@ -444,6 +602,7 @@ class _MeanQRF:
     def __init__(self, *, n_estimators: int, seed: int) -> None:
         self.n_estimators = n_estimators
         self.seed = seed
+        self.zero_atol = DEFAULT_ZERO_ATOL
 
     def fit(
         self,
@@ -467,13 +626,29 @@ class _MeanQRF:
         }
         self.calls.append(call)
         means = {target: float(table[target].mean()) for target in targets}
-        return _MeanFitted(means, weight_kind)
+        regimes = {
+            target: detect_regime(
+                table[target].to_numpy(dtype=np.float64),
+                zero_atol=self.zero_atol,
+            )
+            for target in targets
+        }
+        return _MeanFitted(means, weight_kind, regimes)
 
 
 class _MeanFitted:
-    def __init__(self, means: dict[str, float], weight_kind: str) -> None:
+    def __init__(
+        self,
+        means: dict[str, float],
+        weight_kind: str,
+        regimes: dict[str, str],
+    ) -> None:
         self.means = means
         self.weight_kind = weight_kind
+        self._regimes = regimes
+
+    def regimes(self) -> dict[str, str]:
+        return dict(self._regimes)
 
     def predict(self, frame: pd.DataFrame) -> pd.DataFrame:
         assert all(dtype == np.dtype("float64") for dtype in frame.dtypes)
@@ -548,6 +723,10 @@ def _assert_bank_receipt(
     assert (
         tuple(targets[str(index)]["load_status"] for index in range(3)) == load_statuses
     )
+    for record in targets.values():
+        realized = record["realized_regimes_by_pattern"]
+        assert realized
+        assert set(realized.values()) <= _REALIZED_REGIMES
     return targets
 
 
@@ -910,17 +1089,46 @@ def test_target_bank_cold_output_matches_unbanked_monolith(
 ) -> None:
     _lock_bank_fixture_threads(monkeypatch)
     monolithic = _run_bank_fixture()
-    bank = _bank_store(tmp_path / "cold-bank")
+    bank_root = tmp_path / "cold-bank"
+    bank = _bank_store(bank_root)
 
     banked = _run_bank_fixture(bank)
 
     _assert_transfer_results_exact(banked, monolithic)
-    _assert_bank_receipt(
+    expected_regimes = _result_regimes_by_model_target(banked)
+    cold_targets = _assert_bank_receipt(
         bank,
         sources=("rebuilt", "rebuilt", "rebuilt"),
         load_statuses=("missing", "missing", "missing"),
     )
     assert all(path.is_file() for path in _bank_paths(bank))
+    for index, model_target in enumerate(_BANK_TARGETS):
+        assert (
+            cold_targets[str(index)]["realized_regimes_by_pattern"]
+            == (expected_regimes[model_target])
+        )
+        metadata, _raw_bits = acs_transfer_bank_module._read_checkpoint(
+            _bank_paths(bank)[index]
+        )
+        assert {
+            step["pattern"]: step["regime"] for step in metadata["pattern_steps"]
+        } == expected_regimes[model_target]
+
+    warm_bank = _bank_store(bank_root)
+    resumed = _run_bank_fixture(warm_bank)
+    _assert_transfer_results_exact(resumed, monolithic)
+    warm_targets = _assert_bank_receipt(
+        warm_bank,
+        sources=("checkpoint", "checkpoint", "checkpoint"),
+        load_statuses=("resumed", "resumed", "resumed"),
+    )
+    assert {
+        index: record["realized_regimes_by_pattern"]
+        for index, record in warm_targets.items()
+    } == {
+        index: record["realized_regimes_by_pattern"]
+        for index, record in cold_targets.items()
+    }
 
 
 def test_target_bank_materializer_v1_artifacts_fail_closed_with_named_receipts(
@@ -960,6 +1168,54 @@ def test_target_bank_materializer_v1_artifacts_fail_closed_with_named_receipts(
         assert invalid["message"] == (
             "ACS transfer target checkpoint has an unsupported binding."
         )
+
+
+def test_target_bank_schema_v1_without_regimes_rebuilds_targetwise(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    bank_root = tmp_path / "schema-v1-bank"
+
+    with monkeypatch.context() as legacy:
+        legacy.setattr(
+            acs_transfer_bank_module,
+            "ACS_TRANSFER_TARGET_BANK_SCHEMA_VERSION",
+            1,
+        )
+        legacy_bank = _bank_store(bank_root)
+        baseline = _run_bank_fixture(legacy_bank)
+        legacy_paths = _bank_paths(legacy_bank)
+
+    def remove_v2_regimes(metadata: dict[str, object]) -> None:
+        assert metadata["schema_version"] == 1
+        for step in metadata["pattern_steps"]:
+            step.pop("regime")
+
+    for path in legacy_paths:
+        _rewrite_bank_metadata(path, remove_v2_regimes)
+
+    assert acs_transfer_bank_module.ACS_TRANSFER_TARGET_BANK_SCHEMA_VERSION == 2
+    current_bank = _bank_store(bank_root)
+    rebuilt = _run_bank_fixture(current_bank)
+
+    _assert_transfer_results_exact(rebuilt, baseline)
+    targets = _assert_bank_receipt(
+        current_bank,
+        sources=("rebuilt",) * len(_BANK_TARGETS),
+        load_statuses=("invalid_rebuild",) * len(_BANK_TARGETS),
+    )
+    for index, record in targets.items():
+        invalid = record["invalid_checkpoint"]
+        assert invalid["reason"] == "checkpoint_validation_failed"
+        assert invalid["message"] == (
+            "ACS transfer target checkpoint has an unsupported binding."
+        )
+        metadata, _raw_bits = acs_transfer_bank_module._read_checkpoint(
+            _bank_paths(current_bank)[int(index)]
+        )
+        assert metadata["schema_version"] == 2
+        assert all("regime" in step for step in metadata["pattern_steps"])
 
 
 def test_target_bank_fsyncs_file_then_parent_directory_after_each_rename(
@@ -1056,6 +1312,27 @@ def test_target_bank_resumes_joint_immigration_codec_as_one_model_target(
         "ssn_card_type",
         "immigration_status_str",
     ]
+    expected_regimes = _result_regimes_by_model_target(cold)
+    assert set(expected_regimes) == {"__acs_transfer_immigration_status_pair"}
+    assert (
+        targets["0"]["realized_regimes_by_pattern"]
+        == expected_regimes["__acs_transfer_immigration_status_pair"]
+    )
+    assert _result_regimes_by_model_target(monolithic) == expected_regimes
+    assert _result_regimes_by_model_target(resumed) == expected_regimes
+    for result in (monolithic, cold, resumed):
+        origins = {
+            record.column: acs_transfer_module.acs_transfer_input_origin_receipt(record)
+            for record in result.imputed_inputs
+        }
+        assert set(origins) == {"ssn_card_type", "immigration_status_str"}
+        assert {origin["model_target"] for origin in origins.values()} == {
+            "__acs_transfer_immigration_status_pair"
+        }
+        assert (
+            origins["ssn_card_type"]["realized_regimes_by_pattern"]
+            == origins["immigration_status_str"]["realized_regimes_by_pattern"]
+        )
 
 
 def test_target_bank_interrupt_resumes_durable_prefix_byte_identically(
@@ -1188,6 +1465,88 @@ def test_target_bank_mixed_hole_rebuilds_only_missing_target(
         sources=("checkpoint", "rebuilt", "checkpoint"),
         load_statuses=("resumed", "missing", "resumed"),
     )
+
+
+def test_target_bank_rejects_valid_but_wrong_regime_before_persistence(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    bank = _bank_store(tmp_path / "wrong-write-bank")
+    durable_write = bank.write_target
+
+    def write_with_wrong_regime(checkpoint) -> None:
+        first = checkpoint.pattern_steps[0]
+        wrong = next(
+            regime for regime in sorted(_REALIZED_REGIMES) if regime != first.regime
+        )
+        durable_write(
+            replace(
+                checkpoint,
+                pattern_steps=(
+                    replace(first, regime=wrong),
+                    *checkpoint.pattern_steps[1:],
+                ),
+            )
+        )
+
+    monkeypatch.setattr(bank, "write_target", write_with_wrong_regime)
+
+    with pytest.raises(ValueError, match="realized regime changed"):
+        _run_bank_fixture(bank)
+
+    assert not bank.root.exists()
+    assert not any(path.exists() for path in _bank_paths(bank))
+    target = bank.receipt()["targets"]["0"]
+    assert target["source"] == "unresolved"
+    assert target["load_status"] == "missing"
+    assert "write_status" not in target
+    assert "realized_regimes_by_pattern" not in target
+
+
+@pytest.mark.parametrize("damage", ("missing", "unknown", "known_wrong"))
+def test_target_bank_regime_damage_fails_closed_and_rebuilds_only_target(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    damage: str,
+) -> None:
+    _lock_bank_fixture_threads(monkeypatch)
+    bank_root = tmp_path / f"regime-{damage}-bank"
+    cold_bank = _bank_store(bank_root)
+    baseline = _run_bank_fixture(cold_bank)
+    expected_regimes = _result_regimes_by_model_target(baseline)
+
+    def damage_regime(metadata: dict[str, object]) -> None:
+        step = metadata["pattern_steps"][0]
+        observed = step["regime"]
+        if damage == "missing":
+            step.pop("regime")
+        elif damage == "unknown":
+            step["regime"] = "fixture_unknown_regime"
+        else:
+            step["regime"] = next(
+                regime for regime in sorted(_REALIZED_REGIMES) if regime != observed
+            )
+
+    _rewrite_bank_metadata(_bank_paths(cold_bank)[0], damage_regime)
+
+    warm_bank = _bank_store(bank_root)
+    rebuilt = _run_bank_fixture(warm_bank)
+
+    _assert_transfer_results_exact(rebuilt, baseline)
+    targets = _assert_bank_receipt(
+        warm_bank,
+        sources=("rebuilt", "checkpoint", "checkpoint"),
+        load_statuses=("invalid_rebuild", "resumed", "resumed"),
+    )
+    assert targets["0"]["invalid_checkpoint"]["reason"] == (
+        "checkpoint_validation_failed"
+    )
+    for index, model_target in enumerate(_BANK_TARGETS):
+        assert (
+            targets[str(index)]["realized_regimes_by_pattern"]
+            == (expected_regimes[model_target])
+        )
 
 
 def test_discrete_year_predictions_snap_to_observed_donor_support(
@@ -1633,6 +1992,20 @@ def test_pattern_fits_use_observed_native_and_complete_donor_analogs(
         provenance.patterns
     )
     assert all(pattern.weight_kind == "calibrated" for pattern in provenance.patterns)
+    with pytest.raises(TypeError):
+        provenance.patterns[0].realized_regimes_by_target[
+            next(iter(provenance.patterns[0].realized_regimes_by_target))
+        ] = Regime.DEGENERATE_ZERO
+    assert len(_MeanQRF.calls) == len(provenance.patterns)
+    for pattern, call in zip(provenance.patterns, _MeanQRF.calls, strict=True):
+        fitted_targets = call["targets"]
+        assert pattern.realized_regimes_by_target == {
+            target: detect_regime(
+                fitted_targets[target].to_numpy(dtype=np.float64),
+                zero_atol=DEFAULT_ZERO_ATOL,
+            )
+            for target in fitted_targets
+        }
     assert all(
         np.isfinite(call["features"].to_numpy(dtype=np.float64)).all()
         for call in _MeanQRF.calls

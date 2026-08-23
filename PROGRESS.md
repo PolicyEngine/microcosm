@@ -2,56 +2,59 @@
 
 ## State
 
-The `battery-qbi-ownership` lane is in evidence collection at `2c7a7218`.
-No production source, gate, band, ceiling, fold, seed, exclusion, build artifact,
-or logbook chain has been changed. The source adjudication has been mapped to
-the current tree, and the implementation surfaces for QBI terminal-role scope,
-ACS-transfer realized-regime receipts, and margin-origin attribution are under
-review.
+This commit lands the recovered realized-QRF-regime persistence prerequisite.
+It recomputes regimes from frozen donor support, persists the pattern-to-regime
+map in transfer/bank/stacked receipts, and validates the origin envelope
+fail-closed. Two incomplete recovered fixture repins were repaired, and a fresh
+five-shard, Ruff, and whitespace gate is green; exact receipts are recorded in
+`_LANE-NOTES.md`.
 
-The mandated `uv sync --all-packages --extra us` was attempted first. The
-default cache is outside the managed filesystem, and a retry with a writable
-cache reached dependency download but the sandbox has no network. The exact
-current `uv.lock` is present in the already-synced `microcosm-f1` worktree, so
-verification will use that read-only dependency environment while forcing all
-Microcosm imports to this worktree's source.
+The four recovered `experiments/qbi_ownership/` evidence files remain
+untracked and under audit. No ownership conclusion or terminal-role fix is
+included in the prerequisite step. The audited decomposition distinguishes
+terminal value provenance from the first failing criterion: all eight terminal
+clone-0 cells have `qrf_transfer` provenance; all four incidence checks and the
+UBIA QED first fail in transfer, while the BDC, REIT/PTP, and W2 QEDs are
+already red at the clone-1 producer and worsen downstream.
+
+No gate, band, ceiling, fold, seed, exclusion, build artifact, or logbook chain
+has been changed. This lane has started no pool build; the headless order assigns
+all builds to the host queue.
 
 ## Done
 
-- Read `CLAUDE.md` and the binding lane orders.
-- Read the adjudication's comparator mechanism, reviewed-exclusion QBI finding,
-  workstream 5, all ten QBI check rows, and reproducibility checkpoint record.
-- Confirmed the eight amount checks cover four positive QBI legs and remain
-  BLOCKERs until producer/transfer/reconciliation-stage attribution is recorded.
-- Confirmed the two dead SSTB boolean checks are a separate role-ownership fix:
-  clone 0 is intentionally false and the SHA-bound failed checkpoint shows the
-  live clone-1 signal in band with all nine coupled invariants at zero.
-- Traced the ACS-transfer gap: realized QRF regimes are returned by the fitter
-  but omitted from pattern provenance, bank metadata, and public receipts.
-- Traced the terminal evaluator: it already evaluates per-target clone roles;
-  the canonical registry and compatibility projections hard-code role 0.
-- Verified that GitNexus is not configured in this session and switched to
-  direct code/call-site/test tracing as the documented fallback.
-- Created `_LANE-NOTES.md` as the durable evidence and command journal.
-- Gated this journal-only step with all five package test shards and Ruff:
-  build 5,959 passed/39 skipped; frame 294 passed/36 skipped; fit 93 passed;
-  calibrate 201 passed; data 275 passed/1 skipped; Ruff clean.
+- Inspected salvage commits `03e23e42`, `21f95b71`, `8942ef97`, and newest
+  `321b3185`. The newest snapshot supersedes the others; recovered source,
+  tests, and docs match it byte-for-byte. Its four evidence assets are deferred
+  from the prerequisite commit.
+- Ran the mandated `uv sync --all-packages --extra us` successfully with a
+  sandbox-writable uv cache.
+- Audited the adjudication's workstream-5, remediation-order, reviewed-
+  exclusion, and failed-attempt identity citations before forming an ownership
+  view.
+- Repaired two incomplete recovered fixtures exposed by the full diagnostic
+  gate: the frozen legacy checkpoint materializer binding and the mandatory
+  `unmodeled_rows` count in canonical stacked HDF5 receipts.
+- Reran the affected tests successfully: exact-k ladder 3/3, stacked HDF5
+  loader 38/38, and deterministic trade-entry build 1/1.
+- Completed the prerequisite gate: frame 294 passed/36 skipped; fit 93 passed;
+  calibrate 201 passed; data 275 passed/1 skipped; build 5,977 passed/39
+  skipped; Ruff and `git diff --check` clean. Native/thread pools were bounded
+  to one for the final build-shard run after an unbounded run starved four
+  unchanged subprocess tests; those four also pass unchanged in isolation.
 
 ## Next
 
-1. Implement and commit fail-closed realized-regime persistence for ACS-transfer
-   target-bank patterns and receipts.
-2. Implement and commit the two-target clone-1 terminal-role authority fix with
-   role-aware compatibility projections and regressions.
-3. Commit the cited SHA-bound checkpoint evidence and reproducible per-stage
-   ownership evidence for all eight amount checks, including the reconciliation
-   delta for BDC and REIT/PTP.
-4. Implement the smallest safe ownership-attribution receipt/regression and the
-   1% whole-pool reconciliation/invariant rerun that host/build constraints allow;
-   document the exact 25% follow-up plan.
-5. Run the full per-shard suite and Ruff for every coherent commit, keep this
-   file and `_LANE-NOTES.md` current, and write the final report to
-   `FINAL_REPORT.md`.
+1. Make the recovered evidence extractor fail closed and atomic; bind all
+   adjudication identities; reproduce every target-by-pattern donor identity;
+   mirror the nine production invariants exactly; add the closed attribution
+   regression; regenerate the SHA-verified canonical evidence; and commit it.
+2. Implement the separate exact-two SSTB terminal-role authority fix only on
+   that evidence, regenerate its battery contract, repin authority receipts,
+   and commit it behind another full gate.
+3. Finalize the coupled-surface refit plan, clearly separating safe lane work
+   from the instrumented 1% and 25% host runs, then write `FINAL_REPORT.md` and
+   leave both journals current.
 
 The former root entry described the merged mortgage-donor lane and is retained
 in Git history through commit `2c7a7218`; it is not current state for this lane.

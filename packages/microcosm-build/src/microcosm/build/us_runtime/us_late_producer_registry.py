@@ -119,12 +119,14 @@ __all__ = [
 # v7 added the primary execution configuration and every late-transfer model
 # configuration/target-bank identity to the declared external-resource surface.
 # Version 6 content-bound physical Frame inputs but left those callback inputs
-# implicit. Receipt v3 reconciles repeated physical evidence and scope
+# implicit. Receipt v4 requires exact target-origin/model-target/realized-regime
+# evidence in each late-transfer group and its canonical aggregate. Receipt v3
+# reconciles repeated physical evidence and scope
 # cardinalities across each execution row, binds source-receipt outputs to the
 # callback receipt, and requires the primary callback to report the exact
 # resources it consumed. Receipt v2 introduced exact virtual-resource payloads.
 US_LATE_PRODUCER_REGISTRY_SCHEMA_VERSION = 16
-US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 3
+US_LATE_PRODUCER_RECEIPT_SCHEMA_VERSION = 4
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_VERSION = 1
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_KEY = "us_late_producer_transition_authority"
 US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID = "us_stacked_late_producer_transition"
@@ -2063,7 +2065,8 @@ def us_late_producer_schedule_payload() -> dict[str, object]:
             ),
             "top_binding": (
                 "entry_and_output_frame_sha256_execution_chain_source_"
-                "completion_and_nineteen_transfer_groups"
+                "completion_and_nineteen_transfer_groups_with_exact_target_"
+                "origin_regime_evidence"
             ),
             "transition_authority": {
                 "authority_id": US_LATE_PRODUCER_TRANSITION_AUTHORITY_ID,

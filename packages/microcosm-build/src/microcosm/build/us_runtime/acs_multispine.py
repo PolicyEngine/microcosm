@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import dataclass, field, fields, is_dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -270,7 +270,9 @@ def _json_ready(value: Any) -> Any:
     """Recursively detach and normalize one manifest value."""
 
     if is_dataclass(value) and not isinstance(value, type):
-        return _json_ready(asdict(value))
+        return {
+            item.name: _json_ready(getattr(value, item.name)) for item in fields(value)
+        }
     if isinstance(value, np.generic):
         return _json_ready(value.item())
     if isinstance(value, np.ndarray):

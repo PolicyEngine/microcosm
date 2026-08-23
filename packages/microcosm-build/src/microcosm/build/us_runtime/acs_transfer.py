@@ -24,6 +24,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from functools import lru_cache
 from importlib import import_module
+from types import MappingProxyType
 from typing import Any, Protocol
 
 import numpy as np
@@ -44,10 +45,23 @@ from microcosm.build.us_runtime.support_provenance import (
     has_support_role_metadata,
     support_role_series,
 )
-from microcosm.fit import QRFChainState
+from microcosm.fit import QRFChainState, Regime
+from microcosm.fit.qrf import detect_regime
 from microcosm.frame import EntitySchema, Frame, Weights
 
 QRF: Any | None = None
+
+_REALIZED_QRF_REGIMES = frozenset(
+    {
+        Regime.THREE_SIGN,
+        Regime.ZERO_INFLATED_POSITIVE,
+        Regime.ZERO_INFLATED_NEGATIVE,
+        Regime.SIGN_ONLY,
+        Regime.POSITIVE_ONLY,
+        Regime.NEGATIVE_ONLY,
+        Regime.DEGENERATE_ZERO,
+    }
+)
 
 __all__ = [
     "ACS_DONOR_CHANNEL_AUTO",
@@ -65,6 +79,8 @@ __all__ = [
     "AcsTransferTargetBank",
     "AcsTransferTargetCheckpoint",
     "TargetFamilies",
+    "acs_transfer_input_origin_receipt",
+    "acs_transfer_model_target_bindings",
     "acs_transfer_donor_requirements",
     "acs_transfer_execution_contract_identity",
     "assert_acs_transfer_targets_are_input_leaves",
@@ -76,6 +92,7 @@ __all__ = [
     "required_acs_transfer_inputs",
     "resolve_acs_donor_channel",
     "transfer_acs_inputs",
+    "validate_acs_transfer_input_origin_receipt",
 ]
 
 ASEC_PUF_DONOR_SPINE = "asec_puf"
@@ -413,6 +430,19 @@ class AcsTransferPattern:
     weight_kind: str
     donor_rows: int
     recipient_rows: int
+    realized_regimes_by_target: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        regimes = _validated_realized_regimes_by_target(
+            self.realized_regimes_by_target,
+            expected_targets=None,
+            boundary=f"ACS transfer availability pattern {self.name!r}",
+        )
+        object.__setattr__(
+            self,
+            "realized_regimes_by_target",
+            MappingProxyType(regimes),
+        )
 
 
 @dataclass(frozen=True)
@@ -428,6 +458,9 @@ class AcsImputedInput:
     seed: int
     weight_kind: str
     patterns: tuple[AcsTransferPattern, ...] = ()
+    #: Exact chained-QRF model target that produced this exported leaf. Joint
+    #: codecs can bind multiple exported leaves to one synthetic model target.
+    model_target: str | None = None
     #: Number of recipient null cells this operation filled.
     imputed_recipient_rows: int = 0
     unmodeled_recipient_rows: int = 0
@@ -437,6 +470,205 @@ class AcsImputedInput:
     #: Post-fit structural reconciliation counts, when the column's surface
     #: was adjusted to a statute contract after prediction.
     reconciliation: Mapping[str, int] | None = None
+
+    def __post_init__(self) -> None:
+        if self.patterns:
+            if not isinstance(self.model_target, str) or not self.model_target:
+                raise ValueError(
+                    f"ACS transfer provenance for {self.entity}.{self.column} "
+                    "requires a non-empty model_target when QRF patterns exist."
+                )
+            if self.derivation is not None:
+                raise ValueError(
+                    f"ACS transfer provenance for {self.entity}.{self.column} "
+                    "cannot be both QRF-fitted and deterministically derived."
+                )
+            missing = [
+                pattern.name
+                for pattern in self.patterns
+                if self.model_target not in pattern.realized_regimes_by_target
+            ]
+            if missing:
+                raise ValueError(
+                    f"ACS transfer provenance for {self.entity}.{self.column} "
+                    f"model target {self.model_target!r} is absent from pattern(s) "
+                    f"{missing}."
+                )
+        elif self.model_target is not None:
+            raise ValueError(
+                f"ACS transfer provenance for {self.entity}.{self.column} cannot "
+                "declare model_target without QRF patterns."
+            )
+        if self.derivation is not None and not self.derivation:
+            raise ValueError(
+                f"ACS transfer provenance for {self.entity}.{self.column} has an "
+                "empty deterministic derivation label."
+            )
+
+
+def acs_transfer_input_origin_receipt(
+    record: AcsImputedInput | None,
+) -> dict[str, object]:
+    """Return canonical fitted/derived/preexisting origin evidence for one leaf."""
+
+    if record is None:
+        return {"channel": "preexisting"}
+    if record.patterns:
+        assert record.model_target is not None  # enforced by AcsImputedInput
+        regimes = {
+            pattern.name: pattern.realized_regimes_by_target[record.model_target]
+            for pattern in record.patterns
+        }
+        if len(regimes) != len(record.patterns):
+            raise ValueError(
+                f"ACS transfer provenance for {record.entity}.{record.column} "
+                "contains duplicate availability-pattern names."
+            )
+        receipt: dict[str, object] = {
+            "channel": "qrf_transfer",
+            "model_target": record.model_target,
+            "availability_patterns": [
+                {
+                    "name": pattern.name,
+                    "observed_optional_predictors": list(
+                        pattern.observed_optional_predictors
+                    ),
+                }
+                for pattern in record.patterns
+            ],
+            "realized_regimes_by_pattern": regimes,
+        }
+    elif record.derivation is not None:
+        receipt = {
+            "channel": "deterministic_derivation",
+            "derivation": record.derivation,
+        }
+    else:
+        raise ValueError(
+            f"ACS transfer provenance for {record.entity}.{record.column} records "
+            "neither QRF patterns nor a deterministic derivation."
+        )
+    validate_acs_transfer_input_origin_receipt(
+        receipt,
+        boundary=f"ACS transfer provenance for {record.entity}.{record.column}",
+    )
+    return receipt
+
+
+def acs_transfer_model_target_bindings(
+    targets: Sequence[str],
+) -> dict[str, str]:
+    """Bind each exported leaf to the exact chained-QRF model target."""
+
+    ordered = tuple(targets)
+    if any(not isinstance(target, str) or not target for target in ordered):
+        raise ValueError("ACS transfer targets must be non-empty strings.")
+    if len(set(ordered)) != len(ordered):
+        raise ValueError("ACS transfer targets must be unique.")
+    requested = set(ordered)
+    immigration = requested.intersection(_IMMIGRATION_STATUS_TARGETS)
+    if immigration and immigration != set(_IMMIGRATION_STATUS_TARGETS):
+        missing = sorted(set(_IMMIGRATION_STATUS_TARGETS) - immigration)
+        raise ValueError(
+            "ACS transfer must impute ssn_card_type and immigration_status_str "
+            f"jointly; missing paired target(s): {missing}."
+        )
+    return {
+        target: (_IMMIGRATION_STATUS_MODEL_TARGET if target in immigration else target)
+        for target in ordered
+    }
+
+
+def validate_acs_transfer_input_origin_receipt(
+    value: object,
+    *,
+    boundary: str,
+) -> None:
+    """Validate one canonical target-level ACS transfer origin receipt."""
+
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{boundary} has no ACS transfer origin receipt.")
+    channel = value.get("channel")
+    if channel == "preexisting":
+        if set(value) != {"channel"}:
+            raise ValueError(f"{boundary} preexisting origin keys changed.")
+        return
+    if channel == "deterministic_derivation":
+        if (
+            set(value) != {"channel", "derivation"}
+            or not isinstance(value.get("derivation"), str)
+            or not value["derivation"]
+        ):
+            raise ValueError(f"{boundary} deterministic origin is malformed.")
+        return
+    if channel != "qrf_transfer":
+        raise ValueError(f"{boundary} has unknown origin channel {channel!r}.")
+    if set(value) != {
+        "channel",
+        "model_target",
+        "availability_patterns",
+        "realized_regimes_by_pattern",
+    }:
+        raise ValueError(f"{boundary} QRF origin keys changed.")
+    model_target = value.get("model_target")
+    if not isinstance(model_target, str) or not model_target:
+        raise ValueError(f"{boundary} QRF origin has no model target.")
+    regimes = value.get("realized_regimes_by_pattern")
+    if not isinstance(regimes, Mapping) or not regimes:
+        raise ValueError(f"{boundary} QRF origin has no availability-pattern regimes.")
+    if any(not isinstance(pattern, str) or not pattern for pattern in regimes):
+        raise ValueError(f"{boundary} QRF origin has invalid pattern names.")
+
+    catalog = value.get("availability_patterns")
+    if not isinstance(catalog, list) or not catalog:
+        raise ValueError(
+            f"{boundary} QRF origin has no canonical availability-pattern catalog."
+        )
+    catalog_names: list[str] = []
+    for position, pattern in enumerate(catalog):
+        if not isinstance(pattern, Mapping) or set(pattern) != {
+            "name",
+            "observed_optional_predictors",
+        }:
+            raise ValueError(
+                f"{boundary} availability-pattern catalog entry {position} "
+                "keys changed."
+            )
+        name = pattern.get("name")
+        observed_optional = pattern.get("observed_optional_predictors")
+        if not isinstance(name, str) or not name:
+            raise ValueError(
+                f"{boundary} availability-pattern catalog entry {position} has no name."
+            )
+        if (
+            not isinstance(observed_optional, list)
+            or any(
+                not isinstance(predictor, str) or not predictor
+                for predictor in observed_optional
+            )
+            or len(set(observed_optional)) != len(observed_optional)
+        ):
+            raise ValueError(
+                f"{boundary} availability-pattern catalog entry {position} "
+                "has invalid observed optional predictors."
+            )
+        expected_name = _pattern_name(position, observed_optional)
+        if name != expected_name:
+            raise ValueError(
+                f"{boundary} availability-pattern catalog entry {position} name "
+                f"{name!r} is not deterministic; expected {expected_name!r}."
+            )
+        catalog_names.append(name)
+    if tuple(regimes) != tuple(catalog_names):
+        raise ValueError(
+            f"{boundary} QRF origin regime order/membership differs from its "
+            "availability-pattern catalog."
+        )
+    for pattern, regime in regimes.items():
+        _validated_realized_regime(
+            regime,
+            boundary=f"{boundary} availability pattern {pattern!r}",
+        )
 
 
 @dataclass(frozen=True)
@@ -455,8 +687,19 @@ class AcsTransferBankPatternStep:
     """One availability pattern's state transition for a banked target."""
 
     pattern: str
+    regime: str
     state_before: QRFChainState
     state_after: QRFChainState
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "regime",
+            _validated_realized_regime(
+                self.regime,
+                boundary=f"ACS transfer bank pattern {self.pattern!r}",
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -502,6 +745,7 @@ class AcsTransferTargetBank(Protocol):
         exported_targets: tuple[str, ...],
         recipient_rows: int,
         expected_states: Mapping[str, QRFChainState],
+        expected_regimes: Mapping[str, str],
     ) -> AcsTransferTargetCheckpoint | None:
         """Load one valid target or return ``None`` so it is rebuilt."""
 
@@ -1055,6 +1299,7 @@ def transfer_acs_inputs(
                     seed=fitted.family_seed,
                     weight_kind=fitted.weight_kind,
                     patterns=fitted.patterns,
+                    model_target=fitted.target_encodings[target].model_target,
                     imputed_recipient_rows=int(imputed.sum()),
                     unmodeled_recipient_rows=int((missing_rows & ~imputed).sum()),
                 )
@@ -1185,6 +1430,7 @@ def _apply_post_transfer_structure(
                     ),
                     seed=0,
                     weight_kind="deterministic",
+                    model_target=None,
                     imputed_recipient_rows=int(fill.sum()),
                     unmodeled_recipient_rows=int(
                         (
@@ -1227,21 +1473,70 @@ def _apply_post_transfer_structure(
                 break
 
 
+def _validated_realized_regime(value: object, *, boundary: str) -> str:
+    if not isinstance(value, str) or value not in _REALIZED_QRF_REGIMES:
+        raise ValueError(
+            f"{boundary} has unsupported realized QRF regime {value!r}; "
+            f"expected one of {sorted(_REALIZED_QRF_REGIMES)}."
+        )
+    return value
+
+
+def _validated_realized_regimes_by_target(
+    value: object,
+    *,
+    expected_targets: Sequence[str] | None,
+    boundary: str,
+) -> dict[str, str]:
+    if not isinstance(value, Mapping) or not value:
+        raise ValueError(f"{boundary} requires realized QRF regimes by target.")
+    observed_targets = tuple(value)
+    if any(not isinstance(target, str) or not target for target in observed_targets):
+        raise ValueError(
+            f"{boundary} realized-regime targets must be non-empty strings."
+        )
+    if expected_targets is not None and observed_targets != tuple(expected_targets):
+        raise ValueError(
+            f"{boundary} realized-regime target order changed: got "
+            f"{observed_targets}, expected {tuple(expected_targets)}."
+        )
+    return {
+        target: _validated_realized_regime(
+            value[target],
+            boundary=f"{boundary} target {target!r}",
+        )
+        for target in observed_targets
+    }
+
+
+def _recompute_realized_regimes(
+    model_frame: Frame,
+    *,
+    entity: str,
+    model_targets: tuple[str, ...],
+    zero_atol: float,
+    boundary: str,
+) -> dict[str, str]:
+    table = model_frame.table(entity)
+    regimes = {
+        target: detect_regime(
+            table[target].to_numpy(dtype=np.float64),
+            zero_atol=zero_atol,
+        )
+        for target in model_targets
+    }
+    return _validated_realized_regimes_by_target(
+        regimes,
+        expected_targets=model_targets,
+        boundary=boundary,
+    )
+
+
 def _model_target_names(targets: Sequence[str]) -> tuple[str, ...]:
     """Return the exact chained-QRF target order for exported leaves."""
 
-    requested = set(targets)
-    immigration_pair = set(_IMMIGRATION_STATUS_TARGETS)
-    model_targets: list[str] = []
-    joint_added = False
-    for target in targets:
-        if target in immigration_pair and immigration_pair.issubset(requested):
-            if not joint_added:
-                model_targets.append(_IMMIGRATION_STATUS_MODEL_TARGET)
-                joint_added = True
-            continue
-        model_targets.append(target)
-    return tuple(model_targets)
+    bindings = acs_transfer_model_target_bindings(targets)
+    return tuple(dict.fromkeys(bindings.values()))
 
 
 def _fit_family_patterns(
@@ -1338,7 +1633,24 @@ def _fit_family_patterns(
             mask=donor_mask,
         )
         resolved_kind = model_frame.resolve_weights(entity).kind.value
-        fitted = _qrf()(n_estimators=n_estimators, seed=pattern_seed).fit(
+        model = _qrf()(n_estimators=n_estimators, seed=pattern_seed)
+        zero_atol = getattr(model, "zero_atol", None)
+        if not isinstance(zero_atol, (int, float)) or isinstance(zero_atol, bool):
+            raise TypeError(
+                f"ACS transfer {entity!r}/{family!r}/{pattern_name!r} QRF "
+                "does not expose a numeric zero_atol."
+            )
+        realized_regimes = _recompute_realized_regimes(
+            model_frame,
+            entity=entity,
+            model_targets=model_targets,
+            zero_atol=float(zero_atol),
+            boundary=(
+                f"ACS transfer {entity!r}/{family!r}/{pattern_name!r} frozen "
+                "donor support"
+            ),
+        )
+        fitted = model.fit(
             model_frame,
             list(predictors),
             list(model_targets),
@@ -1349,6 +1661,17 @@ def _fit_family_patterns(
                 f"ACS transfer {entity!r}/{family!r}/{pattern_name!r} resolved "
                 f"weight kind {fitted.weight_kind!r}, expected the donor "
                 f"Frame's {resolved_kind!r}."
+            )
+        fitted_regimes = _validated_realized_regimes_by_target(
+            fitted.regimes(),
+            expected_targets=model_targets,
+            boundary=f"ACS transfer {entity!r}/{family!r}/{pattern_name!r} fitted QRF",
+        )
+        if fitted_regimes != realized_regimes:
+            raise RuntimeError(
+                f"ACS transfer {entity!r}/{family!r}/{pattern_name!r} fitted "
+                "regimes disagree with frozen donor support: "
+                f"got {fitted_regimes}, expected {realized_regimes}."
             )
 
         recipient_pattern = _encoded_predictor_frame(
@@ -1376,6 +1699,7 @@ def _fit_family_patterns(
             weight_kind=fitted.weight_kind,
             donor_rows=donor_rows,
             recipient_rows=len(recipient_positions),
+            realized_regimes_by_target=realized_regimes,
         )
         pattern_records.append(pattern_record)
         fit_records.append(
@@ -1528,6 +1852,16 @@ def _fit_family_patterns_banked(
                 f"weight kind {state.weight_kind!r}, expected the donor "
                 f"Frame's {resolved_kind!r}."
             )
+        realized_regimes = _recompute_realized_regimes(
+            model_frame,
+            entity=entity,
+            model_targets=model_targets,
+            zero_atol=state.zero_atol,
+            boundary=(
+                f"ACS transfer {entity!r}/{family!r}/{pattern_name!r} frozen "
+                "donor support"
+            ),
+        )
         pattern = AcsTransferPattern(
             name=pattern_name,
             observed_optional_predictors=observed_optional,
@@ -1536,6 +1870,7 @@ def _fit_family_patterns_banked(
             weight_kind=state.weight_kind,
             donor_rows=donor_rows,
             recipient_rows=len(recipient_positions),
+            realized_regimes_by_target=realized_regimes,
         )
         contexts.append(
             _BankPatternContext(
@@ -1565,6 +1900,12 @@ def _fit_family_patterns_banked(
             if target_encodings[target].model_target == model_target
         )
         expected_states = dict(states)
+        expected_regimes = {
+            context.pattern.name: context.pattern.realized_regimes_by_target[
+                model_target
+            ]
+            for context in contexts
+        }
         checkpoint = target_bank.load_target(
             target_index=target_indexes[model_target],
             total_targets=total_targets,
@@ -1576,6 +1917,7 @@ def _fit_family_patterns_banked(
             exported_targets=exported_targets,
             recipient_rows=n_recipient,
             expected_states=expected_states,
+            expected_regimes=expected_regimes,
         )
         if checkpoint is None:
             raw_draw = np.full(n_recipient, np.nan, dtype=np.float64)
@@ -1616,6 +1958,14 @@ def _fit_family_patterns_banked(
                         f"resolved weight kind {result.weight_kind!r}, expected "
                         f"{pattern.weight_kind!r}."
                     )
+                expected_regime = expected_regimes[pattern.name]
+                if result.regime != expected_regime:
+                    raise RuntimeError(
+                        f"ACS transfer {entity!r}/{family!r}/{pattern.name!r} "
+                        f"QRF reported regime {result.regime!r} for "
+                        f"{model_target!r}, but frozen donor support recomputed "
+                        f"{expected_regime!r}."
+                    )
                 raw_draw[context.recipient_positions] = result.raw_draw
                 _validate_prediction_values(
                     pd.DataFrame(
@@ -1629,6 +1979,7 @@ def _fit_family_patterns_banked(
                 steps.append(
                     AcsTransferBankPatternStep(
                         pattern=pattern.name,
+                        regime=result.regime,
                         state_before=state_before,
                         state_after=result.state,
                     )
@@ -1659,6 +2010,7 @@ def _fit_family_patterns_banked(
             exported_targets=exported_targets,
             recipient_rows=n_recipient,
             expected_states=expected_states,
+            expected_regimes=expected_regimes,
             expected_patterns=tuple(context.pattern.name for context in contexts),
         )
         steps_by_pattern = {step.pattern: step for step in checkpoint.pattern_steps}
@@ -1716,6 +2068,7 @@ def _validate_banked_target_checkpoint(
     exported_targets: tuple[str, ...],
     recipient_rows: int,
     expected_states: Mapping[str, QRFChainState],
+    expected_regimes: Mapping[str, str],
     expected_patterns: tuple[str, ...],
 ) -> None:
     observed_binding = (
@@ -1755,6 +2108,13 @@ def _validate_banked_target_checkpoint(
         )
     for step in checkpoint.pattern_steps:
         state_before = expected_states[step.pattern]
+        expected_regime = expected_regimes[step.pattern]
+        if step.regime != expected_regime:
+            raise ValueError(
+                f"ACS transfer bank target {entity}.{model_target} returned "
+                f"regime {step.regime!r} for pattern {step.pattern!r}; frozen "
+                f"donor support requires {expected_regime!r}."
+            )
         if step.state_before != state_before:
             raise ValueError(
                 f"ACS transfer bank target {entity}.{model_target} does not "

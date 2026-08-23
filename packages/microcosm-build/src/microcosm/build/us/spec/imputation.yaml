@@ -33234,10 +33234,10 @@ producer_graph:
             - first_home_mortgage_origination_year
             - health_savings_account_ald
   execution_receipt_contract:
-    version: 3
+    version: 4
     row_binding: declared_globally_reconciled_input_and_scope_exact_output_source_and_primary_callback_resource_receipt_and_previous_execution_sha256
     virtual_resource_binding: exact_kind_specific_semantic_payload_and_sha256
-    top_binding: entry_and_output_frame_sha256_execution_chain_source_completion_and_nineteen_transfer_groups
+    top_binding: entry_and_output_frame_sha256_execution_chain_source_completion_and_nineteen_transfer_groups_with_exact_target_origin_regime_evidence
     transition_authority:
       authority_id: us_stacked_late_producer_transition
       metadata_key: us_late_producer_transition_authority

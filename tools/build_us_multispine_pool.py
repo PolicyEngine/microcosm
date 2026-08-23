@@ -187,6 +187,7 @@ from microcosm.build.us_runtime.stacked_spine import (
     stacked_late_primary_resource_receipts,
     stacked_late_producer_resource_semantics_receipt,
     stacked_spine_authority_receipt,
+    validate_stacked_gap_fill_receipt,
     validate_stacked_late_producer_receipt,
     validate_stacked_late_producer_transition_authority,
     validate_stacked_spine_frame,
@@ -228,7 +229,9 @@ POOL_MANIFEST_SCHEMA_VERSION = US_MULTISPINE_POOL_MANIFEST_SCHEMA_VERSION
 # publication and checkpoint-envelope versions may advance without rewriting
 # the retiring pipeline's last supported envelope.
 _LEGACY_POOL_MANIFEST_SCHEMA_VERSION = 4
-_LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 3
+# Version 4 invalidates transferred/simulated legacy checkpoints whose
+# canonical ACS-transfer provenance predates realized-pattern regime receipts.
+_LEGACY_POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 4
 
 POOL_H5_ARTIFACT_KIND = US_MULTISPINE_POOL_H5_ARTIFACT_KIND
 """Neutral H5 artifact kind; readiness is asserted only by the manifest."""
@@ -261,6 +264,10 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 # 7: Stacked primary-PUF output universes are explicit. Earlier envelopes can
 #    contain nulls outside the PUF clone for an output declared over the whole
 #    pool and therefore cannot resume safely even when their bank is reusable.
+# 8: ACS-transfer target checkpoints and operational receipts persist the
+#    realized QRF regime for every target and availability pattern. Earlier
+#    transferred checkpoints can bypass transfer with regime-less receipts and
+#    therefore cannot resume safely.
 #
 # Bump this version whenever any producer above changes a stage output without
 # changing one of the explicit identity fields below. In particular, adding,
@@ -275,7 +282,7 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 # normalizes that logical view in memory. Moving between those encodings does
 # not change a producer's scalar output and therefore does not advance this
 # ledger; changing string values or the canonical logical dtype policy does.
-POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 7
+POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 8
 
 _PRIMARY_QRF_N_ESTIMATORS = 100
 _ACS_TRANSFER_N_ESTIMATORS = 100
@@ -2705,6 +2712,15 @@ def _validate_stacked_post_puf_stage_receipt(
         raise ValueError(
             f"{boundary}: stacked transferred receipts have no impute object."
         )
+    gap_fill_receipt = impute.get("stacked_gap_fill")
+    if not isinstance(gap_fill_receipt, Mapping):
+        raise ValueError(
+            f"{boundary}: stacked transferred receipts have no gap-fill object."
+        )
+    validate_stacked_gap_fill_receipt(
+        gap_fill_receipt,
+        boundary=boundary,
+    )
     dag_receipt = impute.get("stacked_late_producer_dag")
     if not isinstance(dag_receipt, Mapping):
         raise ValueError(

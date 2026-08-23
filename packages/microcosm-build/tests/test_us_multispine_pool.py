@@ -96,6 +96,7 @@ from microcosm.build.us_runtime.support_provenance import (
     support_source_id_column,
 )
 from microcosm.build.us_runtime.take_up_contract import load_take_up_contract
+from microcosm.fit.qrf import DEFAULT_ZERO_ATOL, detect_regime
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSEngine,
@@ -1699,12 +1700,17 @@ class _ProducerDtypeFittedQRF:
         owner: str,
         observations: list[dict[str, object]],
         weight_kind: str,
+        regimes: dict[str, str],
     ) -> None:
         self.outcomes = outcomes
         self.calls = calls
         self.owner = owner
         self.observations = observations
         self.weight_kind = weight_kind
+        self._regimes = regimes
+
+    def regimes(self) -> dict[str, str]:
+        return dict(self._regimes)
 
     def predict(self, test: pd.DataFrame, **_kwargs: object) -> pd.DataFrame:
         self.calls[f"{self.owner}.predict"] += 1
@@ -1740,6 +1746,7 @@ class _ProducerDtypeQRF:
         self.calls = calls
         self.owner = owner
         self.observations = observations
+        self.zero_atol = DEFAULT_ZERO_ATOL
 
     def fit(
         self,
@@ -1768,6 +1775,13 @@ class _ProducerDtypeQRF:
         else:
             table = frame
             weight_kind = "design"
+        regimes = {
+            outcome: detect_regime(
+                table[outcome].to_numpy(dtype=np.float64),
+                zero_atol=self.zero_atol,
+            )
+            for outcome in outcomes
+        }
         self.observations.append(
             {
                 "owner": self.owner,
@@ -1782,6 +1796,7 @@ class _ProducerDtypeQRF:
             owner=self.owner,
             observations=self.observations,
             weight_kind=weight_kind,
+            regimes=regimes,
         )
 
 

@@ -256,6 +256,7 @@ __all__ = [
     "us_puf_s_corp_universe_zero_rule_identity",
     "validate_stacked_late_producer_receipt",
     "validate_stacked_late_producer_transition_authority",
+    "validate_stacked_gap_fill_receipt",
     "validate_stacked_post_puf_transfer_receipt",
     "validate_stacked_spine_frame",
 ]
@@ -3696,6 +3697,199 @@ def _validate_production_authority_receipt(
         )
 
 
+def validate_stacked_gap_fill_receipt(
+    receipt: Mapping[str, object],
+    *,
+    boundary: str,
+) -> None:
+    """Reject an early gap-fill receipt without complete target origins."""
+
+    _validate_stacked_gap_fill_receipt(
+        receipt,
+        authority=_CANONICAL_STACKED_AUTHORITY,
+        production=True,
+        boundary=boundary,
+    )
+
+
+_STACKED_GAP_FILL_DETERMINISTIC_ORIGIN_BINDINGS: Mapping[
+    tuple[str, str], str
+] = MappingProxyType(
+    {
+        (
+            "person",
+            "schedule_d_capital_gain_distributions",
+        ): "split_component_by_share",
+    }
+)
+
+
+def _validate_stacked_gap_fill_receipt(
+    receipt: Mapping[str, object],
+    *,
+    authority: _StackedAuthority,
+    production: bool,
+    boundary: str,
+) -> None:
+    if not isinstance(receipt, Mapping) or set(receipt) != {
+        "authority",
+        "directions",
+    }:
+        raise ValueError(f"{boundary}: stacked gap-fill receipt schema drifted.")
+    expected_authority = _authority_receipt(authority)
+    observed_authority = receipt.get("authority")
+    if not isinstance(observed_authority, Mapping) or dict(observed_authority) != (
+        expected_authority
+    ):
+        raise ValueError(f"{boundary}: stacked gap-fill authority changed.")
+    if production:
+        _validate_production_authority_receipt(
+            observed_authority,
+            boundary=boundary,
+        )
+
+    expected_directions = {
+        direction.name: direction for direction in authority.gap_fill_plan
+    }
+    directions = receipt.get("directions")
+    if not isinstance(directions, Mapping) or set(directions) != set(
+        expected_directions
+    ):
+        raise ValueError(f"{boundary}: stacked gap-fill direction surface changed.")
+    for direction_name, direction in expected_directions.items():
+        direction_receipt = directions[direction_name]
+        if not isinstance(direction_receipt, Mapping) or set(direction_receipt) != {
+            "recipient_channel",
+            "donor_channel",
+            "donor_selection",
+            "resolved_donor_channel",
+            "targets",
+            "deferred_inputs",
+            "fit_records",
+        }:
+            raise ValueError(
+                f"{boundary}: stacked gap-fill direction {direction_name!r} "
+                "receipt schema drifted."
+            )
+        if (
+            direction_receipt.get("recipient_channel") != direction.recipient_channel
+            or direction_receipt.get("donor_channel") != direction.donor_channel
+            or direction_receipt.get("donor_selection")
+            != "owner_projection_of_native_donor_rows"
+            or direction_receipt.get("resolved_donor_channel") is not None
+            or not isinstance(direction_receipt.get("deferred_inputs"), list)
+            or not isinstance(direction_receipt.get("fit_records"), list)
+        ):
+            raise ValueError(
+                f"{boundary}: stacked gap-fill direction {direction_name!r} "
+                "owner or execution evidence changed."
+            )
+        expected_targets = {
+            f"{entity}/{family}/{target}": (family, target)
+            for entity, families in direction.target_families.items()
+            for family, family_targets in families.items()
+            for target in family_targets
+        }
+        targets = direction_receipt.get("targets")
+        if not isinstance(targets, Mapping) or set(targets) != set(expected_targets):
+            raise ValueError(
+                f"{boundary}: stacked gap-fill direction {direction_name!r} "
+                "target surface changed."
+            )
+        absence_rules = _direction_absence_rule_index(direction)
+        for label, (family, target) in expected_targets.items():
+            target_receipt = targets[label]
+            if not isinstance(target_receipt, Mapping):
+                raise ValueError(
+                    f"{boundary}: stacked gap-fill target {label!r} receipt is absent."
+                )
+            entity = label.split("/", 1)[0]
+            expected_keys = {
+                "authorized_null_rows",
+                "imputed_rows",
+                "unmodeled_rows",
+                "residual_null_rows",
+                "origin",
+            }
+            if (entity, target) in absence_rules:
+                expected_keys.add("recipient_absence_authority")
+            if set(target_receipt) != expected_keys:
+                raise ValueError(
+                    f"{boundary}: stacked gap-fill target {label!r} receipt "
+                    "schema drifted."
+                )
+            counts: dict[str, int] = {}
+            for count_name in (
+                "authorized_null_rows",
+                "imputed_rows",
+                "unmodeled_rows",
+                "residual_null_rows",
+            ):
+                count = target_receipt.get(count_name)
+                if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+                    raise ValueError(
+                        f"{boundary}: stacked gap-fill target {label!r} has "
+                        f"invalid {count_name}."
+                    )
+                counts[count_name] = count
+            if (
+                counts["authorized_null_rows"]
+                != (counts["imputed_rows"] + counts["unmodeled_rows"])
+                or counts["residual_null_rows"] != counts["unmodeled_rows"]
+            ):
+                raise ValueError(
+                    f"{boundary}: stacked gap-fill target {label!r} accounting "
+                    "equations changed."
+                )
+            origin = target_receipt.get("origin")
+            acs_transfer_runtime.validate_acs_transfer_input_origin_receipt(
+                origin,
+                boundary=f"{boundary} target {label!r}",
+            )
+            assert isinstance(origin, Mapping)
+            channel = origin["channel"]
+            if counts["imputed_rows"] > 0 and channel == "preexisting":
+                raise ValueError(
+                    f"{boundary}: imputed gap-fill target {label!r} has no "
+                    "recorded origin channel."
+                )
+            if channel == "deterministic_derivation":
+                expected_derivation = (
+                    _STACKED_GAP_FILL_DETERMINISTIC_ORIGIN_BINDINGS.get(
+                        (entity, target)
+                    )
+                )
+                if expected_derivation is None:
+                    raise ValueError(
+                        f"{boundary}: gap-fill target {label!r} has no declared "
+                        "deterministic origin binding."
+                    )
+                if origin.get("derivation") != expected_derivation:
+                    raise ValueError(
+                        f"{boundary}: gap-fill target {label!r} claims "
+                        f"deterministic derivation {origin.get('derivation')!r}, "
+                        f"expected {expected_derivation!r}."
+                    )
+            elif channel == "qrf_transfer":
+                expected_model_target = (
+                    acs_transfer_runtime.acs_transfer_model_target_bindings(
+                        direction.target_families[entity][family]
+                    )[target]
+                )
+                if origin.get("model_target") != expected_model_target:
+                    raise ValueError(
+                        f"{boundary}: gap-fill target {label!r} claims model "
+                        f"target {origin.get('model_target')!r}, expected "
+                        f"{expected_model_target!r}."
+                    )
+            absence = target_receipt.get("recipient_absence_authority")
+            if (entity, target) in absence_rules and not isinstance(absence, Mapping):
+                raise ValueError(
+                    f"{boundary}: gap-fill target {label!r} has no structural "
+                    "absence authority."
+                )
+
+
 def validate_stacked_post_puf_transfer_receipt(
     receipt: Mapping[str, object],
     *,
@@ -3762,15 +3956,125 @@ def validate_stacked_post_puf_transfer_receipt(
             "canonical 70-target surface; production manifest emission is "
             "forbidden."
         )
-    if any(
-        not isinstance(target_receipt, Mapping)
-        or target_receipt.get("residual_null_rows") != 0
-        for target_receipt in targets.values()
-    ):
-        raise ValueError(
-            f"{boundary}: stacked post-PUF transfer target receipts do not "
-            "prove zero residual nulls; production manifest emission is forbidden."
+    for label, target_receipt in targets.items():
+        if not isinstance(target_receipt, Mapping):
+            raise ValueError(
+                f"{boundary}: stacked post-PUF transfer target {label!r} "
+                "receipt is absent."
+            )
+        counts: dict[str, int] = {}
+        for count_name in (
+            "authorized_null_rows",
+            "imputed_rows",
+            "unmodeled_rows",
+            "residual_null_rows",
+        ):
+            count = target_receipt.get(count_name)
+            if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+                raise ValueError(
+                    f"{boundary}: stacked post-PUF transfer target {label!r} "
+                    f"has invalid {count_name}."
+                )
+            counts[count_name] = count
+        if counts["authorized_null_rows"] != (
+            counts["imputed_rows"] + counts["unmodeled_rows"]
+        ):
+            raise ValueError(
+                f"{boundary}: stacked post-PUF transfer target {label!r} "
+                "activation accounting equation changed."
+            )
+        if counts["residual_null_rows"] != counts["unmodeled_rows"]:
+            raise ValueError(
+                f"{boundary}: stacked post-PUF transfer target {label!r} "
+                "residual-null accounting equation changed."
+            )
+        if counts["residual_null_rows"] != 0:
+            raise ValueError(
+                f"{boundary}: stacked post-PUF transfer target receipts do not "
+                "prove zero residual nulls; production manifest emission is "
+                "forbidden."
+            )
+        origin = target_receipt.get("origin")
+        acs_transfer_runtime.validate_acs_transfer_input_origin_receipt(
+            origin,
+            boundary=f"{boundary} target {label!r}",
         )
+        assert isinstance(origin, Mapping)
+        channel = origin["channel"]
+        authorized = counts["authorized_null_rows"]
+        imputed = counts["imputed_rows"]
+        if channel == "preexisting":
+            if authorized != 0 or imputed != 0:
+                raise ValueError(
+                    f"{boundary}: preexisting transfer target {label!r} has "
+                    "authorized or imputed rows."
+                )
+        elif channel != "qrf_transfer":
+            raise ValueError(
+                f"{boundary}: active transfer target {label!r} requires QRF "
+                "origin and realized-regime evidence."
+            )
+        elif authorized <= 0 or imputed <= 0:
+            raise ValueError(
+                f"{boundary}: active transfer target {label!r} has no positive "
+                "authorized/imputed row count."
+            )
+
+    canonical_family = {
+        (entity, target): family
+        for entity, families in CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE.items()
+        for family, family_targets in families.items()
+        for target in family_targets
+    }
+    for name, group in expected_groups.items():
+        group_receipt = groups[name]
+        assert isinstance(group_receipt, Mapping)
+        expected_model_targets = (
+            acs_transfer_runtime.acs_transfer_model_target_bindings(group.targets)
+        )
+        group_targets = group_receipt.get("targets")
+        expected_group_labels = {
+            f"{group.entity}/{group.family}/{target}" for target in group.targets
+        }
+        if not isinstance(group_targets, Mapping) or set(group_targets) != (
+            expected_group_labels
+        ):
+            raise ValueError(
+                f"{boundary}: stacked post-PUF transfer group {name!r} target "
+                "receipts changed."
+            )
+        regimes_by_model_target: dict[str, object] = {}
+        for target in group.targets:
+            bounded_label = f"{group.entity}/{group.family}/{target}"
+            aggregate_label = (
+                f"{group.entity}/{canonical_family[(group.entity, target)]}/{target}"
+            )
+            bounded_receipt = group_targets[bounded_label]
+            if _json_ready(bounded_receipt) != _json_ready(targets[aggregate_label]):
+                raise ValueError(
+                    f"{boundary}: stacked post-PUF transfer target "
+                    f"{aggregate_label!r} differs from group {name!r}."
+                )
+            assert isinstance(bounded_receipt, Mapping)
+            origin = bounded_receipt["origin"]
+            assert isinstance(origin, Mapping)
+            if origin["channel"] != "qrf_transfer":
+                continue
+            model_target = origin["model_target"]
+            if model_target != expected_model_targets[target]:
+                raise ValueError(
+                    f"{boundary}: exported transfer leaf {bounded_label!r} "
+                    f"claims model target {model_target!r}, expected "
+                    f"{expected_model_targets[target]!r}."
+                )
+            regimes = origin["realized_regimes_by_pattern"]
+            assert isinstance(model_target, str)
+            previous = regimes_by_model_target.setdefault(model_target, regimes)
+            if _json_ready(previous) != _json_ready(regimes):
+                raise ValueError(
+                    f"{boundary}: exported leaves sharing model target "
+                    f"{model_target!r} disagree on realized QRF regimes."
+                )
     completion = receipt.get("completion")
     if completion != {
         "status": "complete",
@@ -7691,9 +7995,16 @@ def _gap_fill_stacked_spine_evaluate(
         )
 
     validate_stacked_spine_frame(current, boundary="stacked gap-fill output")
+    receipt = {"authority": authority_receipt, "directions": receipts}
+    _validate_stacked_gap_fill_receipt(
+        receipt,
+        authority=authority,
+        production=production,
+        boundary="stacked gap-fill output",
+    )
     return GapFillResult(
         frame=current,
-        receipt={"authority": authority_receipt, "directions": receipts},
+        receipt=receipt,
         transfer_results=transfer_results,
     )
 
@@ -8145,6 +8456,9 @@ def _verify_gap_fill_outcome(
                     "imputed_rows": imputed,
                     "unmodeled_rows": unmodeled,
                     "residual_null_rows": residual_nulls,
+                    "origin": (
+                        acs_transfer_runtime.acs_transfer_input_origin_receipt(record)
+                    ),
                 }
                 rule = absence_rules.get((entity, target))
                 if rule is not None:
@@ -8720,6 +9034,9 @@ def _verify_post_puf_transfer_outcome(
                     "imputed_rows": imputed,
                     "unmodeled_rows": unmodeled,
                     "residual_null_rows": residual_nulls,
+                    "origin": (
+                        acs_transfer_runtime.acs_transfer_input_origin_receipt(record)
+                    ),
                 }
     if failures:
         raise ValueError(

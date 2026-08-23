@@ -2675,6 +2675,9 @@ def test_gap_fill_fills_both_directions_with_authority_receipts() -> None:
     assert unemployment["authorized_null_rows"] == int(acs_rows.sum())
     assert unemployment["imputed_rows"] == int(acs_rows.sum())
     assert unemployment["residual_null_rows"] == 0
+    assert unemployment["origin"]["channel"] == "qrf_transfer"
+    assert unemployment["origin"]["model_target"] == "unemployment_compensation"
+    assert unemployment["origin"]["realized_regimes_by_pattern"]
     housing = directions["asec_housing_to_acs"]
     rent = housing["targets"]["person/housing/pre_subsidy_rent"]
     assert rent["imputed_rows"] == int((acs_rows & ~acs_gq_rows).sum())
@@ -2695,6 +2698,40 @@ def test_gap_fill_fills_both_directions_with_authority_receipts() -> None:
         for pattern in record.patterns
     )
     assert native_predictor_used
+
+    forged = deepcopy(dict(result.receipt))
+    forged["directions"]["asec_survey_to_acs"]["targets"][
+        "person/model_required_numeric/unemployment_compensation"
+    ]["origin"] = None
+    authority = stacked_spine_module._make_test_stacked_authority(
+        declared_surface=_surface_from_gap_fill_plan(_GAP_FILL_TEST_PLAN),
+        gap_fill_plan=_GAP_FILL_TEST_PLAN,
+    )
+    with pytest.raises(ValueError, match="has no ACS transfer origin receipt"):
+        stacked_spine_module._validate_stacked_gap_fill_receipt(
+            forged,
+            authority=authority,
+            production=False,
+            boundary="missing early transfer origin",
+        )
+
+    deterministic_evasion = deepcopy(dict(result.receipt))
+    deterministic_evasion["directions"]["asec_survey_to_acs"]["targets"][
+        "person/model_required_numeric/unemployment_compensation"
+    ]["origin"] = {
+        "channel": "deterministic_derivation",
+        "derivation": "fixture_evasion",
+    }
+    with pytest.raises(
+        ValueError,
+        match="has no declared deterministic origin binding",
+    ):
+        stacked_spine_module._validate_stacked_gap_fill_receipt(
+            deterministic_evasion,
+            authority=authority,
+            production=False,
+            boundary="deterministic early transfer evasion",
+        )
 
 
 def test_gap_fill_outcome_rejects_forged_residual_receipt(
@@ -4823,7 +4860,11 @@ def _run_real_late_executor_fixture(
                 "ordered_targets": list(group.targets),
                 "targets": {
                     f"{group.entity}/{group.family}/{target}": {
+                        "authorized_null_rows": 0,
+                        "imputed_rows": 0,
+                        "unmodeled_rows": 0,
                         "residual_null_rows": 0,
+                        "origin": {"channel": "preexisting"},
                     }
                     for target in group.targets
                 },
@@ -5153,6 +5194,235 @@ def _rehash_late_receipt_after_fixture_mutation(
     receipt["sha256"] = stacked_spine_module._canonical_sha256(receipt)
 
 
+def test_late_receipt_rejects_unrecorded_transfer_origin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    assert result.receipt["version"] == 4
+    stale = deepcopy(dict(result.receipt))
+    stale["version"] = 3
+    with pytest.raises(ValueError, match="receipt version changed"):
+        stacked_spine_module.validate_stacked_late_producer_receipt(
+            stale,
+            boundary="stale v3 transfer receipt",
+        )
+
+    forged = deepcopy(dict(result.receipt))
+    group = stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS[0]
+    bounded_label = f"{group.entity}/{group.family}/{group.targets[0]}"
+    canonical_family = next(
+        family
+        for family, targets in (
+            stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE[
+                group.entity
+            ].items()
+        )
+        if group.targets[0] in targets
+    )
+    aggregate_label = f"{group.entity}/{canonical_family}/{group.targets[0]}"
+
+    transfer = forged["post_puf_transfer"]
+    transfer["groups"][group.name]["targets"][bounded_label].pop("origin")
+    transfer["targets"][aggregate_label].pop("origin")
+    row = next(item for item in forged["execution"] if item["producer"] == group.name)
+    row["producer_receipt"]["targets"][bounded_label].pop("origin")
+    row["producer_receipt_sha256"] = stacked_spine_module._canonical_sha256(
+        row["producer_receipt"]
+    )
+    _rehash_late_receipt_after_fixture_mutation(forged)
+
+    with pytest.raises(ValueError, match="has no ACS transfer origin receipt"):
+        stacked_spine_module.validate_stacked_late_producer_receipt(
+            forged,
+            boundary="missing transfer origin",
+        )
+
+    missing_pattern = deepcopy(dict(result.receipt))
+    pattern_transfer = missing_pattern["post_puf_transfer"]
+    first_pattern_name = acs_transfer_module._pattern_name(0, ())
+    pattern_name = acs_transfer_module._pattern_name(1, ("fixture_optional",))
+    qrf_origin = {
+        "channel": "qrf_transfer",
+        "model_target": acs_transfer_module.acs_transfer_model_target_bindings(
+            group.targets
+        )[group.targets[0]],
+        "availability_patterns": [
+            {"name": first_pattern_name, "observed_optional_predictors": []},
+            {
+                "name": pattern_name,
+                "observed_optional_predictors": ["fixture_optional"],
+            },
+        ],
+        "realized_regimes_by_pattern": {
+            first_pattern_name: "positive_only",
+            pattern_name: "positive_only",
+        },
+    }
+    pattern_row = next(
+        item for item in missing_pattern["execution"] if item["producer"] == group.name
+    )
+    for target_receipt in (
+        pattern_transfer["groups"][group.name]["targets"][bounded_label],
+        pattern_transfer["targets"][aggregate_label],
+        pattern_row["producer_receipt"]["targets"][bounded_label],
+    ):
+        target_receipt["authorized_null_rows"] = 1
+        target_receipt["imputed_rows"] = 1
+        target_receipt["origin"] = deepcopy(qrf_origin)
+        target_receipt["origin"]["realized_regimes_by_pattern"].pop(pattern_name)
+    pattern_row["producer_receipt_sha256"] = stacked_spine_module._canonical_sha256(
+        pattern_row["producer_receipt"]
+    )
+    _rehash_late_receipt_after_fixture_mutation(missing_pattern)
+
+    with pytest.raises(ValueError, match="regime order/membership differs"):
+        stacked_spine_module.validate_stacked_late_producer_receipt(
+            missing_pattern,
+            boundary="missing transfer availability pattern",
+        )
+
+
+@pytest.mark.parametrize(
+    ("forged_counts", "message"),
+    (
+        ({"authorized_null_rows": False}, "invalid authorized_null_rows"),
+        (
+            {
+                "authorized_null_rows": 1,
+                "imputed_rows": 0,
+                "unmodeled_rows": 0,
+                "residual_null_rows": 0,
+            },
+            "activation accounting equation changed",
+        ),
+        (
+            {
+                "authorized_null_rows": 0,
+                "imputed_rows": 0,
+                "unmodeled_rows": 0,
+                "residual_null_rows": 1,
+            },
+            "residual-null accounting equation changed",
+        ),
+    ),
+)
+def test_late_transfer_receipt_rejects_invalid_target_count_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    forged_counts: Mapping[str, object],
+    message: str,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    transfer = deepcopy(dict(result.receipt["post_puf_transfer"]))
+    group = stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS[0]
+    target = group.targets[0]
+    bounded_label = f"{group.entity}/{group.family}/{target}"
+    canonical_family = next(
+        family
+        for family, targets in (
+            stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE[
+                group.entity
+            ].items()
+        )
+        if target in targets
+    )
+    aggregate_label = f"{group.entity}/{canonical_family}/{target}"
+    for target_receipt in (
+        transfer["groups"][group.name]["targets"][bounded_label],
+        transfer["targets"][aggregate_label],
+    ):
+        target_receipt.update(forged_counts)
+
+    with pytest.raises(ValueError, match=message):
+        stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+            transfer,
+            boundary="invalid late target count fixture",
+        )
+
+
+def test_late_transfer_receipt_rejects_joint_model_target_renaming(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result, _events, _finalizer_calls = _run_real_late_executor_fixture(monkeypatch)
+    transfer = deepcopy(dict(result.receipt["post_puf_transfer"]))
+    group = next(
+        item
+        for item in stacked_spine_module.CANONICAL_US_LATE_TRANSFER_GROUPS
+        if set(item.targets) == {"ssn_card_type", "immigration_status_str"}
+    )
+    canonical_family = next(
+        family
+        for family, targets in (
+            stacked_spine_module.CANONICAL_STACKED_POST_PUF_TRANSFER_SURFACE[
+                group.entity
+            ].items()
+        )
+        if set(group.targets).issubset(targets)
+    )
+    pattern_name = acs_transfer_module._pattern_name(0, ())
+    for target in group.targets:
+        bounded_label = f"{group.entity}/{group.family}/{target}"
+        aggregate_label = f"{group.entity}/{canonical_family}/{target}"
+        target_receipt = {
+            **transfer["groups"][group.name]["targets"][bounded_label],
+            "authorized_null_rows": 1,
+            "imputed_rows": 1,
+            "origin": {
+                "channel": "qrf_transfer",
+                "model_target": "__acs_transfer_immigration_status_pair",
+                "availability_patterns": [
+                    {
+                        "name": pattern_name,
+                        "observed_optional_predictors": [],
+                    }
+                ],
+                "realized_regimes_by_pattern": {pattern_name: "positive_only"},
+            },
+        }
+        transfer["groups"][group.name]["targets"][bounded_label] = target_receipt
+        transfer["targets"][aggregate_label] = deepcopy(target_receipt)
+
+    stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+        transfer,
+        boundary="correct joint model target",
+    )
+    deterministic = deepcopy(transfer)
+    deterministic_target = group.targets[0]
+    deterministic_bounded_label = (
+        f"{group.entity}/{group.family}/{deterministic_target}"
+    )
+    deterministic_aggregate_label = (
+        f"{group.entity}/{canonical_family}/{deterministic_target}"
+    )
+    for target_receipt in (
+        deterministic["groups"][group.name]["targets"][deterministic_bounded_label],
+        deterministic["targets"][deterministic_aggregate_label],
+    ):
+        target_receipt["origin"] = {
+            "channel": "deterministic_derivation",
+            "derivation": "fixture_evasion",
+        }
+    with pytest.raises(ValueError, match="requires QRF origin"):
+        stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+            deterministic,
+            boundary="active deterministic origin evasion",
+        )
+
+    for target in group.targets:
+        bounded_label = f"{group.entity}/{group.family}/{target}"
+        aggregate_label = f"{group.entity}/{canonical_family}/{target}"
+        for target_receipt in (
+            transfer["groups"][group.name]["targets"][bounded_label],
+            transfer["targets"][aggregate_label],
+        ):
+            target_receipt["origin"]["model_target"] = "fixture_renamed_joint_target"
+
+    with pytest.raises(ValueError, match="claims model target"):
+        stacked_spine_module.validate_stacked_post_puf_transfer_receipt(
+            transfer,
+            boundary="renamed joint model target",
+        )
+
+
 def test_late_receipt_rejects_forged_absent_required_virtual_input(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -5376,6 +5646,9 @@ def test_post_puf_transfer_preserves_complete_asec_source_producers() -> None:
     assert receipt["imputed_rows"] == int((~producer_rows).sum())
     assert receipt["unmodeled_rows"] == 0
     assert receipt["residual_null_rows"] == 0
+    assert receipt["origin"]["channel"] == "qrf_transfer"
+    assert receipt["origin"]["model_target"] == "is_pregnant"
+    assert receipt["origin"]["realized_regimes_by_pattern"]
 
 
 @pytest.mark.parametrize(
@@ -5482,6 +5755,9 @@ def test_post_puf_transfer_preserves_every_live_puf_clone_producer() -> None:
     assert receipt["imputed_rows"] == int((~producer_rows).sum())
     assert receipt["unmodeled_rows"] == 0
     assert receipt["residual_null_rows"] == 0
+    assert receipt["origin"]["channel"] == "qrf_transfer"
+    assert receipt["origin"]["model_target"] == "educator_expense"
+    assert receipt["origin"]["realized_regimes_by_pattern"]
 
 
 def test_post_puf_transfer_rejects_incomplete_acs_puf_clone_producer() -> None:

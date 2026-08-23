@@ -12,7 +12,10 @@ import pytest
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.us_runtime import acs_multispine
 from microcosm.build.us_runtime.acs_pums import AcsPumsSource
-from microcosm.build.us_runtime.acs_transfer import AcsImputedInput
+from microcosm.build.us_runtime.acs_transfer import (
+    AcsImputedInput,
+    AcsTransferPattern,
+)
 from microcosm.build.us_runtime.base_pool import spine_column
 from microcosm.build.us_runtime.puma_ladder import UsPumaLadder
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
@@ -75,6 +78,18 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
     )
     target_families = {"person": {"tax_detail": ("taxable_interest_income",)}}
     fit_record = FitWeightRecord("acs_transfer:person:tax_detail", "design")
+    pattern = AcsTransferPattern(
+        name="pattern_00_required_only",
+        observed_optional_predictors=(),
+        predictors=("age", "is_female"),
+        seed=91,
+        weight_kind="design",
+        donor_rows=10,
+        recipient_rows=2,
+        realized_regimes_by_target={
+            "taxable_interest_income": "zero_inflated_positive"
+        },
+    )
     imputed = AcsImputedInput(
         column="taxable_interest_income",
         entity="person",
@@ -84,6 +99,8 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
         predictors=("age", "is_female"),
         seed=91,
         weight_kind="design",
+        patterns=(pattern,),
+        model_target="taxable_interest_income",
     )
 
     def fake_load(actual_source, *, chunksize):
@@ -181,7 +198,21 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
                 "predictors": ["age", "is_female"],
                 "seed": 91,
                 "weight_kind": "design",
-                "patterns": [],
+                "patterns": [
+                    {
+                        "name": "pattern_00_required_only",
+                        "observed_optional_predictors": [],
+                        "predictors": ["age", "is_female"],
+                        "seed": 91,
+                        "weight_kind": "design",
+                        "donor_rows": 10,
+                        "recipient_rows": 2,
+                        "realized_regimes_by_target": {
+                            "taxable_interest_income": "zero_inflated_positive"
+                        },
+                    }
+                ],
+                "model_target": "taxable_interest_income",
                 "imputed_recipient_rows": 0,
                 "unmodeled_recipient_rows": 0,
                 "derivation": None,

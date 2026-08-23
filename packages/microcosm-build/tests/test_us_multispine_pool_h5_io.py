@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import microcosm.build.us_runtime.acs_transfer as acs_transfer_module
 import microcosm.build.us_runtime.h5_io as h5_io
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
 from microcosm.build.frame_checkpoint import (
@@ -450,7 +451,7 @@ def _write_ready_pool(tmp_path: Path, *, stacked: bool = False) -> Path:
         "stage_checkpoints": {
             "artifact_kind": "populace_us_multispine_pool_checkpoint_provenance",
             "schema_version": 1,
-            "materializer_version": 3 if not stacked else 5,
+            "materializer_version": 4 if not stacked else 5,
             "enabled": False,
             "agreement": {
                 "source": "always_fresh",
@@ -555,7 +556,13 @@ def _canonical_stacked_late_dag_receipt() -> dict[str, object]:
             "ordered_targets": list(group.targets),
             "targets": {
                 f"{group.entity}/{group.family}/{target}": {
+                    "authorized_null_rows": 0,
+                    "imputed_rows": 0,
+                    "unmodeled_rows": 0,
                     "residual_null_rows": 0,
+                    "origin": (
+                        acs_transfer_module.acs_transfer_input_origin_receipt(None)
+                    ),
                 }
                 for target in group.targets
             },
