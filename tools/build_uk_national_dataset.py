@@ -449,8 +449,26 @@ def _source_pins(
         "cgt_ods": _artifact_pin(cgt_ods_path),
     }
     if ledger_artifact is not None:
-        pins["ledger_facts"] = dict(ledger_artifact.provenance())
+        pins["ledger_facts"] = _ledger_facts_pin(ledger_artifact)
     return pins
+
+
+def _ledger_facts_pin(ledger_artifact: object) -> dict[str, object]:
+    """Pin the consumer feed by content and size.
+
+    Logbook role pins are exactly ``sha256`` and ``size_bytes``; the richer
+    Ledger identity block travels separately in ``safe_artifacts`` and
+    ``source_vintages``. The feed digest is already verified against the
+    manifest and the CLI pin at load, so it is reused rather than recomputed
+    over a multi-hundred-megabyte file.
+    """
+
+    path = Path(getattr(ledger_artifact, "path"))
+    facts_path = path / "consumer_facts.jsonl" if path.is_dir() else path
+    return {
+        "sha256": str(getattr(ledger_artifact, "facts_sha256")),
+        "size_bytes": int(facts_path.stat().st_size),
+    }
 
 
 def _input_posture(candidate: object) -> dict[str, object]:
