@@ -15,12 +15,19 @@
   digest. The eventual host commands must run with
   `POPULACE_LOGBOOK_PREV_ROW_DIGEST` unset.
 - The prescribed `uv sync --all-packages --extra us` was attempted before code
-  work. The default cache is sandbox-denied; the writable-cache retry was
-  blocked by disabled DNS while fetching the locked
-  `policyengine-core==3.26.11`. Offline environment recovery remains pending.
-- The GitNexus exploration skill is being used for the release-flow trace; if
-  this session exposes no index resources or query tools, direct source
-  inspection is the documented fallback.
+  work. The default cache is sandbox-denied and the first writable-cache retry
+  was blocked by disabled DNS while fetching the locked
+  `policyengine-core==3.26.11`. The branch, `microcosm-scorecard`, and
+  `microcosm-one-surface` lockfiles all hash to
+  `ea7af7806a0beefe7394adefd5516649f3eba4740ae95ccdaa9aaa252249bc3a`.
+  A copy-on-write clone of the scorecard venv plus cached Hatch editable-build
+  requirements allowed `uv sync --offline --inexact --no-build-isolation
+  --all-packages --extra us` to relink all five workspace packages here. A
+  worktree-local Microcosm/PolicyEngine import check passed.
+- The GitNexus exploration skill is being used for the release-flow trace.
+  This session exposes neither GitNexus repository resources nor its query
+  tools, so direct `rg`/line-numbered source inspection is the documented
+  fallback.
 
 ## Historical replacement-scorecard journal (merged in #748)
 
