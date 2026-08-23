@@ -54,11 +54,11 @@ without inventing a path, pin, or owner ruling.
   creation of `_buildo-runtime/out/candidate-25` as outside its writable roots,
   so the receipt uses the byte-identical committed canonical launcher and does
   not claim that the external copy exists.
+- Updated `_LANE-NOTES.md` with per-stage wall/RSS evidence, 90/110 GiB launch
+  gates, the sparse STOP, the required exact-byte host installation, and the
+  exact `launchctl submit` owner action.
 
 ## Next
 
-1. Write and commit `_LANE-NOTES.md` with evidence-backed wall/RSS envelopes
-   and the exact launch action, including the one host-copy prerequisite forced
-   by the managed filesystem boundary.
-2. Commit the final progress state and `FINAL_REPORT.md`. Do not push, publish,
+1. Commit the final progress state and `FINAL_REPORT.md`. Do not push, publish,
    promote, tune, or touch pending logbook-chain state.

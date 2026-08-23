@@ -1,5 +1,90 @@
 # Candidate 25% host-runbook lane notes
 
+## 2026-08-23 — round 4 dense-first runbook
+
+Current disposition: **pool GO; dense legacy GO; sparse legacy STOP pending an
+owner selection-authority ruling.** No pool, release, selection, or scorer was
+run in this lane. `experiments/candidate_25pct/dry_run_r4.md` is the complete
+exit-0 preflight and command transcript.
+
+### Runtime and memory envelope
+
+| Stage | Operational expectation | Measured evidence | Launch gate |
+| --- | --- | --- | --- |
+| 1 — f025 pool | About 2.8--3.0 h; plan 3 h. Expected peak RSS is 75--86 GiB. | Two same-command f025 supervisor receipts report 10,150.03 s / 81,026,367,488 bytes (2.819 h / 75.46 GiB) and 10,075.75 s / 92,175,892,480 bytes (2.799 h / 85.85 GiB). An earlier f025 probe reports 10,752.87 s and 75,521,671,168 bytes (2.987 h / 70.34 GiB). | 90 GiB reclaimable |
+| 2a — dense legacy release | Nearest measured analogue is 1 h 39 m; reserve 2 h. Its measured peak was 96.83 GiB. The new-pool exact wall/RSS is not yet measured, so 110 GiB is a conservative scheduling threshold, not a promised cap. | July dense attempt 3 ran 06:55:23--08:34:30 (1:39:07); its pressure sample peaked at 99,149 MiB = 96.83 GiB. It ended rc=1 at release gates, so this is resource evidence, not a green-candidate receipt. | 110 GiB reclaimable |
+| 2b — sparse legacy release | **Not scheduled.** If the owner later authorizes a pool-bound selection rule, the closest successful July analogue is 2 h 42 m and 79.17 GiB. | July sparse ran 01:14:58--03:57:02 (2:42:04), rc=0; `/usr/bin/time -l` reports 9,723.19 s and 85,010,432,000 bytes maximum RSS (2:42:03 / 79.17 GiB). | Conditional 90 GiB reclaimable |
+
+Evidence locations:
+
+- Pool attempt fields `elapsed_seconds` and `max_rss_raw`:
+  `/Users/maxghenis/PolicyEngine/_worktrees/microcosm-arm-split/_buildo-runtime/out/stacked-f025-arm-order-r1/build.status.json`
+  and
+  `/Users/maxghenis/PolicyEngine/_worktrees/microcosm-arm-split/_buildo-runtime/out/stacked-f025-arm-investment-r1/build.status.json`.
+- Earlier pool probe:
+  `/Users/maxghenis/PolicyEngine/_buildo-runtime/out/probe-f025-r1/probe.log:1,302-303,320`.
+- Dense wall clock:
+  `/Users/maxghenis/PolicyEngine/_buildo-runtime/logs/buildo-run/chain_densep2.log:16-20`;
+  dense peak:
+  `/Users/maxghenis/PolicyEngine/_buildo-runtime/logs/buildo-run/pressure_densep2_20260728T065518Z.log:70`.
+- Conditional sparse wall clock:
+  `/Users/maxghenis/PolicyEngine/_buildo-runtime/logs/buildo-run/chain_sparse.log:104-111`;
+  sparse time/RSS:
+  `/Users/maxghenis/PolicyEngine/_buildo-runtime/logs/buildo-run/release_sparse.log:544-545`.
+
+The measured pool-plus-dense sum is about 4.5 h. Reserve a 6 h host window for
+serial dense-only execution, input rehashing, output authentication, and normal
+variance; precondition waiting is unbounded and additional. “Reclaimable” is
+`vm_stat` free + inactive + speculative + purgeable memory, not disk space.
+The launcher polls every 300 s until no pool/release builder is running, the
+stage threshold is met, `pmset -g batt` reports AC power, and
+`/Users/maxghenis/PolicyEngine/_buildo-runtime/out/battery-verify/.max-go`
+exists. It reauthenticates stage inputs if readiness changes. Per-stage
+process-tree RSS is appended every 30 s to `pool/rss.csv` and
+`release-dense/rss.csv`; build output is appended to each stage's log.
+
+### Sparse STOP
+
+Current main's selection-manifest tool serializes every identity from an
+already selected H5; it cannot select exactly 57,240 identities from the new
+pool. Legacy cold L0 uses fixed penalty 0.8 and does not promise an exact count.
+The launcher therefore produces dense only and prints this ruling request:
+
+> Which rule may choose the candidate pool support: (A) current legacy
+> fixed-penalty L0 at default 0.8, accepting its non-exact realized count, or
+> (B) a newly ratified exact-57,240 rule, including algorithm, seed, and
+> Keogh-carrier inclusion policy? If B uses current exact-k, supply `pi_hi` and
+> its artifact pins.
+
+The incumbent's conditional sparse controls remain 6,000 epochs and
+`--selection-mass-protection keogh_distributions`; they are evidence for a
+future authorized invocation, not authority to reuse the incumbent's old-pool
+selection manifest. Full citations are in
+`experiments/candidate_25pct/input_audit_r4.md`.
+
+### Installation and owner launch action
+
+The managed session could not write the required host output root; `mkdir`
+returned `Operation not permitted`. The executable canonical source is
+`experiments/candidate_25pct/run-candidate.sh`, SHA-256
+`94f113bf1d3d7fc58c3973549b66a8aef9f2a3d55931c5f0ea60560e65f16a1a`.
+Before launch, the owner must install those exact bytes at the required path:
+
+```bash
+mkdir -p /Users/maxghenis/PolicyEngine/_buildo-runtime/out/candidate-25 && /usr/bin/install -m 755 /Users/maxghenis/PolicyEngine/_worktrees/microcosm-candidate-runbook/experiments/candidate_25pct/run-candidate.sh /Users/maxghenis/PolicyEngine/_buildo-runtime/out/candidate-25/run-candidate.sh
+```
+
+Then the requested one-line owner launch action is exactly:
+
+```bash
+launchctl submit -l com.microcosm.candidate25 -- /Users/maxghenis/PolicyEngine/_buildo-runtime/out/candidate-25/run-candidate.sh
+```
+
+The launcher refuses a dirty or changed worktree, persists the exact commit and
+dense release ID across retries, stays off-chain, never publishes or promotes,
+prints the dense artifact SHA and scorer command, reports sparse pending, and
+removes `com.microcosm.candidate25` on exit.
+
 ## 2026-08-23 — required-input stop; no script emitted
 
 - The current exact-k release contract requires both Ledger facts and manifest
