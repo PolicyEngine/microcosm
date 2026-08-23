@@ -696,6 +696,10 @@ staging = build.get("staging", {})
 if staging.get("enabled") is not False:
     raise SystemExit(f"dense build unexpectedly enabled staging: {staging}")
 qrf_surface = qrf.get("surface", {})
+if qrf.get("enforced") is not True:
+    raise SystemExit("dense release did not enforce QRF tail concentration")
+if qrf.get("tail_concentration", {}).get("passed") is not True:
+    raise SystemExit("dense release did not pass QRF tail concentration")
 if qrf_surface.get("reviewed_exclusions_file") is not None:
     raise SystemExit("dense release used a reviewed-exclusions file")
 if qrf_surface.get("reviewed_exclusions_sha256") is not None:
