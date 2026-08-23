@@ -539,7 +539,7 @@ def test_post_solve_fence_requires_calibrated_kind_and_mass_record() -> None:
 
 
 def test_national_doctrine_constants_are_the_declared_contract() -> None:
-    assert UK_NATIONAL_SOLVE_EPOCHS == 256
+    assert UK_NATIONAL_SOLVE_EPOCHS == 1500
     assert UK_NATIONAL_LEARNING_RATE == 0.02
     assert UK_NATIONAL_MAX_WEIGHT_RATIO == 10.0
     assert UK_NATIONAL_SEED == 0

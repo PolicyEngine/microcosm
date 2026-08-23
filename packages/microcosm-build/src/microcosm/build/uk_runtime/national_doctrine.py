@@ -24,7 +24,13 @@ __all__ = [
     "UKNationalSolveDoctrine",
 ]
 
-UK_NATIONAL_SOLVE_EPOCHS = 256
+# 256 was the promoted kernel default the doctrine was first declared with
+# (verdict ABSENT — never measured). Raised to 1500 by Maria's adjudication
+# on 2026-08-23, informed by the first armed-run receipts: at 256 the solve
+# left recoverable targets unconverged (UC caseload reached 5.10m of 6.76m
+# with headroom inside the weight-ratio bound). The incumbent's own solve
+# runs 512 epochs on a smaller national surface.
+UK_NATIONAL_SOLVE_EPOCHS = 1500
 UK_NATIONAL_LEARNING_RATE = 0.02
 UK_NATIONAL_MAX_WEIGHT_RATIO = 10.0
 UK_NATIONAL_SEED = 0
