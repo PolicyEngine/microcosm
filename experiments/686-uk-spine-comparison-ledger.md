@@ -182,6 +182,40 @@ direction — SPI is a taxpayer population, the recipient channel is broader.
 | weighted-integrity baselines | measured — 177 input-mass totals, 47 QRF tail grids, 12 household QRF tail |
 | Scottish water fix | verified — share 0.878377 at every rung; £390.80 / £375.08 / £405.34 per Scottish household vs ~£185 under the retired mapping |
 
+## Universal Credit — pre-calibration health: healthy
+
+UC is what the armed calibration binds (`dwp.uc.households`, CY-2025 avg
+≈6.76m), so its health check is about the raw material the solve receives.
+Modeled `universal_credit` materialized through the engine on both artifacts:
+
+| measure | spine (pre-calibration) | incumbent (post-calibration) | read |
+|---|---|---|---|
+| modeled UC benunits, unweighted | 5,323 (8.70%) | 4,869 (7.95%) | ours richer, ratio 1.09 |
+| modeled UC per recipient, annual £ | 10,285 | 10,130 | equal within 1.5% |
+| reported UC share at `frs_spine` | 0.063261 | — | **exact** vs raw tab 0.063261 |
+| reported UC per recipient, annual £ | 11,436 | 10,780 | admin per-unit ≈ £11.3k (#731) |
+| modeled caseload, weighted | 3.15m | 6.30m | see below |
+| modeled UC annual total, weighted | £30.6bn | £74.7bn | see below |
+
+**Why the weighted rows halve, and why that is the boundary, not a bug.** The
+spine carries design grossing weights (29.2m households); the incumbent's
+weights are *calibrated*, and since 1.56.15 that calibration includes a UC
+caseload target — its solve moved roughly 2× mass onto UC-positive benunits.
+Comparing our design-weighted caseload to their calibrated one compares
+before-medicine to after-medicine. Like-for-like (unweighted) the spine hands
+calibration **more** raw material than the incumbent had, at an equal
+per-recipient level; reaching 6.76m means lifting ~2.1× mass onto 8.7% of
+benunits — the same order the incumbent's own solve performed — policed at the
+armed run by the ESS and weight-ratio gates.
+
+**Watch-item:** `would_claim_uc` is frozen at 0.55 by the U8 adjudication for
+incumbent parity, with uk-data#452 (the take-up vintage behind #731's June UC
+diagnosis) as the recorded follow-up. The freeze caps the eligible pool; it is
+the pre-registered lever if the armed run's UC fit is strained. The
+final-surface share gap on `universal_credit_reported` (+0.0069) is the E7
+SPI-rewrite class — both builds rewrite synthetic rows, with different QRF
+implementations.
+
 ## Open
 
 - **ETB weight basis** — pins the truth for three columns.
