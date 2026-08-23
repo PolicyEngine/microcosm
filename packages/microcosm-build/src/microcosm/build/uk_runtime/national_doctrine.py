@@ -8,6 +8,8 @@ forcing review before any armed run.
 
 from __future__ import annotations
 
+from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -21,6 +23,8 @@ __all__ = [
     "UK_NATIONAL_SOLVE_DOCTRINE",
     "UK_NATIONAL_SOLVE_EPOCHS",
     "UK_NATIONAL_TARGET_LOSS_CAP",
+    "UK_NATIONAL_TARGET_WEIGHT_RULE",
+    "uk_national_target_loss_weights",
     "UKNationalSolveDoctrine",
 ]
 
@@ -37,9 +41,23 @@ UK_NATIONAL_SEED = 0
 UK_NATIONAL_TARGET_LOSS_CAP = 10.0
 UK_NATIONAL_L0_LAMBDA = 0.0
 UK_NATIONAL_MASS_RULE = "free"
+UK_NATIONAL_TARGET_WEIGHT_RULE = "family_equal"
 
 _ALLOWED_SCALE_RULES = ("default_target_loss_scales",)
-_ALLOWED_TARGET_WEIGHT_RULES = ("uniform",)
+
+# "family_equal" gives every declared target family one equal share of the
+# objective, split evenly within the family — the reviewed rule name the
+# local doctrine reserved for exactly this ("a future family-level weighting
+# would be a new reviewed rule name here — never a per-target vector").
+#
+# Adjudicated on 2026-08-23 from the first armed-run receipts. Under
+# "uniform" the hmrc SPI income-band family is 57% of the target surface and
+# supplied 101 of the 102 references that start past the loss cap; pursuing
+# them annihilated 24 population and OBR targets that were never past cap
+# themselves. Measured on the run-3 diagnostics, the objective's gain from
+# annihilating a segment is +4.48 under uniform weights and +0.68 under
+# family_equal at cap 10, turning negative (-0.09) at cap 2.
+_ALLOWED_TARGET_WEIGHT_RULES = ("uniform", "family_equal")
 _ALLOWED_MASS_RULES = ("free",)
 
 
@@ -53,7 +71,7 @@ class UKNationalSolveDoctrine:
     seed: int = UK_NATIONAL_SEED
     target_loss_cap: float = UK_NATIONAL_TARGET_LOSS_CAP
     scale_rule: str = "default_target_loss_scales"
-    target_weight_rule: str = "uniform"
+    target_weight_rule: str = UK_NATIONAL_TARGET_WEIGHT_RULE
     mass_rule: str = UK_NATIONAL_MASS_RULE
     l0_lambda: float = UK_NATIONAL_L0_LAMBDA
 
@@ -133,3 +151,41 @@ class UKNationalSolveDoctrine:
 
 
 UK_NATIONAL_SOLVE_DOCTRINE = UKNationalSolveDoctrine()
+
+
+def uk_national_target_loss_weights(
+    families: Sequence[str],
+    *,
+    rule: str = UK_NATIONAL_TARGET_WEIGHT_RULE,
+) -> np.ndarray | None:
+    """The declared target-weight vector for one compiled register.
+
+    ``uniform`` returns ``None`` — the kernel's own equal weighting, and the
+    identity this doctrine shipped with. ``family_equal`` gives each declared
+    family one equal share of the objective, divided evenly among its
+    members, so an over-supplied family cannot outvote the rest of the
+    surface by sheer count.
+
+    The vector is derived from the compiled register's declared families and
+    nothing else: it is a rule, not a per-target vector, which is the
+    property the local doctrine requires of any weighting.
+    """
+
+    if rule not in _ALLOWED_TARGET_WEIGHT_RULES:
+        raise ValueError(
+            f"target_weight_rule must be one of {_ALLOWED_TARGET_WEIGHT_RULES}, "
+            f"got {rule!r}."
+        )
+    if rule == "uniform":
+        return None
+    labels = [str(family) for family in families]
+    if not labels:
+        raise ValueError("family_equal weighting requires a non-empty register.")
+    if any(not label for label in labels):
+        raise ValueError("every target must declare a family for family_equal.")
+    counts = Counter(labels)
+    family_count = len(counts)
+    return np.asarray(
+        [1.0 / (family_count * counts[label]) for label in labels],
+        dtype=np.float64,
+    )

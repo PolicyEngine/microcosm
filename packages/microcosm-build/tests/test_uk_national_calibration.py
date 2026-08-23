@@ -19,6 +19,8 @@ from microcosm.build.uk_runtime import (
     UK_NATIONAL_SOLVE_DOCTRINE,
     UK_NATIONAL_SOLVE_EPOCHS,
     UK_NATIONAL_TARGET_LOSS_CAP,
+    UK_NATIONAL_TARGET_WEIGHT_RULE,
+    uk_national_target_loss_weights,
     UKNationalSolveDoctrine,
 )
 from microcosm.build.uk_runtime.ledger_targets import UKLedgerTargetCompilation
@@ -546,9 +548,29 @@ def test_national_doctrine_constants_are_the_declared_contract() -> None:
     assert UK_NATIONAL_TARGET_LOSS_CAP == 10.0
     assert UK_NATIONAL_L0_LAMBDA == 0.0
     assert UK_NATIONAL_MASS_RULE == "free"
+    assert UK_NATIONAL_TARGET_WEIGHT_RULE == "family_equal"
     assert UK_NATIONAL_SOLVE_DOCTRINE == UKNationalSolveDoctrine()
     assert UK_NATIONAL_SOLVE_DOCTRINE.scale_rule == "default_target_loss_scales"
-    assert UK_NATIONAL_SOLVE_DOCTRINE.target_weight_rule == "uniform"
+    assert UK_NATIONAL_SOLVE_DOCTRINE.target_weight_rule == "family_equal"
+
+
+def test_family_equal_gives_each_family_one_equal_share() -> None:
+    weights = uk_national_target_loss_weights(["hmrc"] * 3 + ["obr"])
+    assert weights is not None
+    assert weights.sum() == pytest.approx(1.0)
+    # Three hmrc rows share half the objective; the single obr row holds the
+    # other half, so an over-supplied family cannot outvote by count.
+    assert weights[:3].sum() == pytest.approx(0.5)
+    assert weights[3] == pytest.approx(0.5)
+
+
+def test_uniform_rule_defers_to_the_kernel_default() -> None:
+    assert uk_national_target_loss_weights(["hmrc", "obr"], rule="uniform") is None
+
+
+def test_family_equal_refuses_an_undeclared_family() -> None:
+    with pytest.raises(ValueError, match="must declare a family"):
+        uk_national_target_loss_weights(["hmrc", ""])
 
 
 def test_national_doctrine_rejects_tampered_bounds() -> None:

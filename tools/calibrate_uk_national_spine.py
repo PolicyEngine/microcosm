@@ -74,7 +74,10 @@ from microcosm.build.uk_runtime.national_calibration import (
     national_calibration_mass_reason,
 )
 from microcosm.build.uk_runtime.diagnostics import write_uk_calibration_diagnostics
-from microcosm.build.uk_runtime.national_doctrine import UK_NATIONAL_SOLVE_DOCTRINE
+from microcosm.build.uk_runtime.national_doctrine import (
+    UK_NATIONAL_SOLVE_DOCTRINE,
+    uk_national_target_loss_weights,
+)
 from microcosm.calibrate import (
     TargetRegistry,
     calibrate,
@@ -375,6 +378,12 @@ class _SpineCalibrationStage(UKNationalCalibrationStage):
             spec.family for spec in self.registry.specs
         )
         mass_log_records_before_calibration = len(frame.mass_log)
+        # The target-set rows the kernel builds follow the registry's spec
+        # order, so the declared weight vector aligns positionally with them.
+        target_loss_weights = uk_national_target_loss_weights(
+            [spec.family for spec in self.registry.specs],
+            rule=self.doctrine.target_weight_rule,
+        )
         result = calibrate(
             prepared,
             self.registry.to_target_set(),
@@ -387,6 +396,7 @@ class _SpineCalibrationStage(UKNationalCalibrationStage):
             seed=self.doctrine.seed,
             l0_lambda=self.doctrine.l0_lambda,
             target_loss_cap=self.doctrine.target_loss_cap,
+            target_loss_weights=target_loss_weights,
         )
         if result.skipped or len(result.problem.names) != declared:
             skipped_names = [item.name for item in result.skipped]
